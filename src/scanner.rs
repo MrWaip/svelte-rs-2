@@ -2,7 +2,9 @@ use std::mem;
 
 #[derive(PartialEq, Eq)]
 pub enum TokenType {
-    SMOKE,
+    Text,
+    StartTag,
+    EndTag,
     EOF,
 }
 
@@ -54,9 +56,15 @@ impl Scanner {
         let char = self.advance();
 
         match char {
-            '<' => self.add_token(TokenType::SMOKE),
+            '<' => {
+                if self.peek() == Some('/') {
+                    self.end_tag();
+                } else {
+                    self.start_tag();
+                }
+            },
             _ => {
-                self.error(self.line, "Unexpected character.");
+                self.error("Unexpected character.");
             }
         }
     }
@@ -109,9 +117,38 @@ impl Scanner {
         return self.source.chars().nth(self.current);
     }
 
-    fn error(&mut self, line: usize, message: &str) {
+    fn error(&mut self, message: &str) {
+        let line = self.line;
         print!("[Line {line}] Error: {message}");
         self.has_error = true;
+    }
+
+    fn start_tag(&mut self) {
+        while self.peek() == Some('>') && !self.is_at_end() {
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            self.error("Unterminated start tag.");
+        }
+
+        self.advance();
+
+        self.add_token(TokenType::StartTag);
+    }
+    
+    fn end_tag(&mut self)  {
+         while self.peek() == Some('>') && !self.is_at_end() {
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            self.error("Unterminated end tag.");
+        }
+
+        self.advance();
+
+        self.add_token(TokenType::EndTag);
     }
 }
 
@@ -121,10 +158,12 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut scanner = Scanner::new("some");
+        let mut scanner = Scanner::new("<div></div>");
 
         let tokens = scanner.scan_tokens();
 
-        assert!(tokens[0].r#type == TokenType::EOF)
+        assert!(tokens[0].r#type == TokenType::StartTag);
+        assert!(tokens[1].r#type == TokenType::EndTag);
+        assert!(tokens[2].r#type == TokenType::EOF);
     }
 }
