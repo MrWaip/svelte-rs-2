@@ -55,18 +55,17 @@ impl Scanner {
     pub fn scan_token(&mut self) {
         let char = self.advance();
 
-        match char {
-            '<' => {
-                if self.peek() == Some('/') {
-                    self.end_tag();
-                } else {
-                    self.start_tag();
-                }
-            },
-            _ => {
-                self.error("Unexpected character.");
+        if char == '<' {
+            if self.peek() == Some('/') {
+                self.end_tag();
+            } else {
+                self.start_tag();
             }
+
+            return;
         }
+
+        self.text();
     }
 
     fn add_token(&mut self, token_type: TokenType) {
@@ -84,6 +83,12 @@ impl Scanner {
         self.current += 1;
 
         return char;
+    }
+
+    fn track_new_line(&mut self) {
+        if self.peek() == Some('\n') {
+            self.line += 1;
+        }
     }
 
     fn is_at_end(&self) -> bool {
@@ -124,7 +129,8 @@ impl Scanner {
     }
 
     fn start_tag(&mut self) {
-        while self.peek() == Some('>') && !self.is_at_end() {
+        while self.peek() != Some('>') && !self.is_at_end() {
+            self.track_new_line();
             self.advance();
         }
 
@@ -136,9 +142,10 @@ impl Scanner {
 
         self.add_token(TokenType::StartTag);
     }
-    
-    fn end_tag(&mut self)  {
-         while self.peek() == Some('>') && !self.is_at_end() {
+
+    fn end_tag(&mut self) {
+        while self.peek() != Some('>') && !self.is_at_end() {
+            self.track_new_line();
             self.advance();
         }
 
@@ -150,6 +157,15 @@ impl Scanner {
 
         self.add_token(TokenType::EndTag);
     }
+
+    fn text(&mut self) {
+        while self.peek() != Some('<') && !self.is_at_end() {
+            self.track_new_line();
+            self.advance();
+        }
+
+        self.add_token(TokenType::Text);
+    }
 }
 
 #[cfg(test)]
@@ -158,12 +174,13 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut scanner = Scanner::new("<div></div>");
+        let mut scanner = Scanner::new("<div>content</div>");
 
         let tokens = scanner.scan_tokens();
 
         assert!(tokens[0].r#type == TokenType::StartTag);
-        assert!(tokens[1].r#type == TokenType::EndTag);
-        assert!(tokens[2].r#type == TokenType::EOF);
+        assert!(tokens[1].r#type == TokenType::Text);
+        assert!(tokens[2].r#type == TokenType::EndTag);
+        assert!(tokens[3].r#type == TokenType::EOF);
     }
 }
