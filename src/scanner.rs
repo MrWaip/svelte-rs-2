@@ -1,10 +1,13 @@
 use std::mem;
 
+use crate::interpolation_scanner::InterpolationScanner;
+
 #[derive(PartialEq, Eq)]
 pub enum TokenType {
     Text,
     StartTag,
     EndTag,
+    Interpolation,
     EOF,
 }
 
@@ -63,6 +66,10 @@ impl Scanner {
             }
 
             return;
+        }
+
+        if char == '{' {
+            return self.interpolation();
         }
 
         self.text();
@@ -166,6 +173,22 @@ impl Scanner {
 
         self.add_token(TokenType::Text);
     }
+
+    fn interpolation(&mut self) {
+        let mut interpolation_scanner =
+            InterpolationScanner::new(self.source, self.line, self.current);
+
+        let result = interpolation_scanner.scan();
+
+        match result {
+            Ok(result) => {
+                self.current = result.position;
+                self.line = result.line;
+                self.add_token(TokenType::Interpolation);
+            }
+            Err(_) => unimplemented!("Handle interpolation scanner error"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -174,13 +197,34 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut scanner = Scanner::new("<div>content</div>");
+        let mut scanner = Scanner::new("<div>{name} hello</div>");
 
         let tokens = scanner.scan_tokens();
 
         assert!(tokens[0].r#type == TokenType::StartTag);
-        assert!(tokens[1].r#type == TokenType::Text);
-        assert!(tokens[2].r#type == TokenType::EndTag);
-        assert!(tokens[3].r#type == TokenType::EOF);
+        assert!(tokens[1].r#type == TokenType::Interpolation);
+        assert!(tokens[2].r#type == TokenType::Text);
+        assert!(tokens[3].r#type == TokenType::EndTag);
+        assert!(tokens[4].r#type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_js_strings() {
+        let mut scanner = Scanner::new("{ name + '}' + \"{}\" + `{\n}` }");
+
+        let tokens = scanner.scan_tokens();
+
+        assert!(tokens[0].r#type == TokenType::Interpolation);
+        assert!(tokens[1].r#type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_js_curly_braces_balance() {
+        let mut scanner = Scanner::new("{ { field: 1} + (function(){return {}}) }");
+
+        let tokens = scanner.scan_tokens();
+
+        assert!(tokens[0].r#type == TokenType::Interpolation);
+        assert!(tokens[1].r#type == TokenType::EOF);
     }
 }
