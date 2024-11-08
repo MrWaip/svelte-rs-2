@@ -116,6 +116,20 @@ impl Scanner {
         return self.current >= self.source.chars().count();
     }
 
+    fn tag_name(&mut self) -> String {
+        let mut identifier = String::new();
+
+        while let Some(ch) = self.peek() {
+            if ch.is_alphanumeric() || ch == '-' {
+                identifier.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        identifier
+    }
+
     fn _match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
@@ -166,8 +180,12 @@ impl Scanner {
     }
 
     fn start_tag(&mut self) -> Result<(), ScannerError> {
-        let name = "".to_string();
+        let name = self.tag_name();
         let attributes = vec![];
+
+        if name.is_empty() {
+            return Err(ScannerError::invalid_tag_name(self.line));
+        }
 
         self.collect_until(|c| c == '>')?;
 
