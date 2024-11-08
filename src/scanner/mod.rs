@@ -1,17 +1,29 @@
 mod error;
 mod interpolation_scanner;
 
-use error::{ScannerError, ScannerErrorType};
+use error::ScannerError;
 use interpolation_scanner::InterpolationScanner;
 use std::mem;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     Text,
-    StartTag,
+    StartTag(StartTag),
     EndTag,
     Interpolation,
     EOF,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartTag {
+    pub attributes: Vec<Attribute>,
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Attribute {
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Debug)]
@@ -27,7 +39,6 @@ pub struct Scanner {
     start: usize,
     current: usize,
     line: usize,
-    errors: Vec<ScannerError>,
 }
 
 impl Scanner {
@@ -38,7 +49,6 @@ impl Scanner {
             current: 0,
             start: 0,
             line: 1,
-            errors: vec![],
         };
     }
 
@@ -106,7 +116,7 @@ impl Scanner {
         return self.current >= self.source.chars().count();
     }
 
-    fn match_char(&mut self, expected: char) -> bool {
+    fn _match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
         }
@@ -156,14 +166,19 @@ impl Scanner {
     }
 
     fn start_tag(&mut self) -> Result<(), ScannerError> {
+        let name = "".to_string();
+        let attributes = vec![];
+
         self.collect_until(|c| c == '>')?;
 
         self.advance();
 
-        self.add_token(TokenType::StartTag);
+        self.add_token(TokenType::StartTag(StartTag { attributes, name }));
 
         return Ok(());
     }
+
+    fn _attributes(&mut self) {}
 
     fn end_tag(&mut self) -> Result<(), ScannerError> {
         self.collect_until(|c| c == '>')?;
@@ -203,6 +218,8 @@ impl Scanner {
 mod tests {
     use std::fmt::Debug;
 
+    use error::ScannerErrorType;
+
     use super::*;
 
     fn check_error_result<T>(res: Result<T, ScannerError>, err_type: ScannerErrorType)
@@ -220,7 +237,7 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(tokens[0].r#type == TokenType::StartTag);
+        assert!(matches!(tokens[0].r#type, TokenType::StartTag(_)));
         assert!(tokens[1].r#type == TokenType::Text);
         assert!(tokens[2].r#type == TokenType::Interpolation);
         assert!(tokens[3].r#type == TokenType::Text);
