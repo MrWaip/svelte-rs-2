@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ScannerErrorType {
     UnexpectedEndOfFile,
     UnterminatedStartTag,
@@ -7,17 +7,16 @@ pub enum ScannerErrorType {
 
 #[derive(Debug)]
 pub struct ScannerError {
-    error_type: ScannerErrorType,
-    line: usize,
-    context: Option<String>,
+    pub error_type: ScannerErrorType,
+    pub line: usize,
 }
 
 impl ScannerError {
-    pub fn new(error_type: ScannerErrorType, line: usize, context: Option<String>) -> Self {
-        ScannerError {
-            error_type,
-            line,
-            context,
-        }
+    pub fn new(error_type: ScannerErrorType, line: usize) -> Self {
+        ScannerError { error_type, line }
+    }
+
+    pub fn unexpected_end_of_file(line: usize) -> ScannerError {
+        return ScannerError::new(ScannerErrorType::UnexpectedEndOfFile, line);
     }
 }

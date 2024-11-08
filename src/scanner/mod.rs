@@ -5,7 +5,7 @@ use error::{ScannerError, ScannerErrorType};
 use interpolation_scanner::InterpolationScanner;
 use std::mem;
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     Text,
     StartTag,
@@ -14,10 +14,11 @@ pub enum TokenType {
     EOF,
 }
 
+#[derive(Debug)]
 pub struct Token {
-    r#type: TokenType,
-    line: usize,
-    lexeme: &'static str, //    literal: Object
+    pub r#type: TokenType,
+    pub line: usize,
+    pub lexeme: &'static str, //    literal: Object
 }
 
 pub struct Scanner {
@@ -41,10 +42,10 @@ impl Scanner {
         };
     }
 
-    pub fn scan_tokens(&mut self) -> Vec<Token> {
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token>, ScannerError> {
         while !self.is_at_end() {
             self.start = self.current;
-            self.scan_token();
+            self.scan_token()?;
         }
 
         self.tokens.push(Token {
@@ -55,20 +56,18 @@ impl Scanner {
 
         let tokens = mem::replace(&mut self.tokens, vec![]);
 
-        return tokens;
+        return Ok(tokens);
     }
 
-    pub fn scan_token(&mut self) {
+    pub fn scan_token(&mut self) -> Result<(), ScannerError> {
         let char = self.advance();
 
         if char == '<' {
             if self.peek() == Some('/') {
-                self.end_tag();
+                return self.end_tag();
             } else {
-                self.start_tag();
+                return self.start_tag();
             }
-
-            return;
         }
 
         if char == '{' {
@@ -76,6 +75,8 @@ impl Scanner {
         }
 
         self.text();
+
+        return Ok(());
     }
 
     fn add_token(&mut self, token_type: TokenType) {
@@ -132,7 +133,7 @@ impl Scanner {
         return self.source.chars().nth(self.current);
     }
 
-    fn collect_until<F>(&mut self, condition: F) -> Option<&'static str>
+    fn collect_until<F>(&mut self, condition: F) -> Result<&'static str, ScannerError>
     where
         F: Fn(char) -> bool,
     {
@@ -148,56 +149,14 @@ impl Scanner {
         }
 
         if self.is_at_end() {
-            return None;
-        }
-
-        return Some(&self.source[start..self.current]);
-    }
-
-    fn collect_until_with_recovery<F>(
-        &mut self,
-        condition: F,
-        recovery_error_type: ScannerErrorType,
-    ) -> Result<&str, ScannerError>
-    where
-        F: Fn(char) -> bool,
-    {
-        let start = self.current;
-
-        let result = self.collect_until(condition);
-
-        if result.is_none() {
-            return self.recovery_from(start, recovery_error_type);
+            return Err(ScannerError::unexpected_end_of_file(self.line));
         }
 
         return Ok(&self.source[start..self.current]);
     }
 
-    fn recovery_from(
-        &mut self,
-        start: usize,
-        recovery_error_type: ScannerErrorType,
-    ) -> Result<&str, ScannerError> {
-        self.current = start;
-        let line: usize = self.line;
-        let result = self.collect_until(|c| c == ' ' || c == '\n');
-
-        if result.is_none() {
-            return Err(ScannerError::new(
-                ScannerErrorType::UnexpectedEndOfFile,
-                line,
-                None,
-            ));
-        }
-
-        self.errors
-            .push(ScannerError::new(recovery_error_type, line, None));
-
-        Ok(result.unwrap())
-    }
-
     fn start_tag(&mut self) -> Result<(), ScannerError> {
-        self.collect_until_with_recovery(|c| c == '>', ScannerErrorType::UnterminatedStartTag)?;
+        self.collect_until(|c| c == '>')?;
 
         self.advance();
 
@@ -207,7 +166,7 @@ impl Scanner {
     }
 
     fn end_tag(&mut self) -> Result<(), ScannerError> {
-        self.collect_until_with_recovery(|c| c == '>', ScannerErrorType::UnterminatedStartTag)?;
+        self.collect_until(|c| c == '>')?;
 
         self.advance();
 
@@ -225,32 +184,41 @@ impl Scanner {
         self.add_token(TokenType::Text);
     }
 
-    fn interpolation(&mut self) {
+    fn interpolation(&mut self) -> Result<(), ScannerError> {
         let mut interpolation_scanner =
             InterpolationScanner::new(self.source, self.line, self.current);
 
-        let result = interpolation_scanner.scan();
+        let result = interpolation_scanner
+            .scan()
+            .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
 
-        match result {
-            Ok(result) => {
-                self.current = result.position;
-                self.line = result.line;
-                self.add_token(TokenType::Interpolation);
-            }
-            Err(_) => unimplemented!("Handle interpolation scanner error"),
-        }
+        self.current = result.position;
+        self.line = result.line;
+        self.add_token(TokenType::Interpolation);
+        return Ok(());
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
     use super::*;
+
+    fn check_error_result<T>(res: Result<T, ScannerError>, err_type: ScannerErrorType)
+    where
+        T: Debug,
+    {
+        assert!(res.is_err());
+
+        assert_eq!(res.unwrap_err().error_type, err_type);
+    }
 
     #[test]
     fn smoke() {
         let mut scanner = Scanner::new("<div>kek {name} hello</div>");
 
-        let tokens = scanner.scan_tokens();
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert!(tokens[0].r#type == TokenType::StartTag);
         assert!(tokens[1].r#type == TokenType::Text);
@@ -264,7 +232,7 @@ mod tests {
     fn interpolation_with_js_strings() {
         let mut scanner = Scanner::new("{ name + '}' + \"{}\" + `{\n}` }");
 
-        let tokens = scanner.scan_tokens();
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert!(tokens[0].r#type == TokenType::Interpolation);
         assert!(tokens[1].r#type == TokenType::EOF);
@@ -274,7 +242,7 @@ mod tests {
     fn interpolation_js_curly_braces_balance() {
         let mut scanner = Scanner::new("{ { field: 1} + (function(){return {}}) }");
 
-        let tokens = scanner.scan_tokens();
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert!(tokens[0].r#type == TokenType::Interpolation);
         assert!(tokens[1].r#type == TokenType::EOF);
@@ -282,18 +250,10 @@ mod tests {
 
     #[test]
     fn unterminated_start_tag() {
-        // Возможно невозможно сделать recovery если встречен EOF
-        // это кажется очень невозможный сценарий
-        //  к тому же считать что тэги могут быть только от < до > неверно. Эти символы можно указывать в атрибуты
-        // подумать что делать с recovery незакрытых тэгов
-        let mut scanner = Scanner::new("<div \n <input />");
+        let mut scanner = Scanner::new("<div disabled\n");
 
-        let tokens = scanner.scan_tokens();
+        let result = scanner.scan_tokens();
 
-
-        assert!(tokens[0].r#type == TokenType::StartTag);
-        assert!(tokens[1].r#type == TokenType::Text);
-        assert!(tokens[2].r#type == TokenType::StartTag);
-        assert!(tokens[3].r#type == TokenType::EOF);
+        check_error_result(result, ScannerErrorType::UnexpectedEndOfFile)
     }
 }
