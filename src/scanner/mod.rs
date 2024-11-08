@@ -1,6 +1,9 @@
-use std::mem;
+mod error;
+mod interpolation_scanner;
 
-use crate::interpolation_scanner::InterpolationScanner;
+use error::{ScannerError, ScannerErrorType};
+use interpolation_scanner::InterpolationScanner;
+use std::mem;
 
 #[derive(PartialEq, Eq)]
 pub enum TokenType {
@@ -23,7 +26,7 @@ pub struct Scanner {
     start: usize,
     current: usize,
     line: usize,
-    has_error: bool,
+    errors: Vec<ScannerError>,
 }
 
 impl Scanner {
@@ -34,7 +37,7 @@ impl Scanner {
             current: 0,
             start: 0,
             line: 1,
-            has_error: false,
+            errors: vec![],
         };
     }
 
@@ -129,44 +132,92 @@ impl Scanner {
         return self.source.chars().nth(self.current);
     }
 
-    fn error(&mut self, message: &str) {
-        let line = self.line;
-        print!("[Line {line}] Error: {message}");
-        self.has_error = true;
-    }
+    fn collect_until<F>(&mut self, condition: F) -> Option<&'static str>
+    where
+        F: Fn(char) -> bool,
+    {
+        let start = self.current;
 
-    fn start_tag(&mut self) {
-        while self.peek() != Some('>') && !self.is_at_end() {
+        while !self.is_at_end() {
+            if self.peek().is_some_and(|c| condition(c)) {
+                break;
+            }
+
             self.track_new_line();
             self.advance();
         }
 
         if self.is_at_end() {
-            self.error("Unterminated start tag.");
+            return None;
         }
+
+        return Some(&self.source[start..self.current]);
+    }
+
+    fn collect_until_with_recovery<F>(
+        &mut self,
+        condition: F,
+        recovery_error_type: ScannerErrorType,
+    ) -> Result<&str, ScannerError>
+    where
+        F: Fn(char) -> bool,
+    {
+        let start = self.current;
+
+        let result = self.collect_until(condition);
+
+        if result.is_none() {
+            return self.recovery_from(start, recovery_error_type);
+        }
+
+        return Ok(&self.source[start..self.current]);
+    }
+
+    fn recovery_from(
+        &mut self,
+        start: usize,
+        recovery_error_type: ScannerErrorType,
+    ) -> Result<&str, ScannerError> {
+        self.current = start;
+        let line: usize = self.line;
+        let result = self.collect_until(|c| c == ' ' || c == '\n');
+
+        if result.is_none() {
+            return Err(ScannerError::new(
+                ScannerErrorType::UnexpectedEndOfFile,
+                line,
+                None,
+            ));
+        }
+
+        self.errors
+            .push(ScannerError::new(recovery_error_type, line, None));
+
+        Ok(result.unwrap())
+    }
+
+    fn start_tag(&mut self) -> Result<(), ScannerError> {
+        self.collect_until_with_recovery(|c| c == '>', ScannerErrorType::UnterminatedStartTag)?;
 
         self.advance();
 
         self.add_token(TokenType::StartTag);
+
+        return Ok(());
     }
 
-    fn end_tag(&mut self) {
-        while self.peek() != Some('>') && !self.is_at_end() {
-            self.track_new_line();
-            self.advance();
-        }
-
-        if self.is_at_end() {
-            self.error("Unterminated end tag.");
-        }
+    fn end_tag(&mut self) -> Result<(), ScannerError> {
+        self.collect_until_with_recovery(|c| c == '>', ScannerErrorType::UnterminatedStartTag)?;
 
         self.advance();
 
         self.add_token(TokenType::EndTag);
+
+        return Ok(());
     }
 
     fn text(&mut self) {
-        while self.peek() != Some('<') && !self.is_at_end() {
+        while self.peek() != Some('<') && self.peek() != Some('{') && !self.is_at_end() {
             self.track_new_line();
             self.advance();
         }
@@ -197,15 +248,16 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut scanner = Scanner::new("<div>{name} hello</div>");
+        let mut scanner = Scanner::new("<div>kek {name} hello</div>");
 
         let tokens = scanner.scan_tokens();
 
         assert!(tokens[0].r#type == TokenType::StartTag);
-        assert!(tokens[1].r#type == TokenType::Interpolation);
-        assert!(tokens[2].r#type == TokenType::Text);
-        assert!(tokens[3].r#type == TokenType::EndTag);
-        assert!(tokens[4].r#type == TokenType::EOF);
+        assert!(tokens[1].r#type == TokenType::Text);
+        assert!(tokens[2].r#type == TokenType::Interpolation);
+        assert!(tokens[3].r#type == TokenType::Text);
+        assert!(tokens[4].r#type == TokenType::EndTag);
+        assert!(tokens[5].r#type == TokenType::EOF);
     }
 
     #[test]
@@ -226,5 +278,22 @@ mod tests {
 
         assert!(tokens[0].r#type == TokenType::Interpolation);
         assert!(tokens[1].r#type == TokenType::EOF);
+    }
+
+    #[test]
+    fn unterminated_start_tag() {
+        // Возможно невозможно сделать recovery если встречен EOF
+        // это кажется очень невозможный сценарий
+        //  к тому же считать что тэги могут быть только от < до > неверно. Эти символы можно указывать в атрибуты
+        // подумать что делать с recovery незакрытых тэгов
+        let mut scanner = Scanner::new("<div \n <input />");
+
+        let tokens = scanner.scan_tokens();
+
+
+        assert!(tokens[0].r#type == TokenType::StartTag);
+        assert!(tokens[1].r#type == TokenType::Text);
+        assert!(tokens[2].r#type == TokenType::StartTag);
+        assert!(tokens[3].r#type == TokenType::EOF);
     }
 }
