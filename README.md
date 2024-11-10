@@ -8,7 +8,7 @@
 # Фичи, которые охота реализовать
 
 ## Svelte Синтаксис
-- [x] interpolation (`{ variable }`) with expressions
+- [] interpolation (`{ variable }`) with expressions
 - [] attribute interpolation (`input={variable}`)
 - [] render statement
 - [] component definition `<MyComponent />`
