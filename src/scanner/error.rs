@@ -2,6 +2,8 @@
 pub enum ScannerErrorType {
     UnexpectedEndOfFile,
     InvalidTagName,
+    UnterminatedStartTag,
+    InvalidAttributeName,
 }
 
 #[derive(Debug)]
@@ -21,5 +23,13 @@ impl ScannerError {
 
     pub fn invalid_tag_name(line: usize) -> ScannerError {
         return ScannerError::new(ScannerErrorType::InvalidTagName, line);
+    }
+
+    pub fn unterminated_start_tag(line: usize) -> ScannerError {
+        return ScannerError::new(ScannerErrorType::UnterminatedStartTag, line);
+    }
+
+    pub fn invalid_attribute_name(line: usize) -> ScannerError {
+        return ScannerError::new(ScannerErrorType::UnterminatedStartTag, line);
     }
 }
