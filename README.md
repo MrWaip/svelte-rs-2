@@ -8,12 +8,12 @@
 # Фичи, которые охота реализовать
 
 ## Svelte Синтаксис
-- [] interpolation (`{ variable }`) with expressions
-- [] if / else template (`{#if a} text {else} none {/if}`)
+- [x] interpolation (`{ variable }`) with expressions
 - [] attribute interpolation (`input={variable}`)
 - [] render statement
 - [] component definition `<MyComponent />`
 - [] language context in script tag attributes (`<script lang="ts">`)
+- [] if / else template (`{#if a} text {else} none {/if}`)
 - [] style tag
 
 ## Статический анализ
