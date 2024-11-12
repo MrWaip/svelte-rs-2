@@ -8,6 +8,7 @@ pub struct InterpolationScanner {
 pub struct ScanResult {
     pub position: usize,
     pub line: usize,
+    pub expression: String,
 }
 
 impl InterpolationScanner {
@@ -24,8 +25,6 @@ impl InterpolationScanner {
         let mut stack: Vec<bool> = vec![];
 
         while !self.is_at_end() {
-            self.start = self.current;
-
             let char = self.advance();
 
             if char == '\n' {
@@ -45,9 +44,16 @@ impl InterpolationScanner {
 
             if char == '}' {
                 if stack.pop().is_none() {
+                    let expression = if self.current - self.start > 2 {
+                        self.source[self.start..self.current - 1].to_string()
+                    } else {
+                        String::new()
+                    };
+
                     return Ok(ScanResult {
                         position: self.current,
                         line: self.line,
+                        expression,
                     });
                 }
             }
