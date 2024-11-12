@@ -433,14 +433,14 @@ mod tests {
 
     #[test]
     fn attribute_mustache_tag_value() {
-        let mut scanner = Scanner::new("<div value={666} input={}>");
+        let mut scanner = Scanner::new("<div value={666} input={} trace={\"{another}\"}>");
 
         let tokens = scanner.scan_tokens().unwrap();
 
         assert_start_tag(
             &tokens[0],
             "div",
-            vec![("value", "666"), ("input", "")],
+            vec![("value", "666"), ("input", ""), ("trace", "\"{another}\"")],
             false,
         );
 
