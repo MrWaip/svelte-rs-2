@@ -3,7 +3,7 @@ mod interpolation_scanner;
 
 use error::ScannerError;
 use interpolation_scanner::InterpolationScanner;
-use std::mem;
+use std::{fmt, mem};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
@@ -24,7 +24,31 @@ pub struct StartTag {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Attribute {
     pub name: String,
-    pub value: String,
+    pub value: AttributeValue,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AttributeValue {
+    String(String),
+    MustacheTag(MustacheTag),
+    Empty,
+}
+
+impl fmt::Display for AttributeValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AttributeValue::String(value) => write!(f, "{}", value),
+            AttributeValue::MustacheTag(value) => write!(f, "{}", value.expression),
+            AttributeValue::Empty => write!(f, ""),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MustacheTag {
+    pub start: usize,
+    pub end: usize,
+    pub expression: String,
 }
 
 #[derive(Debug)]
@@ -228,7 +252,7 @@ impl Scanner {
                 return Err(ScannerError::invalid_attribute_name(self.line));
             }
 
-            let mut value = String::new();
+            let mut value: AttributeValue = AttributeValue::Empty;
 
             if self.match_char('=') {
                 value = self.attribute_value()?;
@@ -243,8 +267,29 @@ impl Scanner {
         return Ok(attributes);
     }
 
-    fn attribute_value(&mut self) -> Result<String, ScannerError> {
+    fn attribute_value(&mut self) -> Result<AttributeValue, ScannerError> {
         let peeked = self.peek();
+        let start = self.current;
+
+        if self.match_char('{') {
+            debug_assert_eq!(self.source.chars().nth(self.current - 1), Some('{'));
+
+            let mut interpolation_scanner =
+                InterpolationScanner::new(self.source, self.line, self.current);
+
+            let result = interpolation_scanner
+                .scan()
+                .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
+
+            self.current = result.position;
+            self.line = result.line;
+
+            return Ok(AttributeValue::MustacheTag(MustacheTag {
+                end: self.current,
+                start,
+                expression: result.expression,
+            }));
+        }
 
         if let Some(quote) = peeked.filter(|c| *c == '"' || *c == '\'') {
             self.advance();
@@ -253,7 +298,7 @@ impl Scanner {
 
             self.advance();
 
-            return Ok(value);
+            return Ok(AttributeValue::String(value));
         }
 
         /*
@@ -269,7 +314,7 @@ impl Scanner {
             };
         })?;
 
-        Ok(value.to_string())
+        return Ok(AttributeValue::String(value.to_string()));
     }
 
     fn end_tag(&mut self) -> Result<(), ScannerError> {
@@ -291,6 +336,8 @@ impl Scanner {
     }
 
     fn interpolation(&mut self) -> Result<(), ScannerError> {
+        debug_assert_eq!(self.source.chars().nth(self.current - 1), Some('{'));
+
         let mut interpolation_scanner =
             InterpolationScanner::new(self.source, self.line, self.current);
 
@@ -385,6 +432,22 @@ mod tests {
     }
 
     #[test]
+    fn attribute_mustache_tag_value() {
+        let mut scanner = Scanner::new("<div value={666} input={}>");
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_tag(
+            &tokens[0],
+            "div",
+            vec![("value", "666"), ("input", "")],
+            false,
+        );
+
+        assert!(tokens[1].r#type == TokenType::EOF);
+    }
+
+    #[test]
     fn unterminated_start_tag() {
         let mut scanner = Scanner::new("<div disabled");
 
@@ -428,7 +491,11 @@ mod tests {
             let Attribute { name, value } = &actual_attributes[index];
 
             assert_eq!(name, expected_name, "Attribute name did not match");
-            assert_eq!(value, expected_value, "Attribute value did not match");
+            assert_eq!(
+                value.to_string(),
+                expected_value.to_string(),
+                "Attribute value did not match"
+            );
         }
     }
 
