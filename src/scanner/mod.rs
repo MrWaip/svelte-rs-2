@@ -3,7 +3,10 @@ mod interpolation_scanner;
 
 use error::ScannerError;
 use interpolation_scanner::InterpolationScanner;
-use std::{fmt, mem, vec};
+use std::{
+    fmt::{self},
+    mem, vec,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
@@ -41,7 +44,22 @@ impl fmt::Display for AttributeValue {
             AttributeValue::String(value) => write!(f, "{}", value),
             AttributeValue::ExpressionTag(value) => write!(f, "{}", value.expression),
             AttributeValue::Empty => write!(f, ""),
-            AttributeValue::Concatenation(_concatenation) => todo!(),
+            AttributeValue::Concatenation(concatenation) => {
+                let mut result = String::new();
+
+                concatenation.parts.iter().for_each(|value| match value {
+                    ConcatenationPart::String(v) => {
+                        let part = format!("({})", v).to_string();
+                        result.push_str(&part);
+                    }
+                    ConcatenationPart::Expression(expression_tag) => {
+                        let part = format!("({{{}}})", expression_tag.expression).to_string();
+                        result.push_str(&part);
+                    }
+                });
+
+                return write!(f, "{}", result);
+            }
         }
     }
 }
@@ -353,6 +371,21 @@ impl Scanner {
                 break;
             }
 
+            if char == '{' {
+                has_expression = true;
+
+                if !current_part.is_empty() {
+                    parts.push(ConcatenationPart::String(current_part));
+                    current_part = String::new();
+                }
+
+                let expression_tag = self.expression_tag()?;
+
+                parts.push(ConcatenationPart::Expression(expression_tag));
+
+                continue;
+            }
+
             current_part.push(char);
             self.advance();
         }
@@ -360,11 +393,19 @@ impl Scanner {
         // consume last quote
         self.advance();
 
+        if has_expression && !current_part.is_empty() {
+            parts.push(ConcatenationPart::String(current_part.clone()));
+        }
+
         if !has_expression && parts.is_empty() {
             return Ok(AttributeValue::String(current_part));
         }
 
-        unreachable!()
+        return Ok(AttributeValue::Concatenation(Concatenation {
+            start,
+            end: self.current,
+            parts,
+        }));
     }
 
     fn end_tag(&mut self) -> Result<(), ScannerError> {
@@ -497,21 +538,33 @@ mod tests {
         assert!(tokens[1].r#type == TokenType::EOF);
     }
 
-    // #[test]
-    // fn concatenation_attribute_value() {
-    //     let mut scanner = Scanner::new("<input value='prefix_{value}{value}_suffix_{value}'/>");
+    #[test]
+    fn concatenation_attribute_value() {
+        let mut scanner = Scanner::new(
+            r#"<input
+                value='prefix_{value}{value}_suffix_{value}'
+                id="pre{ middle }post"
+                one="{one}"
+                between="{one}___{two}"
+            />"#,
+        );
 
-    //     let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().unwrap();
 
-    //     assert_start_tag(
-    //         &tokens[0],
-    //         "input",
-    //         vec![("value", "(prefix_)({value})({value})(_suffix_)({value})")],
-    //         true,
-    //     );
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![
+                ("value", "(prefix_)({value})({value})(_suffix_)({value})"),
+                ("id", "(pre)({ middle })(post)"),
+                ("one", "({one})"),
+                ("between", "({one})(___)({two})"),
+            ],
+            true,
+        );
 
-    //     assert!(tokens[1].r#type == TokenType::EOF);
-    // }
+        assert!(tokens[1].r#type == TokenType::EOF);
+    }
 
     #[test]
     fn unterminated_start_tag() {
