@@ -3,7 +3,7 @@ mod interpolation_scanner;
 
 use error::ScannerError;
 use interpolation_scanner::InterpolationScanner;
-use std::{fmt, mem};
+use std::{fmt, mem, vec};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
@@ -30,7 +30,8 @@ pub struct Attribute {
 #[derive(Debug, PartialEq, Eq)]
 pub enum AttributeValue {
     String(String),
-    MustacheTag(MustacheTag),
+    ExpressionTag(ExpressionTag),
+    Concatenation(Concatenation),
     Empty,
 }
 
@@ -38,17 +39,31 @@ impl fmt::Display for AttributeValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AttributeValue::String(value) => write!(f, "{}", value),
-            AttributeValue::MustacheTag(value) => write!(f, "{}", value.expression),
+            AttributeValue::ExpressionTag(value) => write!(f, "{}", value.expression),
             AttributeValue::Empty => write!(f, ""),
+            AttributeValue::Concatenation(_concatenation) => todo!(),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct MustacheTag {
+pub struct ExpressionTag {
     pub start: usize,
     pub end: usize,
     pub expression: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Concatenation {
+    pub start: usize,
+    pub end: usize,
+    pub parts: Vec<ConcatenationPart>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConcatenationPart {
+    String(String),
+    Expression(ExpressionTag),
 }
 
 #[derive(Debug)]
@@ -269,36 +284,15 @@ impl Scanner {
 
     fn attribute_value(&mut self) -> Result<AttributeValue, ScannerError> {
         let peeked = self.peek();
-        let start = self.current;
 
-        if self.match_char('{') {
-            debug_assert_eq!(self.source.chars().nth(self.current - 1), Some('{'));
-
-            let mut interpolation_scanner =
-                InterpolationScanner::new(self.source, self.line, self.current);
-
-            let result = interpolation_scanner
-                .scan()
-                .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
-
-            self.current = result.position;
-            self.line = result.line;
-
-            return Ok(AttributeValue::MustacheTag(MustacheTag {
-                end: self.current,
-                start,
-                expression: result.expression,
-            }));
+        if self.peek() == Some('{') {
+            return self
+                .expression_tag()
+                .map(|v| AttributeValue::ExpressionTag(v));
         }
 
         if let Some(quote) = peeked.filter(|c| *c == '"' || *c == '\'') {
-            self.advance();
-
-            let value = self.collect_until(|c| c == quote)?.to_string();
-
-            self.advance();
-
-            return Ok(AttributeValue::String(value));
+            return self.attribute_concatenation_or_string(quote);
         }
 
         /*
@@ -315,6 +309,62 @@ impl Scanner {
         })?;
 
         return Ok(AttributeValue::String(value.to_string()));
+    }
+
+    fn expression_tag(&mut self) -> Result<ExpressionTag, ScannerError> {
+        debug_assert_eq!(self.peek(), Some('{'));
+
+        self.advance();
+        let start = self.current;
+
+        let mut interpolation_scanner =
+            InterpolationScanner::new(self.source, self.line, self.current);
+
+        let result = interpolation_scanner
+            .scan()
+            .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
+
+        self.current = result.position;
+        self.line = result.line;
+
+        return Ok(ExpressionTag {
+            end: self.current,
+            expression: result.expression,
+            start,
+        });
+    }
+
+    fn attribute_concatenation_or_string(
+        &mut self,
+        quote: char,
+    ) -> Result<AttributeValue, ScannerError> {
+        debug_assert_eq!(self.peek(), Some(quote));
+
+        let mut has_expression = false;
+        let start = self.current;
+        let mut parts: Vec<ConcatenationPart> = vec![];
+        let mut current_part = String::new();
+
+        // consume first quote
+        self.advance();
+
+        while let Some(char) = self.peek() {
+            if char == quote {
+                break;
+            }
+
+            current_part.push(char);
+            self.advance();
+        }
+
+        // consume last quote
+        self.advance();
+
+        if !has_expression && parts.is_empty() {
+            return Ok(AttributeValue::String(current_part));
+        }
+
+        unreachable!()
     }
 
     fn end_tag(&mut self) -> Result<(), ScannerError> {
@@ -446,6 +496,22 @@ mod tests {
 
         assert!(tokens[1].r#type == TokenType::EOF);
     }
+
+    // #[test]
+    // fn concatenation_attribute_value() {
+    //     let mut scanner = Scanner::new("<input value='prefix_{value}{value}_suffix_{value}'/>");
+
+    //     let tokens = scanner.scan_tokens().unwrap();
+
+    //     assert_start_tag(
+    //         &tokens[0],
+    //         "input",
+    //         vec![("value", "(prefix_)({value})({value})(_suffix_)({value})")],
+    //         true,
+    //     );
+
+    //     assert!(tokens[1].r#type == TokenType::EOF);
+    // }
 
     #[test]
     fn unterminated_start_tag() {
