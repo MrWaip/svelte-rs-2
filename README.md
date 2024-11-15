@@ -29,4 +29,5 @@
 
 - `source: &'static str` - не эффективно, когда сканнеров много нужно
 - `self.source.len` - не подойдет для unicode
+- shorthand attribute наверное стоило выделить в отдельный тип
 
