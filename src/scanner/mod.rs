@@ -279,22 +279,47 @@ impl Scanner {
 
             self.skip_whitespace();
 
-            let name = self.identifier();
 
-            if name.is_empty() {
-                return Err(ScannerError::invalid_attribute_name(self.line));
-            }
+            if self.peek() == Some('{') {
+                self.advance();
 
-            let mut value: AttributeValue = AttributeValue::Empty;
+                let start = self.current;
 
-            if self.match_char('=') {
-                value = self.attribute_value()?;
+                let name = self.identifier();
+
+                if name.is_empty() {
+                    return Err(ScannerError::invalid_attribute_name(self.line));
+                }
+
+                if !self.match_char('}') {
+                    return Err(ScannerError::unexpected_token(self.line));
+                }
+
+                let value = AttributeValue::ExpressionTag(ExpressionTag {
+                    expression: name.clone(),
+                    start,
+                    end: self.current,
+                });
+
+                attributes.push(Attribute { name, value });
+            } else {
+                let name = self.identifier();
+
+                if name.is_empty() {
+                    return Err(ScannerError::invalid_attribute_name(self.line));
+                }
+
+                let mut value: AttributeValue = AttributeValue::Empty;
+
+                if self.match_char('=') {
+                    value = self.attribute_value()?;
+                }
+
+                attributes.push(Attribute { name, value });
             }
 
             // Чтобы сразу дойти до ">" в позиции когда прочитали attr2 <div attr1 attr2   >
             self.skip_whitespace();
-
-            attributes.push(Attribute { name, value });
         }
 
         return Ok(attributes);
@@ -559,6 +584,27 @@ mod tests {
                 ("id", "(pre)({ middle })(post)"),
                 ("one", "({one})"),
                 ("between", "({one})(___)({two})"),
+            ],
+            true,
+        );
+
+        assert!(tokens[1].r#type == TokenType::EOF);
+    }
+
+    #[test]
+    fn shorthand_expression_tag_attribute() {
+        let mut scanner = Scanner::new(
+            r#"<input { name } {value} />"#,
+        );
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![
+                ("name", "name"),
+                ("value", "value"),
             ],
             true,
         );
