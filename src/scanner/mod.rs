@@ -25,12 +25,18 @@ pub struct StartTag {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Attribute {
+pub struct HTMLAttribute {
     pub name: String,
     pub value: AttributeValue,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum Attribute {
+    HTMLAttribute(HTMLAttribute),
+    ExpressionTag(ExpressionTag),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AttributeValue {
     String(String),
     ExpressionTag(ExpressionTag),
@@ -64,21 +70,21 @@ impl fmt::Display for AttributeValue {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExpressionTag {
     pub start: usize,
     pub end: usize,
     pub expression: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Concatenation {
     pub start: usize,
     pub end: usize,
     pub parts: Vec<ConcatenationPart>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConcatenationPart {
     String(String),
     Expression(ExpressionTag),
@@ -279,29 +285,10 @@ impl Scanner {
 
             self.skip_whitespace();
 
-
             if self.peek() == Some('{') {
-                self.advance();
+                let expression_tag = self.expression_tag()?;
 
-                let start = self.current;
-
-                let name = self.identifier();
-
-                if name.is_empty() {
-                    return Err(ScannerError::invalid_attribute_name(self.line));
-                }
-
-                if !self.match_char('}') {
-                    return Err(ScannerError::unexpected_token(self.line));
-                }
-
-                let value = AttributeValue::ExpressionTag(ExpressionTag {
-                    expression: name.clone(),
-                    start,
-                    end: self.current,
-                });
-
-                attributes.push(Attribute { name, value });
+                attributes.push(Attribute::ExpressionTag(expression_tag));
             } else {
                 let name = self.identifier();
 
@@ -315,7 +302,7 @@ impl Scanner {
                     value = self.attribute_value()?;
                 }
 
-                attributes.push(Attribute { name, value });
+                attributes.push(Attribute::HTMLAttribute(HTMLAttribute { name, value }));
             }
 
             // Чтобы сразу дойти до ">" в позиции когда прочитали attr2 <div attr1 attr2   >
@@ -593,19 +580,14 @@ mod tests {
 
     #[test]
     fn shorthand_expression_tag_attribute() {
-        let mut scanner = Scanner::new(
-            r#"<input { name } {value} />"#,
-        );
+        let mut scanner = Scanner::new(r#"<input { name } {...value} />"#);
 
         let tokens = scanner.scan_tokens().unwrap();
 
         assert_start_tag(
             &tokens[0],
             "input",
-            vec![
-                ("name", "name"),
-                ("value", "value"),
-            ],
+            vec![("$expression", " name "), ("$expression", "...value")],
             true,
         );
 
@@ -653,9 +635,24 @@ mod tests {
         );
 
         for (index, (expected_name, expected_value)) in expected_attributes.iter().enumerate() {
-            let Attribute { name, value } = &actual_attributes[index];
+            // let HTMLAttribute { name, value } = &actual_attributes[index];
 
-            assert_eq!(name, expected_name, "Attribute name did not match");
+            let attribute = &actual_attributes[index];
+
+            let name = match attribute {
+                Attribute::HTMLAttribute(value) => value.name.clone(),
+                Attribute::ExpressionTag(_) => "$expression".to_string(),
+            };
+
+            let value: AttributeValue = match attribute {
+                Attribute::HTMLAttribute(value) => value.value.clone(),
+                Attribute::ExpressionTag(value) => {
+                    let res = AttributeValue::String(value.expression.clone());
+                    res
+                }
+            };
+
+            assert_eq!(name, *expected_name, "Attribute name did not match");
             assert_eq!(
                 value.to_string(),
                 expected_value.to_string(),
