@@ -1,8 +1,6 @@
 mod error;
-mod interpolation_scanner;
 
 use error::ScannerError;
-use interpolation_scanner::InterpolationScanner;
 use std::{
     fmt::{self},
     mem, vec,
@@ -42,6 +40,12 @@ pub enum AttributeValue {
     ExpressionTag(ExpressionTag),
     Concatenation(Concatenation),
     Empty,
+}
+
+pub struct JsExpression {
+    pub start: usize,
+    pub end: usize,
+    pub expression: String,
 }
 
 impl fmt::Display for AttributeValue {
@@ -345,22 +349,13 @@ impl Scanner {
         debug_assert_eq!(self.peek(), Some('{'));
 
         self.advance();
-        let start = self.current;
 
-        let mut interpolation_scanner =
-            InterpolationScanner::new(self.source, self.line, self.current);
-
-        let result = interpolation_scanner
-            .scan()
-            .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
-
-        self.current = result.position;
-        self.line = result.line;
+        let result = self.collect_js_expression()?;
 
         return Ok(ExpressionTag {
-            end: self.current,
+            end: result.end,
             expression: result.expression,
-            start,
+            start: result.end,
         });
     }
 
@@ -441,16 +436,65 @@ impl Scanner {
     fn interpolation(&mut self) -> Result<(), ScannerError> {
         debug_assert_eq!(self.source.chars().nth(self.current - 1), Some('{'));
 
-        let mut interpolation_scanner =
-            InterpolationScanner::new(self.source, self.line, self.current);
+        self.collect_js_expression()?;
 
-        let result = interpolation_scanner
-            .scan()
-            .map_err(|_x| ScannerError::unexpected_end_of_file(self.line))?;
-
-        self.current = result.position;
-        self.line = result.line;
         self.add_token(TokenType::Interpolation);
+        return Ok(());
+    }
+
+    fn collect_js_expression(&mut self) -> Result<JsExpression, ScannerError> {
+        let mut stack: Vec<bool> = vec![];
+        let start = self.current;
+
+        while !self.is_at_end() {
+            let char = self.advance();
+
+            if char == '\n' {
+                self.line += 1;
+                continue;
+            }
+
+            if char == '\'' || char == '"' || char == '`' {
+                self.skip_js_string(char)?;
+                continue;
+            }
+
+            if char == '{' {
+                stack.push(true);
+                continue;
+            }
+
+            if char == '}' {
+                if stack.pop().is_none() {
+                    let expression = if self.current - start > 2 {
+                        self.source[start..self.current - 1].to_string()
+                    } else {
+                        String::new()
+                    };
+
+                    return Ok(JsExpression {
+                        start,
+                        end: self.current,
+                        expression,
+                    });
+                }
+            }
+        }
+
+        return Err(ScannerError::unexpected_end_of_file(self.line));
+    }
+
+    fn skip_js_string(&mut self, quote: char) -> Result<(), ScannerError> {
+        while self.peek() != Some(quote) && !self.is_at_end() {
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err(ScannerError::unexpected_end_of_file(self.line));
+        }
+
+        self.advance();
+
         return Ok(());
     }
 }
