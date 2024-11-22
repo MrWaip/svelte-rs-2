@@ -2,8 +2,11 @@ mod error;
 mod token;
 
 use error::ScannerError;
-use token::{Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, StartTag, Token, TokenType};
 use std::{mem, vec};
+use token::{
+    Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
+    JsExpression, StartIfTag, StartTag, Token, TokenType,
+};
 
 pub struct Scanner {
     source: &'static str,
@@ -53,7 +56,11 @@ impl Scanner {
         }
 
         if char == '{' {
-            return self.interpolation();
+            if self.peek() == Some('#') {
+                return self.template();
+            } else {
+                return self.interpolation();
+            }
         }
 
         self.text();
@@ -156,6 +163,10 @@ impl Scanner {
                 break;
             }
         }
+    }
+
+    fn prev_char(&self) -> Option<char> {
+        return self.source.chars().nth(self.current - 1);
     }
 
     // Tokens:
@@ -338,7 +349,7 @@ impl Scanner {
     }
 
     fn interpolation(&mut self) -> Result<(), ScannerError> {
-        debug_assert_eq!(self.source.chars().nth(self.current - 1), Some('{'));
+        debug_assert_eq!(self.prev_char(), Some('{'));
 
         self.collect_js_expression()?;
 
@@ -400,6 +411,32 @@ impl Scanner {
         self.advance();
 
         return Ok(());
+    }
+
+    fn template(&mut self) -> Result<(), ScannerError> {
+        debug_assert_eq!(self.prev_char(), Some('{'));
+        debug_assert_eq!(self.peek(), Some('#'));
+
+        self.advance();
+
+        let keyword = self.identifier();
+
+        if keyword.is_empty() {
+            return Err(ScannerError::unexpected_keyword(self.line));
+        }
+
+        return match keyword.as_str() {
+            "if" => {
+                let expression = self.collect_js_expression()?;
+
+                self.add_token(TokenType::StartIfTag(StartIfTag {
+                    expression: expression.expression,
+                }));
+
+                Ok(())
+            }
+            _ => Err(ScannerError::unexpected_keyword(self.line)),
+        };
     }
 }
 
@@ -549,6 +586,16 @@ mod tests {
         let result = scanner.scan_tokens();
 
         assert_error_result(result, ScannerErrorType::UnterminatedStartTag)
+    }
+
+    #[test]
+    fn start_if_tag() {
+        let mut scanner = Scanner::new("{#if test }");
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert!(matches!(tokens[0].r#type, TokenType::StartIfTag(_)));
+        assert!(tokens[1].r#type == TokenType::EOF);
     }
 
     fn assert_start_tag(

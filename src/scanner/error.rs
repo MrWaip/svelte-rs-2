@@ -5,6 +5,7 @@ pub enum ScannerErrorType {
     UnterminatedStartTag,
     InvalidAttributeName,
     UnexpectedToken,
+    UnexpectedKeyword,
 }
 
 #[derive(Debug)]
@@ -36,5 +37,9 @@ impl ScannerError {
 
     pub fn unexpected_token(line: usize) -> ScannerError {
         return ScannerError::new(ScannerErrorType::UnexpectedToken, line);
+    }
+    
+    pub fn unexpected_keyword(line: usize) -> ScannerError {
+        return ScannerError::new(ScannerErrorType::UnexpectedKeyword, line);
     }
 }

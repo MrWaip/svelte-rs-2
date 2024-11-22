@@ -6,6 +6,7 @@ pub enum TokenType {
     StartTag(StartTag),
     EndTag,
     Interpolation,
+    StartIfTag(StartIfTag),
     EOF,
 }
 
@@ -93,4 +94,9 @@ pub struct Token {
     pub r#type: TokenType,
     pub line: usize,
     pub lexeme: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct StartIfTag {
+    pub expression: String,
 }
