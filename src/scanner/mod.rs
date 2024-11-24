@@ -594,7 +594,7 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(matches!(tokens[0].r#type, TokenType::StartIfTag(_)));
+        assert_start_if_attribute(&tokens[0], " test ");
         assert!(tokens[1].r#type == TokenType::EOF);
     }
 
@@ -630,8 +630,6 @@ mod tests {
         );
 
         for (index, (expected_name, expected_value)) in expected_attributes.iter().enumerate() {
-            // let HTMLAttribute { name, value } = &actual_attributes[index];
-
             let attribute = &actual_attributes[index];
 
             let name = match attribute {
@@ -663,5 +661,17 @@ mod tests {
         assert!(res.is_err());
 
         assert_eq!(res.unwrap_err().error_type, err_type);
+    }
+
+    fn assert_start_if_attribute(token: &Token, expected_expression: &str) {
+        let tag = match &token.r#type {
+            TokenType::StartIfTag(t) => t,
+            _ => panic!("Expected token.type = StartIfTag."),
+        };
+
+        assert_eq!(
+            tag.expression, expected_expression,
+            "Tag name did not match"
+        );
     }
 }
