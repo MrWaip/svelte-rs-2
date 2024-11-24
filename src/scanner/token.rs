@@ -7,6 +7,8 @@ pub enum TokenType {
     EndTag,
     Interpolation,
     StartIfTag(StartIfTag),
+    ElseTag(ElseTag),
+    EndIfTag,
     EOF,
 }
 
@@ -99,4 +101,10 @@ pub struct Token {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StartIfTag {
     pub expression: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ElseTag {
+    pub elseif: bool,
+    pub expression: Option<String>,
 }
