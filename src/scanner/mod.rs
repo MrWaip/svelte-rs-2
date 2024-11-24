@@ -56,11 +56,12 @@ impl Scanner {
         }
 
         if char == '{' {
-            if self.peek() == Some('#') {
-                return self.template();
-            } else {
-                return self.interpolation();
-            }
+            return match self.peek() {
+                Some('#') => self.start_template(),
+                Some(':') => self.middle_template(),
+                Some('/') => self.end_template(),
+                _ => self.interpolation(),
+            };
         }
 
         self.text();
@@ -413,7 +414,7 @@ impl Scanner {
         return Ok(());
     }
 
-    fn template(&mut self) -> Result<(), ScannerError> {
+    fn start_template(&mut self) -> Result<(), ScannerError> {
         debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some('#'));
 
@@ -432,6 +433,80 @@ impl Scanner {
                 self.add_token(TokenType::StartIfTag(StartIfTag {
                     expression: expression.expression,
                 }));
+
+                Ok(())
+            }
+            _ => Err(ScannerError::unexpected_keyword(self.line)),
+        };
+    }
+
+    fn end_template(&mut self) -> Result<(), ScannerError> {
+        debug_assert_eq!(self.prev_char(), Some('{'));
+        debug_assert_eq!(self.peek(), Some('/'));
+
+        self.advance();
+
+        let keyword = self.identifier();
+
+        if keyword.is_empty() {
+            return Err(ScannerError::unexpected_keyword(self.line));
+        }
+
+        return match keyword.as_str() {
+            "if" => {
+                self.skip_whitespace();
+
+                if !self.match_char('}') {
+                    return Err(ScannerError::unexpected_token(self.line));
+                }
+
+                self.add_token(TokenType::EndIfTag);
+
+                Ok(())
+            }
+            _ => Err(ScannerError::unexpected_keyword(self.line)),
+        };
+    }
+
+    fn middle_template(&mut self) -> Result<(), ScannerError> {
+        debug_assert_eq!(self.prev_char(), Some('{'));
+        debug_assert_eq!(self.peek(), Some(':'));
+
+        self.advance();
+
+        let keyword = self.identifier();
+
+        if keyword.is_empty() {
+            return Err(ScannerError::unexpected_keyword(self.line));
+        }
+
+        return match keyword.as_str() {
+            "else" => {
+                self.skip_whitespace();
+
+                let elseif = self.identifier();
+
+                if !elseif.is_empty() {
+                    if elseif != "if".to_string() {
+                        return Err(ScannerError::unexpected_keyword(self.line));
+                    }
+
+                    let expression = self.collect_js_expression()?;
+
+                    self.add_token(TokenType::ElseTag(token::ElseTag {
+                        elseif: true,
+                        expression: Some(expression.expression),
+                    }));
+                } else {
+                    if !self.match_char('}') {
+                        return Err(ScannerError::unexpected_token(self.line));
+                    }
+
+                    self.add_token(TokenType::ElseTag(token::ElseTag {
+                        elseif: false,
+                        expression: None,
+                    }));
+                }
 
                 Ok(())
             }
@@ -598,6 +673,27 @@ mod tests {
         assert!(tokens[1].r#type == TokenType::EOF);
     }
 
+    #[test]
+    fn end_if_tag() {
+        let mut scanner = Scanner::new("{/if}");
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert!(tokens[0].r#type == TokenType::EndIfTag);
+        assert!(tokens[1].r#type == TokenType::EOF);
+    }
+
+    #[test]
+    fn else_if_tag() {
+        let mut scanner = Scanner::new("{:else }{:else if test }");
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_else_if_tag(&tokens[0], false, None);
+        assert_else_if_tag(&tokens[1], true, Some(" test "));
+        assert!(tokens[2].r#type == TokenType::EOF);
+    }
+
     fn assert_start_tag(
         token: &Token,
         expected_name: &str,
@@ -671,7 +767,22 @@ mod tests {
 
         assert_eq!(
             tag.expression, expected_expression,
-            "Tag name did not match"
+            "Expression did not match"
+        );
+    }
+
+    fn assert_else_if_tag(token: &Token, expected_elseif: bool, expected_expression: Option<&str>) {
+        let tag = match &token.r#type {
+            TokenType::ElseTag(t) => t,
+            _ => panic!("Expected token.type = ElseTag."),
+        };
+
+        assert_eq!(tag.elseif, expected_elseif, "Elseif did not match");
+
+        assert_eq!(
+            tag.expression,
+            expected_expression.map(|v| v.to_string()),
+            "Expression did not match"
         );
     }
 }
