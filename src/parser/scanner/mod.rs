@@ -1,5 +1,5 @@
-mod error;
-mod token;
+pub mod error;
+pub mod token;
 
 use error::ScannerError;
 use std::{mem, vec};

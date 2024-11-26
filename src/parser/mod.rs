@@ -1,22 +1,19 @@
-pub mod ast;
+use scanner::Scanner;
 
-use crate::scanner::Scanner;
+pub mod scanner;
 
 pub struct Parser {
     scanner: Scanner,
     source: &'static str,
+    // stack:
 }
 
 impl Parser {
     pub fn new(source: &'static str) -> Parser {
-
         let scanner = Scanner::new(source);
 
-        return Parser {
-            scanner,
-            source 
-        }
-    } 
+        return Parser { scanner, source };
+    }
 
     pub fn parse(&mut self) {
         todo!()
@@ -29,7 +26,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut parser = Parser::new(""); 
+        let mut parser = Parser::new("");
 
         parser.parse();
     }
