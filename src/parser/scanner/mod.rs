@@ -1,12 +1,12 @@
-pub mod error;
 pub mod token;
 
-use error::ScannerError;
 use std::{mem, vec};
 use token::{
     Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
     JsExpression, StartIfTag, StartTag, Token, TokenType,
 };
+
+use crate::diagnostics::Diagnostic;
 
 pub struct Scanner {
     source: &'static str,
@@ -27,7 +27,7 @@ impl Scanner {
         };
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token>, ScannerError> {
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token>, Diagnostic> {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token()?;
@@ -44,7 +44,7 @@ impl Scanner {
         return Ok(tokens);
     }
 
-    pub fn scan_token(&mut self) -> Result<(), ScannerError> {
+    pub fn scan_token(&mut self) -> Result<(), Diagnostic> {
         let char = self.advance();
 
         if char == '<' {
@@ -135,7 +135,7 @@ impl Scanner {
         return self.source.chars().nth(self.current);
     }
 
-    fn collect_until<F>(&mut self, condition: F) -> Result<&'static str, ScannerError>
+    fn collect_until<F>(&mut self, condition: F) -> Result<&'static str, Diagnostic>
     where
         F: Fn(char) -> bool,
     {
@@ -150,7 +150,7 @@ impl Scanner {
         }
 
         if self.is_at_end() {
-            return Err(ScannerError::unexpected_end_of_file(self.line));
+            return Err(Diagnostic::unexpected_end_of_file(self.line));
         }
 
         return Ok(&self.source[start..self.current]);
@@ -172,18 +172,18 @@ impl Scanner {
 
     // Tokens:
 
-    fn start_tag(&mut self) -> Result<(), ScannerError> {
+    fn start_tag(&mut self) -> Result<(), Diagnostic> {
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(ScannerError::invalid_tag_name(self.line));
+            return Err(Diagnostic::invalid_tag_name(self.line));
         }
 
         let attributes = self.attributes()?;
         let self_closing = self.match_char('/');
 
         if !self.match_char('>') {
-            return Err(ScannerError::unterminated_start_tag(self.line));
+            return Err(Diagnostic::unterminated_start_tag(self.line));
         }
 
         self.add_token(TokenType::StartTag(StartTag {
@@ -195,7 +195,7 @@ impl Scanner {
         return Ok(());
     }
 
-    fn attributes(&mut self) -> Result<Vec<Attribute>, ScannerError> {
+    fn attributes(&mut self) -> Result<Vec<Attribute>, Diagnostic> {
         let mut attributes: Vec<Attribute> = vec![];
 
         while let Some(ch) = self.peek() {
@@ -213,7 +213,7 @@ impl Scanner {
                 let name = self.identifier();
 
                 if name.is_empty() {
-                    return Err(ScannerError::invalid_attribute_name(self.line));
+                    return Err(Diagnostic::invalid_attribute_name(self.line));
                 }
 
                 let mut value: AttributeValue = AttributeValue::Empty;
@@ -232,7 +232,7 @@ impl Scanner {
         return Ok(attributes);
     }
 
-    fn attribute_value(&mut self) -> Result<AttributeValue, ScannerError> {
+    fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {
         let peeked = self.peek();
 
         if self.peek() == Some('{') {
@@ -261,7 +261,7 @@ impl Scanner {
         return Ok(AttributeValue::String(value.to_string()));
     }
 
-    fn expression_tag(&mut self) -> Result<ExpressionTag, ScannerError> {
+    fn expression_tag(&mut self) -> Result<ExpressionTag, Diagnostic> {
         debug_assert_eq!(self.peek(), Some('{'));
 
         self.advance();
@@ -278,7 +278,7 @@ impl Scanner {
     fn attribute_concatenation_or_string(
         &mut self,
         quote: char,
-    ) -> Result<AttributeValue, ScannerError> {
+    ) -> Result<AttributeValue, Diagnostic> {
         debug_assert_eq!(self.peek(), Some(quote));
 
         let mut has_expression = false;
@@ -331,7 +331,7 @@ impl Scanner {
         }));
     }
 
-    fn end_tag(&mut self) -> Result<(), ScannerError> {
+    fn end_tag(&mut self) -> Result<(), Diagnostic> {
         self.collect_until(|c| c == '>')?;
 
         self.advance();
@@ -349,7 +349,7 @@ impl Scanner {
         self.add_token(TokenType::Text);
     }
 
-    fn interpolation(&mut self) -> Result<(), ScannerError> {
+    fn interpolation(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.prev_char(), Some('{'));
 
         self.collect_js_expression()?;
@@ -358,7 +358,7 @@ impl Scanner {
         return Ok(());
     }
 
-    fn collect_js_expression(&mut self) -> Result<JsExpression, ScannerError> {
+    fn collect_js_expression(&mut self) -> Result<JsExpression, Diagnostic> {
         let mut stack: Vec<bool> = vec![];
         let start = self.current;
 
@@ -397,16 +397,16 @@ impl Scanner {
             }
         }
 
-        return Err(ScannerError::unexpected_end_of_file(self.line));
+        return Err(Diagnostic::unexpected_end_of_file(self.line));
     }
 
-    fn skip_js_string(&mut self, quote: char) -> Result<(), ScannerError> {
+    fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
         while self.peek() != Some(quote) && !self.is_at_end() {
             self.advance();
         }
 
         if self.is_at_end() {
-            return Err(ScannerError::unexpected_end_of_file(self.line));
+            return Err(Diagnostic::unexpected_end_of_file(self.line));
         }
 
         self.advance();
@@ -414,7 +414,7 @@ impl Scanner {
         return Ok(());
     }
 
-    fn start_template(&mut self) -> Result<(), ScannerError> {
+    fn start_template(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some('#'));
 
@@ -423,7 +423,7 @@ impl Scanner {
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(ScannerError::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
         return match keyword.as_str() {
@@ -436,11 +436,11 @@ impl Scanner {
 
                 Ok(())
             }
-            _ => Err(ScannerError::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(self.line)),
         };
     }
 
-    fn end_template(&mut self) -> Result<(), ScannerError> {
+    fn end_template(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some('/'));
 
@@ -449,7 +449,7 @@ impl Scanner {
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(ScannerError::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
         return match keyword.as_str() {
@@ -457,18 +457,18 @@ impl Scanner {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(ScannerError::unexpected_token(self.line));
+                    return Err(Diagnostic::unexpected_token(self.line));
                 }
 
                 self.add_token(TokenType::EndIfTag);
 
                 Ok(())
             }
-            _ => Err(ScannerError::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(self.line)),
         };
     }
 
-    fn middle_template(&mut self) -> Result<(), ScannerError> {
+    fn middle_template(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some(':'));
 
@@ -477,7 +477,7 @@ impl Scanner {
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(ScannerError::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
         return match keyword.as_str() {
@@ -488,7 +488,7 @@ impl Scanner {
 
                 if !elseif.is_empty() {
                     if elseif != "if".to_string() {
-                        return Err(ScannerError::unexpected_keyword(self.line));
+                        return Err(Diagnostic::unexpected_keyword(self.line));
                     }
 
                     let expression = self.collect_js_expression()?;
@@ -499,7 +499,7 @@ impl Scanner {
                     }));
                 } else {
                     if !self.match_char('}') {
-                        return Err(ScannerError::unexpected_token(self.line));
+                        return Err(Diagnostic::unexpected_token(self.line));
                     }
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
@@ -510,7 +510,7 @@ impl Scanner {
 
                 Ok(())
             }
-            _ => Err(ScannerError::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(self.line)),
         };
     }
 }
@@ -519,7 +519,7 @@ impl Scanner {
 mod tests {
     use std::fmt::Debug;
 
-    use error::ScannerErrorType;
+    use crate::diagnostics::DiagnosticType;
 
     use super::*;
 
@@ -660,7 +660,7 @@ mod tests {
 
         let result = scanner.scan_tokens();
 
-        assert_error_result(result, ScannerErrorType::UnterminatedStartTag)
+        assert_error_result(result, DiagnosticType::UnterminatedStartTag)
     }
 
     #[test]
@@ -750,7 +750,7 @@ mod tests {
         }
     }
 
-    fn assert_error_result<T>(res: Result<T, ScannerError>, err_type: ScannerErrorType)
+    fn assert_error_result<T>(res: Result<T, Diagnostic>, err_type: DiagnosticType)
     where
         T: Debug,
     {

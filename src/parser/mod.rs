@@ -1,21 +1,27 @@
 use scanner::Scanner;
 
+use crate::ast::{Ast, Node};
+
 pub mod scanner;
 
 pub struct Parser {
     scanner: Scanner,
     source: &'static str,
-    // stack:
+    stack: Vec<Node>,
 }
 
 impl Parser {
     pub fn new(source: &'static str) -> Parser {
         let scanner = Scanner::new(source);
 
-        return Parser { scanner, source };
+        return Parser {
+            scanner,
+            source,
+            stack: vec![],
+        };
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(&mut self) -> Ast {
         todo!()
     }
 }
