@@ -44,7 +44,7 @@ impl Scanner {
         return Ok(tokens);
     }
 
-    pub fn scan_token(&mut self) -> Result<(), Diagnostic> {
+    fn scan_token(&mut self) -> Result<(), Diagnostic> {
         let char = self.advance();
 
         if char == '<' {

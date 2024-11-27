@@ -27,6 +27,21 @@ pub struct Element {
 
 impl FormatNode for Element {
     fn format_node(&self) -> String {
-        return "".to_string();
+        let mut result = String::new();
+
+        result.push_str("<");
+        result.push_str(&self.name);
+        result.push_str(">");
+
+        for node in self.nodes.iter() {
+            let formatted = node.format_node();
+            result.push_str(&formatted);
+        }
+
+        result.push_str("</");
+        result.push_str(&self.name);
+        result.push_str(">");
+
+        return result;
     }
 }
