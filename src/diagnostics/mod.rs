@@ -6,6 +6,7 @@ pub enum DiagnosticType {
     InvalidAttributeName,
     UnexpectedToken,
     UnexpectedKeyword,
+    NoElementToClose,
 }
 
 #[derive(Debug)]
@@ -41,5 +42,9 @@ impl Diagnostic {
 
     pub fn unexpected_keyword(line: usize) -> Diagnostic {
         return Diagnostic::new(DiagnosticType::UnexpectedKeyword, line);
+    }
+
+    pub fn no_element_to_close(line: usize) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::NoElementToClose, line);
     }
 }

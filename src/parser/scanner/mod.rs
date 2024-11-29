@@ -332,11 +332,21 @@ impl Scanner {
     }
 
     fn end_tag(&mut self) -> Result<(), Diagnostic> {
-        self.collect_until(|c| c == '>')?;
-
         self.advance();
 
-        self.add_token(TokenType::EndTag);
+        let name = self.identifier();
+
+        if name.is_empty() {
+            return Err(Diagnostic::invalid_tag_name(self.line));
+        }
+
+        self.skip_whitespace();
+
+        if !self.match_char('>') {
+            return Err(Diagnostic::unexpected_token(self.line));
+        }
+
+        self.add_token(TokenType::EndTag(token::EndTag { name }));
 
         return Ok(());
     }
@@ -533,7 +543,7 @@ mod tests {
         assert!(tokens[1].r#type == TokenType::Text);
         assert!(tokens[2].r#type == TokenType::Interpolation);
         assert!(tokens[3].r#type == TokenType::Text);
-        assert!(tokens[4].r#type == TokenType::EndTag);
+        assert!(matches!(tokens[4].r#type, TokenType::EndTag(_)));
         assert!(tokens[5].r#type == TokenType::EOF);
     }
 
