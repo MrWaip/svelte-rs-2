@@ -4,7 +4,7 @@ use core::fmt;
 pub enum TokenType {
     Text,
     StartTag(StartTag),
-    EndTag,
+    EndTag(EndTag),
     Interpolation,
     StartIfTag(StartIfTag),
     ElseTag(ElseTag),
@@ -17,6 +17,11 @@ pub struct StartTag {
     pub attributes: Vec<Attribute>,
     pub name: String,
     pub self_closing: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct EndTag {
+    pub name: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
