@@ -1,12 +1,13 @@
-use std::{cell::RefCell, mem, rc::Rc, thread::panicking};
+use std::mem;
 
+use rccell::RcCell;
 use scanner::{
-    token::{EndTag, StartTag},
+    token::{EndTag, StartTag, Token},
     Scanner,
 };
 
 use crate::{
-    ast::{Ast, AstNode, Element, Node, RcWrap},
+    ast::{Ast, AstNode, Element, Node},
     diagnostics::Diagnostic,
 };
 
@@ -15,8 +16,8 @@ pub mod scanner;
 pub struct Parser {
     scanner: Scanner,
     source: &'static str,
-    stack: Vec<RcWrap<Node>>,
-    roots: Vec<RcWrap<Node>>,
+    stack: Vec<RcCell<Node>>,
+    roots: Vec<RcCell<Node>>,
 }
 
 impl Parser {
@@ -34,7 +35,7 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Ast, Diagnostic> {
         for token in self.scanner.scan_tokens()?.iter() {
             match &token.r#type {
-                scanner::token::TokenType::Text => todo!(),
+                scanner::token::TokenType::Text => self.parse_text(token)?,
                 scanner::token::TokenType::StartTag(tag) => self.parse_start_tag(tag)?,
                 scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(tag)?,
                 scanner::token::TokenType::Interpolation => todo!(),
@@ -59,10 +60,11 @@ impl Parser {
             nodes: vec![],
         });
 
-        let node = Rc::from(RefCell::from(node));
+        let node = RcCell::new(node);
 
         if let Some(last) = self.stack.last_mut() {
-            last.borrow_mut().push(node.clone());
+            let mut last = last.borrow_mut();
+            last.push(node.clone());
         }
 
         if self_closing {
@@ -99,6 +101,15 @@ impl Parser {
 
         Ok(())
     }
+
+    fn parse_text(&mut self, token: &Token) -> Result<(), Diagnostic> {
+        // if let Some(last) = self.stack.last_mut() {
+        //     last.borrow_mut().push(node.clone());
+        // } else {
+        // }
+
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
@@ -115,6 +126,6 @@ mod tests {
 
         let node = ast.template[0].borrow();
 
-        assert_eq!(node.format_node(), "<div></div>")
+        assert_eq!(node.format_node(), "<div>text</div>")
     }
 }

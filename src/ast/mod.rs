@@ -1,9 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
+use rccell::RcCell;
 
-pub type RcWrap<T> = Rc<RefCell<T>>;
+
 
 pub struct Ast {
-    pub template: Vec<RcWrap<Node>>,
+    pub template: Vec<RcCell<Node>>,
 }
 
 pub trait FormatNode {
@@ -11,7 +11,7 @@ pub trait FormatNode {
 }
 
 pub trait AstNode {
-    fn push(&mut self, node: RcWrap<Node>);
+    fn push(&mut self, node: RcCell<Node>);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -28,7 +28,7 @@ impl FormatNode for Node {
 }
 
 impl AstNode for Node {
-    fn push(&mut self, node: RcWrap<Node>) {
+    fn push(&mut self, node: RcCell<Node>) {
         match self {
             Node::Element(element) => element.push(node),
         };
@@ -38,7 +38,7 @@ impl AstNode for Node {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Element {
     pub name: String,
-    pub nodes: Vec<RcWrap<Node>>,
+    pub nodes: Vec<RcCell<Node>>,
 }
 
 impl FormatNode for Element {
@@ -63,7 +63,7 @@ impl FormatNode for Element {
 }
 
 impl AstNode for Element {
-    fn push(&mut self, node: RcWrap<Node>) {
+    fn push(&mut self, node: RcCell<Node>) {
         self.nodes.push(node);
     }
 }
