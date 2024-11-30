@@ -213,7 +213,7 @@ impl Scanner {
                 let name = self.identifier();
 
                 if name.is_empty() {
-                    return Err(Diagnostic::invalid_attribute_name(self.line));
+                    continue;
                 }
 
                 let mut value: AttributeValue = AttributeValue::Empty;

@@ -18,6 +18,12 @@ pub enum Node {
     Text(Text),
 }
 
+impl Node {
+    pub fn as_rc_cell(self) -> RcCell<Node> {
+        return RcCell::new(self);
+    }
+}
+
 impl FormatNode for Node {
     fn format_node(&self) -> String {
         return match self {
@@ -30,6 +36,7 @@ impl FormatNode for Node {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Element {
     pub name: String,
+    pub self_closing: bool,
     pub nodes: Vec<RcCell<Node>>,
 }
 
@@ -39,7 +46,13 @@ impl FormatNode for Element {
 
         result.push_str("<");
         result.push_str(&self.name);
-        result.push_str(">");
+
+        if self.self_closing {
+            result.push_str(" />");
+            return result;
+        } else {
+            result.push_str(">");
+        }
 
         for node in self.nodes.iter() {
             let formatted = node.borrow().format_node();
