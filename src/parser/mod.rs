@@ -57,17 +57,18 @@ impl Parser {
         let name = tag.name.clone();
         let self_closing = tag.self_closing;
 
-        let node = Element {
+        let element = Element {
             name,
+            self_closing,
             nodes: vec![],
         };
 
-        let node = RcCell::new(node.as_node());
-
-        self.add_node(node)?;
+        let node = element.as_node().as_rc_cell();
 
         if self_closing {
-            todo!();
+            self.add_leaf(node)?;
+        } else {
+            self.add_node(node)?;
         }
 
         return Ok(());
@@ -145,7 +146,7 @@ impl Parser {
             value: token.lexeme.to_string(),
         };
 
-        self.add_leaf(RcCell::new(node.as_node()))?;
+        self.add_leaf(node.as_node().as_rc_cell())?;
 
         return Ok(());
     }
@@ -153,6 +154,8 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use crate::ast::FormatNode;
 
     use super::*;
@@ -161,12 +164,23 @@ mod tests {
     fn smoke() {
         let mut parser = Parser::new("prefix <div>text</div>");
 
-        let ast = parser.parse().unwrap();
+        let ast = parser.parse().unwrap().template;
 
-        let node1 = ast.template[0].borrow();
-        let node2 = ast.template[1].borrow();
+        assert_node(&ast[0], "prefix ");
+        assert_node(&ast[1], "<div>text</div>");
+    }
 
-        assert_eq!(node1.format_node(), "prefix ");
-        assert_eq!(node2.format_node(), "<div>text</div>");
+    #[test]
+    fn self_closed_element() {
+        let mut parser = Parser::new("<img /><input/>");
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(&ast[0], "<img />");
+        assert_node(&ast[1], "<input />");
+    }
+
+    fn assert_node(node: &RefCell<Node>, expected: &str) {
+        let node = node.borrow();
+        assert_eq!(node.format_node(), expected);
     }
 }

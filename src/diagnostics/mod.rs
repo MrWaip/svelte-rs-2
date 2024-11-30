@@ -34,7 +34,7 @@ impl Diagnostic {
     }
 
     pub fn invalid_attribute_name(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnterminatedStartTag, line);
+        return Diagnostic::new(DiagnosticType::InvalidAttributeName, line);
     }
 
     pub fn unexpected_token(line: usize) -> Diagnostic {
