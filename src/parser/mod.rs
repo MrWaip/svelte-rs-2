@@ -154,8 +154,6 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
     use crate::ast::FormatNode;
 
     use super::*;
@@ -172,14 +170,14 @@ mod tests {
 
     #[test]
     fn self_closed_element() {
-        let mut parser = Parser::new("<img /><input/>");
+        let mut parser = Parser::new("<img /><body><input/></body>");
         let ast = parser.parse().unwrap().template;
 
         assert_node(&ast[0], "<img />");
-        assert_node(&ast[1], "<input />");
+        assert_node(&ast[1], "<body><input /></body>");
     }
 
-    fn assert_node(node: &RefCell<Node>, expected: &str) {
+    fn assert_node(node: &RcCell<Node>, expected: &str) {
         let node = node.borrow();
         assert_eq!(node.format_node(), expected);
     }
