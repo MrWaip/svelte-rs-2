@@ -7,7 +7,7 @@ use scanner::{
 };
 
 use crate::{
-    ast::{Ast, AstNode, Element, Node},
+    ast::{AsNode, Ast, Element, Node, Text},
     diagnostics::Diagnostic,
 };
 
@@ -15,7 +15,6 @@ pub mod scanner;
 
 pub struct Parser {
     scanner: Scanner,
-    source: &'static str,
     stack: Vec<RcCell<Node>>,
     roots: Vec<RcCell<Node>>,
 }
@@ -26,7 +25,6 @@ impl Parser {
 
         return Parser {
             scanner,
-            source,
             stack: vec![],
             roots: vec![],
         };
@@ -46,6 +44,10 @@ impl Parser {
             }
         }
 
+        if !self.stack.is_empty() {
+            return Diagnostic::unclosed_node(0).as_err();
+        }
+
         let template = mem::replace(&mut self.roots, vec![]);
 
         return Ok(Ast { template });
@@ -55,25 +57,61 @@ impl Parser {
         let name = tag.name.clone();
         let self_closing = tag.self_closing;
 
-        let node = Node::Element(Element {
+        let node = Element {
             name,
             nodes: vec![],
-        });
+        };
 
-        let node = RcCell::new(node);
+        let node = RcCell::new(node.as_node());
 
-        if let Some(last) = self.stack.last_mut() {
-            let mut last = last.borrow_mut();
-            last.push(node.clone());
-        }
+        self.add_node(node)?;
 
         if self_closing {
             todo!();
         }
 
+        return Ok(());
+    }
+
+    /**
+     * Открывает новую Node в стэке и добавляет ее родительскую ноду, если имеется
+     */
+    fn add_node(&mut self, node: RcCell<Node>) -> Result<(), Diagnostic> {
+        self.add_child(node.clone())?;
+
         self.stack.push(node);
 
         return Ok(());
+    }
+
+    /**
+     * Добавляет ноду в родителя, если родителя нет то добавляет ее в root
+     */
+    fn add_leaf(&mut self, node: RcCell<Node>) -> Result<(), Diagnostic> {
+        let is_added = self.add_child(node.clone())?;
+
+        if !is_added {
+            self.roots.push(node);
+        }
+
+        return Ok(());
+    }
+
+    fn add_child(&mut self, node: RcCell<Node>) -> Result<bool, Diagnostic> {
+        if let Some(parent) = self.stack.last_mut() {
+            let mut parent = parent.borrow_mut();
+
+            match &mut *parent {
+                Node::Element(element) => {
+                    element.nodes.push(node.clone());
+                }
+                Node::Text(_) => unreachable!(),
+            };
+
+            return Ok(true);
+        }
+
+        return Ok(false);
     }
 
     fn parse_end_tag(&mut self, tag: &EndTag) -> Result<(), Diagnostic> {
@@ -103,10 +141,11 @@ impl Parser {
     }
 
     fn parse_text(&mut self, token: &Token) -> Result<(), Diagnostic> {
-        // if let Some(last) = self.stack.last_mut() {
-        //     last.borrow_mut().push(node.clone());
-        // } else {
-        // }
+        let node = Text {
+            value: token.lexeme.to_string(),
+        };
+
+        self.add_leaf(RcCell::new(node.as_node()))?;
 
         return Ok(());
     }
@@ -120,12 +159,14 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut parser = Parser::new("<div>text</div>");
+        let mut parser = Parser::new("prefix <div>text</div>");
 
         let ast = parser.parse().unwrap();
 
-        let node = ast.template[0].borrow();
+        let node1 = ast.template[0].borrow();
+        let node2 = ast.template[1].borrow();
 
-        assert_eq!(node.format_node(), "<div>text</div>")
+        assert_eq!(node1.format_node(), "prefix ");
+        assert_eq!(node2.format_node(), "<div>text</div>");
     }
 }

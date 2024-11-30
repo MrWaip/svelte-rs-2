@@ -7,6 +7,7 @@ pub enum DiagnosticType {
     UnexpectedToken,
     UnexpectedKeyword,
     NoElementToClose,
+    UnclosedNode,
 }
 
 #[derive(Debug)]
@@ -46,5 +47,13 @@ impl Diagnostic {
 
     pub fn no_element_to_close(line: usize) -> Diagnostic {
         return Diagnostic::new(DiagnosticType::NoElementToClose, line);
+    }
+
+    pub fn unclosed_node(line: usize) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnclosedNode, line);
+    }
+
+    pub fn as_err<T>(self) -> Result<T, Diagnostic> {
+        return Err(self);
     }
 }
