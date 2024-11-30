@@ -1,7 +1,5 @@
 use rccell::RcCell;
 
-
-
 pub struct Ast {
     pub template: Vec<RcCell<Node>>,
 }
@@ -10,27 +8,21 @@ pub trait FormatNode {
     fn format_node(&self) -> String;
 }
 
-pub trait AstNode {
-    fn push(&mut self, node: RcCell<Node>);
+pub trait AsNode {
+    fn as_node(self) -> Node;
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Node {
     Element(Element),
+    Text(Text),
 }
 
 impl FormatNode for Node {
     fn format_node(&self) -> String {
         return match self {
             Node::Element(element) => element.format_node(),
-        };
-    }
-}
-
-impl AstNode for Node {
-    fn push(&mut self, node: RcCell<Node>) {
-        match self {
-            Node::Element(element) => element.push(node),
+            Node::Text(text) => text.format_node(),
         };
     }
 }
@@ -62,8 +54,25 @@ impl FormatNode for Element {
     }
 }
 
-impl AstNode for Element {
-    fn push(&mut self, node: RcCell<Node>) {
-        self.nodes.push(node);
+impl AsNode for Element {
+    fn as_node(self) -> Node {
+        return Node::Element(self);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Text {
+    pub value: String,
+}
+
+impl FormatNode for Text {
+    fn format_node(&self) -> String {
+        return self.value.clone();
+    }
+}
+
+impl AsNode for Text {
+    fn as_node(self) -> Node {
+        return Node::Text(self);
     }
 }
