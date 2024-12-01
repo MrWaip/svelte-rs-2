@@ -5,7 +5,7 @@ pub enum TokenType {
     Text,
     StartTag(StartTag),
     EndTag(EndTag),
-    Interpolation,
+    Interpolation(Interpolation),
     StartIfTag(StartIfTag),
     ElseTag(ElseTag),
     EndIfTag,
@@ -42,6 +42,11 @@ pub enum AttributeValue {
     ExpressionTag(ExpressionTag),
     Concatenation(Concatenation),
     Empty,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Interpolation  {
+    pub expression: String
 }
 
 pub struct JsExpression {

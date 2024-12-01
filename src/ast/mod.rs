@@ -1,3 +1,4 @@
+use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
 pub struct Ast {
@@ -12,10 +13,11 @@ pub trait AsNode {
     fn as_node(self) -> Node;
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Node {
     Element(Element),
     Text(Text),
+    Interpolation(Interpolation),
 }
 
 impl Node {
@@ -29,11 +31,29 @@ impl FormatNode for Node {
         return match self {
             Node::Element(element) => element.format_node(),
             Node::Text(text) => text.format_node(),
+            Node::Interpolation(interpolation) => interpolation.format_node(),
         };
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
+pub struct Interpolation {
+   pub expression: Expression<'static>,
+}
+
+impl FormatNode for Interpolation {
+    fn format_node(&self) -> String {
+        return String::new();
+    }
+}
+
+impl AsNode for Interpolation {
+    fn as_node(self) -> Node {
+        return Node::Interpolation(self);
+    }
+}
+
+#[derive(Debug)]
 pub struct Element {
     pub name: String,
     pub self_closing: bool,
@@ -73,7 +93,7 @@ impl AsNode for Element {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Text {
     pub value: String,
 }

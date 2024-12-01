@@ -8,6 +8,7 @@ pub enum DiagnosticType {
     UnexpectedKeyword,
     NoElementToClose,
     UnclosedNode,
+    InvalidExpression,
 }
 
 #[derive(Debug)]
@@ -51,6 +52,10 @@ impl Diagnostic {
 
     pub fn unclosed_node(line: usize) -> Diagnostic {
         return Diagnostic::new(DiagnosticType::UnclosedNode, line);
+    }
+
+    pub fn invalid_expression(line: usize) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::InvalidExpression, line);
     }
 
     pub fn as_err<T>(self) -> Result<T, Diagnostic> {
