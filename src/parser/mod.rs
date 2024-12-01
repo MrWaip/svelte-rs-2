@@ -1,13 +1,16 @@
-use std::mem;
+use std::{mem, rc::Rc};
 
+use oxc_allocator::Allocator;
+use oxc_parser::Parser as OxcParser;
+use oxc_span::SourceType;
 use rccell::RcCell;
 use scanner::{
-    token::{EndTag, StartTag, Token},
+    token::{EndTag, Interpolation as InterpolationToken, StartTag, Token},
     Scanner,
 };
 
 use crate::{
-    ast::{AsNode, Ast, Element, Node, Text},
+    ast::{AsNode, Ast, Element, Interpolation, Node, Text},
     diagnostics::Diagnostic,
 };
 
@@ -36,7 +39,9 @@ impl Parser {
                 scanner::token::TokenType::Text => self.parse_text(token)?,
                 scanner::token::TokenType::StartTag(tag) => self.parse_start_tag(tag)?,
                 scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(tag)?,
-                scanner::token::TokenType::Interpolation => todo!(),
+                scanner::token::TokenType::Interpolation(interpolation) => {
+                    self.parse_interpolation(interpolation)?
+                }
                 scanner::token::TokenType::StartIfTag(_start_if_tag) => todo!(),
                 scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
                 scanner::token::TokenType::EndIfTag => todo!(),
@@ -56,6 +61,7 @@ impl Parser {
     fn parse_start_tag(&mut self, tag: &StartTag) -> Result<(), Diagnostic> {
         let name = tag.name.clone();
         let self_closing = tag.self_closing;
+        // let attributes = &tag.attributes;
 
         let element = Element {
             name,
@@ -106,7 +112,7 @@ impl Parser {
                 Node::Element(element) => {
                     element.nodes.push(node.clone());
                 }
-                Node::Text(_) => unreachable!(),
+                _ => unreachable!(),
             };
 
             return Ok(true);
@@ -148,6 +154,25 @@ impl Parser {
 
         self.add_leaf(node.as_node().as_rc_cell())?;
 
+        return Ok(());
+    }
+
+    fn parse_interpolation(
+        &mut self,
+        interpolation: &InterpolationToken,
+    ) -> Result<(), Diagnostic> {
+        let allocator = Allocator::default();
+        let source = interpolation.expression.clone();
+
+        let parser = OxcParser::new(&allocator, source.as_str(), SourceType::default());
+
+        let expression = parser
+            .parse_expression()
+            .map_err(|_| Diagnostic::invalid_expression(0))?;
+
+        let node = Interpolation { expression };
+
+        self.add_leaf(node.as_node().as_rc_cell())?;
         return Ok(());
     }
 }

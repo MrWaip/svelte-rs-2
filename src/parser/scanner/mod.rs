@@ -3,7 +3,7 @@ pub mod token;
 use std::{mem, vec};
 use token::{
     Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    JsExpression, StartIfTag, StartTag, Token, TokenType,
+    Interpolation, JsExpression, StartIfTag, StartTag, Token, TokenType,
 };
 
 use crate::diagnostics::Diagnostic;
@@ -362,9 +362,12 @@ impl Scanner {
     fn interpolation(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.prev_char(), Some('{'));
 
-        self.collect_js_expression()?;
+        let expression = self.collect_js_expression()?;
 
-        self.add_token(TokenType::Interpolation);
+        self.add_token(TokenType::Interpolation(Interpolation {
+            expression: expression.expression,
+        }));
+
         return Ok(());
     }
 
@@ -541,7 +544,7 @@ mod tests {
 
         assert!(matches!(tokens[0].r#type, TokenType::StartTag(_)));
         assert!(tokens[1].r#type == TokenType::Text);
-        assert!(tokens[2].r#type == TokenType::Interpolation);
+        assert!(matches!(tokens[2].r#type, TokenType::Interpolation(_)));
         assert!(tokens[3].r#type == TokenType::Text);
         assert!(matches!(tokens[4].r#type, TokenType::EndTag(_)));
         assert!(tokens[5].r#type == TokenType::EOF);
@@ -553,7 +556,7 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(tokens[0].r#type == TokenType::Interpolation);
+        assert!(matches!(tokens[0].r#type, TokenType::Interpolation(_)));
         assert!(tokens[1].r#type == TokenType::EOF);
     }
 
@@ -563,7 +566,7 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(tokens[0].r#type == TokenType::Interpolation);
+        assert!(matches!(tokens[0].r#type, TokenType::Interpolation(_)));
         assert!(tokens[1].r#type == TokenType::EOF);
     }
 
