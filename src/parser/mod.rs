@@ -161,18 +161,20 @@ impl Parser {
         &mut self,
         interpolation: &InterpolationToken,
     ) -> Result<(), Diagnostic> {
-        let allocator = Allocator::default();
-        let source = interpolation.expression.clone();
+        let allocator = Box::new(Allocator::default());
+        let source = interpolation.expression.clone().into_boxed_str();
 
-        let parser = OxcParser::new(&allocator, source.as_str(), SourceType::default());
+        let parser = OxcParser::new(&*allocator, &source, SourceType::default());
 
         let expression = parser
             .parse_expression()
             .map_err(|_| Diagnostic::invalid_expression(0))?;
 
-        let node = Interpolation { expression };
+        // expression.l
 
-        self.add_leaf(node.as_node().as_rc_cell())?;
+        let node = Interpolation { expression: expression };
+
+        // self.add_leaf(node.as_node().as_rc_cell())?;
         return Ok(());
     }
 }
