@@ -8,16 +8,16 @@ use token::{
 
 use crate::diagnostics::Diagnostic;
 
-pub struct Scanner {
-    source: &'static str,
+pub struct Scanner<'a> {
+    source: &'a str,
     tokens: Vec<Token>,
     start: usize,
     current: usize,
     line: usize,
 }
 
-impl Scanner {
-    pub fn new(source: &'static str) -> Scanner {
+impl Scanner<'_> {
+    pub fn new<'a>(source: &'a str) -> Scanner<'a> {
         return Scanner {
             source,
             tokens: vec![],
@@ -36,7 +36,7 @@ impl Scanner {
         self.tokens.push(Token {
             r#type: TokenType::EOF,
             line: self.line,
-            lexeme: "",
+            lexeme: "".to_string(),
         });
 
         let tokens = mem::replace(&mut self.tokens, vec![]);
@@ -74,7 +74,7 @@ impl Scanner {
 
         self.tokens.push(Token {
             r#type: token_type,
-            lexeme: &text,
+            lexeme: text.to_string(),
             line: self.line,
         });
     }
@@ -135,7 +135,7 @@ impl Scanner {
         return self.source.chars().nth(self.current);
     }
 
-    fn collect_until<F>(&mut self, condition: F) -> Result<&'static str, Diagnostic>
+    fn collect_until<F>(&mut self, condition: F) -> Result<String, Diagnostic>
     where
         F: Fn(char) -> bool,
     {
@@ -153,7 +153,7 @@ impl Scanner {
             return Err(Diagnostic::unexpected_end_of_file(self.line));
         }
 
-        return Ok(&self.source[start..self.current]);
+        return Ok(self.source[start..self.current].to_string());
     }
 
     fn skip_whitespace(&mut self) {

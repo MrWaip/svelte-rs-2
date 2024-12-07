@@ -1,32 +1,32 @@
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
-pub struct Ast {
-    pub template: Vec<RcCell<Node>>,
+pub struct Ast<'a> {
+    pub template: Vec<RcCell<Node<'a>>>,
 }
 
 pub trait FormatNode {
     fn format_node(&self) -> String;
 }
 
-pub trait AsNode {
-    fn as_node(self) -> Node;
+pub trait AsNode<'a> {
+    fn as_node(self) -> Node<'a>;
 }
 
 #[derive(Debug)]
-pub enum Node {
-    Element(Element),
+pub enum Node<'a> {
+    Element(Element<'a>),
     Text(Text),
-    Interpolation(Interpolation),
+    Interpolation(Interpolation<'a>),
 }
 
-impl Node {
-    pub fn as_rc_cell(self) -> RcCell<Node> {
+impl<'a> Node<'a> {
+    pub fn as_rc_cell(self) -> RcCell<Node<'a>> {
         return RcCell::new(self);
     }
 }
 
-impl FormatNode for Node {
+impl<'a> FormatNode for Node<'a> {
     fn format_node(&self) -> String {
         return match self {
             Node::Element(element) => element.format_node(),
@@ -37,30 +37,31 @@ impl FormatNode for Node {
 }
 
 #[derive(Debug)]
-pub struct Interpolation {
-   pub expression: Expression<'static>,
+pub struct Interpolation<'a> {
+    pub expression: Box<Expression<'a>>,
+    // pub expression: &'a str,
 }
 
-impl FormatNode for Interpolation {
+impl<'a> FormatNode for Interpolation<'a> {
     fn format_node(&self) -> String {
         return String::new();
     }
 }
 
-impl AsNode for Interpolation {
-    fn as_node(self) -> Node {
+impl<'a> AsNode<'a> for Interpolation<'a> {
+    fn as_node(self) -> Node<'a> {
         return Node::Interpolation(self);
     }
 }
 
 #[derive(Debug)]
-pub struct Element {
+pub struct Element<'a> {
     pub name: String,
     pub self_closing: bool,
-    pub nodes: Vec<RcCell<Node>>,
+    pub nodes: Vec<RcCell<Node<'a>>>,
 }
 
-impl FormatNode for Element {
+impl<'a> FormatNode for Element<'a> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
@@ -87,8 +88,8 @@ impl FormatNode for Element {
     }
 }
 
-impl AsNode for Element {
-    fn as_node(self) -> Node {
+impl<'a> AsNode<'a> for Element<'a> {
+    fn as_node(self) -> Node<'a> {
         return Node::Element(self);
     }
 }
@@ -104,8 +105,8 @@ impl FormatNode for Text {
     }
 }
 
-impl AsNode for Text {
-    fn as_node(self) -> Node {
+impl<'a> AsNode<'a> for Text {
+    fn as_node(self) -> Node<'a> {
         return Node::Text(self);
     }
 }
