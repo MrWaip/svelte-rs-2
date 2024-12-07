@@ -105,7 +105,7 @@ pub enum ConcatenationPart {
 pub struct Token {
     pub r#type: TokenType,
     pub line: usize,
-    pub lexeme: &'static str,
+    pub lexeme: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

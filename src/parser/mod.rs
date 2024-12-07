@@ -1,11 +1,10 @@
-use std::{mem, rc::Rc};
+use std::{borrow::Borrow, mem, rc::Rc};
 
 use oxc_allocator::Allocator;
-use oxc_parser::Parser as OxcParser;
 use oxc_span::SourceType;
 use rccell::RcCell;
 use scanner::{
-    token::{EndTag, Interpolation as InterpolationToken, StartTag, Token},
+    token::{self, EndTag, Interpolation as InterpolationToken, StartTag, Token},
     Scanner,
 };
 
@@ -16,74 +15,29 @@ use crate::{
 
 pub mod scanner;
 
-pub struct Parser {
-    scanner: Scanner,
-    stack: Vec<RcCell<Node>>,
-    roots: Vec<RcCell<Node>>,
+pub struct Parser<'a> {
+    scanner: Scanner<'a>,
+    allocator: &'a Allocator,
+    nodeStack: NodeStack<'a>,
 }
 
-impl Parser {
-    pub fn new(source: &'static str) -> Parser {
-        let scanner = Scanner::new(source);
+struct NodeStack<'a> {
+    stack: Vec<RcCell<Node<'a>>>,
+    roots: Vec<RcCell<Node<'a>>>,
+}
 
-        return Parser {
-            scanner,
-            stack: vec![],
+impl<'a> NodeStack<'a> {
+    fn new() -> NodeStack<'a> {
+        return NodeStack {
             roots: vec![],
+            stack: vec![],
         };
-    }
-
-    pub fn parse(&mut self) -> Result<Ast, Diagnostic> {
-        for token in self.scanner.scan_tokens()?.iter() {
-            match &token.r#type {
-                scanner::token::TokenType::Text => self.parse_text(token)?,
-                scanner::token::TokenType::StartTag(tag) => self.parse_start_tag(tag)?,
-                scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(tag)?,
-                scanner::token::TokenType::Interpolation(interpolation) => {
-                    self.parse_interpolation(interpolation)?
-                }
-                scanner::token::TokenType::StartIfTag(_start_if_tag) => todo!(),
-                scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
-                scanner::token::TokenType::EndIfTag => todo!(),
-                scanner::token::TokenType::EOF => break,
-            }
-        }
-
-        if !self.stack.is_empty() {
-            return Diagnostic::unclosed_node(0).as_err();
-        }
-
-        let template = mem::replace(&mut self.roots, vec![]);
-
-        return Ok(Ast { template });
-    }
-
-    fn parse_start_tag(&mut self, tag: &StartTag) -> Result<(), Diagnostic> {
-        let name = tag.name.clone();
-        let self_closing = tag.self_closing;
-        // let attributes = &tag.attributes;
-
-        let element = Element {
-            name,
-            self_closing,
-            nodes: vec![],
-        };
-
-        let node = element.as_node().as_rc_cell();
-
-        if self_closing {
-            self.add_leaf(node)?;
-        } else {
-            self.add_node(node)?;
-        }
-
-        return Ok(());
     }
 
     /**
      * Открывает новую Node в стэке и добавляет ее родительскую ноду, если имеется
      */
-    fn add_node(&mut self, node: RcCell<Node>) -> Result<(), Diagnostic> {
+    pub fn add_node(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
         self.add_child(node.clone())?;
 
         self.stack.push(node);
@@ -94,7 +48,7 @@ impl Parser {
     /**
      * Добавляет ноду в родителя, если родителя нет то добавляет ее в root
      */
-    fn add_leaf(&mut self, node: RcCell<Node>) -> Result<(), Diagnostic> {
+    pub fn add_leaf(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
         let is_added = self.add_child(node.clone())?;
 
         if !is_added {
@@ -104,7 +58,15 @@ impl Parser {
         return Ok(());
     }
 
-    fn add_child(&mut self, node: RcCell<Node>) -> Result<bool, Diagnostic> {
+    pub fn add_to_root(&mut self, node: RcCell<Node<'a>>) {
+        self.roots.push(node);
+    }
+
+    pub fn pop(&mut self) -> Option<RcCell<Node<'a>>> {
+        return self.stack.pop();
+    }
+
+    pub fn add_child(&mut self, node: RcCell<Node<'a>>) -> Result<bool, Diagnostic> {
         if let Some(parent) = self.stack.last_mut() {
             let mut parent = parent.borrow_mut();
 
@@ -121,8 +83,79 @@ impl Parser {
         return Ok(false);
     }
 
+    pub fn is_stack_empty(&self) -> bool {
+        return self.stack.is_empty();
+    }
+
+    pub fn get_roots(&mut self) -> Vec<RcCell<Node<'a>>> {
+        let template = mem::replace(&mut self.roots, vec![]);
+
+        return template;
+    }
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(source: &'a str, allocator: &'a Allocator) -> Parser<'a> {
+        let scanner = Scanner::new(source);
+
+        return Parser {
+            scanner,
+            allocator,
+            nodeStack: NodeStack::new(),
+        };
+    }
+
+    pub fn parse(&mut self) -> Result<Ast<'a>, Diagnostic> {
+        let tokens = self.scanner.scan_tokens()?;
+
+        for token in tokens.iter() {
+            match &token.r#type {
+                scanner::token::TokenType::Text => self.parse_text(token)?,
+                scanner::token::TokenType::StartTag(tag) => self.parse_start_tag(tag)?,
+                scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(tag)?,
+                scanner::token::TokenType::Interpolation(interpolation) => {
+                    // self.parse_interpolation(&self.allocator, &interpolation)?;
+                }
+                scanner::token::TokenType::StartIfTag(_start_if_tag) => todo!(),
+                scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
+                scanner::token::TokenType::EndIfTag => todo!(),
+                _ => break,
+            }
+        }
+
+        if !self.nodeStack.is_stack_empty() {
+            return Diagnostic::unclosed_node(0).as_err();
+        }
+
+        return Ok(Ast {
+            template: self.nodeStack.get_roots(),
+        });
+    }
+
+    fn parse_start_tag(&mut self, tag: &StartTag) -> Result<(), Diagnostic> {
+        let name = tag.name.clone();
+        let self_closing = tag.self_closing;
+        // let attributes = &tag.attributes;
+
+        let element = Element {
+            name,
+            self_closing,
+            nodes: vec![],
+        };
+
+        let node = element.as_node().as_rc_cell();
+
+        if self_closing {
+            self.nodeStack.add_leaf(node)?;
+        } else {
+            self.nodeStack.add_node(node)?;
+        }
+
+        return Ok(());
+    }
+
     fn parse_end_tag(&mut self, tag: &EndTag) -> Result<(), Diagnostic> {
-        let closed_node_ref = if let Some(closed_node) = self.stack.pop() {
+        let closed_node_ref = if let Some(closed_node) = self.nodeStack.pop() {
             closed_node
         } else {
             return Err(Diagnostic::no_element_to_close(0));
@@ -140,8 +173,8 @@ impl Parser {
             return Err(Diagnostic::no_element_to_close(0));
         }
 
-        if self.stack.is_empty() {
-            self.roots.push(closed_node_ref.clone());
+        if self.nodeStack.is_stack_empty() {
+            self.nodeStack.add_to_root(closed_node_ref.clone())
         }
 
         Ok(())
@@ -152,31 +185,31 @@ impl Parser {
             value: token.lexeme.to_string(),
         };
 
-        self.add_leaf(node.as_node().as_rc_cell())?;
+        self.nodeStack.add_leaf(node.as_node().as_rc_cell())?;
 
         return Ok(());
     }
 
-    fn parse_interpolation(
-        &mut self,
-        interpolation: &InterpolationToken,
-    ) -> Result<(), Diagnostic> {
-        let allocator = Box::new(Allocator::default());
-        let source = interpolation.expression.clone().into_boxed_str();
+    // fn parse_interpolation(
+    //     &mut self,
+    //     allocator: &'a Allocator,
+    //     interpolation: token::Interpolation
+    // ) -> Result<(), Diagnostic> {
+    //     // // let allocator = self.allocator.as_ref();
+    //     // let oxc_parser = oxc_parser::Parser::new(allocator, interpolation.expression.as, SourceType::default());
 
-        let parser = OxcParser::new(&*allocator, &source, SourceType::default());
+    //     // let expression = oxc_parser
+    //     //     .parse_expression()
+    //     //     .map_err(|_| Diagnostic::invalid_expression(0))?;
 
-        let expression = parser
-            .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(0))?;
+    //     // let node = Interpolation {
+    //     //     expression: Box::new(expression),
+    //     // };
 
-        // expression.l
+    //     // self.nodeStack.add_leaf(node.as_node().as_rc_cell());
 
-        let node = Interpolation { expression: expression };
-
-        // self.add_leaf(node.as_node().as_rc_cell())?;
-        return Ok(());
-    }
+    //     // return Ok(());
+    // }
 }
 
 #[cfg(test)]
@@ -187,7 +220,8 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut parser = Parser::new("prefix <div>text</div>");
+        let allocator = Allocator::default();
+        let mut parser = Parser::new("prefix <div>text</div>", &allocator);
 
         let ast = parser.parse().unwrap().template;
 
@@ -197,14 +231,15 @@ mod tests {
 
     #[test]
     fn self_closed_element() {
-        let mut parser = Parser::new("<img /><body><input/></body>");
+        let allocator = Allocator::default();
+        let mut parser = Parser::new("<img /><body><input/></body>", &allocator);
         let ast = parser.parse().unwrap().template;
 
         assert_node(&ast[0], "<img />");
         assert_node(&ast[1], "<body><input /></body>");
     }
 
-    fn assert_node(node: &RcCell<Node>, expected: &str) {
+    fn assert_node<'a>(node: &'a RcCell<Node<'a>>, expected: &'a str) {
         let node = node.borrow();
         assert_eq!(node.format_node(), expected);
     }
