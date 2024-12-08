@@ -1,61 +1,61 @@
 use core::fmt;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TokenType {
+pub enum TokenType<'a> {
     Text,
-    StartTag(StartTag),
-    EndTag(EndTag),
-    Interpolation(Interpolation),
-    StartIfTag(StartIfTag),
-    ElseTag(ElseTag),
+    StartTag(StartTag<'a>),
+    EndTag(EndTag<'a>),
+    Interpolation(Interpolation<'a>),
+    StartIfTag(StartIfTag<'a>),
+    ElseTag(ElseTag<'a>),
     EndIfTag,
     EOF,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StartTag {
-    pub attributes: Vec<Attribute>,
-    pub name: String,
+pub struct StartTag<'a> {
+    pub attributes: Vec<Attribute<'a>>,
+    pub name: &'a str,
     pub self_closing: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct EndTag {
-    pub name: String,
+pub struct EndTag<'a> {
+    pub name: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct HTMLAttribute {
-    pub name: String,
-    pub value: AttributeValue,
+pub struct HTMLAttribute<'a> {
+    pub name: &'a str,
+    pub value: AttributeValue<'a>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Attribute {
-    HTMLAttribute(HTMLAttribute),
-    ExpressionTag(ExpressionTag),
+pub enum Attribute<'a> {
+    HTMLAttribute(HTMLAttribute<'a>),
+    ExpressionTag(ExpressionTag<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum AttributeValue {
+pub enum AttributeValue<'a> {
     String(String),
-    ExpressionTag(ExpressionTag),
-    Concatenation(Concatenation),
+    ExpressionTag(ExpressionTag<'a>),
+    Concatenation(Concatenation<'a>),
     Empty,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Interpolation  {
-    pub expression: String
+pub struct Interpolation<'a> {
+    pub expression: &'a str,
 }
 
-pub struct JsExpression {
+pub struct JsExpression<'a> {
     pub start: usize,
     pub end: usize,
-    pub expression: String,
+    pub expression: &'a str,
 }
 
-impl fmt::Display for AttributeValue {
+impl<'a> fmt::Display for AttributeValue<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AttributeValue::String(value) => write!(f, "{}", value),
@@ -82,39 +82,39 @@ impl fmt::Display for AttributeValue {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ExpressionTag {
+pub struct ExpressionTag<'a> {
     pub start: usize,
     pub end: usize,
-    pub expression: String,
+    pub expression: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Concatenation {
+pub struct Concatenation<'a> {
     pub start: usize,
     pub end: usize,
-    pub parts: Vec<ConcatenationPart>,
+    pub parts: Vec<ConcatenationPart<'a>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ConcatenationPart {
+pub enum ConcatenationPart<'a> {
     String(String),
-    Expression(ExpressionTag),
+    Expression(ExpressionTag<'a>),
 }
 
 #[derive(Debug)]
-pub struct Token {
-    pub r#type: TokenType,
+pub struct Token<'a> {
+    pub token_type: TokenType<'a>,
     pub line: usize,
-    pub lexeme: String,
+    pub lexeme: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct StartIfTag {
-    pub expression: String,
+pub struct StartIfTag<'a> {
+    pub expression: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ElseTag {
+pub struct ElseTag<'a> {
     pub elseif: bool,
-    pub expression: Option<String>,
+    pub expression: Option<&'a str>,
 }

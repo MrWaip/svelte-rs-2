@@ -10,14 +10,14 @@ use crate::diagnostics::Diagnostic;
 
 pub struct Scanner<'a> {
     source: &'a str,
-    tokens: Vec<Token>,
+    tokens: Vec<Token<'a>>,
     start: usize,
     current: usize,
     line: usize,
 }
 
-impl Scanner<'_> {
-    pub fn new<'a>(source: &'a str) -> Scanner<'a> {
+impl<'a> Scanner<'a> {
+    pub fn new(source: &'a str) -> Scanner<'a> {
         return Scanner {
             source,
             tokens: vec![],
@@ -27,16 +27,16 @@ impl Scanner<'_> {
         };
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token>, Diagnostic> {
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Diagnostic> {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token()?;
         }
 
         self.tokens.push(Token {
-            r#type: TokenType::EOF,
+            token_type: TokenType::EOF,
             line: self.line,
-            lexeme: "".to_string(),
+            lexeme: "",
         });
 
         let tokens = mem::replace(&mut self.tokens, vec![]);
@@ -69,12 +69,12 @@ impl Scanner<'_> {
         return Ok(());
     }
 
-    fn add_token(&mut self, token_type: TokenType) {
+    fn add_token(&mut self, token_type: TokenType<'a>) {
         let text = &self.source[self.start..self.current];
 
         self.tokens.push(Token {
-            r#type: token_type,
-            lexeme: text.to_string(),
+            token_type,
+            lexeme: text,
             line: self.line,
         });
     }
@@ -94,18 +94,18 @@ impl Scanner<'_> {
         return self.current >= self.source.chars().count();
     }
 
-    fn identifier(&mut self) -> String {
-        let mut identifier = String::new();
+    fn identifier(&mut self) -> &'a str {
+        let start = self.current;
 
         while let Some(ch) = self.peek() {
             if ch.is_alphanumeric() || ch == '-' {
-                identifier.push(ch);
                 self.advance();
             } else {
                 break;
             }
         }
-        identifier
+
+        return &self.source[start..self.current];
     }
 
     fn match_char(&mut self, expected: char) -> bool {
@@ -135,7 +135,7 @@ impl Scanner<'_> {
         return self.source.chars().nth(self.current);
     }
 
-    fn collect_until<F>(&mut self, condition: F) -> Result<String, Diagnostic>
+    fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
     where
         F: Fn(char) -> bool,
     {
@@ -153,7 +153,7 @@ impl Scanner<'_> {
             return Err(Diagnostic::unexpected_end_of_file(self.line));
         }
 
-        return Ok(self.source[start..self.current].to_string());
+        return Ok(&self.source[start..self.current]);
     }
 
     fn skip_whitespace(&mut self) {
@@ -195,20 +195,29 @@ impl Scanner<'_> {
         return Ok(());
     }
 
-    fn attributes(&mut self) -> Result<Vec<Attribute>, Diagnostic> {
+    fn attributes(&mut self) -> Result<Vec<Attribute<'a>>, Diagnostic> {
         let mut attributes: Vec<Attribute> = vec![];
 
-        while let Some(ch) = self.peek() {
+        loop {
+            let peeked = self.peek();
+
+            if peeked.is_none() {
+                break;
+            }
+
+            let ch = peeked.unwrap();
+
             if ch == '/' || ch == '>' {
                 break;
             }
 
             self.skip_whitespace();
 
-            if self.peek() == Some('{') {
-                let expression_tag = self.expression_tag()?;
+            let peeked = self.peek();
 
-                attributes.push(Attribute::ExpressionTag(expression_tag));
+            let attr = if peeked == Some('{') {
+                let expression_tag = self.expression_tag()?;
+                Attribute::ExpressionTag(expression_tag)
             } else {
                 let name = self.identifier();
 
@@ -222,8 +231,10 @@ impl Scanner<'_> {
                     value = self.attribute_value()?;
                 }
 
-                attributes.push(Attribute::HTMLAttribute(HTMLAttribute { name, value }));
-            }
+                Attribute::HTMLAttribute(HTMLAttribute { name, value })
+            };
+
+            attributes.push(attr);
 
             // Чтобы сразу дойти до ">" в позиции когда прочитали attr2 <div attr1 attr2   >
             self.skip_whitespace();
@@ -232,7 +243,7 @@ impl Scanner<'_> {
         return Ok(attributes);
     }
 
-    fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {
+    fn attribute_value(&mut self) -> Result<AttributeValue<'a>, Diagnostic> {
         let peeked = self.peek();
 
         if self.peek() == Some('{') {
@@ -261,7 +272,7 @@ impl Scanner<'_> {
         return Ok(AttributeValue::String(value.to_string()));
     }
 
-    fn expression_tag(&mut self) -> Result<ExpressionTag, Diagnostic> {
+    fn expression_tag(&mut self) -> Result<ExpressionTag<'a>, Diagnostic> {
         debug_assert_eq!(self.peek(), Some('{'));
 
         self.advance();
@@ -278,7 +289,7 @@ impl Scanner<'_> {
     fn attribute_concatenation_or_string(
         &mut self,
         quote: char,
-    ) -> Result<AttributeValue, Diagnostic> {
+    ) -> Result<AttributeValue<'a>, Diagnostic> {
         debug_assert_eq!(self.peek(), Some(quote));
 
         let mut has_expression = false;
@@ -371,7 +382,7 @@ impl Scanner<'_> {
         return Ok(());
     }
 
-    fn collect_js_expression(&mut self) -> Result<JsExpression, Diagnostic> {
+    fn collect_js_expression(&mut self) -> Result<JsExpression<'a>, Diagnostic> {
         let mut stack: Vec<bool> = vec![];
         let start = self.current;
 
@@ -396,9 +407,9 @@ impl Scanner<'_> {
             if char == '}' {
                 if stack.pop().is_none() {
                     let expression = if self.current - start > 2 {
-                        self.source[start..self.current - 1].to_string()
+                        &self.source[start..self.current - 1]
                     } else {
-                        String::new()
+                        ""
                     };
 
                     return Ok(JsExpression {
@@ -439,7 +450,7 @@ impl Scanner<'_> {
             return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
-        return match keyword.as_str() {
+        return match keyword {
             "if" => {
                 let expression = self.collect_js_expression()?;
 
@@ -465,7 +476,7 @@ impl Scanner<'_> {
             return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
-        return match keyword.as_str() {
+        return match keyword {
             "if" => {
                 self.skip_whitespace();
 
@@ -493,7 +504,7 @@ impl Scanner<'_> {
             return Err(Diagnostic::unexpected_keyword(self.line));
         }
 
-        return match keyword.as_str() {
+        return match keyword {
             "else" => {
                 self.skip_whitespace();
 
@@ -542,12 +553,12 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(matches!(tokens[0].r#type, TokenType::StartTag(_)));
-        assert!(tokens[1].r#type == TokenType::Text);
-        assert!(matches!(tokens[2].r#type, TokenType::Interpolation(_)));
-        assert!(tokens[3].r#type == TokenType::Text);
-        assert!(matches!(tokens[4].r#type, TokenType::EndTag(_)));
-        assert!(tokens[5].r#type == TokenType::EOF);
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        assert!(tokens[1].token_type == TokenType::Text);
+        assert!(matches!(tokens[2].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[3].token_type == TokenType::Text);
+        assert!(matches!(tokens[4].token_type, TokenType::EndTag(_)));
+        assert!(tokens[5].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -556,8 +567,8 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(matches!(tokens[0].r#type, TokenType::Interpolation(_)));
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -566,8 +577,8 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(matches!(tokens[0].r#type, TokenType::Interpolation(_)));
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -578,7 +589,7 @@ mod tests {
 
         assert_start_tag(&tokens[0], "input", vec![], true);
 
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -604,7 +615,7 @@ mod tests {
             false,
         );
 
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -620,7 +631,7 @@ mod tests {
             false,
         );
 
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -648,7 +659,7 @@ mod tests {
             true,
         );
 
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -664,7 +675,7 @@ mod tests {
             true,
         );
 
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -683,7 +694,7 @@ mod tests {
         let tokens = scanner.scan_tokens().unwrap();
 
         assert_start_if_attribute(&tokens[0], " test ");
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -692,8 +703,8 @@ mod tests {
 
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert!(tokens[0].r#type == TokenType::EndIfTag);
-        assert!(tokens[1].r#type == TokenType::EOF);
+        assert!(tokens[0].token_type == TokenType::EndIfTag);
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
@@ -704,7 +715,7 @@ mod tests {
 
         assert_else_if_tag(&tokens[0], false, None);
         assert_else_if_tag(&tokens[1], true, Some(" test "));
-        assert!(tokens[2].r#type == TokenType::EOF);
+        assert!(tokens[2].token_type == TokenType::EOF);
     }
 
     fn assert_start_tag(
@@ -713,7 +724,7 @@ mod tests {
         expected_attributes: Vec<(&str, &str)>,
         expected_self_closing: bool,
     ) {
-        let start_tag = match &token.r#type {
+        let start_tag = match &token.token_type {
             TokenType::StartTag(t) => t,
             _ => panic!("Expected token.type = StartTag."),
         };
@@ -742,14 +753,14 @@ mod tests {
             let attribute = &actual_attributes[index];
 
             let name = match attribute {
-                Attribute::HTMLAttribute(value) => value.name.clone(),
-                Attribute::ExpressionTag(_) => "$expression".to_string(),
+                Attribute::HTMLAttribute(value) => value.name,
+                Attribute::ExpressionTag(_) => "$expression",
             };
 
             let value: AttributeValue = match attribute {
                 Attribute::HTMLAttribute(value) => value.value.clone(),
                 Attribute::ExpressionTag(value) => {
-                    let res = AttributeValue::String(value.expression.clone());
+                    let res = AttributeValue::String(value.expression.to_string());
                     res
                 }
             };
@@ -773,7 +784,7 @@ mod tests {
     }
 
     fn assert_start_if_attribute(token: &Token, expected_expression: &str) {
-        let tag = match &token.r#type {
+        let tag = match &token.token_type {
             TokenType::StartIfTag(t) => t,
             _ => panic!("Expected token.type = StartIfTag."),
         };
@@ -785,7 +796,7 @@ mod tests {
     }
 
     fn assert_else_if_tag(token: &Token, expected_elseif: bool, expected_expression: Option<&str>) {
-        let tag = match &token.r#type {
+        let tag = match &token.token_type {
             TokenType::ElseTag(t) => t,
             _ => panic!("Expected token.type = ElseTag."),
         };
@@ -793,8 +804,7 @@ mod tests {
         assert_eq!(tag.elseif, expected_elseif, "Elseif did not match");
 
         assert_eq!(
-            tag.expression,
-            expected_expression.map(|v| v.to_string()),
+            tag.expression, expected_expression,
             "Expression did not match"
         );
     }
