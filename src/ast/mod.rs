@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
@@ -39,12 +41,21 @@ impl<'a> FormatNode for Node<'a> {
 #[derive(Debug)]
 pub struct Interpolation<'a> {
     pub expression: Box<Expression<'a>>,
-    // pub expression: &'a str,
 }
 
 impl<'a> FormatNode for Interpolation<'a> {
     fn format_node(&self) -> String {
-        return String::new();
+        let mut result = String::new();
+
+        result.push_str("{ ");
+
+        let mut codegen = oxc_codegen::Codegen::default();
+        codegen.print_expression(&*self.expression);
+        result.push_str(codegen.into_source_text().as_str());
+
+        result.push_str(" }");
+
+        return result;
     }
 }
 

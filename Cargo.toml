@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 oxc_allocator = "0.38.0"
 oxc_ast = "0.38.0"
+oxc_codegen = "0.38.0"
 oxc_parser = "0.38.0"
 oxc_span = "0.38.0"
 rccell = "0.1.3"
