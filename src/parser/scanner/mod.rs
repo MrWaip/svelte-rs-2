@@ -3,7 +3,7 @@ pub mod token;
 use std::{mem, vec};
 use token::{
     Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    Interpolation, JsExpression, StartIfTag, StartTag, Token, TokenType,
+    JsExpression, StartIfTag, StartTag, Token, TokenType,
 };
 
 use crate::diagnostics::Diagnostic;
@@ -278,14 +278,14 @@ impl<'a> Scanner<'a> {
     fn expression_tag(&mut self) -> Result<ExpressionTag<'a>, Diagnostic> {
         debug_assert_eq!(self.peek(), Some('{'));
 
+        let start = self.start;
         self.advance();
 
-        let result = self.collect_js_expression()?;
+        let expression = self.collect_js_expression()?;
 
         return Ok(ExpressionTag {
-            end: result.end,
-            expression: result.expression,
-            start: result.end,
+            expression,
+            span: Span::new(start, self.current),
         });
     }
 
@@ -379,8 +379,9 @@ impl<'a> Scanner<'a> {
 
         let expression = self.collect_js_expression()?;
 
-        self.add_token(TokenType::Interpolation(Interpolation {
-            expression: expression.expression,
+        self.add_token(TokenType::Interpolation(ExpressionTag {
+            expression,
+            span: Span::new(self.start, self.current),
         }));
 
         return Ok(());
@@ -409,16 +410,15 @@ impl<'a> Scanner<'a> {
 
             if char == '}' {
                 if stack.pop().is_none() {
-                    let expression = if self.current - start > 2 {
+                    let value = if self.current - start > 2 {
                         &self.source[start..self.current - 1]
                     } else {
                         ""
                     };
 
                     return Ok(JsExpression {
-                        start,
-                        end: self.current,
-                        expression,
+                        span: Span::new(start, self.current),
+                        value,
                     });
                 }
             }
@@ -468,9 +468,7 @@ impl<'a> Scanner<'a> {
             "if" => {
                 let expression = self.collect_js_expression()?;
 
-                self.add_token(TokenType::StartIfTag(StartIfTag {
-                    expression: expression.expression,
-                }));
+                self.add_token(TokenType::StartIfTag(StartIfTag { expression }));
 
                 Ok(())
             }
@@ -551,7 +549,7 @@ impl<'a> Scanner<'a> {
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
                         elseif: true,
-                        expression: Some(expression.expression),
+                        expression: Some(expression),
                     }));
                 } else {
                     if !self.match_char('}') {
@@ -795,7 +793,7 @@ mod tests {
             let value: AttributeValue = match attribute {
                 Attribute::HTMLAttribute(value) => value.value.clone(),
                 Attribute::ExpressionTag(value) => {
-                    let res = AttributeValue::String(value.expression.to_string());
+                    let res = AttributeValue::String(value.expression.value.to_string());
                     res
                 }
             };
@@ -825,7 +823,7 @@ mod tests {
         };
 
         assert_eq!(
-            tag.expression, expected_expression,
+            tag.expression.value, expected_expression,
             "Expression did not match"
         );
     }
@@ -838,9 +836,12 @@ mod tests {
 
         assert_eq!(tag.elseif, expected_elseif, "Elseif did not match");
 
-        assert_eq!(
-            tag.expression, expected_expression,
-            "Expression did not match"
-        );
+        if let Some(value) = expected_expression {
+            let expr = tag.expression.clone().unwrap();
+
+            assert_eq!(expr.value, value, "Expression did not match");
+        } else {
+            assert!(tag.expression.is_none())
+        }
     }
 }
