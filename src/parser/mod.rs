@@ -7,7 +7,7 @@ use scanner::{
     token::{self, EndTag, ExpressionTag, StartTag, Token},
     Scanner,
 };
-use span::SPAN;
+use span::{Span, SPAN};
 
 use crate::{
     ast::{AsNode, Ast, Element, Interpolation, Node, Text},
@@ -113,8 +113,10 @@ impl<'a> Parser<'a> {
         for token in tokens {
             match token.token_type {
                 scanner::token::TokenType::Text => self.parse_text(&token)?,
-                scanner::token::TokenType::StartTag(tag) => self.parse_start_tag(&tag)?,
-                scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(&tag)?,
+                scanner::token::TokenType::StartTag(tag) => {
+                    self.parse_start_tag(&tag, token.span)?
+                }
+                scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(&tag, token.span)?,
                 scanner::token::TokenType::Interpolation(interpolation) => {
                     self.parse_interpolation(interpolation)?;
                 }
@@ -134,7 +136,7 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn parse_start_tag(&mut self, tag: &StartTag) -> Result<(), Diagnostic> {
+    fn parse_start_tag(&mut self, tag: &StartTag, start_span: Span) -> Result<(), Diagnostic> {
         let name = tag.name;
         let self_closing = tag.self_closing;
         // let attributes = &tag.attributes;
@@ -143,6 +145,7 @@ impl<'a> Parser<'a> {
             name: name.to_string(),
             self_closing,
             nodes: vec![],
+            span: start_span,
         };
 
         let node = element.as_node().as_rc_cell();
@@ -156,16 +159,14 @@ impl<'a> Parser<'a> {
         return Ok(());
     }
 
-    fn parse_end_tag(&mut self, tag: &EndTag) -> Result<(), Diagnostic> {
-        let closed_node_ref = if let Some(closed_node) = self.node_stack.pop() {
-            closed_node
+    fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_span: Span) -> Result<(), Diagnostic> {
+        let closed_node = if let Some(closed_node) = self.node_stack.pop() {
+            closed_node.unwrap()
         } else {
             return Err(Diagnostic::no_element_to_close(SPAN));
         };
 
-        let closed_node = &*closed_node_ref.borrow();
-
-        let element = if let Node::Element(element) = closed_node {
+        let mut element = if let Node::Element(element) = closed_node {
             element
         } else {
             return Err(Diagnostic::no_element_to_close(SPAN));
@@ -175,8 +176,11 @@ impl<'a> Parser<'a> {
             return Err(Diagnostic::no_element_to_close(SPAN));
         }
 
+        let full_span = element.span.merge(&end_span);
+        element.span = full_span;
+
         if self.node_stack.is_stack_empty() {
-            self.node_stack.add_to_root(closed_node_ref.clone())
+            self.node_stack.add_to_root(element.as_node().as_rc_cell())
         }
 
         Ok(())
@@ -185,6 +189,7 @@ impl<'a> Parser<'a> {
     fn parse_text(&mut self, token: &Token) -> Result<(), Diagnostic> {
         let node = Text {
             value: token.lexeme.to_string(),
+            span: token.span,
         };
 
         self.node_stack.add_leaf(node.as_node().as_rc_cell())?;
@@ -204,7 +209,8 @@ impl<'a> Parser<'a> {
             .map_err(|_| Diagnostic::invalid_expression(SPAN))?;
 
         let node = Interpolation {
-            expression: Box::new(expression),
+            expression,
+            span: interpolation.span,
         };
 
         self.node_stack.add_leaf(node.as_node().as_rc_cell())?;

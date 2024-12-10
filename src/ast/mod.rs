@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
+use crate::parser::span::{GetSpan, Span};
+
 pub struct Ast<'a> {
     pub template: Vec<RcCell<Node<'a>>>,
 }
@@ -38,9 +40,20 @@ impl<'a> FormatNode for Node<'a> {
     }
 }
 
+impl<'a> GetSpan for Node<'a> {
+    fn span(&self) -> Span {
+        match self {
+            Node::Element(element) => element.span,
+            Node::Text(text) => text.span,
+            Node::Interpolation(interpolation) => interpolation.span,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Interpolation<'a> {
-    pub expression: Box<Expression<'a>>,
+    pub expression: Expression<'a>,
+    pub span: Span,
 }
 
 impl<'a> FormatNode for Interpolation<'a> {
@@ -50,7 +63,7 @@ impl<'a> FormatNode for Interpolation<'a> {
         result.push_str("{ ");
 
         let mut codegen = oxc_codegen::Codegen::default();
-        codegen.print_expression(&*self.expression);
+        codegen.print_expression(&self.expression);
         result.push_str(codegen.into_source_text().as_str());
 
         result.push_str(" }");
@@ -68,6 +81,7 @@ impl<'a> AsNode<'a> for Interpolation<'a> {
 #[derive(Debug)]
 pub struct Element<'a> {
     pub name: String,
+    pub span: Span,
     pub self_closing: bool,
     pub nodes: Vec<RcCell<Node<'a>>>,
 }
@@ -108,6 +122,7 @@ impl<'a> AsNode<'a> for Element<'a> {
 #[derive(Debug)]
 pub struct Text {
     pub value: String,
+    pub span: Span,
 }
 
 impl FormatNode for Text {
