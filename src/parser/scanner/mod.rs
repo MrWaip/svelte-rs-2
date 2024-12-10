@@ -8,12 +8,13 @@ use token::{
 
 use crate::diagnostics::Diagnostic;
 
+use super::span::Span;
+
 pub struct Scanner<'a> {
     source: &'a str,
     tokens: Vec<Token<'a>>,
     start: usize,
     current: usize,
-    line: usize,
 }
 
 impl<'a> Scanner<'a> {
@@ -23,7 +24,6 @@ impl<'a> Scanner<'a> {
             tokens: vec![],
             current: 0,
             start: 0,
-            line: 1,
         };
     }
 
@@ -35,7 +35,7 @@ impl<'a> Scanner<'a> {
 
         self.tokens.push(Token {
             token_type: TokenType::EOF,
-            line: self.line,
+            span: Span::new(self.start, self.current),
             lexeme: "",
         });
 
@@ -75,17 +75,13 @@ impl<'a> Scanner<'a> {
         self.tokens.push(Token {
             token_type,
             lexeme: text,
-            line: self.line,
+            span: Span::new(self.start, self.current),
         });
     }
 
     fn advance(&mut self) -> char {
         let char = self.source.chars().nth(self.current).unwrap();
         self.current += 1;
-
-        if char == '\n' {
-            self.line += 1;
-        }
 
         return char;
     }
@@ -150,7 +146,10 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(self.line));
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start,
+                self.current,
+            )));
         }
 
         return Ok(&self.source[start..self.current]);
@@ -173,17 +172,21 @@ impl<'a> Scanner<'a> {
     // Tokens:
 
     fn start_tag(&mut self) -> Result<(), Diagnostic> {
+        let start = self.current;
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(self.line));
+            return Err(Diagnostic::invalid_tag_name(Span::new(start, self.current)));
         }
 
         let attributes = self.attributes()?;
         let self_closing = self.match_char('/');
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unterminated_start_tag(self.line));
+            return Err(Diagnostic::unterminated_start_tag(Span::new(
+                start,
+                self.current,
+            )));
         }
 
         self.add_token(TokenType::StartTag(StartTag {
@@ -345,16 +348,17 @@ impl<'a> Scanner<'a> {
     fn end_tag(&mut self) -> Result<(), Diagnostic> {
         self.advance();
 
+        let start = self.current;
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(self.line));
+            return Err(Diagnostic::invalid_tag_name(Span::new(start, self.current)));
         }
 
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(self.line));
+            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name }));
@@ -390,7 +394,6 @@ impl<'a> Scanner<'a> {
             let char = self.advance();
 
             if char == '\n' {
-                self.line += 1;
                 continue;
             }
 
@@ -421,16 +424,23 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        return Err(Diagnostic::unexpected_end_of_file(self.line));
+        return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            start,
+            self.current,
+        )));
     }
 
     fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
+        let start = self.current;
         while self.peek() != Some(quote) && !self.is_at_end() {
             self.advance();
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(self.line));
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start,
+                self.current,
+            )));
         }
 
         self.advance();
@@ -444,10 +454,14 @@ impl<'a> Scanner<'a> {
 
         self.advance();
 
+        let start = self.current;
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(Diagnostic::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(Span::new(
+                self.start,
+                self.current,
+            )));
         }
 
         return match keyword {
@@ -460,7 +474,10 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
-            _ => Err(Diagnostic::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(Span::new(
+                start,
+                self.current,
+            ))),
         };
     }
 
@@ -470,10 +487,14 @@ impl<'a> Scanner<'a> {
 
         self.advance();
 
+        let start = self.current;
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(Diagnostic::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(Span::new(
+                self.start,
+                self.current,
+            )));
         }
 
         return match keyword {
@@ -481,14 +502,17 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(self.line));
+                    return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
                 }
 
                 self.add_token(TokenType::EndIfTag);
 
                 Ok(())
             }
-            _ => Err(Diagnostic::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(Span::new(
+                start,
+                self.current,
+            ))),
         };
     }
 
@@ -498,21 +522,29 @@ impl<'a> Scanner<'a> {
 
         self.advance();
 
+        let start = self.current;
         let keyword = self.identifier();
 
         if keyword.is_empty() {
-            return Err(Diagnostic::unexpected_keyword(self.line));
+            return Err(Diagnostic::unexpected_keyword(Span::new(
+                start,
+                self.current,
+            )));
         }
 
         return match keyword {
             "else" => {
                 self.skip_whitespace();
 
+                let start = self.current;
                 let elseif = self.identifier();
 
                 if !elseif.is_empty() {
                     if elseif != "if".to_string() {
-                        return Err(Diagnostic::unexpected_keyword(self.line));
+                        return Err(Diagnostic::unexpected_keyword(Span::new(
+                            start,
+                            self.current,
+                        )));
                     }
 
                     let expression = self.collect_js_expression()?;
@@ -523,7 +555,7 @@ impl<'a> Scanner<'a> {
                     }));
                 } else {
                     if !self.match_char('}') {
-                        return Err(Diagnostic::unexpected_token(self.line));
+                        return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
                     }
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
@@ -534,7 +566,10 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
-            _ => Err(Diagnostic::unexpected_keyword(self.line)),
+            _ => Err(Diagnostic::unexpected_keyword(Span::new(
+                start,
+                self.current,
+            ))),
         };
     }
 }

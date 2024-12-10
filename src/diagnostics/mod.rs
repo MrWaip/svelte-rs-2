@@ -1,3 +1,5 @@
+use crate::parser::span::Span;
+
 #[derive(Debug, PartialEq)]
 pub enum DiagnosticType {
     UnexpectedEndOfFile,
@@ -14,48 +16,48 @@ pub enum DiagnosticType {
 #[derive(Debug)]
 pub struct Diagnostic {
     pub error_type: DiagnosticType,
-    pub line: usize,
+    pub span: Span,
 }
 
 impl Diagnostic {
-    pub fn new(error_type: DiagnosticType, line: usize) -> Self {
-        Diagnostic { error_type, line }
+    pub fn new(error_type: DiagnosticType, span: Span) -> Self {
+        Diagnostic { error_type, span }
     }
 
-    pub fn unexpected_end_of_file(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedEndOfFile, line);
+    pub fn unexpected_end_of_file(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnexpectedEndOfFile, span);
     }
 
-    pub fn invalid_tag_name(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidTagName, line);
+    pub fn invalid_tag_name(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::InvalidTagName, span);
     }
 
-    pub fn unterminated_start_tag(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnterminatedStartTag, line);
+    pub fn unterminated_start_tag(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnterminatedStartTag, span);
     }
 
-    pub fn invalid_attribute_name(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidAttributeName, line);
+    pub fn invalid_attribute_name(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::InvalidAttributeName, span);
     }
 
-    pub fn unexpected_token(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedToken, line);
+    pub fn unexpected_token(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnexpectedToken, span);
     }
 
-    pub fn unexpected_keyword(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedKeyword, line);
+    pub fn unexpected_keyword(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnexpectedKeyword, span);
     }
 
-    pub fn no_element_to_close(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::NoElementToClose, line);
+    pub fn no_element_to_close(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::NoElementToClose, span);
     }
 
-    pub fn unclosed_node(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnclosedNode, line);
+    pub fn unclosed_node(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnclosedNode, span);
     }
 
-    pub fn invalid_expression(line: usize) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidExpression, line);
+    pub fn invalid_expression(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::InvalidExpression, span);
     }
 
     pub fn as_err<T>(self) -> Result<T, Diagnostic> {

@@ -7,6 +7,7 @@ use scanner::{
     token::{self, EndTag, StartTag, Token},
     Scanner,
 };
+use span::SPAN;
 
 use crate::{
     ast::{AsNode, Ast, Element, Interpolation, Node, Text},
@@ -14,6 +15,7 @@ use crate::{
 };
 
 pub mod scanner;
+pub mod span;
 
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
@@ -119,12 +121,12 @@ impl<'a> Parser<'a> {
                 scanner::token::TokenType::StartIfTag(_start_if_tag) => todo!(),
                 scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
                 scanner::token::TokenType::EndIfTag => todo!(),
-                _ => break,
+                token::TokenType::EOF => break,
             }
         }
 
         if !self.node_stack.is_stack_empty() {
-            return Diagnostic::unclosed_node(0).as_err();
+            return Diagnostic::unclosed_node(SPAN).as_err();
         }
 
         return Ok(Ast {
@@ -158,7 +160,7 @@ impl<'a> Parser<'a> {
         let closed_node_ref = if let Some(closed_node) = self.node_stack.pop() {
             closed_node
         } else {
-            return Err(Diagnostic::no_element_to_close(0));
+            return Err(Diagnostic::no_element_to_close(SPAN));
         };
 
         let closed_node = &*closed_node_ref.borrow();
@@ -166,11 +168,11 @@ impl<'a> Parser<'a> {
         let element = if let Node::Element(element) = closed_node {
             element
         } else {
-            return Err(Diagnostic::no_element_to_close(0));
+            return Err(Diagnostic::no_element_to_close(SPAN));
         };
 
         if element.name != tag.name {
-            return Err(Diagnostic::no_element_to_close(0));
+            return Err(Diagnostic::no_element_to_close(SPAN));
         }
 
         if self.node_stack.is_stack_empty() {
@@ -202,7 +204,7 @@ impl<'a> Parser<'a> {
 
         let expression = oxc_parser
             .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(0))?;
+            .map_err(|_| Diagnostic::invalid_expression(SPAN))?;
 
         let node = Interpolation {
             expression: Box::new(expression),

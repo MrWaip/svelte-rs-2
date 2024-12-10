@@ -1,6 +1,9 @@
 use core::fmt;
 
+use crate::parser::span::{GetSpan, Span};
+
 #[derive(Debug, PartialEq, Eq)]
+
 pub enum TokenType<'a> {
     Text,
     StartTag(StartTag<'a>),
@@ -104,8 +107,14 @@ pub enum ConcatenationPart<'a> {
 #[derive(Debug)]
 pub struct Token<'a> {
     pub token_type: TokenType<'a>,
-    pub line: usize,
+    pub span: Span,
     pub lexeme: &'a str,
+}
+
+impl<'a> GetSpan for Token<'a> {
+    fn span(&self) -> Span {
+        return self.span;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
