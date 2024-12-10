@@ -7,7 +7,7 @@ use scanner::{
     token::{self, EndTag, ExpressionTag, StartTag, Token},
     Scanner,
 };
-use span::{Span, SPAN};
+use span::{GetSpan, Span};
 
 use crate::{
     ast::{AsNode, Ast, Element, Interpolation, Node, Text},
@@ -128,7 +128,9 @@ impl<'a> Parser<'a> {
         }
 
         if !self.node_stack.is_stack_empty() {
-            return Diagnostic::unclosed_node(SPAN).as_err();
+            let node = self.node_stack.pop().unwrap();
+            let span = node.borrow().span();
+            return Diagnostic::unclosed_node(span).as_err();
         }
 
         return Ok(Ast {
@@ -159,24 +161,24 @@ impl<'a> Parser<'a> {
         return Ok(());
     }
 
-    fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_span: Span) -> Result<(), Diagnostic> {
+    fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_tag_span: Span) -> Result<(), Diagnostic> {
         let closed_node = if let Some(closed_node) = self.node_stack.pop() {
             closed_node.unwrap()
         } else {
-            return Err(Diagnostic::no_element_to_close(SPAN));
+            return Err(Diagnostic::no_element_to_close(end_tag_span));
         };
 
         let mut element = if let Node::Element(element) = closed_node {
             element
         } else {
-            return Err(Diagnostic::no_element_to_close(SPAN));
+            return Err(Diagnostic::no_element_to_close(end_tag_span));
         };
 
         if element.name != tag.name {
-            return Err(Diagnostic::no_element_to_close(SPAN));
+            return Err(Diagnostic::no_element_to_close(end_tag_span));
         }
 
-        let full_span = element.span.merge(&end_span);
+        let full_span = element.span.merge(&end_tag_span);
         element.span = full_span;
 
         if self.node_stack.is_stack_empty() {
@@ -206,7 +208,7 @@ impl<'a> Parser<'a> {
 
         let expression = oxc_parser
             .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(SPAN))?;
+            .map_err(|_| Diagnostic::invalid_expression(interpolation.span))?;
 
         let node = Interpolation {
             expression,
