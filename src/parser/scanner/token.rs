@@ -8,7 +8,7 @@ pub enum TokenType<'a> {
     Text,
     StartTag(StartTag<'a>),
     EndTag(EndTag<'a>),
-    Interpolation(Interpolation<'a>),
+    Interpolation(ExpressionTag<'a>),
     StartIfTag(StartIfTag<'a>),
     ElseTag(ElseTag<'a>),
     EndIfTag,
@@ -47,22 +47,25 @@ pub enum AttributeValue<'a> {
     Empty,
 }
 
+// Любое выражение в фигурных скобках { 1 + 1 } или { name } в шаблоне
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Interpolation<'a> {
-    pub expression: &'a str,
+pub struct ExpressionTag<'a> {
+    pub span: Span,
+    pub expression: JsExpression<'a>,
 }
 
+// Самое js выражение
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct JsExpression<'a> {
-    pub start: usize,
-    pub end: usize,
-    pub expression: &'a str,
+    pub span: Span,
+    pub value: &'a str,
 }
 
 impl<'a> fmt::Display for AttributeValue<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AttributeValue::String(value) => write!(f, "{}", value),
-            AttributeValue::ExpressionTag(value) => write!(f, "{}", value.expression),
+            AttributeValue::ExpressionTag(value) => write!(f, "{}", value.expression.value),
             AttributeValue::Empty => write!(f, ""),
             AttributeValue::Concatenation(concatenation) => {
                 let mut result = String::new();
@@ -73,7 +76,7 @@ impl<'a> fmt::Display for AttributeValue<'a> {
                         result.push_str(&part);
                     }
                     ConcatenationPart::Expression(expression_tag) => {
-                        let part = format!("({{{}}})", expression_tag.expression).to_string();
+                        let part = format!("({{{}}})", expression_tag.expression.value).to_string();
                         result.push_str(&part);
                     }
                 });
@@ -82,13 +85,6 @@ impl<'a> fmt::Display for AttributeValue<'a> {
             }
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ExpressionTag<'a> {
-    pub start: usize,
-    pub end: usize,
-    pub expression: &'a str,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -119,11 +115,11 @@ impl<'a> GetSpan for Token<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StartIfTag<'a> {
-    pub expression: &'a str,
+    pub expression: JsExpression<'a>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ElseTag<'a> {
     pub elseif: bool,
-    pub expression: Option<&'a str>,
+    pub expression: Option<JsExpression<'a>>,
 }

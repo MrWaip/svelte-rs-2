@@ -4,7 +4,7 @@ use oxc_allocator::Allocator;
 use oxc_span::SourceType;
 use rccell::RcCell;
 use scanner::{
-    token::{self, EndTag, StartTag, Token},
+    token::{self, EndTag, ExpressionTag, StartTag, Token},
     Scanner,
 };
 use span::SPAN;
@@ -192,13 +192,10 @@ impl<'a> Parser<'a> {
         return Ok(());
     }
 
-    fn parse_interpolation(
-        &mut self,
-        interpolation: token::Interpolation<'a>,
-    ) -> Result<(), Diagnostic> {
+    fn parse_interpolation(&mut self, interpolation: ExpressionTag<'a>) -> Result<(), Diagnostic> {
         let oxc_parser = oxc_parser::Parser::new(
             &self.allocator,
-            &interpolation.expression,
+            &interpolation.expression.value,
             SourceType::default(),
         );
 
