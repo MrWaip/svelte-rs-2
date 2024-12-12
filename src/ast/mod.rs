@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, vec};
 
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
@@ -84,6 +84,7 @@ pub struct Element<'a> {
     pub span: Span,
     pub self_closing: bool,
     pub nodes: Vec<RcCell<Node<'a>>>,
+    pub attributes: Vec<Attribute<'a>>,
 }
 
 impl<'a> FormatNode for Element<'a> {
@@ -93,8 +94,39 @@ impl<'a> FormatNode for Element<'a> {
         result.push_str("<");
         result.push_str(&self.name);
 
+        if !self.attributes.is_empty() {
+            result.push_str(" ");
+            let mut attributes = vec![];
+
+            for attr in self.attributes.iter() {
+                let mut result = String::new();
+
+                match attr {
+                    Attribute::HTMLAttribute(attr) => {
+                        result.push_str(attr.name);
+
+                        match &attr.value {
+                            AttributeValue::String(value) => {
+                                result.push_str(format!("=\"{}\"", value).as_str());
+                            }
+                            AttributeValue::Boolean => (),
+                            AttributeValue::Expression(expression) => {
+                                let mut codegen = oxc_codegen::Codegen::default();
+                                codegen.print_expression(&expression);
+                                result.push_str(format!("={{{}}}", codegen.into_source_text().as_str()).as_str());
+                            }
+                        }
+                    }
+                }
+
+                attributes.push(result);
+            }
+
+            result.push_str(attributes.join(" ").as_str());
+        }
+
         if self.self_closing {
-            result.push_str(" />");
+            result.push_str("/>");
             return result;
         } else {
             result.push_str(">");
@@ -135,4 +167,24 @@ impl<'a> AsNode<'a> for Text {
     fn as_node(self) -> Node<'a> {
         return Node::Text(self);
     }
+}
+
+#[derive(Debug)]
+pub enum Attribute<'a> {
+    HTMLAttribute(HTMLAttribute<'a>),
+    // ExpressionTag(ExpressionTag<'a>),
+}
+
+#[derive(Debug)]
+pub struct HTMLAttribute<'a> {
+    pub name: &'a str,
+    pub value: AttributeValue<'a>,
+}
+
+#[derive(Debug)]
+pub enum AttributeValue<'a> {
+    String(&'a str), // ExpressionTag(ExpressionTag<'a>),
+    Expression(Expression<'a>),
+    Boolean, // Concatenation(Concatenation<'a>),
+             // Empty,
 }

@@ -41,7 +41,7 @@ pub enum Attribute<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AttributeValue<'a> {
-    String(String),
+    String(&'a str),
     ExpressionTag(ExpressionTag<'a>),
     Concatenation(Concatenation<'a>),
     Empty,
@@ -96,7 +96,7 @@ pub struct Concatenation<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConcatenationPart<'a> {
-    String(String),
+    String(&'a str),
     Expression(ExpressionTag<'a>),
 }
 

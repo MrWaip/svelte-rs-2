@@ -272,7 +272,7 @@ impl<'a> Scanner<'a> {
             };
         })?;
 
-        return Ok(AttributeValue::String(value.to_string()));
+        return Ok(AttributeValue::String(value));
     }
 
     fn expression_tag(&mut self) -> Result<ExpressionTag<'a>, Diagnostic> {
@@ -298,10 +298,10 @@ impl<'a> Scanner<'a> {
         let mut has_expression = false;
         let start = self.current;
         let mut parts: Vec<ConcatenationPart> = vec![];
-        let mut current_part = String::new();
 
         // consume first quote
         self.advance();
+        let mut current_pos: usize = self.current;
 
         while let Some(char) = self.peek() {
             if char == quote {
@@ -310,32 +310,34 @@ impl<'a> Scanner<'a> {
 
             if char == '{' {
                 has_expression = true;
+                let part = &self.source[current_pos..self.current];
 
-                if !current_part.is_empty() {
-                    parts.push(ConcatenationPart::String(current_part));
-                    current_part = String::new();
+                if !part.is_empty() {
+                    parts.push(ConcatenationPart::String(part));
                 }
 
                 let expression_tag = self.expression_tag()?;
 
                 parts.push(ConcatenationPart::Expression(expression_tag));
+                current_pos = self.current;
 
                 continue;
             }
 
-            current_part.push(char);
             self.advance();
         }
+
+        let last_part = &self.source[current_pos..self.current];
 
         // consume last quote
         self.advance();
 
-        if has_expression && !current_part.is_empty() {
-            parts.push(ConcatenationPart::String(current_part.clone()));
+        if has_expression && !last_part.is_empty() {
+            parts.push(ConcatenationPart::String(last_part));
         }
 
         if !has_expression && parts.is_empty() {
-            return Ok(AttributeValue::String(current_part));
+            return Ok(AttributeValue::String(last_part));
         }
 
         return Ok(AttributeValue::Concatenation(Concatenation {
@@ -793,7 +795,7 @@ mod tests {
             let value: AttributeValue = match attribute {
                 Attribute::HTMLAttribute(value) => value.value.clone(),
                 Attribute::ExpressionTag(value) => {
-                    let res = AttributeValue::String(value.expression.value.to_string());
+                    let res = AttributeValue::String(value.expression.value);
                     res
                 }
             };
