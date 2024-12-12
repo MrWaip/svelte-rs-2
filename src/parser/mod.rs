@@ -1,6 +1,7 @@
 use std::mem;
 
 use oxc_allocator::Allocator;
+use oxc_ast::ast::Expression;
 use oxc_span::SourceType;
 use rccell::RcCell;
 use scanner::{
@@ -10,7 +11,9 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use crate::{
-    ast::{AsNode, Ast, Element, Interpolation, Node, Text},
+    ast::{
+        AsNode, Ast, Attribute, AttributeValue, Element, HTMLAttribute, Interpolation, Node, Text,
+    },
     diagnostics::Diagnostic,
 };
 
@@ -138,16 +141,17 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn parse_start_tag(&mut self, tag: &StartTag, start_span: Span) -> Result<(), Diagnostic> {
+    fn parse_start_tag(&mut self, tag: &StartTag<'a>, start_span: Span) -> Result<(), Diagnostic> {
         let name = tag.name;
         let self_closing = tag.self_closing;
-        // let attributes = &tag.attributes;
+        let attributes = self.parse_attributes(&tag.attributes)?;
 
         let element = Element {
             name: name.to_string(),
             self_closing,
             nodes: vec![],
             span: start_span,
+            attributes,
         };
 
         let node = element.as_node().as_rc_cell();
@@ -200,15 +204,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_interpolation(&mut self, interpolation: ExpressionTag<'a>) -> Result<(), Diagnostic> {
-        let oxc_parser = oxc_parser::Parser::new(
-            &self.allocator,
-            &interpolation.expression.value,
-            SourceType::default(),
-        );
-
-        let expression = oxc_parser
-            .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(interpolation.span))?;
+        let expression =
+            self.parse_js_expression(&interpolation.expression.value, interpolation.span)?;
 
         let node = Interpolation {
             expression,
@@ -218,6 +215,57 @@ impl<'a> Parser<'a> {
         self.node_stack.add_leaf(node.as_node().as_rc_cell())?;
 
         return Ok(());
+    }
+
+    fn parse_js_expression(
+        &self,
+        source: &'a str,
+        span: Span,
+    ) -> Result<Expression<'a>, Diagnostic> {
+        let oxc_parser = oxc_parser::Parser::new(&self.allocator, source, SourceType::default());
+
+        let expression = oxc_parser
+            .parse_expression()
+            .map_err(|_| Diagnostic::invalid_expression(span))?;
+
+        return Ok(expression);
+    }
+
+    fn parse_attributes(
+        &self,
+        token_attrs: &Vec<token::Attribute<'a>>,
+    ) -> Result<Vec<Attribute<'a>>, Diagnostic> {
+        let mut attributes: Vec<Attribute<'a>> = vec![];
+
+        for attribute in token_attrs.iter() {
+            match attribute {
+                token::Attribute::HTMLAttribute(token_attr) => {
+                    let value: AttributeValue = match &token_attr.value {
+                        token::AttributeValue::String(value) => AttributeValue::String(value),
+                        token::AttributeValue::ExpressionTag(expression_tag) => {
+                            let expression = self.parse_js_expression(
+                                &expression_tag.expression.value,
+                                expression_tag.span,
+                            )?;
+
+                            AttributeValue::Expression(expression)
+                        }
+                        token::AttributeValue::Concatenation(_) => todo!(),
+                        token::AttributeValue::Empty => AttributeValue::Boolean,
+                    };
+
+                    let html_attr = HTMLAttribute {
+                        name: token_attr.name,
+                        value,
+                    };
+
+                    attributes.push(Attribute::HTMLAttribute(html_attr));
+                }
+                token::Attribute::ExpressionTag(_) => todo!(),
+            }
+        }
+
+        return Ok(attributes);
     }
 }
 
@@ -244,8 +292,8 @@ mod tests {
         let mut parser = Parser::new("<img /><body><input/></body>", &allocator);
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], "<img />");
-        assert_node(&ast[1], "<body><input /></body>");
+        assert_node(&ast[0], "<img/>");
+        assert_node(&ast[1], "<body><input/></body>");
     }
 
     fn assert_node<'a>(node: &'a RcCell<Node<'a>>, expected: &'a str) {
@@ -260,5 +308,17 @@ mod tests {
         let ast = parser.parse().unwrap().template;
 
         assert_node(&ast[0], "{ id - 22 + 1 }");
+    }
+
+    #[test]
+    fn smoke_tag_with_attributes() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"<script lang="ts" disabled  value={value}>source</script>"#,
+            &allocator,
+        );
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(&ast[0], r#"<script lang="ts" disabled value={value}>source</script>"#);
     }
 }
