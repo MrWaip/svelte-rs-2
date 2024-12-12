@@ -113,7 +113,10 @@ impl<'a> FormatNode for Element<'a> {
                             AttributeValue::Expression(expression) => {
                                 let mut codegen = oxc_codegen::Codegen::default();
                                 codegen.print_expression(&expression);
-                                result.push_str(format!("={{{}}}", codegen.into_source_text().as_str()).as_str());
+                                result.push_str(
+                                    format!("={{{}}}", codegen.into_source_text().as_str())
+                                        .as_str(),
+                                );
                             }
                         }
                     }
@@ -183,8 +186,8 @@ pub struct HTMLAttribute<'a> {
 
 #[derive(Debug)]
 pub enum AttributeValue<'a> {
-    String(&'a str), // ExpressionTag(ExpressionTag<'a>),
+    String(&'a str),
     Expression(Expression<'a>),
-    Boolean, // Concatenation(Concatenation<'a>),
-             // Empty,
+    Boolean,
+    // Concatenation(Concatenation<'a>),
 }
