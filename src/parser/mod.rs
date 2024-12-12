@@ -319,6 +319,6 @@ mod tests {
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], r#"<script lang="ts" disabled value={value}>source</script>"#);
+        assert_node(&ast[0], r#"<script lang="ts" disabled value={value} label="at: {date} time">source</script>"#);
     }
 }
