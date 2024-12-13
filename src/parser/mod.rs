@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
                 scanner::token::TokenType::Interpolation(interpolation) => {
                     self.parse_interpolation(interpolation)?;
                 }
-                scanner::token::TokenType::StartIfTag(_start_if_tag) => todo!(),
+                scanner::token::TokenType::StartIfTag(_start_if_tag) => self.parse_start_if_tag()?,
                 scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
                 scanner::token::TokenType::EndIfTag => todo!(),
                 token::TokenType::EOF => break,
@@ -140,6 +140,11 @@ impl<'a> Parser<'a> {
         return Ok(Ast {
             template: self.node_stack.get_roots(),
         });
+    }
+
+    fn parse_start_if_tag(&mut self) -> Result<(), Diagnostic> {
+        todo!();
+        return Ok(());
     }
 
     fn parse_start_tag(&mut self, tag: &StartTag<'a>, start_span: Span) -> Result<(), Diagnostic> {
@@ -353,6 +358,21 @@ mod tests {
         assert_node(
             &ast[0],
             r#"<script lang="ts" {id} disabled value={value} label="at: {date} time">source</script>"#,
+        );
+    }
+
+    #[test]
+    fn smoke_if_tag() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"{#if true }<div>title</div>{/if}"#,
+            &allocator,
+        );
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(
+            &ast[0],
+            r#"{#if true }<div>title</div>{/if}"#,
         );
     }
 }
