@@ -12,7 +12,8 @@ use span::{GetSpan, Span};
 
 use crate::{
     ast::{
-        AsNode, Ast, Attribute, AttributeValue, Element, HTMLAttribute, Interpolation, Node, Text,
+        AsNode, Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
+        HTMLAttribute, Interpolation, Node, Text,
     },
     diagnostics::Diagnostic,
 };
@@ -250,7 +251,30 @@ impl<'a> Parser<'a> {
 
                             AttributeValue::Expression(expression)
                         }
-                        token::AttributeValue::Concatenation(_) => todo!(),
+                        token::AttributeValue::Concatenation(token) => {
+                            let mut parts: Vec<ConcatenationPart<'a>> = vec![];
+
+                            for part in token.parts.iter() {
+                                match part {
+                                    token::ConcatenationPart::String(value) => {
+                                        parts.push(ConcatenationPart::String(value));
+                                    }
+                                    token::ConcatenationPart::Expression(expression_tag) => {
+                                        let expression = self.parse_js_expression(
+                                            &expression_tag.expression.value,
+                                            expression_tag.span,
+                                        )?;
+
+                                        parts.push(ConcatenationPart::Expression(expression));
+                                    }
+                                }
+                            }
+
+                            AttributeValue::Concatenation(Concatenation {
+                                parts,
+                                span: Span::new(token.start, token.end),
+                            })
+                        }
                         token::AttributeValue::Empty => AttributeValue::Boolean,
                     };
 
@@ -261,7 +285,14 @@ impl<'a> Parser<'a> {
 
                     attributes.push(Attribute::HTMLAttribute(html_attr));
                 }
-                token::Attribute::ExpressionTag(_) => todo!(),
+                token::Attribute::ExpressionTag(expression_tag) => {
+                    let expression = self.parse_js_expression(
+                        &expression_tag.expression.value,
+                        expression_tag.span,
+                    )?;
+
+                    attributes.push(Attribute::Expression(expression));
+                }
             }
         }
 
@@ -314,11 +345,14 @@ mod tests {
     fn smoke_tag_with_attributes() {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
-            r#"<script lang="ts" disabled  value={value}>source</script>"#,
+            r#"<script lang="ts" {id} disabled  value={value} label="at: {date} time">source</script>"#,
             &allocator,
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], r#"<script lang="ts" disabled value={value} label="at: {date} time">source</script>"#);
+        assert_node(
+            &ast[0],
+            r#"<script lang="ts" {id} disabled value={value} label="at: {date} time">source</script>"#,
+        );
     }
 }

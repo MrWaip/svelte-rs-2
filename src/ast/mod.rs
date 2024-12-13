@@ -118,7 +118,36 @@ impl<'a> FormatNode for Element<'a> {
                                         .as_str(),
                                 );
                             }
+                            AttributeValue::Concatenation(concatenation) => {
+                                result.push_str("=\"");
+
+                                for part in concatenation.parts.iter() {
+                                    match part {
+                                        ConcatenationPart::String(value) => result.push_str(value),
+                                        ConcatenationPart::Expression(expression) => {
+                                            let mut codegen = oxc_codegen::Codegen::default();
+                                            codegen.print_expression(&expression);
+                                            result.push_str(
+                                                format!(
+                                                    "{{{}}}",
+                                                    codegen.into_source_text().as_str()
+                                                )
+                                                .as_str(),
+                                            );
+                                        }
+                                    }
+                                }
+
+                                result.push_str("\"");
+                            }
                         }
+                    }
+                    Attribute::Expression(expression) => {
+                        let mut codegen = oxc_codegen::Codegen::default();
+                        codegen.print_expression(&expression);
+                        result.push_str(
+                            format!("{{{}}}", codegen.into_source_text().as_str()).as_str(),
+                        );
                     }
                 }
 
@@ -175,7 +204,7 @@ impl<'a> AsNode<'a> for Text {
 #[derive(Debug)]
 pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
-    // ExpressionTag(ExpressionTag<'a>),
+    Expression(Expression<'a>),
 }
 
 #[derive(Debug)]
@@ -189,5 +218,17 @@ pub enum AttributeValue<'a> {
     String(&'a str),
     Expression(Expression<'a>),
     Boolean,
-    // Concatenation(Concatenation<'a>),
+    Concatenation(Concatenation<'a>),
+}
+
+#[derive(Debug)]
+pub struct Concatenation<'a> {
+    pub parts: Vec<ConcatenationPart<'a>>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum ConcatenationPart<'a> {
+    String(&'a str),
+    Expression(Expression<'a>),
 }
