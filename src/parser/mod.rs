@@ -84,7 +84,7 @@ impl<'a> NodeStack<'a> {
                     if_block.push(node.clone());
                 }
                 Node::Text(_) => unreachable!(),
-                Node::Interpolation(_) => todo!(),
+                Node::Interpolation(_) => unreachable!(),
             };
 
             return Ok(true);
@@ -421,5 +421,20 @@ mod tests {
         let ast = parser.parse().unwrap().template;
 
         assert_node(&ast[0], r#"{#if true }<div>title</div>{/if}"#);
+    }
+
+    #[test]
+    fn smoke_if_else_tag() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"{#if true }<div>title</div>{:else}<h1>big title</h1>{/if}"#,
+            &allocator,
+        );
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(
+            &ast[0],
+            r#"{#if true }<div>title</div>{:else}<h1>big title</h1>{/if}"#,
+        );
     }
 }
