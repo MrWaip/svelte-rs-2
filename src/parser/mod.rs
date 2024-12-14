@@ -1,4 +1,4 @@
-use std::{mem, ops::Deref};
+use std::mem;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
@@ -132,7 +132,7 @@ impl<'a> Parser<'a> {
                     self.parse_start_if_tag(&start_if_tag, token.span)?
                 }
                 scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
-                scanner::token::TokenType::EndIfTag => todo!(),
+                scanner::token::TokenType::EndIfTag => self.parse_end_if_tag(token.span)?,
                 token::TokenType::EOF => break,
             }
         }
@@ -329,6 +329,32 @@ impl<'a> Parser<'a> {
         }
 
         return Ok(attributes);
+    }
+
+    fn parse_end_if_tag(&mut self, span: Span) -> Result<(), Diagnostic> {
+        let mut option = self.node_stack.pop();
+
+        let cell = if let Some(cell) = option.as_mut() {
+            cell
+        } else {
+            return Err(Diagnostic::no_if_block_to_close(span));
+        };
+
+        let mut borrow = cell.borrow_mut();
+
+        let if_block = if let Node::IfBlock(if_block) = &mut *borrow {
+            if_block
+        } else {
+            return Err(Diagnostic::no_if_block_to_close(span));
+        };
+
+        if_block.span = if_block.span.merge(&span);
+
+        if self.node_stack.is_stack_empty() {
+            self.node_stack.add_to_root(cell.clone())
+        }
+
+        Ok(())
     }
 }
 

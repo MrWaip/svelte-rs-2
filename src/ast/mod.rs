@@ -1,5 +1,3 @@
-use std::{fmt::Debug, vec};
-
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
@@ -65,9 +63,8 @@ impl<'a> FormatNode for Interpolation<'a> {
 
         result.push_str("{ ");
 
-        let mut codegen = oxc_codegen::Codegen::default();
-        codegen.print_expression(&self.expression);
-        result.push_str(codegen.into_source_text().as_str());
+        let expr_string = print_expression(&self.expression);
+        result.push_str(&expr_string);
 
         result.push_str(" }");
 
@@ -101,7 +98,18 @@ impl<'a> IfBlock<'a> {
 
 impl<'a> FormatNode for IfBlock<'a> {
     fn format_node(&self) -> String {
-        todo!();
+        let mut result = String::new();
+
+        result.push_str(&format!("{{#if {} }}", &print_expression(&self.test)));
+
+        for node in self.consequent.iter() {
+            let formatted = &node.borrow().format_node();
+            result.push_str(formatted);
+        }
+
+        result.push_str("{/if}");
+
+        return result;
     }
 }
 
@@ -144,12 +152,8 @@ impl<'a> FormatNode for Element<'a> {
                             }
                             AttributeValue::Boolean => (),
                             AttributeValue::Expression(expression) => {
-                                let mut codegen = oxc_codegen::Codegen::default();
-                                codegen.print_expression(&expression);
-                                result.push_str(
-                                    format!("={{{}}}", codegen.into_source_text().as_str())
-                                        .as_str(),
-                                );
+                                let expr_string = print_expression(expression);
+                                result.push_str(format!("={{{}}}", expr_string).as_str());
                             }
                             AttributeValue::Concatenation(concatenation) => {
                                 result.push_str("=\"");
@@ -158,15 +162,9 @@ impl<'a> FormatNode for Element<'a> {
                                     match part {
                                         ConcatenationPart::String(value) => result.push_str(value),
                                         ConcatenationPart::Expression(expression) => {
-                                            let mut codegen = oxc_codegen::Codegen::default();
-                                            codegen.print_expression(&expression);
-                                            result.push_str(
-                                                format!(
-                                                    "{{{}}}",
-                                                    codegen.into_source_text().as_str()
-                                                )
-                                                .as_str(),
-                                            );
+                                            let expr_string = print_expression(expression);
+                                            result
+                                                .push_str(format!("{{{}}}", expr_string).as_str());
                                         }
                                     }
                                 }
@@ -176,11 +174,8 @@ impl<'a> FormatNode for Element<'a> {
                         }
                     }
                     Attribute::Expression(expression) => {
-                        let mut codegen = oxc_codegen::Codegen::default();
-                        codegen.print_expression(&expression);
-                        result.push_str(
-                            format!("{{{}}}", codegen.into_source_text().as_str()).as_str(),
-                        );
+                        let expr_string = print_expression(expression);
+                        result.push_str(format!("{{{}}}", expr_string).as_str());
                     }
                 }
 
@@ -264,4 +259,10 @@ pub struct Concatenation<'a> {
 pub enum ConcatenationPart<'a> {
     String(&'a str),
     Expression(Expression<'a>),
+}
+
+fn print_expression<'a>(expression: &Expression<'a>) -> String {
+    let mut codegen = oxc_codegen::Codegen::default();
+    codegen.print_expression(expression);
+    return codegen.into_source_text();
 }
