@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, ops::Deref};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
@@ -13,7 +13,7 @@ use span::{GetSpan, Span};
 use crate::{
     ast::{
         AsNode, Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
-        HTMLAttribute, Interpolation, Node, Text,
+        HTMLAttribute, IfBlock, Interpolation, Node, Text,
     },
     diagnostics::Diagnostic,
 };
@@ -80,7 +80,11 @@ impl<'a> NodeStack<'a> {
                 Node::Element(element) => {
                     element.nodes.push(node.clone());
                 }
-                _ => unreachable!(),
+                Node::IfBlock(if_block) => {
+                    if_block.push(node.clone());
+                }
+                Node::Text(_) => unreachable!(),
+                Node::Interpolation(_) => todo!(),
             };
 
             return Ok(true);
@@ -124,7 +128,9 @@ impl<'a> Parser<'a> {
                 scanner::token::TokenType::Interpolation(interpolation) => {
                     self.parse_interpolation(interpolation)?;
                 }
-                scanner::token::TokenType::StartIfTag(_start_if_tag) => self.parse_start_if_tag()?,
+                scanner::token::TokenType::StartIfTag(start_if_tag) => {
+                    self.parse_start_if_tag(&start_if_tag, token.span)?
+                }
                 scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
                 scanner::token::TokenType::EndIfTag => todo!(),
                 token::TokenType::EOF => break,
@@ -142,8 +148,26 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn parse_start_if_tag(&mut self) -> Result<(), Diagnostic> {
-        todo!();
+    fn parse_start_if_tag(
+        &mut self,
+        start_if_tag: &token::StartIfTag<'a>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let if_block = IfBlock {
+            span,
+            elseif: false,
+            alternate: None,
+            consequent: vec![],
+            test: self.parse_js_expression(
+                &start_if_tag.expression.value,
+                start_if_tag.expression.span,
+            )?,
+        };
+
+        let node = if_block.as_node().as_rc_cell();
+
+        self.node_stack.add_node(node)?;
+
         return Ok(());
     }
 
@@ -172,13 +196,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_tag_span: Span) -> Result<(), Diagnostic> {
-        let closed_node = if let Some(closed_node) = self.node_stack.pop() {
-            closed_node.unwrap()
+        let mut option = self.node_stack.pop();
+
+        let cell = if let Some(cell) = option.as_mut() {
+            cell
         } else {
             return Err(Diagnostic::no_element_to_close(end_tag_span));
         };
 
-        let mut element = if let Node::Element(element) = closed_node {
+        let mut borrow = cell.borrow_mut();
+
+        let element = if let Node::Element(element) = &mut *borrow {
             element
         } else {
             return Err(Diagnostic::no_element_to_close(end_tag_span));
@@ -188,11 +216,10 @@ impl<'a> Parser<'a> {
             return Err(Diagnostic::no_element_to_close(end_tag_span));
         }
 
-        let full_span = element.span.merge(&end_tag_span);
-        element.span = full_span;
+        element.span = element.span.merge(&end_tag_span);
 
         if self.node_stack.is_stack_empty() {
-            self.node_stack.add_to_root(element.as_node().as_rc_cell())
+            self.node_stack.add_to_root(cell.clone())
         }
 
         Ok(())
@@ -364,15 +391,9 @@ mod tests {
     #[test]
     fn smoke_if_tag() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
-            r#"{#if true }<div>title</div>{/if}"#,
-            &allocator,
-        );
+        let mut parser = Parser::new(r#"{#if true }<div>title</div>{/if}"#, &allocator);
         let ast = parser.parse().unwrap().template;
 
-        assert_node(
-            &ast[0],
-            r#"{#if true }<div>title</div>{/if}"#,
-        );
+        assert_node(&ast[0], r#"{#if true }<div>title</div>{/if}"#);
     }
 }
