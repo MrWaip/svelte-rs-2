@@ -27,6 +27,10 @@ impl<'a> Node<'a> {
     pub fn as_rc_cell(self) -> RcCell<Node<'a>> {
         return RcCell::new(self);
     }
+
+    pub fn is_if_block(&self) -> bool {
+        return matches!(self, Node::IfBlock(_));
+    }
 }
 
 impl<'a> FormatNode for Node<'a> {
@@ -82,7 +86,7 @@ impl<'a> AsNode<'a> for Interpolation<'a> {
 pub struct IfBlock<'a> {
     pub span: Span,
     pub test: Expression<'a>,
-    pub elseif: bool,
+    pub is_elseif: bool,
     pub consequent: Vec<RcCell<Node<'a>>>,
     pub alternate: Option<Vec<RcCell<Node<'a>>>>,
 }
@@ -100,14 +104,35 @@ impl<'a> FormatNode for IfBlock<'a> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
-        result.push_str(&format!("{{#if {} }}", &print_expression(&self.test)));
+        if self.is_elseif {
+            result.push_str(&format!("{{:else if {} }}", &print_expression(&self.test)));
+        } else {
+            result.push_str(&format!("{{#if {} }}", &print_expression(&self.test)));
+        }
 
         for node in self.consequent.iter() {
             let formatted = &node.borrow().format_node();
             result.push_str(formatted);
         }
 
-        result.push_str("{/if}");
+        if let Some(alternate) = &self.alternate {
+            if let Some(cell) = alternate.first() {
+                let borrow = &*cell.borrow();
+
+                if !borrow.is_if_block() {
+                    result.push_str("{:else}");
+                }
+            }
+
+            for node in alternate.iter() {
+                let formatted = &node.borrow().format_node();
+                result.push_str(formatted);
+            }
+        }
+
+        if !self.is_elseif {
+            result.push_str("{/if}");
+        }
 
         return result;
     }

@@ -72,6 +72,10 @@ impl<'a> NodeStack<'a> {
         return self.stack.pop();
     }
 
+    pub fn last_mut(&mut self) -> Option<&mut RcCell<Node<'a>>> {
+        return self.stack.last_mut();
+    }
+
     pub fn add_child(&mut self, node: RcCell<Node<'a>>) -> Result<bool, Diagnostic> {
         if let Some(parent) = self.stack.last_mut() {
             let mut parent = parent.borrow_mut();
@@ -131,7 +135,9 @@ impl<'a> Parser<'a> {
                 scanner::token::TokenType::StartIfTag(start_if_tag) => {
                     self.parse_start_if_tag(&start_if_tag, token.span)?
                 }
-                scanner::token::TokenType::ElseTag(_else_tag) => todo!(),
+                scanner::token::TokenType::ElseTag(else_tag) => {
+                    self.parse_else_tag(&else_tag, token.span)?
+                }
                 scanner::token::TokenType::EndIfTag => self.parse_end_if_tag(token.span)?,
                 token::TokenType::EOF => break,
             }
@@ -155,7 +161,7 @@ impl<'a> Parser<'a> {
     ) -> Result<(), Diagnostic> {
         let if_block = IfBlock {
             span,
-            elseif: false,
+            is_elseif: false,
             alternate: None,
             consequent: vec![],
             test: self.parse_js_expression(
@@ -355,6 +361,38 @@ impl<'a> Parser<'a> {
         }
 
         Ok(())
+    }
+
+    fn parse_else_tag(
+        &mut self,
+        else_tag: &token::ElseTag<'a>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let mut option = self.node_stack.last_mut();
+
+        let cell = if let Some(cell) = option.as_mut() {
+            cell
+        } else {
+            return Err(Diagnostic::no_if_block_for_else(span));
+        };
+
+        let mut borrow = cell.borrow_mut();
+
+        let if_block = if let Node::IfBlock(if_block) = &mut *borrow {
+            if_block
+        } else {
+            return Err(Diagnostic::no_if_block_for_else(span));
+        };
+
+        if else_tag.elseif {
+            unimplemented!();
+        } else {
+            if_block.alternate = Some(vec![]);
+        }
+
+        if_block.span = if_block.span.merge(&span);
+
+        return Ok(());
     }
 }
 
