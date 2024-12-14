@@ -11,6 +11,7 @@ pub enum DiagnosticType {
     NoElementToClose,
     UnclosedNode,
     InvalidExpression,
+    NoIfBlockToClose,
 }
 
 #[derive(Debug)]
@@ -50,6 +51,10 @@ impl Diagnostic {
 
     pub fn no_element_to_close(span: Span) -> Diagnostic {
         return Diagnostic::new(DiagnosticType::NoElementToClose, span);
+    }
+
+    pub fn no_if_block_to_close(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::NoIfBlockToClose, span);
     }
 
     pub fn unclosed_node(span: Span) -> Diagnostic {
