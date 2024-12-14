@@ -22,6 +22,7 @@ pub enum Node<'a> {
     Element(Element<'a>),
     Text(Text),
     Interpolation(Interpolation<'a>),
+    IfBlock(IfBlock<'a>),
 }
 
 impl<'a> Node<'a> {
@@ -36,6 +37,7 @@ impl<'a> FormatNode for Node<'a> {
             Node::Element(element) => element.format_node(),
             Node::Text(text) => text.format_node(),
             Node::Interpolation(interpolation) => interpolation.format_node(),
+            Node::IfBlock(if_block) => if_block.format_node(),
         };
     }
 }
@@ -46,6 +48,7 @@ impl<'a> GetSpan for Node<'a> {
             Node::Element(element) => element.span,
             Node::Text(text) => text.span,
             Node::Interpolation(interpolation) => interpolation.span,
+            Node::IfBlock(if_block) => if_block.span,
         }
     }
 }
@@ -75,6 +78,36 @@ impl<'a> FormatNode for Interpolation<'a> {
 impl<'a> AsNode<'a> for Interpolation<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::Interpolation(self);
+    }
+}
+
+#[derive(Debug)]
+pub struct IfBlock<'a> {
+    pub span: Span,
+    pub test: Expression<'a>,
+    pub elseif: bool,
+    pub consequent: Vec<RcCell<Node<'a>>>,
+    pub alternate: Option<Vec<RcCell<Node<'a>>>>,
+}
+impl<'a> IfBlock<'a> {
+    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+        if let Some(alternate) = self.alternate.as_mut() {
+            alternate.push(node);
+        } else {
+            self.consequent.push(node);
+        }
+    }
+}
+
+impl<'a> FormatNode for IfBlock<'a> {
+    fn format_node(&self) -> String {
+        todo!();
+    }
+}
+
+impl<'a> AsNode<'a> for IfBlock<'a> {
+    fn as_node(self) -> Node<'a> {
+        return Node::IfBlock(self);
     }
 }
 
