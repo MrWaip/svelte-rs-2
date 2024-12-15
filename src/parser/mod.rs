@@ -407,10 +407,8 @@ impl<'a> Parser<'a> {
 
         // self.node_stack.add_node(else_if_block_cell)?;
         let option = self.node_stack.last_mut();
-        let mut node = Node::from_option_mut(option)?;
-        let node2 = &mut *node;
-
-        let if_block: &mut IfBlock<'a> = node2.try_into()?;
+        let node = &mut *Node::from_option_mut(option)?;
+        let if_block: &mut IfBlock<'a> = node.try_into()?;
 
         let alternate: Vec<RcCell<Node<'a>>> = vec![];
 
