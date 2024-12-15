@@ -1,7 +1,12 @@
+use std::cell::RefMut;
+
 use oxc_ast::ast::Expression;
 use rccell::RcCell;
 
-use crate::parser::span::{GetSpan, Span};
+use crate::{
+    diagnostics::Diagnostic,
+    parser::span::{GetSpan, Span},
+};
 
 pub struct Ast<'a> {
     pub template: Vec<RcCell<Node<'a>>>,
@@ -30,6 +35,30 @@ impl<'a> Node<'a> {
 
     pub fn is_if_block(&self) -> bool {
         return matches!(self, Node::IfBlock(_));
+    }
+
+    pub fn from_option_mut<'local, 'long>(
+        option: Option<&'local mut RcCell<Node<'long>>>,
+    ) -> Result<RefMut<'local, Node<'long>>, Diagnostic> {
+        if let Some(cell) = option {
+            let borrow = cell.try_borrow_mut().map_err(|_| unimplemented!())?;
+
+            return Ok(borrow);
+        } else {
+            unimplemented!()
+        }
+    }
+}
+
+impl<'short, 'long> TryInto<&'short mut IfBlock<'long>> for &'short mut Node<'long> {
+    type Error = Diagnostic;
+
+    fn try_into(self) -> Result<&'short mut IfBlock<'long>, Self::Error> {
+        if let Node::IfBlock(if_block) = self {
+            return Ok(if_block);
+        } else {
+            unimplemented!()
+        }
     }
 }
 
