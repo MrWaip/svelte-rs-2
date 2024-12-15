@@ -134,9 +134,9 @@ impl<'a> FormatNode for IfBlock<'a> {
         let mut result = String::new();
 
         if self.is_elseif {
-            result.push_str(&format!("{{:else if {} }}", &print_expression(&self.test)));
+            result.push_str(&format!("{{:else if {}}}", &print_expression(&self.test)));
         } else {
-            result.push_str(&format!("{{#if {} }}", &print_expression(&self.test)));
+            result.push_str(&format!("{{#if {}}}", &print_expression(&self.test)));
         }
 
         for node in self.consequent.iter() {
@@ -148,7 +148,11 @@ impl<'a> FormatNode for IfBlock<'a> {
             if let Some(cell) = alternate.first() {
                 let borrow = &*cell.borrow();
 
-                if !borrow.is_if_block() {
+                if let Node::IfBlock(if_block) = borrow {
+                    if !if_block.is_elseif {
+                        result.push_str("{:else}");
+                    }
+                } else {
                     result.push_str("{:else}");
                 }
             }
