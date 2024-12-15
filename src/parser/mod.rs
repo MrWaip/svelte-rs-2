@@ -368,28 +368,53 @@ impl<'a> Parser<'a> {
         else_tag: &token::ElseTag<'a>,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        let mut option = self.node_stack.last_mut();
+        // let mut option = self.node_stack.pop();
 
-        let cell = if let Some(cell) = option.as_mut() {
-            cell
-        } else {
-            return Err(Diagnostic::no_if_block_for_else(span));
-        };
+        // let cell = if let Some(cell) = option.as_mut() {
+        //     cell
+        // } else {
+        //     return Err(Diagnostic::no_if_block_for_else(span));
+        // };
 
-        let mut borrow = cell.borrow_mut();
+        // let mut borrow = cell.borrow_mut();
 
-        let if_block = if let Node::IfBlock(if_block) = &mut *borrow {
-            if_block
-        } else {
-            return Err(Diagnostic::no_if_block_for_else(span));
-        };
+        // let if_block = if let Node::IfBlock(if_block) = &mut *borrow {
+        //     if_block
+        // } else {
+        //     return Err(Diagnostic::no_if_block_for_else(span));
+        // };
 
-        if else_tag.elseif {
-            unimplemented!();
-        } else {
-            if_block.alternate = Some(vec![]);
-        }
+        // let mut alternate: Vec<RcCell<Node<'a>>> = vec![];
+        // let expression_string = else_tag.expression.as_ref().unwrap();
 
+        // let else_if_block = IfBlock {
+        //     is_elseif: true,
+        //     span,
+        //     test: self.parse_js_expression(&expression_string.value, span)?,
+        //     consequent: vec![],
+        //     alternate: None,
+        // };
+
+        // let else_if_block_cell = else_if_block.as_node().as_rc_cell();
+        // alternate.push(else_if_block_cell.clone());
+
+        // if_block.alternate = Some(alternate);
+        // if_block.span = if_block.span.merge(&span);
+
+        // if self.node_stack.is_stack_empty() {
+        //     self.node_stack.add_to_root(cell.clone());
+        // }
+
+        // self.node_stack.add_node(else_if_block_cell)?;
+        let option = self.node_stack.last_mut();
+        let mut node = Node::from_option_mut(option)?;
+        let node2 = &mut *node;
+
+        let if_block: &mut IfBlock<'a> = node2.try_into()?;
+
+        let alternate: Vec<RcCell<Node<'a>>> = vec![];
+
+        if_block.alternate = Some(alternate);
         if_block.span = if_block.span.merge(&span);
 
         return Ok(());
@@ -473,6 +498,21 @@ mod tests {
         assert_node(
             &ast[0],
             r#"{#if true }<div>title</div>{:else}<h1>big title</h1>{/if}"#,
+        );
+    }
+
+    #[test]
+    fn smoke_if_elseif_tag() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"<div>{#if false }one{:else if true}two{:else}three{/if}</div>{#if false }one{:else if true}two{:else}three{/if}"#,
+            &allocator,
+        );
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(
+            &ast[0],
+            r#"{#if false }one{:else if true}two{:else}three{/if}"#,
         );
     }
 }
