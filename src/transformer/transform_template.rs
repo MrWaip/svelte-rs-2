@@ -64,12 +64,14 @@ impl<'a> TransformTemplate<'a> {
             template: vec![],
         };
 
-        let call = self.builder.call(template_name, vec![]);
-        let var = self
-            .builder
-            .var(id, Expression::CallExpression(self.builder.alloc(call)));
+        {
+            let call = self.builder.call(template_name, vec![]);
+            let var = self
+                .builder
+                .var(id, Expression::CallExpression(self.builder.alloc(call)));
 
-        body.push(var);
+            body.push(var);
+        }
 
         for node in nodes.iter() {
             let node = &*node.borrow();
