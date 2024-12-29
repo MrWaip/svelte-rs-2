@@ -1,133 +1,33 @@
-use std::cell::Cell;
+use std::vec;
 
-use oxc_allocator::{Allocator, Vec};
-use oxc_ast::{
-    ast::{
-        self, BindingIdentifier, Declaration, ExportDefaultDeclaration,
-        ExportDefaultDeclarationKind, Expression, Function, FunctionType,
-        ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration, ModuleExportName,
-        Program, Statement,
-    },
-    AstBuilder, NONE,
-};
-use oxc_span::{SourceType, SPAN};
+use builder::Builder;
+use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
+use transform_template::TransformTemplate;
 
 use crate::ast::Ast;
 
 pub mod builder;
-pub mod visitor;
+pub mod transform_template;
 
-struct Builder<'a> {
-    ast: AstBuilder<'a>,
-}
+pub fn transform_client<'a>(ast: &'a Ast<'a>, b: &'a Builder<'a>) -> String {
+    let mut transformer = TransformTemplate::new(b);
 
-impl<'a> Builder<'a> {
-    fn import_all(&self, specifier: &'a str, source: &'a str) -> Statement<'a> {
-        let spec = ImportDeclarationSpecifier::ImportNamespaceSpecifier(
-            self.ast.alloc_import_namespace_specifier(
-                SPAN,
-                self.ast.binding_identifier(SPAN, specifier),
-            ),
-        );
+    let mut imports = vec![b.import_all("$", "svelte/internal/client")];
+    let mut program_body = vec![];
+    let mut component_body = vec![];
 
-        let stmt = Statement::from(self.ast.module_declaration_import_declaration(
-            SPAN,
-            Some(self.ast.vec_from_array([spec])),
-            self.ast.string_literal(SPAN, source, None),
-            None,
-            NONE,
-            ImportOrExportKind::Value,
-        ));
-
-        return stmt;
-    }
-
-    fn program(&self, body: Vec<'a, Statement<'a>>) -> Program<'a> {
-        return Program {
-            body,
-            span: SPAN,
-            comments: self.ast.vec(),
-            directives: self.ast.vec(),
-            hashbang: None,
-            source_text: "",
-            source_type: SourceType::default(),
-            scope_id: Cell::from(None),
-        };
-    }
-
-    fn function_declaration(
-        &self,
-        id: BindingIdentifier<'a>,
-        body: Vec<'a, Statement<'a>>,
-    ) -> Function<'a> {
-        let params = self.ast.formal_parameters(
-            SPAN,
-            ast::FormalParameterKind::FormalParameter,
-            self.ast.vec(),
-            NONE,
-        );
-
-        let body = self.ast.alloc_function_body(SPAN, self.ast.vec(), body);
-
-        let function = self.ast.function(
-            SPAN,
-            FunctionType::FunctionDeclaration,
-            Some(id),
-            false,
-            false,
-            false,
-            NONE,
-            NONE,
-            params,
-            NONE,
-            Some(body),
-        );
-
-        return function;
-    }
-
-    fn id(&self, name: &'a str) -> BindingIdentifier<'a> {
-        return self.ast.binding_identifier(SPAN, name);
-    }
-
-    fn export_default(&self, declaration: ExportDefaultDeclarationKind<'a>) -> Statement<'a> {
-        let ident = self.ast.identifier_name(SPAN, "default");
-
-        let res = self.ast.alloc_export_default_declaration(
-            SPAN,
-            declaration,
-            ModuleExportName::IdentifierName(ident),
-        );
-
-        let res = ModuleDeclaration::ExportDefaultDeclaration(res);
-
-        return Statement::from(res);
-    }
-}
-
-pub fn transform_client<'a>(_ast: &Ast<'a>) -> String {
-    let allocator = Allocator::default();
-    let ast_builder = AstBuilder::new(&allocator);
-    let b = Builder { ast: ast_builder };
-
-    let mut imports = ast_builder.vec();
-    let mut program_body = ast_builder.vec();
-    let mut component_body = ast_builder.vec();
-    let mut instance_body = ast_builder.vec();
-    let mut template_body = ast_builder.vec();
-
-    imports.push(b.import_all("$", "svelte/internal/client"));
+    let mut template_result = transformer.transform(ast);
 
     program_body.append(&mut imports);
+    program_body.append(&mut template_result.hoisted);
+    component_body.append(&mut template_result.body);
 
-    component_body.append(&mut instance_body);
-    component_body.append(&mut template_body);
-
-    let component = b.function_declaration(b.id("App"), component_body);
+    let component_params = b.params(vec!["$$anchor"]);
+    let component = b.function_declaration(b.bid("App"), component_body, component_params);
 
     program_body.push(
         b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
-            ast_builder.alloc(component),
+            b.alloc(component),
         )),
     );
 
@@ -145,6 +45,7 @@ fn print(program: Program) -> String {
 #[cfg(test)]
 mod tests {
     use oxc_allocator::Allocator;
+    use oxc_ast::AstBuilder;
 
     use crate::parser::Parser;
 
@@ -154,9 +55,10 @@ mod tests {
     fn smoke() {
         let allocator = Allocator::default();
         let mut parser = Parser::new("prefix <div>text</div>", &allocator);
+        let builder = Builder::new(AstBuilder::new(&allocator));
         let ast = parser.parse().unwrap();
 
-        let code = transform_client(&ast);
+        let code = transform_client(&ast, &builder);
 
         print!("{}", code);
     }
