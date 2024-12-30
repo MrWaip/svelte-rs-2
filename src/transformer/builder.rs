@@ -13,6 +13,20 @@ use oxc_ast::{
 };
 use oxc_span::{SourceType, SPAN};
 
+pub enum BuilderFunctionArgument<'a> {
+    Str(String),
+    Num(f64),
+    Ident(&'a str),
+}
+
+pub enum BuilderExpression<'a> {
+    Call(CallExpression<'a>),
+}
+
+pub enum BuilderStatement<'a> {
+    Expr(Expression<'a>),
+}
+
 pub struct Builder<'a> {
     pub ast: AstBuilder<'a>,
 }
@@ -42,7 +56,7 @@ impl<'a> Builder<'a> {
         return stmt;
     }
 
-    pub fn program(&self, body: std::vec::Vec<Statement<'a>>) -> Program<'a> {
+    pub fn program(&self, body: Vec<Statement<'a>>) -> Program<'a> {
         return Program {
             body: self.ast.vec_from_iter(body),
             span: SPAN,
@@ -55,9 +69,9 @@ impl<'a> Builder<'a> {
         };
     }
 
-    pub fn params(&self, items: std::vec::Vec<&str>) -> FormalParameters<'a> {
-        let params = items.iter().map(|v| {
-            let kind = self.ast.binding_pattern_kind_binding_identifier(SPAN, *v);
+    pub fn params(&self, items: impl IntoIterator<Item = &'a str>) -> FormalParameters<'a> {
+        let params = items.into_iter().map(|v| {
+            let kind = self.ast.binding_pattern_kind_binding_identifier(SPAN, v);
 
             let pattern = self.ast.binding_pattern(kind, NONE, false);
 
@@ -76,7 +90,7 @@ impl<'a> Builder<'a> {
     pub fn function_declaration(
         &self,
         id: BindingIdentifier<'a>,
-        body: std::vec::Vec<Statement<'a>>,
+        body: Vec<Statement<'a>>,
         params: FormalParameters<'a>,
     ) -> Function<'a> {
         let body = self
@@ -132,8 +146,28 @@ impl<'a> Builder<'a> {
             .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal);
     }
 
-    pub fn call(&self, callee: &str, args: std::vec::Vec<Argument<'a>>) -> CallExpression<'a> {
+    pub fn call(
+        &self,
+        callee: &str,
+        args: impl IntoIterator<Item = BuilderFunctionArgument<'a>>,
+    ) -> CallExpression<'a> {
         let ident = self.ast.expression_identifier_reference(SPAN, callee);
+
+        let args = args.into_iter().map(|arg| match arg {
+            BuilderFunctionArgument::Str(value) => {
+                let value = self.string_literal(value.clone());
+                Argument::StringLiteral(self.alloc(value))
+            }
+            BuilderFunctionArgument::Num(value) => {
+                let value = self.numeric_literal(value);
+                Argument::NumericLiteral(self.alloc(value))
+            }
+            BuilderFunctionArgument::Ident(value) => {
+                let value = self.rid(value);
+                Argument::Identifier(self.alloc(value))
+            }
+        });
+
         let res = self
             .ast
             .call_expression(SPAN, ident, NONE, self.ast.vec_from_iter(args), false);
@@ -145,7 +179,7 @@ impl<'a> Builder<'a> {
         return self.ast.alloc(value);
     }
 
-    pub fn var(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
+    pub fn var(&self, name: &str, init: BuilderExpression<'a>) -> Statement<'a> {
         let ident = self.ast.binding_identifier(SPAN, name);
         let pattern = self.ast.binding_pattern(
             BindingPatternKind::BindingIdentifier(self.alloc(ident)),
@@ -157,7 +191,7 @@ impl<'a> Builder<'a> {
             SPAN,
             VariableDeclarationKind::Var,
             pattern,
-            Some(init),
+            Some(self.expr(init)),
             false,
         );
 
@@ -169,5 +203,19 @@ impl<'a> Builder<'a> {
         );
 
         return Statement::VariableDeclaration(self.alloc(declaration));
+    }
+
+    pub fn expr(&self, expr: BuilderExpression<'a>) -> Expression<'a> {
+        return match expr {
+            BuilderExpression::Call(value) => Expression::CallExpression(self.alloc(value)),
+        };
+    }
+
+    pub fn stmt(&self, expr: BuilderStatement<'a>) -> Statement<'a> {
+        return match expr {
+            BuilderStatement::Expr(value) => Statement::ExpressionStatement(
+                self.alloc(self.ast.expression_statement(SPAN, value)),
+            ),
+        };
     }
 }

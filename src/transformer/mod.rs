@@ -22,7 +22,7 @@ pub fn transform_client<'a>(ast: &'a Ast<'a>, b: &'a Builder<'a>) -> String {
     program_body.append(&mut template_result.hoisted);
     component_body.append(&mut template_result.body);
 
-    let component_params = b.params(vec!["$$anchor"]);
+    let component_params = b.params(["$$anchor"]);
     let component = b.function_declaration(b.bid("App"), component_body, component_params);
 
     program_body.push(
