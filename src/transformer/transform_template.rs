@@ -26,7 +26,6 @@ pub struct FragmentContext<'a> {
     update: Vec<Statement<'a>>,
     after_update: Vec<Statement<'a>>,
     template: Vec<String>,
-    // close: ?
 }
 
 pub struct FragmentResult<'a> {
@@ -83,13 +82,11 @@ impl<'a> TransformTemplate<'a> {
         body.extend(context.update);
         body.extend(context.after_update);
 
-        let call = self
+        let close = self
             .b
             .call("$.append", [BArg::Ident("$$anchor"), BArg::Ident(id)]);
 
-        let close = self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call))));
-
-        body.push(close);
+        body.push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(close)))));
 
         return FragmentResult { body };
     }
