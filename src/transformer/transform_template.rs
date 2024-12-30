@@ -1,15 +1,16 @@
 use std::mem::replace;
 
-use oxc_ast::ast::{Argument, Expression, Statement};
-use oxc_span::SPAN;
+use oxc_ast::ast::Statement;
 use rccell::RcCell;
 
 use crate::ast::{Ast, Element, Node, Text};
 
-use super::builder::Builder;
+use super::builder::{
+    Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
+};
 
 pub struct TransformTemplate<'a> {
-    builder: &'a Builder<'a>,
+    b: &'a Builder<'a>,
     hoisted: Vec<Statement<'a>>,
 }
 
@@ -35,7 +36,7 @@ pub struct FragmentResult<'a> {
 impl<'a> TransformTemplate<'a> {
     pub fn new(builder: &'a Builder<'a>) -> TransformTemplate<'a> {
         return TransformTemplate {
-            builder,
+            b: builder,
             hoisted: vec![],
         };
     }
@@ -64,14 +65,10 @@ impl<'a> TransformTemplate<'a> {
             template: vec![],
         };
 
-        {
-            let call = self.builder.call(template_name, vec![]);
-            let var = self
-                .builder
-                .var(id, Expression::CallExpression(self.builder.alloc(call)));
+        let call = self.b.call(template_name, []);
+        let var = self.b.var(id, BExpr::Call(call));
 
-            body.push(var);
-        }
+        body.push(var);
 
         for node in nodes.iter() {
             let node = &*node.borrow();
@@ -86,16 +83,13 @@ impl<'a> TransformTemplate<'a> {
         body.extend(context.update);
         body.extend(context.after_update);
 
-        {
-            let anchor = Argument::Identifier(self.builder.alloc(self.builder.rid("$$anchor")));
-            let template = Argument::Identifier(self.builder.alloc(self.builder.rid(id)));
-            let args = vec![anchor, template];
-            let close = self.builder.call("$.append", args);
-            let close = Expression::CallExpression(self.builder.alloc(close));
-            let close = self.builder.ast.expression_statement(SPAN, close);
-            let close = Statement::ExpressionStatement(self.builder.alloc(close));
-            body.push(close);
-        }
+        let call = self
+            .b
+            .call("$.append", [BArg::Ident("$$anchor"), BArg::Ident(id)]);
+
+        let close = self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call))));
+
+        body.push(close);
 
         return FragmentResult { body };
     }
@@ -132,20 +126,12 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn add_template(&mut self, ctx: &mut FragmentContext<'a>, name: &str) {
-        let template = Argument::StringLiteral(
-            self.builder
-                .alloc(self.builder.string_literal(ctx.template.concat())),
+        let call = self.b.call(
+            "$.template",
+            [BArg::Str(ctx.template.concat()), BArg::Num(1.0)],
         );
 
-        let flags = Argument::NumericLiteral(self.builder.alloc(self.builder.numeric_literal(1.0)));
-
-        let args = vec![template, flags];
-
-        let call = self.builder.call("$.template", args);
-
-        let var = self
-            .builder
-            .var(name, Expression::CallExpression(self.builder.alloc(call)));
+        let var = self.b.var(name, BExpr::Call(call));
 
         self.hoisted.push(var);
     }
