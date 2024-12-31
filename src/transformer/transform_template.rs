@@ -4,7 +4,9 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
-use crate::ast::{Ast, Attribute, AttributeValue, Element, HTMLAttribute, Node, Text};
+use crate::ast::{
+    Ast, Attribute, AttributeValue, Concatenation, Element, HTMLAttribute, Node, Text,
+};
 
 use super::builder::{
     Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
@@ -166,7 +168,9 @@ impl<'a> TransformTemplate<'a> {
                 self.transform_expression_attribute_value(attr, value, ctx)
             }
             AttributeValue::Boolean => (),
-            AttributeValue::Concatenation(_) => todo!(),
+            AttributeValue::Concatenation(value) => {
+                self.transform_concatenation_attribute_value(attr, value, ctx)
+            }
         };
     }
 
@@ -190,6 +194,28 @@ impl<'a> TransformTemplate<'a> {
                 BArg::Ident(node_id),
                 BArg::Str(attr.name.into()),
                 BArg::Expr(value),
+            ],
+        );
+
+        ctx.update
+            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+    }
+
+    fn transform_concatenation_attribute_value(
+        &self,
+        attr: &HTMLAttribute<'a>,
+        value: &Concatenation<'a>,
+        ctx: &mut FragmentContext<'a>,
+    ) {
+        let node_id = "root";
+
+        let template_literal = self.b.template_literal(&value.parts);
+        let call = self.b.call(
+            "$.set_attribute",
+            [
+                BArg::Ident(node_id),
+                BArg::Str(attr.name.into()),
+                BArg::TemplateStr(template_literal),
             ],
         );
 
