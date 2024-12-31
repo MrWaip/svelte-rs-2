@@ -149,8 +149,33 @@ impl<'a> TransformTemplate<'a> {
     fn transform_attribute(&self, attr: &Attribute<'a>, ctx: &mut FragmentContext<'a>) {
         match attr {
             Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
-            Attribute::Expression(_expr) => todo!(),
+            Attribute::Expression(expression) => {
+                self.transform_expression_attribute(expression, ctx)
+            }
         }
+    }
+
+    fn transform_expression_attribute(
+        &self,
+        expression: &Expression<'a>,
+        ctx: &mut FragmentContext<'a>,
+    ) {
+        let node_id = "root";
+
+        let expression = expression.clone_in(&self.b.ast.allocator);
+
+        let arg: BArg = match &expression {
+            Expression::Identifier(id) => BArg::Str(id.name.to_string()),
+            _ => unreachable!(),
+        };
+
+        let call = self.b.call(
+            "$.set_attribute",
+            [BArg::Ident(node_id), arg, BArg::Expr(expression)],
+        );
+
+        ctx.update
+            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 
     fn transform_html_attribute(&self, attr: &HTMLAttribute<'a>, ctx: &mut FragmentContext<'a>) {
