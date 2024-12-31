@@ -36,7 +36,6 @@ pub fn transform_client<'a>(ast: &'a Ast<'a>, b: &'a Builder<'a>) -> String {
 
 fn print(program: Program) -> String {
     let codegen = oxc_codegen::Codegen::default();
-
     let result = codegen.build(&program);
 
     return result.code;
@@ -54,7 +53,10 @@ mod tests {
     #[test]
     fn smoke() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new("prefix <div>text</div>", &allocator);
+        let mut parser = Parser::new(
+            r#"<div value="nope" skip id={id + id}>text</div>"#,
+            &allocator,
+        );
         let builder = Builder::new(AstBuilder::new(&allocator));
         let ast = parser.parse().unwrap();
 

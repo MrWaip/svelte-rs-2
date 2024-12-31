@@ -1,9 +1,10 @@
 use std::mem::replace;
 
-use oxc_ast::ast::Statement;
+use oxc_allocator::CloneIn;
+use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
-use crate::ast::{Ast, Element, Node, Text};
+use crate::ast::{Ast, Attribute, AttributeValue, Element, HTMLAttribute, Node, Text};
 
 use super::builder::{
     Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
@@ -105,10 +106,12 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn transform_element(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
-        ctx.template.push(format!("<{}>", &element.name));
+        ctx.template.push(format!("<{}", &element.name));
 
         if !element.attributes.is_empty() {
-            unimplemented!();
+            self.transform_attributes(element, ctx);
+        } else {
+            ctx.template.push(">".into());
         }
 
         for node in element.nodes.iter() {
@@ -131,6 +134,67 @@ impl<'a> TransformTemplate<'a> {
         let var = self.b.var(name, BExpr::Call(call));
 
         self.hoisted.push(var);
+    }
+
+    fn transform_attributes(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
+        for attr in element.attributes.iter() {
+            self.transform_attribute(attr, ctx);
+        }
+
+        ctx.template.push(">".into());
+    }
+
+    fn transform_attribute(&self, attr: &Attribute<'a>, ctx: &mut FragmentContext<'a>) {
+        match attr {
+            Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
+            Attribute::Expression(_expr) => todo!(),
+        }
+    }
+
+    fn transform_html_attribute(&self, attr: &HTMLAttribute<'a>, ctx: &mut FragmentContext<'a>) {
+        if matches!(
+            attr.value,
+            AttributeValue::String(_) | AttributeValue::Boolean
+        ) {
+            ctx.template.push(" ".into());
+            ctx.template.push(attr.name.into());
+        }
+
+        match &attr.value {
+            AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
+            AttributeValue::Expression(value) => {
+                self.transform_expression_attribute_value(attr, value, ctx)
+            }
+            AttributeValue::Boolean => (),
+            AttributeValue::Concatenation(_) => todo!(),
+        };
+    }
+
+    fn transform_string_attribute_value(&self, value: &str, ctx: &mut FragmentContext<'a>) {
+        ctx.template.push(format!("=\"{value}\"").into());
+    }
+
+    fn transform_expression_attribute_value(
+        &self,
+        attr: &HTMLAttribute<'a>,
+        value: &Expression<'a>,
+        ctx: &mut FragmentContext<'a>,
+    ) {
+        let node_id = "root";
+
+        let value = value.clone_in(&self.b.ast.allocator);
+
+        let call = self.b.call(
+            "$.set_attribute",
+            [
+                BArg::Ident(node_id),
+                BArg::Str(attr.name.into()),
+                BArg::Expr(value),
+            ],
+        );
+
+        ctx.update
+            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 }
 

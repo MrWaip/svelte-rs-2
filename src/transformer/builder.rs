@@ -17,6 +17,7 @@ pub enum BuilderFunctionArgument<'a> {
     Str(String),
     Num(f64),
     Ident(&'a str),
+    Expr(Expression<'a>),
 }
 
 pub enum BuilderExpression<'a> {
@@ -166,6 +167,7 @@ impl<'a> Builder<'a> {
                 let value = self.rid(value);
                 Argument::Identifier(self.alloc(value))
             }
+            BuilderFunctionArgument::Expr(expr) => Argument::from(expr),
         });
 
         let res = self
@@ -217,5 +219,9 @@ impl<'a> Builder<'a> {
                 self.alloc(self.ast.expression_statement(SPAN, value)),
             ),
         };
+    }
+
+    pub fn empty_stmt(&self) -> Statement<'a> {
+        return Statement::EmptyStatement(self.ast.alloc_empty_statement(SPAN));
     }
 }
