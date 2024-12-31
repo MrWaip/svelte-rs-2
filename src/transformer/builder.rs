@@ -1,23 +1,26 @@
 use std::cell::Cell;
 
-use oxc_allocator::Box;
+use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, BindingIdentifier, BindingPatternKind, CallExpression,
         ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
-        IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
-        ModuleExportName, NumericLiteral, Program, Statement, StringLiteral,
-        VariableDeclarationKind,
+        IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, LogicalOperator,
+        ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement, StringLiteral,
+        TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
-use oxc_span::{SourceType, SPAN};
+use oxc_span::{Atom, SourceType, SPAN};
+
+use crate::ast::ConcatenationPart;
 
 pub enum BuilderFunctionArgument<'a> {
     Str(String),
     Num(f64),
     Ident(&'a str),
     Expr(Expression<'a>),
+    TemplateStr(TemplateLiteral<'a>),
 }
 
 pub enum BuilderExpression<'a> {
@@ -168,6 +171,9 @@ impl<'a> Builder<'a> {
                 Argument::Identifier(self.alloc(value))
             }
             BuilderFunctionArgument::Expr(expr) => Argument::from(expr),
+            BuilderFunctionArgument::TemplateStr(template_literal) => {
+                Argument::TemplateLiteral(self.alloc(template_literal))
+            }
         });
 
         let res = self
@@ -223,5 +229,74 @@ impl<'a> Builder<'a> {
 
     pub fn empty_stmt(&self) -> Statement<'a> {
         return Statement::EmptyStatement(self.ast.alloc_empty_statement(SPAN));
+    }
+
+    pub fn template_literal(&self, parts: &Vec<ConcatenationPart<'a>>) -> TemplateLiteral<'a> {
+        let mut quasis = self.ast.vec();
+        let mut expressions = self.ast.vec();
+        let mut iter = parts.iter().peekable();
+        let mut is_first = true;
+
+        while let Some(part) = iter.next() {
+            let tail = iter.peek().is_none();
+
+            match part {
+                ConcatenationPart::String(value) => {
+                    let temp = self.ast.template_element(
+                        SPAN,
+                        tail,
+                        TemplateElementValue {
+                            cooked: None,
+                            raw: Atom::from(*value),
+                        },
+                    );
+
+                    quasis.push(temp);
+                }
+                ConcatenationPart::Expression(expression) => {
+                    if is_first {
+                        let temp = self.ast.template_element(
+                            SPAN,
+                            false,
+                            TemplateElementValue {
+                                cooked: None,
+                                raw: Atom::from(""),
+                            },
+                        );
+
+                        quasis.push(temp);
+                    }
+
+                    let expression = expression.clone_in(&self.ast.allocator);
+                    let expression = self.ast.expression_logical(
+                        SPAN,
+                        expression,
+                        LogicalOperator::Coalesce,
+                        self.ast.expression_string_literal(SPAN, "", None),
+                    );
+
+                    expressions.push(expression);
+
+                    if tail {
+                        let temp = self.ast.template_element(
+                            SPAN,
+                            true,
+                            TemplateElementValue {
+                                cooked: None,
+                                raw: Atom::from(""),
+                            },
+                        );
+
+                        quasis.push(temp);
+                    }
+                }
+            }
+
+            is_first = false;
+        }
+
+        let lit = self.ast.template_literal(SPAN, quasis, expressions);
+
+        return lit;
     }
 }

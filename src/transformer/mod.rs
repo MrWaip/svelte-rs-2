@@ -54,7 +54,7 @@ mod tests {
     fn smoke() {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
-            r#"<div value="nope" skip id={id + id}>text</div>"#,
+            r#"<div checked value="nope" skip id={id + id} label="one_{id}">text</div>"#,
             &allocator,
         );
         let builder = Builder::new(AstBuilder::new(&allocator));
