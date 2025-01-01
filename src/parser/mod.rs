@@ -82,7 +82,7 @@ impl<'a> NodeStack<'a> {
 
             match &mut *parent {
                 Node::Element(element) => {
-                    element.nodes.push(node.clone());
+                    element.push(node.clone());
                 }
                 Node::IfBlock(if_block) => {
                     if_block.push(node.clone());

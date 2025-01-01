@@ -269,6 +269,12 @@ impl<'a> AsNode<'a> for Element<'a> {
     }
 }
 
+impl<'a> Element<'a> {
+    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+        self.nodes.push(node);
+    }
+}
+
 #[derive(Debug)]
 pub struct Text {
     pub value: String,

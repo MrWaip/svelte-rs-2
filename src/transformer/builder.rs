@@ -22,6 +22,8 @@ pub enum BuilderFunctionArgument<'a> {
     Expr(Expression<'a>),
     TemplateStr(TemplateLiteral<'a>),
     Arrow(ArrowFunctionExpression<'a>),
+    Bool(bool),
+    Call(CallExpression<'a>),
 }
 
 pub enum BuilderExpression<'a> {
@@ -177,6 +179,12 @@ impl<'a> Builder<'a> {
             }
             BuilderFunctionArgument::Arrow(arrow_function_expression) => {
                 Argument::ArrowFunctionExpression(self.alloc(arrow_function_expression))
+            }
+            BuilderFunctionArgument::Bool(value) => {
+                Argument::BooleanLiteral(self.alloc(self.ast.boolean_literal(SPAN, value)))
+            }
+            BuilderFunctionArgument::Call(call_expression) => {
+                Argument::CallExpression(self.alloc(call_expression))
             }
         });
 

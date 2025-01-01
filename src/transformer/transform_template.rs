@@ -5,7 +5,8 @@ use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use crate::ast::{
-    Ast, Attribute, AttributeValue, Concatenation, Element, HTMLAttribute, Node, Text,
+    Ast, Attribute, AttributeValue, Concatenation, Element, HTMLAttribute, Interpolation, Node,
+    Text,
 };
 
 use super::builder::{
@@ -72,10 +73,10 @@ impl<'a> TransformTemplate<'a> {
 
         body.push(var);
 
-        for node in nodes.iter() {
+        for (idx, node) in nodes.iter().enumerate() {
             let node = &*node.borrow();
 
-            self.transform_node(node, &mut context);
+            self.transform_node(node, &mut context, idx);
         }
 
         self.add_template(&mut context, &template_name);
@@ -95,17 +96,15 @@ impl<'a> TransformTemplate<'a> {
         return FragmentResult { body };
     }
 
-    fn transform_node(&self, node: &Node<'a>, ctx: &mut FragmentContext<'a>) {
+    fn transform_node(&self, node: &Node<'a>, ctx: &mut FragmentContext<'a>, idx: usize) {
         match node {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
-            Node::Interpolation(_interpolation) => todo!(),
+            Node::Interpolation(interpolation) => {
+                self.transform_interpolation(interpolation, ctx, idx)
+            }
             Node::IfBlock(_if_block) => todo!(),
         };
-    }
-
-    fn transform_text(&self, text: &Text, ctx: &mut FragmentContext<'a>) {
-        ctx.template.push(text.value.clone());
     }
 
     fn transform_element(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
@@ -117,10 +116,10 @@ impl<'a> TransformTemplate<'a> {
             ctx.template.push(">".into());
         }
 
-        for node in element.nodes.iter() {
+        for (idx, node) in element.nodes.iter().enumerate() {
             let node = &*node.borrow();
 
-            self.transform_node(node, ctx);
+            self.transform_node(node, ctx, idx);
         }
 
         if !element.self_closing {
@@ -137,14 +136,6 @@ impl<'a> TransformTemplate<'a> {
         let var = self.b.var(name, BExpr::Call(call));
 
         self.hoisted.push(var);
-    }
-
-    fn transform_attributes(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
-        for attr in element.attributes.iter() {
-            self.transform_attribute(attr, ctx);
-        }
-
-        ctx.template.push(">".into());
     }
 
     fn transform_attribute(&self, attr: &Attribute<'a>, ctx: &mut FragmentContext<'a>) {
@@ -249,12 +240,63 @@ impl<'a> TransformTemplate<'a> {
             .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 
+    fn transform_attributes(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
+        for attr in element.attributes.iter() {
+            self.transform_attribute(attr, ctx);
+        }
+
+        ctx.template.push(">".into());
+    }
+
     fn build_template_effect(&self, update: Vec<Statement<'a>>) -> Statement<'a> {
         let b = self.b;
 
         let call = b.call("$.template_effect", [BArg::Arrow(b.arrow(update))]);
 
         return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
+    }
+
+    fn transform_text(&self, text: &Text, ctx: &mut FragmentContext<'a>) {
+        ctx.template.push(text.value.clone());
+    }
+
+    fn transform_interpolation(
+        &self,
+        interpolation: &Interpolation<'a>,
+        ctx: &mut FragmentContext<'a>,
+        idx: usize,
+    ) {
+        let b = self.b;
+        let node_id = "root";
+        let sibling_id = "text";
+        let is_text = true;
+        let expression = interpolation.expression.clone_in(&b.ast.allocator);
+
+        // $.set_text(text, id)
+        let set_text = b.call(
+            "$.set_text",
+            [BArg::Ident(sibling_id), BArg::Expr(expression)],
+        );
+
+        // $.first_child(fragment)
+        let first_child = b.call("$.first_child", [BArg::Ident(&node_id)]);
+
+        // $.sibling($.first_child(fragment), 3, true);
+        let sibling = b.call(
+            "$.sibling",
+            [
+                BArg::Call(first_child),
+                BArg::Num(idx as f64),
+                BArg::Bool(is_text),
+            ],
+        );
+
+        // var text = $.sibling($.first_child(fragment), 3, true)
+        let var = self.b.var(sibling_id, BExpr::Call(sibling));
+
+        ctx.init.push(var);
+        ctx.update
+            .push(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
     }
 }
 
