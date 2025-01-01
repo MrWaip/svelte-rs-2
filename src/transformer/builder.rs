@@ -28,6 +28,7 @@ pub enum BuilderFunctionArgument<'a> {
 
 pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
+    TemplateLiteral(TemplateLiteral<'a>),
 }
 
 pub enum BuilderStatement<'a> {
@@ -228,6 +229,9 @@ impl<'a> Builder<'a> {
     pub fn expr(&self, expr: BuilderExpression<'a>) -> Expression<'a> {
         return match expr {
             BuilderExpression::Call(value) => Expression::CallExpression(self.alloc(value)),
+            BuilderExpression::TemplateLiteral(template_literal) => {
+                Expression::TemplateLiteral(self.alloc(template_literal))
+            }
         };
     }
 

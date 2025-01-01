@@ -5,8 +5,8 @@ use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use crate::ast::{
-    Ast, Attribute, AttributeValue, Concatenation, Element, HTMLAttribute, Interpolation, Node,
-    Text,
+    Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
+    Interpolation, Node, Text,
 };
 
 use super::builder::{
@@ -70,21 +70,14 @@ impl<'a> TransformTemplate<'a> {
 
         let call = self.b.call(template_name, []);
         let var = self.b.var(id, BExpr::Call(call));
-
         body.push(var);
 
-        for (idx, node) in nodes.iter().enumerate() {
-            let node = &*node.borrow();
-
-            self.transform_node(node, &mut context, idx);
-        }
+        self.transform_nodes(nodes, &mut context);
 
         self.add_template(&mut context, &template_name);
-
         body.extend(context.before_init);
         body.extend(context.init);
         body.push(self.build_template_effect(context.update));
-
         body.extend(context.after_update);
 
         let close = self
@@ -96,18 +89,63 @@ impl<'a> TransformTemplate<'a> {
         return FragmentResult { body };
     }
 
-    fn transform_node(&self, node: &Node<'a>, ctx: &mut FragmentContext<'a>, idx: usize) {
+    fn transform_nodes(
+        &mut self,
+        nodes: &Vec<RcCell<Node<'a>>>,
+        context: &mut FragmentContext<'a>,
+    ) {
+        let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
+        let mut idx = 0;
+        let mut iter = nodes.iter();
+
+        while let Some(node) = iter.next() {
+            let can_compress = node.borrow().is_compressible();
+
+            if can_compress {
+                to_compress.push(node.clone());
+                continue;
+            }
+
+            self.compress_and_transform(&mut to_compress, context, &mut idx);
+
+            self.transform_node(&*node.borrow(), context, idx);
+            idx += 1;
+        }
+
+        self.compress_and_transform(&mut to_compress, context, &mut idx);
+    }
+
+    fn compress_and_transform(
+        &mut self,
+        to_compress: &mut Vec<RcCell<Node<'a>>>,
+        context: &mut FragmentContext<'a>,
+        idx: &mut usize,
+    ) {
+        let len = to_compress.len();
+
+        if len == 1 {
+            self.transform_node(&*to_compress[0].borrow(), context, *idx);
+            *to_compress = vec![];
+            *idx += 1;
+        } else if len > 1 {
+            self.compress_nodes(to_compress, context, *idx);
+            *to_compress = vec![];
+            *idx += 1;
+        }
+    }
+
+    fn transform_node(&mut self, node: &Node<'a>, ctx: &mut FragmentContext<'a>, idx: usize) {
         match node {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
             Node::Interpolation(interpolation) => {
-                self.transform_interpolation(interpolation, ctx, idx)
+                self.transform_interpolation(&interpolation.expression, ctx, idx)
             }
             Node::IfBlock(_if_block) => todo!(),
         };
     }
 
-    fn transform_element(&self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
+    fn transform_element(&mut self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
         ctx.template.push(format!("<{}", &element.name));
 
         if !element.attributes.is_empty() {
@@ -116,11 +154,7 @@ impl<'a> TransformTemplate<'a> {
             ctx.template.push(">".into());
         }
 
-        for (idx, node) in element.nodes.iter().enumerate() {
-            let node = &*node.borrow();
-
-            self.transform_node(node, ctx, idx);
-        }
+        self.transform_nodes(&element.nodes, ctx);
 
         if !element.self_closing {
             ctx.template.push(format!("</{}>", &element.name));
@@ -256,13 +290,13 @@ impl<'a> TransformTemplate<'a> {
         return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
     }
 
-    fn transform_text(&self, text: &Text, ctx: &mut FragmentContext<'a>) {
-        ctx.template.push(text.value.clone());
+    fn transform_text(&self, text: &Text<'a>, ctx: &mut FragmentContext<'a>) {
+        ctx.template.push(text.value.to_string());
     }
 
     fn transform_interpolation(
         &self,
-        interpolation: &Interpolation<'a>,
+        expression: &Expression<'a>,
         ctx: &mut FragmentContext<'a>,
         idx: usize,
     ) {
@@ -270,7 +304,7 @@ impl<'a> TransformTemplate<'a> {
         let node_id = "root";
         let sibling_id = "text";
         let is_text = true;
-        let expression = interpolation.expression.clone_in(&b.ast.allocator);
+        let expression = expression.clone_in(&b.ast.allocator);
 
         // $.set_text(text, id)
         let set_text = b.call(
@@ -297,6 +331,33 @@ impl<'a> TransformTemplate<'a> {
         ctx.init.push(var);
         ctx.update
             .push(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
+    }
+
+    fn compress_nodes(
+        &self,
+        to_compress: &Vec<RcCell<Node<'a>>>,
+        ctx: &mut FragmentContext<'a>,
+        idx: usize,
+    ) {
+        let parts = to_compress
+            .iter()
+            .map(|v| {
+                let node = &*v.borrow();
+
+                match node {
+                    Node::Text(text) => ConcatenationPart::String(text.value),
+                    Node::Interpolation(interpolation) => ConcatenationPart::Expression(
+                        interpolation.expression.clone_in(&self.b.ast.allocator),
+                    ),
+                    _ => unreachable!(),
+                }
+            })
+            .collect();
+
+        let tmp = self.b.template_literal(&parts);
+        let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
+
+        self.transform_interpolation(&expr, ctx, idx);
     }
 }
 
