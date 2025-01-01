@@ -208,9 +208,9 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_text(&mut self, token: &Token) -> Result<(), Diagnostic> {
+    fn parse_text(&mut self, token: &Token<'a>) -> Result<(), Diagnostic> {
         let node = Text {
-            value: token.lexeme.to_string(),
+            value: token.lexeme,
             span: token.span,
         };
 

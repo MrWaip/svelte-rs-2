@@ -23,7 +23,7 @@ pub trait AsNode<'a> {
 #[derive(Debug)]
 pub enum Node<'a> {
     Element(Element<'a>),
-    Text(Text),
+    Text(Text<'a>),
     Interpolation(Interpolation<'a>),
     IfBlock(IfBlock<'a>),
 }
@@ -35,6 +35,10 @@ impl<'a> Node<'a> {
 
     pub fn is_if_block(&self) -> bool {
         return matches!(self, Node::IfBlock(_));
+    }
+
+    pub fn is_compressible(&self) -> bool {
+        return matches!(self, Node::Text(_) | Node::Interpolation(_));
     }
 
     pub fn from_option_mut<'local, 'long>(
@@ -276,18 +280,18 @@ impl<'a> Element<'a> {
 }
 
 #[derive(Debug)]
-pub struct Text {
-    pub value: String,
+pub struct Text<'a> {
+    pub value: &'a str,
     pub span: Span,
 }
 
-impl FormatNode for Text {
+impl<'a> FormatNode for Text<'a> {
     fn format_node(&self) -> String {
-        return self.value.clone();
+        return self.value.to_string();
     }
 }
 
-impl<'a> AsNode<'a> for Text {
+impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::Text(self);
     }
