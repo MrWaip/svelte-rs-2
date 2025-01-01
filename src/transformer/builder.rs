@@ -3,11 +3,11 @@ use std::cell::Cell;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
-        self, Argument, BindingIdentifier, BindingPatternKind, CallExpression,
-        ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
-        IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, LogicalOperator,
-        ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement, StringLiteral,
-        TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
+        self, Argument, ArrowFunctionExpression, BindingIdentifier, BindingPatternKind,
+        CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters, Function,
+        FunctionType, IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind,
+        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement,
+        StringLiteral, TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
@@ -21,6 +21,7 @@ pub enum BuilderFunctionArgument<'a> {
     Ident(&'a str),
     Expr(Expression<'a>),
     TemplateStr(TemplateLiteral<'a>),
+    Arrow(ArrowFunctionExpression<'a>),
 }
 
 pub enum BuilderExpression<'a> {
@@ -174,6 +175,9 @@ impl<'a> Builder<'a> {
             BuilderFunctionArgument::TemplateStr(template_literal) => {
                 Argument::TemplateLiteral(self.alloc(template_literal))
             }
+            BuilderFunctionArgument::Arrow(arrow_function_expression) => {
+                Argument::ArrowFunctionExpression(self.alloc(arrow_function_expression))
+            }
         });
 
         let res = self
@@ -298,5 +302,26 @@ impl<'a> Builder<'a> {
         let lit = self.ast.template_literal(SPAN, quasis, expressions);
 
         return lit;
+    }
+
+    pub fn arrow(
+        &self,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+    ) -> ArrowFunctionExpression<'a> {
+        let body = self
+            .ast
+            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
+
+        let arrow = self.ast.arrow_function_expression(
+            SPAN,
+            false,
+            false,
+            NONE,
+            self.params([]),
+            NONE,
+            body,
+        );
+
+        return arrow;
     }
 }
