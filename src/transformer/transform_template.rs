@@ -82,7 +82,8 @@ impl<'a> TransformTemplate<'a> {
 
         body.extend(context.before_init);
         body.extend(context.init);
-        body.extend(context.update);
+        body.push(self.build_template_effect(context.update));
+
         body.extend(context.after_update);
 
         let close = self
@@ -246,6 +247,14 @@ impl<'a> TransformTemplate<'a> {
 
         ctx.update
             .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+    }
+
+    fn build_template_effect(&self, update: Vec<Statement<'a>>) -> Statement<'a> {
+        let b = self.b;
+
+        let call = b.call("$.template_effect", [BArg::Arrow(b.arrow(update))]);
+
+        return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
     }
 }
 
