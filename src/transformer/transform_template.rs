@@ -1,21 +1,30 @@
-use std::mem::replace;
+use std::{
+    cell::{Ref, RefCell},
+    mem::replace,
+    rc::Rc,
+};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use crate::ast::{
-    Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
-    Interpolation, Node, Text,
+    Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute, Node,
+    Text,
 };
 
-use super::builder::{
-    Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
+use super::{
+    builder::{
+        Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg,
+        BuilderStatement as BStmt,
+    },
+    scope::Scope,
 };
 
 pub struct TransformTemplate<'a> {
     b: &'a Builder<'a>,
     hoisted: Vec<Statement<'a>>,
+    root_scope: Rc<RefCell<Scope>>,
 }
 
 #[derive(Debug)]
@@ -30,6 +39,8 @@ pub struct FragmentContext<'a> {
     update: Vec<Statement<'a>>,
     after_update: Vec<Statement<'a>>,
     template: Vec<String>,
+    scope: Rc<RefCell<Scope>>,
+    identifier: String,
 }
 
 pub struct FragmentResult<'a> {
@@ -41,6 +52,7 @@ impl<'a> TransformTemplate<'a> {
         return TransformTemplate {
             b: builder,
             hoisted: vec![],
+            root_scope: Rc::new(RefCell::new(Scope::new(None))),
         };
     }
 
@@ -58,7 +70,9 @@ impl<'a> TransformTemplate<'a> {
     fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
         let mut body = vec![];
         let template_name = "template";
-        let id = "root";
+        let identifier = "root";
+        // let identifier = self.root_scope.borrow_mut().generate("root");
+        // let identifier = self.b.alloc(identifier);
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -66,10 +80,12 @@ impl<'a> TransformTemplate<'a> {
             update: vec![],
             after_update: vec![],
             template: vec![],
+            scope: Rc::new(RefCell::new(Scope::new(None))),
+            identifier: identifier.to_string(),
         };
 
         let call = self.b.call(template_name, []);
-        let var = self.b.var(id, BExpr::Call(call));
+        let var = self.b.var(identifier, BExpr::Call(call));
         body.push(var);
 
         self.transform_nodes(nodes, &mut context);
@@ -80,9 +96,10 @@ impl<'a> TransformTemplate<'a> {
         body.push(self.build_template_effect(context.update));
         body.extend(context.after_update);
 
-        let close = self
-            .b
-            .call("$.append", [BArg::Ident("$$anchor"), BArg::Ident(id)]);
+        let close = self.b.call(
+            "$.append",
+            [BArg::Ident("$$anchor"), BArg::Ident(identifier)],
+        );
 
         body.push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(close)))));
 
@@ -303,6 +320,7 @@ impl<'a> TransformTemplate<'a> {
         let b = self.b;
         let node_id = "root";
         let sibling_id = "text";
+        // let sibling_id = ctx.scope.borrow_mut().generate("text");
         let is_text = true;
         let expression = expression.clone_in(&b.ast.allocator);
 

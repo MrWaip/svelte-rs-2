@@ -8,6 +8,7 @@ use crate::ast::Ast;
 
 pub mod builder;
 pub mod transform_template;
+pub mod scope;
 
 pub fn transform_client<'a>(ast: &'a Ast<'a>, b: &'a Builder<'a>) -> String {
     let mut transformer = TransformTemplate::new(b);
