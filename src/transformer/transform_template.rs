@@ -6,6 +6,7 @@ use std::{
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
+use oxc_span::SPAN;
 use rccell::RcCell;
 
 use crate::ast::{
@@ -69,10 +70,9 @@ impl<'a> TransformTemplate<'a> {
 
     fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
         let mut body = vec![];
-        let template_name = "template";
-        let identifier = "root";
-        // let identifier = self.root_scope.borrow_mut().generate("root");
-        // let identifier = self.b.alloc(identifier);
+        let mut fragment_scope = Scope::new(Some(self.root_scope.clone()));
+        let template_name = self.root_scope.borrow_mut().generate("template");
+        let identifier = fragment_scope.generate("root");
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -80,13 +80,12 @@ impl<'a> TransformTemplate<'a> {
             update: vec![],
             after_update: vec![],
             template: vec![],
-            scope: Rc::new(RefCell::new(Scope::new(None))),
+            scope: Rc::new(RefCell::new(fragment_scope)),
             identifier: identifier.to_string(),
         };
 
-        let call = self.b.call(template_name, []);
-        let var = self.b.var(identifier, BExpr::Call(call));
-        body.push(var);
+        let call = self.b.call(&template_name, []);
+        body.push(self.b.var(&identifier, BExpr::Call(call)));
 
         self.transform_nodes(nodes, &mut context);
 
@@ -98,7 +97,7 @@ impl<'a> TransformTemplate<'a> {
 
         let close = self.b.call(
             "$.append",
-            [BArg::Ident("$$anchor"), BArg::Ident(identifier)],
+            [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         );
 
         body.push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(close)))));

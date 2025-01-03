@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use compact_str::CompactString;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
@@ -15,10 +16,10 @@ use oxc_span::{Atom, SourceType, SPAN};
 
 use crate::ast::ConcatenationPart;
 
-pub enum BuilderFunctionArgument<'a> {
+pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),
     Num(f64),
-    Ident(&'a str),
+    Ident(&'short str),
     Expr(Expression<'a>),
     TemplateStr(TemplateLiteral<'a>),
     Arrow(ArrowFunctionExpression<'a>),
@@ -122,11 +123,11 @@ impl<'a> Builder<'a> {
         return function;
     }
 
-    pub fn bid(&self, name: &'a str) -> BindingIdentifier<'a> {
+    pub fn bid(&self, name: &str) -> BindingIdentifier<'a> {
         return self.ast.binding_identifier(SPAN, name);
     }
 
-    pub fn rid(&self, name: &'a str) -> IdentifierReference<'a> {
+    pub fn rid(&self, name: &str) -> IdentifierReference<'a> {
         return self.ast.identifier_reference(SPAN, name);
     }
 
@@ -154,10 +155,10 @@ impl<'a> Builder<'a> {
             .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal);
     }
 
-    pub fn call(
+    pub fn call<'short>(
         &self,
         callee: &str,
-        args: impl IntoIterator<Item = BuilderFunctionArgument<'a>>,
+        args: impl IntoIterator<Item = BuilderFunctionArgument<'a, 'short>>,
     ) -> CallExpression<'a> {
         let ident = self.ast.expression_identifier_reference(SPAN, callee);
 
