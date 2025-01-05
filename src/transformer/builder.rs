@@ -30,6 +30,7 @@ pub enum BuilderFunctionArgument<'a, 'short> {
 pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
     TemplateLiteral(TemplateLiteral<'a>),
+    Ident(IdentifierReference<'a>),
 }
 
 pub enum BuilderStatement<'a> {
@@ -233,6 +234,9 @@ impl<'a> Builder<'a> {
             BuilderExpression::TemplateLiteral(template_literal) => {
                 Expression::TemplateLiteral(self.alloc(template_literal))
             }
+            BuilderExpression::Ident(identifier_reference) => {
+                Expression::Identifier(self.alloc(identifier_reference))
+            }
         };
     }
 
@@ -336,5 +340,9 @@ impl<'a> Builder<'a> {
         );
 
         return arrow;
+    }
+
+    pub fn clone_expr(&self, expr: &Expression<'a>) -> Expression<'a> {
+        return expr.clone_in(&self.ast.allocator);
     }
 }

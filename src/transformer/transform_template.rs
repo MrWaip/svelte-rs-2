@@ -1,12 +1,7 @@
-use std::{
-    cell::{Ref, RefCell},
-    mem::replace,
-    rc::Rc,
-};
+use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{Expression, Statement};
-use oxc_span::SPAN;
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Statement};
 use rccell::RcCell;
 
 use crate::ast::{
@@ -41,7 +36,9 @@ pub struct FragmentContext<'a> {
     after_update: Vec<Statement<'a>>,
     template: Vec<String>,
     scope: Rc<RefCell<Scope>>,
-    identifier: String,
+    /** identifier на фрагмент */
+    anchor: Expression<'a>,
+    element_anchor: Option<Expression<'a>>,
 }
 
 pub struct FragmentResult<'a> {
@@ -81,7 +78,8 @@ impl<'a> TransformTemplate<'a> {
             after_update: vec![],
             template: vec![],
             scope: Rc::new(RefCell::new(fragment_scope)),
-            identifier: identifier.to_string(),
+            anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
+            element_anchor: None,
         };
 
         let call = self.b.call(&template_name, []);
@@ -114,6 +112,8 @@ impl<'a> TransformTemplate<'a> {
         let mut idx = 0;
         let mut iter = nodes.iter();
 
+        // anchor_node_expression
+
         while let Some(node) = iter.next() {
             let can_compress = node.borrow().is_compressible();
 
@@ -122,16 +122,16 @@ impl<'a> TransformTemplate<'a> {
                 continue;
             }
 
-            self.compress_and_transform(&mut to_compress, context, &mut idx);
+            self.compress_text_and_interpolation(&mut to_compress, context, &mut idx);
 
             self.transform_node(&*node.borrow(), context, idx);
             idx += 1;
         }
 
-        self.compress_and_transform(&mut to_compress, context, &mut idx);
+        self.compress_text_and_interpolation(&mut to_compress, context, &mut idx);
     }
 
-    fn compress_and_transform(
+    fn compress_text_and_interpolation(
         &mut self,
         to_compress: &mut Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
@@ -163,6 +163,28 @@ impl<'a> TransformTemplate<'a> {
 
     fn transform_element(&mut self, element: &Element<'a>, ctx: &mut FragmentContext<'a>) {
         ctx.template.push(format!("<{}", &element.name));
+
+        let var_name = ctx.scope.borrow_mut().generate(&element.name);
+
+        if let Some(expr) = &ctx.element_anchor {
+            let get_html_node = self.b.call(
+                "$.sibling",
+                [BArg::Expr(self.b.clone_expr(expr)), BArg::Num(99.0)],
+            );
+            let stmt = self.b.var(&var_name, BExpr::Call(get_html_node));
+
+            ctx.init.push(stmt);
+        } else {
+            let get_html_node = self.b.call(
+                "$.first_child",
+                [BArg::Expr(ctx.anchor.clone_in(&self.b.ast.allocator))],
+            );
+            let stmt = self.b.var(&var_name, BExpr::Call(get_html_node));
+
+            ctx.init.push(stmt);
+        }
+
+        ctx.element_anchor = Some(self.b.expr(BExpr::Ident(self.b.rid(&var_name))));
 
         if !element.attributes.is_empty() {
             self.transform_attributes(element, ctx);
@@ -202,7 +224,7 @@ impl<'a> TransformTemplate<'a> {
         expression: &Expression<'a>,
         ctx: &mut FragmentContext<'a>,
     ) {
-        let node_id = "root";
+        let node_id = self.b.clone_expr(ctx.element_anchor.as_ref().unwrap());
 
         let expression = expression.clone_in(&self.b.ast.allocator);
 
@@ -213,7 +235,7 @@ impl<'a> TransformTemplate<'a> {
 
         let call = self.b.call(
             "$.set_attribute",
-            [BArg::Ident(node_id), arg, BArg::Expr(expression)],
+            [BArg::Expr(node_id), arg, BArg::Expr(expression)],
         );
 
         ctx.update
@@ -251,14 +273,13 @@ impl<'a> TransformTemplate<'a> {
         value: &Expression<'a>,
         ctx: &mut FragmentContext<'a>,
     ) {
-        let node_id = "root";
+        let node_id = self.b.clone_expr(ctx.element_anchor.as_ref().unwrap());
 
         let value = value.clone_in(&self.b.ast.allocator);
-
         let call = self.b.call(
             "$.set_attribute",
             [
-                BArg::Ident(node_id),
+                BArg::Expr(node_id),
                 BArg::Str(attr.name.into()),
                 BArg::Expr(value),
             ],
@@ -274,13 +295,13 @@ impl<'a> TransformTemplate<'a> {
         value: &Concatenation<'a>,
         ctx: &mut FragmentContext<'a>,
     ) {
-        let node_id = "root";
+        let node_id = self.b.clone_expr(ctx.element_anchor.as_ref().unwrap());
 
         let template_literal = self.b.template_literal(&value.parts);
         let call = self.b.call(
             "$.set_attribute",
             [
-                BArg::Ident(node_id),
+                BArg::Expr(node_id),
                 BArg::Str(attr.name.into()),
                 BArg::TemplateStr(template_literal),
             ],
