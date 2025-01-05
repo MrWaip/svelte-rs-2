@@ -1,7 +1,7 @@
 use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Statement};
+use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use crate::ast::{
@@ -83,7 +83,7 @@ impl<'a> TransformTemplate<'a> {
         let call = self.b.call(&template_name, []);
         body.push(self.b.var(&identifier, BExpr::Call(call)));
 
-        self.transform_nodes(nodes, &mut context);
+        self.transform_nodes(nodes, &mut context, None);
 
         self.add_template(&mut context, &template_name);
         body.extend(context.before_init);
@@ -105,15 +105,22 @@ impl<'a> TransformTemplate<'a> {
         &mut self,
         nodes: &Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
+        parent_node: Option<&Expression<'a>>,
     ) {
         let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
         let mut idx = 0;
         let mut iter = nodes.iter();
+        let mut anchor = &context.anchor;
+        let mut callee = "$.first_child";
 
-        let mut get_self = self.b.expr(BExpr::Call(self.b.call(
-            "$.first_child",
-            [BArg::Expr(self.b.clone_expr(&context.anchor))],
-        )));
+        if let Some(expr) = parent_node {
+            anchor = expr;
+            callee = "$.child";
+        }
+
+        let mut get_self = self.b.expr(BExpr::Call(
+            self.b.call(callee, [BArg::Expr(self.b.clone_expr(anchor))]),
+        ));
 
         while let Some(node) = iter.next() {
             let can_compress = node.borrow().is_compressible();
@@ -188,28 +195,28 @@ impl<'a> TransformTemplate<'a> {
     ) -> Expression<'a> {
         ctx.template.push(format!("<{}", &element.name));
 
-        let var_name = ctx.scope.borrow_mut().generate(&element.name);
-
-        if idx > 0 {
-            get_self = self.b.expr(BExpr::Call(self.b.call(
-                "$.sibling",
-                [BArg::Expr(get_self), BArg::Num((idx + 1) as f64)],
-            )));
-        }
-
-        let stmt = self.b.var(&var_name, BExpr::Expr(get_self));
-
-        ctx.init.push(stmt);
-
-        get_self = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
-
         if !element.attributes.is_empty() {
+            let var_name = ctx.scope.borrow_mut().generate(&element.name);
+
+            if idx > 0 {
+                get_self = self.b.expr(BExpr::Call(
+                    self.b
+                        .call("$.sibling", [BArg::Expr(get_self), BArg::Num((idx) as f64)]),
+                ));
+            }
+
+            let stmt = self.b.var(&var_name, BExpr::Expr(get_self));
+
+            ctx.init.push(stmt);
+
+            get_self = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
+
             self.transform_attributes(element, ctx, &get_self);
         } else {
             ctx.template.push(">".into());
         }
 
-        self.transform_nodes(&element.nodes, ctx);
+        self.transform_nodes(&element.nodes, ctx, Some(&get_self));
 
         if !element.self_closing {
             ctx.template.push(format!("</{}>", &element.name));
