@@ -31,6 +31,7 @@ pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
     TemplateLiteral(TemplateLiteral<'a>),
     Ident(IdentifierReference<'a>),
+    Expr(Expression<'a>),
 }
 
 pub enum BuilderStatement<'a> {
@@ -237,6 +238,7 @@ impl<'a> Builder<'a> {
             BuilderExpression::Ident(identifier_reference) => {
                 Expression::Identifier(self.alloc(identifier_reference))
             }
+            BuilderExpression::Expr(expression) => expression,
         };
     }
 
