@@ -1,6 +1,5 @@
 use std::cell::Cell;
 
-use compact_str::CompactString;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
