@@ -43,6 +43,10 @@ impl<'a> Node<'a> {
         return matches!(self, Node::Text(_) | Node::Interpolation(_));
     }
 
+    pub fn is_text(&self) -> bool {
+        return matches!(self, Node::Text(_));
+    }
+
     pub fn from_option_mut<'local, 'long>(
         option: Option<&'local mut RcCell<Node<'long>>>,
     ) -> Result<RefMut<'local, Node<'long>>, Diagnostic> {
@@ -53,15 +57,6 @@ impl<'a> Node<'a> {
         } else {
             unimplemented!()
         }
-    }
-}
-
-impl<'a> ToOwned for Node<'a> {
-    type Owned = Self;
-
-    fn to_owned(&self) -> Self::Owned {
-        
-        todo!()
     }
 }
 
@@ -201,6 +196,7 @@ pub struct Element<'a> {
     pub name: String,
     pub span: Span,
     pub self_closing: bool,
+    pub has_complex_nodes: bool,
     pub nodes: Vec<RcCell<Node<'a>>>,
     pub attributes: Vec<Attribute<'a>>,
 }
@@ -290,6 +286,10 @@ impl<'a> AsNode<'a> for Element<'a> {
 
 impl<'a> Element<'a> {
     pub fn push(&mut self, node: RcCell<Node<'a>>) {
+        if !self.has_complex_nodes {
+            self.has_complex_nodes = !node.borrow().is_text();
+        }
+
         self.nodes.push(node);
     }
 }

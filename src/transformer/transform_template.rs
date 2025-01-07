@@ -4,6 +4,9 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
+// todo
+// next, reset, is_text, 1 sibling offset не писать
+
 use crate::{
     ast::{
         Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
@@ -77,6 +80,18 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     pub fn push_before_init(&mut self, stmt: Statement<'ast>) {
         self.fragment.before_init.push(stmt);
+    }
+
+    /*
+       Когда например element создает переменную для себя (node_anchor),
+       в качестве оптимизации следующая Node может оттолкнуться от предыдущей
+    */
+    pub fn reset_sibling_offset(&mut self) {
+        self.sibling_offset = 0;
+    }
+
+    pub fn next_sibling_offset(&mut self) {
+        self.sibling_offset += 1;
     }
 }
 
@@ -196,8 +211,8 @@ impl<'a> TransformTemplate<'a> {
     fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
         let mut body = vec![];
         let mut fragment_scope = Scope::new(Some(self.root_scope.clone()));
-        let template_name = self.root_scope.borrow_mut().generate("template");
-        let identifier = fragment_scope.generate("root");
+        let template_name = self.root_scope.borrow_mut().generate("root");
+        let identifier = fragment_scope.generate("fragment");
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -258,7 +273,7 @@ impl<'a> TransformTemplate<'a> {
         for cell in CompressNodesIter::iter(nodes, self.b) {
             let node = &*cell.borrow();
             self.transform_node(node, &mut node_context);
-            node_context.sibling_offset += 1;
+            node_context.next_sibling_offset();
         }
     }
 
@@ -281,9 +296,10 @@ impl<'a> TransformTemplate<'a> {
         element: &Element<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
+        let has_children = !element.attributes.is_empty();
         ctx.push_template(format!("<{}", &element.name));
 
-        if !element.attributes.is_empty() {
+        if has_children || element.has_complex_nodes {
             let var_name = ctx.generate(&element.name);
 
             if ctx.sibling_offset > 0 {
@@ -299,15 +315,26 @@ impl<'a> TransformTemplate<'a> {
             let stmt = self.b.var(&var_name, BExpr::Expr(ctx.get_node_anchor()));
 
             ctx.push_init(stmt);
-
             ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
+            ctx.reset_sibling_offset();
+        }
 
+        if has_children {
             self.transform_attributes(element, ctx);
         } else {
             ctx.push_template(">".into());
         }
 
         self.transform_nodes(&element.nodes, ctx.fragment, Some(&ctx.node_anchor));
+
+        if element.has_complex_nodes {
+            ctx.push_init(
+                self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(self.b.call(
+                    "$.reset",
+                    [BArg::Expr(self.b.clone_expr(&ctx.node_anchor))],
+                ))))),
+            );
+        }
 
         if !element.self_closing {
             ctx.push_template(format!("</{}>", &element.name));
