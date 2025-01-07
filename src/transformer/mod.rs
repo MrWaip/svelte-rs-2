@@ -56,7 +56,8 @@ mod tests {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
             // r#"<h1 {id} >{title}</h1><div checked value="nope" skip id={id + id} label="one_{title}" {title}><br/>{number} text + {number}<br/>123</div>"#,
-            r#"<div>{title}</div><div><br /><div>{title}</div></div>"#,
+            // r#"<div>{title}</div><div><br /><div>{title}</div></div>"#,
+            r#"<div>{title}13</div><div></div><div>{title}</div><div>{title}<input /><input /> 123  </div><div></div>"#,
             &allocator,
         );
         let builder = Builder::new(AstBuilder::new(&allocator));

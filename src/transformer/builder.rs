@@ -198,6 +198,18 @@ impl<'a> Builder<'a> {
         return res;
     }
 
+    pub fn call_stmt<'short>(
+        &self,
+        callee: &str,
+        args: impl IntoIterator<Item = BuilderFunctionArgument<'a, 'short>>,
+    ) -> Statement<'a> {
+        let expr = self.call(callee, args);
+
+        return self.stmt(BuilderStatement::Expr(
+            self.expr(BuilderExpression::Call(expr)),
+        ));
+    }
+
     pub fn alloc<T>(&self, value: T) -> Box<'a, T> {
         return self.ast.alloc(value);
     }
