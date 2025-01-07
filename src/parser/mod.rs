@@ -89,6 +89,7 @@ impl<'a> NodeStack<'a> {
                 }
                 Node::Text(_) => unreachable!(),
                 Node::Interpolation(_) => unreachable!(),
+                Node::VirtualConcatenation(_) => unreachable!(),
             };
 
             return Ok(true);

@@ -1,12 +1,15 @@
-use std::{cell::RefCell, mem::replace, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
-use crate::ast::{
-    Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute, Node,
-    Text,
+use crate::{
+    ast::{
+        Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
+        Node, Text,
+    },
+    parser::span::{Span, SPAN},
 };
 
 use super::{
@@ -74,6 +77,107 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     pub fn push_before_init(&mut self, stmt: Statement<'ast>) {
         self.fragment.before_init.push(stmt);
+    }
+}
+
+struct CompressNodesIter<'a, 'reference> {
+    nodes: &'reference Vec<RcCell<Node<'a>>>,
+    idx: usize,
+    to_compress: Vec<RcCell<Node<'a>>>,
+    builder: &'reference Builder<'a>,
+}
+
+impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
+    // fn transform_nodes(
+    //     &mut self,
+    //     // context: &mut FragmentContext<'a>,
+    //     // parent_node: Option<&Expression<'a>>,
+    // ) {
+    //     let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
+    //     let mut iter = nodes.iter();
+
+    //     while let Some(node) = iter.next() {
+    //         let can_compress = node.borrow().is_compressible();
+
+    //         if can_compress {
+    //             to_compress.push(node.clone());
+    //             continue;
+    //         }
+
+    //         self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
+
+    //         self.transform_node(&*node.borrow(), &mut node_context);
+
+    //         node_context.sibling_offset += 1;
+    //     }
+
+    //     self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
+    // }
+
+    fn validate_to_compress<'local>(&mut self) -> Option<RcCell<Node<'a>>> {
+        let len = self.to_compress.len();
+
+        if len == 1 {
+            return self.to_compress.pop();
+        } else if len > 1 {
+            let res = Some(self.compress_nodes());
+            self.to_compress = vec![];
+            return res;
+        }
+
+        return None;
+    }
+
+    fn compress_nodes<'local>(&self) -> RcCell<Node<'a>> {
+        let parts = self
+            .to_compress
+            .iter()
+            .map(|v| {
+                let node = &*v.borrow();
+
+                match node {
+                    Node::Text(text) => ConcatenationPart::String(text.value),
+                    Node::Interpolation(interpolation) => ConcatenationPart::Expression(
+                        self.builder.clone_expr(&interpolation.expression),
+                    ),
+                    _ => unreachable!(),
+                }
+            })
+            .collect();
+
+        return Node::VirtualConcatenation(Concatenation { parts, span: SPAN }).as_rc_cell();
+    }
+}
+
+impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
+    type Item = RcCell<Node<'a>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let rc = &self.nodes.get(self.idx);
+            self.idx += 1;
+
+            if rc.is_none() {
+                return None;
+            }
+
+            let rc = rc.unwrap();
+            let can_compress = rc.borrow().is_compressible();
+
+            if can_compress {
+                self.to_compress.push(rc.clone());
+                continue;
+            }
+
+            let node = self.validate_to_compress();
+
+            if node.is_some() {
+                self.idx -= 1;
+                return node;
+            }
+
+            return Some(rc.clone());
+        }
     }
 }
 
@@ -209,6 +313,7 @@ impl<'a> TransformTemplate<'a> {
                 self.transform_interpolation(&interpolation.expression, ctx)
             }
             Node::IfBlock(_if_block) => todo!(),
+            Node::VirtualConcatenation(_concatenation) => todo!(),
         };
     }
 
