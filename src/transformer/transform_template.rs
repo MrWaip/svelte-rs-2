@@ -40,6 +40,43 @@ pub struct FragmentContext<'a> {
     anchor: Expression<'a>,
 }
 
+pub struct NodeContext<'ast, 'reference> {
+    fragment: &'reference mut FragmentContext<'ast>,
+    builder: &'reference Builder<'ast>,
+    node_anchor: Expression<'ast>,
+    sibling_offset: usize,
+}
+
+impl<'ast, 'local> NodeContext<'ast, 'local> {
+    pub fn get_node_anchor(&mut self) -> Expression<'ast> {
+        return replace(&mut self.node_anchor, self.builder.cheap_expr());
+    }
+
+    pub fn generate(&mut self, preferable_name: &str) -> String {
+        return self.fragment.scope.borrow_mut().generate(preferable_name);
+    }
+
+    pub fn push_init(&mut self, stmt: Statement<'ast>) {
+        self.fragment.init.push(stmt);
+    }
+
+    pub fn push_template(&mut self, value: String) {
+        self.fragment.template.push(value);
+    }
+
+    pub fn push_after_update(&mut self, stmt: Statement<'ast>) {
+        self.fragment.after_update.push(stmt);
+    }
+
+    pub fn push_update(&mut self, stmt: Statement<'ast>) {
+        self.fragment.update.push(stmt);
+    }
+
+    pub fn push_before_init(&mut self, stmt: Statement<'ast>) {
+        self.fragment.before_init.push(stmt);
+    }
+}
+
 pub struct FragmentResult<'a> {
     body: Vec<Statement<'a>>,
 }
@@ -108,7 +145,6 @@ impl<'a> TransformTemplate<'a> {
         parent_node: Option<&Expression<'a>>,
     ) {
         let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
-        let mut idx = 0;
         let mut iter = nodes.iter();
         let mut anchor = &context.anchor;
         let mut callee = "$.first_child";
@@ -118,9 +154,16 @@ impl<'a> TransformTemplate<'a> {
             callee = "$.child";
         }
 
-        let mut get_self = self.b.expr(BExpr::Call(
+        let get_self = self.b.expr(BExpr::Call(
             self.b.call(callee, [BArg::Expr(self.b.clone_expr(anchor))]),
         ));
+
+        let mut node_context = NodeContext {
+            fragment: context,
+            node_anchor: get_self,
+            sibling_offset: 0,
+            builder: self.b,
+        };
 
         while let Some(node) = iter.next() {
             let can_compress = node.borrow().is_compressible();
@@ -130,99 +173,81 @@ impl<'a> TransformTemplate<'a> {
                 continue;
             }
 
-            get_self =
-                self.compress_text_and_interpolation(&mut to_compress, context, &mut idx, get_self);
+            self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
 
-            get_self = self.transform_node(&*node.borrow(), context, idx, get_self);
+            self.transform_node(&*node.borrow(), &mut node_context);
 
-            idx += 1;
+            node_context.sibling_offset += 1;
         }
 
-        self.compress_text_and_interpolation(&mut to_compress, context, &mut idx, get_self);
+        self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
     }
 
-    fn compress_text_and_interpolation(
+    fn compress_text_and_interpolation<'local>(
         &mut self,
         to_compress: &mut Vec<RcCell<Node<'a>>>,
-        context: &mut FragmentContext<'a>,
-        idx: &mut usize,
-        get_self: Expression<'a>,
-    ) -> Expression<'a> {
+        context: &mut NodeContext<'a, 'local>,
+    ) {
         let len = to_compress.len();
 
         if len == 1 {
-            let res = self.transform_node(&*to_compress[0].borrow(), context, *idx, get_self);
+            self.transform_node(&*to_compress[0].borrow(), context);
             *to_compress = vec![];
-            *idx += 1;
-
-            return res;
+            context.sibling_offset += 1;
         } else if len > 1 {
-            let res = self.compress_nodes(to_compress, context, *idx, get_self);
+            self.compress_nodes(to_compress, context);
             *to_compress = vec![];
-            *idx += 1;
-
-            return res;
+            context.sibling_offset += 1;
         }
-
-        return get_self;
     }
 
-    fn transform_node(
-        &mut self,
-        node: &Node<'a>,
-        ctx: &mut FragmentContext<'a>,
-        idx: usize,
-        get_self: Expression<'a>,
-    ) -> Expression<'a> {
+    fn transform_node<'local>(&mut self, node: &Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
         match node {
-            Node::Element(element) => return self.transform_element(element, ctx, get_self, idx),
+            Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
             Node::Interpolation(interpolation) => {
-                return self.transform_interpolation(&interpolation.expression, ctx, idx, get_self)
+                self.transform_interpolation(&interpolation.expression, ctx)
             }
             Node::IfBlock(_if_block) => todo!(),
         };
-
-        return get_self;
     }
 
-    fn transform_element(
+    fn transform_element<'local>(
         &mut self,
         element: &Element<'a>,
-        ctx: &mut FragmentContext<'a>,
-        mut get_self: Expression<'a>,
-        idx: usize,
-    ) -> Expression<'a> {
-        ctx.template.push(format!("<{}", &element.name));
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        ctx.push_template(format!("<{}", &element.name));
 
         if !element.attributes.is_empty() {
-            let var_name = ctx.scope.borrow_mut().generate(&element.name);
+            let var_name = ctx.generate(&element.name);
 
-            if idx > 0 {
-                get_self = self.b.expr(BExpr::Call(
-                    self.b
-                        .call("$.sibling", [BArg::Expr(get_self), BArg::Num((idx) as f64)]),
-                ));
+            if ctx.sibling_offset > 0 {
+                ctx.node_anchor = self.b.expr(BExpr::Call(self.b.call(
+                    "$.sibling",
+                    [
+                        BArg::Expr(ctx.get_node_anchor()),
+                        BArg::Num((ctx.sibling_offset) as f64),
+                    ],
+                )));
             }
 
-            let stmt = self.b.var(&var_name, BExpr::Expr(get_self));
+            let stmt = self.b.var(&var_name, BExpr::Expr(ctx.get_node_anchor()));
 
-            ctx.init.push(stmt);
+            ctx.push_init(stmt);
 
-            get_self = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
+            ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
 
-            self.transform_attributes(element, ctx, &get_self);
+            self.transform_attributes(element, ctx);
         } else {
-            ctx.template.push(">".into());
+            ctx.push_template(">".into());
         }
 
-        self.transform_nodes(&element.nodes, ctx, Some(&get_self));
+        self.transform_nodes(&element.nodes, ctx.fragment, Some(&ctx.node_anchor));
 
         if !element.self_closing {
-            ctx.template.push(format!("</{}>", &element.name));
+            ctx.push_template(format!("</{}>", &element.name));
         }
-
-        return get_self;
     }
 
     fn add_template(&mut self, ctx: &mut FragmentContext<'a>, name: &str) {
@@ -236,27 +261,21 @@ impl<'a> TransformTemplate<'a> {
         self.hoisted.push(var);
     }
 
-    fn transform_attribute(
-        &self,
-        attr: &Attribute<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
-    ) {
+    fn transform_attribute<'local>(&self, attr: &Attribute<'a>, ctx: &mut NodeContext<'a, 'local>) {
         match attr {
-            Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx, ident),
+            Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
             Attribute::Expression(expression) => {
-                self.transform_expression_attribute(expression, ctx, ident)
+                self.transform_expression_attribute(expression, ctx)
             }
         }
     }
 
-    fn transform_expression_attribute(
+    fn transform_expression_attribute<'local>(
         &self,
         expression: &Expression<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(ident);
+        let node_id = self.b.clone_expr(&ctx.node_anchor);
         let expression = expression.clone_in(&self.b.ast.allocator);
 
         let arg: BArg = match &expression {
@@ -269,48 +288,49 @@ impl<'a> TransformTemplate<'a> {
             [BArg::Expr(node_id), arg, BArg::Expr(expression)],
         );
 
-        ctx.update
-            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 
-    fn transform_html_attribute(
+    fn transform_html_attribute<'local>(
         &self,
         attr: &HTMLAttribute<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
     ) {
         if matches!(
             attr.value,
             AttributeValue::String(_) | AttributeValue::Boolean
         ) {
-            ctx.template.push(" ".into());
-            ctx.template.push(attr.name.into());
+            ctx.push_template(" ".into());
+            ctx.push_template(attr.name.into());
         }
 
         match &attr.value {
             AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
             AttributeValue::Expression(value) => {
-                self.transform_expression_attribute_value(attr, value, ctx, ident)
+                self.transform_expression_attribute_value(attr, value, ctx)
             }
             AttributeValue::Boolean => (),
             AttributeValue::Concatenation(value) => {
-                self.transform_concatenation_attribute_value(attr, value, ctx, ident)
+                self.transform_concatenation_attribute_value(attr, value, ctx)
             }
         };
     }
 
-    fn transform_string_attribute_value(&self, value: &str, ctx: &mut FragmentContext<'a>) {
-        ctx.template.push(format!("=\"{value}\"").into());
+    fn transform_string_attribute_value<'local>(
+        &self,
+        value: &str,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        ctx.push_template(format!("=\"{value}\"").into());
     }
 
-    fn transform_expression_attribute_value(
+    fn transform_expression_attribute_value<'local>(
         &self,
         attr: &HTMLAttribute<'a>,
         value: &Expression<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(ident);
+        let node_id = self.b.clone_expr(&ctx.node_anchor);
 
         let value = value.clone_in(&self.b.ast.allocator);
         let call = self.b.call(
@@ -322,18 +342,16 @@ impl<'a> TransformTemplate<'a> {
             ],
         );
 
-        ctx.update
-            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 
-    fn transform_concatenation_attribute_value(
+    fn transform_concatenation_attribute_value<'local>(
         &self,
         attr: &HTMLAttribute<'a>,
         value: &Concatenation<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(ident);
+        let node_id = self.b.clone_expr(&ctx.node_anchor);
 
         let template_literal = self.b.template_literal(&value.parts);
         let call = self.b.call(
@@ -345,21 +363,19 @@ impl<'a> TransformTemplate<'a> {
             ],
         );
 
-        ctx.update
-            .push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
     }
 
-    fn transform_attributes(
+    fn transform_attributes<'local>(
         &self,
         element: &Element<'a>,
-        ctx: &mut FragmentContext<'a>,
-        ident: &Expression<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
     ) {
         for attr in element.attributes.iter() {
-            self.transform_attribute(attr, ctx, ident);
+            self.transform_attribute(attr, ctx);
         }
 
-        ctx.template.push(">".into());
+        ctx.push_template(">".into());
     }
 
     fn build_template_effect(&self, update: Vec<Statement<'a>>) -> Statement<'a> {
@@ -370,19 +386,17 @@ impl<'a> TransformTemplate<'a> {
         return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
     }
 
-    fn transform_text(&self, text: &Text<'a>, ctx: &mut FragmentContext<'a>) {
-        ctx.template.push(text.value.to_string());
+    fn transform_text<'local>(&self, text: &Text<'a>, ctx: &mut NodeContext<'a, 'local>) {
+        ctx.push_template(text.value.to_string());
     }
 
-    fn transform_interpolation(
+    fn transform_interpolation<'local>(
         &self,
         expression: &Expression<'a>,
-        ctx: &mut FragmentContext<'a>,
-        idx: usize,
-        mut get_self: Expression<'a>,
-    ) -> Expression<'a> {
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
         let b = self.b;
-        let var_name = ctx.scope.borrow_mut().generate("text");
+        let var_name = ctx.generate("text");
         let expression = expression.clone_in(&b.ast.allocator);
 
         let set_text = b.call(
@@ -390,29 +404,28 @@ impl<'a> TransformTemplate<'a> {
             [BArg::Ident(&var_name), BArg::Expr(expression)],
         );
 
-        if idx > 0 {
-            get_self = b.expr(BExpr::Call(
-                b.call("$.sibling", [BArg::Expr(get_self), BArg::Num(idx as f64)]),
-            ));
+        if ctx.sibling_offset > 0 {
+            ctx.node_anchor = b.expr(BExpr::Call(b.call(
+                "$.sibling",
+                [
+                    BArg::Expr(ctx.get_node_anchor()),
+                    BArg::Num(ctx.sibling_offset as f64),
+                ],
+            )));
         }
 
-        let var = self.b.var(&var_name, BExpr::Expr(get_self));
-        get_self = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
+        let var = self.b.var(&var_name, BExpr::Expr(ctx.get_node_anchor()));
+        ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
 
-        ctx.init.push(var);
-        ctx.update
-            .push(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
-
-        return get_self;
+        ctx.push_init(var);
+        ctx.push_update(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
     }
 
-    fn compress_nodes(
+    fn compress_nodes<'local>(
         &self,
         to_compress: &Vec<RcCell<Node<'a>>>,
-        ctx: &mut FragmentContext<'a>,
-        idx: usize,
-        get_self: Expression<'a>,
-    ) -> Expression<'a> {
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
         let parts = to_compress
             .iter()
             .map(|v| {
@@ -431,7 +444,7 @@ impl<'a> TransformTemplate<'a> {
         let tmp = self.b.template_literal(&parts);
         let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        return self.transform_interpolation(&expr, ctx, idx, get_self);
+        self.transform_interpolation(&expr, ctx);
     }
 }
 
