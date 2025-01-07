@@ -26,6 +26,8 @@ pub enum Node<'a> {
     Text(Text<'a>),
     Interpolation(Interpolation<'a>),
     IfBlock(IfBlock<'a>),
+    /** Напоминание для себя. Сейчас во время трансформации шаблона последовательность Text + Interpolation схлопывается в эту Node */
+    VirtualConcatenation(Concatenation<'a>),
 }
 
 impl<'a> Node<'a> {
@@ -54,6 +56,15 @@ impl<'a> Node<'a> {
     }
 }
 
+impl<'a> ToOwned for Node<'a> {
+    type Owned = Self;
+
+    fn to_owned(&self) -> Self::Owned {
+        
+        todo!()
+    }
+}
+
 impl<'short, 'long> TryInto<&'short mut IfBlock<'long>> for &'short mut Node<'long> {
     type Error = Diagnostic;
 
@@ -73,6 +84,9 @@ impl<'a> FormatNode for Node<'a> {
             Node::Text(text) => text.format_node(),
             Node::Interpolation(interpolation) => interpolation.format_node(),
             Node::IfBlock(if_block) => if_block.format_node(),
+            Node::VirtualConcatenation(virtual_concatenation) => {
+                virtual_concatenation.format_node()
+            }
         };
     }
 }
@@ -84,6 +98,7 @@ impl<'a> GetSpan for Node<'a> {
             Node::Text(text) => text.span,
             Node::Interpolation(interpolation) => interpolation.span,
             Node::IfBlock(if_block) => if_block.span,
+            Node::VirtualConcatenation(virtual_concatenation) => virtual_concatenation.span,
         }
     }
 }
@@ -321,6 +336,18 @@ pub enum AttributeValue<'a> {
 pub struct Concatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
+}
+
+impl<'a> FormatNode for Concatenation<'a> {
+    fn format_node(&self) -> String {
+        todo!()
+    }
+}
+
+impl<'a> AsNode<'a> for Concatenation<'a> {
+    fn as_node(self) -> Node<'a> {
+        return Node::VirtualConcatenation(self);
+    }
 }
 
 #[derive(Debug)]
