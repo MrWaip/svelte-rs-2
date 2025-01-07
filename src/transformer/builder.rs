@@ -346,4 +346,8 @@ impl<'a> Builder<'a> {
     pub fn clone_expr(&self, expr: &Expression<'a>) -> Expression<'a> {
         return expr.clone_in(&self.ast.allocator);
     }
+
+    pub fn cheap_expr(&self) -> Expression<'a> {
+        return self.ast.expression_boolean_literal(SPAN, false);
+    }
 }
