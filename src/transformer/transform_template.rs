@@ -275,6 +275,19 @@ impl<'a> TransformTemplate<'a> {
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
         }
+
+        // if there are trailing static text nodes/elements,
+        // traverse to the last (n - 1) one when hydrating
+        if node_context.sibling_offset > 1 {
+            let offset = node_context.sibling_offset - 1;
+            let mut args = vec![];
+
+            if offset != 1 {
+                args.push(BArg::Num(offset as f64));
+            }
+
+            node_context.push_init(self.b.call_stmt("$.next", args));
+        }
     }
 
     fn transform_node<'local>(&mut self, node: &Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
