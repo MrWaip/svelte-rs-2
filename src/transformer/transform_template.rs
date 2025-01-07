@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cell::RefCell, mem::replace, rc::Rc};
+use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
@@ -9,7 +9,7 @@ use crate::{
         Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
         Node, Text,
     },
-    parser::span::{Span, SPAN},
+    parser::span::SPAN,
 };
 
 use super::{
@@ -88,31 +88,17 @@ struct CompressNodesIter<'a, 'reference> {
 }
 
 impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
-    // fn transform_nodes(
-    //     &mut self,
-    //     // context: &mut FragmentContext<'a>,
-    //     // parent_node: Option<&Expression<'a>>,
-    // ) {
-    //     let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
-    //     let mut iter = nodes.iter();
-
-    //     while let Some(node) = iter.next() {
-    //         let can_compress = node.borrow().is_compressible();
-
-    //         if can_compress {
-    //             to_compress.push(node.clone());
-    //             continue;
-    //         }
-
-    //         self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
-
-    //         self.transform_node(&*node.borrow(), &mut node_context);
-
-    //         node_context.sibling_offset += 1;
-    //     }
-
-    //     self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
-    // }
+    pub fn iter(
+        nodes: &'reference Vec<RcCell<Node<'a>>>,
+        builder: &'reference Builder<'a>,
+    ) -> Self {
+        return Self {
+            builder,
+            nodes,
+            idx: 0,
+            to_compress: vec![],
+        };
+    }
 
     fn validate_to_compress<'local>(&mut self) -> Option<RcCell<Node<'a>>> {
         let len = self.to_compress.len();
@@ -158,7 +144,7 @@ impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
             self.idx += 1;
 
             if rc.is_none() {
-                return None;
+                break;
             }
 
             let rc = rc.unwrap();
@@ -178,6 +164,8 @@ impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
 
             return Some(rc.clone());
         }
+
+        return self.validate_to_compress();
     }
 }
 
@@ -248,8 +236,6 @@ impl<'a> TransformTemplate<'a> {
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
     ) {
-        let mut to_compress: Vec<RcCell<Node<'a>>> = vec![];
-        let mut iter = nodes.iter();
         let mut anchor = &context.anchor;
         let mut callee = "$.first_child";
 
@@ -269,39 +255,10 @@ impl<'a> TransformTemplate<'a> {
             builder: self.b,
         };
 
-        while let Some(node) = iter.next() {
-            let can_compress = node.borrow().is_compressible();
-
-            if can_compress {
-                to_compress.push(node.clone());
-                continue;
-            }
-
-            self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
-
-            self.transform_node(&*node.borrow(), &mut node_context);
-
+        for cell in CompressNodesIter::iter(nodes, self.b) {
+            let node = &*cell.borrow();
+            self.transform_node(node, &mut node_context);
             node_context.sibling_offset += 1;
-        }
-
-        self.compress_text_and_interpolation(&mut to_compress, &mut node_context);
-    }
-
-    fn compress_text_and_interpolation<'local>(
-        &mut self,
-        to_compress: &mut Vec<RcCell<Node<'a>>>,
-        context: &mut NodeContext<'a, 'local>,
-    ) {
-        let len = to_compress.len();
-
-        if len == 1 {
-            self.transform_node(&*to_compress[0].borrow(), context);
-            *to_compress = vec![];
-            context.sibling_offset += 1;
-        } else if len > 1 {
-            self.compress_nodes(to_compress, context);
-            *to_compress = vec![];
-            context.sibling_offset += 1;
         }
     }
 
@@ -313,7 +270,9 @@ impl<'a> TransformTemplate<'a> {
                 self.transform_interpolation(&interpolation.expression, ctx)
             }
             Node::IfBlock(_if_block) => todo!(),
-            Node::VirtualConcatenation(_concatenation) => todo!(),
+            Node::VirtualConcatenation(concatenation) => {
+                self.transform_virtual_concatenation(concatenation, ctx)
+            }
         };
     }
 
@@ -526,27 +485,12 @@ impl<'a> TransformTemplate<'a> {
         ctx.push_update(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
     }
 
-    fn compress_nodes<'local>(
+    fn transform_virtual_concatenation<'local>(
         &self,
-        to_compress: &Vec<RcCell<Node<'a>>>,
+        concatenation: &Concatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let parts = to_compress
-            .iter()
-            .map(|v| {
-                let node = &*v.borrow();
-
-                match node {
-                    Node::Text(text) => ConcatenationPart::String(text.value),
-                    Node::Interpolation(interpolation) => ConcatenationPart::Expression(
-                        interpolation.expression.clone_in(&self.b.ast.allocator),
-                    ),
-                    _ => unreachable!(),
-                }
-            })
-            .collect();
-
-        let tmp = self.b.template_literal(&parts);
+        let tmp = self.b.template_literal(&concatenation.parts);
         let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
         self.transform_interpolation(&expr, ctx);
