@@ -7,7 +7,7 @@ use rccell::RcCell;
 use crate::{
     ast::{
         Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
-        Node, Text,
+        IfBlock, Node, Text,
     },
     parser::span::SPAN,
 };
@@ -300,7 +300,7 @@ impl<'a> TransformTemplate<'a> {
             Node::Interpolation(interpolation) => {
                 self.transform_interpolation(&interpolation.expression, ctx, false)
             }
-            Node::IfBlock(_if_block) => todo!(),
+            Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
             }
@@ -554,6 +554,16 @@ impl<'a> TransformTemplate<'a> {
         let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
         self.transform_interpolation(&expr, ctx, true);
+    }
+
+    fn transform_if_block<'local>(
+        &self,
+        if_block: &IfBlock<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        // consequent fragment
+        // alternate fragment
+        // apply
     }
 }
 
