@@ -47,6 +47,10 @@ impl<'a> Node<'a> {
         return matches!(self, Node::Text(_));
     }
 
+    pub fn is_interpolation(&self) -> bool {
+        return matches!(self, Node::Interpolation(_));
+    }
+
     pub fn from_option_mut<'local, 'long>(
         option: Option<&'local mut RcCell<Node<'long>>>,
     ) -> Result<RefMut<'local, Node<'long>>, Diagnostic> {

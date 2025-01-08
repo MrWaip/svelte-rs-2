@@ -26,6 +26,12 @@ pub struct TransformTemplate<'a> {
     root_scope: Rc<RefCell<Scope>>,
 }
 
+pub enum AnchorNodeType {
+    Interpolation,
+    VirtualConcatenation,
+    Element,
+}
+
 #[derive(Debug)]
 pub struct TransformTemplateResult<'a> {
     pub body: Vec<Statement<'a>>,
@@ -291,9 +297,11 @@ impl<'a> TransformTemplate<'a> {
         match node {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
-            Node::Interpolation(interpolation) => {
-                self.transform_interpolation(&interpolation.expression, ctx)
-            }
+            Node::Interpolation(interpolation) => self.transform_interpolation(
+                &interpolation.expression,
+                ctx,
+                AnchorNodeType::Interpolation,
+            ),
             Node::IfBlock(_if_block) => todo!(),
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
@@ -305,26 +313,32 @@ impl<'a> TransformTemplate<'a> {
         &self,
         ctx: &mut NodeContext<'a, 'local>,
         preferable_name: &str,
-        is_text: bool,
+        anchor_type: AnchorNodeType,
     ) {
         let mut anchor = ctx.get_node_anchor();
         let identifier = ctx.generate(preferable_name);
 
+        /*
+         * if this is a standalone `{expression}`, make sure we handle the case where
+         * no text node was created because the expression was empty during SSR
+         */
+        let possibly_create_empty_text_node = matches!(anchor_type, AnchorNodeType::Interpolation);
+
         if ctx.sibling_offset > 0 {
             let mut args = vec![BArg::Expr(anchor)];
 
-            if ctx.sibling_offset != 1 || is_text {
+            if ctx.sibling_offset != 1 || possibly_create_empty_text_node {
                 args.push(BArg::Num((ctx.sibling_offset) as f64));
             }
 
-            if is_text {
+            if possibly_create_empty_text_node {
                 args.push(BArg::Bool(true));
             }
 
             anchor = self.b.expr(BExpr::Call(self.b.call("$.sibling", args)));
         } else {
             if let Expression::CallExpression(call) = &mut anchor {
-                if is_text {
+                if possibly_create_empty_text_node {
                     call.arguments.push(self.b.arg(BArg::Bool(true)));
                 }
             }
@@ -345,7 +359,7 @@ impl<'a> TransformTemplate<'a> {
         ctx.push_template(format!("<{}", &element.name));
 
         if has_children || element.has_complex_nodes {
-            self.add_anchor(ctx, &element.name, false);
+            self.add_anchor(ctx, &element.name, AnchorNodeType::Element);
         }
 
         if has_children {
@@ -514,8 +528,9 @@ impl<'a> TransformTemplate<'a> {
         &self,
         expression: &Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
+        anchor_type: AnchorNodeType,
     ) {
-        self.add_anchor(ctx, "text", true);
+        self.add_anchor(ctx, "text", anchor_type);
 
         let expression = self.b.clone_expr(expression);
         let node_id = self.b.clone_expr(&ctx.node_anchor);
@@ -534,7 +549,7 @@ impl<'a> TransformTemplate<'a> {
         let tmp = self.b.template_literal(&concatenation.parts);
         let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        self.transform_interpolation(&expr, ctx);
+        self.transform_interpolation(&expr, ctx, AnchorNodeType::VirtualConcatenation);
     }
 }
 
