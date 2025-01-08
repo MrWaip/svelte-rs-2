@@ -4,9 +4,6 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
-// todo
-// next, reset, is_text, 1 sibling offset не писать
-
 use crate::{
     ast::{
         Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
@@ -259,13 +256,13 @@ impl<'a> TransformTemplate<'a> {
             callee = "$.child";
         }
 
-        let get_self = self.b.expr(BExpr::Call(
+        let node_anchor = self.b.expr(BExpr::Call(
             self.b.call(callee, [BArg::Expr(self.b.clone_expr(anchor))]),
         ));
 
         let mut node_context = NodeContext {
             fragment: context,
-            node_anchor: get_self,
+            node_anchor,
             sibling_offset: 0,
             builder: self.b,
         };
@@ -304,6 +301,46 @@ impl<'a> TransformTemplate<'a> {
         };
     }
 
+    fn add_anchor<'local>(
+        &self,
+        ctx: &mut NodeContext<'a, 'local>,
+        preferable_name: &str,
+        is_text: bool,
+    ) {
+        let mut anchor = ctx.get_node_anchor();
+        let identifier = ctx.generate(preferable_name);
+
+        if ctx.sibling_offset > 0 {
+            let mut args = vec![BArg::Expr(anchor)];
+
+            if ctx.sibling_offset != 1 || is_text {
+                args.push(BArg::Num((ctx.sibling_offset) as f64));
+            }
+
+            if is_text {
+                args.push(BArg::Bool(true));
+            }
+
+            anchor = self.b.expr(BExpr::Call(self.b.call("$.sibling", args)));
+        } else {
+            if let Expression::CallExpression(call) = &mut anchor {
+                if is_text {
+                    // if call.arguments.len() == 1 {
+                    //     call.arguments
+                    //         .push(self.b.arg(BArg::Num(ctx.sibling_offset as f64)));
+                    // }
+
+                    call.arguments.push(self.b.arg(BArg::Bool(true)));
+                }
+            }
+        }
+
+        let stmt = self.b.var(&identifier, BExpr::Expr(anchor));
+        ctx.push_init(stmt);
+        ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)));
+        ctx.reset_sibling_offset();
+    }
+
     fn transform_element<'local>(
         &mut self,
         element: &Element<'a>,
@@ -313,23 +350,7 @@ impl<'a> TransformTemplate<'a> {
         ctx.push_template(format!("<{}", &element.name));
 
         if has_children || element.has_complex_nodes {
-            let var_name = ctx.generate(&element.name);
-
-            if ctx.sibling_offset > 0 {
-                ctx.node_anchor = self.b.expr(BExpr::Call(self.b.call(
-                    "$.sibling",
-                    [
-                        BArg::Expr(ctx.get_node_anchor()),
-                        BArg::Num((ctx.sibling_offset) as f64),
-                    ],
-                )));
-            }
-
-            let stmt = self.b.var(&var_name, BExpr::Expr(ctx.get_node_anchor()));
-
-            ctx.push_init(stmt);
-            ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
-            ctx.reset_sibling_offset();
+            self.add_anchor(ctx, &element.name, false);
         }
 
         if has_children {
@@ -499,30 +520,15 @@ impl<'a> TransformTemplate<'a> {
         expression: &Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let b = self.b;
-        let var_name = ctx.generate("text");
-        let expression = expression.clone_in(&b.ast.allocator);
+        self.add_anchor(ctx, "text", true);
 
-        let set_text = b.call(
-            "$.set_text",
-            [BArg::Ident(&var_name), BArg::Expr(expression)],
-        );
+        let expression = self.b.clone_expr(expression);
+        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let set_text = self
+            .b
+            .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
 
-        if ctx.sibling_offset > 0 {
-            ctx.node_anchor = b.expr(BExpr::Call(b.call(
-                "$.sibling",
-                [
-                    BArg::Expr(ctx.get_node_anchor()),
-                    BArg::Num(ctx.sibling_offset as f64),
-                ],
-            )));
-        }
-
-        let var = self.b.var(&var_name, BExpr::Expr(ctx.get_node_anchor()));
-        ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&var_name)));
-
-        ctx.push_init(var);
-        ctx.push_update(b.stmt(BStmt::Expr(b.expr(BExpr::Call(set_text)))));
+        ctx.push_update(set_text);
     }
 
     fn transform_virtual_concatenation<'local>(
