@@ -156,14 +156,8 @@ impl<'a> Builder<'a> {
             .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal);
     }
 
-    pub fn call<'short>(
-        &self,
-        callee: &str,
-        args: impl IntoIterator<Item = BuilderFunctionArgument<'a, 'short>>,
-    ) -> CallExpression<'a> {
-        let ident = self.ast.expression_identifier_reference(SPAN, callee);
-
-        let args = args.into_iter().map(|arg| match arg {
+    pub fn arg<'local>(&self, arg: BuilderFunctionArgument<'a, 'local>) -> Argument<'a> {
+        match arg {
             BuilderFunctionArgument::Str(value) => {
                 let value = self.string_literal(value.clone());
                 Argument::StringLiteral(self.alloc(value))
@@ -189,7 +183,16 @@ impl<'a> Builder<'a> {
             BuilderFunctionArgument::Call(call_expression) => {
                 Argument::CallExpression(self.alloc(call_expression))
             }
-        });
+        }
+    }
+
+    pub fn call<'short>(
+        &self,
+        callee: &str,
+        args: impl IntoIterator<Item = BuilderFunctionArgument<'a, 'short>>,
+    ) -> CallExpression<'a> {
+        let ident = self.ast.expression_identifier_reference(SPAN, callee);
+        let args = args.into_iter().map(|v| self.arg(v));
 
         let res = self
             .ast
