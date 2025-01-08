@@ -297,11 +297,9 @@ impl<'a> TransformTemplate<'a> {
         match node {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
-            Node::Interpolation(interpolation) => self.transform_interpolation(
-                &interpolation.expression,
-                ctx,
-                AnchorNodeType::Interpolation,
-            ),
+            Node::Interpolation(interpolation) => {
+                self.transform_interpolation(&interpolation.expression, ctx, false)
+            }
             Node::IfBlock(_if_block) => todo!(),
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
@@ -528,8 +526,14 @@ impl<'a> TransformTemplate<'a> {
         &self,
         expression: &Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
-        anchor_type: AnchorNodeType,
+        is_concatenation: bool,
     ) {
+        let anchor_type = if is_concatenation {
+            AnchorNodeType::VirtualConcatenation
+        } else {
+            AnchorNodeType::Interpolation
+        };
+
         self.add_anchor(ctx, "text", anchor_type);
 
         let expression = self.b.clone_expr(expression);
@@ -549,7 +553,7 @@ impl<'a> TransformTemplate<'a> {
         let tmp = self.b.template_literal(&concatenation.parts);
         let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        self.transform_interpolation(&expr, ctx, AnchorNodeType::VirtualConcatenation);
+        self.transform_interpolation(&expr, ctx, true);
     }
 }
 
