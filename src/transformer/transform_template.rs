@@ -325,11 +325,6 @@ impl<'a> TransformTemplate<'a> {
         } else {
             if let Expression::CallExpression(call) = &mut anchor {
                 if is_text {
-                    // if call.arguments.len() == 1 {
-                    //     call.arguments
-                    //         .push(self.b.arg(BArg::Num(ctx.sibling_offset as f64)));
-                    // }
-
                     call.arguments.push(self.b.arg(BArg::Bool(true)));
                 }
             }
