@@ -213,10 +213,10 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
-        let mut body = vec![];
-        let mut fragment_scope = Scope::new(Some(self.root_scope.clone()));
-        let template_name = self.root_scope.borrow_mut().generate("root");
-        let identifier = fragment_scope.generate("fragment");
+        let mut body: Vec<Statement<'a>> = vec![];
+        let scope = self.root_scope.clone();
+        let template_name = scope.borrow_mut().generate("root");
+        let identifier = scope.borrow_mut().generate("fragment");
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -224,7 +224,7 @@ impl<'a> TransformTemplate<'a> {
             update: vec![],
             after_update: vec![],
             template: vec![],
-            scope: Rc::new(RefCell::new(fragment_scope)),
+            scope,
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
@@ -236,7 +236,11 @@ impl<'a> TransformTemplate<'a> {
         self.add_template(&mut context, &template_name);
         body.extend(context.before_init);
         body.extend(context.init);
-        body.push(self.build_template_effect(context.update));
+
+        if !context.update.is_empty() {
+            body.push(self.build_template_effect(context.update));
+        }
+
         body.extend(context.after_update);
 
         let close = self.b.call(
