@@ -360,13 +360,15 @@ impl<'a> Builder<'a> {
         params: FormalParameters<'a>,
         statements: impl IntoIterator<Item = Statement<'a>>,
     ) -> ArrowFunctionExpression<'a> {
-        let body = self
-            .ast
-            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
+        let statements = self.ast.vec_from_iter(statements);
+        let is_expr =
+            statements.len() == 1 && matches!(&statements[0], Statement::ExpressionStatement(_));
+
+        let body = self.ast.function_body(SPAN, self.ast.vec(), statements);
 
         let arrow = self
             .ast
-            .arrow_function_expression(SPAN, false, false, NONE, params, NONE, body);
+            .arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body);
 
         return arrow;
     }
