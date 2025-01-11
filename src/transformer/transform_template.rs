@@ -39,6 +39,8 @@ pub struct TransformTemplateResult<'a> {
     pub hoisted: Vec<Statement<'a>>,
 }
 
+const COMMENT_NODE_ANCHOR: &str = "<!>";
+
 pub struct FragmentContext<'a> {
     before_init: Vec<Statement<'a>>,
     init: Vec<Statement<'a>>,
@@ -48,6 +50,19 @@ pub struct FragmentContext<'a> {
     scope: Rc<RefCell<Scope>>,
     /** identifier на фрагмент */
     anchor: Expression<'a>,
+}
+
+impl<'a> FragmentContext<'a> {
+    fn template_has_one_comment(&self) -> bool {
+        if self.template.len() != 1 {
+            return false;
+        }
+
+        return self
+            .template
+            .first()
+            .is_some_and(|v| v == COMMENT_NODE_ANCHOR);
+    }
 }
 
 pub struct NodeContext<'ast, 'reference> {
@@ -106,6 +121,7 @@ struct CompressNodesIter<'a, 'reference> {
     builder: &'reference Builder<'a>,
 }
 
+// !svelte optimization
 impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     pub fn iter(
         nodes: &'reference Vec<RcCell<Node<'a>>>,
@@ -228,12 +244,18 @@ impl<'a> TransformTemplate<'a> {
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
-        let call = self.b.call(&template_name, []);
-        body.push(self.b.var(&identifier, BExpr::Call(call)));
-
         self.transform_nodes(nodes, &mut context, None);
 
-        self.add_template(&mut context, &template_name);
+        // !svelte optimization
+        if context.template_has_one_comment() {
+            let call = self.b.call("$.comment", []);
+            body.push(self.b.var(&identifier, BExpr::Call(call)));
+        } else {
+            let call = self.b.call(&template_name, []);
+            body.push(self.b.var(&identifier, BExpr::Call(call)));
+            self.add_template(&mut context, &template_name);
+        }
+
         body.extend(context.before_init);
         body.extend(context.init);
 
@@ -536,6 +558,9 @@ impl<'a> TransformTemplate<'a> {
         ctx: &mut NodeContext<'a, 'local>,
         is_concatenation: bool,
     ) {
+        // whitespace for html text node for text anchor
+        ctx.push_template(" ".into());
+
         let anchor_type = if is_concatenation {
             AnchorNodeType::VirtualConcatenation
         } else {
@@ -569,6 +594,7 @@ impl<'a> TransformTemplate<'a> {
         if_block: &IfBlock<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
+        ctx.push_template(COMMENT_NODE_ANCHOR.into());
         let mut statements = vec![];
         self.add_anchor(ctx, "node", AnchorNodeType::IfBlock);
 
