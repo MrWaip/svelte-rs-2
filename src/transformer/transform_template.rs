@@ -595,7 +595,10 @@ impl<'a> TransformTemplate<'a> {
 
             statements.push(alternate);
 
-            Some(self.b.call_stmt("$$render", [BArg::Ident(&alternate_id)]))
+            Some(
+                self.b
+                    .call_stmt("$$render", [BArg::Ident(&alternate_id), BArg::Bool(false)]),
+            )
         } else {
             None
         };
