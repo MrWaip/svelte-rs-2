@@ -1,4 +1,4 @@
-use std::{cell::RefCell, mem::replace, rc::Rc};
+use std::{cell::RefCell, mem::replace, os::macos::raw::stat, rc::Rc};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
@@ -29,6 +29,7 @@ pub struct TransformTemplate<'a> {
 pub enum AnchorNodeType {
     Interpolation,
     VirtualConcatenation,
+    IfBlock,
     Element,
 }
 
@@ -513,7 +514,10 @@ impl<'a> TransformTemplate<'a> {
     fn build_template_effect(&self, update: Vec<Statement<'a>>) -> Statement<'a> {
         let b = self.b;
 
-        let call = b.call("$.template_effect", [BArg::Arrow(b.arrow(update))]);
+        let call = b.call(
+            "$.template_effect",
+            [BArg::Arrow(b.arrow(self.b.params([]), update))],
+        );
 
         return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
     }
@@ -557,13 +561,66 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn transform_if_block<'local>(
-        &self,
+        &mut self,
         if_block: &IfBlock<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        // consequent fragment
-        // alternate fragment
-        // apply
+        let mut statements = vec![];
+        self.add_anchor(ctx, "node", AnchorNodeType::IfBlock);
+
+        let consequent_fragment = self.transform_fragment(&if_block.consequent);
+        let consequent_id = ctx.generate("consequent");
+
+        let consequent = self.b.var(
+            &consequent_id,
+            BExpr::Arrow(
+                self.b
+                    .arrow(self.b.params(["$$anchor"]), consequent_fragment.body),
+            ),
+        );
+
+        statements.push(consequent);
+
+        let alternate_stmt = if let Some(alt) = &if_block.alternate {
+            let alternate_fragment = self.transform_fragment(alt);
+            let alternate_id = ctx.generate("alternate");
+
+            let alternate = self.b.var(
+                &alternate_id,
+                BExpr::Arrow(
+                    self.b
+                        .arrow(self.b.params(["$$anchor"]), alternate_fragment.body),
+                ),
+            );
+
+            statements.push(alternate);
+
+            Some(self.b.call_stmt("$$render", [BArg::Ident(&alternate_id)]))
+        } else {
+            None
+        };
+
+        let mut args = vec![BArg::Expr(self.b.clone_expr(&ctx.node_anchor))];
+
+        let if_stmt = self.b.if_stmt(
+            self.b.clone_expr(&if_block.test),
+            self.b.call_stmt("$$render", [BArg::Ident(&consequent_id)]),
+            alternate_stmt,
+        );
+
+        let render = self.b.arrow(self.b.params(["$$render"]), [if_stmt]);
+
+        args.push(BArg::Arrow(render));
+
+        if if_block.is_elseif {
+            args.push(BArg::Bool(true));
+        }
+
+        let if_call = self.b.call_stmt("$.if", args);
+
+        statements.push(if_call);
+
+        ctx.push_init(self.b.block(statements));
     }
 }
 

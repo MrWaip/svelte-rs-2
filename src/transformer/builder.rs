@@ -4,16 +4,17 @@ use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, BindingIdentifier, BindingPatternKind,
-        CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters, Function,
-        FunctionType, IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind,
-        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement,
-        StringLiteral, TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
+        BlockStatement, CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters,
+        Function, FunctionType, IdentifierReference, IfStatement, ImportDeclarationSpecifier,
+        ImportOrExportKind, LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral,
+        Program, Statement, StringLiteral, TemplateElementValue, TemplateLiteral,
+        VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
 use oxc_span::{Atom, SourceType, SPAN};
 
-use crate::ast::ConcatenationPart;
+use crate::ast::{ConcatenationPart, IfBlock};
 
 pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),
@@ -28,13 +29,16 @@ pub enum BuilderFunctionArgument<'a, 'short> {
 
 pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
+    Arrow(ArrowFunctionExpression<'a>),
     TemplateLiteral(TemplateLiteral<'a>),
     Ident(IdentifierReference<'a>),
     Expr(Expression<'a>),
 }
-
 pub enum BuilderStatement<'a> {
     Expr(Expression<'a>),
+    Block(BlockStatement<'a>),
+    Arrow(ArrowFunctionExpression<'a>),
+    IfBlock(IfStatement<'a>),
 }
 
 pub struct Builder<'a> {
@@ -253,6 +257,9 @@ impl<'a> Builder<'a> {
                 Expression::Identifier(self.alloc(identifier_reference))
             }
             BuilderExpression::Expr(expression) => expression,
+            BuilderExpression::Arrow(arrow_function_expression) => {
+                Expression::ArrowFunctionExpression(self.alloc(arrow_function_expression))
+            }
         };
     }
 
@@ -261,6 +268,17 @@ impl<'a> Builder<'a> {
             BuilderStatement::Expr(value) => Statement::ExpressionStatement(
                 self.alloc(self.ast.expression_statement(SPAN, value)),
             ),
+            BuilderStatement::Block(block_statement) => {
+                Statement::BlockStatement(self.alloc(block_statement))
+            }
+            BuilderStatement::Arrow(arrow_function_expression) => {
+                return self.stmt(BuilderStatement::Expr(
+                    self.expr(BuilderExpression::Arrow(arrow_function_expression)),
+                ));
+            }
+            BuilderStatement::IfBlock(if_statement) => {
+                Statement::IfStatement(self.alloc(if_statement))
+            }
         };
     }
 
@@ -339,21 +357,16 @@ impl<'a> Builder<'a> {
 
     pub fn arrow(
         &self,
+        params: FormalParameters<'a>,
         statements: impl IntoIterator<Item = Statement<'a>>,
     ) -> ArrowFunctionExpression<'a> {
         let body = self
             .ast
             .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
 
-        let arrow = self.ast.arrow_function_expression(
-            SPAN,
-            false,
-            false,
-            NONE,
-            self.params([]),
-            NONE,
-            body,
-        );
+        let arrow = self
+            .ast
+            .arrow_function_expression(SPAN, false, false, NONE, params, NONE, body);
 
         return arrow;
     }
@@ -364,5 +377,22 @@ impl<'a> Builder<'a> {
 
     pub fn cheap_expr(&self) -> Expression<'a> {
         return self.ast.expression_boolean_literal(SPAN, false);
+    }
+
+    pub fn block(&self, body: Vec<Statement<'a>>) -> Statement<'a> {
+        let block = self.ast.block_statement(SPAN, self.ast.vec_from_iter(body));
+
+        return self.stmt(BuilderStatement::Block(block));
+    }
+
+    pub fn if_stmt(
+        &self,
+        test: Expression<'a>,
+        consequent: Statement<'a>,
+        alternate: Option<Statement<'a>>,
+    ) -> Statement<'a> {
+        let if_stmt = self.ast.if_statement(SPAN, test, consequent, alternate);
+
+        return self.stmt(BuilderStatement::IfBlock(if_stmt));
     }
 }
