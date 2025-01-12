@@ -3,7 +3,7 @@ pub mod token;
 use std::{mem, vec};
 use token::{
     Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    JsExpression, StartIfTag, StartTag, Token, TokenType,
+    JsExpression, ScriptTag, StartIfTag, StartTag, Token, TokenType,
 };
 
 use crate::diagnostics::Diagnostic;
@@ -40,7 +40,6 @@ impl<'a> Scanner<'a> {
         });
 
         let tokens = mem::replace(&mut self.tokens, vec![]);
-
         return Ok(tokens);
     }
 
@@ -187,6 +186,10 @@ impl<'a> Scanner<'a> {
                 start,
                 self.current,
             )));
+        }
+
+        if name == "script" {
+            return self.script_tag(attributes);
         }
 
         self.add_token(TokenType::StartTag(StartTag {
@@ -572,6 +575,51 @@ impl<'a> Scanner<'a> {
             ))),
         };
     }
+
+    fn script_tag(&mut self, attributes: Vec<Attribute<'a>>) -> Result<(), Diagnostic> {
+        let start = self.current;
+        let mut end = start;
+
+        while !self.is_at_end() {
+            let char = self.advance();
+
+            if char != '<' {
+                continue;
+            }
+
+            end = self.current - 1;
+
+            if !self.match_char('/') {
+                continue;
+            }
+
+            let identifier = self.identifier();
+
+            if identifier == "script" {
+                break;
+            }
+        }
+
+        if self.is_at_end() {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start,
+                self.current,
+            )));
+        }
+
+        self.skip_whitespace();
+
+        if !self.match_char('>') {
+            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+        }
+
+        self.add_token(TokenType::ScriptTag(ScriptTag {
+            source: &self.source[start..end],
+            attributes,
+        }));
+
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
@@ -751,6 +799,31 @@ mod tests {
         assert_else_if_tag(&tokens[0], false, None);
         assert_else_if_tag(&tokens[1], true, Some(" test "));
         assert!(tokens[2].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn script_tag() {
+        let mut scanner = Scanner::new("<script lang=\"ts\">const i = 12;</script>");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        let script = assert_script_tag(&tokens[0], vec![("lang", "ts")]);
+
+        assert_eq!(script.source, "const i = 12;");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    fn assert_script_tag<'a>(
+        token: &'a Token<'a>,
+        expected_attributes: Vec<(&str, &str)>,
+    ) -> &'a ScriptTag<'a> {
+        let tag = match &token.token_type {
+            TokenType::ScriptTag(t) => t,
+            _ => panic!("Expected token.type = ScriptTag"),
+        };
+
+        assert_attributes(&tag.attributes, expected_attributes);
+
+        return tag;
     }
 
     fn assert_start_tag(

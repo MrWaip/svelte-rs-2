@@ -11,8 +11,15 @@ pub enum TokenType<'a> {
     Interpolation(ExpressionTag<'a>),
     StartIfTag(StartIfTag<'a>),
     ElseTag(ElseTag<'a>),
+    ScriptTag(ScriptTag<'a>),
     EndIfTag,
     EOF,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ScriptTag<'a> {
+    pub source: &'a str,
+    pub attributes: Vec<Attribute<'a>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
