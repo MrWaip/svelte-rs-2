@@ -5,7 +5,7 @@ use oxc_ast::ast::Expression;
 use oxc_span::SourceType;
 use rccell::RcCell;
 use scanner::{
-    token::{self, EndTag, ExpressionTag, StartTag, Token},
+    token::{self, EndTag, ExpressionTag, StartTag, Token, TokenType},
     Scanner,
 };
 use span::{GetSpan, Span};
@@ -125,22 +125,24 @@ impl<'a> Parser<'a> {
 
         for token in tokens {
             match token.token_type {
-                scanner::token::TokenType::Text => self.parse_text(&token)?,
-                scanner::token::TokenType::StartTag(tag) => {
+                TokenType::Text => self.parse_text(&token)?,
+                TokenType::StartTag(tag) => {
                     self.parse_start_tag(&tag, token.span)?
                 }
-                scanner::token::TokenType::EndTag(tag) => self.parse_end_tag(&tag, token.span)?,
-                scanner::token::TokenType::Interpolation(interpolation) => {
+                TokenType::EndTag(tag) => self.parse_end_tag(&tag, token.span)?,
+                TokenType::Interpolation(interpolation) => {
                     self.parse_interpolation(interpolation)?;
                 }
-                scanner::token::TokenType::StartIfTag(start_if_tag) => {
+                TokenType::StartIfTag(start_if_tag) => {
                     self.parse_start_if_tag(&start_if_tag, token.span)?
                 }
-                scanner::token::TokenType::ElseTag(else_tag) => {
+                TokenType::ElseTag(else_tag) => {
                     self.parse_else_tag(&else_tag, token.span)?
                 }
-                scanner::token::TokenType::EndIfTag => self.parse_end_if_tag(token.span)?,
-                token::TokenType::EOF => break,
+                TokenType::EndIfTag => self.parse_end_if_tag(token.span)?,
+                TokenType::EOF => break,
+                TokenType::ScriptTag(_script_tag) => todo!(),
+
             }
         }
 

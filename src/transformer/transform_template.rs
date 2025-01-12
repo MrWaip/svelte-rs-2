@@ -1,4 +1,4 @@
-use std::{cell::RefCell, mem::replace, os::macos::raw::stat, rc::Rc};
+use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
