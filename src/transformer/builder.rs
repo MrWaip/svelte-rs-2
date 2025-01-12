@@ -14,7 +14,7 @@ use oxc_ast::{
 };
 use oxc_span::{Atom, SourceType, SPAN};
 
-use crate::ast::{ConcatenationPart, IfBlock};
+use crate::ast::ConcatenationPart;
 
 pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),

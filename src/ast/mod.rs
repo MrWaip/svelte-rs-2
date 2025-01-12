@@ -1,6 +1,7 @@
 use std::cell::RefMut;
 
 use oxc_ast::ast::{Expression, Program};
+use oxc_span::Language;
 use rccell::RcCell;
 
 use crate::{
@@ -370,10 +371,23 @@ fn print_expression<'a>(expression: &Expression<'a>) -> String {
     return codegen.into_source_text();
 }
 
+fn print_program<'a>(program: &Program<'a>) -> String {
+    let codegen = oxc_codegen::Codegen::default();
+
+    return codegen.build(program).code;
+}
+
 #[derive(Debug)]
 pub struct ScriptTag<'a> {
     pub program: Program<'a>,
     pub span: Span,
+    pub language: Language,
+}
+
+impl<'a> ScriptTag<'a> {
+    pub fn is_typescript(&self) -> bool {
+        return self.language == Language::TypeScript;
+    }
 }
 
 impl<'a> AsNode<'a> for ScriptTag<'a> {
@@ -384,6 +398,20 @@ impl<'a> AsNode<'a> for ScriptTag<'a> {
 
 impl<'a> FormatNode for ScriptTag<'a> {
     fn format_node(&self) -> String {
-        todo!()
+        let mut result = String::new();
+
+        result.push_str("<script");
+
+        if self.is_typescript() {
+            result.push_str(" lang=\"ts\"");
+        }
+
+        result.push_str(">");
+
+        result.push_str(&print_program(&self.program));
+
+        result.push_str("</script>");
+
+        return result;
     }
 }

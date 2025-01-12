@@ -1,14 +1,14 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub struct Scope {
-    parent: Option<Rc<RefCell<Scope>>>,
+    _parent: Option<Rc<RefCell<Scope>>>,
     identifiers: HashMap<String, usize>,
 }
 
 impl Scope {
     pub fn new(parent: Option<Rc<RefCell<Scope>>>) -> Self {
         return Self {
-            parent,
+            _parent: parent,
             identifiers: HashMap::new(),
         };
     }
