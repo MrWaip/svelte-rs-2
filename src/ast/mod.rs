@@ -1,6 +1,6 @@
 use std::cell::RefMut;
 
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Program};
 use rccell::RcCell;
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
 
 pub struct Ast<'a> {
     pub template: Vec<RcCell<Node<'a>>>,
+    pub script: Option<ScriptTag<'a>>,
 }
 
 pub trait FormatNode {
@@ -28,6 +29,7 @@ pub enum Node<'a> {
     IfBlock(IfBlock<'a>),
     /** Напоминание для себя. Сейчас во время трансформации шаблона последовательность Text + Interpolation схлопывается в эту Node */
     VirtualConcatenation(Concatenation<'a>),
+    ScriptTag(ScriptTag<'a>),
 }
 
 impl<'a> Node<'a> {
@@ -86,6 +88,7 @@ impl<'a> FormatNode for Node<'a> {
             Node::VirtualConcatenation(virtual_concatenation) => {
                 virtual_concatenation.format_node()
             }
+            Node::ScriptTag(script_tag) => script_tag.format_node(),
         };
     }
 }
@@ -98,6 +101,7 @@ impl<'a> GetSpan for Node<'a> {
             Node::Interpolation(interpolation) => interpolation.span,
             Node::IfBlock(if_block) => if_block.span,
             Node::VirtualConcatenation(virtual_concatenation) => virtual_concatenation.span,
+            Node::ScriptTag(script_tag) => script_tag.span,
         }
     }
 }
@@ -364,4 +368,22 @@ fn print_expression<'a>(expression: &Expression<'a>) -> String {
     let mut codegen = oxc_codegen::Codegen::default();
     codegen.print_expression(expression);
     return codegen.into_source_text();
+}
+
+#[derive(Debug)]
+pub struct ScriptTag<'a> {
+    pub program: Program<'a>,
+    pub span: Span,
+}
+
+impl<'a> AsNode<'a> for ScriptTag<'a> {
+    fn as_node(self) -> Node<'a> {
+        return Node::ScriptTag(self);
+    }
+}
+
+impl<'a> FormatNode for ScriptTag<'a> {
+    fn format_node(&self) -> String {
+        todo!()
+    }
 }

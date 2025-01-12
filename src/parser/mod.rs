@@ -13,7 +13,7 @@ use span::{GetSpan, Span};
 use crate::{
     ast::{
         AsNode, Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
-        HTMLAttribute, IfBlock, Interpolation, Node, Text,
+        HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
     },
     diagnostics::Diagnostic,
 };
@@ -87,6 +87,7 @@ impl<'a> NodeStack<'a> {
                 Node::IfBlock(if_block) => {
                     if_block.push(node.clone());
                 }
+                Node::ScriptTag(_) => unreachable!(),
                 Node::Text(_) => unreachable!(),
                 Node::Interpolation(_) => unreachable!(),
                 Node::VirtualConcatenation(_) => unreachable!(),
@@ -126,9 +127,7 @@ impl<'a> Parser<'a> {
         for token in tokens {
             match token.token_type {
                 TokenType::Text => self.parse_text(&token)?,
-                TokenType::StartTag(tag) => {
-                    self.parse_start_tag(&tag, token.span)?
-                }
+                TokenType::StartTag(tag) => self.parse_start_tag(&tag, token.span)?,
                 TokenType::EndTag(tag) => self.parse_end_tag(&tag, token.span)?,
                 TokenType::Interpolation(interpolation) => {
                     self.parse_interpolation(interpolation)?;
@@ -136,13 +135,12 @@ impl<'a> Parser<'a> {
                 TokenType::StartIfTag(start_if_tag) => {
                     self.parse_start_if_tag(&start_if_tag, token.span)?
                 }
-                TokenType::ElseTag(else_tag) => {
-                    self.parse_else_tag(&else_tag, token.span)?
-                }
+                TokenType::ElseTag(else_tag) => self.parse_else_tag(&else_tag, token.span)?,
                 TokenType::EndIfTag => self.parse_end_if_tag(token.span)?,
                 TokenType::EOF => break,
-                TokenType::ScriptTag(_script_tag) => todo!(),
-
+                TokenType::ScriptTag(script_tag) => {
+                    self.parse_script_tag(script_tag, token.span)?
+                }
             }
         }
 
@@ -154,6 +152,7 @@ impl<'a> Parser<'a> {
 
         return Ok(Ast {
             template: self.node_stack.get_roots(),
+            script: None
         });
     }
 
@@ -422,6 +421,36 @@ impl<'a> Parser<'a> {
 
         Ok(())
     }
+
+    fn parse_script_tag(
+        &mut self,
+        script_tag: token::ScriptTag<'a>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if !script_tag.attributes.is_empty() {
+            todo!()
+        }
+
+        let oxc_parser =
+            oxc_parser::Parser::new(&self.allocator, &script_tag.source, SourceType::default());
+
+        let program_result = oxc_parser.parse();
+
+        if !program_result.errors.is_empty() {
+            return Diagnostic::invalid_expression(span).as_err();
+        }
+
+        self.node_stack.add_node(
+            ScriptTag {
+                program: program_result.program,
+                span,
+            }
+            .as_node()
+            .as_rc_cell(),
+        );
+
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
@@ -469,14 +498,14 @@ mod tests {
     fn smoke_tag_with_attributes() {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
-            r#"<script lang="ts" {id} disabled  value={value} label="at: {date} time">source</script>"#,
+            r#"<div lang="ts" {id} disabled  value={value} label="at: {date} time">source</div>"#,
             &allocator,
         );
         let ast = parser.parse().unwrap().template;
 
         assert_node(
             &ast[0],
-            r#"<script lang="ts" {id} disabled value={value} label="at: {date} time">source</script>"#,
+            r#"<div lang="ts" {id} disabled value={value} label="at: {date} time">source</div>"#,
         );
     }
 

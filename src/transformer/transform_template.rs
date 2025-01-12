@@ -331,6 +331,7 @@ impl<'a> TransformTemplate<'a> {
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
             }
+            Node::ScriptTag(_script_tag) => todo!(),
         };
     }
 
