@@ -1,5 +1,7 @@
 use core::fmt;
 
+use oxc_span::Language;
+
 use crate::parser::span::{GetSpan, Span};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -20,6 +22,34 @@ pub enum TokenType<'a> {
 pub struct ScriptTag<'a> {
     pub source: &'a str,
     pub attributes: Vec<Attribute<'a>>,
+}
+
+impl<'a> ScriptTag<'a> {
+    pub fn language(&self) -> Language {
+        let lang_attr = self.attributes.iter().find_map(|item| match item {
+            Attribute::HTMLAttribute(attr) => {
+                if attr.name == "lang" {
+                    return Some(attr);
+                }
+
+                return None;
+            }
+            _ => None,
+        });
+
+        if let Some(attr) = lang_attr {
+            match attr.value {
+                AttributeValue::String(value) => {
+                    if value == "ts" {
+                        return Language::TypeScript;
+                    }
+                }
+                _ => (),
+            };
+        }
+
+        return Language::JavaScript;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

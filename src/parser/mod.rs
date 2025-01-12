@@ -2,7 +2,7 @@ use std::mem;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
-use oxc_span::SourceType;
+use oxc_span::{Language, SourceType};
 use rccell::RcCell;
 use scanner::{
     token::{self, EndTag, ExpressionTag, StartTag, Token, TokenType},
@@ -152,7 +152,7 @@ impl<'a> Parser<'a> {
 
         return Ok(Ast {
             template: self.node_stack.get_roots(),
-            script: None
+            script: None,
         });
     }
 
@@ -427,12 +427,9 @@ impl<'a> Parser<'a> {
         script_tag: token::ScriptTag<'a>,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        if !script_tag.attributes.is_empty() {
-            todo!()
-        }
-
-        let oxc_parser =
-            oxc_parser::Parser::new(&self.allocator, &script_tag.source, SourceType::default());
+        let language = script_tag.language();
+        let source_type = SourceType::default().with_typescript(language == Language::TypeScript);
+        let oxc_parser = oxc_parser::Parser::new(&self.allocator, &script_tag.source, source_type);
 
         let program_result = oxc_parser.parse();
 
@@ -440,14 +437,15 @@ impl<'a> Parser<'a> {
             return Diagnostic::invalid_expression(span).as_err();
         }
 
-        self.node_stack.add_node(
+        self.node_stack.add_leaf(
             ScriptTag {
                 program: program_result.program,
+                language,
                 span,
             }
             .as_node()
             .as_rc_cell(),
-        );
+        )?;
 
         return Ok(());
     }
@@ -565,6 +563,32 @@ mod tests {
         assert_node(
             &ast[0],
             r#"{#if 1 === 1}{#if 2 === 2}inside{/if}{:else}{#if 3 === 3}alternate inside{/if}{/if}"#,
+        );
+    }
+
+    #[test]
+    fn script_tag() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(r#"<script>const i = 10;</script>"#, &allocator);
+
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(&ast[0], "<script>const i = 10;\n</script>");
+    }
+
+    #[test]
+    fn script_tag_lang_ts() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"<script lang="ts">const i: number = 10;</script>"#,
+            &allocator,
+        );
+
+        let ast = parser.parse().unwrap().template;
+
+        assert_node(
+            &ast[0],
+            "<script lang=\"ts\">const i: number = 10;\n</script>",
         );
     }
 }
