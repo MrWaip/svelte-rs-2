@@ -229,6 +229,10 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
+        if nodes.is_empty() {
+            return FragmentResult { body: vec![] };
+        }
+
         let mut body: Vec<Statement<'a>> = vec![];
         let scope = self.root_scope.clone();
         let template_name = scope.borrow_mut().generate("root");
