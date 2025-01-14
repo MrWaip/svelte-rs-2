@@ -2,22 +2,31 @@ use std::vec;
 
 use builder::Builder;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
+use transform_script::TransformScript;
 use transform_template::TransformTemplate;
 
 use crate::ast::Ast;
 
 pub mod builder;
 pub mod scope;
+pub mod transform_script;
 pub mod transform_template;
 
-pub fn transform_client<'a>(ast: &'a Ast<'a>, b: &'a Builder<'a>) -> String {
-    let mut transformer = TransformTemplate::new(b);
+pub fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>) -> String {
+    let mut template_transformer = TransformTemplate::new(b);
+    let mut script_transformer = TransformScript::new(b);
 
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
     let mut program_body = vec![];
     let mut component_body = vec![];
 
-    let mut template_result = transformer.transform(ast);
+    let mut template_result = template_transformer.transform(&ast);
+
+    if let Some(script) = ast.script {
+        let mut script_result = script_transformer.transform(script);
+
+        component_body.append(&mut script_result.body);
+    }
 
     program_body.append(&mut imports);
     program_body.append(&mut template_result.hoisted);
@@ -56,13 +65,14 @@ mod tests {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
             // r#"<h1 {id} >{title}</h1><div checked value="nope" skip id={id + id} label="one_{title}" {title}><br/>{number} text + {number}<br/>123</div>"#,
-            "<br/>{#if true}<div>{title}</div><br/>{:else if false}<div>{number}</div><br/>{:else}<div {id}>4444</div><br/>{/if}",
+            "<script>const i = 10;</script>",
+            // "<br/>{#if true}<div>{title}</div><br/>{:else if false}<div>{number}</div><br/>{:else}<div {id}>4444</div><br/>{/if}",
             &allocator,
         );
         let builder = Builder::new(AstBuilder::new(&allocator));
         let ast = parser.parse().unwrap();
 
-        let code = transform_client(&ast, &builder);
+        let code = transform_client(ast, &builder);
 
         print!("{}", code);
     }
