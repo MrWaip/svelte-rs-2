@@ -30,6 +30,7 @@ pub struct Parser<'a> {
 struct NodeStack<'a> {
     stack: Vec<RcCell<Node<'a>>>,
     roots: Vec<RcCell<Node<'a>>>,
+    scripts: Vec<RcCell<Node<'a>>>,
 }
 
 impl<'a> NodeStack<'a> {
@@ -37,6 +38,7 @@ impl<'a> NodeStack<'a> {
         return NodeStack {
             roots: vec![],
             stack: vec![],
+            scripts: vec![],
         };
     }
 
@@ -59,6 +61,16 @@ impl<'a> NodeStack<'a> {
 
         if !is_added {
             self.roots.push(node);
+        }
+
+        return Ok(());
+    }
+
+    pub fn add_script(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
+        let is_added = self.add_child(node.clone())?;
+
+        if !is_added {
+            self.scripts.push(node);
         }
 
         return Ok(());
@@ -103,10 +115,11 @@ impl<'a> NodeStack<'a> {
         return self.stack.is_empty();
     }
 
-    pub fn get_roots(&mut self) -> Vec<RcCell<Node<'a>>> {
+    pub fn take_nodes(&mut self) -> (Vec<RcCell<Node<'a>>>, Vec<RcCell<Node<'a>>>) {
         let template = mem::replace(&mut self.roots, vec![]);
+        let scripts = mem::replace(&mut self.scripts, vec![]);
 
-        return template;
+        return (template, scripts);
     }
 }
 
@@ -150,10 +163,17 @@ impl<'a> Parser<'a> {
             return Diagnostic::unclosed_node(span).as_err();
         }
 
-        return Ok(Ast {
-            template: self.node_stack.get_roots(),
-            script: None,
-        });
+        let (template, mut scripts) = self.node_stack.take_nodes();
+        let mut script: Option<ScriptTag<'a>> = None;
+
+        if scripts.len() > 1 {
+            let span_of_last = scripts.last().unwrap().borrow().span();
+            return Diagnostic::only_single_top_level_script(span_of_last).as_err();
+        } else if scripts.len() == 1 {
+            script = Some(scripts.remove(0).unwrap().into());
+        }
+
+        return Ok(Ast { template, script });
     }
 
     fn parse_start_tag(&mut self, tag: &StartTag<'a>, start_span: Span) -> Result<(), Diagnostic> {
@@ -437,7 +457,7 @@ impl<'a> Parser<'a> {
             return Diagnostic::invalid_expression(span).as_err();
         }
 
-        self.node_stack.add_leaf(
+        self.node_stack.add_script(
             ScriptTag {
                 program: program_result.program,
                 language,
@@ -464,8 +484,8 @@ mod tests {
 
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], "prefix ");
-        assert_node(&ast[1], "<div>text</div>");
+        assert_node_cell(&ast[0], "prefix ");
+        assert_node_cell(&ast[1], "<div>text</div>");
     }
 
     #[test]
@@ -474,12 +494,16 @@ mod tests {
         let mut parser = Parser::new("<img /><body><input/></body>", &allocator);
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], "<img/>");
-        assert_node(&ast[1], "<body><input/></body>");
+        assert_node_cell(&ast[0], "<img/>");
+        assert_node_cell(&ast[1], "<body><input/></body>");
     }
 
-    fn assert_node<'a>(node: &'a RcCell<Node<'a>>, expected: &'a str) {
+    fn assert_node_cell<'a>(node: &'a RcCell<Node<'a>>, expected: &'a str) {
         let node = node.borrow();
+        assert_eq!(node.format_node(), expected);
+    }
+
+    fn assert_script<'a>(node: ScriptTag<'a>, expected: &'a str) {
         assert_eq!(node.format_node(), expected);
     }
 
@@ -489,7 +513,7 @@ mod tests {
         let mut parser = Parser::new("{ id - 22 + 1 }", &allocator);
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], "{ id - 22 + 1 }");
+        assert_node_cell(&ast[0], "{ id - 22 + 1 }");
     }
 
     #[test]
@@ -501,7 +525,7 @@ mod tests {
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(
+        assert_node_cell(
             &ast[0],
             r#"<div lang="ts" {id} disabled value={value} label="at: {date} time">source</div>"#,
         );
@@ -513,7 +537,7 @@ mod tests {
         let mut parser = Parser::new(r#"{#if true }<div>title</div>{/if}"#, &allocator);
         let ast = parser.parse().unwrap().template;
 
-        assert_node(&ast[0], r#"{#if true}<div>title</div>{/if}"#);
+        assert_node_cell(&ast[0], r#"{#if true}<div>title</div>{/if}"#);
     }
 
     #[test]
@@ -525,7 +549,7 @@ mod tests {
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(
+        assert_node_cell(
             &ast[0],
             r#"{#if true}<div>title</div>{:else}<h1>big title</h1>{/if}"#,
         );
@@ -540,12 +564,12 @@ mod tests {
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(
+        assert_node_cell(
             &ast[0],
             r#"<div>{#if false}one{:else if true}two{:else}three{/if}</div>"#,
         );
 
-        assert_node(
+        assert_node_cell(
             &ast[1],
             r#"{#if false}one{:else if true}two{:else if 1 == 1}<h1>three</h1>{:else}four{/if}"#,
         );
@@ -560,7 +584,7 @@ mod tests {
         );
         let ast = parser.parse().unwrap().template;
 
-        assert_node(
+        assert_node_cell(
             &ast[0],
             r#"{#if 1 === 1}{#if 2 === 2}inside{/if}{:else}{#if 3 === 3}alternate inside{/if}{/if}"#,
         );
@@ -571,9 +595,9 @@ mod tests {
         let allocator = Allocator::default();
         let mut parser = Parser::new(r#"<script>const i = 10;</script>"#, &allocator);
 
-        let ast = parser.parse().unwrap().template;
+        let script = parser.parse().unwrap().script.unwrap();
 
-        assert_node(&ast[0], "<script>const i = 10;\n</script>");
+        assert_script(script, "<script>const i = 10;\n</script>");
     }
 
     #[test]
@@ -584,10 +608,10 @@ mod tests {
             &allocator,
         );
 
-        let ast = parser.parse().unwrap().template;
+        let script = parser.parse().unwrap().script.unwrap();
 
-        assert_node(
-            &ast[0],
+        assert_script(
+            script,
             "<script lang=\"ts\">const i: number = 10;\n</script>",
         );
     }

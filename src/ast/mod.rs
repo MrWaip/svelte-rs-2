@@ -67,6 +67,15 @@ impl<'a> Node<'a> {
     }
 }
 
+impl<'a> Into<ScriptTag<'a>> for Node<'a> {
+    fn into(self) -> ScriptTag<'a> {
+        return match self {
+            Node::ScriptTag(script_tag) => script_tag,
+            _ => panic!("node is not ScriptTag"),
+        };
+    }
+}
+
 impl<'short, 'long> TryInto<&'short mut IfBlock<'long>> for &'short mut Node<'long> {
     type Error = Diagnostic;
 

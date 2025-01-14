@@ -13,6 +13,7 @@ pub enum DiagnosticType {
     InvalidExpression,
     NoIfBlockToClose,
     NoIfBlockForElse,
+    OnlyOneTopLevelScript,
 }
 
 #[derive(Debug)]
@@ -72,5 +73,9 @@ impl Diagnostic {
 
     pub fn as_err<T>(self) -> Result<T, Diagnostic> {
         return Err(self);
+    }
+    
+    pub fn only_single_top_level_script(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::OnlyOneTopLevelScript, span);
     }
 }
