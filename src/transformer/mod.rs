@@ -64,7 +64,6 @@ mod tests {
     fn smoke() {
         let allocator = Allocator::default();
         let mut parser = Parser::new(
-            // r#"<h1 {id} >{title}</h1><div checked value="nope" skip id={id + id} label="one_{title}" {title}><br/>{number} text + {number}<br/>123</div>"#,
             "<script>const i = 10;</script>",
             // "<br/>{#if true}<div>{title}</div><br/>{:else if false}<div>{number}</div><br/>{:else}<div {id}>4444</div><br/>{/if}",
             &allocator,
