@@ -7,7 +7,7 @@ use oxc_ast::{
         BlockStatement, CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters,
         Function, FunctionType, IdentifierReference, IfStatement, ImportDeclarationSpecifier,
         ImportOrExportKind, LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral,
-        Program, Statement, StringLiteral, TemplateElementValue, TemplateLiteral,
+        Program, Statement, StringLiteral, TemplateElement, TemplateElementValue, TemplateLiteral,
         VariableDeclarationKind,
     },
     AstBuilder, NONE,
@@ -396,5 +396,20 @@ impl<'a> Builder<'a> {
         let if_stmt = self.ast.if_statement(SPAN, test, consequent, alternate);
 
         return self.stmt(BuilderStatement::IfBlock(if_stmt));
+    }
+
+    pub fn template_from_str<'local>(&self, value: &'local str) -> TemplateLiteral<'a> {
+        let mut quasis = self.ast.vec();
+
+        quasis.push(TemplateElement {
+            span: SPAN,
+            tail: true,
+            value: TemplateElementValue {
+                cooked: None,
+                raw: self.ast.atom(&value),
+            },
+        });
+
+        return self.ast.template_literal(SPAN, quasis, self.ast.vec());
     }
 }

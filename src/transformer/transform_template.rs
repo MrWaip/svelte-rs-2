@@ -415,10 +415,11 @@ impl<'a> TransformTemplate<'a> {
     }
 
     fn add_template(&mut self, ctx: &mut FragmentContext<'a>, name: &str) {
-        let call = self.b.call(
-            "$.template",
-            [BArg::Str(ctx.template.concat()), BArg::Num(1.0)],
-        );
+        let template = ctx.template.concat();
+        let lit = self.b.template_from_str(&template);
+        let call = self
+            .b
+            .call("$.template", [BArg::TemplateStr(lit), BArg::Num(1.0)]);
 
         let var = self.b.var(name, BExpr::Call(call));
 
