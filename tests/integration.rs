@@ -1,4 +1,7 @@
-use std::fs::read_to_string;
+use std::{
+    fs::{read_to_string, File},
+    io::Write,
+};
 
 use glob::glob;
 use oxc_allocator::Allocator;
@@ -20,6 +23,10 @@ fn integration() {
         let path = entry.parent().unwrap();
 
         let expected = read_to_string(path.join("case-svelte.js")).unwrap();
+
+        let mut file = File::create(path.join("case-rust.js")).unwrap();
+
+        file.write_all(expected.as_bytes()).unwrap();
 
         assert_eq!(actual.js, expected);
     }

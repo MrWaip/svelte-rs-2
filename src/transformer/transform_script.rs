@@ -1,11 +1,12 @@
-use oxc_allocator::Allocator;
-use oxc_ast::ast::{self, CallExpression, Program, Statement};
-use oxc_semantic::{ScopeTree, SymbolTable};
+use std::collections::HashMap;
+
+use oxc_ast::ast::{self, BindingPatternKind, Expression, Program, Statement};
+use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
-use crate::ast::ScriptTag;
+use crate::{analyze::Rune, ast::ScriptTag};
 
-use super::{builder::Builder, scope};
+use super::builder::Builder;
 
 pub struct TransformScript<'a> {
     b: &'a Builder<'a>,
@@ -34,8 +35,12 @@ impl<'a> TransformScript<'a> {
         mut script: ScriptTag<'a>,
         symbols: SymbolTable,
         scopes: ScopeTree,
+        runes: &HashMap<SymbolId, Rune>,
     ) -> TransformResult<'a> {
-        let mut transformer = TransformerImpl {};
+        let mut transformer = TransformerImpl {
+            runes,
+            builder: self.b,
+        };
 
         let (symbols, scopes) = traverse_mut(
             &mut transformer,
@@ -44,18 +49,6 @@ impl<'a> TransformScript<'a> {
             symbols,
             scopes,
         );
-
-        for i in scopes.iter_bindings_in(scopes.root_scope_id()) {
-            let refs = symbols.get_resolved_references(i);
-
-            for reff in refs {
-                dbg!(reff);
-            }
-        }
-        // scopes.root_scope_id()
-        // symbols.get_declaration(symbol_id)
-
-        // symbols.symbol_ids()[]
 
         return TransformResult {
             body: vec![],
@@ -67,17 +60,38 @@ impl<'a> TransformScript<'a> {
     }
 }
 
-struct TransformerImpl {}
+struct TransformerImpl<'link, 'a> {
+    runes: &'link HashMap<SymbolId, Rune>,
+    builder: &'link Builder<'a>,
+}
 
-impl<'a> Traverse<'a> for TransformerImpl {
-    fn enter_call_expression(&mut self, node: &mut CallExpression<'a>, ctx: &mut TraverseCtx<'a>) {
+impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
+    fn enter_variable_declarator(
+        &mut self,
+        node: &mut ast::VariableDeclarator<'a>,
+        _ctx: &mut TraverseCtx<'a>,
+    ) {
+        if let BindingPatternKind::BindingIdentifier(id) = &node.id.kind {
+            if let Some(rune) = self.runes.get(&id.symbol_id()) {
+                if rune.mutated {
+                    todo!()
+                } else {
+                    if let Some(expr) = node.init.as_mut() {
+                        let expr = self.builder.ast.move_expression(expr);
 
-        // ctx.scopes()
+                        if let Expression::CallExpression(mut call) = expr {
+                            let expr: Expression<'a> = if call.arguments.is_empty() {
+                                let undef = self.builder.rid("undefined");
+                                Expression::Identifier(self.builder.alloc(undef))
+                            } else {
+                                call.arguments.remove(0).into_expression()
+                            };
 
-        // 1) oxc уже собрал все скоупы, собрал символы и референсы
-        // 2) следующим этапом мы пробегаемся по аст еще раз, и собираем пул SymbolId которые относятся к рунам
-        // 3) на этапе трансформирования мы проверяем, обращается ли этот идентификатор к руне, если да конвертим это во что-нибудь
-
-        // dbg!(node);
+                            node.init = Some(expr);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
