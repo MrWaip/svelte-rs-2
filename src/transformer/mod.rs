@@ -27,7 +27,7 @@ pub fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>, analyze: AnalyzeRe
 
     if let Some(script) = ast.script {
         let ScriptResult { scopes, symbols } = analyze.script.unwrap();
-        let script_result = script_transformer.transform(script, symbols, scopes);
+        let script_result = script_transformer.transform(script, symbols, scopes, &analyze.runes);
 
         for stmt in script_result.program.body {
             component_body.push(stmt);
