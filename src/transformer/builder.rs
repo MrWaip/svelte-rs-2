@@ -20,6 +20,7 @@ pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),
     Num(f64),
     Ident(&'short str),
+    IdentRef(IdentifierReference<'a>),
     Expr(Expression<'a>),
     TemplateStr(TemplateLiteral<'a>),
     Arrow(ArrowFunctionExpression<'a>),
@@ -187,6 +188,7 @@ impl<'a> Builder<'a> {
             BuilderFunctionArgument::Call(call_expression) => {
                 Argument::CallExpression(self.alloc(call_expression))
             }
+            BuilderFunctionArgument::IdentRef(ident) => Argument::Identifier(self.alloc(ident)),
         }
     }
 

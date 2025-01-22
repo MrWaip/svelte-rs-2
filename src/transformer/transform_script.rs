@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use oxc_ast::ast::{self, BindingPatternKind, Expression, Program, Statement};
+use oxc_ast::ast::{self, Argument, BindingPatternKind, Expression, Program, Statement};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
 use crate::{analyze::Rune, ast::ScriptTag};
 
-use super::builder::Builder;
+use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
 pub struct TransformScript<'a> {
     b: &'a Builder<'a>,
@@ -73,13 +73,17 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
     ) {
         if let BindingPatternKind::BindingIdentifier(id) = &node.id.kind {
             if let Some(rune) = self.runes.get(&id.symbol_id()) {
-                if rune.mutated {
-                    todo!()
-                } else {
-                    if let Some(expr) = node.init.as_mut() {
-                        let expr = self.builder.ast.move_expression(expr);
+                if let Some(expr) = node.init.as_mut() {
+                    let expr = self.builder.ast.move_expression(expr);
 
-                        if let Expression::CallExpression(mut call) = expr {
+                    if let Expression::CallExpression(mut call) = expr {
+                        if rune.mutated {
+                            call.callee = self
+                                .builder
+                                .expr(BuilderExpression::Ident(self.builder.rid("$.state")));
+
+                            node.init = Some(Expression::CallExpression(call))
+                        } else {
                             let expr: Expression<'a> = if call.arguments.is_empty() {
                                 let undef = self.builder.rid("undefined");
                                 Expression::Identifier(self.builder.alloc(undef))
@@ -91,6 +95,36 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+        if let Expression::Identifier(ident) = node {
+            let reference_id = ident.reference_id.get();
+
+            if reference_id.is_none() {
+                return;
+            }
+
+            let reference_id = reference_id.unwrap();
+            let reference = ctx.symbols().get_reference(reference_id);
+            let symbol_id = reference.symbol_id();
+
+            if symbol_id.is_none() {
+                return;
+            }
+
+            if let Some(rune) = self.runes.get(&symbol_id.unwrap()) {
+                if !rune.mutated {
+                    return;
+                }
+
+                let call = self
+                    .builder
+                    .call("$.get", [BuilderFunctionArgument::Ident(&ident.name)]);
+
+                *node = Expression::CallExpression(self.builder.alloc(call))
             }
         }
     }

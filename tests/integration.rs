@@ -26,7 +26,7 @@ fn integration() {
 
         let mut file = File::create(path.join("case-rust.js")).unwrap();
 
-        file.write_all(expected.as_bytes()).unwrap();
+        file.write_all(actual.js.as_bytes()).unwrap();
 
         assert_eq!(actual.js, expected);
     }
