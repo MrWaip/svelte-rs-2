@@ -4,7 +4,7 @@ export default function App($$anchor) {
 	let title = $.state(10);
 	let flag = undefined;
 	onMount(() => {
-		$.set(title, 20);
+		title = 20;
 		map($.get(title));
 	});
 	function map(value, off = $.get(title)) {
@@ -20,7 +20,7 @@ export default function App($$anchor) {
 	$.reset(div);
 	var div_1 = $.sibling(div);
 	$.template_effect(() => {
-		$.set_text(text, $.get(title));
+		$.set_text(text, title);
 		$.set_attribute(div_1, "flag", flag);
 	});
 	$.append($$anchor, fragment);
