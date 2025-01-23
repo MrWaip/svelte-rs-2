@@ -1,33 +1,29 @@
+use rstest::*;
 use std::{
     fs::{read_to_string, File},
     io::Write,
+    path::PathBuf,
 };
 
-use glob::glob;
 use oxc_allocator::Allocator;
 use pretty_assertions::assert_eq;
 use svelte_rs_2::compiler::Compiler;
 
-#[test]
-fn integration() {
-    let files = glob("./tests/cases/**/*.svelte").expect("Не удалось считать компоненты");
+#[rstest]
+fn integration(#[files("./tests/cases/**/*.svelte")] path: PathBuf) {
+    let allocator = Allocator::default();
 
-    for entry in files {
-        let entry = entry.unwrap();
-        let allocator = Allocator::default();
+    let file = read_to_string(&path).unwrap();
+    let compiler = Compiler::new();
 
-        let file = read_to_string(&entry).unwrap();
-        let compiler = Compiler::new();
+    let actual = compiler.compile(&file, &allocator);
+    let path = path.parent().unwrap();
 
-        let actual = compiler.compile(&file, &allocator);
-        let path = entry.parent().unwrap();
+    let expected = read_to_string(path.join("case-svelte.js")).unwrap();
 
-        let expected = read_to_string(path.join("case-svelte.js")).unwrap();
+    let mut file = File::create(path.join("case-rust.js")).unwrap();
 
-        let mut file = File::create(path.join("case-rust.js")).unwrap();
+    file.write_all(actual.js.as_bytes()).unwrap();
 
-        file.write_all(actual.js.as_bytes()).unwrap();
-
-        assert_eq!(actual.js, expected);
-    }
+    assert_eq!(actual.js, expected);
 }
