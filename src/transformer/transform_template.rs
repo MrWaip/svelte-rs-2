@@ -1,11 +1,17 @@
-use std::{cell::RefCell, mem::replace, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    mem::{self, replace},
+    rc::Rc,
+};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
-use oxc_semantic::{ScopeTree, SymbolTable};
+use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use rccell::RcCell;
 
 use crate::{
+    analyze::Rune,
     ast::{
         Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
         IfBlock, Node, Text,
@@ -19,7 +25,7 @@ use super::{
         BuilderStatement as BStmt,
     },
     scope::Scope,
-    transform_script::{TransformScript},
+    transform_script::TransformScript,
 };
 
 pub struct TransformTemplate<'a, 'link> {
@@ -28,6 +34,7 @@ pub struct TransformTemplate<'a, 'link> {
     root_scope: Rc<RefCell<Scope>>,
     transform_script: &'link TransformScript<'a>,
     symbols: SymbolTable,
+    runes: &'link HashMap<SymbolId, Rune>,
     scopes: ScopeTree,
 }
 
@@ -219,6 +226,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         transform_script: &'link TransformScript<'a>,
         symbols: SymbolTable,
         scopes: ScopeTree,
+        runes: &'link HashMap<SymbolId, Rune>,
     ) -> Self {
         return Self {
             b: builder,
@@ -227,6 +235,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             transform_script,
             scopes,
             symbols,
+            runes,
         };
     }
 
@@ -588,6 +597,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         self.add_anchor(ctx, "text", anchor_type);
 
+        // let expression = self.transform_expression(expression);
         let expression = self.b.clone_expr(expression);
         let node_id = self.b.clone_expr(&ctx.node_anchor);
         let set_text = self
@@ -673,5 +683,21 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         statements.push(if_call);
 
         ctx.push_init(self.b.block(statements));
+    }
+
+    fn transform_expression(&mut self, expression: &mut Expression<'a>) -> Expression<'a> {
+        let expression = self.b.ast.move_expression(expression);
+
+        let symbols = mem::take(&mut self.symbols);
+        let scopes = mem::take(&mut self.scopes);
+
+        let result = self
+            .transform_script
+            .transform_expression(expression, symbols, scopes, self.runes);
+
+        self.symbols = result.symbols;
+        self.scopes = result.scopes;
+
+        return result.expression;
     }
 }

@@ -12,6 +12,8 @@ pub mod scope;
 pub mod transform_script;
 pub mod transform_template;
 
+
+
 pub fn transform_client<'a>(
     ast: Ast<'a>,
     b: &'a Builder<'a>,
@@ -39,8 +41,13 @@ pub fn transform_client<'a>(
         }
     }
 
-    let mut template_transformer =
-        TransformTemplate::new(b, &script_transformer, analyze.symbols, analyze.scopes);
+    let mut template_transformer = TransformTemplate::new(
+        b,
+        &script_transformer,
+        analyze.symbols,
+        analyze.scopes,
+        &analyze.runes,
+    );
     let mut template_result = template_transformer.transform(&ast.template);
 
     program_body.append(&mut imports);
