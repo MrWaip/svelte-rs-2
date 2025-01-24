@@ -7,7 +7,7 @@ use rccell::RcCell;
 
 use crate::{
     ast::{
-        Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
+        Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
         IfBlock, Node, Text,
     },
     parser::span::SPAN,
@@ -19,7 +19,7 @@ use super::{
         BuilderStatement as BStmt,
     },
     scope::Scope,
-    transform_script::{self, TransformScript},
+    transform_script::{TransformScript},
 };
 
 pub struct TransformTemplate<'a, 'link> {
