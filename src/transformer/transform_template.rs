@@ -2,6 +2,7 @@ use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
+use oxc_semantic::{ScopeTree, SymbolTable};
 use rccell::RcCell;
 
 use crate::{
@@ -18,12 +19,16 @@ use super::{
         BuilderStatement as BStmt,
     },
     scope::Scope,
+    transform_script::{self, TransformScript},
 };
 
-pub struct TransformTemplate<'a> {
+pub struct TransformTemplate<'a, 'link> {
     b: &'a Builder<'a>,
     hoisted: Vec<Statement<'a>>,
     root_scope: Rc<RefCell<Scope>>,
+    transform_script: &'link TransformScript<'a>,
+    symbols: SymbolTable,
+    scopes: ScopeTree,
 }
 
 pub enum AnchorNodeType {
@@ -208,17 +213,25 @@ pub struct FragmentResult<'a> {
     body: Vec<Statement<'a>>,
 }
 
-impl<'a> TransformTemplate<'a> {
-    pub fn new(builder: &'a Builder<'a>) -> TransformTemplate<'a> {
-        return TransformTemplate {
+impl<'a, 'link> TransformTemplate<'a, 'link> {
+    pub fn new(
+        builder: &'a Builder<'a>,
+        transform_script: &'link TransformScript<'a>,
+        symbols: SymbolTable,
+        scopes: ScopeTree,
+    ) -> Self {
+        return Self {
             b: builder,
             hoisted: vec![],
             root_scope: Rc::new(RefCell::new(Scope::new(None))),
+            transform_script,
+            scopes,
+            symbols,
         };
     }
 
-    pub fn transform(&mut self, ast: &Ast<'a>) -> TransformTemplateResult<'a> {
-        let result = self.transform_fragment(&ast.template);
+    pub fn transform(&mut self, template: &Vec<RcCell<Node<'a>>>) -> TransformTemplateResult<'a> {
+        let result = self.transform_fragment(&template);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
 
@@ -660,29 +673,5 @@ impl<'a> TransformTemplate<'a> {
         statements.push(if_call);
 
         ctx.push_init(self.b.block(statements));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use oxc_allocator::Allocator;
-    use oxc_ast::AstBuilder;
-
-    use crate::parser::Parser;
-
-    use super::*;
-
-    #[test]
-    fn smoke() {
-        let allocator = Allocator::default();
-        let mut parser = Parser::new("prefix <div>text</div>", &allocator);
-        let ast_builder = AstBuilder::new(&allocator);
-        let builder = Builder::new(ast_builder);
-        let ast = parser.parse().unwrap();
-        let mut transformer = TransformTemplate::new(&builder);
-
-        let result = transformer.transform(&ast);
-
-        dbg!(result);
     }
 }
