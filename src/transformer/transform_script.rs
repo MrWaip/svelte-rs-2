@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use oxc_ast::ast::{self, Argument, BindingPatternKind, Expression, Program, Statement};
+use oxc_ast::ast::{self, BindingPatternKind, Expression, Program, Statement};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
-use oxc_traverse::{traverse_mut, ReusableTraverseCtx, Traverse, TraverseCtx};
+use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
-use crate::{analyze::Rune, ast::ScriptTag};
+use crate::analyze::Rune;
 
 use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
