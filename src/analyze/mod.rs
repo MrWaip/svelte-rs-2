@@ -11,11 +11,7 @@ use crate::ast::Ast;
 pub struct Analyzer {}
 
 pub struct AnalyzeResult {
-    pub script: Option<ScriptResult>,
     pub runes: HashMap<SymbolId, Rune>,
-}
-
-pub struct ScriptResult {
     pub symbols: SymbolTable,
     pub scopes: ScopeTree,
 }
@@ -37,12 +33,7 @@ impl Analyzer {
     }
 
     pub fn analyze<'a, 'link>(&self, ast: &'link Ast<'a>) -> AnalyzeResult {
-        let mut result = AnalyzeResult {
-            runes: HashMap::default(),
-            script: None,
-        };
-
-        if let Some(script) = &ast.script {
+        let (runes, symbols, scopes) = if let Some(script) = &ast.script {
             let ret = SemanticBuilder::new().build(&script.program);
 
             if !ret.errors.is_empty() {
@@ -50,21 +41,33 @@ impl Analyzer {
             }
 
             let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
-            let script_result = ScriptResult { symbols, scopes };
 
             let mut visitor = Visitor {
                 runes: HashMap::default(),
-                scopes: &script_result.scopes,
-                symbols: &script_result.symbols,
+                scopes: &scopes,
+                symbols: &symbols,
             };
 
             visitor.visit_program(&script.program);
 
-            result.runes = replace(&mut visitor.runes, HashMap::default());
-            result.script = Some(script_result);
-        }
+            (
+                replace(&mut visitor.runes, HashMap::default()),
+                symbols,
+                scopes,
+            )
+        } else {
+            (
+                HashMap::default(),
+                SymbolTable::default(),
+                ScopeTree::default(),
+            )
+        };
 
-        return result;
+        return AnalyzeResult {
+            runes,
+            scopes,
+            symbols,
+        };
     }
 }
 
@@ -112,12 +115,11 @@ mod tests {
         );
         let ast = parser.parse().unwrap();
         let result = analyzer.analyze(&ast);
-        let script = result.script.unwrap();
 
         assert!(!result.runes.is_empty());
 
         for (id, _rune) in result.runes.iter() {
-            assert_eq!(script.symbols.get_name(id.clone()), "rune_var");
+            assert_eq!(result.symbols.get_name(id.clone()), "rune_var");
             dbg!(_rune);
         }
     }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use oxc_ast::ast::{self, Argument, BindingPatternKind, Expression, Program, Statement};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
-use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
+use oxc_traverse::{traverse_mut, ReusableTraverseCtx, Traverse, TraverseCtx};
 
 use crate::{analyze::Rune, ast::ScriptTag};
 
@@ -10,33 +10,33 @@ use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
 pub struct TransformScript<'a> {
     b: &'a Builder<'a>,
-    hoisted: Vec<Statement<'a>>,
 }
 
 #[derive(Debug)]
-pub struct TransformResult<'a> {
-    pub body: Vec<Statement<'a>>,
-    pub hoisted: Vec<Statement<'a>>,
+pub struct TransformResult {
     pub symbols: SymbolTable,
     pub scopes: ScopeTree,
-    pub program: Program<'a>,
+}
+
+#[derive(Debug)]
+pub struct TransformExpressionResult<'a> {
+    pub symbols: SymbolTable,
+    pub scopes: ScopeTree,
+    pub expression: Expression<'a>,
 }
 
 impl<'a> TransformScript<'a> {
     pub fn new(builder: &'a Builder<'a>) -> Self {
-        return Self {
-            b: builder,
-            hoisted: vec![],
-        };
+        return Self { b: builder };
     }
 
     pub fn transform(
-        self,
-        mut script: ScriptTag<'a>,
+        &self,
+        program: &mut Program<'a>,
         symbols: SymbolTable,
         scopes: ScopeTree,
         runes: &HashMap<SymbolId, Rune>,
-    ) -> TransformResult<'a> {
+    ) -> TransformResult {
         let mut transformer = TransformerImpl {
             runes,
             builder: self.b,
@@ -45,17 +45,50 @@ impl<'a> TransformScript<'a> {
         let (symbols, scopes) = traverse_mut(
             &mut transformer,
             &self.b.ast.allocator,
-            &mut script.program,
+            program,
             symbols,
             scopes,
         );
 
-        return TransformResult {
-            body: vec![],
-            program: script.program,
-            hoisted: vec![],
+        return TransformResult { symbols, scopes };
+    }
+
+    pub fn transform_expression(
+        &self,
+        expression: Expression<'a>,
+        symbols: SymbolTable,
+        scopes: ScopeTree,
+        runes: &HashMap<SymbolId, Rune>,
+    ) -> TransformExpressionResult<'a> {
+        let mut transformer = TransformerImpl {
+            runes,
+            builder: self.b,
+        };
+
+        let mut program = self.b.program(vec![self
+            .b
+            .stmt(super::builder::BuilderStatement::Expr(expression))]);
+
+        let (symbols, scopes) = traverse_mut(
+            &mut transformer,
+            &self.b.ast.allocator,
+            &mut program,
             symbols,
             scopes,
+        );
+
+        let stmt = program.body.remove(0);
+
+        let expression = if let Statement::ExpressionStatement(mut stmt) = stmt {
+            self.b.ast.move_expression(&mut stmt.expression)
+        } else {
+            unreachable!()
+        };
+
+        return TransformExpressionResult {
+            scopes,
+            symbols,
+            expression,
         };
     }
 }

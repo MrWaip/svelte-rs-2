@@ -5,34 +5,43 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use transform_script::TransformScript;
 use transform_template::TransformTemplate;
 
-use crate::{
-    analyze::{AnalyzeResult, ScriptResult},
-    ast::Ast,
-};
+use crate::{analyze::AnalyzeResult, ast::Ast};
 
 pub mod builder;
 pub mod scope;
 pub mod transform_script;
 pub mod transform_template;
 
-pub fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>, analyze: AnalyzeResult) -> String {
-    let mut template_transformer = TransformTemplate::new(b);
+pub fn transform_client<'a>(
+    ast: Ast<'a>,
+    b: &'a Builder<'a>,
+    mut analyze: AnalyzeResult,
+) -> String {
     let script_transformer = TransformScript::new(b);
 
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
     let mut program_body = vec![];
     let mut component_body = vec![];
 
-    let mut template_result = template_transformer.transform(&ast);
+    if let Some(mut script) = ast.script {
+        let script_result = script_transformer.transform(
+            &mut script.program,
+            analyze.symbols,
+            analyze.scopes,
+            &analyze.runes,
+        );
 
-    if let Some(script) = ast.script {
-        let ScriptResult { scopes, symbols } = analyze.script.unwrap();
-        let script_result = script_transformer.transform(script, symbols, scopes, &analyze.runes);
+        analyze.scopes = script_result.scopes;
+        analyze.symbols = script_result.symbols;
 
-        for stmt in script_result.program.body {
+        for stmt in script.program.body {
             component_body.push(stmt);
         }
     }
+
+    let mut template_transformer =
+        TransformTemplate::new(b, &script_transformer, analyze.symbols, analyze.scopes);
+    let mut template_result = template_transformer.transform(&ast.template);
 
     program_body.append(&mut imports);
     program_body.append(&mut template_result.hoisted);
