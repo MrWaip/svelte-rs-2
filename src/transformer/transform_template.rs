@@ -327,7 +327,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
 
         for cell in CompressNodesIter::iter(nodes, self.b) {
-            let node = &*cell.borrow();
+            let node = &mut *cell.borrow_mut();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
         }
@@ -346,12 +346,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         }
     }
 
-    fn transform_node<'local>(&mut self, node: &Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
+    fn transform_node<'local>(&mut self, node: &mut Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
         match node {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
             Node::Interpolation(interpolation) => {
-                self.transform_interpolation(&interpolation.expression, ctx, false)
+                self.transform_interpolation(&mut interpolation.expression, ctx, false)
             }
             Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
@@ -581,8 +581,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_interpolation<'local>(
-        &self,
-        expression: &Expression<'a>,
+        &mut self,
+        expression: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
         is_concatenation: bool,
     ) {
@@ -597,8 +597,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         self.add_anchor(ctx, "text", anchor_type);
 
-        // let expression = self.transform_expression(expression);
-        let expression = self.b.clone_expr(expression);
+        let expression = self.transform_expression(expression);
         let node_id = self.b.clone_expr(&ctx.node_anchor);
         let set_text = self
             .b
@@ -608,14 +607,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_virtual_concatenation<'local>(
-        &self,
+        &mut self,
         concatenation: &Concatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let tmp = self.b.template_literal(&concatenation.parts);
-        let expr = self.b.expr(BExpr::TemplateLiteral(tmp));
+        let mut expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        self.transform_interpolation(&expr, ctx, true);
+        self.transform_interpolation(&mut expr, ctx, true);
     }
 
     fn transform_if_block<'local>(

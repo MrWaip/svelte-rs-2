@@ -69,6 +69,8 @@ impl<'a> TransformScript<'a> {
             .b
             .stmt(super::builder::BuilderStatement::Expr(expression))]);
 
+        program.set_scope_id(scopes.root_scope_id());
+
         let (symbols, scopes) = traverse_mut(
             &mut transformer,
             &self.b.ast.allocator,
