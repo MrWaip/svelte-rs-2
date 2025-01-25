@@ -138,9 +138,14 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
 impl<'link> TemplateVisitorImpl<'link> {
     fn reference_identifier<'a>(&mut self, ident: &IdentifierReference<'a>) {
         let flags = self.resolve_reference_usages();
-        let reference = Reference::new(NodeId::DUMMY, flags);
-        let reference_id = self.symbols.create_reference(reference);
+        let mut reference = Reference::new(NodeId::DUMMY, flags);
+        let symbol_id = self.scopes.get_root_binding(&ident.name);
 
+        if let Some(symbol_id) = symbol_id {
+            reference.set_symbol_id(symbol_id);
+        }
+
+        let reference_id = self.symbols.create_reference(reference);
         ident.reference_id.set(Some(reference_id));
     }
 
