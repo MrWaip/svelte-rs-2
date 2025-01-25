@@ -1,10 +1,20 @@
-use std::{collections::HashMap, mem::replace};
+pub mod visitor;
+
+use std::{
+    collections::HashMap,
+    mem::{self, replace},
+};
 
 use oxc_ast::{
-    ast::{BindingPatternKind, Expression, VariableDeclarator},
+    ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
     Visit,
 };
-use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
+use oxc_semantic::{
+    NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SemanticBuilder, SymbolId,
+    SymbolTable,
+};
+use oxc_span::Atom;
+use visitor::TemplateVisitor;
 
 use crate::ast::Ast;
 
@@ -40,9 +50,9 @@ impl Analyzer {
                 todo!();
             }
 
-            let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
+            let (mut symbols, mut scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 
-            let mut visitor = Visitor {
+            let mut visitor = ScriptVisitorImpl {
                 runes: HashMap::default(),
                 scopes: &scopes,
                 symbols: &symbols,
@@ -50,8 +60,17 @@ impl Analyzer {
 
             visitor.visit_program(&script.program);
 
+            let mut template_visitor = TemplateVisitorImpl {
+                runes: replace(&mut visitor.runes, HashMap::default()),
+                current_reference_flags: ReferenceFlags::empty(),
+                scopes: &mut scopes,
+                symbols: &mut symbols,
+            };
+
+            template_visitor.visit_template(&ast.template);
+
             (
-                replace(&mut visitor.runes, HashMap::default()),
+                replace(&mut template_visitor.runes, HashMap::default()),
                 symbols,
                 scopes,
             )
@@ -71,13 +90,13 @@ impl Analyzer {
     }
 }
 
-pub struct Visitor<'link> {
+pub struct ScriptVisitorImpl<'link> {
     pub runes: HashMap<SymbolId, Rune>,
     pub symbols: &'link SymbolTable,
     pub scopes: &'link ScopeTree,
 }
 
-impl<'a, 'link> Visit<'a> for Visitor<'link> {
+impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &declarator.init {
             if call.callee_name() == Some("$state") {
@@ -93,6 +112,44 @@ impl<'a, 'link> Visit<'a> for Visitor<'link> {
                     );
                 }
             }
+        }
+    }
+}
+
+pub struct TemplateVisitorImpl<'link> {
+    pub runes: HashMap<SymbolId, Rune>,
+    pub symbols: &'link mut SymbolTable,
+    pub scopes: &'link mut ScopeTree,
+    current_reference_flags: ReferenceFlags,
+}
+
+impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
+    fn visit_expression(&mut self, it: &Expression<'a>) {
+        Visit::visit_expression(self, it);
+    }
+}
+
+impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        self.reference_identifier(it);
+    }
+}
+
+impl<'link> TemplateVisitorImpl<'link> {
+    fn reference_identifier<'a>(&mut self, ident: &IdentifierReference<'a>) {
+        let flags = self.resolve_reference_usages();
+        let reference = Reference::new(NodeId::DUMMY, flags);
+        let reference_id = self.symbols.create_reference(reference);
+
+        ident.reference_id.set(Some(reference_id));
+    }
+
+    fn resolve_reference_usages(&mut self) -> ReferenceFlags {
+        if self.current_reference_flags.is_empty() {
+            ReferenceFlags::Read
+        } else {
+            // Take the current reference flags so that we can reset it to empty
+            mem::take(&mut self.current_reference_flags)
         }
     }
 }
