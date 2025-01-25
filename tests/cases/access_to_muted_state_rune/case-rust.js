@@ -20,7 +20,7 @@ export default function App($$anchor) {
 	$.reset(div);
 	var div_1 = $.sibling(div);
 	$.template_effect(() => {
-		$.set_text(text, title);
+		$.set_text(text, $.get(title));
 		$.set_attribute(div_1, "flag", flag);
 	});
 	$.append($$anchor, fragment);
