@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use oxc_ast::ast::{self, BindingPatternKind, Expression, Program, Statement};
+use oxc_ast::ast::{
+    self, AssignmentTarget, BindingPatternKind, Expression, ExpressionStatement, Program, Statement,
+};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
@@ -117,6 +119,13 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
                                 .builder
                                 .expr(BuilderExpression::Ident(self.builder.rid("$.state")));
 
+                            if call.arguments.is_empty() {
+                                call.arguments.push(
+                                    self.builder
+                                        .arg(BuilderFunctionArgument::Ident("undefined")),
+                                );
+                            }
+
                             node.init = Some(Expression::CallExpression(call))
                         } else {
                             let expr: Expression<'a> = if call.arguments.is_empty() {
@@ -160,6 +169,55 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
                     .call("$.get", [BuilderFunctionArgument::Ident(&ident.name)]);
 
                 *node = Expression::CallExpression(self.builder.alloc(call))
+            }
+        }
+    }
+
+    fn enter_expression_statement(
+        &mut self,
+        node: &mut ast::ExpressionStatement<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        if let Expression::AssignmentExpression(assign) = &mut node.expression {
+            let (rune, name) =
+                if let AssignmentTarget::AssignmentTargetIdentifier(ident) = &assign.left {
+                    let reference_id = ident.reference_id.get();
+
+                    if reference_id.is_none() {
+                        return;
+                    }
+
+                    let reference_id = reference_id.unwrap();
+                    let reference = ctx.symbols().get_reference(reference_id);
+                    let symbol_id = reference.symbol_id();
+
+                    if symbol_id.is_none() {
+                        return;
+                    }
+
+                    (self.runes.get(&symbol_id.unwrap()), ident.name.as_str())
+                } else {
+                    (None, "")
+                };
+
+            if let Some(_rune) = rune {
+                let mut right = self.builder.ast.move_expression(&mut assign.right);
+
+                if !right.is_literal() {
+                    right = self
+                        .builder
+                        .call_expr("$.proxy", [BuilderFunctionArgument::Expr(right)]);
+                }
+
+                let call = self.builder.call(
+                    "$.set",
+                    [
+                        BuilderFunctionArgument::Ident(name),
+                        BuilderFunctionArgument::Expr(right),
+                    ],
+                );
+
+                node.expression = Expression::CallExpression(self.builder.alloc(call))
             }
         }
     }
