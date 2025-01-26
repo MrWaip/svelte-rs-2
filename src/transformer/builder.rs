@@ -207,6 +207,16 @@ impl<'a> Builder<'a> {
         return res;
     }
 
+    pub fn call_expr<'short>(
+        &self,
+        callee: &str,
+        args: impl IntoIterator<Item = BuilderFunctionArgument<'a, 'short>>,
+    ) -> Expression<'a> {
+        let expr = self.call(callee, args);
+
+        return self.expr(BuilderExpression::Call(expr));
+    }
+
     pub fn call_stmt<'short>(
         &self,
         callee: &str,
