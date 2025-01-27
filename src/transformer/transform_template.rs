@@ -404,7 +404,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_element<'local>(
         &mut self,
-        element: &Element<'a>,
+        element: &mut Element<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let has_children = !element.attributes.is_empty();
@@ -448,7 +448,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         self.hoisted.push(var);
     }
 
-    fn transform_attribute<'local>(&self, attr: &Attribute<'a>, ctx: &mut NodeContext<'a, 'local>) {
+    fn transform_attribute<'local>(
+        &mut self,
+        attr: &mut Attribute<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
         match attr {
             Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
             Attribute::Expression(expression) => {
@@ -458,17 +462,17 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_expression_attribute<'local>(
-        &self,
-        expression: &Expression<'a>,
+        &mut self,
+        expression: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
-        let expression = expression.clone_in(&self.b.ast.allocator);
 
         let arg: BArg = match &expression {
             Expression::Identifier(id) => BArg::Str(id.name.to_string()),
             _ => unreachable!(),
         };
+        let expression = self.transform_expression(expression);
 
         let call = self.b.call(
             "$.set_attribute",
@@ -479,8 +483,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_html_attribute<'local>(
-        &self,
-        attr: &HTMLAttribute<'a>,
+        &mut self,
+        attr: &mut HTMLAttribute<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         if matches!(
@@ -491,14 +495,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.push_template(attr.name.into());
         }
 
-        match &attr.value {
+        match &mut attr.value {
             AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
             AttributeValue::Expression(value) => {
-                self.transform_expression_attribute_value(attr, value, ctx)
+                self.transform_expression_attribute_value(&attr.name, value, ctx)
             }
             AttributeValue::Boolean => (),
             AttributeValue::Concatenation(value) => {
-                self.transform_concatenation_attribute_value(attr, value, ctx)
+                self.transform_concatenation_attribute_value(&attr.name, value, ctx)
             }
         };
     }
@@ -512,19 +516,19 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_expression_attribute_value<'local>(
-        &self,
-        attr: &HTMLAttribute<'a>,
-        value: &Expression<'a>,
+        &mut self,
+        name: &str,
+        value: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
 
-        let value = value.clone_in(&self.b.ast.allocator);
+        let value = self.transform_expression(value);
         let call = self.b.call(
             "$.set_attribute",
             [
                 BArg::Expr(node_id),
-                BArg::Str(attr.name.into()),
+                BArg::Str(name.into()),
                 BArg::Expr(value),
             ],
         );
@@ -533,20 +537,28 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_concatenation_attribute_value<'local>(
-        &self,
-        attr: &HTMLAttribute<'a>,
-        value: &Concatenation<'a>,
+        &mut self,
+        name: &str,
+        value: &mut Concatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
 
+        for part in value.parts.iter_mut() {
+            if let ConcatenationPart::Expression(expr) = part {
+                *expr = self.transform_expression(expr);
+            }
+        }
+
         let template_literal = self.b.template_literal(&value.parts);
+        let template_expr = self.b.expr(BExpr::TemplateLiteral(template_literal));
+
         let call = self.b.call(
             "$.set_attribute",
             [
                 BArg::Expr(node_id),
-                BArg::Str(attr.name.into()),
-                BArg::TemplateStr(template_literal),
+                BArg::Str(name.into()),
+                BArg::Expr(template_expr),
             ],
         );
 
@@ -554,11 +566,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn transform_attributes<'local>(
-        &self,
-        element: &Element<'a>,
+        &mut self,
+        element: &mut Element<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        for attr in element.attributes.iter() {
+        for attr in element.attributes.iter_mut() {
             self.transform_attribute(attr, ctx);
         }
 
