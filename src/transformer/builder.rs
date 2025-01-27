@@ -335,6 +335,7 @@ impl<'a> Builder<'a> {
                     }
 
                     let expression = expression.clone_in(&self.ast.allocator);
+
                     let expression = self.ast.expression_logical(
                         SPAN,
                         expression,
