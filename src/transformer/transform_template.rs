@@ -153,7 +153,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
         if len == 1 {
             return self.to_compress.pop();
         } else if len > 1 {
-            let res = Some(self.compress_nodes());
+            let res: Option<RcCell<Node<'a>>> = Some(self.compress_nodes());
             self.to_compress = vec![];
             return res;
         }
@@ -161,17 +161,19 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
         return None;
     }
 
-    fn compress_nodes<'local>(&self) -> RcCell<Node<'a>> {
+    fn compress_nodes<'local>(&mut self) -> RcCell<Node<'a>> {
         let parts = self
             .to_compress
-            .iter()
+            .iter_mut()
             .map(|v| {
-                let node = &*v.borrow();
+                let node = &mut *v.borrow_mut();
 
                 match node {
                     Node::Text(text) => ConcatenationPart::String(text.value),
                     Node::Interpolation(interpolation) => ConcatenationPart::Expression(
-                        self.builder.clone_expr(&interpolation.expression),
+                        self.builder
+                            .ast
+                            .move_expression(&mut interpolation.expression),
                     ),
                     _ => unreachable!(),
                 }
@@ -550,7 +552,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             }
         }
 
-        let template_literal = self.b.template_literal(&value.parts);
+        let template_literal = self.b.template_literal(&mut value.parts);
         let template_expr = self.b.expr(BExpr::TemplateLiteral(template_literal));
 
         let call = self.b.call(
@@ -620,10 +622,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_virtual_concatenation<'local>(
         &mut self,
-        concatenation: &Concatenation<'a>,
+        concatenation: &mut Concatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let tmp = self.b.template_literal(&concatenation.parts);
+        let tmp = self.b.template_literal(&mut concatenation.parts);
         let mut expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
         self.transform_interpolation(&mut expr, ctx, true);

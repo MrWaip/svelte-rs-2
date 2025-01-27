@@ -298,10 +298,10 @@ impl<'a> Builder<'a> {
         return Statement::EmptyStatement(self.ast.alloc_empty_statement(SPAN));
     }
 
-    pub fn template_literal(&self, parts: &Vec<ConcatenationPart<'a>>) -> TemplateLiteral<'a> {
+    pub fn template_literal(&self, parts: &mut Vec<ConcatenationPart<'a>>) -> TemplateLiteral<'a> {
         let mut quasis = self.ast.vec();
         let mut expressions = self.ast.vec();
-        let mut iter = parts.iter().peekable();
+        let mut iter = parts.iter_mut().peekable();
         let mut is_first = true;
 
         while let Some(part) = iter.next() {
@@ -334,7 +334,7 @@ impl<'a> Builder<'a> {
                         quasis.push(temp);
                     }
 
-                    let expression = expression.clone_in(&self.ast.allocator);
+                    let expression = self.ast.move_expression(expression);
 
                     let expression = self.ast.expression_logical(
                         SPAN,
