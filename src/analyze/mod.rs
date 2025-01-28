@@ -10,10 +10,9 @@ use oxc_ast::{
     Visit,
 };
 use oxc_semantic::{
-    NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SemanticBuilder, SymbolId,
+    NodeId, Reference, ReferenceFlags, ScopeTree, SemanticBuilder, SymbolId,
     SymbolTable,
 };
-use oxc_span::Atom;
 use visitor::TemplateVisitor;
 
 use crate::ast::Ast;

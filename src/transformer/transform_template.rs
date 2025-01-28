@@ -5,7 +5,6 @@ use std::{
     rc::Rc,
 };
 
-use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use rccell::RcCell;
