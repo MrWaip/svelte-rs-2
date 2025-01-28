@@ -7,11 +7,11 @@ use std::{
 
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
+    visit::walk::walk_update_expression,
     Visit,
 };
 use oxc_semantic::{
-    NodeId, Reference, ReferenceFlags, ScopeTree, SemanticBuilder, SymbolId,
-    SymbolTable,
+    NodeId, Reference, ReferenceFlags, ScopeTree, SemanticBuilder, SymbolId, SymbolTable,
 };
 use visitor::TemplateVisitor;
 
@@ -51,16 +51,7 @@ impl Analyzer {
 
             let (mut symbols, mut scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 
-            let mut visitor = ScriptVisitorImpl {
-                runes: HashMap::default(),
-                scopes: &scopes,
-                symbols: &symbols,
-            };
-
-            visitor.visit_program(&script.program);
-
             let mut template_visitor = TemplateVisitorImpl {
-                runes: replace(&mut visitor.runes, HashMap::default()),
                 current_reference_flags: ReferenceFlags::empty(),
                 scopes: &mut scopes,
                 symbols: &mut symbols,
@@ -68,8 +59,16 @@ impl Analyzer {
 
             template_visitor.visit_template(&ast.template);
 
+            let mut visitor = ScriptVisitorImpl {
+                runes: HashMap::default(),
+                scopes: template_visitor.scopes,
+                symbols: template_visitor.symbols,
+            };
+
+            visitor.visit_program(&script.program);
+
             (
-                replace(&mut template_visitor.runes, HashMap::default()),
+                replace(&mut visitor.runes, HashMap::default()),
                 symbols,
                 scopes,
             )
@@ -91,8 +90,8 @@ impl Analyzer {
 
 pub struct ScriptVisitorImpl<'link> {
     pub runes: HashMap<SymbolId, Rune>,
-    pub symbols: &'link SymbolTable,
-    pub scopes: &'link ScopeTree,
+    pub symbols: &'link mut SymbolTable,
+    pub scopes: &'link mut ScopeTree,
 }
 
 impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
@@ -101,6 +100,8 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
             if call.callee_name() == Some("$state") {
                 if let BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind {
                     let symbol_id = id.symbol_id();
+
+                    dbg!(&self.symbols);
 
                     self.runes.insert(
                         symbol_id,
@@ -116,7 +117,6 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 pub struct TemplateVisitorImpl<'link> {
-    pub runes: HashMap<SymbolId, Rune>,
     pub symbols: &'link mut SymbolTable,
     pub scopes: &'link mut ScopeTree,
     current_reference_flags: ReferenceFlags,
@@ -132,6 +132,11 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
         self.reference_identifier(it);
     }
+
+    fn visit_update_expression(&mut self, it: &oxc_ast::ast::UpdateExpression<'a>) {
+        self.current_reference_flags = ReferenceFlags::read_write();
+        walk_update_expression(self, it);
+    }
 }
 
 impl<'link> TemplateVisitorImpl<'link> {
@@ -142,10 +147,10 @@ impl<'link> TemplateVisitorImpl<'link> {
 
         if let Some(symbol_id) = symbol_id {
             reference.set_symbol_id(symbol_id);
+            let reference_id = self.symbols.create_reference(reference);
+            ident.reference_id.set(Some(reference_id));
+            self.symbols.add_resolved_reference(symbol_id, reference_id);
         }
-
-        let reference_id = self.symbols.create_reference(reference);
-        ident.reference_id.set(Some(reference_id));
     }
 
     fn resolve_reference_usages(&mut self) -> ReferenceFlags {
