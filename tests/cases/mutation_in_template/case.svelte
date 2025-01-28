@@ -1,3 +1,4 @@
 <script>
     let title = $state(10);
-</script><div onclick={() => title++}>_</div>{title}
+    let title2 = $state(12);
+</script><div attr={title++}>_</div>{--title2}
