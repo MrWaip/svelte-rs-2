@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use oxc_allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc_ast::ast::{
-    self, AssignmentExpression, AssignmentTarget, BindingPatternKind, Expression,
-    ExpressionStatement, Program, SimpleAssignmentTarget, Statement, UpdateOperator,
+    self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget, Statement, UpdateOperator,
 };
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
-use oxc_traverse::{traverse_mut, Ancestor, Traverse, TraverseCtx};
+use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
 use crate::analyze::Rune;
 
