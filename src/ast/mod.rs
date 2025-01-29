@@ -324,6 +324,28 @@ impl<'a> FormatNode for Text<'a> {
     }
 }
 
+impl<'a> Text<'a> {
+    pub fn is_removable(&self) -> bool {
+        return self.value.chars().all(|char| char.is_whitespace());
+    }
+
+    pub fn trim_start(&mut self) {
+        let idx = self.value.find(char::is_whitespace);
+
+        if let Some(idx) = idx {
+            self.value = &self.value[idx..];
+        }
+    }
+
+    pub fn trim_end(&mut self) {
+        let idx = self.value.rfind(char::is_whitespace);
+
+        if let Some(idx) = idx {
+            self.value = &self.value[0..idx];
+        }
+    }
+}
+
 impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::Text(self);
