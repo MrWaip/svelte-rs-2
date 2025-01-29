@@ -2,10 +2,9 @@ import * as $ from "svelte/internal/client";
 var root_1 = $.template(`<br> Text 1`, 1);
 var root_3 = $.template(`<br> Text 2`, 1);
 var root_4 = $.template(`<br> text 3`, 1);
-var root = $.template(`<input> <!>`, 1);
 export default function App($$anchor) {
-	var fragment = root();
-	var node = $.sibling($.first_child(fragment), 2);
+	var fragment = $.comment();
+	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
 			var fragment_1 = root_1();
