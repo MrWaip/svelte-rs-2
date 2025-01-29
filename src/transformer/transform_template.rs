@@ -240,8 +240,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    pub fn transform(&mut self, template: &Vec<RcCell<Node<'a>>>) -> TransformTemplateResult<'a> {
-        let result = self.transform_fragment(&template);
+    pub fn transform(&mut self, template: &mut Vec<RcCell<Node<'a>>>) -> TransformTemplateResult<'a> {
+        let result = self.transform_fragment(template);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
 
@@ -251,7 +251,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    fn transform_fragment(&mut self, nodes: &Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
+    fn transform_fragment(&mut self, nodes: &mut Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
         if nodes.is_empty() {
             return FragmentResult { body: vec![] };
         }
@@ -304,7 +304,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_nodes(
         &mut self,
-        nodes: &Vec<RcCell<Node<'a>>>,
+        nodes: &mut Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
     ) {
@@ -326,6 +326,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             sibling_offset: 0,
             builder: self.b,
         };
+
+        self.trim_nodes(nodes);
 
         for cell in CompressNodesIter::iter(nodes, self.b) {
             let node = &mut *cell.borrow_mut();
@@ -421,7 +423,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.push_template(">".into());
         }
 
-        self.transform_nodes(&element.nodes, ctx.fragment, Some(&ctx.node_anchor));
+        self.transform_nodes(&mut element.nodes, ctx.fragment, Some(&ctx.node_anchor));
 
         if element.has_complex_nodes {
             ctx.push_init(
@@ -632,14 +634,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_if_block<'local>(
         &mut self,
-        if_block: &IfBlock<'a>,
+        if_block: &mut IfBlock<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         ctx.push_template(COMMENT_NODE_ANCHOR.into());
         let mut statements = vec![];
         self.add_anchor(ctx, "node", AnchorNodeType::IfBlock);
 
-        let consequent_fragment = self.transform_fragment(&if_block.consequent);
+        let consequent_fragment = self.transform_fragment(&mut if_block.consequent);
         let consequent_id = ctx.generate("consequent");
 
         let consequent = self.b.var(
@@ -652,7 +654,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         statements.push(consequent);
 
-        let alternate_stmt = if let Some(alt) = &if_block.alternate {
+        let alternate_stmt = if let Some(alt) = &mut if_block.alternate {
             let alternate_fragment = self.transform_fragment(alt);
             let alternate_id = ctx.generate("alternate");
 
@@ -711,5 +713,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         self.scopes = result.scopes;
 
         return result.expression;
+    }
+
+    fn trim_nodes(&self, nodes: &mut Vec<RcCell<Node<'a>>>) {
+
     }
 }

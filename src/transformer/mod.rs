@@ -15,7 +15,7 @@ pub mod transform_template;
 
 
 pub fn transform_client<'a>(
-    ast: Ast<'a>,
+    mut ast: Ast<'a>,
     b: &'a Builder<'a>,
     mut analyze: AnalyzeResult,
 ) -> String {
@@ -48,7 +48,7 @@ pub fn transform_client<'a>(
         analyze.scopes,
         &analyze.runes,
     );
-    let mut template_result = template_transformer.transform(&ast.template);
+    let mut template_result = template_transformer.transform(&mut ast.template);
 
     program_body.append(&mut imports);
     program_body.append(&mut template_result.hoisted);
