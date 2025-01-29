@@ -5,7 +5,6 @@
     title = 12;
 
 </script>
-<br/>
 <input 
     {name}
     name2={name} 
