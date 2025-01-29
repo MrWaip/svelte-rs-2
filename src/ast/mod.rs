@@ -51,6 +51,10 @@ impl<'a> Node<'a> {
         return matches!(self, Node::Text(_));
     }
 
+    pub fn is_element(&self) -> bool {
+        return matches!(self, Node::Element(_));
+    }
+
     pub fn is_interpolation(&self) -> bool {
         return matches!(self, Node::Interpolation(_));
     }
