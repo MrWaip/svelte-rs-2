@@ -262,7 +262,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut body: Vec<Statement<'a>> = vec![];
         let scope = self.root_scope.clone();
         let template_name = scope.borrow_mut().generate("root");
-        let identifier = scope.borrow_mut().generate("fragment");
+        let mut identifier = scope.borrow_mut().generate("fragment");
+        let mut template_bit_flags = Some(1.0);
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -270,13 +271,26 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             update: vec![],
             after_update: vec![],
             template: vec![],
-            scope,
+            scope: scope.clone(),
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
+
+        // !svelte optimization
+        self.trim_nodes(nodes);
 
         // !svelte optimization / hydration?
         if nodes.first().is_some_and(|cell| cell.borrow().is_text()) {
             body.push(self.b.call_stmt("$.next", []));
+        }
+
+        // !svelte optimization
+        if nodes.len() == 1 && nodes.first().is_some_and(|cell| cell.borrow().is_element()) {
+            let Node::Element(element) = &*nodes[0].borrow() else {
+                unreachable!()
+            };
+
+            identifier = scope.borrow_mut().generate(&element.name);
+            template_bit_flags = None;
         }
 
         self.transform_nodes(nodes, &mut context, None);
@@ -288,7 +302,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         } else {
             let call = self.b.call(&template_name, []);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
-            self.add_template(&mut context, &template_name);
+            self.add_template(&mut context, &template_name, template_bit_flags);
         }
 
         body.extend(context.before_init);
@@ -334,9 +348,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             sibling_offset: 0,
             builder: self.b,
         };
-
-        // !svelte optimization
-        self.trim_nodes(nodes);
 
         // !svelte optimization
         for cell in CompressNodesIter::iter(nodes, self.b) {
@@ -433,6 +444,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.push_template(">".into());
         }
 
+        self.trim_nodes(&mut element.nodes);
         self.transform_nodes(&mut element.nodes, ctx.fragment, Some(&ctx.node_anchor));
 
         if element.has_complex_nodes {
@@ -449,12 +461,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         }
     }
 
-    fn add_template(&mut self, ctx: &mut FragmentContext<'a>, name: &str) {
+    fn add_template(&mut self, ctx: &mut FragmentContext<'a>, name: &str, bit_flags: Option<f64>) {
         let template = ctx.template.concat();
         let lit = self.b.template_from_str(&template);
-        let call = self
-            .b
-            .call("$.template", [BArg::TemplateStr(lit), BArg::Num(1.0)]);
+        let mut args = vec![BArg::TemplateStr(lit)];
+
+        if let Some(flags) = bit_flags {
+            args.push(BArg::Num(flags));
+        }
+
+        let call = self.b.call("$.template", args);
 
         let var = self.b.var(name, BExpr::Call(call));
 
