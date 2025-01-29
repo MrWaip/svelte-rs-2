@@ -5,5 +5,4 @@
     <div name="123">
         {id}
     </div>
-    <span>text</span>
 {/if}
