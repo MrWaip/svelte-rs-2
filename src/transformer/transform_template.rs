@@ -332,6 +332,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
     ) {
+        
         let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
             self.b
                 .call_expr("$.child", [BArg::Expr(self.b.clone_expr(parent))])
