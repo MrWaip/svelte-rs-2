@@ -81,6 +81,7 @@ pub struct NodeContext<'ast, 'reference> {
     builder: &'reference Builder<'ast>,
     node_anchor: Expression<'ast>,
     sibling_offset: usize,
+    use_fragment_anchor: bool,
 }
 
 impl<'ast, 'local> NodeContext<'ast, 'local> {
@@ -291,6 +292,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
             identifier = scope.borrow_mut().generate(&element.name);
             template_bit_flags = None;
+            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)));
         }
 
         self.transform_nodes(nodes, &mut context, None);
@@ -330,23 +332,24 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
     ) {
-        let mut anchor = &context.anchor;
-        let mut callee = "$.first_child";
-
-        if let Some(expr) = parent_node {
-            anchor = expr;
-            callee = "$.child";
-        }
-
-        let node_anchor = self.b.expr(BExpr::Call(
-            self.b.call(callee, [BArg::Expr(self.b.clone_expr(anchor))]),
-        ));
+        let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
+            self.b
+                .call_expr("$.child", [BArg::Expr(self.b.clone_expr(parent))])
+        } else {
+            self.b.call_expr(
+                "$.first_child",
+                [BArg::Expr(self.b.clone_expr(&context.anchor))],
+            )
+        };
 
         let mut node_context = NodeContext {
             fragment: context,
             node_anchor,
             sibling_offset: 0,
             builder: self.b,
+            use_fragment_anchor: parent_node.is_none()
+                && nodes.len() == 1
+                && nodes.first().is_some_and(|cell| cell.borrow().is_element()),
         };
 
         // !svelte optimization
@@ -391,6 +394,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         preferable_name: &str,
         anchor_type: AnchorNodeType,
     ) {
+        // !svelte optimization
+        if ctx.use_fragment_anchor {
+            ctx.node_anchor = self.b.clone_expr(&ctx.fragment.anchor);
+            return;
+        }
+
         let mut anchor = ctx.get_node_anchor();
         let identifier = ctx.generate(preferable_name);
 
@@ -434,6 +443,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let has_children = !element.attributes.is_empty();
         ctx.push_template(format!("<{}", &element.name));
 
+        // !svelte optimization
         if has_children || element.has_complex_nodes {
             self.add_anchor(ctx, &element.name, AnchorNodeType::Element);
         }
@@ -444,6 +454,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.push_template(">".into());
         }
 
+        // !svelte optimization
         self.trim_nodes(&mut element.nodes);
         self.transform_nodes(&mut element.nodes, ctx.fragment, Some(&ctx.node_anchor));
 
