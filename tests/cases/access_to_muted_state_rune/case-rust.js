@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div> </div><div> </div>`, 1);
+var root = $.template(`<div> </div> <div> </div>`, 1);
 export default function App($$anchor) {
 	let title = $.state(10);
 	let flag = undefined;
@@ -21,7 +21,7 @@ export default function App($$anchor) {
 	var div = $.first_child(fragment);
 	var text = $.child(div, true);
 	$.reset(div);
-	var div_1 = $.sibling(div);
+	var div_1 = $.sibling(div, 2);
 	var text_1 = $.child(div_1, true);
 	$.reset(div_1);
 	$.template_effect(() => {

@@ -15,4 +15,9 @@
     }
 
     const obj = { title: title, title };
-</script><div>{title}</div><div {flag}>{flag2}</div>
+</script>
+<div>{title}</div>
+
+<div {flag}>
+    {flag2}
+</div>
