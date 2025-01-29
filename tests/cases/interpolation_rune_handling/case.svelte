@@ -3,7 +3,6 @@
     let name = $state("");
 
     title = 12;
-
 </script>
 <br/>
 {name}

@@ -7,5 +7,3 @@
     </div>
     <span>text</span>
 {/if}
-
-<div></div>

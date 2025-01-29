@@ -1,9 +1,8 @@
 import * as $ from "svelte/internal/client";
 var root_1 = $.template(`<div name="123"> </div> <span>text</span>`, 1);
-var root = $.template(`<!> <div></div>`, 1);
 export default function App($$anchor) {
 	let id = undefined;
-	var fragment = root();
+	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
@@ -19,6 +18,5 @@ export default function App($$anchor) {
 			if (true) $$render(consequent);
 		});
 	}
-	$.next(2);
 	$.append($$anchor, fragment);
 }
