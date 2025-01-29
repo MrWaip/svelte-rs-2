@@ -240,7 +240,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    pub fn transform(&mut self, template: &mut Vec<RcCell<Node<'a>>>) -> TransformTemplateResult<'a> {
+    pub fn transform(
+        &mut self,
+        template: &mut Vec<RcCell<Node<'a>>>,
+    ) -> TransformTemplateResult<'a> {
         let result = self.transform_fragment(template);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
@@ -716,6 +719,47 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn trim_nodes(&self, nodes: &mut Vec<RcCell<Node<'a>>>) {
+        let mut trimed: Vec<RcCell<Node<'a>>> = Vec::new();
+        let mut start: usize = 0;
+        let mut end = nodes.len();
 
+        // trim left
+        for cell in nodes.iter_mut() {
+            let node = &mut *cell.borrow_mut();
+
+            if let Node::Text(text) = node {
+                if text.is_removable() {
+                    start += 1;
+                    continue;
+                } else {
+                    // text.trim_start();
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        for cell in nodes.iter_mut().rev() {
+            let node = &mut *cell.borrow_mut();
+
+            if let Node::Text(text) = node {
+                if text.is_removable() {
+                    end -= 1;
+                    continue;
+                } else {
+                    // text.trim_end();
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        for idx in start..end {
+            trimed.push(nodes[idx].clone());
+        }
+
+        *nodes = trimed;
     }
 }
