@@ -1,5 +1,6 @@
 use std::cell::RefMut;
 
+use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
 use rccell::RcCell;
@@ -329,20 +330,40 @@ impl<'a> Text<'a> {
         return self.value.chars().all(|char| char.is_whitespace());
     }
 
-    pub fn trim_start(&mut self) {
-        let idx = self.value.find(char::is_whitespace);
-
-        if let Some(idx) = idx {
-            self.value = &self.value[idx..];
-        }
+    pub fn trim_start(&mut self) -> bool {
+        let new = self.value.trim_ascii_start();
+        let trimmed = new.len() != self.value.len();
+        self.value = new;
+        return trimmed;
     }
 
-    pub fn trim_end(&mut self) {
-        let idx = self.value.rfind(char::is_whitespace);
+    pub fn trim_end(&mut self) -> bool {
+        let new = self.value.trim_ascii_end();
+        let trimmed = new.len() != self.value.len();
+        self.value = new;
+        return trimmed;
+    }
 
-        if let Some(idx) = idx {
-            self.value = &self.value[0..idx];
+    pub fn trim_start_one_whitespace(&mut self, allocator: &'a Allocator) {
+        if !self.trim_start() {
+            return;
         }
+
+        let mut new = String::from(" ");
+        new.push_str(&self.value);
+
+        self.value = allocator.alloc_str(new.as_str());
+    }
+
+    pub fn trim_end_one_whitespace(&mut self, allocator: &'a Allocator) {
+        if !self.trim_end() {
+            return;
+        }
+
+        let mut new = String::from(self.value);
+        new.push(' ');
+
+        self.value = allocator.alloc_str(new.as_str());
     }
 }
 

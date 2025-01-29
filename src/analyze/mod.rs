@@ -101,8 +101,6 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
                 if let BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind {
                     let symbol_id = id.symbol_id();
 
-                    dbg!(&self.symbols);
-
                     self.runes.insert(
                         symbol_id,
                         Rune {
@@ -186,7 +184,6 @@ mod tests {
 
         for (id, _rune) in result.runes.iter() {
             assert_eq!(result.symbols.get_name(id.clone()), "rune_var");
-            dbg!(_rune);
         }
     }
 }

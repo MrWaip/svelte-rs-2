@@ -274,6 +274,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
+        // !svelte optimization / hydration?
+        if nodes.first().is_some_and(|cell| cell.borrow().is_text()) {
+            body.push(self.b.call_stmt("$.next", []));
+        }
+
         self.transform_nodes(nodes, &mut context, None);
 
         // !svelte optimization
@@ -330,8 +335,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             builder: self.b,
         };
 
+        // !svelte optimization
         self.trim_nodes(nodes);
 
+        // !svelte optimization
         for cell in CompressNodesIter::iter(nodes, self.b) {
             let node = &mut *cell.borrow_mut();
             self.transform_node(node, &mut node_context);
@@ -719,7 +726,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     fn trim_nodes(&self, nodes: &mut Vec<RcCell<Node<'a>>>) {
-        let mut trimed: Vec<RcCell<Node<'a>>> = Vec::new();
+        let mut trimmed: Vec<RcCell<Node<'a>>> = Vec::new();
         let mut start: usize = 0;
         let mut end = nodes.len();
 
@@ -732,7 +739,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                     start += 1;
                     continue;
                 } else {
-                    // text.trim_start();
+                    text.trim_start();
                     break;
                 }
             } else {
@@ -748,7 +755,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                     end -= 1;
                     continue;
                 } else {
-                    // text.trim_end();
+                    text.trim_end();
                     break;
                 }
             } else {
@@ -757,9 +764,27 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         }
 
         for idx in start..end {
-            trimed.push(nodes[idx].clone());
+            let prev = if idx == 0 { None } else { nodes.get(idx - 1) };
+            let current = nodes.get(idx);
+            let next = nodes.get(idx + 1);
+
+            if let Some(cell) = current.filter(|cell| cell.borrow().is_text()) {
+                let Node::Text(text) = &mut *cell.borrow_mut() else {
+                    unreachable!()
+                };
+
+                if !prev.is_some_and(|cell| cell.borrow().is_interpolation()) {
+                    text.trim_start_one_whitespace(&self.b.ast.allocator);
+                }
+
+                if !next.is_some_and(|cell| cell.borrow().is_interpolation()) {
+                    text.trim_end_one_whitespace(&self.b.ast.allocator);
+                }
+            }
+
+            trimmed.push(nodes[idx].clone());
         }
 
-        *nodes = trimed;
+        *nodes = trimmed;
     }
 }

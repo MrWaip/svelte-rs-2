@@ -1,8 +1,9 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<br><br>`, 1);
+var root = $.template(`start<br> <br>end`, 1);
 export default function App($$anchor) {
 	let name = 12;
-	var fragment = root();
 	$.next();
+	var fragment = root();
+	$.next(4);
 	$.append($$anchor, fragment);
 }
