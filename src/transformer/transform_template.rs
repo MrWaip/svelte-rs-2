@@ -86,7 +86,7 @@ pub struct NodeContext<'ast, 'reference> {
 
 pub struct TrimResult {
     has_only_text_and_interpolation: bool,
-    has_single_compressible_node: bool,
+    has_single_text_node: bool,
     has_single_element: bool,
 }
 
@@ -310,6 +310,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)))
         }
 
+        // !svelte optimization
+        if trim_result.has_single_text_node {
+            identifier = scope.borrow_mut().generate("text");
+            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)))
+        }
+
         self.transform_nodes(nodes, &mut context, None);
 
         // !svelte optimization
@@ -318,6 +324,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             body.push(self.b.var(&identifier, BExpr::Call(call)));
         } else if trim_result.has_only_text_and_interpolation {
             let call = self.b.call("$.text", []);
+            body.push(self.b.var(&identifier, BExpr::Call(call)));
+        } else if trim_result.has_single_text_node {
+            let Node::Text(text) = &*nodes[0].borrow() else {
+                unreachable!()
+            };
+
+            let call = self.b.call("$.text", [BArg::Str(text.value.to_string())]);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
         } else {
             let call = self.b.call(&template_name, []);
@@ -370,7 +383,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 && nodes.first().is_some_and(|cell| {
                     let borrow = cell.borrow();
                     return borrow.is_element() || borrow.is_compressible();
-                    
                 }),
         };
 
@@ -778,7 +790,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         if nodes.is_empty() {
             return TrimResult {
                 has_only_text_and_interpolation: false,
-                has_single_compressible_node: false,
+                has_single_text_node: false,
                 has_single_element: false,
             };
         }
@@ -789,6 +801,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut has_only_text_or_interpolation = true;
         let mut has_elements = false;
         let mut has_interpolation = false;
+        let mut has_text = false;
 
         // trim left
         for cell in nodes.iter_mut() {
@@ -854,12 +867,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 has_elements = current.is_element();
             }
 
+            if !has_text {
+                has_text = current.is_text();
+            }
+
             trimmed.push(nodes[idx].clone());
         }
 
         let result = TrimResult {
             has_only_text_and_interpolation: has_only_text_or_interpolation && has_interpolation,
-            has_single_compressible_node: has_only_text_or_interpolation && trimmed.len() == 1,
+            has_single_text_node: has_text && trimmed.len() == 1,
             has_single_element: has_elements && trimmed.len() == 1,
         };
 
