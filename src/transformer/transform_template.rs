@@ -370,6 +370,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 && nodes.first().is_some_and(|cell| {
                     let borrow = cell.borrow();
                     return borrow.is_element() || borrow.is_compressible();
+                    
                 }),
         };
 
