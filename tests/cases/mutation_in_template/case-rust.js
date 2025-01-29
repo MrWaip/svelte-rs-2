@@ -5,10 +5,10 @@ export default function App($$anchor) {
 	let title2 = $.state(12);
 	var fragment = root();
 	var div = $.first_child(fragment);
-	var text = $.sibling(div, 1, true);
+	var text = $.sibling(div);
 	$.template_effect(() => {
 		$.set_attribute(div, "attr", $.update(title));
-		$.set_text(text, $.update_pre(title2, -1));
+		$.set_text(text, ` ${$.update_pre(title2, -1) ?? ""}`);
 	});
 	$.append($$anchor, fragment);
 }

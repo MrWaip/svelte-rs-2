@@ -1,11 +1,11 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<br><input>`, 1);
+var root = $.template(`<br> <input>`, 1);
 export default function App($$anchor) {
 	let title = $.state(10);
 	let name = "";
 	$.set(title, 12);
 	var fragment = root();
-	var input = $.sibling($.first_child(fragment));
+	var input = $.sibling($.first_child(fragment), 2);
 	$.template_effect(() => {
 		$.set_attribute(input, "name", name);
 		$.set_attribute(input, "name2", name);
