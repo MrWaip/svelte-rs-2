@@ -84,6 +84,12 @@ pub struct NodeContext<'ast, 'reference> {
     use_fragment_anchor: bool,
 }
 
+pub struct TrimResult {
+    has_only_text_and_interpolation: bool,
+    has_single_compressible_node: bool,
+    has_single_element: bool,
+}
+
 impl<'ast, 'local> NodeContext<'ast, 'local> {
     pub fn get_node_anchor(&mut self) -> Expression<'ast> {
         return replace(&mut self.node_anchor, self.builder.cheap_expr());
@@ -277,15 +283,18 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
 
         // !svelte optimization
-        self.trim_nodes(nodes);
+        let trim_result = self.trim_nodes(nodes);
 
         // !svelte optimization / hydration?
-        if nodes.first().is_some_and(|cell| cell.borrow().is_text()) {
+        if nodes
+            .first()
+            .is_some_and(|cell| cell.borrow().is_compressible())
+        {
             body.push(self.b.call_stmt("$.next", []));
         }
 
         // !svelte optimization
-        if nodes.len() == 1 && nodes.first().is_some_and(|cell| cell.borrow().is_element()) {
+        if trim_result.has_single_element {
             let Node::Element(element) = &*nodes[0].borrow() else {
                 unreachable!()
             };
@@ -295,11 +304,20 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)));
         }
 
+        // !svelte optimization
+        if trim_result.has_only_text_and_interpolation {
+            identifier = scope.borrow_mut().generate("text");
+            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)))
+        }
+
         self.transform_nodes(nodes, &mut context, None);
 
         // !svelte optimization
         if context.template_has_one_comment() {
             let call = self.b.call("$.comment", []);
+            body.push(self.b.var(&identifier, BExpr::Call(call)));
+        } else if trim_result.has_only_text_and_interpolation {
+            let call = self.b.call("$.text", []);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
         } else {
             let call = self.b.call(&template_name, []);
@@ -316,7 +334,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         body.extend(context.after_update);
 
-        let close = self.b.call(
+        let close: oxc_ast::ast::CallExpression<'_> = self.b.call(
             "$.append",
             [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         );
@@ -332,7 +350,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
     ) {
-        
         let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
             self.b
                 .call_expr("$.child", [BArg::Expr(self.b.clone_expr(parent))])
@@ -350,7 +367,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             builder: self.b,
             use_fragment_anchor: parent_node.is_none()
                 && nodes.len() == 1
-                && nodes.first().is_some_and(|cell| cell.borrow().is_element()),
+                && nodes.first().is_some_and(|cell| {
+                    let borrow = cell.borrow();
+                    return borrow.is_element() || borrow.is_compressible();
+                }),
         };
 
         // !svelte optimization
@@ -753,10 +773,21 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         return result.expression;
     }
 
-    fn trim_nodes(&self, nodes: &mut Vec<RcCell<Node<'a>>>) {
+    fn trim_nodes(&self, nodes: &mut Vec<RcCell<Node<'a>>>) -> TrimResult {
+        if nodes.is_empty() {
+            return TrimResult {
+                has_only_text_and_interpolation: false,
+                has_single_compressible_node: false,
+                has_single_element: false,
+            };
+        }
+
         let mut trimmed: Vec<RcCell<Node<'a>>> = Vec::new();
         let mut start: usize = 0;
         let mut end = nodes.len();
+        let mut has_only_text_or_interpolation = true;
+        let mut has_elements = false;
+        let mut has_interpolation = false;
 
         // trim left
         for cell in nodes.iter_mut() {
@@ -793,11 +824,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         for idx in start..end {
             let prev = if idx == 0 { None } else { nodes.get(idx - 1) };
-            let current = nodes.get(idx);
+            let mut current = nodes.get(idx).unwrap().borrow_mut();
             let next = nodes.get(idx + 1);
 
-            if let Some(cell) = current.filter(|cell| cell.borrow().is_text()) {
-                let Node::Text(text) = &mut *cell.borrow_mut() else {
+            if current.is_text() {
+                let Node::Text(text) = &mut *current else {
                     unreachable!()
                 };
 
@@ -810,9 +841,29 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 }
             }
 
+            if has_only_text_or_interpolation {
+                has_only_text_or_interpolation = current.is_compressible();
+            }
+
+            if !has_interpolation {
+                has_interpolation = current.is_interpolation();
+            }
+
+            if !has_elements {
+                has_elements = current.is_element();
+            }
+
             trimmed.push(nodes[idx].clone());
         }
 
+        let result = TrimResult {
+            has_only_text_and_interpolation: has_only_text_or_interpolation && has_interpolation,
+            has_single_compressible_node: has_only_text_or_interpolation && trimmed.len() == 1,
+            has_single_element: has_elements && trimmed.len() == 1,
+        };
+
         *nodes = trimmed;
+
+        return result;
     }
 }
