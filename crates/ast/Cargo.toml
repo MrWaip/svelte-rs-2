@@ -1,0 +1,13 @@
+[package]
+name = "ast"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+span = { workspace = true }
+diagnostics = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_span = { workspace = true }
+oxc_codegen = { workspace = true }
+rccell = { workspace = true }
