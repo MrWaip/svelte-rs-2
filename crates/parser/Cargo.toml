@@ -3,6 +3,10 @@ name = "parser"
 version = "0.1.0"
 edition = "2021"
 
+
+[lib]
+doctest = false
+
 [dependencies]
 span = { workspace = true }
 diagnostics = { workspace = true }

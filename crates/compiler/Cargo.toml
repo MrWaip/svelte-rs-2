@@ -3,6 +3,10 @@ name = "compiler"
 version = "0.1.0"
 edition = "2021"
 
+
+[lib]
+doctest = false
+
 [dependencies]
 analyzer = { workspace = true }
 parser = { workspace = true }
