@@ -7,7 +7,7 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn main() {
-    let files = glob("./tests/cases/**/*.svelte").expect("Не удалось считать компоненты");
+    let files = glob("../tests/cases/**/*.svelte").expect("Не удалось считать компоненты");
 
     for entry in files {
         let entry = entry.unwrap();
@@ -16,7 +16,7 @@ fn main() {
         let output = Command::new("sh")
             .arg("-c")
             .arg(format!(
-                "~/.deno/bin/deno run  -A ./tests/generate.ts {path}"
+                "~/.deno/bin/deno run  -A ../tests/generate.ts {path}"
             ))
             .output()
             .expect("failed to execute process");
