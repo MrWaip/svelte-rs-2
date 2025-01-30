@@ -6,7 +6,7 @@ use oxc_ast::ast::{
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
-use crate::analyze::Rune;
+use analyzer::Rune;
 
 use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 

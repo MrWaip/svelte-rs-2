@@ -9,14 +9,14 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use rccell::RcCell;
 
-use crate::{
-    analyze::Rune,
-    ast::{
-        Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute,
-        IfBlock, Node, Text,
-    },
-    parser::span::SPAN,
+use ast::{
+    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock,
+    Node, Text,
 };
+
+use span::SPAN;
+
+use analyzer::Rune;
 
 use super::{
     builder::{

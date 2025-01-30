@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use ::ast::ConcatenationPart;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
@@ -14,7 +15,6 @@ use oxc_ast::{
 };
 use oxc_span::{Atom, SourceType, SPAN};
 
-use crate::ast::ConcatenationPart;
 
 pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),

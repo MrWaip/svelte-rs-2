@@ -1,0 +1,16 @@
+[package]
+name = "transformer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+analyzer = { workspace = true }
+span = { workspace = true }
+ast = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_span = { workspace = true }
+oxc_semantic = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_traverse = { workspace = true }
+rccell = { workspace = true }

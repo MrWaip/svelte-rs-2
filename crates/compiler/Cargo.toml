@@ -1,0 +1,11 @@
+[package]
+name = "compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+analyzer = { workspace = true }
+parser = { workspace = true }
+transformer = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_ast = { workspace = true }
