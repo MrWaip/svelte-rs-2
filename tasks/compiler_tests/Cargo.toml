@@ -3,6 +3,10 @@ name = "compiler_tests"
 version = "0.1.0"
 edition = "2021"
 
+[[test]]
+name = "compiler_tests"
+path = "test.rs"
+
 [dependencies]
 rstest = { workspace = true }
 oxc_allocator = { workspace = true }
