@@ -1,18 +1,17 @@
 use std::vec;
 
+use ast::Ast;
 use builder::Builder;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use transform_script::TransformScript;
 use transform_template::TransformTemplate;
 
-use crate::{analyze::AnalyzeResult, ast::Ast};
+use analyzer::AnalyzeResult;
 
 pub mod builder;
 pub mod scope;
 pub mod transform_script;
 pub mod transform_template;
-
-
 
 pub fn transform_client<'a>(
     mut ast: Ast<'a>,

@@ -1,11 +1,9 @@
 use oxc_allocator::Allocator;
 use oxc_ast::AstBuilder;
 
-use crate::{
-    analyze::Analyzer,
-    parser::Parser,
-    transformer::{builder::Builder, transform_client},
-};
+use analyzer::Analyzer;
+use parser::Parser;
+use transformer::{builder::Builder, transform_client};
 
 pub struct Compiler {}
 

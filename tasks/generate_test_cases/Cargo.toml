@@ -1,0 +1,11 @@
+[package]
+name = "generate_test_cases"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxc_allocator = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_span = { workspace = true }
+glob = { workspace = true }
