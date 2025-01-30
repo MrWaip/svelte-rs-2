@@ -1,5 +1,5 @@
 {#if true}
-    <br /> Text 1
+     Text 1
 {:else if 1 + 2}
     <br /> Text 2
 {:else}

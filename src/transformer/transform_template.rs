@@ -84,10 +84,26 @@ pub struct NodeContext<'ast, 'reference> {
     use_fragment_anchor: bool,
 }
 
+#[derive(Debug)]
 pub struct TrimResult {
     has_only_text_and_interpolation: bool,
     has_single_text_node: bool,
     has_single_element: bool,
+    is_first_compressible: bool,
+}
+
+pub enum FragmentParent {
+    IfBlock,
+    Template,
+}
+
+impl FragmentParent {
+    pub fn is_next_needed(&self) -> bool {
+        return match self {
+            FragmentParent::Template => true,
+            _ => false,
+        };
+    }
 }
 
 impl<'ast, 'local> NodeContext<'ast, 'local> {
@@ -251,7 +267,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         &mut self,
         template: &mut Vec<RcCell<Node<'a>>>,
     ) -> TransformTemplateResult<'a> {
-        let result = self.transform_fragment(template);
+        let result = self.transform_fragment(template, FragmentParent::Template);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
 
@@ -261,7 +277,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    fn transform_fragment(&mut self, nodes: &mut Vec<RcCell<Node<'a>>>) -> FragmentResult<'a> {
+    fn transform_fragment(
+        &mut self,
+        nodes: &mut Vec<RcCell<Node<'a>>>,
+        parent: FragmentParent,
+    ) -> FragmentResult<'a> {
         if nodes.is_empty() {
             return FragmentResult { body: vec![] };
         }
@@ -269,8 +289,32 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut body: Vec<Statement<'a>> = vec![];
         let scope = self.root_scope.clone();
         let template_name = scope.borrow_mut().generate("root");
-        let mut identifier = scope.borrow_mut().generate("fragment");
         let mut template_bit_flags = Some(1.0);
+
+        // !svelte optimization
+        let trim_result = self.trim_nodes(nodes);
+
+        // !svelte optimization / hydration?
+        if trim_result.is_first_compressible && parent.is_next_needed() {
+            dbg!(nodes.first());
+            body.push(self.b.call_stmt("$.next", []));
+        }
+
+        // !svelte specific
+        let identifier: String = if trim_result.has_single_element {
+            let Node::Element(element) = &*nodes[0].borrow() else {
+                unreachable!()
+            };
+
+            template_bit_flags = None;
+            scope.borrow_mut().generate(&element.name)
+        } else if trim_result.has_only_text_and_interpolation {
+            scope.borrow_mut().generate("text")
+        } else if trim_result.has_single_text_node {
+            scope.borrow_mut().generate("text")
+        } else {
+            scope.borrow_mut().generate("fragment")
+        };
 
         let mut context = FragmentContext {
             before_init: vec![],
@@ -281,40 +325,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             scope: scope.clone(),
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
-
-        // !svelte optimization
-        let trim_result = self.trim_nodes(nodes);
-
-        // !svelte optimization / hydration?
-        if nodes
-            .first()
-            .is_some_and(|cell| cell.borrow().is_compressible())
-        {
-            body.push(self.b.call_stmt("$.next", []));
-        }
-
-        // !svelte optimization
-        if trim_result.has_single_element {
-            let Node::Element(element) = &*nodes[0].borrow() else {
-                unreachable!()
-            };
-
-            identifier = scope.borrow_mut().generate(&element.name);
-            template_bit_flags = None;
-            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)));
-        }
-
-        // !svelte optimization
-        if trim_result.has_only_text_and_interpolation {
-            identifier = scope.borrow_mut().generate("text");
-            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)))
-        }
-
-        // !svelte optimization
-        if trim_result.has_single_text_node {
-            identifier = scope.borrow_mut().generate("text");
-            context.anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)))
-        }
 
         self.transform_nodes(nodes, &mut context, None);
 
@@ -712,7 +722,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut statements = vec![];
         self.add_anchor(ctx, "node", AnchorNodeType::IfBlock);
 
-        let consequent_fragment = self.transform_fragment(&mut if_block.consequent);
+        let consequent_fragment =
+            self.transform_fragment(&mut if_block.consequent, FragmentParent::IfBlock);
         let consequent_id = ctx.generate("consequent");
 
         let consequent = self.b.var(
@@ -726,7 +737,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         statements.push(consequent);
 
         let alternate_stmt = if let Some(alt) = &mut if_block.alternate {
-            let alternate_fragment = self.transform_fragment(alt);
+            let alternate_fragment = self.transform_fragment(alt, FragmentParent::IfBlock);
             let alternate_id = ctx.generate("alternate");
 
             let alternate = self.b.var(
@@ -792,6 +803,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 has_only_text_and_interpolation: false,
                 has_single_text_node: false,
                 has_single_element: false,
+                is_first_compressible: false,
             };
         }
 
@@ -878,6 +890,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             has_only_text_and_interpolation: has_only_text_or_interpolation && has_interpolation,
             has_single_text_node: has_text && trimmed.len() == 1,
             has_single_element: has_elements && trimmed.len() == 1,
+            // !svelte specific
+            is_first_compressible: trimmed
+                .first()
+                .is_some_and(|cell| cell.borrow().is_compressible()),
         };
 
         *nodes = trimmed;
