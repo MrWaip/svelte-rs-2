@@ -1,0 +1,14 @@
+[package]
+name = "wasm_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+doctest = false
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oxc_allocator = { workspace = true }
+compiler = { workspace = true }
+wasm-bindgen = { workspace = true }
+
