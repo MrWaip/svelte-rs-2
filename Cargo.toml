@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ast", "crates/diagnostics", "crates/span"]
+members = ["crates/ast", "crates/diagnostics", "crates/parser", "crates/span"]
 resolver = "2"
 
 
