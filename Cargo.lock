@@ -371,6 +371,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxc_parser"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9f3b136bd0b203164e03aba7f7ce836df62a7070f847762058439f18296d582"
+dependencies = [
+ "assert-unchecked",
+ "bitflags",
+ "cow-utils",
+ "memchr",
+ "num-bigint",
+ "num-traits",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_diagnostics",
+ "oxc_ecmascript",
+ "oxc_regular_expression",
+ "oxc_span",
+ "oxc_syntax",
+ "rustc-hash",
+ "seq-macro",
+]
+
+[[package]]
 name = "oxc_regular_expression"
 version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -454,6 +477,20 @@ dependencies = [
  "rustc-hash",
  "ryu-js",
  "unicode-id-start",
+]
+
+[[package]]
+name = "parser"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "diagnostics",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_parser",
+ "oxc_span",
+ "rccell",
+ "span",
 ]
 
 [[package]]
@@ -586,6 +623,12 @@ name = "self_cell"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2fdfc24bc566f839a2da4c4295b82db7d25a24253867d5c64355abb5799bdbe"
+
+[[package]]
+name = "seq-macro"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3f0bf26fd526d2a95683cd0f87bf103b8539e2ca1ef48ce002d67aad59aa0b4"
 
 [[package]]
 name = "serde"

@@ -1,0 +1,14 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+span = { workspace = true }
+diagnostics = { workspace = true }
+ast = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_span = { workspace = true }
+rccell = { workspace = true }
