@@ -11,7 +11,7 @@ use pretty_assertions::assert_eq;
 use compiler::Compiler;
 
 #[rstest]
-fn integration(#[files("./tests/cases/**/*.svelte")] path: PathBuf) {
+fn integration(#[files("./cases/**/*.svelte")] path: PathBuf) {
     let allocator = Allocator::default();
 
     let file = read_to_string(&path).unwrap();
