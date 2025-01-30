@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rust Svelte compiler preview</title>
+  </head>
+  <body>
+    <h1>Prototype</h1>
+
+    <div class="container">
+      <div>
+        <textarea id="editor" cols="100" rows="50">
+<script>
+    let name = $state("world");
+</script>
+            
+<h1>Hello {name}!</h1>
+</textarea
+        >
+
+      </div>
+
+      <pre id="preview"></pre>
+    </div>
+
+    <style>
+      .container {
+        display: flex;
+        gap: 1rem;
+      }
+    </style>
+
+    <script type="module">
+      import "./compiler/wasm_compiler_bg.js";
+      import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
+
+      await init();
+
+      const editor = document.getElementById("editor");
+      const preview = document.getElementById("preview");
+      const compiler = new WasmCompiler();
+
+      compile();
+
+      function compile() {
+        try {
+          const result = compiler.compile(editor.value);
+
+          preview.textContent = result;
+        } catch (e) {
+          console.error(e);
+          preview.textContent = e;
+        }
+      }
+
+      editor.addEventListener("input", () => {
+        compile();
+      });
+    </script>
+  </body>
+</html>
