@@ -1,0 +1,12 @@
+[package]
+name = "analyzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ast = { workspace = true }
+parser = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_semantic = { workspace = true }
+oxc_allocator= { workspace = true }
+rccell = { workspace = true }

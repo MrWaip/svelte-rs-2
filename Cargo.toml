@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ast", "crates/diagnostics", "crates/parser", "crates/span"]
+members = [ "crates/analyzer","crates/ast", "crates/diagnostics", "crates/parser", "crates/span"]
 resolver = "2"
 
 
@@ -7,6 +7,8 @@ resolver = "2"
 ast = { path = "crates/ast" }
 span = { path = "crates/span" }
 diagnostics = { path = "crates/diagnostics" }
+parser = { path = "crates/parser" }
+analyzer = { path = "crates/analyzer" }
 compact_str = "0.8.1"
 glob = "0.3.2"
 oxc_allocator = "0.44.0"
