@@ -326,7 +326,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
-        self.transform_nodes(nodes, &mut context, None);
+        let use_fragment_anchor =
+            trim_result.has_single_element || trim_result.has_only_text_and_interpolation;
+
+        self.transform_nodes(nodes, &mut context, None, use_fragment_anchor);
 
         // !svelte optimization
         if context.template_has_one_comment() {
@@ -372,6 +375,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         nodes: &mut Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
+        use_fragment_anchor: bool,
     ) {
         let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
             self.b
@@ -388,12 +392,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             node_anchor,
             sibling_offset: 0,
             builder: self.b,
-            use_fragment_anchor: parent_node.is_none()
-                && nodes.len() == 1
-                && nodes.first().is_some_and(|cell| {
-                    let borrow = cell.borrow();
-                    return borrow.is_element() || borrow.is_compressible();
-                }),
+            use_fragment_anchor,
         };
 
         // !svelte optimization
@@ -500,7 +499,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         // !svelte optimization
         self.trim_nodes(&mut element.nodes);
-        self.transform_nodes(&mut element.nodes, ctx.fragment, Some(&ctx.node_anchor));
+        self.transform_nodes(
+            &mut element.nodes,
+            ctx.fragment,
+            Some(&ctx.node_anchor),
+            false,
+        );
 
         if element.has_complex_nodes {
             ctx.push_init(

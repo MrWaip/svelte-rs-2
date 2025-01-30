@@ -12,8 +12,7 @@ export default function App($$anchor) {
 			{
 				var consequent = ($$anchor) => {
 					var text_1 = $.text();
-					var text_2 = $.first_child(text_1);
-					$.template_effect(() => $.set_text(text_2, `120 = ${id ?? ""}`));
+					$.template_effect(() => $.set_text(text_1, `120 = ${id ?? ""}`));
 					$.append($$anchor, text_1);
 				};
 				$.if(node_1, ($$render) => {
