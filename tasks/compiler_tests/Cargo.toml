@@ -1,0 +1,10 @@
+[package]
+name = "compiler_tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rstest = { workspace = true }
+oxc_allocator = { workspace = true }
+pretty_assertions = { workspace = true }
+compiler = { workspace = true }

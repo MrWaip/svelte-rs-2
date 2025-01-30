@@ -8,7 +8,7 @@ use std::{
 
 use oxc_allocator::Allocator;
 use pretty_assertions::assert_eq;
-use svelte_rs_2::compiler::Compiler;
+use compiler::Compiler;
 
 #[rstest]
 fn integration(#[files("./tests/cases/**/*.svelte")] path: PathBuf) {
