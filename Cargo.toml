@@ -10,6 +10,7 @@ diagnostics = { path = "crates/diagnostics" }
 parser = { path = "crates/parser" }
 analyzer = { path = "crates/analyzer" }
 transformer = { path = "crates/transformer" }
+compiler = { path = "crates/compiler" }
 compact_str = "0.8.1"
 glob = "0.3.2"
 oxc_allocator = "0.44.0"
