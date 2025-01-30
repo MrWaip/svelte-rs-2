@@ -7,7 +7,7 @@ use std::{
 
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
-    visit::walk::walk_update_expression,
+    visit::walk::{walk_assignment_expression, walk_update_expression},
     Visit,
 };
 use oxc_semantic::{
@@ -134,6 +134,11 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
     fn visit_update_expression(&mut self, it: &oxc_ast::ast::UpdateExpression<'a>) {
         self.current_reference_flags = ReferenceFlags::read_write();
         walk_update_expression(self, it);
+    }
+
+    fn visit_assignment_expression(&mut self, it: &oxc_ast::ast::AssignmentExpression<'a>) {
+        self.current_reference_flags = ReferenceFlags::write();
+        walk_assignment_expression(self, it);
     }
 }
 
