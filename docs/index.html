@@ -6,57 +6,101 @@
     <title>Rust Svelte compiler preview</title>
   </head>
   <body>
-    <h1>Prototype</h1>
-
     <div class="container">
-      <div>
-        <textarea id="editor" cols="100" rows="50">
-<script>
-    let name = $state("world");
-</script>
-            
-<h1>Hello {name}!</h1>
-</textarea
-        >
-
+      <h1>Rust Svelte Compiler Demo</h1>
+      <div class="grid">
+        <div id="editor"></div>
+        <div id="preview"></div>
       </div>
-
-      <pre id="preview"></pre>
     </div>
 
     <style>
       .container {
-        display: flex;
+        width: 80vw;
+        height: 80vh;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 1rem;
+        height: 100%;
       }
     </style>
 
     <script type="module">
       import "./compiler/wasm_compiler_bg.js";
       import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
+      import { example } from "./example.js";
 
       await init();
 
-      const editor = document.getElementById("editor");
-      const preview = document.getElementById("preview");
       const compiler = new WasmCompiler();
+      let editorInstance;
+      let previewInstance;
 
-      compile();
+      const preview = document.getElementById("preview");
+      let scriptElement = document.createElement("script");
+      scriptElement.setAttribute(
+        "src",
+        "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"
+      );
+      document.body.appendChild(scriptElement);
+
+      scriptElement.addEventListener("load", () => {
+        require.config({
+          paths: {
+            vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs",
+          },
+        });
+
+        require(["vs/editor/editor.main"], () => {
+          editorInstance = monaco.editor.create(
+            document.getElementById("editor"),
+            {
+              value: example,
+              language: "html",
+              automaticLayout: true,
+              padding: { top: 5, right: 5, bottom: 5, left: 5 },
+              overviewRulerLanes: 0,
+              overviewRulerBorder: false,
+              minimap: { enabled: false },
+              theme: "vs-dark",
+            }
+          );
+
+          previewInstance = monaco.editor.create(
+            document.getElementById("preview"),
+            {
+              value: "",
+              language: "javascript",
+              automaticLayout: true,
+              padding: { top: 5, right: 5, bottom: 5, left: 5 },
+              overviewRulerLanes: 0,
+              overviewRulerBorder: false,
+              readOnly: true,
+              minimap: { enabled: false },
+              theme: "vs-dark",
+            }
+          );
+
+          editorInstance.onDidChangeModelContent(() => {
+            compile();
+          });
+
+          compile();
+        });
+      });
 
       function compile() {
         try {
-          const result = compiler.compile(editor.value);
+          const result = compiler.compile(editorInstance.getValue());
 
-          preview.textContent = result;
+          previewInstance.setValue(result);
         } catch (e) {
-          console.error(e);
-          preview.textContent = e;
+          previewInstance.setValue("Compiler error");
         }
       }
-
-      editor.addEventListener("input", () => {
-        compile();
-      });
     </script>
   </body>
 </html>
