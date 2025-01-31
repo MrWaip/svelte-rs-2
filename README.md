@@ -1,26 +1,53 @@
-# Цель:
+# Rust implementation of svelte compile (WIP)
 
-Написать минимально жизнеспособный компилятор для svelte компонентов на языке Rust
-У меня нет, задачи написать, копию JS версии svelte, и покрыть все возможные фичи, которые имеются
+# Demo
 
-Так как, вышел svelte 5, ориентироваться будем на него. API svelte 4, реализовывать не планируется, пока
+https://mrwaip.github.io/svelte-rs-2/
 
-# Фичи, которые охота реализовать
+# Checklist
 
-## Svelte Синтаксис
+## Script Tag / JavaScript
 
-- [x] interpolation (`{ variable }`) with expressions
-- [x] attribute interpolation (`input={variable}`)
-- [x] render statement
-- [] component definition `<MyComponent />`
-- [] language context in script tag attributes (`<script lang="ts">`)
-- [x] if / else template (`{#if a} text {else} none {/if}`)
-- [] style tag
+- [x] $state rune
+- [x] Update runes (`count++, --count`)
+- [x] Assign runes (`count = 12`)
+- [x] Referencing runes (`{ name }`)
 
-## Статический анализ
+## Template
 
-- [] TODO
+- [ ] HTML Element
+  - [x] Self-closed tags (`<input />`)
+  - [x] Simple attribute (`attr="name"`)
+  - [x] Interpolation attribute (`attr={some expression}`)
+  - [x] Shorthand identifier attribute (`{ name }`)
+  - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
+  - [ ] Svelte directives (`use:action={}`)
+  - [ ] Class shortcut (`class:visible`)
+  - [ ] Spread attributes (`{...attrs}`)
+- [x] Text
+- [x] Interpolation (`{name}`)
+- [x] IfBlock (`{#if expression} a {:else} b {/if}`)
+- [x] Script Tag
+- [ ] Component
+- [ ] EachBlock
 
-## Компиляция
+## Svelte optimization
 
-- [x] Скомпилировать простой компонент, в javascript код, аналогичный JS Svelte
+- [x] trimming whitespaces
+- [x] compress / merge sequence of interpolation and text
+- [x] text as first node optimization
+- [x] single element optimization
+- [x] only text and interpolation nodes optimization
+- [x] not wrap runes if not mutated
+
+## WASM
+
+- [x] Compiler in wasm, for browser
+
+## Style
+
+- [-] unimplemented at all
+
+## SSR
+
+- [-] unimplemented at all
