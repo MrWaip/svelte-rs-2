@@ -8,22 +8,52 @@
   <body>
     <div class="container">
       <h1>Rust Svelte Compiler Demo</h1>
+
       <div class="grid">
-        <div id="editor"></div>
-        <div id="preview"></div>
+        <div class="editor-box">
+          <h2>Svelte source</h2>
+          <div id="editor" class="editor"></div>
+        </div>
+        <div class="editor-box">
+          <h2>Rust JS output</h2>
+          <div id="preview" class="editor"></div>
+        </div>
+
+        <div class="editor-box">
+          <h2>Svelte JS output</h2>
+          <div id="svelte-preview" class="editor"></div>
+        </div>
       </div>
     </div>
 
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+
       .container {
-        width: 80vw;
+        padding: 1rem;
+
+        width: 100vw;
         height: 80vh;
+        box-sizing: border-box;
       }
 
       .grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr;
         gap: 1rem;
+        height: 100%;
+        margin-top: 1rem;
+      }
+
+      .editor-box {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .editor {
         height: 100%;
       }
     </style>
@@ -31,13 +61,16 @@
     <script type="module">
       import "./compiler/wasm_compiler_bg.js";
       import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
+      import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.19.6/compiler/index.js/+esm";
+
       import { example } from "./example.js";
 
       await init();
 
       const compiler = new WasmCompiler();
       let editorInstance;
-      let previewInstance;
+      let rustPreviewInstance;
+      let sveltePreviewInstance;
 
       const preview = document.getElementById("preview");
       let scriptElement = document.createElement("script");
@@ -69,7 +102,7 @@
             }
           );
 
-          previewInstance = monaco.editor.create(
+          rustPreviewInstance = monaco.editor.create(
             document.getElementById("preview"),
             {
               value: "",
@@ -84,21 +117,57 @@
             }
           );
 
+          sveltePreviewInstance = monaco.editor.create(
+            document.getElementById("svelte-preview"),
+            {
+              value: "",
+              language: "javascript",
+              automaticLayout: true,
+              padding: { top: 5, right: 5, bottom: 5, left: 5 },
+              overviewRulerLanes: 0,
+              overviewRulerBorder: false,
+              readOnly: true,
+              minimap: { enabled: false },
+              theme: "vs-dark",
+            }
+          );
+
           editorInstance.onDidChangeModelContent(() => {
-            compile();
+            compileRust();
+            compileSvelte();
           });
 
-          compile();
+          compileRust();
+          compileSvelte();
         });
       });
 
-      function compile() {
+      function compileRust() {
         try {
           const result = compiler.compile(editorInstance.getValue());
 
-          previewInstance.setValue(result);
+          rustPreviewInstance.setValue(result);
         } catch (e) {
-          previewInstance.setValue("Compiler error");
+          rustPreviewInstance.setValue("Compiler error");
+        }
+      }
+
+      function compileSvelte() {
+        try {
+          const result = svelteCompiler(editorInstance.getValue(), {
+            discloseVersion: false,
+            dev: false,
+            name: "App",
+            modernAst: true,
+            runes: true,
+          });
+
+          const code = result.js.code.replaceAll(/^\s*\n/gm, "");
+
+          sveltePreviewInstance.setValue(code);
+        } catch (e) {
+          console.error(e);
+          sveltePreviewInstance.setValue("Compiler error");
         }
       }
     </script>
