@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <title>Rust Svelte compiler preview</title>
   </head>
   <body>
@@ -60,7 +60,6 @@
     </style>
 
     <script type="module">
-      import "./compiler/wasm_compiler_bg.js";
       import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
       import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.19.6/compiler/index.js/+esm";
 
@@ -149,6 +148,7 @@
 
           rustPreviewInstance.setValue(result);
         } catch (e) {
+          console.error(e);
           rustPreviewInstance.setValue("Compiler error");
         }
       }

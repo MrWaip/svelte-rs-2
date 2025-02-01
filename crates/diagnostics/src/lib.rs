@@ -26,7 +26,8 @@ pub struct Diagnostic {
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("{self:?}"))?;
+        let error_type = &self.error_type;
+        f.write_str(&format!("{error_type:?}"))?;
         return Ok(());
     }
 }
