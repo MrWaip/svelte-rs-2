@@ -9,6 +9,7 @@ doctest = false
 
 [dependencies]
 analyzer = { workspace = true }
+diagnostics = { workspace = true }
 parser = { workspace = true }
 transformer = { workspace = true }
 oxc_allocator = { workspace = true }

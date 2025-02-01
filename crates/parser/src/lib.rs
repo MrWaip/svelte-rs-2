@@ -341,6 +341,7 @@ impl<'a> Parser<'a> {
         start_if_tag: &token::StartIfTag<'a>,
         span: Span,
     ) -> Result<(), Diagnostic> {
+        
         let if_block = IfBlock {
             span,
             is_elseif: false,

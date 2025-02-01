@@ -1,3 +1,4 @@
+use diagnostics::Diagnostic;
 use oxc_allocator::Allocator;
 use oxc_ast::AstBuilder;
 
@@ -16,17 +17,21 @@ impl Compiler {
         return Self {};
     }
 
-    pub fn compile<'a>(&self, source: &'a str, allocator: &'a Allocator) -> CompilerResult {
+    pub fn compile<'a>(
+        &self,
+        source: &'a str,
+        allocator: &'a Allocator,
+    ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
         let analyzer = Analyzer::new();
         let oxc_builder = AstBuilder::new(allocator);
         let builder = Builder::new(oxc_builder);
 
-        let ast = parser.parse().unwrap();
+        let ast = parser.parse()?;
         let analyze_result = analyzer.analyze(&ast);
 
         let code = transform_client(ast, &builder, analyze_result);
 
-        return CompilerResult { js: code };
+        return Ok(CompilerResult { js: code });
     }
 }

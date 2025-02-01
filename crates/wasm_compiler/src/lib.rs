@@ -16,11 +16,14 @@ impl WasmCompiler {
         };
     }
 
-    pub fn compile(&self, source: &str) -> String {
+    #[wasm_bindgen(catch, method)]
+    pub fn compile(&self, source: &str) -> Result<String, serde_wasm_bindgen::Error> {
         let compiler = Compiler::new();
 
-        let result = compiler.compile(source, &self.allocator);
+        let result = compiler
+            .compile(source, &self.allocator)
+            .map_err(|diagnostic| serde_wasm_bindgen::Error::new(diagnostic))?;
 
-        return result.js;
+        return Ok(result.js);
     }
 }
