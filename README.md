@@ -17,6 +17,8 @@ https://mrwaip.github.io/svelte-rs-2/
     - [ ] Assign prop (`name = 'world'`)
     - [ ] Read prop  (`{ name }`)
     - [ ] Destructure prop (`let {name} = $props()`)
+- [x] Hoist imports
+- [ ] Omit typescript
 
 ## Template
 
