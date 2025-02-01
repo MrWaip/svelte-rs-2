@@ -35,6 +35,10 @@ pub fn transform_client<'a>(
         analyze.scopes = script_result.scopes;
         analyze.symbols = script_result.symbols;
 
+        for stmt in script_result.imports {
+            imports.push(stmt);
+        }
+
         for stmt in script.program.body {
             component_body.push(stmt);
         }

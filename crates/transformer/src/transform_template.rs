@@ -282,6 +282,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         nodes: &mut Vec<RcCell<Node<'a>>>,
         parent: FragmentParent,
     ) -> FragmentResult<'a> {
+        // !svelte optimization
+        let trim_result = self.trim_nodes(nodes);
+
         if nodes.is_empty() {
             return FragmentResult { body: vec![] };
         }
@@ -291,12 +294,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let template_name = scope.borrow_mut().generate("root");
         let mut template_bit_flags = Some(1.0);
 
-        // !svelte optimization
-        let trim_result = self.trim_nodes(nodes);
-
         // !svelte optimization / hydration?
         if trim_result.is_first_compressible && parent.is_next_needed() {
-            dbg!(nodes.first());
             body.push(self.b.call_stmt("$.next", []));
         }
 
@@ -346,6 +345,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             let call = self.b.call("$.text", [BArg::Str(text.value.to_string())]);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
         } else {
+            // if context.template.
             let call = self.b.call(&template_name, []);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
             self.add_template(&mut context, &template_name, template_bit_flags);

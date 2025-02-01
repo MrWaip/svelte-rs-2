@@ -117,6 +117,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "parser",
+ "pretty_assertions",
  "transformer",
 ]
 

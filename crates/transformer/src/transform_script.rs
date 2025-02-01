@@ -1,7 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
-use oxc_ast::ast::{
-    self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget, Statement, UpdateOperator,
+use oxc_ast::{
+    ast::{
+        self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget,
+        Statement, UpdateOperator,
+    },
+    visit::walk::walk_program,
 };
 use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
@@ -15,9 +19,10 @@ pub struct TransformScript<'a> {
 }
 
 #[derive(Debug)]
-pub struct TransformResult {
+pub struct TransformResult<'a> {
     pub symbols: SymbolTable,
     pub scopes: ScopeTree,
+    pub imports: Vec<Statement<'a>>,
 }
 
 #[derive(Debug)]
@@ -42,6 +47,7 @@ impl<'a> TransformScript<'a> {
         let mut transformer = TransformerImpl {
             runes,
             builder: self.b,
+            imports: vec![],
         };
 
         let (symbols, scopes) = traverse_mut(
@@ -52,7 +58,13 @@ impl<'a> TransformScript<'a> {
             scopes,
         );
 
-        return TransformResult { symbols, scopes };
+        let imports = mem::replace(&mut transformer.imports, vec![]);
+
+        return TransformResult {
+            symbols,
+            scopes,
+            imports,
+        };
     }
 
     pub fn transform_expression(
@@ -65,6 +77,7 @@ impl<'a> TransformScript<'a> {
         let mut transformer = TransformerImpl {
             runes,
             builder: self.b,
+            imports: vec![],
         };
 
         let mut program = self.b.program(vec![self
@@ -100,6 +113,7 @@ impl<'a> TransformScript<'a> {
 struct TransformerImpl<'link, 'a> {
     runes: &'link HashMap<SymbolId, Rune>,
     builder: &'link Builder<'a>,
+    imports: Vec<Statement<'a>>,
 }
 
 impl<'link, 'a> TransformerImpl<'link, 'a> {
@@ -262,6 +276,17 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
                 }
             }
         }
+    }
+
+    fn enter_program(&mut self, node: &mut Program<'a>, _ctx: &mut TraverseCtx<'a>) {
+        node.body.retain_mut(|stmt| {
+            return if matches!(stmt, Statement::ImportDeclaration(_)) {
+                self.imports.push(self.builder.ast.move_statement(stmt));
+                false
+            } else {
+                true
+            };
+        });
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {

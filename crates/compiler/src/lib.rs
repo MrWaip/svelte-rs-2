@@ -35,3 +35,28 @@ impl Compiler {
         return Ok(CompilerResult { js: code });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use oxc_allocator::Allocator;
+    use pretty_assertions::assert_eq;
+
+    use crate::Compiler;
+
+    #[test]
+    fn trim_whitespaces() {
+        let allocator = Allocator::default();
+        let compiler = Compiler::new();
+
+        let result = compiler
+            .compile("<script></script>    ", &allocator)
+            .unwrap();
+
+        assert_eq!(
+            result.js,
+            r#"import * as $ from "svelte/internal/client";
+export default function App($$anchor) {}
+"#
+        );
+    }
+}
