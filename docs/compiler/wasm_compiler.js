@@ -18,10 +18,6 @@ function getStringFromWasm0(ptr, len) {
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
-function _assertNum(n) {
-    if (typeof(n) !== 'number') throw new Error(`expected a number argument, found ${typeof(n)}`);
-}
-
 let WASM_VECTOR_LEN = 0;
 
 const cachedTextEncoder = (typeof TextEncoder !== 'undefined' ? new TextEncoder('utf-8') : { encode: () => { throw Error('TextEncoder not available') } } );
@@ -40,8 +36,6 @@ const encodeString = (typeof cachedTextEncoder.encodeInto === 'function'
 });
 
 function passStringToWasm0(arg, malloc, realloc) {
-
-    if (typeof(arg) !== 'string') throw new Error(`expected a string argument, found ${typeof(arg)}`);
 
     if (realloc === undefined) {
         const buf = cachedTextEncoder.encode(arg);
@@ -71,7 +65,7 @@ function passStringToWasm0(arg, malloc, realloc) {
         ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
         const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
         const ret = encodeString(arg, view);
-        if (ret.read !== arg.length) throw new Error('failed to pass whole string');
+
         offset += ret.written;
         ptr = realloc(ptr, len, offset, 1) >>> 0;
     }
@@ -117,8 +111,6 @@ export class WasmCompiler {
         let deferred3_0;
         let deferred3_1;
         try {
-            if (this.__wbg_ptr == 0) throw new Error('Attempt to use a moved value');
-            _assertNum(this.__wbg_ptr);
             const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
             const ret = wasm.wasmcompiler_compile(this.__wbg_ptr, ptr0, len0);
