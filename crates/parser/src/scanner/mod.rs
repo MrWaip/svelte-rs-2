@@ -228,7 +228,7 @@ impl<'a> Scanner<'a> {
                 let name = self.identifier();
 
                 if name.is_empty() {
-                    continue;
+                    break;
                 }
 
                 let mut value: AttributeValue = AttributeValue::Empty;
@@ -810,6 +810,14 @@ mod tests {
 
         assert_eq!(script.source, "const i = 12;");
         assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn unclosed_start_tag() {
+        let mut scanner = Scanner::new("<div><s    </div>");
+        let err = scanner.scan_tokens().unwrap_err();
+
+        assert_eq!(err.error_type, DiagnosticType::UnterminatedStartTag)
     }
 
     fn assert_script_tag<'a>(
