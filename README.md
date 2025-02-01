@@ -9,9 +9,14 @@ https://mrwaip.github.io/svelte-rs-2/
 ## Script Tag / JavaScript
 
 - [x] $state rune
-- [x] Update runes (`count++, --count`)
-- [x] Assign runes (`count = 12`)
-- [x] Referencing runes (`{ name }`)
+    - [x] Update rune (`count++, --count`)
+    - [ ] Assign rune (`count = 12`)
+    - [x] Read rune (`{ name }`)
+- [ ] $props rune
+    - [ ] Update prop (`count++`)
+    - [ ] Assign prop (`name = 'world'`)
+    - [ ] Read prop  (`{ name }`)
+    - [ ] Destructure prop (`let {name} = $props()`)
 
 ## Template
 
@@ -21,8 +26,11 @@ https://mrwaip.github.io/svelte-rs-2/
   - [x] Interpolation attribute (`attr={some expression}`)
   - [x] Shorthand identifier attribute (`{ name }`)
   - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
-  - [ ] Svelte directives (`use:action={}`)
-  - [ ] Class shortcut (`class:visible`)
+  - [ ] Bind directive (`bind:value`)
+  - [ ] Use directive (`use:action`)
+  - [ ] Event listeners (`onclick={handler}`) 
+  - [ ] Class directive (`class:toggle`) 
+  - [ ] Style directive (`style:toggle`) 
   - [ ] Spread attributes (`{...attrs}`)
 - [x] Text
 - [x] Interpolation (`{name}`)
