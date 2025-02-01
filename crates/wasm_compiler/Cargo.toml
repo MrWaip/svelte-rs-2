@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 oxc_allocator = { workspace = true }
+diagnostics = { workspace = true }
 compiler = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
 wasm-bindgen = { workspace = true }
-

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use span::Span;
 
 #[derive(Debug, PartialEq)]
@@ -20,6 +22,13 @@ pub enum DiagnosticType {
 pub struct Diagnostic {
     pub error_type: DiagnosticType,
     pub span: Span,
+}
+
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&format!("{self:?}"))?;
+        return Ok(());
+    }
 }
 
 impl Diagnostic {

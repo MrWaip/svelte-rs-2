@@ -15,9 +15,10 @@ fn integration(#[files("./cases/**/*.svelte")] path: PathBuf) {
     let allocator = Allocator::default();
 
     let file = read_to_string(&path).unwrap();
+    
     let compiler = Compiler::new();
 
-    let actual = compiler.compile(&file, &allocator);
+    let actual = compiler.compile(&file, &allocator).unwrap();
     let path = path.parent().unwrap();
 
     let expected = read_to_string(path.join("case-svelte.js")).unwrap();
