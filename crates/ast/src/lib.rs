@@ -271,6 +271,18 @@ impl<'a> FormatNode for Element<'a> {
                         let expr_string = print_expression(expression);
                         result.push_str(format!("{{{}}}", expr_string).as_str());
                     }
+                    Attribute::ClassDirective(class_directive) => {
+                        let expr_string = print_expression(&class_directive.expression);
+
+                        result.push_str("class:");
+
+                        if class_directive.shorthand {
+                            result.push_str(class_directive.name);
+                        } else {
+                            result.push_str(class_directive.name);
+                            result.push_str(&format!("={{{}}}", expr_string));
+                        }
+                    }
                 }
 
                 attributes.push(result);
@@ -379,6 +391,14 @@ impl<'a> AsNode<'a> for Text<'a> {
 pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
     Expression(Expression<'a>),
+    ClassDirective(ClassDirective<'a>),
+}
+
+#[derive(Debug)]
+pub struct ClassDirective<'a> {
+    pub shorthand: bool,
+    pub name: &'a str,
+    pub expression: Expression<'a>,
 }
 
 #[derive(Debug)]

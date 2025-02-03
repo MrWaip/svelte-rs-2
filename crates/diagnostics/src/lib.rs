@@ -16,6 +16,7 @@ pub enum DiagnosticType {
     NoIfBlockToClose,
     NoIfBlockForElse,
     OnlyOneTopLevelScript,
+    UnknownDirective,
 }
 
 #[derive(Debug)]
@@ -87,5 +88,9 @@ impl Diagnostic {
 
     pub fn only_single_top_level_script(span: Span) -> Diagnostic {
         return Diagnostic::new(DiagnosticType::OnlyOneTopLevelScript, span);
+    }
+
+    pub fn unknown_directive(span: Span) -> Diagnostic {
+        return Diagnostic::new(DiagnosticType::UnknownDirective, span);
     }
 }

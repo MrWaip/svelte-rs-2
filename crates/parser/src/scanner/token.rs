@@ -1,5 +1,6 @@
 use core::fmt;
 
+use diagnostics::Diagnostic;
 use oxc_span::Language;
 
 use span::{GetSpan, Span};
@@ -74,6 +75,14 @@ pub struct HTMLAttribute<'a> {
 pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
     ExpressionTag(ExpressionTag<'a>),
+    ClassDirective(ClassDirective<'a>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClassDirective<'a> {
+    pub shorthand: bool,
+    pub name: &'a str,
+    pub expression: JsExpression<'a>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -159,4 +168,25 @@ pub struct StartIfTag<'a> {
 pub struct ElseTag<'a> {
     pub elseif: bool,
     pub expression: Option<JsExpression<'a>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AttributeIdentifierType<'a> {
+    HTMLAttribute(&'a str),
+    ClassDirective(&'a str),
+    None,
+}
+
+impl<'a> AttributeIdentifierType<'a> {
+    pub fn is_class_directive(name: &str) -> bool {
+        return name == "class";
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return matches!(self, AttributeIdentifierType::None);
+    }
+
+    pub fn as_ok(self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
+        return Ok(self);
+    }
 }
