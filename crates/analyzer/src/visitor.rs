@@ -12,8 +12,8 @@ use rccell::RcCell;
 use walk::*;
 
 use ast::{
-    Attribute, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock, Interpolation,
-    Node, ScriptTag, Text,
+    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock,
+    Interpolation, Node, ScriptTag, Text,
 };
 
 pub trait TemplateVisitor<'a>: Sized {
@@ -55,6 +55,10 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn visit_expression_attribute(&mut self, it: &Expression<'a>) {
         walk_expression_attribute(self, it);
+    }
+
+    fn visit_class_directive_attribute(&mut self, it: &ClassDirective<'a>) {
+        walk_class_directive_attribute(self, it);
     }
 
     fn visit_string_attribute_value(&mut self, it: &str) {}
@@ -135,7 +139,7 @@ pub mod walk {
         match it {
             Attribute::HTMLAttribute(it) => visitor.visit_html_attribute(it),
             Attribute::Expression(it) => visitor.visit_expression_attribute(it),
-            Attribute::ClassDirective(class_directive) => todo!(),
+            Attribute::ClassDirective(it) => visitor.visit_class_directive_attribute(it),
         }
     }
 
@@ -146,15 +150,20 @@ pub mod walk {
         visitor.visit_expression(it);
     }
 
+    pub fn walk_class_directive_attribute<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &ClassDirective<'a>,
+    ) {
+        visitor.visit_expression(&it.expression);
+    }
+
     pub fn walk_html_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &HTMLAttribute<'a>,
     ) {
         match &it.value {
             ast::AttributeValue::String(it) => visitor.visit_string_attribute_value(*it),
-            ast::AttributeValue::Expression(it) => {
-                visitor.visit_expression_attribute_value(it)
-            }
+            ast::AttributeValue::Expression(it) => visitor.visit_expression_attribute_value(it),
             ast::AttributeValue::Boolean => visitor.visit_boolean_attribute_value(),
             ast::AttributeValue::Concatenation(it) => {
                 visitor.visit_concatenation_attribute_value(it)
