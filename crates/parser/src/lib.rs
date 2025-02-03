@@ -12,8 +12,8 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use ast::{
-    AsNode, Ast, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
-    HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
+    AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
+    Element, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -330,6 +330,14 @@ impl<'a> Parser<'a> {
 
                     attributes.push(Attribute::Expression(expression));
                 }
+                token::Attribute::ClassDirective(token) => {
+                    attributes.push(Attribute::ClassDirective(ClassDirective {
+                        shorthand: token.shorthand,
+                        name: token.name,
+                        expression: self
+                            .parse_js_expression(token.expression.value, token.expression.span)?,
+                    }));
+                }
             }
         }
 
@@ -341,7 +349,6 @@ impl<'a> Parser<'a> {
         start_if_tag: &token::StartIfTag<'a>,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        
         let if_block = IfBlock {
             span,
             is_elseif: false,
@@ -598,6 +605,19 @@ mod tests {
         let script = parser.parse().unwrap().script.unwrap();
 
         assert_script(script, "<script>const i = 10;\n</script>");
+    }
+
+    #[test]
+    fn class_directive() {
+        let allocator = Allocator::default();
+        let mut parser = Parser::new(
+            r#"<input class:visible class:toggled={true} />"#,
+            &allocator,
+        );
+
+        let ast = parser.parse().unwrap().template;
+
+        assert_node_cell(&ast[0], r#"<input class:visible class:toggled={true}/>"#);
     }
 
     #[test]

@@ -2,13 +2,14 @@ pub mod token;
 
 use std::{mem, vec};
 use token::{
-    Attribute, AttributeValue, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    JsExpression, ScriptTag, StartIfTag, StartTag, Token, TokenType,
+    Attribute, AttributeIdentifierType, AttributeValue, ClassDirective, Concatenation,
+    ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag, StartIfTag, StartTag,
+    Token, TokenType,
 };
 
 use diagnostics::Diagnostic;
 
-use span::Span;
+use span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -101,6 +102,44 @@ impl<'a> Scanner<'a> {
         }
 
         return &self.source[start..self.current];
+    }
+
+    fn attribute_identifier(&mut self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
+        let start = self.current;
+
+        let mut is_directive = false;
+        let mut colon_pos: usize = 0;
+
+        while let Some(ch) = self.peek() {
+            if ch == ':' {
+                is_directive = true;
+                colon_pos = self.current;
+            }
+
+            if ch.is_alphanumeric() || ch == '-' || ch == ':' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        if is_directive {
+            let name = &self.source[start..colon_pos];
+            let value = &self.source[colon_pos + 1..self.current];
+
+            if AttributeIdentifierType::is_class_directive(name) {
+                return AttributeIdentifierType::ClassDirective(value).as_ok();
+            } else {
+                return Diagnostic::unknown_directive(Span::new(colon_pos, self.current)).as_err();
+            }
+        } else {
+            if start == self.current {
+                return AttributeIdentifierType::None.as_ok();
+            } else {
+                return AttributeIdentifierType::HTMLAttribute(&self.source[start..self.current])
+                    .as_ok();
+            }
+        }
     }
 
     fn match_char(&mut self, expected: char) -> bool {
@@ -225,19 +264,15 @@ impl<'a> Scanner<'a> {
                 let expression_tag = self.expression_tag()?;
                 Attribute::ExpressionTag(expression_tag)
             } else {
-                let name = self.identifier();
+                let name = self.attribute_identifier()?;
 
-                if name.is_empty() {
-                    break;
+                match name {
+                    AttributeIdentifierType::HTMLAttribute(name) => self.html_attribute(name)?,
+                    AttributeIdentifierType::ClassDirective(value) => {
+                        self.class_directive(value)?
+                    }
+                    AttributeIdentifierType::None => break,
                 }
-
-                let mut value: AttributeValue = AttributeValue::Empty;
-
-                if self.match_char('=') {
-                    value = self.attribute_value()?;
-                }
-
-                Attribute::HTMLAttribute(HTMLAttribute { name, value })
             };
 
             attributes.push(attr);
@@ -247,6 +282,37 @@ impl<'a> Scanner<'a> {
         }
 
         return Ok(attributes);
+    }
+
+    fn html_attribute(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
+        let mut value: AttributeValue = AttributeValue::Empty;
+
+        if self.match_char('=') {
+            value = self.attribute_value()?;
+        }
+
+        return Ok(Attribute::HTMLAttribute(HTMLAttribute { name, value }));
+    }
+
+    fn class_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+
+            return Ok(Attribute::ClassDirective(ClassDirective {
+                expression: res.expression,
+                name,
+                shorthand: false,
+            }));
+        }
+
+        return Ok(Attribute::ClassDirective(ClassDirective {
+            name,
+            expression: JsExpression {
+                span: SPAN,
+                value: &name,
+            },
+            shorthand: true,
+        }));
     }
 
     fn attribute_value(&mut self) -> Result<AttributeValue<'a>, Diagnostic> {
@@ -762,6 +828,22 @@ mod tests {
     }
 
     #[test]
+    fn class_directives() {
+        let mut scanner = Scanner::new(r#"<input class:visible class:toggle={true} />"#);
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![("$classDirective", "visible"), ("$classDirective", "true")],
+            true,
+        );
+
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
     fn unterminated_start_tag() {
         let mut scanner = Scanner::new("<div disabled");
 
@@ -871,6 +953,7 @@ mod tests {
             let name = match attribute {
                 Attribute::HTMLAttribute(value) => value.name,
                 Attribute::ExpressionTag(_) => "$expression",
+                Attribute::ClassDirective(_class_directive) => "$classDirective",
             };
 
             let value: AttributeValue = match attribute {
@@ -878,6 +961,9 @@ mod tests {
                 Attribute::ExpressionTag(value) => {
                     let res = AttributeValue::String(value.expression.value);
                     res
+                }
+                Attribute::ClassDirective(class_directive) => {
+                    AttributeValue::String(class_directive.expression.value)
                 }
             };
 

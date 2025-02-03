@@ -135,6 +135,7 @@ pub mod walk {
         match it {
             Attribute::HTMLAttribute(it) => visitor.visit_html_attribute(it),
             Attribute::Expression(it) => visitor.visit_expression_attribute(it),
+            Attribute::ClassDirective(class_directive) => todo!(),
         }
     }
 

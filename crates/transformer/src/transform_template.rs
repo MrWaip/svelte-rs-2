@@ -546,6 +546,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::Expression(expression) => {
                 self.transform_expression_attribute(expression, ctx)
             }
+            Attribute::ClassDirective(class_directive) => todo!(),
         }
     }
 
