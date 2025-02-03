@@ -546,8 +546,31 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::Expression(expression) => {
                 self.transform_expression_attribute(expression, ctx)
             }
-            Attribute::ClassDirective(class_directive) => todo!(),
+            Attribute::ClassDirective(directive) => {
+                self.transform_class_directive_attribute(directive, ctx)
+            }
         }
+    }
+
+    fn transform_class_directive_attribute<'local>(
+        &mut self,
+        directive: &mut ast::ClassDirective<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        let node_id = self.b.clone_expr(&ctx.node_anchor);
+
+        let expression = self.transform_expression(&mut directive.expression);
+
+        let call = self.b.call_stmt(
+            "$.toggle_class",
+            [
+                BArg::Expr(node_id),
+                BArg::Str(directive.name.to_string()),
+                BArg::Expr(expression),
+            ],
+        );
+
+        ctx.push_update(call);
     }
 
     fn transform_expression_attribute<'local>(

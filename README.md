@@ -28,10 +28,10 @@ https://mrwaip.github.io/svelte-rs-2/
   - [x] Interpolation attribute (`attr={some expression}`)
   - [x] Shorthand identifier attribute (`{ name }`)
   - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
+  - [x] Class directive (`class:toggle`) 
   - [ ] Bind directive (`bind:value`)
   - [ ] Use directive (`use:action`)
   - [ ] Event listeners (`onclick={handler}`) 
-  - [ ] Class directive (`class:toggle`) 
   - [ ] Style directive (`style:toggle`) 
   - [ ] Spread attributes (`{...attrs}`)
 - [x] Text
@@ -49,6 +49,7 @@ https://mrwaip.github.io/svelte-rs-2/
 - [x] single element optimization
 - [x] only text and interpolation nodes optimization
 - [x] not wrap runes if not mutated
+- [ ] Not reactive attributes optimization
 
 ## WASM
 
