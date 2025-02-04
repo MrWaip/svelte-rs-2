@@ -549,6 +549,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let flags = self.svelte_table.get_expression_flag(&directive.expression);
 
         let expression = self.transform_expression(&mut directive.expression);
 
@@ -561,7 +562,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ],
         );
 
-        ctx.push_update(call);
+        if flags.is_some_and(|flags| flags.has_state) {
+            ctx.push_update(call);
+        } else {
+            ctx.push_init(call);
+        }
     }
 
     fn transform_expression_attribute<'local>(
