@@ -16,24 +16,17 @@ pub mod transform_template;
 pub fn transform_client<'a>(
     mut ast: Ast<'a>,
     b: &'a Builder<'a>,
-    mut analyze: AnalyzeResult,
+    analyze: AnalyzeResult<'a>,
 ) -> String {
-    let script_transformer = TransformScript::new(b);
+    let svelte_table = analyze.svelte_table;
+    let script_transformer = TransformScript::new(b, &svelte_table);
 
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
     let mut program_body = vec![];
     let mut component_body = vec![];
 
     if let Some(mut script) = ast.script {
-        let script_result = script_transformer.transform(
-            &mut script.program,
-            analyze.symbols,
-            analyze.scopes,
-            &analyze.runes,
-        );
-
-        analyze.scopes = script_result.scopes;
-        analyze.symbols = script_result.symbols;
+        let script_result = script_transformer.transform(&mut script.program);
 
         for stmt in script_result.imports {
             imports.push(stmt);
@@ -44,13 +37,7 @@ pub fn transform_client<'a>(
         }
     }
 
-    let mut template_transformer = TransformTemplate::new(
-        b,
-        &script_transformer,
-        analyze.symbols,
-        analyze.scopes,
-        &analyze.runes,
-    );
+    let mut template_transformer = TransformTemplate::new(b, &script_transformer, &svelte_table);
     let mut template_result = template_transformer.transform(&mut ast.template);
 
     program_body.append(&mut imports);

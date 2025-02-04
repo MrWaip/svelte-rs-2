@@ -1,12 +1,11 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
     mem::{self, replace},
     rc::Rc,
 };
 
+use analyzer::svelte_table::SvelteTable;
 use oxc_ast::ast::{Expression, Statement};
-use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
 use rccell::RcCell;
 
 use ast::{
@@ -15,8 +14,6 @@ use ast::{
 };
 
 use span::SPAN;
-
-use analyzer::Rune;
 
 use super::{
     builder::{
@@ -31,10 +28,8 @@ pub struct TransformTemplate<'a, 'link> {
     b: &'a Builder<'a>,
     hoisted: Vec<Statement<'a>>,
     root_scope: Rc<RefCell<Scope>>,
-    transform_script: &'link TransformScript<'a>,
-    symbols: SymbolTable,
-    runes: &'link HashMap<SymbolId, Rune>,
-    scopes: ScopeTree,
+    transform_script: &'link TransformScript<'a, 'link>,
+    svelte_table: &'link SvelteTable<'a>,
 }
 
 pub enum AnchorNodeType {
@@ -247,19 +242,15 @@ pub struct FragmentResult<'a> {
 impl<'a, 'link> TransformTemplate<'a, 'link> {
     pub fn new(
         builder: &'a Builder<'a>,
-        transform_script: &'link TransformScript<'a>,
-        symbols: SymbolTable,
-        scopes: ScopeTree,
-        runes: &'link HashMap<SymbolId, Rune>,
+        transform_script: &'link TransformScript<'a, 'link>,
+        svelte_table: &'link SvelteTable<'a>,
     ) -> Self {
         return Self {
             b: builder,
             hoisted: vec![],
             root_scope: Rc::new(RefCell::new(Scope::new(None))),
             transform_script,
-            scopes,
-            symbols,
-            runes,
+            svelte_table,
         };
     }
 
@@ -812,15 +803,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     fn transform_expression(&mut self, expression: &mut Expression<'a>) -> Expression<'a> {
         let expression = self.b.ast.move_expression(expression);
 
-        let symbols = mem::take(&mut self.symbols);
-        let scopes = mem::take(&mut self.scopes);
-
-        let result = self
-            .transform_script
-            .transform_expression(expression, symbols, scopes, self.runes);
-
-        self.symbols = result.symbols;
-        self.scopes = result.scopes;
+        let result = self.transform_script.transform_expression(expression);
 
         return result.expression;
     }
