@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    mem::{replace},
-    rc::Rc,
-};
+use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use analyzer::svelte_table::SvelteTable;
 use oxc_ast::ast::{Expression, Statement};
@@ -580,14 +576,19 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Expression::Identifier(id) => BArg::Str(id.name.to_string()),
             _ => unreachable!(),
         };
+        let flags = self.svelte_table.get_expression_flag(expression);
         let expression = self.transform_expression(expression);
 
-        let call = self.b.call(
+        let call = self.b.call_stmt(
             "$.set_attribute",
             [BArg::Expr(node_id), arg, BArg::Expr(expression)],
         );
 
-        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        if flags.is_some_and(|flags| flags.has_state) {
+            ctx.push_update(call);
+        } else {
+            ctx.push_init(call);
+        }
     }
 
     fn transform_html_attribute<'local>(
@@ -630,9 +631,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
-
+        let flags = self.svelte_table.get_expression_flag(value);
         let value = self.transform_expression(value);
-        let call = self.b.call(
+        let call = self.b.call_stmt(
             "$.set_attribute",
             [
                 BArg::Expr(node_id),
@@ -641,7 +642,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ],
         );
 
-        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        if flags.is_some_and(|flags| flags.has_state) {
+            ctx.push_update(call);
+        } else {
+            ctx.push_init(call);
+        }
     }
 
     fn transform_concatenation_attribute_value<'local>(
@@ -651,9 +656,18 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let mut has_state = false;
 
         for part in value.parts.iter_mut() {
             if let ConcatenationPart::Expression(expr) = part {
+                if self
+                    .svelte_table
+                    .get_expression_flag(expr)
+                    .is_some_and(|flags| flags.has_state)
+                {
+                    has_state = true;
+                }
+
                 *expr = self.transform_expression(expr);
             }
         }
@@ -661,7 +675,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let template_literal = self.b.template_literal(&mut value.parts);
         let template_expr = self.b.expr(BExpr::TemplateLiteral(template_literal));
 
-        let call = self.b.call(
+        let call = self.b.call_stmt(
             "$.set_attribute",
             [
                 BArg::Expr(node_id),
@@ -670,7 +684,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ],
         );
 
-        ctx.push_update(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(call)))));
+        if has_state {
+            ctx.push_update(call);
+        } else {
+            ctx.push_init(call);
+        }
     }
 
     fn transform_attributes<'local>(
