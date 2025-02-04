@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    mem::{self, replace},
+    mem::{replace},
     rc::Rc,
 };
 
