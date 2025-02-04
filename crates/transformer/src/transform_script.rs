@@ -1,97 +1,84 @@
-use std::{collections::HashMap, mem};
+use std::mem;
 
-use oxc_ast::{
-    ast::{
-        self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget,
-        Statement, UpdateOperator,
-    },
-    visit::walk::walk_program,
+use oxc_ast::ast::{
+    self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget,
+    Statement, UpdateOperator,
 };
-use oxc_semantic::{ScopeTree, SymbolId, SymbolTable};
+use oxc_semantic::{ScopeTree, SymbolTable};
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
-use analyzer::Rune;
+use analyzer::svelte_table::{Rune, SvelteTable};
 
 use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
-pub struct TransformScript<'a> {
+pub struct TransformScript<'a, 'link> {
     b: &'a Builder<'a>,
+    svelte_table: &'link SvelteTable<'a>,
 }
 
 #[derive(Debug)]
 pub struct TransformResult<'a> {
-    pub symbols: SymbolTable,
-    pub scopes: ScopeTree,
     pub imports: Vec<Statement<'a>>,
 }
 
 #[derive(Debug)]
 pub struct TransformExpressionResult<'a> {
-    pub symbols: SymbolTable,
-    pub scopes: ScopeTree,
     pub expression: Expression<'a>,
 }
 
-impl<'a> TransformScript<'a> {
-    pub fn new(builder: &'a Builder<'a>) -> Self {
-        return Self { b: builder };
+impl<'a, 'link> TransformScript<'a, 'link> {
+    pub fn new(
+        builder: &'a Builder<'a>,
+        svelte_table: &'link SvelteTable<'a>,
+    ) -> TransformScript<'a, 'link> {
+        return Self {
+            b: builder,
+            svelte_table: svelte_table,
+        };
     }
 
-    pub fn transform(
-        &self,
-        program: &mut Program<'a>,
-        symbols: SymbolTable,
-        scopes: ScopeTree,
-        runes: &HashMap<SymbolId, Rune>,
-    ) -> TransformResult {
+    pub fn transform(&self, program: &mut Program<'a>) -> TransformResult {
         let mut transformer = TransformerImpl {
-            runes,
+            svelte_table: self.svelte_table,
             builder: self.b,
             imports: vec![],
         };
 
-        let (symbols, scopes) = traverse_mut(
+        traverse_mut(
             &mut transformer,
             &self.b.ast.allocator,
             program,
-            symbols,
-            scopes,
+            SymbolTable::default(),
+            ScopeTree::default(),
         );
 
         let imports = mem::replace(&mut transformer.imports, vec![]);
 
-        return TransformResult {
-            symbols,
-            scopes,
-            imports,
-        };
+        return TransformResult { imports };
     }
 
     pub fn transform_expression(
         &self,
         expression: Expression<'a>,
-        symbols: SymbolTable,
-        scopes: ScopeTree,
-        runes: &HashMap<SymbolId, Rune>,
     ) -> TransformExpressionResult<'a> {
-        let mut transformer = TransformerImpl {
-            runes,
-            builder: self.b,
-            imports: vec![],
-        };
-
         let mut program = self.b.program(vec![self
             .b
             .stmt(super::builder::BuilderStatement::Expr(expression))]);
 
-        program.set_scope_id(scopes.root_scope_id());
+        program.set_scope_id(self.svelte_table.root_scope_id());
 
-        let (symbols, scopes) = traverse_mut(
+        let mut transformer = TransformerImpl {
+            svelte_table: self.svelte_table,
+            builder: self.b,
+            imports: vec![],
+        };
+
+        traverse_mut(
             &mut transformer,
             &self.b.ast.allocator,
             &mut program,
-            symbols,
-            scopes,
+            SymbolTable::default(),
+            ScopeTree::default(),
         );
 
         let stmt = program.body.remove(0);
@@ -102,27 +89,23 @@ impl<'a> TransformScript<'a> {
             unreachable!()
         };
 
-        return TransformExpressionResult {
-            scopes,
-            symbols,
-            expression,
-        };
+        return TransformExpressionResult { expression };
     }
 }
 
 struct TransformerImpl<'link, 'a> {
-    runes: &'link HashMap<SymbolId, Rune>,
+    svelte_table: &'link SvelteTable<'a>,
     builder: &'link Builder<'a>,
     imports: Vec<Statement<'a>>,
 }
 
 impl<'link, 'a> TransformerImpl<'link, 'a> {
-    fn transform_rune_reference(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+    fn transform_rune_reference(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         let Expression::Identifier(ident) = node else {
             unreachable!()
         };
 
-        if let Some(rune) = self.get_rune_by_reference(ident, ctx) {
+        if let Some(rune) = self.get_rune_by_reference(ident) {
             if !rune.mutated {
                 return;
             }
@@ -135,14 +118,14 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
         }
     }
 
-    fn transform_rune_update(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+    fn transform_rune_update(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         let Expression::UpdateExpression(update) = node else {
             unreachable!();
         };
 
         let ident =
             if let SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) = &update.argument {
-                if self.is_rune_reference(ident, ctx) {
+                if self.is_rune_reference(ident) {
                     Some(ident.name.as_str())
                 } else {
                     None
@@ -170,13 +153,13 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
         }
     }
 
-    fn transform_rune_assignment(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+    fn transform_rune_assignment(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         let Expression::AssignmentExpression(assign) = node else {
             unreachable!();
         };
 
         let ident = if let AssignmentTarget::AssignmentTargetIdentifier(ident) = &assign.left {
-            if self.is_rune_reference(ident, ctx) {
+            if self.is_rune_reference(ident) {
                 Some(ident.name.as_str())
             } else {
                 None
@@ -206,19 +189,11 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
         }
     }
 
-    fn is_rune_reference(
-        &self,
-        ident: &ast::IdentifierReference<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) -> bool {
-        return self.get_rune_by_reference(ident, ctx).is_some();
+    fn is_rune_reference(&self, ident: &ast::IdentifierReference<'a>) -> bool {
+        return self.get_rune_by_reference(ident).is_some();
     }
 
-    fn get_rune_by_reference(
-        &self,
-        ident: &ast::IdentifierReference<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) -> Option<&Rune> {
+    fn get_rune_by_reference(&self, ident: &ast::IdentifierReference<'a>) -> Option<&Rune> {
         let reference_id = ident.reference_id.get();
 
         if reference_id.is_none() {
@@ -226,14 +201,8 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
         }
 
         let reference_id = reference_id.unwrap();
-        let reference = ctx.symbols().get_reference(reference_id);
-        let symbol_id = reference.symbol_id();
 
-        if symbol_id.is_none() {
-            return None;
-        }
-
-        return self.runes.get(&symbol_id.unwrap());
+        return self.svelte_table.get_rune_by_reference(reference_id);
     }
 }
 
@@ -244,7 +213,7 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
         _ctx: &mut TraverseCtx<'a>,
     ) {
         if let BindingPatternKind::BindingIdentifier(id) = &node.id.kind {
-            if let Some(rune) = self.runes.get(&id.symbol_id()) {
+            if let Some(rune) = self.svelte_table.get_rune_by_symbol_id(id.symbol_id()) {
                 if let Some(expr) = node.init.as_mut() {
                     let expr = self.builder.ast.move_expression(expr);
 

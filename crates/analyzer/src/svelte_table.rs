@@ -107,7 +107,7 @@ impl<'a> SvelteTable<'a> {
         return self.get_rune_by_reference(reference_id).is_some();
     }
 
-    fn get_rune_by_reference(&self, reference_id: ReferenceId) -> Option<&Rune> {
+    pub fn get_rune_by_reference(&self, reference_id: ReferenceId) -> Option<&Rune> {
         let reference = self.symbols.get_reference(reference_id);
         let symbol_id = reference.symbol_id();
 
@@ -116,5 +116,13 @@ impl<'a> SvelteTable<'a> {
         }
 
         return self.runes.get(&symbol_id.unwrap());
+    }
+
+    pub fn get_rune_by_symbol_id(&self, symbol_id: SymbolId) -> Option<&Rune> {
+        return self.runes.get(&symbol_id);
+    }
+
+    pub fn root_scope_id(&self) -> oxc_semantic::ScopeId {
+        return self.scopes.root_scope_id();
     }
 }
