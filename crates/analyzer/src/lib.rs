@@ -1,39 +1,23 @@
+pub mod svelte_table;
 pub mod visitor;
 
-use std::{
-    collections::HashMap,
-    mem::{self, replace},
-};
+use std::mem::{replace, take};
 
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
-    visit::walk::{walk_assignment_expression, walk_update_expression},
+    visit::walk::{walk_assignment_expression, walk_call_expression, walk_update_expression},
     Visit,
 };
-use oxc_semantic::{
-    NodeId, Reference, ReferenceFlags, ScopeTree, SemanticBuilder, SymbolId, SymbolTable,
-};
+use oxc_semantic::{ReferenceFlags, SemanticBuilder};
+use svelte_table::{ExpressionFlags, RuneKind, SvelteTable};
 use visitor::TemplateVisitor;
 
 use ast::Ast;
 
 pub struct Analyzer {}
 
-pub struct AnalyzeResult {
-    pub runes: HashMap<SymbolId, Rune>,
-    pub symbols: SymbolTable,
-    pub scopes: ScopeTree,
-}
-
-#[derive(Debug)]
-pub struct Rune {
-    pub mutated: bool,
-    pub kind: RuneKind,
-}
-
-#[derive(Debug)]
-pub enum RuneKind {
-    State,
+pub struct AnalyzeResult<'a> {
+    pub svelte_table: SvelteTable<'a>,
 }
 
 impl Analyzer {
@@ -41,92 +25,75 @@ impl Analyzer {
         return Self {};
     }
 
-    pub fn analyze<'a, 'link>(&self, ast: &'link Ast<'a>) -> AnalyzeResult {
-        let (runes, symbols, scopes) = if let Some(script) = &ast.script {
+    pub fn analyze<'a, 'link>(&self, ast: &'link Ast<'a>) -> AnalyzeResult<'a> {
+        let svelte_table = if let Some(script) = &ast.script {
             let ret = SemanticBuilder::new().build(&script.program);
 
             if !ret.errors.is_empty() {
                 todo!();
             }
 
-            let (mut symbols, mut scopes) = ret.semantic.into_symbol_table_and_scope_tree();
+            let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
+            let mut svelte_table = SvelteTable::new(symbols, scopes);
+
+            let mut script_visitor = ScriptVisitorImpl {
+                svelte_table: &mut svelte_table,
+            };
+
+            script_visitor.visit_program(&script.program);
 
             let mut template_visitor = TemplateVisitorImpl {
                 current_reference_flags: ReferenceFlags::empty(),
-                scopes: &mut scopes,
-                symbols: &mut symbols,
+                current_expression_flags: ExpressionFlags::empty(),
+                svelte_table: script_visitor.svelte_table,
             };
 
             template_visitor.visit_template(&ast.template);
 
-            let mut visitor = ScriptVisitorImpl {
-                runes: HashMap::default(),
-                scopes: template_visitor.scopes,
-                symbols: template_visitor.symbols,
-            };
-
-            visitor.visit_program(&script.program);
-
-            (
-                replace(&mut visitor.runes, HashMap::default()),
-                symbols,
-                scopes,
-            )
+            svelte_table
         } else {
-            (
-                HashMap::default(),
-                SymbolTable::default(),
-                ScopeTree::default(),
-            )
+            SvelteTable::default()
         };
 
-        return AnalyzeResult {
-            runes,
-            scopes,
-            symbols,
-        };
+        return AnalyzeResult { svelte_table };
     }
 }
 
-pub struct ScriptVisitorImpl<'link> {
-    pub runes: HashMap<SymbolId, Rune>,
-    pub symbols: &'link mut SymbolTable,
-    pub scopes: &'link mut ScopeTree,
+pub struct ScriptVisitorImpl<'link, 'a> {
+    pub svelte_table: &'link mut SvelteTable<'a>,
 }
 
-impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
+pub struct TemplateVisitorImpl<'link, 'a> {
+    pub svelte_table: &'link mut SvelteTable<'a>,
+    current_reference_flags: ReferenceFlags,
+    current_expression_flags: ExpressionFlags,
+}
+
+impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &declarator.init {
             if call.callee_name() == Some("$state") {
                 if let BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind {
                     let symbol_id = id.symbol_id();
 
-                    self.runes.insert(
-                        symbol_id,
-                        Rune {
-                            kind: RuneKind::State,
-                            mutated: self.symbols.symbol_is_mutated(symbol_id.clone()),
-                        },
-                    );
+                    self.svelte_table.add_rune(symbol_id, RuneKind::State);
                 }
             }
         }
     }
 }
 
-pub struct TemplateVisitorImpl<'link> {
-    pub symbols: &'link mut SymbolTable,
-    pub scopes: &'link mut ScopeTree,
-    current_reference_flags: ReferenceFlags,
-}
-
-impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
+impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
     fn visit_expression(&mut self, it: &Expression<'a>) {
         Visit::visit_expression(self, it);
+
+        let flags = replace(&mut self.current_expression_flags, ExpressionFlags::empty());
+
+        self.svelte_table.add_expression_flag(it, flags);
     }
 }
 
-impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
+impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link, 'a> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
         self.reference_identifier(it);
     }
@@ -140,19 +107,27 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
         self.current_reference_flags = ReferenceFlags::write();
         walk_assignment_expression(self, it);
     }
+
+    fn visit_call_expression(&mut self, it: &oxc_ast::ast::CallExpression<'a>) {
+        self.current_expression_flags.has_call = true;
+        walk_call_expression(self, it);
+    }
 }
 
-impl<'link> TemplateVisitorImpl<'link> {
-    fn reference_identifier<'a>(&mut self, ident: &IdentifierReference<'a>) {
+impl<'link, 'a> TemplateVisitorImpl<'link, 'a> {
+    fn reference_identifier(&mut self, ident: &IdentifierReference<'a>) {
         let flags = self.resolve_reference_usages();
-        let mut reference = Reference::new(NodeId::DUMMY, flags);
-        let symbol_id = self.scopes.get_root_binding(&ident.name);
 
-        if let Some(symbol_id) = symbol_id {
-            reference.set_symbol_id(symbol_id);
-            let reference_id = self.symbols.create_reference(reference);
+        let option = self
+            .svelte_table
+            .add_root_scope_reference(&ident.name, flags);
+
+        if let Some(reference_id) = option {
             ident.reference_id.set(Some(reference_id));
-            self.symbols.add_resolved_reference(symbol_id, reference_id);
+
+            if self.svelte_table.is_rune_reference(reference_id) {
+                self.current_expression_flags.has_state = true;
+            }
         }
     }
 
@@ -160,14 +135,14 @@ impl<'link> TemplateVisitorImpl<'link> {
         if self.current_reference_flags.is_empty() {
             ReferenceFlags::Read
         } else {
-            // Take the current reference flags so that we can reset it to empty
-            mem::take(&mut self.current_reference_flags)
+            take(&mut self.current_reference_flags)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ast::Node;
     use oxc_allocator::Allocator;
 
     use parser::Parser;
@@ -185,10 +160,34 @@ mod tests {
         let ast = parser.parse().unwrap();
         let result = analyzer.analyze(&ast);
 
-        assert!(!result.runes.is_empty());
+        assert!(!result.svelte_table.runes.is_empty());
 
-        for (id, _rune) in result.runes.iter() {
-            assert_eq!(result.symbols.get_name(id.clone()), "rune_var");
+        for (id, _rune) in result.svelte_table.runes.iter() {
+            assert_eq!(result.svelte_table.symbols.get_name(id.clone()), "rune_var");
         }
+    }
+
+    #[test]
+    fn svelte_table_smoke() {
+        let allocator = Allocator::default();
+        let analyzer = Analyzer::new();
+        let mut parser = Parser::new(
+            "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>{goto(rune_var)}",
+            &allocator,
+        );
+        let ast = parser.parse().unwrap();
+        let result = analyzer.analyze(&ast);
+
+        let Node::Interpolation(interpolation) = &*ast.template[0].borrow() else {
+            unreachable!()
+        };
+
+        let flags = result
+            .svelte_table
+            .get_expression_flag(&interpolation.expression)
+            .unwrap();
+
+        assert_eq!(flags.has_state, true);
+        assert_eq!(flags.has_call, true);
     }
 }

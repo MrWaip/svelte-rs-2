@@ -24,6 +24,7 @@ dependencies = [
  "ast",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_index",
  "oxc_semantic",
  "parser",
  "rccell",
