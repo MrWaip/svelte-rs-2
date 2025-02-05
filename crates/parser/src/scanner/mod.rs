@@ -13,6 +13,7 @@ use span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
+    chars: Vec<char>,
     tokens: Vec<Token<'a>>,
     start: usize,
     current: usize,
@@ -23,6 +24,8 @@ impl<'a> Scanner<'a> {
         return Scanner {
             source,
             tokens: vec![],
+            // not optimal
+            chars: source.chars().collect(),
             current: 0,
             start: 0,
         };
@@ -80,14 +83,14 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        let char = self.source.chars().nth(self.current).unwrap();
+        let char = self.chars.get(self.current).unwrap();
         self.current += 1;
 
-        return char;
+        return *char;
     }
 
     fn is_at_end(&self) -> bool {
-        return self.current >= self.source.chars().count();
+        return self.current >= self.chars.len();
     }
 
     fn identifier(&mut self) -> &'a str {
@@ -147,12 +150,7 @@ impl<'a> Scanner<'a> {
             return false;
         }
 
-        if self
-            .source
-            .chars()
-            .nth(self.current)
-            .is_some_and(|c| c != expected)
-        {
+        if self.chars.get(self.current).is_some_and(|c| *c != expected) {
             return false;
         }
 
@@ -166,7 +164,7 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        return self.source.chars().nth(self.current);
+        return self.chars.get(self.current).map(|v| *v);
     }
 
     fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
@@ -204,7 +202,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn prev_char(&self) -> Option<char> {
-        return self.source.chars().nth(self.current - 1);
+        return self.chars.get(self.current - 1).map(|char| *char);
     }
 
     // Tokens:
