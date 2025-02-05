@@ -23,7 +23,9 @@ oxc_span = "0.44.0"
 oxc_transformer = "0.44.0"
 oxc_traverse = "0.44.0"
 pretty_assertions = "1.4.1"
+criterion2 = { version = "2.0.0" }
 rccell = "0.1.3"
 rstest = "0.24.0"
 wasm-bindgen = "0.2.99"
 serde-wasm-bindgen = "0.6.5"
+
