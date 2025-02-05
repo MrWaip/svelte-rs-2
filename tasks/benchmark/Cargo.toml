@@ -1,0 +1,20 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2021"
+
+
+[lib]
+test = false
+bench = false
+doctest = false
+
+[[bench]]
+name = "svelte_compiler"
+harness = false
+
+[dependencies]
+compiler = { workspace = true }
+criterion2 = { workspace = true, features = ["codspeed"] }
+oxc_allocator = { workspace = true }
+glob = { workspace = true }
