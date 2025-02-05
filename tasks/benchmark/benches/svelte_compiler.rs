@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{env::current_dir, fs::read_to_string};
 
 use benchmark::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use compiler::{self, Compiler};
@@ -6,10 +6,14 @@ use glob::glob;
 use oxc_allocator::Allocator;
 
 fn bench_svelte_compiler(criterion: &mut Criterion) {
-    let files = glob("./tasks/benchmark/benches/compiler/**/*.svelte")
-        .expect("Не удалось считать компоненты");
+    let files = glob("./benches/compiler/**/*.svelte").expect("Не удалось считать компоненты");
 
     let mut group = criterion.benchmark_group("compiler");
+
+    // let files: Vec<Result<PathBuf, GlobError>> = files.collect();
+    // dbg!(&files);
+
+    dbg!(&current_dir());
 
     for entry in files {
         let path = entry.unwrap();

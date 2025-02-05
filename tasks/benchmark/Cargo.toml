@@ -6,7 +6,7 @@ edition = "2021"
 
 [lib]
 test = false
-bench = false
+# bench = false
 doctest = false
 
 [[bench]]
