@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+      rel="stylesheet"
+    />
     <title>Rust Svelte compiler preview</title>
   </head>
   <body>
@@ -12,16 +18,27 @@
 
       <div class="grid">
         <div class="editor-box">
-          <h2>Svelte source</h2>
+          <h2>
+            Svelte source
+            <br />
+            <span class="perf"> </span>
+          </h2>
+
           <div id="editor" class="editor"></div>
         </div>
         <div class="editor-box">
-          <h2>Rust JS output</h2>
+          <h2>
+            Rust JS output <br />
+            <span class="perf" id="rust-perf"></span>
+          </h2>
           <div id="preview" class="editor"></div>
         </div>
 
         <div class="editor-box">
-          <h2>Svelte JS output</h2>
+          <h2>
+            Svelte JS output <br />
+            <span class="perf" id="svelte-perf"></span>
+          </h2>
           <div id="svelte-preview" class="editor"></div>
         </div>
       </div>
@@ -31,6 +48,12 @@
       * {
         margin: 0;
         padding: 0;
+      }
+
+      html body {
+        font-family: "Space Mono", serif;
+        font-weight: 400;
+        font-style: normal;
       }
 
       .container {
@@ -57,10 +80,24 @@
       .editor {
         height: 100%;
       }
+
+      .perf {
+        font-size: 18px;
+      }
     </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "prettyMs": "https://cdn.jsdelivr.net/npm/pretty-ms@9.2.0/index.js",
+          "parse-ms": "https://cdn.jsdelivr.net/npm/parse-ms@4.0.0/index.js"
+        }
+      }
+    </script>
 
     <script type="module">
       import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
+      import prettyMs from "prettyMs";
       import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.19.6/compiler/index.js/+esm";
 
       import { example } from "./example.js";
@@ -73,6 +110,8 @@
       let sveltePreviewInstance;
 
       const preview = document.getElementById("preview");
+      const rustPerf = document.getElementById("rust-perf");
+      const sveltePerf = document.getElementById("svelte-perf");
       let scriptElement = document.createElement("script");
       scriptElement.setAttribute(
         "src",
@@ -133,18 +172,23 @@
           );
 
           editorInstance.onDidChangeModelContent(() => {
-            compileRust();
-            compileSvelte();
+            setTimeout(compileRust);
+            setTimeout(compileSvelte);
           });
 
-          compileRust();
-          compileSvelte();
+          setTimeout(compileRust);
+          setTimeout(compileSvelte);
         });
       });
 
       function compileRust() {
         try {
-          const result = compiler.compile(editorInstance.getValue());
+          const source = editorInstance.getValue();
+          const result = checkPerformance(
+            rustPerf,
+            () => compiler.compile(source),
+            "rust"
+          );
 
           rustPreviewInstance.setValue(result);
         } catch (e) {
@@ -155,13 +199,19 @@
 
       function compileSvelte() {
         try {
-          const result = svelteCompiler(editorInstance.getValue(), {
-            discloseVersion: false,
-            dev: false,
-            name: "App",
-            modernAst: true,
-            runes: true,
-          });
+          const source = editorInstance.getValue();
+          const result = checkPerformance(
+            sveltePerf,
+            () =>
+              svelteCompiler(source, {
+                discloseVersion: false,
+                dev: false,
+                name: "App",
+                modernAst: true,
+                runes: true,
+              }),
+            "svelte"
+          );
 
           const code = result.js.code.replaceAll(/^\s*\n/gm, "");
 
@@ -170,6 +220,23 @@
           console.error(e);
           sveltePreviewInstance.setValue("Compiler error");
         }
+      }
+
+      function checkPerformance(element, fn, label) {
+        const start = performance.now();
+
+        const result = fn();
+
+        const end = performance.now();
+        const span = end - start;
+
+        console.log(label, { start, end, span });
+
+        element.textContent = `(took ${prettyMs(span, {
+          formatSubMilliseconds: true,
+        })})`;
+
+        return result;
       }
     </script>
   </body>
