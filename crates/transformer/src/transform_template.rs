@@ -6,15 +6,15 @@ use rccell::RcCell;
 
 use ast::{
     Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock,
-    Node, Text,
+    Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
 
 use super::{
     builder::{
-        Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg,
-        BuilderStatement as BStmt,
+        Builder, BuilderAssignmentLeft as BAssignLeft, BuilderAssignmentRight as BAssignRight,
+        BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
     },
     scope::Scope,
     transform_script::TransformScript,
@@ -144,6 +144,7 @@ struct CompressNodesIter<'a, 'reference> {
     idx: usize,
     to_compress: Vec<RcCell<Node<'a>>>,
     builder: &'reference Builder<'a>,
+    svelte_table: &'reference SvelteTable<'a>,
 }
 
 // !svelte optimization
@@ -151,12 +152,14 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     pub fn iter(
         nodes: &'reference Vec<RcCell<Node<'a>>>,
         builder: &'reference Builder<'a>,
+        svelte_table: &'reference SvelteTable<'a>,
     ) -> Self {
         return Self {
             builder,
             nodes,
             idx: 0,
             to_compress: vec![],
+            svelte_table,
         };
     }
 
@@ -183,17 +186,20 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
 
                 match node {
                     Node::Text(text) => ConcatenationPart::String(text.value),
-                    Node::Interpolation(interpolation) => ConcatenationPart::Expression(
-                        self.builder
+                    Node::Interpolation(interpolation) => {
+                        let new_expr = self
+                            .builder
                             .ast
-                            .move_expression(&mut interpolation.expression),
-                    ),
+                            .move_expression(&mut interpolation.expression);
+
+                        ConcatenationPart::Expression(new_expr)
+                    }
                     _ => unreachable!(),
                 }
             })
             .collect();
 
-        return Node::VirtualConcatenation(Concatenation { parts, span: SPAN }).as_rc_cell();
+        return Node::VirtualConcatenation(VirtualConcatenation { parts, span: SPAN }).as_rc_cell();
     }
 }
 
@@ -383,7 +389,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
 
         // !svelte optimization
-        for cell in CompressNodesIter::iter(nodes, self.b) {
+        for cell in CompressNodesIter::iter(nodes, self.b, self.svelte_table) {
             let node = &mut *cell.borrow_mut();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
@@ -726,10 +732,34 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     ) {
         // whitespace for html text node for text anchor
         ctx.push_template(" ".into());
+        let mut has_state = false;
 
         let anchor_type = if is_concatenation {
+            let Expression::TemplateLiteral(literal) = &expression else {
+                unreachable!();
+            };
+
+            for expr in literal.expressions.iter() {
+                if self
+                    .svelte_table
+                    .get_expression_flag(expr)
+                    .is_some_and(|flags| flags.has_state)
+                {
+                    has_state = true;
+                    break;
+                }
+            }
+
             AnchorNodeType::VirtualConcatenation
         } else {
+            if self
+                .svelte_table
+                .get_expression_flag(expression)
+                .is_some_and(|flags| flags.has_state)
+            {
+                has_state = true;
+            }
+
             AnchorNodeType::Interpolation
         };
 
@@ -737,16 +767,28 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         let expression = self.transform_expression(expression);
         let node_id = self.b.clone_expr(&ctx.node_anchor);
-        let set_text = self
-            .b
-            .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
 
-        ctx.push_update(set_text);
+        if has_state {
+            let set_text = self
+                .b
+                .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
+
+            ctx.push_update(set_text);
+        } else {
+            let member = self.b.static_member_expr(node_id, "textContent");
+
+            let set_text = self.b.assignment_expression_stmt(
+                BAssignLeft::StaticMemberExpression(member),
+                BAssignRight::Expr(expression),
+            );
+
+            ctx.push_init(set_text);
+        }
     }
 
     fn transform_virtual_concatenation<'local>(
         &mut self,
-        concatenation: &mut Concatenation<'a>,
+        concatenation: &mut VirtualConcatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let tmp = self.b.template_literal(&mut concatenation.parts);
