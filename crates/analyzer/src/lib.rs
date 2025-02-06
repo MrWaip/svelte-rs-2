@@ -9,10 +9,10 @@ use oxc_ast::{
     Visit,
 };
 use oxc_semantic::{ReferenceFlags, SemanticBuilder};
-use svelte_table::{ExpressionFlags, RuneKind, SvelteTable};
+use svelte_table::{RuneKind, SvelteTable};
 use visitor::TemplateVisitor;
 
-use ast::Ast;
+use ast::{Ast, ExpressionFlags};
 
 pub struct Analyzer {}
 

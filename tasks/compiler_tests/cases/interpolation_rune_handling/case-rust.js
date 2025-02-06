@@ -6,14 +6,16 @@ export default function App($$anchor) {
 	$.set(title, 12);
 	var fragment = root();
 	var text = $.sibling($.first_child(fragment));
-	text.textContent = ` ${name ?? ""} `;
 	var text_1 = $.sibling(text, 2);
-	text_1.textContent = ` ${$.get(title) ?? ""} `;
 	var text_2 = $.sibling(text_1, 2);
-	text_2.textContent = ` _${name ?? ""}_${$.get(title) ?? ""} `;
 	var div = $.sibling(text_2);
 	var text_3 = $.child(div);
-	text_3.textContent = `${name ?? ""}+${$.get(title) ?? ""}`;
 	$.reset(div);
+	$.template_effect(() => {
+		$.set_text(text, ` ${name ?? ""} `);
+		$.set_text(text_1, ` ${$.get(title) ?? ""} `);
+		$.set_text(text_2, ` _${name ?? ""}_${$.get(title) ?? ""} `);
+		$.set_text(text_3, `${name ?? ""}+${$.get(title) ?? ""}`);
+	});
 	$.append($$anchor, fragment);
 }
