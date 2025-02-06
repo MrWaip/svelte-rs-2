@@ -4,17 +4,17 @@ use ::ast::ConcatenationPart;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
-        self, Argument, ArrowFunctionExpression, BindingIdentifier, BindingPatternKind,
-        BlockStatement, CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters,
-        Function, FunctionType, IdentifierReference, IfStatement, ImportDeclarationSpecifier,
-        ImportOrExportKind, LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral,
-        Program, Statement, StringLiteral, TemplateElement, TemplateElementValue, TemplateLiteral,
-        VariableDeclarationKind,
+        self, Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget,
+        BindingIdentifier, BindingPatternKind, BlockStatement, CallExpression,
+        ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
+        IdentifierReference, IfStatement, ImportDeclarationSpecifier, ImportOrExportKind,
+        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement,
+        StaticMemberExpression, StringLiteral, TemplateElement, TemplateElementValue,
+        TemplateLiteral, VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
 use oxc_span::{Atom, SourceType, SPAN};
-
 
 pub enum BuilderFunctionArgument<'a, 'short> {
     Str(String),
@@ -31,6 +31,7 @@ pub enum BuilderFunctionArgument<'a, 'short> {
 pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
     Arrow(ArrowFunctionExpression<'a>),
+    Assignment(AssignmentExpression<'a>),
     TemplateLiteral(TemplateLiteral<'a>),
     Ident(IdentifierReference<'a>),
     Expr(Expression<'a>),
@@ -40,6 +41,15 @@ pub enum BuilderStatement<'a> {
     Block(BlockStatement<'a>),
     Arrow(ArrowFunctionExpression<'a>),
     IfBlock(IfStatement<'a>),
+}
+
+pub enum BuilderAssignmentLeft<'short, 'a> {
+    Ident(&'short str),
+    StaticMemberExpression(StaticMemberExpression<'a>),
+}
+
+pub enum BuilderAssignmentRight<'a> {
+    Expr(Expression<'a>),
 }
 
 pub struct Builder<'a> {
@@ -272,6 +282,9 @@ impl<'a> Builder<'a> {
             BuilderExpression::Arrow(arrow_function_expression) => {
                 Expression::ArrowFunctionExpression(self.alloc(arrow_function_expression))
             }
+            BuilderExpression::Assignment(assignment_expression) => {
+                Expression::AssignmentExpression(self.alloc(assignment_expression))
+            }
         };
     }
 
@@ -424,5 +437,56 @@ impl<'a> Builder<'a> {
         });
 
         return self.ast.template_literal(SPAN, quasis, self.ast.vec());
+    }
+
+    pub fn assignment_expression<'local>(
+        &self,
+        left: BuilderAssignmentLeft<'local, 'a>,
+        right: BuilderAssignmentRight<'a>,
+    ) -> AssignmentExpression<'a> {
+        let left: ast::AssignmentTarget<'a> = match left {
+            BuilderAssignmentLeft::Ident(value) => {
+                AssignmentTarget::AssignmentTargetIdentifier(self.alloc(self.rid(value)))
+            }
+            BuilderAssignmentLeft::StaticMemberExpression(static_member_expression) => {
+                AssignmentTarget::StaticMemberExpression(self.alloc(static_member_expression))
+            }
+        };
+
+        let right: Expression<'a> = match right {
+            BuilderAssignmentRight::Expr(expression) => expression,
+        };
+
+        let assignment =
+            self.ast
+                .assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);
+
+        return assignment;
+    }
+
+    pub fn assignment_expression_stmt<'local>(
+        &self,
+        left: BuilderAssignmentLeft<'local, 'a>,
+        right: BuilderAssignmentRight<'a>,
+    ) -> Statement<'a> {
+        let assignment = self.assignment_expression(left, right);
+
+        return self.stmt(BuilderStatement::Expr(
+            self.expr(BuilderExpression::Assignment(assignment)),
+        ));
+    }
+
+    pub fn static_member_expr<'local>(
+        &self,
+        object: Expression<'a>,
+        prop: &'local str,
+    ) -> StaticMemberExpression<'a> {
+        let property = self.ast.identifier_name(SPAN, prop);
+
+        let expr = self
+            .ast
+            .static_member_expression(SPAN, object, property, false);
+
+        return expr;
     }
 }

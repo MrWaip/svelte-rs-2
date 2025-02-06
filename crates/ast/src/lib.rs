@@ -28,7 +28,7 @@ pub enum Node<'a> {
     Interpolation(Interpolation<'a>),
     IfBlock(IfBlock<'a>),
     /** Напоминание для себя. Сейчас во время трансформации шаблона последовательность Text + Interpolation схлопывается в эту Node */
-    VirtualConcatenation(Concatenation<'a>),
+    VirtualConcatenation(VirtualConcatenation<'a>),
     ScriptTag(ScriptTag<'a>),
 }
 
@@ -416,21 +416,27 @@ pub enum AttributeValue<'a> {
 }
 
 #[derive(Debug)]
-pub struct Concatenation<'a> {
+pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
 }
 
-impl<'a> FormatNode for Concatenation<'a> {
+impl<'a> FormatNode for VirtualConcatenation<'a> {
     fn format_node(&self) -> String {
         todo!()
     }
 }
 
-impl<'a> AsNode<'a> for Concatenation<'a> {
+impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::VirtualConcatenation(self);
     }
+}
+
+#[derive(Debug)]
+pub struct Concatenation<'a> {
+    pub parts: Vec<ConcatenationPart<'a>>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
