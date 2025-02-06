@@ -496,22 +496,25 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         element: &mut Element<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let has_children = !element.attributes.is_empty();
+        // !svelte optimization
+        let trim_result = self.trim_nodes(&mut element.nodes);
+        let has_attributes = !element.attributes.is_empty();
+        let has_children = !element.nodes.is_empty();
+        let has_non_text_node = !trim_result.has_single_text_node && has_children;
+
         ctx.push_template(format!("<{}", &element.name));
 
         // !svelte optimization
-        if has_children || element.has_complex_nodes {
+        if has_attributes || has_non_text_node {
             self.add_anchor(ctx, &element.name, AnchorNodeType::Element);
         }
 
-        if has_children {
+        if has_attributes {
             self.transform_attributes(element, ctx);
         } else {
             ctx.push_template(">".into());
         }
 
-        // !svelte optimization
-        let trim_result = self.trim_nodes(&mut element.nodes);
         self.transform_nodes(
             &mut element.nodes,
             ctx.fragment,
@@ -519,7 +522,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             trim_result,
         );
 
-        if element.has_complex_nodes {
+        if has_non_text_node {
             ctx.push_init(
                 self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(self.b.call(
                     "$.reset",
