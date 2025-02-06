@@ -419,6 +419,7 @@ pub enum AttributeValue<'a> {
 pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
+    pub flags: ExpressionFlags,
 }
 
 impl<'a> FormatNode for VirtualConcatenation<'a> {
@@ -493,5 +494,20 @@ impl<'a> FormatNode for ScriptTag<'a> {
         result.push_str("</script>");
 
         return result;
+    }
+}
+
+#[derive(Debug)]
+pub struct ExpressionFlags {
+    pub has_state: bool,
+    pub has_call: bool,
+}
+
+impl ExpressionFlags {
+    pub fn empty() -> Self {
+        return Self {
+            has_call: false,
+            has_state: false,
+        };
     }
 }

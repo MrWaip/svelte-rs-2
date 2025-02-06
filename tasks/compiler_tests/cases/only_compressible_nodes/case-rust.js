@@ -3,6 +3,6 @@ export default function App($$anchor) {
 	let name = undefined;
 	$.next();
 	var text = $.text();
-	text.textContent = `text + ${name ?? ""} + text`;
+	$.template_effect(() => $.set_text(text, `text + ${name ?? ""} + text`));
 	$.append($$anchor, text);
 }

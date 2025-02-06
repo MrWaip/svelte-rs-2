@@ -5,8 +5,8 @@ use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use ast::{
-    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock,
-    Node, Text, VirtualConcatenation,
+    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionFlags,
+    HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -72,10 +72,11 @@ pub struct NodeContext<'ast, 'reference> {
     builder: &'reference Builder<'ast>,
     node_anchor: Expression<'ast>,
     sibling_offset: usize,
-    use_fragment_anchor: bool,
+    trim_result: TrimResult,
+    inside_fragment: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TrimResult {
     has_only_text_and_interpolation: bool,
     has_single_text_node: bool,
@@ -178,6 +179,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     }
 
     fn compress_nodes<'local>(&mut self) -> RcCell<Node<'a>> {
+        let mut flags: Vec<Option<&ExpressionFlags>> = Vec::with_capacity(self.to_compress.len());
         let parts = self
             .to_compress
             .iter_mut()
@@ -192,6 +194,12 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
                             .ast
                             .move_expression(&mut interpolation.expression);
 
+                        // after moving expression new+expr  has new pointer
+                        flags.push(
+                            self.svelte_table
+                                .get_expression_flag(&interpolation.expression),
+                        );
+
                         ConcatenationPart::Expression(new_expr)
                     }
                     _ => unreachable!(),
@@ -199,7 +207,14 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             })
             .collect();
 
-        return Node::VirtualConcatenation(VirtualConcatenation { parts, span: SPAN }).as_rc_cell();
+        let flags = self.svelte_table.merge_expression_flags(flags);
+
+        return Node::VirtualConcatenation(VirtualConcatenation {
+            parts,
+            span: SPAN,
+            flags,
+        })
+        .as_rc_cell();
     }
 }
 
@@ -318,10 +333,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
-        let use_fragment_anchor =
-            trim_result.has_single_element || trim_result.has_only_text_and_interpolation;
-
-        self.transform_nodes(nodes, &mut context, None, use_fragment_anchor);
+        self.transform_nodes(nodes, &mut context, None, trim_result);
 
         // !svelte optimization
         if context.template_has_one_comment() {
@@ -368,7 +380,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         nodes: &mut Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
         parent_node: Option<&Expression<'a>>,
-        use_fragment_anchor: bool,
+        trim_result: TrimResult,
     ) {
         let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
             self.b
@@ -385,7 +397,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             node_anchor,
             sibling_offset: 0,
             builder: self.b,
-            use_fragment_anchor,
+            trim_result,
+            inside_fragment: parent_node.is_none(),
         };
 
         // !svelte optimization
@@ -414,7 +427,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
             Node::Interpolation(interpolation) => {
-                self.transform_interpolation(&mut interpolation.expression, ctx, false)
+                let flags = self
+                    .svelte_table
+                    .get_expression_flag(&interpolation.expression);
+                self.transform_interpolation(&mut interpolation.expression, ctx, false, flags)
             }
             Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
@@ -430,8 +446,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         preferable_name: &str,
         anchor_type: AnchorNodeType,
     ) {
+        let use_fragment_anchor = ctx.inside_fragment
+            && (ctx.trim_result.has_single_element
+                || ctx.trim_result.has_only_text_and_interpolation);
+
         // !svelte optimization
-        if ctx.use_fragment_anchor {
+        if use_fragment_anchor {
             ctx.node_anchor = self.b.clone_expr(&ctx.fragment.anchor);
             return;
         }
@@ -491,12 +511,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         }
 
         // !svelte optimization
-        self.trim_nodes(&mut element.nodes);
+        let trim_result = self.trim_nodes(&mut element.nodes);
         self.transform_nodes(
             &mut element.nodes,
             ctx.fragment,
             Some(&ctx.node_anchor),
-            false,
+            trim_result,
         );
 
         if element.has_complex_nodes {
@@ -729,37 +749,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         expression: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
         is_concatenation: bool,
+        expression_flags: Option<&ExpressionFlags>,
     ) {
         // whitespace for html text node for text anchor
         ctx.push_template(" ".into());
-        let mut has_state = false;
 
         let anchor_type = if is_concatenation {
-            let Expression::TemplateLiteral(literal) = &expression else {
-                unreachable!();
-            };
-
-            for expr in literal.expressions.iter() {
-                if self
-                    .svelte_table
-                    .get_expression_flag(expr)
-                    .is_some_and(|flags| flags.has_state)
-                {
-                    has_state = true;
-                    break;
-                }
-            }
-
             AnchorNodeType::VirtualConcatenation
         } else {
-            if self
-                .svelte_table
-                .get_expression_flag(expression)
-                .is_some_and(|flags| flags.has_state)
-            {
-                has_state = true;
-            }
-
             AnchorNodeType::Interpolation
         };
 
@@ -768,14 +765,24 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let expression = self.transform_expression(expression);
         let node_id = self.b.clone_expr(&ctx.node_anchor);
 
-        if has_state {
+        if expression_flags.is_some_and(|flags| flags.has_state) {
             let set_text = self
                 .b
                 .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
 
             ctx.push_update(set_text);
         } else {
-            let member = self.b.static_member_expr(node_id, "textContent");
+            // default -> nodeValue
+            // single at element -> textContent
+
+            let prop: &str =
+                if ctx.trim_result.has_only_text_and_interpolation && !ctx.inside_fragment {
+                    "textContent"
+                } else {
+                    "nodeValue"
+                };
+
+            let member = self.b.static_member_expr(node_id, prop);
 
             let set_text = self.b.assignment_expression_stmt(
                 BAssignLeft::StaticMemberExpression(member),
@@ -794,7 +801,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let tmp = self.b.template_literal(&mut concatenation.parts);
         let mut expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        self.transform_interpolation(&mut expr, ctx, true);
+        self.transform_interpolation(&mut expr, ctx, true, Some(&concatenation.flags));
     }
 
     fn transform_if_block<'local>(
