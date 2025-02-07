@@ -216,6 +216,9 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         };
     }
 
+    /**
+     * Match complex svelte logic. mixed optimizations
+     */
     fn next_anchor(&mut self, anchor_type: &AnchorNodeType) -> (Expression<'ast>, bool) {
         if self.parent_or_fragment_used {
             return (
@@ -257,11 +260,13 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
     }
 
     pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
+        // !svelte specific
         self.use_lazy_statement();
 
         let preferable_name = self.preferable_name(&anchor_type);
         let (mut anchor, early_return) = self.next_anchor(&anchor_type);
 
+        // !svelte specific
         if early_return {
             self.current_node_anchor = anchor;
             return;
@@ -302,6 +307,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             .expr(BExpr::Ident(self.builder.rid(&identifier)));
         self.reset_sibling_offset();
 
+        // !svelte specific
         if matches!(anchor_type, AnchorNodeType::Element(_)) {
             self.fragment.lazy_statement = Some(stmt);
         } else {
@@ -608,6 +614,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         ctx.push_template(format!("<{}", &element.name));
 
+        // !svelte specific
         if has_attributes || (has_nodes && !trim_result.has_single_text_node) {
             ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
         }
