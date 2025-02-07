@@ -1091,6 +1091,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             }
 
             trimmed.push(nodes[idx].clone());
+            
         }
 
         let result = TrimResult {
