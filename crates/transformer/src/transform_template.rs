@@ -28,11 +28,12 @@ pub struct TransformTemplate<'a, 'link> {
     svelte_table: &'link SvelteTable<'a>,
 }
 
+#[derive(Debug)]
 pub enum AnchorNodeType {
     Interpolation,
     VirtualConcatenation,
     IfBlock,
-    Element,
+    Element(String),
 }
 
 #[derive(Debug)]
@@ -67,15 +68,6 @@ impl<'a> FragmentContext<'a> {
     }
 }
 
-pub struct NodeContext<'ast, 'reference> {
-    fragment: &'reference mut FragmentContext<'ast>,
-    builder: &'reference Builder<'ast>,
-    node_anchor: Expression<'ast>,
-    sibling_offset: usize,
-    trim_result: TrimResult,
-    inside_fragment: bool,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct TrimResult {
     has_only_text_and_interpolation: bool,
@@ -98,9 +90,48 @@ impl FragmentParent {
     }
 }
 
+pub struct NodeContext<'ast, 'reference> {
+    builder: &'reference Builder<'ast>,
+    fragment: &'reference mut FragmentContext<'ast>,
+    parent_node_anchor: Option<&'reference Expression<'ast>>,
+    current_node_anchor: Expression<'ast>,
+    sibling_offset: usize,
+    trim_result: TrimResult,
+    lazy_statement: Option<Statement<'ast>>,
+    /**
+     * Было ли использовано обращение к parent_anchor или fragment_anchor
+     * Все последующие обращения должен строится относительно current_node_anchor
+     */
+    parent_or_fragment_used: bool,
+}
+
 impl<'ast, 'local> NodeContext<'ast, 'local> {
-    pub fn get_node_anchor(&mut self) -> Expression<'ast> {
-        return replace(&mut self.node_anchor, self.builder.cheap_expr());
+    pub fn new(
+        fragment_context: &'local mut FragmentContext<'ast>,
+        builder: &'local Builder<'ast>,
+        trim_result: TrimResult,
+        parent_node_anchor: Option<&'local Expression<'ast>>,
+    ) -> Self {
+        return Self {
+            fragment: fragment_context,
+            current_node_anchor: builder.cheap_expr(),
+            sibling_offset: 0,
+            builder,
+            lazy_statement: None,
+            trim_result,
+            parent_node_anchor,
+            parent_or_fragment_used: false,
+        };
+    }
+
+    fn as_child(&self, expr: &Expression<'ast>) -> Expression<'ast> {
+        self.builder
+            .call_expr("$.child", [BArg::Expr(self.builder.clone_expr(expr))])
+    }
+
+    fn as_first_child(&self, expr: &Expression<'ast>) -> Expression<'ast> {
+        self.builder
+            .call_expr("$.first_child", [BArg::Expr(self.builder.clone_expr(expr))])
     }
 
     pub fn generate(&mut self, preferable_name: &str) -> String {
@@ -138,6 +169,134 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
     pub fn next_sibling_offset(&mut self) {
         self.sibling_offset += 1;
     }
+
+    fn need_direct_fragment_access(&self, anchor_type: &AnchorNodeType) -> bool {
+        let at_fragment: bool = self.at_fragment();
+
+        if !at_fragment {
+            return false;
+        }
+
+        return match anchor_type {
+            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
+                self.trim_result.has_only_text_and_interpolation
+            }
+            AnchorNodeType::IfBlock => false,
+            AnchorNodeType::Element(_) => self.trim_result.has_single_element,
+        };
+    }
+
+    fn need_direct_parent_access(&self, anchor_type: &AnchorNodeType) -> bool {
+        return match anchor_type {
+            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
+                self.trim_result.has_only_text_and_interpolation
+            }
+            AnchorNodeType::IfBlock => false,
+            AnchorNodeType::Element(_) => false,
+        };
+    }
+
+    fn at_fragment(&self) -> bool {
+        return self.parent_node_anchor.is_none();
+    }
+
+    fn preferable_name(&self, anchor_type: &AnchorNodeType) -> String {
+        return match anchor_type {
+            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
+                String::from("text")
+            }
+            AnchorNodeType::IfBlock => String::from("node"),
+            AnchorNodeType::Element(name) => name.clone(),
+        };
+    }
+
+    fn next_anchor(&mut self, anchor_type: &AnchorNodeType) -> (Expression<'ast>, bool) {
+        if self.parent_or_fragment_used {
+            return (
+                self.builder
+                    .ast
+                    .move_expression(&mut self.current_node_anchor),
+                false,
+            );
+        } else {
+            self.parent_or_fragment_used = true;
+
+            if self.need_direct_fragment_access(anchor_type) {
+                return (self.builder.clone_expr(&self.fragment.anchor), true);
+            } else {
+                if self.parent_node_anchor.is_some() {
+                    if self.need_direct_parent_access(anchor_type) {
+                        return (
+                            self.builder.clone_expr(&self.parent_node_anchor.unwrap()),
+                            true,
+                        );
+                    } else {
+                        return (self.as_child(self.parent_node_anchor.unwrap()), false);
+                    }
+                } else {
+                    return (self.as_first_child(&self.fragment.anchor), false);
+                }
+            }
+        };
+    }
+
+    pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
+        dbg!(&anchor_type, &self.lazy_statement);
+        if let Some(stmt) = replace(&mut self.lazy_statement, None) {
+            self.push_init(stmt);
+            return;
+        }
+
+        let preferable_name = self.preferable_name(&anchor_type);
+        let (mut anchor, early_return) = self.next_anchor(&anchor_type);
+
+        if early_return {
+            self.current_node_anchor = anchor;
+            return;
+        }
+
+        let identifier = self.generate(&preferable_name);
+
+        // /*
+        //  * if this is a standalone `{expression}`, make sure we handle the case where
+        //  * no text node was created because the expression was empty during SSR
+        //  */
+        let possibly_create_empty_text_node = matches!(anchor_type, AnchorNodeType::Interpolation);
+
+        if self.sibling_offset > 0 {
+            let mut args = vec![BArg::Expr(anchor)];
+
+            if self.sibling_offset != 1 || possibly_create_empty_text_node {
+                args.push(BArg::Num((self.sibling_offset) as f64));
+            }
+
+            if possibly_create_empty_text_node {
+                args.push(BArg::Bool(true));
+            }
+
+            anchor = self.builder.call_expr("$.sibling", args);
+        } else {
+            if let Expression::CallExpression(call) = &mut anchor {
+                if possibly_create_empty_text_node {
+                    call.arguments.push(self.builder.arg(BArg::Bool(true)));
+                }
+            }
+        }
+
+        let stmt = self.builder.var(&identifier, BExpr::Expr(anchor));
+        self.current_node_anchor = self
+            .builder
+            .expr(BExpr::Ident(self.builder.rid(&identifier)));
+        self.reset_sibling_offset();
+
+        if matches!(anchor_type, AnchorNodeType::Element(_)) {
+            self.lazy_statement = Some(stmt);
+        } else {
+            self.push_init(stmt);
+        }
+    }
+
+    pub fn reset_before_next_child(&mut self) {}
 }
 
 struct CompressNodesIter<'a, 'reference> {
@@ -379,31 +538,15 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         &mut self,
         nodes: &mut Vec<RcCell<Node<'a>>>,
         context: &mut FragmentContext<'a>,
-        parent_node: Option<&Expression<'a>>,
+        parent_node_anchor: Option<&Expression<'a>>,
         trim_result: TrimResult,
     ) {
-        let node_anchor: Expression<'a> = if let Some(parent) = parent_node {
-            self.b
-                .call_expr("$.child", [BArg::Expr(self.b.clone_expr(parent))])
-        } else {
-            self.b.call_expr(
-                "$.first_child",
-                [BArg::Expr(self.b.clone_expr(&context.anchor))],
-            )
-        };
-
-        let mut node_context = NodeContext {
-            fragment: context,
-            node_anchor,
-            sibling_offset: 0,
-            builder: self.b,
-            trim_result,
-            inside_fragment: parent_node.is_none(),
-        };
+        let mut node_context = NodeContext::new(context, self.b, trim_result, parent_node_anchor);
 
         // !svelte optimization
         for cell in CompressNodesIter::iter(nodes, self.b, self.svelte_table) {
             let node = &mut *cell.borrow_mut();
+            node_context.reset_before_next_child();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
         }
@@ -440,57 +583,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    fn add_anchor<'local>(
-        &self,
-        ctx: &mut NodeContext<'a, 'local>,
-        preferable_name: &str,
-        anchor_type: AnchorNodeType,
-    ) {
-        let use_fragment_anchor = ctx.inside_fragment
-            && (ctx.trim_result.has_single_element
-                || ctx.trim_result.has_only_text_and_interpolation);
-
-        // !svelte optimization
-        if use_fragment_anchor {
-            ctx.node_anchor = self.b.clone_expr(&ctx.fragment.anchor);
-            return;
-        }
-
-        let mut anchor = ctx.get_node_anchor();
-        let identifier = ctx.generate(preferable_name);
-
-        /*
-         * if this is a standalone `{expression}`, make sure we handle the case where
-         * no text node was created because the expression was empty during SSR
-         */
-        let possibly_create_empty_text_node = matches!(anchor_type, AnchorNodeType::Interpolation);
-
-        if ctx.sibling_offset > 0 {
-            let mut args = vec![BArg::Expr(anchor)];
-
-            if ctx.sibling_offset != 1 || possibly_create_empty_text_node {
-                args.push(BArg::Num((ctx.sibling_offset) as f64));
-            }
-
-            if possibly_create_empty_text_node {
-                args.push(BArg::Bool(true));
-            }
-
-            anchor = self.b.expr(BExpr::Call(self.b.call("$.sibling", args)));
-        } else {
-            if let Expression::CallExpression(call) = &mut anchor {
-                if possibly_create_empty_text_node {
-                    call.arguments.push(self.b.arg(BArg::Bool(true)));
-                }
-            }
-        }
-
-        let stmt = self.b.var(&identifier, BExpr::Expr(anchor));
-        ctx.push_init(stmt);
-        ctx.node_anchor = self.b.expr(BExpr::Ident(self.b.rid(&identifier)));
-        ctx.reset_sibling_offset();
-    }
-
     fn transform_element<'local>(
         &mut self,
         element: &mut Element<'a>,
@@ -499,15 +591,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         // !svelte optimization
         let trim_result = self.trim_nodes(&mut element.nodes);
         let has_attributes = !element.attributes.is_empty();
-        let has_children = !element.nodes.is_empty();
-        let has_non_text_node = !trim_result.has_single_text_node && has_children;
 
         ctx.push_template(format!("<{}", &element.name));
 
-        // !svelte optimization
-        if has_attributes || has_non_text_node {
-            self.add_anchor(ctx, &element.name, AnchorNodeType::Element);
-        }
+        ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
 
         if has_attributes {
             self.transform_attributes(element, ctx);
@@ -518,18 +605,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         self.transform_nodes(
             &mut element.nodes,
             ctx.fragment,
-            Some(&ctx.node_anchor),
+            Some(&ctx.current_node_anchor),
             trim_result,
         );
 
-        if has_non_text_node {
-            ctx.push_init(
-                self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(self.b.call(
-                    "$.reset",
-                    [BArg::Expr(self.b.clone_expr(&ctx.node_anchor))],
-                ))))),
-            );
-        }
+        // if ctx.anchor_added {
+        //     ctx.push_init(self.b.call_stmt(
+        //         "$.reset",
+        //         [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
+        //     ));
+        // }
 
         if !element.self_closing {
             ctx.push_template(format!("</{}>", &element.name));
@@ -573,7 +658,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         directive: &mut ast::ClassDirective<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
         let flags = self.svelte_table.get_expression_flag(&directive.expression);
 
         let expression = self.transform_expression(&mut directive.expression);
@@ -599,7 +684,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         expression: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
         let arg: BArg = match &expression {
             Expression::Identifier(id) => BArg::Str(id.name.to_string()),
@@ -659,7 +744,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         value: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
         let flags = self.svelte_table.get_expression_flag(value);
         let value = self.transform_expression(value);
         let call = self.b.call_stmt(
@@ -684,7 +769,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         value: &mut Concatenation<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
         let mut has_state = false;
 
         for part in value.parts.iter_mut() {
@@ -754,8 +839,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         is_concatenation: bool,
         expression_flags: Option<&ExpressionFlags>,
     ) {
-        // whitespace for html text node for text anchor
-        ctx.push_template(" ".into());
+        let has_state = expression_flags.is_some_and(|flags| flags.has_state);
+
+        // if !use_fragment_anchor {
+        //     // whitespace for html text node for text anchor
+        //     ctx.push_template(" ".into());
+        // }
 
         let anchor_type = if is_concatenation {
             AnchorNodeType::VirtualConcatenation
@@ -763,27 +852,23 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             AnchorNodeType::Interpolation
         };
 
-        self.add_anchor(ctx, "text", anchor_type);
+        ctx.add_anchor(anchor_type);
 
         let expression = self.transform_expression(expression);
-        let node_id = self.b.clone_expr(&ctx.node_anchor);
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
-        if expression_flags.is_some_and(|flags| flags.has_state) {
+        if has_state {
             let set_text = self
                 .b
                 .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
 
             ctx.push_update(set_text);
         } else {
-            // default -> nodeValue
-            // single at element -> textContent
-
-            let prop: &str =
-                if ctx.trim_result.has_only_text_and_interpolation && !ctx.inside_fragment {
-                    "textContent"
-                } else {
-                    "nodeValue"
-                };
+            let prop: &str = if ctx.at_fragment() {
+                "nodeValue"
+            } else {
+                "textContent"
+            };
 
             let member = self.b.static_member_expr(node_id, prop);
 
@@ -814,7 +899,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     ) {
         ctx.push_template(COMMENT_NODE_ANCHOR.into());
         let mut statements = vec![];
-        self.add_anchor(ctx, "node", AnchorNodeType::IfBlock);
+        ctx.add_anchor(AnchorNodeType::IfBlock);
 
         let consequent_fragment =
             self.transform_fragment(&mut if_block.consequent, FragmentParent::IfBlock);
@@ -852,7 +937,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             None
         };
 
-        let mut args = vec![BArg::Expr(self.b.clone_expr(&ctx.node_anchor))];
+        let mut args = vec![BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))];
 
         let if_stmt = self.b.if_stmt(
             self.b.clone_expr(&if_block.test),
