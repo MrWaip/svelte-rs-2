@@ -53,6 +53,7 @@ pub struct FragmentContext<'a> {
     scope: Rc<RefCell<Scope>>,
     /** identifier на фрагмент */
     anchor: Expression<'a>,
+    lazy_statement: Option<Statement<'a>>,
 }
 
 impl<'a> FragmentContext<'a> {
@@ -97,7 +98,7 @@ pub struct NodeContext<'ast, 'reference> {
     current_node_anchor: Expression<'ast>,
     sibling_offset: usize,
     trim_result: TrimResult,
-    lazy_statement: Option<Statement<'ast>>,
+
     /**
      * Было ли использовано обращение к parent_anchor или fragment_anchor
      * Все последующие обращения должен строится относительно current_node_anchor
@@ -117,7 +118,6 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             current_node_anchor: builder.cheap_expr(),
             sibling_offset: 0,
             builder,
-            lazy_statement: None,
             trim_result,
             parent_node_anchor,
             parent_or_fragment_used: false,
@@ -241,10 +241,8 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
     }
 
     pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
-        dbg!(&anchor_type, &self.lazy_statement);
-        if let Some(stmt) = replace(&mut self.lazy_statement, None) {
+        if let Some(stmt) = replace(&mut self.fragment.lazy_statement, None) {
             self.push_init(stmt);
-            return;
         }
 
         let preferable_name = self.preferable_name(&anchor_type);
@@ -290,7 +288,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         self.reset_sibling_offset();
 
         if matches!(anchor_type, AnchorNodeType::Element(_)) {
-            self.lazy_statement = Some(stmt);
+            self.fragment.lazy_statement = Some(stmt);
         } else {
             self.push_init(stmt);
         }
@@ -488,6 +486,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             update: vec![],
             after_update: vec![],
             template: vec![],
+            lazy_statement: None,
             scope: scope.clone(),
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
@@ -591,10 +590,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         // !svelte optimization
         let trim_result = self.trim_nodes(&mut element.nodes);
         let has_attributes = !element.attributes.is_empty();
+        let has_nodes = !element.nodes.is_empty();
 
         ctx.push_template(format!("<{}", &element.name));
 
-        ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
+        if has_attributes || has_nodes {
+            ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
+        }
 
         if has_attributes {
             self.transform_attributes(element, ctx);
@@ -609,12 +611,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             trim_result,
         );
 
-        // if ctx.anchor_added {
-        //     ctx.push_init(self.b.call_stmt(
-        //         "$.reset",
-        //         [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
-        //     ));
-        // }
+        if has_nodes && !trim_result.has_only_text_and_interpolation {
+            ctx.push_init(self.b.call_stmt(
+                "$.reset",
+                [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
+            ));
+        }
 
         if !element.self_closing {
             ctx.push_template(format!("</{}>", &element.name));
@@ -841,10 +843,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     ) {
         let has_state = expression_flags.is_some_and(|flags| flags.has_state);
 
-        // if !use_fragment_anchor {
-        //     // whitespace for html text node for text anchor
-        //     ctx.push_template(" ".into());
-        // }
+        // whitespace for html text node for text anchor
+        if !ctx.trim_result.has_only_text_and_interpolation {
+            ctx.push_template(" ".into());
+        }
 
         let anchor_type = if is_concatenation {
             AnchorNodeType::VirtualConcatenation
@@ -864,11 +866,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
             ctx.push_update(set_text);
         } else {
-            let prop: &str = if ctx.at_fragment() {
-                "nodeValue"
-            } else {
-                "textContent"
-            };
+            let prop: &str =
+                if ctx.at_fragment() || !ctx.trim_result.has_only_text_and_interpolation {
+                    "nodeValue"
+                } else {
+                    "textContent"
+                };
 
             let member = self.b.static_member_expr(node_id, prop);
 

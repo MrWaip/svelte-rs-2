@@ -5,5 +5,10 @@
 {title}
 
 <div>
+    <br />
+    {title}
+</div>
+
+<div>
     {title}
 </div>
