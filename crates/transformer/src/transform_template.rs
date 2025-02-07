@@ -30,8 +30,8 @@ pub struct TransformTemplate<'a, 'link> {
 
 #[derive(Debug)]
 pub enum AnchorNodeType {
-    Interpolation,
-    VirtualConcatenation,
+    Interpolation(bool),
+    VirtualConcatenation(bool),
     IfBlock,
     Element(String),
 }
@@ -98,6 +98,7 @@ pub struct NodeContext<'ast, 'reference> {
     current_node_anchor: Expression<'ast>,
     sibling_offset: usize,
     trim_result: TrimResult,
+    need_reset_element: bool,
 
     /**
      * Было ли использовано обращение к parent_anchor или fragment_anchor
@@ -121,6 +122,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             trim_result,
             parent_node_anchor,
             parent_or_fragment_used: false,
+            need_reset_element: false,
         };
     }
 
@@ -178,7 +180,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         }
 
         return match anchor_type {
-            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
+            AnchorNodeType::Interpolation(_) | AnchorNodeType::VirtualConcatenation(_) => {
                 self.trim_result.has_only_text_and_interpolation
             }
             AnchorNodeType::IfBlock => false,
@@ -188,8 +190,11 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     fn need_direct_parent_access(&self, anchor_type: &AnchorNodeType) -> bool {
         return match anchor_type {
-            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
-                self.trim_result.has_only_text_and_interpolation
+            AnchorNodeType::Interpolation(has_state) => {
+                self.trim_result.has_only_text_and_interpolation && !has_state
+            }
+            AnchorNodeType::VirtualConcatenation(has_state) => {
+                self.trim_result.has_only_text_and_interpolation && !has_state
             }
             AnchorNodeType::IfBlock => false,
             AnchorNodeType::Element(_) => false,
@@ -202,7 +207,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     fn preferable_name(&self, anchor_type: &AnchorNodeType) -> String {
         return match anchor_type {
-            AnchorNodeType::Interpolation | AnchorNodeType::VirtualConcatenation => {
+            AnchorNodeType::Interpolation(_) | AnchorNodeType::VirtualConcatenation(_) => {
                 String::from("text")
             }
             AnchorNodeType::IfBlock => String::from("node"),
@@ -240,10 +245,18 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         };
     }
 
-    pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
+    pub fn use_lazy_statement(&mut self) {
         if let Some(stmt) = replace(&mut self.fragment.lazy_statement, None) {
             self.push_init(stmt);
         }
+    }
+
+    pub fn set_need_reset_element(&mut self) {
+        self.need_reset_element = true;
+    }
+
+    pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
+        self.use_lazy_statement();
 
         let preferable_name = self.preferable_name(&anchor_type);
         let (mut anchor, early_return) = self.next_anchor(&anchor_type);
@@ -259,7 +272,8 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         //  * if this is a standalone `{expression}`, make sure we handle the case where
         //  * no text node was created because the expression was empty during SSR
         //  */
-        let possibly_create_empty_text_node = matches!(anchor_type, AnchorNodeType::Interpolation);
+        let possibly_create_empty_text_node =
+            matches!(anchor_type, AnchorNodeType::Interpolation(_));
 
         if self.sibling_offset > 0 {
             let mut args = vec![BArg::Expr(anchor)];
@@ -293,8 +307,6 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             self.push_init(stmt);
         }
     }
-
-    pub fn reset_before_next_child(&mut self) {}
 }
 
 struct CompressNodesIter<'a, 'reference> {
@@ -533,19 +545,18 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         return FragmentResult { body };
     }
 
-    fn transform_nodes(
+    fn transform_nodes<'local>(
         &mut self,
         nodes: &mut Vec<RcCell<Node<'a>>>,
-        context: &mut FragmentContext<'a>,
-        parent_node_anchor: Option<&Expression<'a>>,
+        context: &'local mut FragmentContext<'a>,
+        parent_node_anchor: Option<&'local Expression<'a>>,
         trim_result: TrimResult,
-    ) {
+    ) -> NodeContext<'a, 'local> {
         let mut node_context = NodeContext::new(context, self.b, trim_result, parent_node_anchor);
 
         // !svelte optimization
         for cell in CompressNodesIter::iter(nodes, self.b, self.svelte_table) {
             let node = &mut *cell.borrow_mut();
-            node_context.reset_before_next_child();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
         }
@@ -562,6 +573,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
             node_context.push_init(self.b.call_stmt("$.next", args));
         }
+
+        return node_context;
     }
 
     fn transform_node<'local>(&mut self, node: &mut Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
@@ -594,7 +607,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         ctx.push_template(format!("<{}", &element.name));
 
-        if has_attributes || has_nodes {
+        if has_attributes || (has_nodes && !trim_result.has_single_text_node) {
             ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
         }
 
@@ -604,14 +617,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.push_template(">".into());
         }
 
-        self.transform_nodes(
+        let child_ctx = self.transform_nodes(
             &mut element.nodes,
             ctx.fragment,
             Some(&ctx.current_node_anchor),
             trim_result,
         );
 
-        if has_nodes && !trim_result.has_only_text_and_interpolation {
+        if child_ctx.need_reset_element {
             ctx.push_init(self.b.call_stmt(
                 "$.reset",
                 [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
@@ -647,9 +660,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         match attr {
             Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
             Attribute::Expression(expression) => {
+                ctx.use_lazy_statement();
+                ctx.set_need_reset_element();
                 self.transform_expression_attribute(expression, ctx)
             }
             Attribute::ClassDirective(directive) => {
+                ctx.set_need_reset_element();
+                ctx.use_lazy_statement();
                 self.transform_class_directive_attribute(directive, ctx)
             }
         }
@@ -723,10 +740,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         match &mut attr.value {
             AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
             AttributeValue::Expression(value) => {
+                ctx.use_lazy_statement();
+                ctx.set_need_reset_element();
                 self.transform_expression_attribute_value(&attr.name, value, ctx)
             }
             AttributeValue::Boolean => (),
             AttributeValue::Concatenation(value) => {
+                ctx.use_lazy_statement();
+                ctx.set_need_reset_element();
                 self.transform_concatenation_attribute_value(&attr.name, value, ctx)
             }
         };
@@ -844,14 +865,15 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let has_state = expression_flags.is_some_and(|flags| flags.has_state);
 
         // whitespace for html text node for text anchor
-        if !ctx.trim_result.has_only_text_and_interpolation {
+        if !ctx.trim_result.has_only_text_and_interpolation || has_state {
+            ctx.set_need_reset_element();
             ctx.push_template(" ".into());
         }
 
         let anchor_type = if is_concatenation {
-            AnchorNodeType::VirtualConcatenation
+            AnchorNodeType::VirtualConcatenation(has_state)
         } else {
-            AnchorNodeType::Interpolation
+            AnchorNodeType::Interpolation(has_state)
         };
 
         ctx.add_anchor(anchor_type);
