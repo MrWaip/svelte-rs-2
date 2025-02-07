@@ -590,6 +590,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
+                
             }
             Node::ScriptTag(_script_tag) => todo!(),
         };
