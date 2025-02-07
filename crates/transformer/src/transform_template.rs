@@ -75,6 +75,7 @@ pub struct TrimResult {
     has_single_text_node: bool,
     has_single_element: bool,
     is_first_compressible: bool,
+    has_non_text_nodes: bool,
 }
 
 pub enum FragmentParent {
@@ -98,7 +99,7 @@ pub struct NodeContext<'ast, 'reference> {
     current_node_anchor: Expression<'ast>,
     sibling_offset: usize,
     trim_result: TrimResult,
-    need_reset_element: bool,
+    skip_reset_element: bool,
 
     /**
      * Было ли использовано обращение к parent_anchor или fragment_anchor
@@ -122,7 +123,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             trim_result,
             parent_node_anchor,
             parent_or_fragment_used: false,
-            need_reset_element: false,
+            skip_reset_element: false,
         };
     }
 
@@ -251,8 +252,8 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         }
     }
 
-    pub fn set_need_reset_element(&mut self) {
-        self.need_reset_element = true;
+    pub fn set_skip_reset_element(&mut self) {
+        self.skip_reset_element = true;
     }
 
     pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
@@ -590,7 +591,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
                 self.transform_virtual_concatenation(concatenation, ctx)
-                
             }
             Node::ScriptTag(_script_tag) => todo!(),
         };
@@ -625,7 +625,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             trim_result,
         );
 
-        if child_ctx.need_reset_element {
+        if trim_result.has_non_text_nodes && !child_ctx.skip_reset_element {
             ctx.push_init(self.b.call_stmt(
                 "$.reset",
                 [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
@@ -662,11 +662,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
             Attribute::Expression(expression) => {
                 ctx.use_lazy_statement();
-                ctx.set_need_reset_element();
                 self.transform_expression_attribute(expression, ctx)
             }
             Attribute::ClassDirective(directive) => {
-                ctx.set_need_reset_element();
                 ctx.use_lazy_statement();
                 self.transform_class_directive_attribute(directive, ctx)
             }
@@ -742,13 +740,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
             AttributeValue::Expression(value) => {
                 ctx.use_lazy_statement();
-                ctx.set_need_reset_element();
                 self.transform_expression_attribute_value(&attr.name, value, ctx)
             }
             AttributeValue::Boolean => (),
             AttributeValue::Concatenation(value) => {
                 ctx.use_lazy_statement();
-                ctx.set_need_reset_element();
                 self.transform_concatenation_attribute_value(&attr.name, value, ctx)
             }
         };
@@ -867,8 +863,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         // whitespace for html text node for text anchor
         if !ctx.trim_result.has_only_text_and_interpolation || has_state {
-            ctx.set_need_reset_element();
             ctx.push_template(" ".into());
+        } else {
+            ctx.set_skip_reset_element();
         }
 
         let anchor_type = if is_concatenation {
@@ -1001,6 +998,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 has_single_text_node: false,
                 has_single_element: false,
                 is_first_compressible: false,
+                has_non_text_nodes: false,
             };
         }
 
@@ -1011,6 +1009,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut has_elements = false;
         let mut has_interpolation = false;
         let mut has_text = false;
+        let mut has_non_text_nodes = false;
 
         // trim left
         for cell in nodes.iter_mut() {
@@ -1080,6 +1079,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 has_text = current.is_text();
             }
 
+            if !has_non_text_nodes {
+                has_non_text_nodes = !current.is_text();
+            }
+
             trimmed.push(nodes[idx].clone());
         }
 
@@ -1091,6 +1094,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             is_first_compressible: trimmed
                 .first()
                 .is_some_and(|cell| cell.borrow().is_compressible()),
+            has_non_text_nodes,
         };
 
         *nodes = trimmed;

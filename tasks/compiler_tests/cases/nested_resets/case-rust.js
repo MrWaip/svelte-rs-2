@@ -7,6 +7,8 @@ export default function App($$anchor) {
 	var div_2 = $.child(div_1);
 	var text = $.child(div_2, true);
 	$.reset(div_2);
+	$.reset(div_1);
+	$.reset(div);
 	$.template_effect(() => $.set_text(text, name));
 	$.append($$anchor, div);
 }
