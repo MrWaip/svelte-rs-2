@@ -389,6 +389,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             parts,
             span: SPAN,
             flags,
+            metadata: None,
         })
         .as_rc_cell();
     }
@@ -1091,7 +1092,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             }
 
             trimmed.push(nodes[idx].clone());
-            
         }
 
         let result = TrimResult {
