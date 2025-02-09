@@ -1,8 +1,26 @@
-use crate::{Element, IfBlock, Interpolation, Node, ScriptTag, VirtualConcatenation};
+use crate::{
+    Element, ExpressionFlags, IfBlock, Interpolation, Node, ScriptTag, VirtualConcatenation,
+};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct NodeMetadata {
     pub dynamic: bool,
+    pub expression_flags: Option<ExpressionFlags>,
+}
+
+impl Default for NodeMetadata {
+    fn default() -> Self {
+        Self {
+            dynamic: false,
+            expression_flags: None,
+        }
+    }
+}
+
+impl NodeMetadata {
+    pub fn mark_dynamic(&mut self) {
+        self.dynamic = true;
+    }
 }
 
 pub trait WithMetadata {

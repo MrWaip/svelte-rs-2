@@ -297,7 +297,7 @@ impl<'a> AsNode<'a> for ScriptTag<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ExpressionFlags {
     pub has_state: bool,
     pub has_call: bool,

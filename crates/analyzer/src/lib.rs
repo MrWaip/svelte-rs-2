@@ -10,9 +10,16 @@ use oxc_ast::{
 };
 use oxc_semantic::{ReferenceFlags, SemanticBuilder};
 use svelte_table::{RuneKind, SvelteTable};
-use visitor::TemplateVisitor;
+use visitor::{
+    walk::{
+        walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
+        walk_expression_attribute, walk_expression_attribute_value, walk_if_block,
+        walk_interpolation,
+    },
+    TemplateVisitor,
+};
 
-use ast::{Ast, ExpressionFlags};
+use ast::{metadata::{NodeMetadata, WithMetadata}, Ast, ExpressionFlags};
 
 pub struct Analyzer {}
 
@@ -46,6 +53,7 @@ impl Analyzer {
                 current_reference_flags: ReferenceFlags::empty(),
                 current_expression_flags: ExpressionFlags::empty(),
                 svelte_table: script_visitor.svelte_table,
+                current_metadata: NodeMetadata::default(),
             };
 
             template_visitor.visit_template(&ast.template);
@@ -67,6 +75,7 @@ pub struct TemplateVisitorImpl<'link, 'a> {
     pub svelte_table: &'link mut SvelteTable<'a>,
     current_reference_flags: ReferenceFlags,
     current_expression_flags: ExpressionFlags,
+    current_metadata: NodeMetadata,
 }
 
 impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
@@ -84,12 +93,56 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
+    fn visit_element(&mut self, it: &ast::Element<'a>) {
+        let metadata = NodeMetadata::default();
+
+        walk_element(self, it);
+
+        // it.set_metadata(metadata);
+    }
+
     fn visit_expression(&mut self, it: &Expression<'a>) {
         Visit::visit_expression(self, it);
 
         let flags = replace(&mut self.current_expression_flags, ExpressionFlags::empty());
 
         self.svelte_table.add_expression_flag(it, flags);
+    }
+
+    fn visit_class_directive_attribute(&mut self, it: &ast::ClassDirective<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_class_directive_attribute(self, it);
+    }
+
+    fn visit_if_block(&mut self, it: &ast::IfBlock<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_if_block(self, it);
+    }
+
+    fn visit_interpolation(&mut self, it: &ast::Interpolation<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_interpolation(self, it);
+    }
+
+    fn visit_expression_attribute(&mut self, it: &Expression<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_expression_attribute(self, it);
+    }
+
+    fn visit_concatenation_attribute_value(&mut self, it: &ast::Concatenation<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_concatenation_attribute_value(self, it);
+    }
+
+    fn visit_expression_attribute_value(&mut self, it: &Expression<'a>) {
+        // self.current_metadata.mark_dynamic();
+
+        walk_expression_attribute_value(self, it);
     }
 }
 
@@ -129,6 +182,10 @@ impl<'link, 'a> TemplateVisitorImpl<'link, 'a> {
                 self.current_expression_flags.has_state = true;
             }
         }
+    }
+
+    fn resolve_metadata(&mut self) -> NodeMetadata {
+        take(&mut self.current_metadata)
     }
 
     fn resolve_reference_usages(&mut self) -> ReferenceFlags {
