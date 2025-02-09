@@ -736,7 +736,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             AttributeValue::Expression(value) => {
                 self.transform_expression_attribute_value(&attr.name, value, ctx)
             }
-            AttributeValue::Boolean => (),
+            AttributeValue::Boolean => {
+                ctx.push_template("=\"\"".to_string());
+            }
             AttributeValue::Concatenation(value) => {
                 self.transform_concatenation_attribute_value(&attr.name, value, ctx)
             }
@@ -917,6 +919,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut statements = vec![];
         ctx.add_anchor(AnchorNodeType::IfBlock);
 
+        let test = self.transform_expression(&mut if_block.test);
+
         let consequent_fragment =
             self.transform_fragment(&mut if_block.consequent, FragmentParent::IfBlock);
         let consequent_id = ctx.generate("consequent");
@@ -956,7 +960,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut args = vec![BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))];
 
         let if_stmt = self.b.if_stmt(
-            self.b.clone_expr(&if_block.test),
+            test,
             self.b.call_stmt("$$render", [BArg::Ident(&consequent_id)]),
             alternate_stmt,
         );
