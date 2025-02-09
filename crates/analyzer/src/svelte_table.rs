@@ -111,26 +111,4 @@ impl<'a> SvelteTable<'a> {
     pub fn root_scope_id(&self) -> oxc_semantic::ScopeId {
         return self.scopes.root_scope_id();
     }
-
-    pub fn merge_expression_flags(&self, flags: Vec<Option<&ExpressionFlags>>) -> ExpressionFlags {
-        let mut aggregated = ExpressionFlags::empty();
-
-        if flags.is_empty() {
-            return aggregated;
-        }
-
-        for option in flags {
-            if let Some(flag) = option {
-                if flag.has_call {
-                    aggregated.has_call = true;
-                }
-
-                if flag.has_state {
-                    aggregated.has_state = true;
-                }
-            }
-        }
-
-        return aggregated;
-    }
 }
