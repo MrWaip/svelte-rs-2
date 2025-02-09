@@ -248,6 +248,7 @@ impl<'a> Parser<'a> {
 
         let node = Interpolation {
             expression,
+            metadata: None,
             span: interpolation.span,
         };
 

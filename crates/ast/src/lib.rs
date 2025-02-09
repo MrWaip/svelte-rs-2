@@ -1,6 +1,6 @@
 use std::cell::RefMut;
 
-use metadata::ElementMetadata;
+use metadata::{ElementMetadata, InterpolationMetadata};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
@@ -116,6 +116,7 @@ impl<'a> GetSpan for Node<'a> {
 pub struct Interpolation<'a> {
     pub expression: Expression<'a>,
     pub span: Span,
+    pub metadata: Option<InterpolationMetadata>,
 }
 
 impl<'a> AsNode<'a> for Interpolation<'a> {
@@ -262,6 +263,7 @@ pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
     pub flags: ExpressionFlags,
+    pub metadata: InterpolationMetadata
 }
 
 impl<'a> AsNode<'a> for VirtualConcatenation<'a> {

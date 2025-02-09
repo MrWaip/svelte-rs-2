@@ -5,8 +5,9 @@ use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use ast::{
-    metadata::WithMetadata, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
-    ExpressionFlags, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
+    metadata::{InterpolationMetadata, WithMetadata},
+    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionFlags,
+    HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -345,6 +346,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
 
     fn compress_nodes<'local>(&mut self) -> RcCell<Node<'a>> {
         let mut flags: Vec<Option<&ExpressionFlags>> = Vec::with_capacity(self.to_compress.len());
+        let mut metadata = InterpolationMetadata::default();
         let parts = self
             .to_compress
             .iter_mut()
@@ -365,6 +367,8 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
                                 .get_expression_flag(&interpolation.expression),
                         );
 
+                        metadata.add(interpolation.get_metadata());
+
                         ConcatenationPart::Expression(new_expr)
                     }
                     _ => unreachable!(),
@@ -378,6 +382,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             parts,
             span: SPAN,
             flags,
+            metadata,
         })
         .as_rc_cell();
     }
