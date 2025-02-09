@@ -9,6 +9,7 @@ doctest = false
 
 [dependencies]
 analyzer = { workspace = true }
+ast_builder = { workspace = true }
 diagnostics = { workspace = true }
 parser = { workspace = true }
 transformer = { workspace = true }

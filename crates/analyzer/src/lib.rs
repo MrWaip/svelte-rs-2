@@ -3,6 +3,7 @@ pub mod visitor;
 
 use std::mem::{replace, take};
 
+use ast_builder::Builder;
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
     visit::walk::{walk_assignment_expression, walk_call_expression, walk_update_expression},
@@ -19,49 +20,55 @@ use visitor::{
     TemplateVisitor,
 };
 
-use ast::{metadata::{NodeMetadata, WithMetadata}, Ast, ExpressionFlags};
+use ast::{
+    metadata::{ElementMetadata, WithMetadata},
+    Ast, ExpressionFlags,
+};
 
-pub struct Analyzer {}
+pub struct Analyzer<'a> {
+    b: &'a Builder<'a>,
+}
 
 pub struct AnalyzeResult<'a> {
     pub svelte_table: SvelteTable<'a>,
 }
 
-impl Analyzer {
-    pub fn new() -> Self {
-        return Self {};
+impl<'alloc> Analyzer<'alloc> {
+    pub fn new(b: &'alloc Builder<'alloc>) -> Self {
+        return Self { b };
     }
 
-    pub fn analyze<'a, 'link>(&self, ast: &'link Ast<'a>) -> AnalyzeResult<'a> {
-        let svelte_table = if let Some(script) = &ast.script {
-            let ret = SemanticBuilder::new().build(&script.program);
+    pub fn analyze<'link>(&self, ast: &'link Ast<'alloc>) -> AnalyzeResult<'alloc> {
+        let empty = self.b.program(vec![]);
+        let program = ast
+            .script
+            .as_ref()
+            .map(|script| &script.program)
+            .unwrap_or_else(|| &empty);
 
-            if !ret.errors.is_empty() {
-                todo!();
-            }
+        let ret = SemanticBuilder::new().build(&program);
 
-            let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
-            let mut svelte_table = SvelteTable::new(symbols, scopes);
+        if !ret.errors.is_empty() {
+            todo!();
+        }
 
-            let mut script_visitor = ScriptVisitorImpl {
-                svelte_table: &mut svelte_table,
-            };
+        let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
+        let mut svelte_table = SvelteTable::new(symbols, scopes);
 
-            script_visitor.visit_program(&script.program);
-
-            let mut template_visitor = TemplateVisitorImpl {
-                current_reference_flags: ReferenceFlags::empty(),
-                current_expression_flags: ExpressionFlags::empty(),
-                svelte_table: script_visitor.svelte_table,
-                current_metadata: NodeMetadata::default(),
-            };
-
-            template_visitor.visit_template(&ast.template);
-
-            svelte_table
-        } else {
-            SvelteTable::default()
+        let mut script_visitor = ScriptVisitorImpl {
+            svelte_table: &mut svelte_table,
         };
+
+        script_visitor.visit_program(&program);
+
+        let mut template_visitor = TemplateVisitorImpl {
+            current_reference_flags: ReferenceFlags::empty(),
+            current_expression_flags: ExpressionFlags::empty(),
+            svelte_table: script_visitor.svelte_table,
+            element_has_dynamic_nodes: false,
+        };
+
+        template_visitor.visit_template(&ast.template);
 
         return AnalyzeResult { svelte_table };
     }
@@ -75,7 +82,7 @@ pub struct TemplateVisitorImpl<'link, 'a> {
     pub svelte_table: &'link mut SvelteTable<'a>,
     current_reference_flags: ReferenceFlags,
     current_expression_flags: ExpressionFlags,
-    current_metadata: NodeMetadata,
+    element_has_dynamic_nodes: bool,
 }
 
 impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
@@ -94,11 +101,22 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
     fn visit_element(&mut self, it: &mut ast::Element<'a>) {
-        let metadata = NodeMetadata::default();
+        let mut metadata = ElementMetadata::default();
+        let was_dynamic = self.element_has_dynamic_nodes;
+        self.element_has_dynamic_nodes = false;
 
         walk_element(self, it);
 
-        // it.set_metadata(metadata);
+        metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
+        self.element_has_dynamic_nodes = self.element_has_dynamic_nodes || was_dynamic;
+
+        it.set_metadata(metadata);
+    }
+
+    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>) {
+        self.element_has_dynamic_nodes = true;
+
+        walk_if_block(self, it);
     }
 
     fn visit_expression(&mut self, it: &Expression<'a>) {
@@ -110,38 +128,27 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
     }
 
     fn visit_class_directive_attribute(&mut self, it: &ast::ClassDirective<'a>) {
-        // self.current_metadata.mark_dynamic();
-
+        self.element_has_dynamic_nodes = true;
         walk_class_directive_attribute(self, it);
     }
 
-    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>) {
-        // self.current_metadata.mark_dynamic();
-
-        walk_if_block(self, it);
-    }
-
     fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>) {
-        // self.current_metadata.mark_dynamic();
-
+        self.element_has_dynamic_nodes = true;
         walk_interpolation(self, it);
     }
 
     fn visit_expression_attribute(&mut self, it: &Expression<'a>) {
-        // self.current_metadata.mark_dynamic();
-
+        self.element_has_dynamic_nodes = true;
         walk_expression_attribute(self, it);
     }
 
     fn visit_concatenation_attribute_value(&mut self, it: &ast::Concatenation<'a>) {
-        // self.current_metadata.mark_dynamic();
-
+        self.element_has_dynamic_nodes = true;
         walk_concatenation_attribute_value(self, it);
     }
 
     fn visit_expression_attribute_value(&mut self, it: &Expression<'a>) {
-        // self.current_metadata.mark_dynamic();
-
+        self.element_has_dynamic_nodes = true;
         walk_expression_attribute_value(self, it);
     }
 }
@@ -184,10 +191,6 @@ impl<'link, 'a> TemplateVisitorImpl<'link, 'a> {
         }
     }
 
-    fn resolve_metadata(&mut self) -> NodeMetadata {
-        take(&mut self.current_metadata)
-    }
-
     fn resolve_reference_usages(&mut self) -> ReferenceFlags {
         if self.current_reference_flags.is_empty() {
             ReferenceFlags::Read
@@ -202,6 +205,7 @@ mod tests {
     use ast::Node;
     use oxc_allocator::Allocator;
 
+    use oxc_ast::AstBuilder;
     use parser::Parser;
 
     use super::*;
@@ -209,7 +213,9 @@ mod tests {
     #[test]
     fn analyze_smoke() {
         let allocator = Allocator::default();
-        let analyzer = Analyzer::new();
+        let ast_builder = AstBuilder::new(&allocator);
+        let builder = Builder::new(ast_builder);
+        let analyzer = Analyzer::new(&builder);
         let mut parser = Parser::new(
             "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>",
             &allocator,
@@ -227,7 +233,9 @@ mod tests {
     #[test]
     fn svelte_table_smoke() {
         let allocator = Allocator::default();
-        let analyzer = Analyzer::new();
+        let ast_builder = AstBuilder::new(&allocator);
+        let builder = Builder::new(ast_builder);
+        let analyzer = Analyzer::new(&builder);
         let mut parser = Parser::new(
             "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>{goto(rune_var)}",
             &allocator,
@@ -246,5 +254,48 @@ mod tests {
 
         assert_eq!(flags.has_state, true);
         assert_eq!(flags.has_call, true);
+    }
+
+    #[test]
+    fn metadata_test() {
+        let allocator = Allocator::default();
+        let ast_builder = AstBuilder::new(&allocator);
+        let builder = Builder::new(ast_builder);
+        let analyzer = Analyzer::new(&builder);
+        let mut parser = Parser::new(
+            r#"<div><h1>
+                    title
+                </h1><div>
+                    {name}
+                </div>
+            </div><span>
+                text
+            </span>"#,
+            &allocator,
+        );
+        let ast = parser.parse().unwrap();
+
+        analyzer.analyze(&ast);
+
+        let Node::Element(root_div) = &*ast.template[0].borrow() else {
+            unreachable!()
+        };
+
+        let Node::Element(root_span) = &*ast.template[1].borrow() else {
+            unreachable!()
+        };
+
+        let Node::Element(sub_h1) = &*root_div.nodes[0].borrow() else {
+            unreachable!()
+        };
+
+        let Node::Element(sub_div) = &*root_div.nodes[1].borrow() else {
+            unreachable!()
+        };
+
+        assert_eq!(root_div.get_metadata().has_dynamic_nodes, true);
+        assert_eq!(root_span.get_metadata().has_dynamic_nodes, false);
+        assert_eq!(sub_h1.get_metadata().has_dynamic_nodes, false);
+        assert_eq!(sub_div.get_metadata().has_dynamic_nodes, true);
     }
 }

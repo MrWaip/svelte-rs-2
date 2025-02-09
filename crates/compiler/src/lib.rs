@@ -1,10 +1,11 @@
+use ast_builder::Builder;
 use diagnostics::Diagnostic;
 use oxc_allocator::Allocator;
-use oxc_ast::AstBuilder;
+use oxc_ast::AstBuilder as OxcBuilder;
 
 use analyzer::Analyzer;
 use parser::Parser;
-use transformer::{builder::Builder, transform_client};
+use transformer::transform_client;
 
 pub struct Compiler {}
 
@@ -23,9 +24,9 @@ impl Compiler {
         allocator: &'a Allocator,
     ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
-        let analyzer = Analyzer::new();
-        let oxc_builder = AstBuilder::new(allocator);
+        let oxc_builder = OxcBuilder::new(allocator);
         let builder = Builder::new(oxc_builder);
+        let analyzer = Analyzer::new(&builder);
 
         let ast = parser.parse()?;
         let analyze_result = analyzer.analyze(&ast);

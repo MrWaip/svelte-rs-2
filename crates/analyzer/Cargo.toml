@@ -8,6 +8,7 @@ doctest = false
 
 [dependencies]
 ast = { workspace = true }
+ast_builder = { workspace = true }
 parser = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_semantic = { workspace = true }

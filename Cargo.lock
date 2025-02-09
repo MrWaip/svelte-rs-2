@@ -22,6 +22,7 @@ name = "analyzer"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "ast_builder",
  "oxc_allocator",
  "oxc_ast",
  "oxc_index",
@@ -53,6 +54,16 @@ dependencies = [
  "oxc_span",
  "rccell",
  "span",
+]
+
+[[package]]
+name = "ast_builder"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_span",
 ]
 
 [[package]]
@@ -190,6 +201,7 @@ name = "compiler"
 version = "0.1.0"
 dependencies = [
  "analyzer",
+ "ast_builder",
  "diagnostics",
  "oxc_allocator",
  "oxc_ast",
@@ -1233,6 +1245,7 @@ version = "0.1.0"
 dependencies = [
  "analyzer",
  "ast",
+ "ast_builder",
  "oxc_allocator",
  "oxc_ast",
  "oxc_codegen",

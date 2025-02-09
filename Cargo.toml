@@ -6,6 +6,7 @@ resolver = "2"
 [workspace.dependencies]
 ast = { path = "crates/ast" }
 span = { path = "crates/span" }
+ast_builder = { path = "crates/ast_builder" }
 diagnostics = { path = "crates/diagnostics" }
 parser = { path = "crates/parser" }
 analyzer = { path = "crates/analyzer" }
@@ -28,4 +29,3 @@ rccell = "0.1.3"
 rstest = "0.24.0"
 wasm-bindgen = "0.2.99"
 serde-wasm-bindgen = "0.6.5"
-

@@ -5,19 +5,17 @@ use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
 use ast::{
-    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionFlags,
-    HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
+    metadata::WithMetadata, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
+    ExpressionFlags, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
 
-use super::{
-    builder::{
-        Builder, BuilderAssignmentLeft as BAssignLeft, BuilderAssignmentRight as BAssignRight,
-        BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
-    },
-    scope::Scope,
-    transform_script::TransformScript,
+use super::{scope::Scope, transform_script::TransformScript};
+
+use ast_builder::{
+    Builder, BuilderAssignmentLeft as BAssignLeft, BuilderAssignmentRight as BAssignRight,
+    BuilderExpression as BExpr, BuilderFunctionArgument as BArg, BuilderStatement as BStmt,
 };
 
 pub struct TransformTemplate<'a, 'link> {
@@ -34,6 +32,12 @@ pub enum AnchorNodeType {
     VirtualConcatenation(bool),
     IfBlock,
     Element(String),
+}
+
+impl AnchorNodeType {
+    pub fn is_element(&self) -> bool {
+        return matches!(self, AnchorNodeType::Element(_));
+    }
 }
 
 #[derive(Debug)]
@@ -261,7 +265,9 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
         // !svelte specific
-        self.use_lazy_statement();
+        if !anchor_type.is_element() {
+            self.use_lazy_statement();
+        }
 
         let preferable_name = self.preferable_name(&anchor_type);
         let (mut anchor, early_return) = self.next_anchor(&anchor_type);
@@ -308,7 +314,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         self.reset_sibling_offset();
 
         // !svelte specific
-        if matches!(anchor_type, AnchorNodeType::Element(_)) {
+        if anchor_type.is_element() {
             self.fragment.lazy_statement = Some(stmt);
         } else {
             self.push_init(stmt);
@@ -389,7 +395,6 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             parts,
             span: SPAN,
             flags,
-            metadata: None,
         })
         .as_rc_cell();
     }
@@ -610,6 +615,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     ) {
         // !svelte optimization
         let trim_result = self.trim_nodes(&mut element.nodes);
+        let metadata = element.get_metadata();
         let has_attributes = !element.attributes.is_empty();
         let has_nodes = !element.nodes.is_empty();
 
@@ -633,7 +639,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             trim_result,
         );
 
-        if trim_result.has_non_text_nodes && !child_ctx.skip_reset_element {
+        if (trim_result.has_non_text_nodes && metadata.has_dynamic_nodes)
+            && !child_ctx.skip_reset_element
+        {
+            ctx.use_lazy_statement();
             ctx.push_init(self.b.call_stmt(
                 "$.reset",
                 [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],

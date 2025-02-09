@@ -8,6 +8,7 @@ doctest = false
 
 [dependencies]
 analyzer = { workspace = true }
+ast_builder = { workspace = true }
 span = { workspace = true }
 ast = { workspace = true }
 oxc_ast = { workspace = true }
