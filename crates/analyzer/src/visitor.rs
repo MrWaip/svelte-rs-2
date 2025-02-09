@@ -25,19 +25,19 @@ pub trait TemplateVisitor<'a>: Sized {
         walk_nodes(self, it);
     }
 
-    fn visit_node(&mut self, it: &Node<'a>) {
+    fn visit_node(&mut self, it: &mut Node<'a>) {
         walk_node(self, it);
     }
 
     fn visit_text(&mut self, it: &Text<'a>) {}
 
-    fn visit_interpolation(&mut self, it: &Interpolation<'a>) {
+    fn visit_interpolation(&mut self, it: &mut Interpolation<'a>) {
         walk_interpolation(self, it);
     }
 
     fn visit_expression(&mut self, it: &Expression<'a>) {}
 
-    fn visit_element(&mut self, it: &Element<'a>) {
+    fn visit_element(&mut self, it: &mut Element<'a>) {
         walk_element(self, it);
     }
 
@@ -85,7 +85,7 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn visit_script_tag(&mut self, it: &ScriptTag<'a>) {}
 
-    fn visit_if_block(&mut self, it: &IfBlock<'a>) {
+    fn visit_if_block(&mut self, it: &mut IfBlock<'a>) {
         walk_if_block(self, it);
     }
 }
@@ -103,13 +103,13 @@ pub mod walk {
 
     pub fn walk_nodes<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Vec<RcCell<Node<'a>>>) {
         for cell in it.iter() {
-            let node = cell.borrow();
+            let mut node = cell.borrow_mut();
 
-            walk_node(visitor, &*node);
+            visitor.visit_node(&mut *node);
         }
     }
 
-    pub fn walk_node<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Node<'a>) {
+    pub fn walk_node<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Node<'a>) {
         match it {
             Node::Element(it) => visitor.visit_element(it),
             Node::Text(it) => visitor.visit_text(it),
@@ -120,13 +120,13 @@ pub mod walk {
         }
     }
 
-    pub fn walk_interpolation<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Interpolation<'a>) {
+    pub fn walk_interpolation<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Interpolation<'a>) {
         visitor.visit_expression(&it.expression);
     }
 
-    pub fn walk_element<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Element<'a>) {
+    pub fn walk_element<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Element<'a>) {
         visitor.visit_attributes(&it.attributes);
-        visitor.visit_nodes(&it.nodes);
+        visitor.visit_nodes(&mut it.nodes);
     }
 
     pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Vec<Attribute<'a>>) {
@@ -204,7 +204,7 @@ pub mod walk {
         visitor.visit_expression(it);
     }
 
-    pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &IfBlock<'a>) {
+    pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut IfBlock<'a>) {
         visitor.visit_expression(&it.test);
 
         visitor.visit_nodes(&it.consequent);

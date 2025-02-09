@@ -282,7 +282,6 @@ pub struct ScriptTag<'a> {
     pub program: Program<'a>,
     pub span: Span,
     pub language: Language,
-    pub metadata: Option<NodeMetadata>,
 }
 
 impl<'a> ScriptTag<'a> {

@@ -473,7 +473,6 @@ impl<'a> Parser<'a> {
                 program: program_result.program,
                 language,
                 span,
-                metadata: None,
             }
             .as_node()
             .as_rc_cell(),
