@@ -1,6 +1,6 @@
 use std::cell::RefMut;
 
-use metadata::NodeMetadata;
+use metadata::ElementMetadata;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
@@ -35,6 +35,14 @@ pub enum Node<'a> {
 impl<'a> Node<'a> {
     pub fn as_rc_cell(self) -> RcCell<Node<'a>> {
         return RcCell::new(self);
+    }
+
+    pub fn as_element(self) -> Option<Element<'a>> {
+        return if let Node::Element(element) = self {
+            Some(element)
+        } else {
+            None
+        };
     }
 
     pub fn is_if_block(&self) -> bool {
@@ -108,7 +116,6 @@ impl<'a> GetSpan for Node<'a> {
 pub struct Interpolation<'a> {
     pub expression: Expression<'a>,
     pub span: Span,
-    pub metadata: Option<NodeMetadata>,
 }
 
 impl<'a> AsNode<'a> for Interpolation<'a> {
@@ -124,7 +131,6 @@ pub struct IfBlock<'a> {
     pub is_elseif: bool,
     pub consequent: Vec<RcCell<Node<'a>>>,
     pub alternate: Option<Vec<RcCell<Node<'a>>>>,
-    pub metadata: Option<NodeMetadata>,
 }
 impl<'a> IfBlock<'a> {
     pub fn push(&mut self, node: RcCell<Node<'a>>) {
@@ -150,7 +156,7 @@ pub struct Element<'a> {
     pub has_complex_nodes: bool,
     pub nodes: Vec<RcCell<Node<'a>>>,
     pub attributes: Vec<Attribute<'a>>,
-    pub metadata: Option<NodeMetadata>,
+    pub metadata: Option<ElementMetadata>,
 }
 
 impl<'a> AsNode<'a> for Element<'a> {
@@ -256,7 +262,6 @@ pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
     pub flags: ExpressionFlags,
-    pub metadata: Option<NodeMetadata>,
 }
 
 impl<'a> AsNode<'a> for VirtualConcatenation<'a> {

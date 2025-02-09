@@ -1,14 +1,13 @@
 use std::vec;
 
 use ast::Ast;
-use builder::Builder;
+use ast_builder::Builder;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use transform_script::TransformScript;
 use transform_template::TransformTemplate;
 
 use analyzer::AnalyzeResult;
 
-pub mod builder;
 pub mod scope;
 pub mod transform_script;
 pub mod transform_template;

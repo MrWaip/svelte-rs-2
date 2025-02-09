@@ -249,7 +249,6 @@ impl<'a> Parser<'a> {
         let node = Interpolation {
             expression,
             span: interpolation.span,
-            metadata: None,
         };
 
         self.node_stack.add_leaf(node.as_node().as_rc_cell())?;
@@ -356,7 +355,6 @@ impl<'a> Parser<'a> {
             is_elseif: false,
             alternate: None,
             consequent: vec![],
-            metadata: None,
             test: self.parse_js_expression(
                 &start_if_tag.expression.value,
                 start_if_tag.expression.span,
@@ -387,7 +385,6 @@ impl<'a> Parser<'a> {
                 is_elseif: true,
                 span,
                 test: expression.unwrap()?,
-                metadata: None,
             };
 
             let cell = else_if_block.as_node().as_rc_cell();

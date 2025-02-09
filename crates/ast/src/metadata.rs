@@ -1,68 +1,32 @@
-use crate::{Element, ExpressionFlags, IfBlock, Interpolation, VirtualConcatenation};
+use crate::Element;
 
 #[derive(Debug, Clone, Copy)]
-pub struct NodeMetadata {
-    pub dynamic: bool,
-    pub expression_flags: Option<ExpressionFlags>,
+pub struct ElementMetadata {
+    pub has_dynamic_nodes: bool,
 }
 
-impl Default for NodeMetadata {
+impl Default for ElementMetadata {
     fn default() -> Self {
         Self {
-            dynamic: false,
-            expression_flags: None,
+            has_dynamic_nodes: false,
         }
     }
 }
 
-impl NodeMetadata {
-    pub fn mark_dynamic(&mut self) {
-        self.dynamic = true;
-    }
-}
+impl ElementMetadata {}
 
 pub trait WithMetadata {
-    fn get_metadata(&self) -> NodeMetadata;
+    fn get_metadata(&self) -> ElementMetadata;
 
-    fn set_metadata(&mut self, metadata: NodeMetadata);
+    fn set_metadata(&mut self, metadata: ElementMetadata);
 }
 
 impl<'a> WithMetadata for Element<'a> {
-    fn get_metadata(&self) -> NodeMetadata {
+    fn get_metadata(&self) -> ElementMetadata {
         self.metadata.unwrap()
     }
 
-    fn set_metadata(&mut self, metadata: NodeMetadata) {
-        self.metadata = Some(metadata);
-    }
-}
-
-impl<'a> WithMetadata for Interpolation<'a> {
-    fn get_metadata(&self) -> NodeMetadata {
-        self.metadata.unwrap()
-    }
-
-    fn set_metadata(&mut self, metadata: NodeMetadata) {
-        self.metadata = Some(metadata);
-    }
-}
-
-impl<'a> WithMetadata for VirtualConcatenation<'a> {
-    fn get_metadata(&self) -> NodeMetadata {
-        self.metadata.unwrap()
-    }
-
-    fn set_metadata(&mut self, metadata: NodeMetadata) {
-        self.metadata = Some(metadata);
-    }
-}
-
-impl<'a> WithMetadata for IfBlock<'a> {
-    fn get_metadata(&self) -> NodeMetadata {
-        self.metadata.unwrap()
-    }
-
-    fn set_metadata(&mut self, metadata: NodeMetadata) {
+    fn set_metadata(&mut self, metadata: ElementMetadata) {
         self.metadata = Some(metadata);
     }
 }

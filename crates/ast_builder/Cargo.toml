@@ -1,0 +1,10 @@
+[package]
+name = "ast_builder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ast = { workspace = true }
+oxc_span = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_allocator = { workspace = true }

@@ -9,7 +9,7 @@ use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
 use analyzer::svelte_table::{Rune, SvelteTable};
 
-use super::builder::{Builder, BuilderExpression, BuilderFunctionArgument};
+use ast_builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
 pub struct TransformScript<'a, 'link> {
     b: &'a Builder<'a>,
@@ -63,7 +63,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
     ) -> TransformExpressionResult<'a> {
         let mut program = self.b.program(vec![self
             .b
-            .stmt(super::builder::BuilderStatement::Expr(expression))]);
+            .stmt(ast_builder::BuilderStatement::Expr(expression))]);
 
         program.set_scope_id(self.svelte_table.root_scope_id());
 
