@@ -262,7 +262,6 @@ pub enum AttributeValue<'a> {
 pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
-    pub flags: ExpressionFlags,
     pub metadata: InterpolationMetadata
 }
 

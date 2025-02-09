@@ -345,7 +345,6 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     }
 
     fn compress_nodes<'local>(&mut self) -> RcCell<Node<'a>> {
-        let mut flags: Vec<Option<&ExpressionFlags>> = Vec::with_capacity(self.to_compress.len());
         let mut metadata = InterpolationMetadata::default();
         let parts = self
             .to_compress
@@ -361,12 +360,6 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
                             .ast
                             .move_expression(&mut interpolation.expression);
 
-                        // after moving expression new+expr  has new pointer
-                        flags.push(
-                            self.svelte_table
-                                .get_expression_flag(&interpolation.expression),
-                        );
-
                         metadata.add(interpolation.get_metadata());
 
                         ConcatenationPart::Expression(new_expr)
@@ -376,12 +369,9 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             })
             .collect();
 
-        let flags = self.svelte_table.merge_expression_flags(flags);
-
         return Node::VirtualConcatenation(VirtualConcatenation {
             parts,
             span: SPAN,
-            flags,
             metadata,
         })
         .as_rc_cell();
@@ -582,10 +572,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Node::Element(element) => self.transform_element(element, ctx),
             Node::Text(text) => self.transform_text(text, ctx),
             Node::Interpolation(interpolation) => {
-                let flags = self
-                    .svelte_table
-                    .get_expression_flag(&interpolation.expression);
-                self.transform_interpolation(&mut interpolation.expression, ctx, false, flags)
+                let metadata = interpolation.get_metadata();
+                self.transform_interpolation(&mut interpolation.expression, ctx, false, metadata)
             }
             Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
             Node::VirtualConcatenation(concatenation) => {
@@ -857,21 +845,19 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         expression: &mut Expression<'a>,
         ctx: &mut NodeContext<'a, 'local>,
         is_concatenation: bool,
-        expression_flags: Option<&ExpressionFlags>,
+        metadata: InterpolationMetadata,
     ) {
-        let has_state = expression_flags.is_some_and(|flags| flags.has_state);
-
         // whitespace for html text node for text anchor
-        if !ctx.trim_result.has_only_text_and_interpolation || has_state {
+        if !ctx.trim_result.has_only_text_and_interpolation || metadata.has_reactivity {
             ctx.push_template(" ".into());
         } else {
             ctx.set_skip_reset_element();
         }
 
         let anchor_type = if is_concatenation {
-            AnchorNodeType::VirtualConcatenation(has_state)
+            AnchorNodeType::VirtualConcatenation(metadata.has_reactivity)
         } else {
-            AnchorNodeType::Interpolation(has_state)
+            AnchorNodeType::Interpolation(metadata.has_reactivity)
         };
 
         ctx.add_anchor(anchor_type);
@@ -879,7 +865,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let expression = self.transform_expression(expression);
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
-        if has_state {
+        if metadata.has_reactivity {
             let set_text = self
                 .b
                 .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
@@ -912,7 +898,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let tmp = self.b.template_literal(&mut concatenation.parts);
         let mut expr = self.b.expr(BExpr::TemplateLiteral(tmp));
 
-        self.transform_interpolation(&mut expr, ctx, true, Some(&concatenation.flags));
+        self.transform_interpolation(&mut expr, ctx, true, concatenation.metadata);
     }
 
     fn transform_if_block<'local>(
