@@ -21,7 +21,7 @@ use visitor::{
 };
 
 use ast::{
-    metadata::{ElementMetadata, WithMetadata},
+    metadata::{ElementMetadata, InterpolationMetadata, WithMetadata},
     Ast, ExpressionFlags,
 };
 
@@ -135,6 +135,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
     fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_interpolation(self, it);
+
+        let flags = self.svelte_table.get_expression_flag(&it.expression);
+
+        it.set_metadata(InterpolationMetadata {
+            has_reactivity: flags.is_some_and(|x| x.has_state),
+            has_call_expression: flags.is_some_and(|x| x.has_call),
+        });
     }
 
     fn visit_expression_attribute(&mut self, it: &Expression<'a>) {
