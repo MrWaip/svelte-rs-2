@@ -335,6 +335,7 @@ impl<'a> Parser<'a> {
                 token::Attribute::ClassDirective(token) => {
                     attributes.push(Attribute::ClassDirective(ClassDirective {
                         shorthand: token.shorthand,
+                        metadata: None,
                         name: token.name,
                         expression: self
                             .parse_js_expression(token.expression.value, token.expression.span)?,

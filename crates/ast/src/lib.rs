@@ -1,6 +1,6 @@
 use std::cell::RefMut;
 
-use metadata::{ElementMetadata, InterpolationMetadata};
+use metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
@@ -242,6 +242,7 @@ pub struct ClassDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
     pub expression: Expression<'a>,
+    pub metadata: Option<AttributeMetadata>,
 }
 
 #[derive(Debug)]
@@ -262,7 +263,7 @@ pub enum AttributeValue<'a> {
 pub struct VirtualConcatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
-    pub metadata: InterpolationMetadata
+    pub metadata: InterpolationMetadata,
 }
 
 impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
