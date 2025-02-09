@@ -93,7 +93,7 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
-    fn visit_element(&mut self, it: &ast::Element<'a>) {
+    fn visit_element(&mut self, it: &mut ast::Element<'a>) {
         let metadata = NodeMetadata::default();
 
         walk_element(self, it);
@@ -115,13 +115,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         walk_class_directive_attribute(self, it);
     }
 
-    fn visit_if_block(&mut self, it: &ast::IfBlock<'a>) {
+    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>) {
         // self.current_metadata.mark_dynamic();
 
         walk_if_block(self, it);
     }
 
-    fn visit_interpolation(&mut self, it: &ast::Interpolation<'a>) {
+    fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>) {
         // self.current_metadata.mark_dynamic();
 
         walk_interpolation(self, it);
