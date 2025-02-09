@@ -21,7 +21,7 @@ use visitor::{
 };
 
 use ast::{
-    metadata::{ElementMetadata, InterpolationMetadata, WithMetadata},
+    metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata, WithMetadata},
     Ast, ExpressionFlags,
 };
 
@@ -127,20 +127,32 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         self.svelte_table.add_expression_flag(it, flags);
     }
 
-    fn visit_class_directive_attribute(&mut self, it: &ast::ClassDirective<'a>) {
+    fn visit_class_directive_attribute(&mut self, it: &mut ast::ClassDirective<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_class_directive_attribute(self, it);
+
+        let flags = self
+            .svelte_table
+            .get_expression_flag(&it.expression)
+            .unwrap();
+
+        it.set_metadata(AttributeMetadata {
+            has_reactivity: flags.has_state,
+        });
     }
 
     fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_interpolation(self, it);
 
-        let flags = self.svelte_table.get_expression_flag(&it.expression);
+        let flags = self
+            .svelte_table
+            .get_expression_flag(&it.expression)
+            .unwrap();
 
         it.set_metadata(InterpolationMetadata {
-            has_reactivity: flags.is_some_and(|x| x.has_state),
-            has_call_expression: flags.is_some_and(|x| x.has_call),
+            has_reactivity: flags.has_state,
+            has_call_expression: flags.has_call,
         });
     }
 

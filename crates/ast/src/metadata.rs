@@ -1,4 +1,4 @@
-use crate::{Element, Interpolation, VirtualConcatenation};
+use crate::{ClassDirective, Element, Interpolation, VirtualConcatenation};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElementMetadata {
@@ -9,6 +9,11 @@ pub struct ElementMetadata {
 pub struct InterpolationMetadata {
     pub has_reactivity: bool,
     pub has_call_expression: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AttributeMetadata {
+    pub has_reactivity: bool,
 }
 
 impl InterpolationMetadata {
@@ -59,5 +64,17 @@ impl<'a> WithMetadata for VirtualConcatenation<'a> {
 
     fn set_metadata(&mut self, metadata: Self::Metadata) {
         self.metadata = metadata;
+    }
+}
+
+impl<'a> WithMetadata for ClassDirective<'a> {
+    type Metadata = AttributeMetadata;
+
+    fn get_metadata(&self) -> Self::Metadata {
+        self.metadata.unwrap()
+    }
+
+    fn set_metadata(&mut self, metadata: Self::Metadata) {
+        self.metadata = Some(metadata)
     }
 }

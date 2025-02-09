@@ -41,11 +41,11 @@ pub trait TemplateVisitor<'a>: Sized {
         walk_element(self, it);
     }
 
-    fn visit_attributes(&mut self, it: &Vec<Attribute<'a>>) {
+    fn visit_attributes(&mut self, it: &mut Vec<Attribute<'a>>) {
         walk_attributes(self, it);
     }
 
-    fn visit_attribute(&mut self, it: &Attribute<'a>) {
+    fn visit_attribute(&mut self, it: &mut Attribute<'a>) {
         walk_attribute(self, it);
     }
 
@@ -57,7 +57,7 @@ pub trait TemplateVisitor<'a>: Sized {
         walk_expression_attribute(self, it);
     }
 
-    fn visit_class_directive_attribute(&mut self, it: &ClassDirective<'a>) {
+    fn visit_class_directive_attribute(&mut self, it: &mut ClassDirective<'a>) {
         walk_class_directive_attribute(self, it);
     }
 
@@ -120,22 +120,28 @@ pub mod walk {
         }
     }
 
-    pub fn walk_interpolation<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Interpolation<'a>) {
+    pub fn walk_interpolation<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &mut Interpolation<'a>,
+    ) {
         visitor.visit_expression(&it.expression);
     }
 
     pub fn walk_element<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Element<'a>) {
-        visitor.visit_attributes(&it.attributes);
+        visitor.visit_attributes(&mut it.attributes);
         visitor.visit_nodes(&mut it.nodes);
     }
 
-    pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Vec<Attribute<'a>>) {
-        for attribute in it.iter() {
+    pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &mut Vec<Attribute<'a>>,
+    ) {
+        for attribute in it.iter_mut() {
             visitor.visit_attribute(attribute);
         }
     }
 
-    pub fn walk_attribute<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Attribute<'a>) {
+    pub fn walk_attribute<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Attribute<'a>) {
         match it {
             Attribute::HTMLAttribute(it) => visitor.visit_html_attribute(it),
             Attribute::Expression(it) => visitor.visit_expression_attribute(it),
