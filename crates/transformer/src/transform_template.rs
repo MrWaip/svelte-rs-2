@@ -57,7 +57,6 @@ pub struct FragmentContext<'a> {
     scope: Rc<RefCell<Scope>>,
     /** identifier на фрагмент */
     anchor: Expression<'a>,
-    lazy_statement: Option<Statement<'a>>,
 }
 
 impl<'a> FragmentContext<'a> {
@@ -253,22 +252,11 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         };
     }
 
-    pub fn use_lazy_statement(&mut self) {
-        if let Some(stmt) = replace(&mut self.fragment.lazy_statement, None) {
-            self.push_init(stmt);
-        }
-    }
-
     pub fn set_skip_reset_element(&mut self) {
         self.skip_reset_element = true;
     }
 
     pub fn add_anchor(&mut self, anchor_type: AnchorNodeType) {
-        // !svelte specific
-        if !anchor_type.is_element() {
-            self.use_lazy_statement();
-        }
-
         let preferable_name = self.preferable_name(&anchor_type);
         let (mut anchor, early_return) = self.next_anchor(&anchor_type);
 
@@ -313,12 +301,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             .expr(BExpr::Ident(self.builder.rid(&identifier)));
         self.reset_sibling_offset();
 
-        // !svelte specific
-        if anchor_type.is_element() {
-            self.fragment.lazy_statement = Some(stmt);
-        } else {
-            self.push_init(stmt);
-        }
+        self.push_init(stmt);
     }
 }
 
@@ -511,7 +494,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             update: vec![],
             after_update: vec![],
             template: vec![],
-            lazy_statement: None,
             scope: scope.clone(),
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
@@ -617,12 +599,11 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let trim_result = self.trim_nodes(&mut element.nodes);
         let metadata = element.get_metadata();
         let has_attributes = !element.attributes.is_empty();
-        let has_nodes = !element.nodes.is_empty();
 
         ctx.push_template(format!("<{}", &element.name));
 
         // !svelte specific
-        if has_attributes || (has_nodes && !trim_result.has_single_text_node) {
+        if metadata.has_dynamic_nodes {
             ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
         }
 
@@ -642,7 +623,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         if (trim_result.has_non_text_nodes && metadata.has_dynamic_nodes)
             && !child_ctx.skip_reset_element
         {
-            ctx.use_lazy_statement();
             ctx.push_init(self.b.call_stmt(
                 "$.reset",
                 [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
@@ -678,11 +658,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         match attr {
             Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
             Attribute::Expression(expression) => {
-                ctx.use_lazy_statement();
                 self.transform_expression_attribute(expression, ctx)
             }
             Attribute::ClassDirective(directive) => {
-                ctx.use_lazy_statement();
                 self.transform_class_directive_attribute(directive, ctx)
             }
         }
@@ -756,12 +734,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         match &mut attr.value {
             AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
             AttributeValue::Expression(value) => {
-                ctx.use_lazy_statement();
                 self.transform_expression_attribute_value(&attr.name, value, ctx)
             }
             AttributeValue::Boolean => (),
             AttributeValue::Concatenation(value) => {
-                ctx.use_lazy_statement();
                 self.transform_concatenation_attribute_value(&attr.name, value, ctx)
             }
         };
