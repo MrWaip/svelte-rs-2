@@ -13,8 +13,8 @@ use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
-    Element, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
-    Text,
+    Element, ExpressionAttribute, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation,
+    Node, ScriptTag, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -335,7 +335,10 @@ impl<'a> Parser<'a> {
                         expression_tag.span,
                     )?;
 
-                    attributes.push(Attribute::Expression(expression));
+                    attributes.push(Attribute::Expression(ExpressionAttribute {
+                        expression,
+                        metadata: None,
+                    }));
                 }
                 token::Attribute::ClassDirective(token) => {
                     attributes.push(Attribute::ClassDirective(ClassDirective {
