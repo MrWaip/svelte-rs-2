@@ -7,8 +7,7 @@ use rccell::RcCell;
 use ast::{
     metadata::{InterpolationMetadata, WithMetadata},
     Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
-    ExpressionAttributeValue, HTMLAttribute, IfBlock, Node, Text,
-    VirtualConcatenation,
+    ExpressionAttributeValue, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -312,7 +311,6 @@ struct CompressNodesIter<'a, 'reference> {
     idx: usize,
     to_compress: Vec<RcCell<Node<'a>>>,
     builder: &'reference Builder<'a>,
-    svelte_table: &'reference SvelteTable,
 }
 
 // !svelte optimization
@@ -320,14 +318,12 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     pub fn iter(
         nodes: &'reference Vec<RcCell<Node<'a>>>,
         builder: &'reference Builder<'a>,
-        svelte_table: &'reference SvelteTable,
     ) -> Self {
         return Self {
             builder,
             nodes,
             idx: 0,
             to_compress: vec![],
-            svelte_table,
         };
     }
 
@@ -546,7 +542,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut node_context = NodeContext::new(context, self.b, trim_result, parent_node_anchor);
 
         // !svelte optimization
-        for cell in CompressNodesIter::iter(nodes, self.b, self.svelte_table) {
+        for cell in CompressNodesIter::iter(nodes, self.b) {
             let node = &mut *cell.borrow_mut();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
