@@ -7,7 +7,7 @@ use rccell::RcCell;
 use ast::{
     metadata::{InterpolationMetadata, WithMetadata},
     Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
-    ExpressionAttributeValue, ExpressionFlags, HTMLAttribute, IfBlock, Node, Text,
+    ExpressionAttributeValue, HTMLAttribute, IfBlock, Node, Text,
     VirtualConcatenation,
 };
 
