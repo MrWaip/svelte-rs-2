@@ -282,6 +282,7 @@ impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
 pub struct Concatenation<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub span: Span,
+    pub metadata: Option<AttributeMetadata>,
 }
 
 #[derive(Debug)]

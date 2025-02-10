@@ -14,8 +14,8 @@ use svelte_table::{RuneKind, SvelteTable};
 use visitor::{
     walk::{
         walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
-        walk_expression_attribute, walk_expression_attribute_value, walk_if_block,
-        walk_interpolation,
+        walk_expression_attribute, walk_expression_attribute_value,
+        walk_expression_concatenation_part, walk_if_block, walk_interpolation,
     },
     TemplateVisitor,
 };
@@ -66,6 +66,7 @@ impl<'alloc> Analyzer<'alloc> {
             current_expression_flags: ExpressionFlags::empty(),
             svelte_table: script_visitor.svelte_table,
             element_has_dynamic_nodes: false,
+            current_concatenation_metadata: AttributeMetadata::default(),
         };
 
         template_visitor.visit_template(&ast.template);
@@ -83,6 +84,7 @@ pub struct TemplateVisitorImpl<'link, 'a> {
     current_reference_flags: ReferenceFlags,
     current_expression_flags: ExpressionFlags,
     element_has_dynamic_nodes: bool,
+    current_concatenation_metadata: AttributeMetadata,
 }
 
 impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
@@ -161,9 +163,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         walk_expression_attribute(self, it);
     }
 
-    fn visit_concatenation_attribute_value(&mut self, it: &ast::Concatenation<'a>) {
+    fn visit_concatenation_attribute_value(&mut self, it: &mut ast::Concatenation<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_concatenation_attribute_value(self, it);
+
+        let metadata = take(&mut self.current_concatenation_metadata);
+
+        it.set_metadata(metadata);
     }
 
     fn visit_expression_attribute_value(&mut self, it: &mut ExpressionAttributeValue<'a>) {
@@ -178,6 +184,14 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         it.set_metadata(AttributeMetadata {
             has_reactivity: flags.has_state,
         });
+    }
+
+    fn visit_expression_concatenation_part(&mut self, it: &Expression<'a>) {
+        walk_expression_concatenation_part(self, it);
+
+        let flags = self.svelte_table.get_expression_flag(&it).unwrap();
+
+        self.current_concatenation_metadata.has_reactivity = flags.has_state;
     }
 }
 

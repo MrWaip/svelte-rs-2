@@ -1,4 +1,4 @@
-use crate::{ClassDirective, Element, ExpressionAttributeValue, Interpolation, VirtualConcatenation};
+use crate::{ClassDirective, Concatenation, Element, ExpressionAttributeValue, Interpolation, VirtualConcatenation};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElementMetadata {
@@ -68,6 +68,18 @@ impl<'a> WithMetadata for VirtualConcatenation<'a> {
 }
 
 impl<'a> WithMetadata for ClassDirective<'a> {
+    type Metadata = AttributeMetadata;
+
+    fn get_metadata(&self) -> Self::Metadata {
+        self.metadata.unwrap()
+    }
+
+    fn set_metadata(&mut self, metadata: Self::Metadata) {
+        self.metadata = Some(metadata)
+    }
+}
+
+impl<'a> WithMetadata for Concatenation<'a> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {

@@ -778,18 +778,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
-        let mut has_state = false;
+        let metadata = value.get_metadata();
 
         for part in value.parts.iter_mut() {
             if let ConcatenationPart::Expression(expr) = part {
-                if self
-                    .svelte_table
-                    .get_expression_flag(expr)
-                    .is_some_and(|flags| flags.has_state)
-                {
-                    has_state = true;
-                }
-
                 *expr = self.transform_expression(expr);
             }
         }
@@ -806,7 +798,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ],
         );
 
-        if has_state {
+        if metadata.has_reactivity {
             ctx.push_update(call);
         } else {
             ctx.push_init(call);
