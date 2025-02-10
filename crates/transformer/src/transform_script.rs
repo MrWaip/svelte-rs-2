@@ -13,7 +13,7 @@ use ast_builder::{Builder, BuilderExpression, BuilderFunctionArgument};
 
 pub struct TransformScript<'a, 'link> {
     b: &'a Builder<'a>,
-    svelte_table: &'link SvelteTable<'a>,
+    svelte_table: &'link SvelteTable,
 }
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub struct TransformExpressionResult<'a> {
 impl<'a, 'link> TransformScript<'a, 'link> {
     pub fn new(
         builder: &'a Builder<'a>,
-        svelte_table: &'link SvelteTable<'a>,
+        svelte_table: &'link SvelteTable,
     ) -> TransformScript<'a, 'link> {
         return Self {
             b: builder,
@@ -94,7 +94,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
 }
 
 struct TransformerImpl<'link, 'a> {
-    svelte_table: &'link SvelteTable<'a>,
+    svelte_table: &'link SvelteTable,
     builder: &'link Builder<'a>,
     imports: Vec<Statement<'a>>,
 }

@@ -25,7 +25,7 @@ pub struct TransformTemplate<'a, 'link> {
     hoisted: Vec<Statement<'a>>,
     root_scope: Rc<RefCell<Scope>>,
     transform_script: &'link TransformScript<'a, 'link>,
-    svelte_table: &'link SvelteTable<'a>,
+    svelte_table: &'link SvelteTable,
 }
 
 #[derive(Debug)]
@@ -312,7 +312,7 @@ struct CompressNodesIter<'a, 'reference> {
     idx: usize,
     to_compress: Vec<RcCell<Node<'a>>>,
     builder: &'reference Builder<'a>,
-    svelte_table: &'reference SvelteTable<'a>,
+    svelte_table: &'reference SvelteTable,
 }
 
 // !svelte optimization
@@ -320,7 +320,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     pub fn iter(
         nodes: &'reference Vec<RcCell<Node<'a>>>,
         builder: &'reference Builder<'a>,
-        svelte_table: &'reference SvelteTable<'a>,
+        svelte_table: &'reference SvelteTable,
     ) -> Self {
         return Self {
             builder,
@@ -421,7 +421,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     pub fn new(
         builder: &'a Builder<'a>,
         transform_script: &'link TransformScript<'a, 'link>,
-        svelte_table: &'link SvelteTable<'a>,
+        svelte_table: &'link SvelteTable,
     ) -> Self {
         return Self {
             b: builder,

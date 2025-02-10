@@ -15,7 +15,7 @@ pub mod transform_template;
 pub fn transform_client<'a>(
     mut ast: Ast<'a>,
     b: &'a Builder<'a>,
-    analyze: AnalyzeResult<'a>,
+    analyze: AnalyzeResult,
 ) -> String {
     let svelte_table = analyze.svelte_table;
     let script_transformer = TransformScript::new(b, &svelte_table);

@@ -1,7 +1,5 @@
-use std::{collections::HashMap, ptr::addr_of};
+use std::collections::HashMap;
 
-use ast::ExpressionFlags;
-use oxc_ast::ast::Expression;
 use oxc_semantic::{
     NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolId, SymbolTable,
 };
@@ -18,17 +16,15 @@ pub enum RuneKind {
 }
 
 #[derive(Debug, Default)]
-pub struct SvelteTable<'a> {
+pub struct SvelteTable {
     pub(crate) symbols: SymbolTable,
     pub(crate) scopes: ScopeTree,
     pub(crate) runes: HashMap<SymbolId, Rune>,
-    expressions_flags: HashMap<*const Expression<'a>, ExpressionFlags>,
 }
 
-impl<'a> SvelteTable<'a> {
+impl SvelteTable {
     pub fn new(symbols: SymbolTable, scopes: ScopeTree) -> Self {
         return Self {
-            expressions_flags: HashMap::default(),
             runes: HashMap::default(),
             scopes,
             symbols,
@@ -43,17 +39,6 @@ impl<'a> SvelteTable<'a> {
                 mutated: self.symbol_is_mutated(id),
             },
         );
-    }
-
-    pub fn add_expression_flag(&mut self, expression: &Expression<'a>, flags: ExpressionFlags) {
-        let pointer = addr_of!(*expression);
-        self.expressions_flags.insert(pointer, flags);
-    }
-
-    pub fn get_expression_flag(&self, expression: &Expression<'a>) -> Option<&ExpressionFlags> {
-        let pointer = addr_of!(*expression);
-
-        return self.expressions_flags.get(&pointer);
     }
 
     pub fn add_root_scope_reference(
