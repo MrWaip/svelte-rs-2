@@ -1,7 +1,7 @@
 pub mod svelte_table;
 pub mod visitor;
 
-use std::mem::{replace, take};
+use std::mem::take;
 
 use ast_builder::Builder;
 use oxc_ast::{
@@ -22,15 +22,30 @@ use visitor::{
 
 use ast::{
     metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata, WithMetadata},
-    Ast, ExpressionAttribute, ExpressionAttributeValue, ExpressionFlags,
+    Ast, ExpressionAttribute, ExpressionAttributeValue,
 };
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExpressionFlags {
+    pub has_reactivity: bool,
+    pub has_call_expression: bool,
+}
+
+impl ExpressionFlags {
+    pub fn empty() -> Self {
+        return Self {
+            has_call_expression: false,
+            has_reactivity: false,
+        };
+    }
+}
 
 pub struct Analyzer<'a> {
     b: &'a Builder<'a>,
 }
 
-pub struct AnalyzeResult<'a> {
-    pub svelte_table: SvelteTable<'a>,
+pub struct AnalyzeResult {
+    pub svelte_table: SvelteTable,
 }
 
 impl<'alloc> Analyzer<'alloc> {
@@ -38,7 +53,7 @@ impl<'alloc> Analyzer<'alloc> {
         return Self { b };
     }
 
-    pub fn analyze<'link>(&self, ast: &'link Ast<'alloc>) -> AnalyzeResult<'alloc> {
+    pub fn analyze<'link>(&self, ast: &'link Ast<'alloc>) -> AnalyzeResult {
         let empty = self.b.program(vec![]);
         let program = ast
             .script
@@ -75,19 +90,19 @@ impl<'alloc> Analyzer<'alloc> {
     }
 }
 
-pub struct ScriptVisitorImpl<'link, 'a> {
-    pub svelte_table: &'link mut SvelteTable<'a>,
+pub struct ScriptVisitorImpl<'link> {
+    pub svelte_table: &'link mut SvelteTable,
 }
 
-pub struct TemplateVisitorImpl<'link, 'a> {
-    pub svelte_table: &'link mut SvelteTable<'a>,
+pub struct TemplateVisitorImpl<'link> {
+    pub svelte_table: &'link mut SvelteTable,
     current_reference_flags: ReferenceFlags,
     current_expression_flags: ExpressionFlags,
     element_has_dynamic_nodes: bool,
     current_concatenation_metadata: AttributeMetadata,
 }
 
-impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
+impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &declarator.init {
             if call.callee_name() == Some("$state") {
@@ -101,7 +116,7 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link, 'a> {
     }
 }
 
-impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
+impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     fn visit_element(&mut self, it: &mut ast::Element<'a>) {
         let mut metadata = ElementMetadata::default();
         let was_dynamic = self.element_has_dynamic_nodes;
@@ -123,23 +138,16 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
 
     fn visit_expression(&mut self, it: &Expression<'a>) {
         Visit::visit_expression(self, it);
-
-        let flags = replace(&mut self.current_expression_flags, ExpressionFlags::empty());
-
-        self.svelte_table.add_expression_flag(it, flags);
     }
 
     fn visit_class_directive_attribute(&mut self, it: &mut ast::ClassDirective<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_class_directive_attribute(self, it);
 
-        let flags = self
-            .svelte_table
-            .get_expression_flag(&it.expression)
-            .unwrap();
+        let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
-            has_reactivity: flags.has_state,
+            has_reactivity: flags.has_reactivity,
         });
     }
 
@@ -147,14 +155,11 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         self.element_has_dynamic_nodes = true;
         walk_interpolation(self, it);
 
-        let flags = self
-            .svelte_table
-            .get_expression_flag(&it.expression)
-            .unwrap();
+        let flags = self.resolve_expression_flags();
 
         it.set_metadata(InterpolationMetadata {
-            has_reactivity: flags.has_state,
-            has_call_expression: flags.has_call,
+            has_reactivity: flags.has_reactivity,
+            has_call_expression: flags.has_call_expression,
         });
     }
 
@@ -162,13 +167,10 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         self.element_has_dynamic_nodes = true;
         walk_expression_attribute(self, it);
 
-        let flags = self
-            .svelte_table
-            .get_expression_flag(&it.expression)
-            .unwrap();
+        let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
-            has_reactivity: flags.has_state,
+            has_reactivity: flags.has_reactivity,
         });
     }
 
@@ -185,26 +187,23 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         self.element_has_dynamic_nodes = true;
         walk_expression_attribute_value(self, it);
 
-        let flags = self
-            .svelte_table
-            .get_expression_flag(&it.expression)
-            .unwrap();
+        let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
-            has_reactivity: flags.has_state,
+            has_reactivity: flags.has_reactivity,
         });
     }
 
     fn visit_expression_concatenation_part(&mut self, it: &Expression<'a>) {
         walk_expression_concatenation_part(self, it);
 
-        let flags = self.svelte_table.get_expression_flag(&it).unwrap();
+        let flags = self.resolve_expression_flags();
 
-        self.current_concatenation_metadata.has_reactivity = flags.has_state;
+        self.current_concatenation_metadata.has_reactivity = flags.has_reactivity;
     }
 }
 
-impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link, 'a> {
+impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
         self.reference_identifier(it);
     }
@@ -220,12 +219,12 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link, 'a> {
     }
 
     fn visit_call_expression(&mut self, it: &oxc_ast::ast::CallExpression<'a>) {
-        self.current_expression_flags.has_call = true;
+        self.current_expression_flags.has_call_expression = true;
         walk_call_expression(self, it);
     }
 }
 
-impl<'link, 'a> TemplateVisitorImpl<'link, 'a> {
+impl<'link, 'a> TemplateVisitorImpl<'link> {
     fn reference_identifier(&mut self, ident: &IdentifierReference<'a>) {
         let flags = self.resolve_reference_usages();
 
@@ -237,9 +236,13 @@ impl<'link, 'a> TemplateVisitorImpl<'link, 'a> {
             ident.reference_id.set(Some(reference_id));
 
             if self.svelte_table.is_rune_reference(reference_id) {
-                self.current_expression_flags.has_state = true;
+                self.current_expression_flags.has_reactivity = true;
             }
         }
+    }
+
+    fn resolve_expression_flags(&mut self) -> ExpressionFlags {
+        return take(&mut self.current_expression_flags);
     }
 
     fn resolve_reference_usages(&mut self) -> ReferenceFlags {
@@ -292,19 +295,16 @@ mod tests {
             &allocator,
         );
         let ast = parser.parse().unwrap();
-        let result = analyzer.analyze(&ast);
+        analyzer.analyze(&ast);
 
         let Node::Interpolation(interpolation) = &*ast.template[0].borrow() else {
             unreachable!()
         };
 
-        let flags = result
-            .svelte_table
-            .get_expression_flag(&interpolation.expression)
-            .unwrap();
+        let metadata = interpolation.get_metadata();
 
-        assert_eq!(flags.has_state, true);
-        assert_eq!(flags.has_call, true);
+        assert_eq!(metadata.has_reactivity, true);
+        assert_eq!(metadata.has_call_expression, true);
     }
 
     #[test]
