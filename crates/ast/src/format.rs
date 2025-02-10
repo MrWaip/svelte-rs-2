@@ -116,7 +116,7 @@ impl<'a> FormatNode for Element<'a> {
                         }
                     }
                     Attribute::Expression(expression) => {
-                        let expr_string = print_expression(expression);
+                        let expr_string = print_expression(&expression.expression);
                         result.push_str(format!("{{{}}}", expr_string).as_str());
                     }
                     Attribute::ClassDirective(class_directive) => {

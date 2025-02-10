@@ -233,8 +233,14 @@ impl<'a> AsNode<'a> for Text<'a> {
 #[derive(Debug)]
 pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
-    Expression(Expression<'a>),
+    Expression(ExpressionAttribute<'a>),
     ClassDirective(ClassDirective<'a>),
+}
+
+#[derive(Debug)]
+pub struct ExpressionAttribute<'a> {
+    pub expression: Expression<'a>,
+    pub metadata: Option<AttributeMetadata>,
 }
 
 #[derive(Debug)]

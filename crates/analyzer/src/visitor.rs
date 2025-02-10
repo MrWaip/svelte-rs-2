@@ -12,8 +12,7 @@ use rccell::RcCell;
 use walk::*;
 
 use ast::{
-    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttributeValue,
-    HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
+    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text
 };
 
 pub trait TemplateVisitor<'a>: Sized {
@@ -53,7 +52,7 @@ pub trait TemplateVisitor<'a>: Sized {
         walk_html_attribute(self, it);
     }
 
-    fn visit_expression_attribute(&mut self, it: &Expression<'a>) {
+    fn visit_expression_attribute(&mut self, it: &mut ExpressionAttribute<'a>) {
         walk_expression_attribute(self, it);
     }
 
@@ -151,9 +150,9 @@ pub mod walk {
 
     pub fn walk_expression_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &Expression<'a>,
+        it: &ExpressionAttribute<'a>,
     ) {
-        visitor.visit_expression(it);
+        visitor.visit_expression(&it.expression);
     }
 
     pub fn walk_class_directive_attribute<'a, V: TemplateVisitor<'a>>(
