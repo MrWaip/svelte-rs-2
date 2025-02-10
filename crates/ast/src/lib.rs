@@ -254,9 +254,15 @@ pub struct HTMLAttribute<'a> {
 #[derive(Debug)]
 pub enum AttributeValue<'a> {
     String(&'a str),
-    Expression(Expression<'a>),
+    Expression(ExpressionAttributeValue<'a>),
     Boolean,
     Concatenation(Concatenation<'a>),
+}
+
+#[derive(Debug)]
+pub struct ExpressionAttributeValue<'a> {
+    pub expression: Expression<'a>,
+    pub metadata: Option<AttributeMetadata>,
 }
 
 #[derive(Debug)]

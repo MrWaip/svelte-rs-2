@@ -94,7 +94,7 @@ impl<'a> FormatNode for Element<'a> {
                             }
                             AttributeValue::Boolean => (),
                             AttributeValue::Expression(expression) => {
-                                let expr_string = print_expression(expression);
+                                let expr_string = print_expression(&expression.expression);
                                 result.push_str(format!("={{{}}}", expr_string).as_str());
                             }
                             AttributeValue::Concatenation(concatenation) => {

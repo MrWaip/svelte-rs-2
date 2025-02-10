@@ -6,8 +6,8 @@ use rccell::RcCell;
 
 use ast::{
     metadata::{InterpolationMetadata, WithMetadata},
-    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionFlags,
-    HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
+    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttributeValue,
+    ExpressionFlags, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -749,12 +749,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     fn transform_expression_attribute_value<'local>(
         &mut self,
         name: &str,
-        value: &mut Expression<'a>,
+        value: &mut ExpressionAttributeValue<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
+        let metadata = value.get_metadata();
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
-        let flags = self.svelte_table.get_expression_flag(value);
-        let value = self.transform_expression(value);
+        let value = self.transform_expression(&mut value.expression);
         let call = self.b.call_stmt(
             "$.set_attribute",
             [
@@ -764,7 +764,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ],
         );
 
-        if flags.is_some_and(|flags| flags.has_state) {
+        if metadata.has_reactivity {
             ctx.push_update(call);
         } else {
             ctx.push_init(call);

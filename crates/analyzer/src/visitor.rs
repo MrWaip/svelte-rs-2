@@ -12,8 +12,8 @@ use rccell::RcCell;
 use walk::*;
 
 use ast::{
-    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, HTMLAttribute, IfBlock,
-    Interpolation, Node, ScriptTag, Text,
+    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttributeValue,
+    HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
 };
 
 pub trait TemplateVisitor<'a>: Sized {
@@ -49,7 +49,7 @@ pub trait TemplateVisitor<'a>: Sized {
         walk_attribute(self, it);
     }
 
-    fn visit_html_attribute(&mut self, it: &HTMLAttribute<'a>) {
+    fn visit_html_attribute(&mut self, it: &mut HTMLAttribute<'a>) {
         walk_html_attribute(self, it);
     }
 
@@ -63,7 +63,7 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn visit_string_attribute_value(&mut self, it: &str) {}
 
-    fn visit_expression_attribute_value(&mut self, it: &Expression<'a>) {
+    fn visit_expression_attribute_value(&mut self, it: &mut ExpressionAttributeValue<'a>) {
         walk_expression_attribute_value(self, it);
     }
 
@@ -165,9 +165,9 @@ pub mod walk {
 
     pub fn walk_html_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &HTMLAttribute<'a>,
+        it: &mut HTMLAttribute<'a>,
     ) {
-        match &it.value {
+        match &mut it.value {
             ast::AttributeValue::String(it) => visitor.visit_string_attribute_value(*it),
             ast::AttributeValue::Expression(it) => visitor.visit_expression_attribute_value(it),
             ast::AttributeValue::Boolean => visitor.visit_boolean_attribute_value(),
@@ -179,9 +179,9 @@ pub mod walk {
 
     pub fn walk_expression_attribute_value<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &Expression<'a>,
+        it: &ExpressionAttributeValue<'a>,
     ) {
-        visitor.visit_expression(it);
+        visitor.visit_expression(&it.expression);
     }
 
     pub fn walk_concatenation_attribute_value<'a, V: TemplateVisitor<'a>>(
