@@ -69,7 +69,7 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn visit_boolean_attribute_value(&mut self) {}
 
-    fn visit_concatenation_attribute_value(&mut self, it: &Concatenation<'a>) {
+    fn visit_concatenation_attribute_value(&mut self, it: &mut Concatenation<'a>) {
         walk_concatenation_attribute_value(self, it);
     }
 

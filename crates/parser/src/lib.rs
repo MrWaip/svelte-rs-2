@@ -315,6 +315,7 @@ impl<'a> Parser<'a> {
 
                             AttributeValue::Concatenation(Concatenation {
                                 parts,
+                                metadata: None,
                                 span: Span::new(token.start, token.end),
                             })
                         }
