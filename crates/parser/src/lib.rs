@@ -13,7 +13,8 @@ use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
-    Element, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text,
+    Element, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
+    Text,
 };
 
 use diagnostics::Diagnostic;
@@ -288,7 +289,10 @@ impl<'a> Parser<'a> {
                                 expression_tag.span,
                             )?;
 
-                            AttributeValue::Expression(expression)
+                            AttributeValue::Expression(ExpressionAttributeValue {
+                                expression,
+                                metadata: None,
+                            })
                         }
                         token::AttributeValue::Concatenation(token) => {
                             let mut parts: Vec<ConcatenationPart<'a>> = vec![];

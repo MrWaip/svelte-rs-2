@@ -22,7 +22,7 @@ use visitor::{
 
 use ast::{
     metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata, WithMetadata},
-    Ast, ExpressionFlags,
+    Ast, ExpressionAttributeValue, ExpressionFlags,
 };
 
 pub struct Analyzer<'a> {
@@ -166,9 +166,18 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link, 'a> {
         walk_concatenation_attribute_value(self, it);
     }
 
-    fn visit_expression_attribute_value(&mut self, it: &Expression<'a>) {
+    fn visit_expression_attribute_value(&mut self, it: &mut ExpressionAttributeValue<'a>) {
         self.element_has_dynamic_nodes = true;
         walk_expression_attribute_value(self, it);
+
+        let flags = self
+            .svelte_table
+            .get_expression_flag(&it.expression)
+            .unwrap();
+
+        it.set_metadata(AttributeMetadata {
+            has_reactivity: flags.has_state,
+        });
     }
 }
 
