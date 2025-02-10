@@ -1,6 +1,5 @@
 use std::{cell::RefCell, mem::replace, rc::Rc};
 
-use analyzer::svelte_table::SvelteTable;
 use oxc_ast::ast::{Expression, Statement};
 use rccell::RcCell;
 
@@ -24,7 +23,6 @@ pub struct TransformTemplate<'a, 'link> {
     hoisted: Vec<Statement<'a>>,
     root_scope: Rc<RefCell<Scope>>,
     transform_script: &'link TransformScript<'a, 'link>,
-    svelte_table: &'link SvelteTable,
 }
 
 #[derive(Debug)]
@@ -417,14 +415,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     pub fn new(
         builder: &'a Builder<'a>,
         transform_script: &'link TransformScript<'a, 'link>,
-        svelte_table: &'link SvelteTable,
     ) -> Self {
         return Self {
             b: builder,
             hoisted: vec![],
             root_scope: Rc::new(RefCell::new(Scope::new(None))),
             transform_script,
-            svelte_table,
         };
     }
 

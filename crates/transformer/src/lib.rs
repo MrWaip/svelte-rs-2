@@ -36,7 +36,7 @@ pub fn transform_client<'a>(
         }
     }
 
-    let mut template_transformer = TransformTemplate::new(b, &script_transformer, &svelte_table);
+    let mut template_transformer = TransformTemplate::new(b, &script_transformer);
     let mut template_result = template_transformer.transform(&mut ast.template);
 
     program_body.append(&mut imports);
