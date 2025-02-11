@@ -1,6 +1,6 @@
 pub mod token;
 
-use std::{mem, vec};
+use std::{iter::Peekable, mem, str::CharIndices, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, ClassDirective, Concatenation,
     ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag, StartIfTag, StartTag,
@@ -13,9 +13,10 @@ use span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
-    chars: Vec<(usize, char)>,
+    chars: Peekable<CharIndices<'a>>,
     tokens: Vec<Token<'a>>,
     start: usize,
+    prev: usize,
     current: usize,
 }
 
@@ -25,7 +26,8 @@ impl<'a> Scanner<'a> {
             source,
             tokens: vec![],
             // not optimal
-            chars: source.char_indices().collect(),
+            chars: source.char_indices().peekable(),
+            prev: 0,
             current: 0,
             start: 0,
         };
@@ -83,14 +85,16 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        let (_, char) = self.chars.get(self.current).unwrap();
-        self.current += 1;
+        let (idx, char) = self.chars.next().unwrap();
 
-        return *char;
+        self.prev = self.current;
+        self.current = idx + char.len_utf8();
+
+        return char;
     }
 
-    fn is_at_end(&self) -> bool {
-        return self.current >= self.chars.len();
+    fn is_at_end(&mut self) -> bool {
+        return self.chars.peek().is_none();
     }
 
     fn identifier(&mut self) -> &'a str {
@@ -108,14 +112,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn slice_source(&self, start: usize, end: usize) -> &'a str {
-        let start = self.chars[start].0;
-
-        let end = if end >= self.chars.len() {
-            self.chars.last().unwrap().0 + 1
-        } else {
-            self.chars[end].0
-        };
-
         return &self.source[start..end];
     }
 
@@ -164,25 +160,21 @@ impl<'a> Scanner<'a> {
             return false;
         }
 
-        if self
-            .chars
-            .get(self.current)
-            .is_some_and(|c| c.1 != expected)
-        {
+        if self.peek().is_some_and(|c| c != expected) {
             return false;
         }
 
-        self.current += 1;
+        self.advance();
 
         return true;
     }
 
-    fn peek(&self) -> Option<char> {
+    fn peek(&mut self) -> Option<char> {
         if self.is_at_end() {
             return None;
         }
 
-        return self.chars.get(self.current).map(|v| v.1);
+        return self.chars.peek().map(|x| x.1);
     }
 
     fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
@@ -217,10 +209,6 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
-    }
-
-    fn prev_char(&self) -> Option<char> {
-        return self.chars.get(self.current - 1).map(|x| x.1);
     }
 
     // Tokens:
@@ -462,8 +450,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn interpolation(&mut self) -> Result<(), Diagnostic> {
-        debug_assert_eq!(self.prev_char(), Some('{'));
-
         let expression = self.collect_js_expression()?;
 
         self.add_token(TokenType::Interpolation(ExpressionTag {
@@ -498,7 +484,7 @@ impl<'a> Scanner<'a> {
             if char == '}' {
                 if stack.pop().is_none() {
                     let value = if self.current - start > 2 {
-                        self.slice_source(start, self.current - 1)
+                        self.slice_source(start, self.prev)
                     } else {
                         ""
                     };
@@ -536,7 +522,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn start_template(&mut self) -> Result<(), Diagnostic> {
-        debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some('#'));
 
         self.advance();
@@ -567,7 +552,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn end_template(&mut self) -> Result<(), Diagnostic> {
-        debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some('/'));
 
         self.advance();
@@ -602,7 +586,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn middle_template(&mut self) -> Result<(), Diagnostic> {
-        debug_assert_eq!(self.prev_char(), Some('{'));
         debug_assert_eq!(self.peek(), Some(':'));
 
         self.advance();
@@ -669,7 +652,7 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            end = self.current - 1;
+            end = self.prev;
 
             if !self.match_char('/') {
                 continue;
