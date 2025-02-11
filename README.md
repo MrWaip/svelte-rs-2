@@ -1,4 +1,5 @@
 # Rust implementation of svelte compile (WIP)
+[![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
 
 # Demo
 
