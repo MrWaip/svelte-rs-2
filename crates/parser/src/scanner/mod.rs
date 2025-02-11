@@ -13,7 +13,7 @@ use span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
-    chars: Vec<char>,
+    chars: Vec<(usize, char)>,
     tokens: Vec<Token<'a>>,
     start: usize,
     current: usize,
@@ -25,7 +25,7 @@ impl<'a> Scanner<'a> {
             source,
             tokens: vec![],
             // not optimal
-            chars: source.chars().collect(),
+            chars: source.char_indices().collect(),
             current: 0,
             start: 0,
         };
@@ -73,7 +73,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn add_token(&mut self, token_type: TokenType<'a>) {
-        let text = &self.source[self.start..self.current];
+        let text = self.slice_source(self.start, self.current);
 
         self.tokens.push(Token {
             token_type,
@@ -83,7 +83,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        let char = self.chars.get(self.current).unwrap();
+        let (_, char) = self.chars.get(self.current).unwrap();
         self.current += 1;
 
         return *char;
@@ -104,7 +104,19 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        return &self.source[start..self.current];
+        return self.slice_source(start, self.current);
+    }
+
+    fn slice_source(&self, start: usize, end: usize) -> &'a str {
+        let start = self.chars[start].0;
+
+        let end = if end >= self.chars.len() {
+            self.chars.last().unwrap().0 + 1
+        } else {
+            self.chars[end].0
+        };
+
+        return &self.source[start..end];
     }
 
     fn attribute_identifier(&mut self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
@@ -127,8 +139,8 @@ impl<'a> Scanner<'a> {
         }
 
         if is_directive {
-            let name = &self.source[start..colon_pos];
-            let value = &self.source[colon_pos + 1..self.current];
+            let name = self.slice_source(start, colon_pos);
+            let value = self.slice_source(colon_pos + 1, self.current);
 
             if AttributeIdentifierType::is_class_directive(name) {
                 return AttributeIdentifierType::ClassDirective(value).as_ok();
@@ -139,8 +151,10 @@ impl<'a> Scanner<'a> {
             if start == self.current {
                 return AttributeIdentifierType::None.as_ok();
             } else {
-                return AttributeIdentifierType::HTMLAttribute(&self.source[start..self.current])
-                    .as_ok();
+                return AttributeIdentifierType::HTMLAttribute(
+                    self.slice_source(start, self.current),
+                )
+                .as_ok();
             }
         }
     }
@@ -150,7 +164,11 @@ impl<'a> Scanner<'a> {
             return false;
         }
 
-        if self.chars.get(self.current).is_some_and(|c| *c != expected) {
+        if self
+            .chars
+            .get(self.current)
+            .is_some_and(|c| c.1 != expected)
+        {
             return false;
         }
 
@@ -164,7 +182,7 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        return self.chars.get(self.current).map(|v| *v);
+        return self.chars.get(self.current).map(|v| v.1);
     }
 
     fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
@@ -188,7 +206,7 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        return Ok(&self.source[start..self.current]);
+        return Ok(self.slice_source(start, self.current));
     }
 
     fn skip_whitespace(&mut self) {
@@ -202,7 +220,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn prev_char(&self) -> Option<char> {
-        return self.chars.get(self.current - 1).map(|char| *char);
+        return self.chars.get(self.current - 1).map(|x| x.1);
     }
 
     // Tokens:
@@ -377,7 +395,7 @@ impl<'a> Scanner<'a> {
 
             if char == '{' {
                 has_expression = true;
-                let part = &self.source[current_pos..self.current];
+                let part = self.slice_source(current_pos, self.current);
 
                 if !part.is_empty() {
                     parts.push(ConcatenationPart::String(part));
@@ -394,7 +412,7 @@ impl<'a> Scanner<'a> {
             self.advance();
         }
 
-        let last_part = &self.source[current_pos..self.current];
+        let last_part = self.slice_source(current_pos, self.current);
 
         // consume last quote
         self.advance();
@@ -480,7 +498,7 @@ impl<'a> Scanner<'a> {
             if char == '}' {
                 if stack.pop().is_none() {
                     let value = if self.current - start > 2 {
-                        &self.source[start..self.current - 1]
+                        self.slice_source(start, self.current - 1)
                     } else {
                         ""
                     };
@@ -678,7 +696,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.add_token(TokenType::ScriptTag(ScriptTag {
-            source: &self.source[start..end],
+            source: self.slice_source(start, end),
             attributes,
         }));
 
