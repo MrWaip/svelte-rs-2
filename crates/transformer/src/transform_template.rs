@@ -6,7 +6,7 @@ use rccell::RcCell;
 use ast::{
     metadata::{InterpolationMetadata, WithMetadata},
     Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
-    ExpressionAttributeValue, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
+    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -424,11 +424,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    pub fn transform(
-        &mut self,
-        template: &mut Vec<RcCell<Node<'a>>>,
-    ) -> TransformTemplateResult<'a> {
-        let result = self.transform_fragment(template, FragmentParent::Template);
+    pub fn transform(&mut self, fragment: &mut Fragment<'a>) -> TransformTemplateResult<'a> {
+        let result = self.transform_fragment(fragment, FragmentParent::Template);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
 
@@ -440,13 +437,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_fragment(
         &mut self,
-        nodes: &mut Vec<RcCell<Node<'a>>>,
+        fragment: &mut Fragment<'a>,
         parent: FragmentParent,
     ) -> FragmentResult<'a> {
         // !svelte optimization
-        let trim_result = self.trim_nodes(nodes);
+        let trim_result = self.trim_nodes(&mut fragment.nodes);
 
-        if nodes.is_empty() {
+        if fragment.is_empty() {
             return FragmentResult { body: vec![] };
         }
 
@@ -462,7 +459,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         // !svelte specific
         let identifier: String = if trim_result.has_single_element {
-            let Node::Element(element) = &*nodes[0].borrow() else {
+            let Node::Element(element) = &*fragment[0].borrow() else {
                 unreachable!()
             };
 
@@ -486,7 +483,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             anchor: self.b.expr(BExpr::Ident(self.b.rid(&identifier))),
         };
 
-        self.transform_nodes(nodes, &mut context, None, trim_result);
+        self.transform_nodes(&mut fragment.nodes, &mut context, None, trim_result);
 
         // !svelte optimization
         if context.template_has_one_comment() {
@@ -496,7 +493,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             let call = self.b.call("$.text", []);
             body.push(self.b.var(&identifier, BExpr::Call(call)));
         } else if trim_result.has_single_text_node {
-            let Node::Text(text) = &*nodes[0].borrow() else {
+            let Node::Text(text) = &*fragment[0].borrow() else {
                 unreachable!()
             };
 

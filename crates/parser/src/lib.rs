@@ -13,8 +13,8 @@ use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
-    Element, ExpressionAttribute, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation,
-    Node, ScriptTag, Text,
+    Element, ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock,
+    Interpolation, Node, ScriptTag, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -163,7 +163,7 @@ impl<'a> Parser<'a> {
             return Diagnostic::unclosed_node(span).as_err();
         }
 
-        let (template, mut scripts) = self.node_stack.take_nodes();
+        let (nodes, mut scripts) = self.node_stack.take_nodes();
         let mut script: Option<ScriptTag<'a>> = None;
 
         if scripts.len() > 1 {
@@ -173,7 +173,10 @@ impl<'a> Parser<'a> {
             script = Some(scripts.remove(0).unwrap().into());
         }
 
-        return Ok(Ast { template, script });
+        return Ok(Ast {
+            template: Fragment::from(nodes),
+            script,
+        });
     }
 
     fn parse_start_tag(&mut self, tag: &StartTag<'a>, start_span: Span) -> Result<(), Diagnostic> {
@@ -363,7 +366,7 @@ impl<'a> Parser<'a> {
             span,
             is_elseif: false,
             alternate: None,
-            consequent: vec![],
+            consequent: Fragment::empty(),
             test: self.parse_js_expression(
                 &start_if_tag.expression.value,
                 start_if_tag.expression.span,
@@ -390,7 +393,7 @@ impl<'a> Parser<'a> {
         let cell = if else_tag.elseif {
             let else_if_block = IfBlock {
                 alternate: None,
-                consequent: vec![],
+                consequent: Fragment::empty(),
                 is_elseif: true,
                 span,
                 test: expression.unwrap()?,
@@ -408,7 +411,7 @@ impl<'a> Parser<'a> {
             let node = &mut *Node::from_option_mut(option)?;
             let if_block: &mut IfBlock<'a> = node.try_into()?;
 
-            if_block.alternate = Some(vec![]);
+            if_block.alternate = Some(Fragment::empty());
             if_block.span = if_block.span.merge(&span);
         }
 

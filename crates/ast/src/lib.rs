@@ -1,6 +1,6 @@
-use std::cell::RefMut;
+use std::{cell::RefMut, ops::Index, slice::Iter};
 
-use metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata};
+use metadata::{AttributeMetadata, ElementMetadata, FragmentMetadata, InterpolationMetadata};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
@@ -13,7 +13,7 @@ pub mod format;
 pub mod metadata;
 
 pub struct Ast<'a> {
-    pub template: Vec<RcCell<Node<'a>>>,
+    pub template: Fragment<'a>,
     pub script: Option<ScriptTag<'a>>,
 }
 
@@ -130,8 +130,8 @@ pub struct IfBlock<'a> {
     pub span: Span,
     pub test: Expression<'a>,
     pub is_elseif: bool,
-    pub consequent: Vec<RcCell<Node<'a>>>,
-    pub alternate: Option<Vec<RcCell<Node<'a>>>>,
+    pub consequent: Fragment<'a>,
+    pub alternate: Option<Fragment<'a>>,
 }
 impl<'a> IfBlock<'a> {
     pub fn push(&mut self, node: RcCell<Node<'a>>) {
@@ -308,5 +308,51 @@ impl<'a> ScriptTag<'a> {
 impl<'a> AsNode<'a> for ScriptTag<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::ScriptTag(self);
+    }
+}
+
+#[derive(Debug)]
+pub struct Fragment<'a> {
+    pub nodes: Vec<RcCell<Node<'a>>>,
+    pub metadata: Option<FragmentMetadata>,
+}
+
+impl<'a> Fragment<'a> {
+    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+        self.nodes.push(node);
+    }
+
+    pub fn iter(&self) -> Iter<RcCell<Node<'a>>> {
+        return self.nodes.iter();
+    }
+
+    pub fn first(&self) -> Option<&RcCell<Node<'a>>> {
+        return self.nodes.first();
+    }
+
+    pub fn from(nodes: Vec<RcCell<Node<'a>>>) -> Self {
+        return Self {
+            metadata: None,
+            nodes,
+        };
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.nodes.is_empty();
+    }
+
+    pub fn empty() -> Self {
+        return Self {
+            metadata: None,
+            nodes: vec![],
+        };
+    }
+}
+
+impl<'a> Index<usize> for Fragment<'a> {
+    type Output = RcCell<Node<'a>>;
+
+    fn index(&self, idx: usize) -> &Self::Output {
+        return &self.nodes[idx];
     }
 }
