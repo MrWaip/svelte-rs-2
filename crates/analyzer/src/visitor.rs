@@ -12,12 +12,18 @@ use rccell::RcCell;
 use walk::*;
 
 use ast::{
-    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Text
+    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
+    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
+    Text,
 };
 
 pub trait TemplateVisitor<'a>: Sized {
-    fn visit_template(&mut self, it: &Vec<RcCell<Node<'a>>>) {
+    fn visit_template(&mut self, it: &Fragment<'a>) {
         walk_template(self, it);
+    }
+
+    fn visit_fragment(&mut self, it: &Fragment<'a>) {
+        walk_fragment(self, it);
     }
 
     fn visit_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>) {
@@ -96,8 +102,12 @@ pub mod walk {
 
     use super::*;
 
-    pub fn walk_template<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Vec<RcCell<Node<'a>>>) {
-        visitor.visit_nodes(it);
+    pub fn walk_template<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Fragment<'a>) {
+        visitor.visit_nodes(&it.nodes);
+    }
+
+    pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Fragment<'a>) {
+        visitor.visit_nodes(&it.nodes);
     }
 
     pub fn walk_nodes<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Vec<RcCell<Node<'a>>>) {
@@ -212,10 +222,10 @@ pub mod walk {
     pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut IfBlock<'a>) {
         visitor.visit_expression(&it.test);
 
-        visitor.visit_nodes(&it.consequent);
+        visitor.visit_fragment(&it.consequent);
 
         if let Some(alternate) = &it.alternate {
-            visitor.visit_nodes(alternate);
+            visitor.visit_fragment(alternate);
         }
     }
 }

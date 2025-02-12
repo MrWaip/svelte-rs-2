@@ -1,5 +1,5 @@
 use crate::{
-    ClassDirective, Concatenation, Element, ExpressionAttribute, ExpressionAttributeValue, Interpolation, VirtualConcatenation
+    ClassDirective, Concatenation, Element, ExpressionAttribute, ExpressionAttributeValue, Fragment, Interpolation, VirtualConcatenation
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -24,6 +24,9 @@ impl InterpolationMetadata {
         self.has_reactivity = self.has_reactivity || other.has_reactivity;
     }
 }
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FragmentMetadata {}
 
 pub trait WithMetadata {
     type Metadata;
@@ -107,6 +110,18 @@ impl<'a> WithMetadata for ExpressionAttributeValue<'a> {
 
 impl<'a> WithMetadata for ExpressionAttribute<'a> {
     type Metadata = AttributeMetadata;
+
+    fn get_metadata(&self) -> Self::Metadata {
+        self.metadata.unwrap()
+    }
+
+    fn set_metadata(&mut self, metadata: Self::Metadata) {
+        self.metadata = Some(metadata)
+    }
+}
+
+impl<'a> WithMetadata for Fragment<'a> {
+    type Metadata = FragmentMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
         self.metadata.unwrap()
