@@ -183,7 +183,6 @@ impl<'a> Parser<'a> {
 
         let element = Element {
             name: name.to_string(),
-            has_complex_nodes: false,
             self_closing,
             nodes: vec![],
             span: start_span,
