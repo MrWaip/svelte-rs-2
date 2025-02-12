@@ -154,7 +154,6 @@ pub struct Element<'a> {
     pub name: String,
     pub span: Span,
     pub self_closing: bool,
-    pub has_complex_nodes: bool,
     pub nodes: Vec<RcCell<Node<'a>>>,
     pub attributes: Vec<Attribute<'a>>,
     pub metadata: Option<ElementMetadata>,
@@ -168,10 +167,6 @@ impl<'a> AsNode<'a> for Element<'a> {
 
 impl<'a> Element<'a> {
     pub fn push(&mut self, node: RcCell<Node<'a>>) {
-        if !self.has_complex_nodes {
-            self.has_complex_nodes = !node.borrow().is_text();
-        }
-
         self.nodes.push(node);
     }
 }
