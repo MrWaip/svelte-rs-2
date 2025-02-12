@@ -1,6 +1,6 @@
 pub mod token;
 
-use std::{iter::Peekable, mem, str::CharIndices, vec};
+use std::{iter::Peekable, mem, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, ClassDirective, Concatenation,
     ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag, StartIfTag, StartTag,
@@ -13,7 +13,7 @@ use span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
-    chars: Peekable<CharIndices<'a>>,
+    chars: Peekable<Chars<'a>>,
     tokens: Vec<Token<'a>>,
     start: usize,
     prev: usize,
@@ -26,7 +26,7 @@ impl<'a> Scanner<'a> {
             source,
             tokens: vec![],
             // not optimal
-            chars: source.char_indices().peekable(),
+            chars: source.chars().peekable(),
             prev: 0,
             current: 0,
             start: 0,
@@ -85,10 +85,10 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        let (idx, char) = self.chars.next().unwrap();
+        let char = self.chars.next().unwrap();
 
         self.prev = self.current;
-        self.current = idx + char.len_utf8();
+        self.current = self.current + char.len_utf8();
 
         return char;
     }
@@ -174,7 +174,7 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        return self.chars.peek().map(|x| x.1);
+        return self.chars.peek().map(|x| *x);
     }
 
     fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
