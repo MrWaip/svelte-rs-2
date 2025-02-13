@@ -4,6 +4,7 @@ use metadata::{AttributeMetadata, ElementMetadata, FragmentMetadata, Interpolati
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
+use oxc_syntax::node::NodeId;
 use rccell::RcCell;
 use span::{GetSpan, Span};
 
@@ -11,10 +12,15 @@ use diagnostics::Diagnostic;
 
 pub mod format;
 pub mod metadata;
+pub mod node_id;
 
 pub struct Ast<'a> {
-    pub template: Fragment<'a>,
+    pub template: Template<'a>,
     pub script: Option<ScriptTag<'a>>,
+}
+
+pub struct Template<'a> {
+    pub nodes: Fragment<'a>,
 }
 
 pub trait AsNode<'a> {
@@ -40,6 +46,14 @@ impl<'a> Node<'a> {
     pub fn as_element(self) -> Option<Element<'a>> {
         return if let Node::Element(element) = self {
             Some(element)
+        } else {
+            None
+        };
+    }
+
+    pub fn as_text_mut(&mut self) -> Option<&mut Text<'a>> {
+        return if let Node::Text(it) = self {
+            Some(it)
         } else {
             None
         };
@@ -157,6 +171,7 @@ pub struct Element<'a> {
     pub nodes: Vec<RcCell<Node<'a>>>,
     pub attributes: Vec<Attribute<'a>>,
     pub metadata: Option<ElementMetadata>,
+    pub node_id: Option<NodeId>,
 }
 
 impl<'a> AsNode<'a> for Element<'a> {
@@ -194,6 +209,15 @@ impl<'a> Text<'a> {
         let trimmed = new.len() != self.value.len();
         self.value = new;
         return trimmed;
+    }
+
+    pub fn trim(&mut self) {
+        self.value = self.value.trim_ascii();
+    }
+
+    pub fn trim_one_whitespace(&mut self, allocator: &'a Allocator) {
+        self.trim_start_one_whitespace(allocator);
+        self.trim_end_one_whitespace(allocator);
     }
 
     pub fn trim_start_one_whitespace(&mut self, allocator: &'a Allocator) {
@@ -315,6 +339,7 @@ impl<'a> AsNode<'a> for ScriptTag<'a> {
 pub struct Fragment<'a> {
     pub nodes: Vec<RcCell<Node<'a>>>,
     pub metadata: Option<FragmentMetadata>,
+    pub node_id: Option<NodeId>,
 }
 
 impl<'a> Fragment<'a> {
@@ -334,6 +359,7 @@ impl<'a> Fragment<'a> {
         return Self {
             metadata: None,
             nodes,
+            node_id: None,
         };
     }
 
@@ -345,6 +371,7 @@ impl<'a> Fragment<'a> {
         return Self {
             metadata: None,
             nodes: vec![],
+            node_id: None,
         };
     }
 }

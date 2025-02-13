@@ -52,6 +52,7 @@ dependencies = [
  "oxc_ast",
  "oxc_codegen",
  "oxc_span",
+ "oxc_syntax",
  "rccell",
  "span",
 ]

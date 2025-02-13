@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
+use oxc_index::IndexVec;
 use oxc_semantic::{
     NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolId, SymbolTable,
 };
+
+use crate::compute_optimization::{NodeOptimizationAction, OptimizationResult};
 
 #[derive(Debug)]
 pub struct Rune {
@@ -20,6 +23,7 @@ pub struct SvelteTable {
     pub(crate) symbols: SymbolTable,
     pub(crate) scopes: ScopeTree,
     pub(crate) runes: HashMap<SymbolId, Rune>,
+    pub(crate) optimizations: IndexVec<NodeId, OptimizationResult>,
 }
 
 impl SvelteTable {
@@ -28,6 +32,7 @@ impl SvelteTable {
             runes: HashMap::default(),
             scopes,
             symbols,
+            optimizations: IndexVec::new(),
         };
     }
 
@@ -95,5 +100,13 @@ impl SvelteTable {
 
     pub fn root_scope_id(&self) -> oxc_semantic::ScopeId {
         return self.scopes.root_scope_id();
+    }
+
+    pub fn add_optimization(&mut self, opt: OptimizationResult) -> NodeId {
+        return self.optimizations.push(opt);
+    }
+
+    pub fn get_optimization(&self, node_id: NodeId) -> Option<&OptimizationResult> {
+        return self.optimizations.get(node_id);
     }
 }
