@@ -14,7 +14,7 @@ use span::{GetSpan, Span};
 use ast::{
     AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
     Element, ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock,
-    Interpolation, Node, ScriptTag, Text,
+    Interpolation, Node, ScriptTag, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -174,7 +174,9 @@ impl<'a> Parser<'a> {
         }
 
         return Ok(Ast {
-            template: Fragment::from(nodes),
+            template: Template {
+                nodes: Fragment::from(nodes),
+            },
             script,
         });
     }
@@ -191,6 +193,7 @@ impl<'a> Parser<'a> {
             span: start_span,
             attributes,
             metadata: None,
+            node_id: None,
         };
 
         let node = element.as_node().as_rc_cell();
@@ -502,7 +505,7 @@ mod tests {
         let allocator = Allocator::default();
         let mut parser = Parser::new("prefix <div>text</div>", &allocator);
 
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], "prefix ");
         assert_node_cell(&ast[1], "<div>text</div>");
@@ -512,7 +515,7 @@ mod tests {
     fn self_closed_element() {
         let allocator = Allocator::default();
         let mut parser = Parser::new("<img /><body><input/></body>", &allocator);
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], "<img/>");
         assert_node_cell(&ast[1], "<body><input/></body>");
@@ -531,7 +534,7 @@ mod tests {
     fn smoke_interpolation() {
         let allocator = Allocator::default();
         let mut parser = Parser::new("{ id - 22 + 1 }", &allocator);
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], "{ id - 22 + 1 }");
     }
@@ -543,7 +546,7 @@ mod tests {
             r#"<div lang="ts" {id} disabled  value={value} label="at: {date} time">source</div>"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -555,7 +558,7 @@ mod tests {
     fn smoke_if_tag() {
         let allocator = Allocator::default();
         let mut parser = Parser::new(r#"{#if true }<div>title</div>{/if}"#, &allocator);
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], r#"{#if true}<div>title</div>{/if}"#);
     }
@@ -567,7 +570,7 @@ mod tests {
             r#"{#if true }<div>title</div>{:else}<h1>big title</h1>{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -582,7 +585,7 @@ mod tests {
             r#"<div>{#if false }one{:else if true}two{:else}three{/if}</div>{#if false}one{:else if true}two{:else if 1 == 1}<h1>three</h1>{:else}four{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -602,7 +605,7 @@ mod tests {
             r#"{#if 1 === 1}{#if 2 === 2}inside{/if}{:else}{#if 3 === 3}alternate inside{/if}{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -628,7 +631,7 @@ mod tests {
             &allocator,
         );
 
-        let ast = parser.parse().unwrap().template;
+        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], r#"<input class:visible class:toggled={true}/>"#);
     }

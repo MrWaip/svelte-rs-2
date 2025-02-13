@@ -14,15 +14,15 @@ use walk::*;
 use ast::{
     Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
     ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
-    Text,
+    Template, Text,
 };
 
 pub trait TemplateVisitor<'a>: Sized {
-    fn visit_template(&mut self, it: &Fragment<'a>) {
+    fn visit_template(&mut self, it: &mut Template<'a>) {
         walk_template(self, it);
     }
 
-    fn visit_fragment(&mut self, it: &Fragment<'a>) {
+    fn visit_fragment(&mut self, it: &mut Fragment<'a>) {
         walk_fragment(self, it);
     }
 
@@ -102,11 +102,11 @@ pub mod walk {
 
     use super::*;
 
-    pub fn walk_template<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Fragment<'a>) {
-        visitor.visit_nodes(&it.nodes);
+    pub fn walk_template<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Template<'a>) {
+        visitor.visit_fragment(&mut it.nodes);
     }
 
-    pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &Fragment<'a>) {
+    pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut Fragment<'a>) {
         visitor.visit_nodes(&it.nodes);
     }
 
@@ -222,9 +222,9 @@ pub mod walk {
     pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(visitor: &mut V, it: &mut IfBlock<'a>) {
         visitor.visit_expression(&it.test);
 
-        visitor.visit_fragment(&it.consequent);
+        visitor.visit_fragment(&mut it.consequent);
 
-        if let Some(alternate) = &it.alternate {
+        if let Some(alternate) = &mut it.alternate {
             visitor.visit_fragment(alternate);
         }
     }

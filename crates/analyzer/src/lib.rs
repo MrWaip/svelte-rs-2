@@ -1,9 +1,11 @@
+pub mod compute_optimization;
 pub mod svelte_table;
 pub mod visitor;
 
 use std::mem::take;
 
 use ast_builder::Builder;
+use compute_optimization::{compute_optimization, ContentType};
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
     visit::walk::{walk_assignment_expression, walk_call_expression, walk_update_expression},
@@ -15,13 +17,17 @@ use visitor::{
     walk::{
         walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
         walk_expression_attribute, walk_expression_attribute_value,
-        walk_expression_concatenation_part, walk_if_block, walk_interpolation,
+        walk_expression_concatenation_part, walk_fragment, walk_if_block, walk_interpolation,
+        walk_nodes, walk_template,
     },
     TemplateVisitor,
 };
 
 use ast::{
-    metadata::{AttributeMetadata, ElementMetadata, InterpolationMetadata, WithMetadata},
+    metadata::{
+        AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
+        InterpolationMetadata, WithMetadata,
+    },
     Ast, ExpressionAttribute, ExpressionAttributeValue,
 };
 
@@ -53,7 +59,7 @@ impl<'alloc> Analyzer<'alloc> {
         return Self { b };
     }
 
-    pub fn analyze<'link>(&self, ast: &'link Ast<'alloc>) -> AnalyzeResult {
+    pub fn analyze<'link>(&self, ast: &'link mut Ast<'alloc>) -> AnalyzeResult {
         let empty = self.b.program(vec![]);
         let program = ast
             .script
@@ -84,7 +90,7 @@ impl<'alloc> Analyzer<'alloc> {
             current_concatenation_metadata: AttributeMetadata::default(),
         };
 
-        template_visitor.visit_template(&ast.template);
+        template_visitor.visit_template(&mut ast.template);
 
         return AnalyzeResult { svelte_table };
     }
@@ -117,6 +123,32 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
+    fn visit_fragment(&mut self, it: &mut ast::Fragment<'a>) {
+        let mut metadata = FragmentMetadata::default();
+
+        walk_fragment(self, it);
+
+        let optimizations = compute_optimization(&it.nodes);
+
+        metadata.need_start_with_next = optimizations.start_with_compressible;
+        metadata.is_empty = optimizations.length == 0;
+
+        metadata.anchor = match optimizations.content_type {
+            ContentType::Mixed => FragmentAnchor::Fragment,
+            ContentType::TextAndInterpolation => FragmentAnchor::Text,
+            ContentType::Text => FragmentAnchor::TextInline,
+            ContentType::Interpolation => FragmentAnchor::Text,
+            ContentType::Element => FragmentAnchor::Element,
+            ContentType::Nope => FragmentAnchor::Fragment,
+            ContentType::NodeWithFragment => FragmentAnchor::Comment,
+        };
+
+        let node_id = self.svelte_table.add_optimization(optimizations);
+
+        it.set_node_id(node_id);
+        it.set_metadata(metadata);
+    }
+
     fn visit_element(&mut self, it: &mut ast::Element<'a>) {
         let mut metadata = ElementMetadata::default();
         let was_dynamic = self.element_has_dynamic_nodes;
@@ -124,9 +156,17 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
 
         walk_element(self, it);
 
+        let optimizations = compute_optimization(&it.nodes);
+
         metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
+        metadata.need_reset =
+            self.element_has_dynamic_nodes && optimizations.content_type.is_non_text();
+
         self.element_has_dynamic_nodes = self.element_has_dynamic_nodes || was_dynamic;
 
+        let node_id = self.svelte_table.add_optimization(optimizations);
+
+        it.set_node_id(node_id);
         it.set_metadata(metadata);
     }
 
@@ -274,8 +314,8 @@ mod tests {
             "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>",
             &allocator,
         );
-        let ast = parser.parse().unwrap();
-        let result = analyzer.analyze(&ast);
+        let mut ast = parser.parse().unwrap();
+        let result = analyzer.analyze(&mut ast);
 
         assert!(!result.svelte_table.runes.is_empty());
 
@@ -294,10 +334,10 @@ mod tests {
             "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>{goto(rune_var)}",
             &allocator,
         );
-        let ast = parser.parse().unwrap();
-        analyzer.analyze(&ast);
+        let mut ast = parser.parse().unwrap();
+        analyzer.analyze(&mut ast);
 
-        let Node::Interpolation(interpolation) = &*ast.template[0].borrow() else {
+        let Node::Interpolation(interpolation) = &*ast.template.nodes[0].borrow() else {
             unreachable!()
         };
 
@@ -324,15 +364,15 @@ mod tests {
             </span>"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap();
+        let mut ast = parser.parse().unwrap();
 
-        analyzer.analyze(&ast);
+        analyzer.analyze(&mut ast);
 
-        let Node::Element(root_div) = &*ast.template[0].borrow() else {
+        let Node::Element(root_div) = &*ast.template.nodes[0].borrow() else {
             unreachable!()
         };
 
-        let Node::Element(root_span) = &*ast.template[1].borrow() else {
+        let Node::Element(root_span) = &*ast.template.nodes[1].borrow() else {
             unreachable!()
         };
 

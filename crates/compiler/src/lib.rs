@@ -28,8 +28,8 @@ impl Compiler {
         let builder = Builder::new(oxc_builder);
         let analyzer = Analyzer::new(&builder);
 
-        let ast = parser.parse()?;
-        let analyze_result = analyzer.analyze(&ast);
+        let mut ast = parser.parse()?;
+        let analyze_result = analyzer.analyze(&mut ast);
 
         let code = transform_client(ast, &builder, analyze_result);
 

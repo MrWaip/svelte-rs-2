@@ -1,10 +1,12 @@
 use crate::{
-    ClassDirective, Concatenation, Element, ExpressionAttribute, ExpressionAttributeValue, Fragment, Interpolation, VirtualConcatenation
+    ClassDirective, Concatenation, Element, ExpressionAttribute, ExpressionAttributeValue,
+    Fragment, Interpolation, VirtualConcatenation,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElementMetadata {
     pub has_dynamic_nodes: bool,
+    pub need_reset: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -26,7 +28,31 @@ impl InterpolationMetadata {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct FragmentMetadata {}
+pub struct FragmentMetadata {
+    pub need_start_with_next: bool,
+    pub anchor: FragmentAnchor,
+    pub is_empty: bool
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub enum FragmentAnchor {
+    #[default]
+    Fragment,
+    Text,
+    TextInline,
+    Element,
+    Comment,
+}
+
+impl FragmentAnchor {
+    pub fn is_text(&self) -> bool {
+        return matches!(self, FragmentAnchor::Text);
+    }
+
+    pub fn is_element(&self) -> bool {
+        return matches!(self, FragmentAnchor::Element);
+    }
+}
 
 pub trait WithMetadata {
     type Metadata;
