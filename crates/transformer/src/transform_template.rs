@@ -2,7 +2,7 @@ use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use analyzer::{
     compute_optimization::{ContentType, NodeOptimizationAction, TrimAction},
-    svelte_table::{SvelteTable},
+    svelte_table::SvelteTable,
 };
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::NodeId;
@@ -969,10 +969,6 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         nodes: &mut Vec<RcCell<Node<'a>>>,
         actions: &Vec<NodeOptimizationAction>,
     ) {
-        if actions.len() == 3 {
-            dbg!(&nodes, &actions);
-        }
-
         let mut new: Vec<RcCell<Node<'a>>> = vec![];
 
         for idx in 0..nodes.len() {
