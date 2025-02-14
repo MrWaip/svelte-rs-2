@@ -5,7 +5,7 @@ use oxc_semantic::{
     NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolId, SymbolTable,
 };
 
-use crate::compute_optimization::{NodeOptimizationAction, OptimizationResult};
+use crate::compute_optimization::OptimizationResult;
 
 #[derive(Debug)]
 pub struct Rune {
