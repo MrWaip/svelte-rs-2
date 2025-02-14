@@ -1,15 +1,15 @@
-use std::{cell::RefCell, mem::replace, ops::Index, rc::Rc};
+use std::{cell::RefCell, mem::replace, rc::Rc};
 
 use analyzer::{
-    compute_optimization::{self, ContentType, NodeOptimizationAction, TrimAction},
-    svelte_table::{self, SvelteTable},
+    compute_optimization::{ContentType, NodeOptimizationAction, TrimAction},
+    svelte_table::{SvelteTable},
 };
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::NodeId;
 use rccell::RcCell;
 
 use ast::{
-    metadata::{self, FragmentAnchor, FragmentMetadata, InterpolationMetadata, WithMetadata},
+    metadata::{FragmentAnchor, InterpolationMetadata, WithMetadata},
     Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
     ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node, Template, Text,
     VirtualConcatenation,
