@@ -10,11 +10,6 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("compiler");
 
-    // let files: Vec<Result<PathBuf, GlobError>> = files.collect();
-    // dbg!(&files);
-
-    dbg!(&current_dir());
-
     for entry in files {
         let path = entry.unwrap();
         let source = read_to_string(&path).unwrap();
