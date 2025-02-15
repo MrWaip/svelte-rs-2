@@ -54,6 +54,12 @@ pub struct AnalyzeResult {
     pub svelte_table: SvelteTable,
 }
 
+pub enum ParentNode {
+    IfBlock,
+    Template,
+    Element,
+}
+
 impl<'alloc> Analyzer<'alloc> {
     pub fn new(b: &'alloc Builder<'alloc>) -> Self {
         return Self { b };
