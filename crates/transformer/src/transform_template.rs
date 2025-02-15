@@ -65,20 +65,6 @@ pub struct FragmentContext<'a> {
     anchor: Expression<'a>,
 }
 
-pub enum FragmentParent {
-    IfBlock,
-    Template,
-}
-
-impl FragmentParent {
-    pub fn is_next_needed(&self) -> bool {
-        return match self {
-            FragmentParent::Template => true,
-            _ => false,
-        };
-    }
-}
-
 pub struct NodeContext<'ast, 'reference> {
     builder: &'reference Builder<'ast>,
     fragment: &'reference mut FragmentContext<'ast>,
@@ -412,7 +398,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     }
 
     pub fn transform(&mut self, fragment: &mut Template<'a>) -> TransformTemplateResult<'a> {
-        let result = self.transform_fragment(&mut fragment.nodes, FragmentParent::Template);
+        let result = self.transform_fragment(&mut fragment.nodes);
 
         let hoisted = replace(&mut self.hoisted, vec![]);
 
@@ -422,11 +408,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         };
     }
 
-    fn transform_fragment(
-        &mut self,
-        fragment: &mut Fragment<'a>,
-        parent: FragmentParent,
-    ) -> FragmentResult<'a> {
+    fn transform_fragment(&mut self, fragment: &mut Fragment<'a>) -> FragmentResult<'a> {
         // !svelte optimization
         let node_id = fragment.node_id();
         let metadata = fragment.get_metadata();
@@ -441,7 +423,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut template_bit_flags = Some(1.0);
 
         // !svelte optimization / hydration?
-        if metadata.need_start_with_next && parent.is_next_needed() {
+        if metadata.need_start_with_next {
             body.push(self.b.call_stmt("$.next", []));
         }
 
@@ -897,8 +879,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         let test = self.transform_expression(&mut if_block.test);
 
-        let consequent_fragment =
-            self.transform_fragment(&mut if_block.consequent, FragmentParent::IfBlock);
+        let consequent_fragment = self.transform_fragment(&mut if_block.consequent);
         let consequent_id = ctx.generate("consequent");
 
         let consequent = self.b.var(
@@ -912,7 +893,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         statements.push(consequent);
 
         let alternate_stmt = if let Some(alt) = &mut if_block.alternate {
-            let alternate_fragment = self.transform_fragment(alt, FragmentParent::IfBlock);
+            let alternate_fragment = self.transform_fragment(alt);
             let alternate_id = ctx.generate("alternate");
 
             let alternate = self.b.var(
