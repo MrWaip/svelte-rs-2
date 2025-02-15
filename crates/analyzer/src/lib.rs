@@ -1,4 +1,6 @@
+pub mod ancestor;
 pub mod compute_optimization;
+pub mod context;
 pub mod svelte_table;
 pub mod visitor;
 
@@ -6,6 +8,7 @@ use std::mem::take;
 
 use ast_builder::Builder;
 use compute_optimization::{compute_optimization, ContentType};
+use context::VisitorContext;
 use oxc_ast::{
     ast::{BindingPatternKind, Expression, IdentifierReference, VariableDeclarator},
     visit::walk::{walk_assignment_expression, walk_call_expression, walk_update_expression},
@@ -96,7 +99,9 @@ impl<'alloc> Analyzer<'alloc> {
             current_concatenation_metadata: AttributeMetadata::default(),
         };
 
-        template_visitor.visit_template(&mut ast.template);
+        let mut ctx = VisitorContext::new();
+
+        template_visitor.visit_template(&mut ast.template, &mut ctx);
 
         return AnalyzeResult { svelte_table };
     }
@@ -129,22 +134,22 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
-    fn visit_template(&mut self, it: &mut ast::Template<'a>) {
-        walk_fragment(self, &mut it.nodes);
+    fn visit_template(&mut self, it: &mut ast::Template<'a>, ctx: &mut VisitorContext) {
+        walk_fragment(self, &mut it.nodes, ctx);
         self.analyze_fragment(&mut it.nodes, true);
     }
 
-    fn visit_fragment(&mut self, it: &mut ast::Fragment<'a>) {
-        walk_fragment(self, it);
+    fn visit_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
+        walk_fragment(self, it, ctx);
         self.analyze_fragment(it, false);
     }
 
-    fn visit_element(&mut self, it: &mut ast::Element<'a>) {
+    fn visit_element(&mut self, it: &mut ast::Element<'a>, ctx: &mut VisitorContext) {
         let mut metadata = ElementMetadata::default();
         let was_dynamic = self.element_has_dynamic_nodes;
         self.element_has_dynamic_nodes = false;
 
-        walk_element(self, it);
+        walk_element(self, it, ctx);
 
         let optimizations = compute_optimization(&it.nodes);
 
@@ -160,19 +165,23 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         it.set_metadata(metadata);
     }
 
-    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>) {
+    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>, ctx: &mut VisitorContext) {
         self.element_has_dynamic_nodes = true;
 
-        walk_if_block(self, it);
+        walk_if_block(self, it, ctx);
     }
 
-    fn visit_expression(&mut self, it: &Expression<'a>) {
+    fn visit_expression(&mut self, it: &Expression<'a>, _ctx: &mut VisitorContext) {
         Visit::visit_expression(self, it);
     }
 
-    fn visit_class_directive_attribute(&mut self, it: &mut ast::ClassDirective<'a>) {
+    fn visit_class_directive_attribute(
+        &mut self,
+        it: &mut ast::ClassDirective<'a>,
+        ctx: &mut VisitorContext,
+    ) {
         self.element_has_dynamic_nodes = true;
-        walk_class_directive_attribute(self, it);
+        walk_class_directive_attribute(self, it, ctx);
 
         let flags = self.resolve_expression_flags();
 
@@ -181,9 +190,9 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>) {
+    fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, ctx: &mut VisitorContext) {
         self.element_has_dynamic_nodes = true;
-        walk_interpolation(self, it);
+        walk_interpolation(self, it, ctx);
 
         let flags = self.resolve_expression_flags();
 
@@ -193,9 +202,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_expression_attribute(&mut self, it: &mut ExpressionAttribute<'a>) {
+    fn visit_expression_attribute(
+        &mut self,
+        it: &mut ExpressionAttribute<'a>,
+        ctx: &mut VisitorContext,
+    ) {
         self.element_has_dynamic_nodes = true;
-        walk_expression_attribute(self, it);
+        walk_expression_attribute(self, it, ctx);
 
         let flags = self.resolve_expression_flags();
 
@@ -204,18 +217,26 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_concatenation_attribute_value(&mut self, it: &mut ast::Concatenation<'a>) {
+    fn visit_concatenation_attribute_value(
+        &mut self,
+        it: &mut ast::Concatenation<'a>,
+        ctx: &mut VisitorContext,
+    ) {
         self.element_has_dynamic_nodes = true;
-        walk_concatenation_attribute_value(self, it);
+        walk_concatenation_attribute_value(self, it, ctx);
 
         let metadata = take(&mut self.current_concatenation_metadata);
 
         it.set_metadata(metadata);
     }
 
-    fn visit_expression_attribute_value(&mut self, it: &mut ExpressionAttributeValue<'a>) {
+    fn visit_expression_attribute_value(
+        &mut self,
+        it: &mut ExpressionAttributeValue<'a>,
+        ctx: &mut VisitorContext,
+    ) {
         self.element_has_dynamic_nodes = true;
-        walk_expression_attribute_value(self, it);
+        walk_expression_attribute_value(self, it, ctx);
 
         let flags = self.resolve_expression_flags();
 
@@ -224,8 +245,12 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_expression_concatenation_part(&mut self, it: &Expression<'a>) {
-        walk_expression_concatenation_part(self, it);
+    fn visit_expression_concatenation_part(
+        &mut self,
+        it: &Expression<'a>,
+        ctx: &mut VisitorContext,
+    ) {
+        walk_expression_concatenation_part(self, it, ctx);
 
         let flags = self.resolve_expression_flags();
 
