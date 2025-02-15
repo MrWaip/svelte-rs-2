@@ -21,7 +21,6 @@ use visitor::{
         walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
         walk_expression_attribute, walk_expression_attribute_value,
         walk_expression_concatenation_part, walk_fragment, walk_if_block, walk_interpolation,
-        walk_template,
     },
     TemplateVisitor,
 };
@@ -31,7 +30,7 @@ use ast::{
         AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
         InterpolationMetadata, WithMetadata,
     },
-    Ast, ExpressionAttribute, ExpressionAttributeValue, Fragment,
+    Ast, ExpressionAttribute, ExpressionAttributeValue,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
