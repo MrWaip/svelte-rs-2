@@ -18,6 +18,7 @@ use visitor::{
         walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
         walk_expression_attribute, walk_expression_attribute_value,
         walk_expression_concatenation_part, walk_fragment, walk_if_block, walk_interpolation,
+        walk_template,
     },
     TemplateVisitor,
 };
@@ -27,7 +28,7 @@ use ast::{
         AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
         InterpolationMetadata, WithMetadata,
     },
-    Ast, ExpressionAttribute, ExpressionAttributeValue,
+    Ast, ExpressionAttribute, ExpressionAttributeValue, Fragment,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -122,30 +123,14 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
+    fn visit_template(&mut self, it: &mut ast::Template<'a>) {
+        walk_fragment(self, &mut it.nodes);
+        self.analyze_fragment(&mut it.nodes, true);
+    }
+
     fn visit_fragment(&mut self, it: &mut ast::Fragment<'a>) {
-        let mut metadata = FragmentMetadata::default();
-
         walk_fragment(self, it);
-
-        let optimizations = compute_optimization(&it.nodes);
-
-        metadata.need_start_with_next = optimizations.start_with_compressible;
-        metadata.is_empty = optimizations.length == 0;
-
-        metadata.anchor = match optimizations.content_type {
-            ContentType::Mixed => FragmentAnchor::Fragment,
-            ContentType::TextAndInterpolation => FragmentAnchor::Text,
-            ContentType::Text => FragmentAnchor::TextInline,
-            ContentType::Interpolation => FragmentAnchor::Text,
-            ContentType::Element => FragmentAnchor::Element,
-            ContentType::Nope => FragmentAnchor::Fragment,
-            ContentType::NodeWithFragment => FragmentAnchor::Comment,
-        };
-
-        let node_id = self.svelte_table.add_optimization(optimizations);
-
-        it.set_node_id(node_id);
-        it.set_metadata(metadata);
+        self.analyze_fragment(it, false);
     }
 
     fn visit_element(&mut self, it: &mut ast::Element<'a>) {
@@ -290,6 +275,29 @@ impl<'link, 'a> TemplateVisitorImpl<'link> {
         } else {
             take(&mut self.current_reference_flags)
         }
+    }
+
+    fn analyze_fragment(&mut self, it: &mut ast::Fragment<'a>, root: bool) {
+        let mut metadata = FragmentMetadata::default();
+        let optimizations = compute_optimization(&it.nodes);
+
+        metadata.need_start_with_next = optimizations.start_with_compressible && root;
+        metadata.is_empty = optimizations.length == 0;
+
+        metadata.anchor = match optimizations.content_type {
+            ContentType::Mixed => FragmentAnchor::Fragment,
+            ContentType::TextAndInterpolation => FragmentAnchor::Text,
+            ContentType::Text => FragmentAnchor::TextInline,
+            ContentType::Interpolation => FragmentAnchor::Text,
+            ContentType::Element => FragmentAnchor::Element,
+            ContentType::Nope => FragmentAnchor::Fragment,
+            ContentType::NodeWithFragment => FragmentAnchor::Comment,
+        };
+
+        let node_id = self.svelte_table.add_optimization(optimizations);
+
+        it.set_node_id(node_id);
+        it.set_metadata(metadata);
     }
 }
 
