@@ -19,6 +19,7 @@ pub struct Ast<'a> {
     pub script: Option<ScriptTag<'a>>,
 }
 
+#[derive(Debug)]
 pub struct Template<'a> {
     pub nodes: Fragment<'a>,
 }

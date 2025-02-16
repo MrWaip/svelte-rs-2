@@ -1,3 +1,4 @@
+
 #[derive(Debug, Clone, Copy)]
 pub enum Ancestor {
     IfBlock,
@@ -6,7 +7,7 @@ pub enum Ancestor {
 }
 
 impl Ancestor {
-    pub fn is_template(&self) -> bool {
-        return matches!(self, Ancestor::Template);
-    }
+   pub fn is_template(&self) ->bool  {
+    return matches!(self, Ancestor::Template);
+   }
 }
