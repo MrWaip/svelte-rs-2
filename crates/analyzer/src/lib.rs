@@ -17,14 +17,6 @@ use oxc_ast::{
 };
 use oxc_semantic::{ReferenceFlags, SemanticBuilder};
 use svelte_table::{RuneKind, SvelteTable};
-use visitor::{
-    walk::{
-        walk_class_directive_attribute, walk_concatenation_attribute_value, walk_element,
-        walk_expression_attribute, walk_expression_attribute_value,
-        walk_expression_concatenation_part, walk_fragment, walk_if_block, walk_interpolation,
-    },
-    TemplateVisitor,
-};
 
 use ast::{
     metadata::{
@@ -33,6 +25,7 @@ use ast::{
     },
     Ast, ExpressionAttribute, ExpressionAttributeValue,
 };
+use visitor2::{walk::walk_template, TemplateVisitor};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExpressionFlags {
@@ -101,7 +94,7 @@ impl<'alloc> Analyzer<'alloc> {
 
         let mut ctx = VisitorContext::new();
 
-        template_visitor.visit_template(&mut ast.template, &mut ctx);
+        walk_template(&mut template_visitor, &mut ast.template, &mut ctx);
 
         return AnalyzeResult { svelte_table };
     }
@@ -134,24 +127,22 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
-    fn visit_template(&mut self, it: &mut ast::Template<'a>, ctx: &mut VisitorContext) {
-        walk_fragment(self, &mut it.nodes, ctx);
-        self.analyze_fragment(&mut it.nodes, true);
+    fn exit_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
+        self.analyze_fragment(it, ctx.parent().is_template());
     }
 
-    fn visit_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
-        walk_fragment(self, it, ctx);
-        self.analyze_fragment(it, false);
-    }
-
-    fn visit_element(&mut self, it: &mut ast::Element<'a>, ctx: &mut VisitorContext) {
+    fn enter_element(&mut self, it: &mut ast::Element<'a>, _ctx: &mut VisitorContext) {
         let mut metadata = ElementMetadata::default();
-        let was_dynamic = self.element_has_dynamic_nodes;
+        metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
         self.element_has_dynamic_nodes = false;
 
-        walk_element(self, it, ctx);
+        it.set_metadata(metadata);
+    }
 
+    fn exit_element(&mut self, it: &mut ast::Element<'a>, _ctx: &mut VisitorContext) {
+        let mut metadata = it.get_metadata();
         let optimizations = compute_optimization(&it.nodes);
+        let was_dynamic = metadata.has_dynamic_nodes;
 
         metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
         metadata.need_reset =
@@ -165,24 +156,16 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         it.set_metadata(metadata);
     }
 
-    fn visit_if_block(&mut self, it: &mut ast::IfBlock<'a>, ctx: &mut VisitorContext) {
+    fn enter_expression(&mut self, it: &Expression<'a>, _ctx: &mut VisitorContext) {
         self.element_has_dynamic_nodes = true;
-
-        walk_if_block(self, it, ctx);
-    }
-
-    fn visit_expression(&mut self, it: &Expression<'a>, _ctx: &mut VisitorContext) {
         Visit::visit_expression(self, it);
     }
 
-    fn visit_class_directive_attribute(
+    fn exit_class_directive_attribute(
         &mut self,
         it: &mut ast::ClassDirective<'a>,
-        ctx: &mut VisitorContext,
+        _ctx: &mut VisitorContext,
     ) {
-        self.element_has_dynamic_nodes = true;
-        walk_class_directive_attribute(self, it, ctx);
-
         let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
@@ -190,10 +173,7 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, ctx: &mut VisitorContext) {
-        self.element_has_dynamic_nodes = true;
-        walk_interpolation(self, it, ctx);
-
+    fn exit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, _ctx: &mut VisitorContext) {
         let flags = self.resolve_expression_flags();
 
         it.set_metadata(InterpolationMetadata {
@@ -202,14 +182,11 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_expression_attribute(
+    fn exit_expression_attribute(
         &mut self,
         it: &mut ExpressionAttribute<'a>,
-        ctx: &mut VisitorContext,
+        _ctx: &mut VisitorContext,
     ) {
-        self.element_has_dynamic_nodes = true;
-        walk_expression_attribute(self, it, ctx);
-
         let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
@@ -217,27 +194,21 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_concatenation_attribute_value(
+    fn exit_concatenation_attribute_value(
         &mut self,
         it: &mut ast::Concatenation<'a>,
-        ctx: &mut VisitorContext,
+        _ctx: &mut VisitorContext,
     ) {
-        self.element_has_dynamic_nodes = true;
-        walk_concatenation_attribute_value(self, it, ctx);
-
         let metadata = take(&mut self.current_concatenation_metadata);
 
         it.set_metadata(metadata);
     }
 
-    fn visit_expression_attribute_value(
+    fn exit_expression_attribute_value(
         &mut self,
         it: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut VisitorContext,
+        _ctx: &mut VisitorContext,
     ) {
-        self.element_has_dynamic_nodes = true;
-        walk_expression_attribute_value(self, it, ctx);
-
         let flags = self.resolve_expression_flags();
 
         it.set_metadata(AttributeMetadata {
@@ -245,13 +216,11 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn visit_expression_concatenation_part(
+    fn exit_expression_concatenation_part(
         &mut self,
-        it: &Expression<'a>,
-        ctx: &mut VisitorContext,
+        _it: &Expression<'a>,
+        _ctx: &mut VisitorContext,
     ) {
-        walk_expression_concatenation_part(self, it, ctx);
-
         let flags = self.resolve_expression_flags();
 
         self.current_concatenation_metadata.has_reactivity = flags.has_reactivity;
