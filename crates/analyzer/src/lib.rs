@@ -121,7 +121,7 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
 }
 
 impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
-    fn exit_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
+    fn enter_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
         self.analyze_fragment(it, ctx.parent().is_template());
     }
 
@@ -130,23 +130,24 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
         self.element_has_dynamic_nodes = false;
 
+        let optimizations = compute_optimization(&it.nodes);
+        let node_id = self.svelte_table.add_optimization(optimizations);
+
+        it.set_node_id(node_id);
         it.set_metadata(metadata);
     }
 
     fn exit_element(&mut self, it: &mut ast::Element<'a>, _ctx: &mut VisitorContext) {
         let mut metadata = it.get_metadata();
-        let optimizations = compute_optimization(&it.nodes);
-        let was_dynamic = metadata.has_dynamic_nodes;
+        let optimizations = self.svelte_table.get_optimization(it.node_id()).unwrap();
 
+        let was_dynamic = metadata.has_dynamic_nodes;
         metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
         metadata.need_reset =
             self.element_has_dynamic_nodes && optimizations.content_type.is_non_text();
 
         self.element_has_dynamic_nodes = self.element_has_dynamic_nodes || was_dynamic;
 
-        let node_id = self.svelte_table.add_optimization(optimizations);
-
-        it.set_node_id(node_id);
         it.set_metadata(metadata);
     }
 
