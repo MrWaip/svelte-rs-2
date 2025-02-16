@@ -3,6 +3,7 @@ pub mod compute_optimization;
 pub mod context;
 pub mod svelte_table;
 pub mod visitor;
+pub mod visitor2;
 
 use std::mem::take;
 
