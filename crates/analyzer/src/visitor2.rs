@@ -163,6 +163,8 @@ pub mod walk {
 
     use ast::Node;
 
+    use crate::ancestor::Ancestor;
+
     use super::*;
 
     pub fn walk_template<'a, V: TemplateVisitor<'a>>(
@@ -170,11 +172,13 @@ pub mod walk {
         it: &mut Template<'a>,
         ctx: &mut VisitorContext,
     ) {
+        ctx.push_stack(Ancestor::Template);
         visitor.enter_template(it, ctx);
 
         walk_fragment(visitor, &mut it.nodes, ctx);
 
         visitor.exit_template(it, ctx);
+        ctx.pop_stack();
     }
 
     pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(
@@ -256,12 +260,14 @@ pub mod walk {
         it: &mut Element<'a>,
         ctx: &mut VisitorContext,
     ) {
+        ctx.push_stack(Ancestor::Element);
         visitor.enter_element(it, ctx);
 
         walk_attributes(visitor, &mut it.attributes, ctx);
         walk_nodes(visitor, &mut it.nodes, ctx);
 
         visitor.exit_element(it, ctx);
+        ctx.pop_stack();
     }
 
     pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(
@@ -404,6 +410,7 @@ pub mod walk {
         it: &mut IfBlock<'a>,
         ctx: &mut VisitorContext,
     ) {
+        ctx.push_stack(Ancestor::IfBlock);
         visitor.enter_if_block(it, ctx);
 
         walk_expression(visitor, &mut it.test, ctx);
@@ -415,5 +422,6 @@ pub mod walk {
         }
 
         visitor.exit_if_block(it, ctx);
+        ctx.pop_stack();
     }
 }
