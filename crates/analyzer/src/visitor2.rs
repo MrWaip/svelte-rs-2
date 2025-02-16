@@ -19,143 +19,153 @@ use ast::{
 use crate::context::VisitorContext;
 
 pub trait TemplateVisitor<'a>: Sized {
-    fn enter_template(&mut self, it: &mut Template<'a>, ctx: &mut VisitorContext) {}
+    fn enter_template(&mut self, it: &mut Template<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_template(&mut self, it: &mut Template<'a>, ctx: &mut VisitorContext) {}
+    fn exit_template(&mut self, it: &mut Template<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_fragment(&mut self, it: &mut Fragment<'a>, ctx: &mut VisitorContext) {}
+    fn enter_fragment(&mut self, it: &mut Fragment<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_fragment(&mut self, it: &mut Fragment<'a>, ctx: &mut VisitorContext) {}
+    fn exit_fragment(&mut self, it: &mut Fragment<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext) {}
+    fn enter_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext) {}
+    fn exit_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext) {}
+    fn enter_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext) {}
+    fn exit_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_text(&mut self, it: &Text<'a>, ctx: &mut VisitorContext) {}
+    fn enter_text(&mut self, it: &Text<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_text(&mut self, it: &Text<'a>, ctx: &mut VisitorContext) {}
+    fn exit_text(&mut self, it: &Text<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_interpolation(&mut self, it: &mut Interpolation<'a>, ctx: &mut VisitorContext) {}
+    fn enter_interpolation(&mut self, it: &mut Interpolation<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_interpolation(&mut self, it: &mut Interpolation<'a>, ctx: &mut VisitorContext) {}
+    fn exit_interpolation(&mut self, it: &mut Interpolation<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_expression(&mut self, it: &Expression<'a>, ctx: &mut VisitorContext) {}
+    fn enter_expression(&mut self, it: &Expression<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_expression(&mut self, it: &Expression<'a>, ctx: &mut VisitorContext) {}
+    fn exit_expression(&mut self, it: &Expression<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_element(&mut self, it: &mut Element<'a>, ctx: &mut VisitorContext) {}
+    fn enter_element(&mut self, it: &mut Element<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_element(&mut self, it: &mut Element<'a>, ctx: &mut VisitorContext) {}
+    fn exit_element(&mut self, it: &mut Element<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_attributes(&mut self, it: &mut Vec<Attribute<'a>>, ctx: &mut VisitorContext) {}
+    fn enter_attributes(&mut self, it: &mut Vec<Attribute<'a>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_attributes(&mut self, it: &mut Vec<Attribute<'a>>, ctx: &mut VisitorContext) {}
+    fn exit_attributes(&mut self, it: &mut Vec<Attribute<'a>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_attribute(&mut self, it: &mut Attribute<'a>, ctx: &mut VisitorContext) {}
+    fn enter_attribute(&mut self, it: &mut Attribute<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_attribute(&mut self, it: &mut Attribute<'a>, ctx: &mut VisitorContext) {}
+    fn exit_attribute(&mut self, it: &mut Attribute<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext) {}
+    fn enter_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext) {}
+    fn exit_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext<'a>) {}
 
     fn enter_expression_attribute(
         &mut self,
         it: &mut ExpressionAttribute<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn exit_expression_attribute(
         &mut self,
         it: &mut ExpressionAttribute<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn enter_class_directive_attribute(
         &mut self,
         it: &mut ClassDirective<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn exit_class_directive_attribute(
         &mut self,
         it: &mut ClassDirective<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn enter_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext) {}
+    fn enter_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext) {}
+    fn exit_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
 
     fn enter_expression_attribute_value(
         &mut self,
         it: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn exit_expression_attribute_value(
         &mut self,
         it: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn enter_boolean_attribute_value(&mut self, ctx: &mut VisitorContext) {}
+    fn enter_boolean_attribute_value(&mut self, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_boolean_attribute_value(&mut self, ctx: &mut VisitorContext) {}
+    fn exit_boolean_attribute_value(&mut self, ctx: &mut VisitorContext<'a>) {}
 
     fn enter_concatenation_attribute_value(
         &mut self,
         it: &mut Concatenation<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn exit_concatenation_attribute_value(
         &mut self,
         it: &mut Concatenation<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn enter_concatenation_part(&mut self, it: &ConcatenationPart<'a>, ctx: &mut VisitorContext) {}
+    fn enter_concatenation_part(
+        &mut self,
+        it: &ConcatenationPart<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
 
-    fn exit_concatenation_part(&mut self, it: &ConcatenationPart<'a>, ctx: &mut VisitorContext) {}
+    fn exit_concatenation_part(
+        &mut self,
+        it: &ConcatenationPart<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
 
-    fn enter_string_concatenation_part(&mut self, it: &str, ctx: &mut VisitorContext) {}
+    fn enter_string_concatenation_part(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_string_concatenation_part(&mut self, it: &str, ctx: &mut VisitorContext) {}
+    fn exit_string_concatenation_part(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
 
     fn enter_expression_concatenation_part(
         &mut self,
         it: &Expression<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
     fn exit_expression_concatenation_part(
         &mut self,
         it: &Expression<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn enter_script_tag(&mut self, it: &ScriptTag<'a>, ctx: &mut VisitorContext) {}
+    fn enter_script_tag(&mut self, it: &ScriptTag<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_script_tag(&mut self, it: &ScriptTag<'a>, ctx: &mut VisitorContext) {}
+    fn exit_script_tag(&mut self, it: &ScriptTag<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_if_block(&mut self, it: &mut IfBlock<'a>, ctx: &mut VisitorContext) {}
+    fn enter_if_block(&mut self, it: &mut IfBlock<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_if_block(&mut self, it: &mut IfBlock<'a>, ctx: &mut VisitorContext) {}
+    fn exit_if_block(&mut self, it: &mut IfBlock<'a>, ctx: &mut VisitorContext<'a>) {}
 }
 
 pub mod walk {
@@ -170,7 +180,7 @@ pub mod walk {
     pub fn walk_template<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Template<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         ctx.push_stack(Ancestor::Template);
         visitor.enter_template(it, ctx);
@@ -184,7 +194,7 @@ pub mod walk {
     pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Fragment<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_fragment(it, ctx);
 
@@ -196,14 +206,14 @@ pub mod walk {
     pub fn walk_nodes<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &Vec<RcCell<Node<'a>>>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         for cell in it.iter() {
             let mut node = cell.borrow_mut();
 
             visitor.enter_nodes(it, ctx);
 
-            walk_node(visitor, &mut *node, ctx);
+            walk_node(visitor, &mut *node, ctx, cell);
 
             visitor.exit_nodes(it, ctx);
         }
@@ -212,7 +222,8 @@ pub mod walk {
     pub fn walk_node<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Node<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
+        cell: &RcCell<Node<'a>>,
     ) {
         visitor.enter_node(it, ctx);
 
@@ -225,9 +236,17 @@ pub mod walk {
                 visitor.enter_script_tag(it, ctx);
                 visitor.exit_script_tag(it, ctx);
             }
-            Node::Element(it) => walk_element(visitor, it, ctx),
+            Node::Element(it) => {
+                ctx.push_stack(Ancestor::Element(cell.clone()));
+                walk_element(visitor, it, ctx);
+                ctx.pop_stack();
+            }
             Node::Interpolation(it) => walk_interpolation(visitor, it, ctx),
-            Node::IfBlock(it) => walk_if_block(visitor, it, ctx),
+            Node::IfBlock(it) => {
+                ctx.push_stack(Ancestor::IfBlock(cell.clone()));
+                walk_if_block(visitor, it, ctx);
+                ctx.pop_stack();
+            }
             Node::VirtualConcatenation(_) => unreachable!(),
         }
 
@@ -237,7 +256,7 @@ pub mod walk {
     pub fn walk_interpolation<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Interpolation<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_interpolation(it, ctx);
 
@@ -249,7 +268,7 @@ pub mod walk {
     pub fn walk_expression<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Expression<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_expression(it, ctx);
         visitor.exit_expression(it, ctx);
@@ -258,22 +277,20 @@ pub mod walk {
     pub fn walk_element<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Element<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
-        ctx.push_stack(Ancestor::Element);
         visitor.enter_element(it, ctx);
 
         walk_attributes(visitor, &mut it.attributes, ctx);
         walk_nodes(visitor, &mut it.nodes, ctx);
 
         visitor.exit_element(it, ctx);
-        ctx.pop_stack();
     }
 
     pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Vec<Attribute<'a>>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_attributes(it, ctx);
 
@@ -287,7 +304,7 @@ pub mod walk {
     pub fn walk_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Attribute<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_attribute(it, ctx);
 
@@ -303,7 +320,7 @@ pub mod walk {
     pub fn walk_expression_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut ExpressionAttribute<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_expression_attribute(it, ctx);
 
@@ -315,7 +332,7 @@ pub mod walk {
     pub fn walk_class_directive_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut ClassDirective<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_class_directive_attribute(it, ctx);
 
@@ -327,7 +344,7 @@ pub mod walk {
     pub fn walk_html_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut HTMLAttribute<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_html_attribute(it, ctx);
 
@@ -354,7 +371,7 @@ pub mod walk {
     pub fn walk_expression_attribute_value<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_expression_attribute_value(it, ctx);
         walk_expression(visitor, &mut it.expression, ctx);
@@ -364,7 +381,7 @@ pub mod walk {
     pub fn walk_concatenation_attribute_value<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Concatenation<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_concatenation_attribute_value(it, ctx);
 
@@ -378,7 +395,7 @@ pub mod walk {
     pub fn walk_concatenation_part<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut ConcatenationPart<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_concatenation_part(it, ctx);
 
@@ -398,7 +415,7 @@ pub mod walk {
     pub fn walk_expression_concatenation_part<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut Expression<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
         visitor.enter_expression_concatenation_part(it, ctx);
         walk_expression(visitor, it, ctx);
@@ -408,9 +425,8 @@ pub mod walk {
     pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
         it: &mut IfBlock<'a>,
-        ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext<'a>,
     ) {
-        ctx.push_stack(Ancestor::IfBlock);
         visitor.enter_if_block(it, ctx);
 
         walk_expression(visitor, &mut it.test, ctx);
@@ -422,6 +438,5 @@ pub mod walk {
         }
 
         visitor.exit_if_block(it, ctx);
-        ctx.pop_stack();
     }
 }
