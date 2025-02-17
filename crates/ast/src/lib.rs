@@ -15,7 +15,7 @@ pub mod metadata;
 pub mod node_id;
 
 pub struct Ast<'a> {
-    pub template: Template<'a>,
+    pub template: RcCell<Template<'a>>,
     pub script: Option<ScriptTag<'a>>,
 }
 

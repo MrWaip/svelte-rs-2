@@ -168,9 +168,9 @@ pub trait TemplateVisitor<'a>: Sized {
 }
 
 pub mod walk {
-    
 
     use ast::Node;
+    use rccell::RcCell;
 
     use crate::ancestor::Ancestor;
 
@@ -178,15 +178,16 @@ pub mod walk {
 
     pub fn walk_template<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &mut Template<'a>,
+        it: &RcCell<Template<'a>>,
         ctx: &mut VisitorContext<'a>,
     ) {
-        ctx.push_stack(Ancestor::Template);
-        visitor.enter_template(it, ctx);
+        let template = &mut *it.borrow_mut();
+        ctx.push_stack(Ancestor::Template(it.clone()));
+        visitor.enter_template(template, ctx);
 
-        walk_fragment(visitor, &mut it.nodes, ctx);
+        walk_fragment(visitor, &mut template.nodes, ctx);
 
-        visitor.exit_template(it, ctx);
+        visitor.exit_template(template, ctx);
         ctx.pop_stack();
     }
 
