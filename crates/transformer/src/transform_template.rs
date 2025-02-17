@@ -6,7 +6,6 @@ use analyzer::{
 };
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::NodeId;
-use rccell::RcCell;
 
 use ast::{
     metadata::{FragmentAnchor, InterpolationMetadata, WithMetadata},

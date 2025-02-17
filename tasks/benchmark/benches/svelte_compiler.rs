@@ -1,4 +1,4 @@
-use std::{env::current_dir, fs::read_to_string};
+use std::fs::read_to_string;
 
 use benchmark::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use compiler::{self, Compiler};
