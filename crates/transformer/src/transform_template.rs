@@ -10,9 +10,9 @@ use rccell::RcCell;
 
 use ast::{
     metadata::{FragmentAnchor, InterpolationMetadata, WithMetadata},
-    Attribute, AttributeValue, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
-    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node, Template, Text,
-    VirtualConcatenation,
+    AsNode, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
+    ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node,
+    Template, Text, VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -276,18 +276,15 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 }
 
 struct CompressNodesIter<'a, 'reference> {
-    nodes: &'reference Vec<RcCell<Node<'a>>>,
+    nodes: &'reference Vec<Node<'a>>,
     idx: usize,
-    to_compress: Vec<RcCell<Node<'a>>>,
+    to_compress: Vec<Node<'a>>,
     builder: &'reference Builder<'a>,
 }
 
 // !svelte optimization
 impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
-    pub fn iter(
-        nodes: &'reference Vec<RcCell<Node<'a>>>,
-        builder: &'reference Builder<'a>,
-    ) -> Self {
+    pub fn iter(nodes: &'reference Vec<Node<'a>>, builder: &'reference Builder<'a>) -> Self {
         return Self {
             builder,
             nodes,
@@ -296,13 +293,13 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
         };
     }
 
-    fn validate_to_compress<'local>(&mut self) -> Option<RcCell<Node<'a>>> {
+    fn validate_to_compress<'local>(&mut self) -> Option<Node<'a>> {
         let len = self.to_compress.len();
 
         if len == 1 {
             return self.to_compress.pop();
         } else if len > 1 {
-            let res: Option<RcCell<Node<'a>>> = Some(self.compress_nodes());
+            let res: Option<Node<'a>> = Some(self.compress_nodes());
             self.to_compress = vec![];
             return res;
         }
@@ -310,42 +307,38 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
         return None;
     }
 
-    fn compress_nodes<'local>(&mut self) -> RcCell<Node<'a>> {
+    fn compress_nodes<'local>(&mut self) -> Node<'a> {
         let mut metadata = InterpolationMetadata::default();
         let parts = self
             .to_compress
             .iter_mut()
-            .map(|v| {
-                let node = &mut *v.borrow_mut();
+            .map(|node| match node {
+                Node::Text(text) => ConcatenationPart::String(text.borrow().value),
+                Node::Interpolation(interpolation) => {
+                    let new_expr = self
+                        .builder
+                        .ast
+                        .move_expression(&mut interpolation.borrow_mut().expression);
 
-                match node {
-                    Node::Text(text) => ConcatenationPart::String(text.value),
-                    Node::Interpolation(interpolation) => {
-                        let new_expr = self
-                            .builder
-                            .ast
-                            .move_expression(&mut interpolation.expression);
+                    metadata.add(interpolation.borrow().get_metadata());
 
-                        metadata.add(interpolation.get_metadata());
-
-                        ConcatenationPart::Expression(new_expr)
-                    }
-                    _ => unreachable!(),
+                    ConcatenationPart::Expression(new_expr)
                 }
+                _ => unreachable!(),
             })
             .collect();
 
-        return Node::VirtualConcatenation(VirtualConcatenation {
+        return VirtualConcatenation {
             parts,
             span: SPAN,
             metadata,
-        })
-        .as_rc_cell();
+        }
+        .as_node();
     }
 }
 
 impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
-    type Item = RcCell<Node<'a>>;
+    type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -357,7 +350,7 @@ impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
             }
 
             let rc = rc.unwrap();
-            let can_compress = rc.borrow().is_compressible();
+            let can_compress = rc.is_compressible();
 
             if can_compress {
                 self.to_compress.push(rc.clone());
@@ -433,18 +426,18 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 scope.borrow_mut().generate("text")
             }
             FragmentAnchor::Element => {
-                let cell = fragment
+                let node = fragment
                     .nodes
                     .iter()
-                    .find(|cell| cell.borrow().is_element())
+                    .find(|cell| cell.is_element())
                     .unwrap();
 
-                let Node::Element(element) = &*cell.borrow() else {
+                let Node::Element(element) = node else {
                     unreachable!()
                 };
 
                 template_bit_flags = None;
-                scope.borrow_mut().generate(&element.name)
+                scope.borrow_mut().generate(&element.borrow().name)
             }
             FragmentAnchor::Fragment | FragmentAnchor::Comment => {
                 scope.borrow_mut().generate("fragment")
@@ -469,11 +462,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 body.push(self.b.var(&identifier, BExpr::Call(call)));
             }
             FragmentAnchor::TextInline => {
-                let Node::Text(text) = &*fragment[0].borrow() else {
+                let Node::Text(text) = &fragment[0] else {
                     unreachable!()
                 };
 
-                let call = self.b.call("$.text", [BArg::Str(text.value.to_string())]);
+                let call = self
+                    .b
+                    .call("$.text", [BArg::Str(text.borrow().value.to_string())]);
                 body.push(self.b.var(&identifier, BExpr::Call(call)));
             }
             FragmentAnchor::Comment => {
@@ -508,7 +503,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
     fn transform_nodes<'local>(
         &mut self,
-        nodes: &mut Vec<RcCell<Node<'a>>>,
+        nodes: &mut Vec<Node<'a>>,
         context: &'local mut FragmentContext<'a>,
         parent_node_anchor: Option<&'local Expression<'a>>,
         node_id: NodeId,
@@ -524,8 +519,8 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         );
 
         // !svelte optimization
-        for cell in CompressNodesIter::iter(nodes, self.b) {
-            let node = &mut *cell.borrow_mut();
+        for node in CompressNodesIter::iter(nodes, self.b) {
+            // let node = &mut *node.borrow_mut();
             self.transform_node(node, &mut node_context);
             node_context.next_sibling_offset();
         }
@@ -546,17 +541,17 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         return node_context;
     }
 
-    fn transform_node<'local>(&mut self, node: &mut Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
+    fn transform_node<'local>(&mut self, node: Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
         match node {
-            Node::Element(element) => self.transform_element(element, ctx),
-            Node::Text(text) => self.transform_text(text, ctx),
-            Node::Interpolation(interpolation) => {
-                let metadata = interpolation.get_metadata();
-                self.transform_interpolation(&mut interpolation.expression, ctx, false, metadata)
+            Node::Element(it) => self.transform_element(&mut *it.borrow_mut(), ctx),
+            Node::Text(it) => self.transform_text(&mut *it.borrow_mut(), ctx),
+            Node::Interpolation(it) => {
+                let metadata = it.borrow().get_metadata();
+                self.transform_interpolation(&mut it.borrow_mut().expression, ctx, false, metadata)
             }
-            Node::IfBlock(if_block) => self.transform_if_block(if_block, ctx),
-            Node::VirtualConcatenation(concatenation) => {
-                self.transform_virtual_concatenation(concatenation, ctx)
+            Node::IfBlock(it) => self.transform_if_block(&mut *it.borrow_mut(), ctx),
+            Node::VirtualConcatenation(it) => {
+                self.transform_virtual_concatenation(&mut *it.borrow_mut(), ctx)
             }
             Node::ScriptTag(_script_tag) => todo!(),
         };
@@ -945,21 +940,15 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         return result.expression;
     }
 
-    fn optimize_nodes(
-        &self,
-        nodes: &mut Vec<RcCell<Node<'a>>>,
-        actions: &Vec<NodeOptimizationAction>,
-    ) {
-        let mut new: Vec<RcCell<Node<'a>>> = vec![];
+    fn optimize_nodes(&self, nodes: &mut Vec<Node<'a>>, actions: &Vec<NodeOptimizationAction>) {
+        let mut new: Vec<Node<'a>> = vec![];
 
         for idx in 0..nodes.len() {
-            let cell = &nodes[idx];
-
-            let node = &mut *cell.borrow_mut();
+            let node = &mut nodes[idx];
 
             match &actions[idx] {
                 NodeOptimizationAction::Trim(trims) => {
-                    let text = node.as_text_mut().unwrap();
+                    let mut text = node.as_text_mut().unwrap();
 
                     for action in trims {
                         match action {
@@ -984,7 +973,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 }
             };
 
-            new.push(cell.clone());
+            new.push(node.clone());
         }
 
         *nodes = new;

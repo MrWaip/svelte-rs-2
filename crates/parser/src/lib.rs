@@ -4,7 +4,6 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{Language, SourceType};
-use rccell::RcCell;
 use scanner::{
     token::{self, EndTag, ExpressionTag, StartTag, Token, TokenType},
     Scanner,
@@ -28,9 +27,9 @@ pub struct Parser<'a> {
 }
 
 struct NodeStack<'a> {
-    stack: Vec<RcCell<Node<'a>>>,
-    roots: Vec<RcCell<Node<'a>>>,
-    scripts: Vec<RcCell<Node<'a>>>,
+    stack: Vec<Node<'a>>,
+    roots: Vec<Node<'a>>,
+    scripts: Vec<Node<'a>>,
 }
 
 impl<'a> NodeStack<'a> {
@@ -45,7 +44,7 @@ impl<'a> NodeStack<'a> {
     /**
      * Открывает новую Node в стэке и добавляет ее родительскую ноду, если имеется
      */
-    pub fn add_node(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
+    pub fn add_node(&mut self, node: Node<'a>) -> Result<(), Diagnostic> {
         self.add_child(node.clone())?;
 
         self.stack.push(node);
@@ -56,7 +55,7 @@ impl<'a> NodeStack<'a> {
     /**
      * Добавляет ноду в родителя, если родителя нет то добавляет ее в root
      */
-    pub fn add_leaf(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
+    pub fn add_leaf(&mut self, node: Node<'a>) -> Result<(), Diagnostic> {
         let is_added = self.add_child(node.clone())?;
 
         if !is_added {
@@ -66,7 +65,7 @@ impl<'a> NodeStack<'a> {
         return Ok(());
     }
 
-    pub fn add_script(&mut self, node: RcCell<Node<'a>>) -> Result<(), Diagnostic> {
+    pub fn add_script(&mut self, node: Node<'a>) -> Result<(), Diagnostic> {
         let is_added = self.add_child(node.clone())?;
 
         if !is_added {
@@ -76,28 +75,26 @@ impl<'a> NodeStack<'a> {
         return Ok(());
     }
 
-    pub fn add_to_root(&mut self, node: RcCell<Node<'a>>) {
+    pub fn add_to_root(&mut self, node: Node<'a>) {
         self.roots.push(node);
     }
 
-    pub fn pop(&mut self) -> Option<RcCell<Node<'a>>> {
+    pub fn pop(&mut self) -> Option<Node<'a>> {
         return self.stack.pop();
     }
 
-    pub fn last_mut(&mut self) -> Option<&mut RcCell<Node<'a>>> {
+    pub fn last_mut(&mut self) -> Option<&mut Node<'a>> {
         return self.stack.last_mut();
     }
 
-    pub fn add_child(&mut self, node: RcCell<Node<'a>>) -> Result<bool, Diagnostic> {
+    pub fn add_child(&mut self, node: Node<'a>) -> Result<bool, Diagnostic> {
         if let Some(parent) = self.stack.last_mut() {
-            let mut parent = parent.borrow_mut();
-
             match &mut *parent {
                 Node::Element(element) => {
-                    element.push(node.clone());
+                    element.borrow_mut().push(node.clone());
                 }
                 Node::IfBlock(if_block) => {
-                    if_block.push(node.clone());
+                    if_block.borrow_mut().push(node.clone());
                 }
                 Node::ScriptTag(_) => unreachable!(),
                 Node::Text(_) => unreachable!(),
@@ -115,7 +112,7 @@ impl<'a> NodeStack<'a> {
         return self.stack.is_empty();
     }
 
-    pub fn take_nodes(&mut self) -> (Vec<RcCell<Node<'a>>>, Vec<RcCell<Node<'a>>>) {
+    pub fn take_nodes(&mut self) -> (Vec<Node<'a>>, Vec<Node<'a>>) {
         let template = mem::replace(&mut self.roots, vec![]);
         let scripts = mem::replace(&mut self.scripts, vec![]);
 
@@ -159,7 +156,7 @@ impl<'a> Parser<'a> {
 
         if !self.node_stack.is_stack_empty() {
             let node = self.node_stack.pop().unwrap();
-            let span = node.borrow().span();
+            let span = node.span();
             return Diagnostic::unclosed_node(span).as_err();
         }
 
@@ -167,10 +164,10 @@ impl<'a> Parser<'a> {
         let mut script: Option<ScriptTag<'a>> = None;
 
         if scripts.len() > 1 {
-            let span_of_last = scripts.last().unwrap().borrow().span();
+            let span_of_last = scripts.last().unwrap().span();
             return Diagnostic::only_single_top_level_script(span_of_last).as_err();
         } else if scripts.len() == 1 {
-            script = Some(scripts.remove(0).unwrap().into());
+            script = Some(scripts.remove(0).into());
         }
 
         return Ok(Ast {
@@ -196,7 +193,7 @@ impl<'a> Parser<'a> {
             node_id: None,
         };
 
-        let node = element.as_node().as_rc_cell();
+        let node = element.as_node();
 
         if self_closing {
             self.node_stack.add_leaf(node)?;
@@ -210,28 +207,26 @@ impl<'a> Parser<'a> {
     fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_tag_span: Span) -> Result<(), Diagnostic> {
         let mut option = self.node_stack.pop();
 
-        let cell = if let Some(cell) = option.as_mut() {
-            cell
+        let node = if let Some(node) = option.as_mut() {
+            node
         } else {
             return Err(Diagnostic::no_element_to_close(end_tag_span));
         };
 
-        let mut borrow = cell.borrow_mut();
+        if let Node::Element(element) = node {
+            let mut element = element.borrow_mut();
 
-        let element = if let Node::Element(element) = &mut *borrow {
-            element
+            if element.name != tag.name {
+                return Err(Diagnostic::no_element_to_close(end_tag_span));
+            }
+
+            element.span = element.span.merge(&end_tag_span);
         } else {
             return Err(Diagnostic::no_element_to_close(end_tag_span));
         };
-
-        if element.name != tag.name {
-            return Err(Diagnostic::no_element_to_close(end_tag_span));
-        }
-
-        element.span = element.span.merge(&end_tag_span);
 
         if self.node_stack.is_stack_empty() {
-            self.node_stack.add_to_root(cell.clone())
+            self.node_stack.add_to_root(node.clone())
         }
 
         Ok(())
@@ -243,7 +238,7 @@ impl<'a> Parser<'a> {
             span: token.span,
         };
 
-        self.node_stack.add_leaf(node.as_node().as_rc_cell())?;
+        self.node_stack.add_leaf(node.as_node())?;
 
         return Ok(());
     }
@@ -258,7 +253,7 @@ impl<'a> Parser<'a> {
             span: interpolation.span,
         };
 
-        self.node_stack.add_leaf(node.as_node().as_rc_cell())?;
+        self.node_stack.add_leaf(node.as_node())?;
 
         return Ok(());
     }
@@ -376,7 +371,7 @@ impl<'a> Parser<'a> {
             )?,
         };
 
-        let node = if_block.as_node().as_rc_cell();
+        let node = if_block.as_node();
 
         self.node_stack.add_node(node)?;
 
@@ -402,7 +397,7 @@ impl<'a> Parser<'a> {
                 test: expression.unwrap()?,
             };
 
-            let cell = else_if_block.as_node().as_rc_cell();
+            let cell = else_if_block.as_node();
 
             Some(cell)
         } else {
@@ -412,7 +407,12 @@ impl<'a> Parser<'a> {
         {
             let option = self.node_stack.last_mut();
             let node = &mut *Node::from_option_mut(option)?;
-            let if_block: &mut IfBlock<'a> = node.try_into()?;
+
+            let Node::IfBlock(cell) = node else {
+                todo!();
+            };
+
+            let mut if_block = cell.borrow_mut();
 
             if_block.alternate = Some(Fragment::empty());
             if_block.span = if_block.span.merge(&span);
@@ -427,34 +427,30 @@ impl<'a> Parser<'a> {
 
     fn parse_end_if_tag(&mut self, span: Span) -> Result<(), Diagnostic> {
         loop {
-            if self
-                .node_stack
-                .last_mut()
-                .is_some_and(|v| !v.borrow().is_if_block())
-            {
+            if self.node_stack.last_mut().is_some_and(|v| !v.is_if_block()) {
                 break;
             }
 
-            let mut option = self.node_stack.pop();
+            let option = self.node_stack.pop();
 
-            let cell = if let Some(cell) = option.as_mut() {
-                cell
+            let node = if let Some(node) = &option {
+                node
             } else {
                 return Err(Diagnostic::no_if_block_to_close(span));
             };
 
-            let mut borrow = cell.borrow_mut();
+            let is_elseif = false;
 
-            let if_block = if let Node::IfBlock(if_block) = &mut *borrow {
-                if_block
+            let mut if_block = if let Node::IfBlock(if_block) = node {
+                if_block.borrow_mut()
             } else {
                 return Err(Diagnostic::no_if_block_to_close(span));
             };
 
             if_block.span = if_block.span.merge(&span);
 
-            if self.node_stack.is_stack_empty() && !if_block.is_elseif {
-                self.node_stack.add_to_root(cell.clone())
+            if self.node_stack.is_stack_empty() && !is_elseif {
+                self.node_stack.add_to_root(node.clone())
             }
 
             if !if_block.is_elseif {
@@ -486,8 +482,7 @@ impl<'a> Parser<'a> {
                 language,
                 span,
             }
-            .as_node()
-            .as_rc_cell(),
+            .as_node(),
         )?;
 
         return Ok(());
@@ -521,8 +516,7 @@ mod tests {
         assert_node_cell(&ast[1], "<body><input/></body>");
     }
 
-    fn assert_node_cell<'a>(node: &'a RcCell<Node<'a>>, expected: &'a str) {
-        let node = node.borrow();
+    fn assert_node_cell<'a>(node: &'a Node<'a>, expected: &'a str) {
         assert_eq!(node.format_node(), expected);
     }
 

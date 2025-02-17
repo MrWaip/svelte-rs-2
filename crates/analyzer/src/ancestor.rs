@@ -1,11 +1,11 @@
-use ast::Node;
+use ast::{Element, IfBlock};
 use rccell::RcCell;
 
 #[derive(Debug, Clone)]
 pub enum Ancestor<'a> {
     Template,
-    IfBlock(RcCell<Node<'a>>),
-    Element(RcCell<Node<'a>>),
+    IfBlock(RcCell<IfBlock<'a>>),
+    Element(RcCell<Element<'a>>),
 }
 
 impl<'a> Ancestor<'a> {

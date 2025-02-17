@@ -2,7 +2,6 @@ pub mod ancestor;
 pub mod compute_optimization;
 pub mod context;
 pub mod svelte_table;
-pub mod visitor;
 pub mod visitor2;
 
 use std::mem::take;
@@ -339,11 +338,11 @@ mod tests {
         let mut ast = parser.parse().unwrap();
         analyzer.analyze(&mut ast);
 
-        let Node::Interpolation(interpolation) = &*ast.template.nodes[0].borrow() else {
+        let Node::Interpolation(interpolation) = &ast.template.nodes[0] else {
             unreachable!()
         };
 
-        let metadata = interpolation.get_metadata();
+        let metadata = interpolation.borrow().get_metadata();
 
         assert_eq!(metadata.has_reactivity, true);
         assert_eq!(metadata.has_call_expression, true);
@@ -370,25 +369,25 @@ mod tests {
 
         analyzer.analyze(&mut ast);
 
-        let Node::Element(root_div) = &*ast.template.nodes[0].borrow() else {
+        let Node::Element(root_div) = &ast.template.nodes[0] else {
             unreachable!()
         };
 
-        let Node::Element(root_span) = &*ast.template.nodes[1].borrow() else {
+        let Node::Element(root_span) = &ast.template.nodes[1] else {
             unreachable!()
         };
 
-        let Node::Element(sub_h1) = &*root_div.nodes[0].borrow() else {
+        let Node::Element(sub_h1) = &root_div.borrow().nodes[0] else {
             unreachable!()
         };
 
-        let Node::Element(sub_div) = &*root_div.nodes[1].borrow() else {
+        let Node::Element(sub_div) = &root_div.borrow().nodes[1] else {
             unreachable!()
         };
 
-        assert_eq!(root_div.get_metadata().has_dynamic_nodes, true);
-        assert_eq!(root_span.get_metadata().has_dynamic_nodes, false);
-        assert_eq!(sub_h1.get_metadata().has_dynamic_nodes, false);
-        assert_eq!(sub_div.get_metadata().has_dynamic_nodes, true);
+        assert_eq!(root_div.borrow().get_metadata().has_dynamic_nodes, true);
+        assert_eq!(root_span.borrow().get_metadata().has_dynamic_nodes, false);
+        assert_eq!(sub_h1.borrow().get_metadata().has_dynamic_nodes, false);
+        assert_eq!(sub_div.borrow().get_metadata().has_dynamic_nodes, true);
     }
 }

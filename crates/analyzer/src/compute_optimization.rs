@@ -1,7 +1,4 @@
-use std::cell::Ref;
-
 use ast::Node;
-use rccell::RcCell;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TrimAction {
@@ -54,7 +51,7 @@ pub struct OptimizationResult {
     pub start_with_compressible: bool,
 }
 
-pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationResult {
+pub fn compute_optimization<'a>(nodes: &Vec<Node<'a>>) -> OptimizationResult {
     if nodes.is_empty() {
         return OptimizationResult {
             actions: vec![],
@@ -72,11 +69,9 @@ pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationRe
     let mut start_with_compressible = false;
 
     // trim left
-    for cell in nodes.iter() {
-        let node = &*cell.borrow();
-
+    for node in nodes.iter() {
         if let Node::Text(text) = node {
-            if text.is_removable() {
+            if text.borrow().is_removable() {
                 actions[start] = NodeOptimizationAction::Remove;
                 start += 1;
                 continue;
@@ -89,11 +84,9 @@ pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationRe
         }
     }
 
-    for cell in nodes.iter().rev() {
-        let node = &*cell.borrow();
-
+    for node in nodes.iter().rev() {
         if let Node::Text(text) = node {
-            if text.is_removable() {
+            if text.borrow().is_removable() {
                 end -= 1;
                 actions[end] = NodeOptimizationAction::Remove;
                 continue;
@@ -112,19 +105,19 @@ pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationRe
     }
 
     if start < nodes.len() {
-        start_with_compressible = nodes[start].borrow().is_compressible();
+        start_with_compressible = nodes[start].is_compressible();
     }
 
     for idx in start..end {
         let prev = if idx == 0 { None } else { nodes.get(idx - 1) };
-        let current = nodes.get(idx).unwrap().borrow();
+        let current = nodes.get(idx).unwrap();
         let next = nodes.get(idx + 1);
         length += 1;
 
         compute_content_type(&current, &mut content_type);
 
         if current.is_text() {
-            if !prev.is_some_and(|cell| cell.borrow().is_interpolation()) {
+            if !prev.is_some_and(|node| node.is_interpolation()) {
                 if let NodeOptimizationAction::Trim(trims) = &mut actions[idx] {
                     trims.push(TrimAction::LeftOneWhitespace);
                 } else {
@@ -133,7 +126,7 @@ pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationRe
                 }
             }
 
-            if !next.is_some_and(|cell| cell.borrow().is_interpolation()) {
+            if !next.is_some_and(|node| node.is_interpolation()) {
                 if let NodeOptimizationAction::Trim(trims) = &mut actions[idx] {
                     trims.push(TrimAction::RightOneWhitespace);
                 } else {
@@ -152,10 +145,10 @@ pub fn compute_optimization<'a>(nodes: &Vec<RcCell<Node<'a>>>) -> OptimizationRe
     };
 }
 
-fn compute_content_type<'a>(node: &Ref<'a, Node>, content_type: &mut ContentType) {
+fn compute_content_type<'a>(node: &Node, content_type: &mut ContentType) {
     // first iteration
     if *content_type == ContentType::Nope {
-        *content_type = match &**node {
+        *content_type = match node {
             Node::Element(_) => ContentType::Element,
             Node::Text(_) => ContentType::Text,
             Node::Interpolation(_) => ContentType::Interpolation,
@@ -165,19 +158,19 @@ fn compute_content_type<'a>(node: &Ref<'a, Node>, content_type: &mut ContentType
         };
         // second or other
     } else if *content_type == ContentType::Interpolation {
-        *content_type = match &**node {
+        *content_type = match node {
             Node::Text(_) => ContentType::TextAndInterpolation,
             Node::Interpolation(_) => ContentType::Interpolation,
             _ => ContentType::Mixed,
         };
     } else if *content_type == ContentType::Text {
-        *content_type = match &**node {
+        *content_type = match node {
             Node::Text(_) => ContentType::Text,
             Node::Interpolation(_) => ContentType::TextAndInterpolation,
             _ => ContentType::Mixed,
         };
     } else if *content_type == ContentType::TextAndInterpolation {
-        *content_type = match &**node {
+        *content_type = match node {
             Node::Text(_) | Node::Interpolation(_) => ContentType::TextAndInterpolation,
             _ => ContentType::Mixed,
         };
