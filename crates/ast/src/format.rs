@@ -1,7 +1,8 @@
 use oxc_ast::ast::{Expression, Program};
 
 use crate::{
-    Attribute, AttributeValue, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag, Text, VirtualConcatenation
+    Attribute, AttributeValue, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag,
+    Text, VirtualConcatenation,
 };
 
 pub trait FormatNode {
@@ -11,14 +12,12 @@ pub trait FormatNode {
 impl<'a> FormatNode for Node<'a> {
     fn format_node(&self) -> String {
         return match self {
-            Node::Element(element) => element.format_node(),
-            Node::Text(text) => text.format_node(),
-            Node::Interpolation(interpolation) => interpolation.format_node(),
-            Node::IfBlock(if_block) => if_block.format_node(),
-            Node::VirtualConcatenation(virtual_concatenation) => {
-                virtual_concatenation.format_node()
-            }
-            Node::ScriptTag(script_tag) => script_tag.format_node(),
+            Node::Element(it) => it.borrow().format_node(),
+            Node::Text(it) => it.borrow().format_node(),
+            Node::Interpolation(it) => it.borrow().format_node(),
+            Node::IfBlock(it) => it.borrow().format_node(),
+            Node::VirtualConcatenation(it) => it.borrow().format_node(),
+            Node::ScriptTag(it) => it.borrow().format_node(),
         };
     }
 }
@@ -147,7 +146,7 @@ impl<'a> FormatNode for Element<'a> {
         }
 
         for node in self.nodes.iter() {
-            let formatted = node.borrow().format_node();
+            let formatted = node.format_node();
             result.push_str(&formatted);
         }
 
@@ -170,16 +169,14 @@ impl<'a> FormatNode for IfBlock<'a> {
         }
 
         for node in self.consequent.iter() {
-            let formatted = &node.borrow().format_node();
+            let formatted = &node.format_node();
             result.push_str(formatted);
         }
 
         if let Some(alternate) = &self.alternate {
-            if let Some(cell) = alternate.first() {
-                let borrow = &*cell.borrow();
-
-                if let Node::IfBlock(if_block) = borrow {
-                    if !if_block.is_elseif {
+            if let Some(node) = alternate.first() {
+                if let Node::IfBlock(if_block) = node {
+                    if !if_block.borrow().is_elseif {
                         result.push_str("{:else}");
                     }
                 } else {
@@ -188,7 +185,7 @@ impl<'a> FormatNode for IfBlock<'a> {
             }
 
             for node in alternate.iter() {
-                let formatted = &node.borrow().format_node();
+                let formatted = &node.format_node();
                 result.push_str(formatted);
             }
         }

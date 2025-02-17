@@ -27,13 +27,13 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn exit_fragment(&mut self, it: &mut Fragment<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext<'a>) {}
+    fn enter_nodes(&mut self, it: &Vec<Node<'a>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_nodes(&mut self, it: &Vec<RcCell<Node<'a>>>, ctx: &mut VisitorContext<'a>) {}
+    fn exit_nodes(&mut self, it: &Vec<Node<'a>>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext<'a>) {}
+    fn enter_node(&mut self, it: &Node<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn exit_node(&mut self, it: &mut Node<'a>, ctx: &mut VisitorContext<'a>) {}
+    fn exit_node(&mut self, it: &Node<'a>, ctx: &mut VisitorContext<'a>) {}
 
     fn enter_text(&mut self, it: &Text<'a>, ctx: &mut VisitorContext<'a>) {}
 
@@ -205,45 +205,46 @@ pub mod walk {
 
     pub fn walk_nodes<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &Vec<RcCell<Node<'a>>>,
+        it: &Vec<Node<'a>>,
         ctx: &mut VisitorContext<'a>,
     ) {
-        for cell in it.iter() {
-            let mut node = cell.borrow_mut();
+        visitor.enter_nodes(it, ctx);
 
-            visitor.enter_nodes(it, ctx);
-
-            walk_node(visitor, &mut *node, ctx, cell);
-
-            visitor.exit_nodes(it, ctx);
+        for node in it.iter() {
+            walk_node(visitor, node, ctx);
         }
+
+        visitor.exit_nodes(it, ctx);
     }
 
     pub fn walk_node<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &mut Node<'a>,
+        it: &Node<'a>,
         ctx: &mut VisitorContext<'a>,
-        cell: &RcCell<Node<'a>>,
     ) {
         visitor.enter_node(it, ctx);
 
         match it {
             Node::Text(it) => {
+                let it = &*it.borrow_mut();
                 visitor.enter_text(it, ctx);
                 visitor.exit_text(it, ctx);
             }
             Node::ScriptTag(it) => {
+                let it = &*it.borrow_mut();
                 visitor.enter_script_tag(it, ctx);
                 visitor.exit_script_tag(it, ctx);
             }
             Node::Element(it) => {
-                ctx.push_stack(Ancestor::Element(cell.clone()));
+                ctx.push_stack(Ancestor::Element(it.clone()));
+                let it = &mut *it.borrow_mut();
                 walk_element(visitor, it, ctx);
                 ctx.pop_stack();
             }
-            Node::Interpolation(it) => walk_interpolation(visitor, it, ctx),
+            Node::Interpolation(it) => walk_interpolation(visitor, &mut *it.borrow_mut(), ctx),
             Node::IfBlock(it) => {
-                ctx.push_stack(Ancestor::IfBlock(cell.clone()));
+                ctx.push_stack(Ancestor::IfBlock(it.clone()));
+                let it = &mut *it.borrow_mut();
                 walk_if_block(visitor, it, ctx);
                 ctx.pop_stack();
             }

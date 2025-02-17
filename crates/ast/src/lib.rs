@@ -28,23 +28,19 @@ pub trait AsNode<'a> {
     fn as_node(self) -> Node<'a>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Node<'a> {
-    Element(Element<'a>),
-    Text(Text<'a>),
-    Interpolation(Interpolation<'a>),
-    IfBlock(IfBlock<'a>),
+    Element(RcCell<Element<'a>>),
+    Text(RcCell<Text<'a>>),
+    Interpolation(RcCell<Interpolation<'a>>),
+    IfBlock(RcCell<IfBlock<'a>>),
     /** Напоминание для себя. Сейчас во время трансформации шаблона последовательность Text + Interpolation схлопывается в эту Node */
-    VirtualConcatenation(VirtualConcatenation<'a>),
-    ScriptTag(ScriptTag<'a>),
+    VirtualConcatenation(RcCell<VirtualConcatenation<'a>>),
+    ScriptTag(RcCell<ScriptTag<'a>>),
 }
 
 impl<'a> Node<'a> {
-    pub fn as_rc_cell(self) -> RcCell<Node<'a>> {
-        return RcCell::new(self);
-    }
-
-    pub fn as_element(self) -> Option<Element<'a>> {
+    pub fn as_element(self) -> Option<RcCell<Element<'a>>> {
         return if let Node::Element(element) = self {
             Some(element)
         } else {
@@ -52,9 +48,9 @@ impl<'a> Node<'a> {
         };
     }
 
-    pub fn as_text_mut(&mut self) -> Option<&mut Text<'a>> {
+    pub fn as_text_mut(&mut self) -> Option<RefMut<'_, Text<'a>>> {
         return if let Node::Text(it) = self {
-            Some(it)
+            Some(it.borrow_mut())
         } else {
             None
         };
@@ -81,48 +77,27 @@ impl<'a> Node<'a> {
     }
 
     pub fn from_option_mut<'local, 'long>(
-        option: Option<&'local mut RcCell<Node<'long>>>,
-    ) -> Result<RefMut<'local, Node<'long>>, Diagnostic> {
-        if let Some(cell) = option {
-            let borrow = cell.try_borrow_mut().map_err(|_| unimplemented!())?;
-
-            return Ok(borrow);
+        option: Option<&'local mut Node<'long>>,
+    ) -> Result<&'local mut Node<'long>, Diagnostic> {
+        if let Some(node) = option {
+            return Ok(node);
         } else {
             unimplemented!()
         }
     }
 }
 
-impl<'a> Into<ScriptTag<'a>> for Node<'a> {
-    fn into(self) -> ScriptTag<'a> {
-        return match self {
-            Node::ScriptTag(script_tag) => script_tag,
-            _ => panic!("node is not ScriptTag"),
-        };
-    }
-}
 
-impl<'short, 'long> TryInto<&'short mut IfBlock<'long>> for &'short mut Node<'long> {
-    type Error = Diagnostic;
-
-    fn try_into(self) -> Result<&'short mut IfBlock<'long>, Self::Error> {
-        if let Node::IfBlock(if_block) = self {
-            return Ok(if_block);
-        } else {
-            unimplemented!()
-        }
-    }
-}
 
 impl<'a> GetSpan for Node<'a> {
     fn span(&self) -> Span {
         match self {
-            Node::Element(element) => element.span,
-            Node::Text(text) => text.span,
-            Node::Interpolation(interpolation) => interpolation.span,
-            Node::IfBlock(if_block) => if_block.span,
-            Node::VirtualConcatenation(virtual_concatenation) => virtual_concatenation.span,
-            Node::ScriptTag(script_tag) => script_tag.span,
+            Node::Element(it) => it.borrow().span,
+            Node::Text(it) => it.borrow().span,
+            Node::Interpolation(it) => it.borrow().span,
+            Node::IfBlock(it) => it.borrow().span,
+            Node::VirtualConcatenation(it) => it.borrow().span,
+            Node::ScriptTag(it) => it.borrow().span,
         }
     }
 }
@@ -136,7 +111,7 @@ pub struct Interpolation<'a> {
 
 impl<'a> AsNode<'a> for Interpolation<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Interpolation(self);
+        return Node::Interpolation(RcCell::new(self));
     }
 }
 
@@ -149,7 +124,7 @@ pub struct IfBlock<'a> {
     pub alternate: Option<Fragment<'a>>,
 }
 impl<'a> IfBlock<'a> {
-    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+    pub fn push(&mut self, node: Node<'a>) {
         if let Some(alternate) = self.alternate.as_mut() {
             alternate.push(node);
         } else {
@@ -160,7 +135,7 @@ impl<'a> IfBlock<'a> {
 
 impl<'a> AsNode<'a> for IfBlock<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::IfBlock(self);
+        return Node::IfBlock(RcCell::new(self));
     }
 }
 
@@ -169,7 +144,7 @@ pub struct Element<'a> {
     pub name: String,
     pub span: Span,
     pub self_closing: bool,
-    pub nodes: Vec<RcCell<Node<'a>>>,
+    pub nodes: Vec<Node<'a>>,
     pub attributes: Vec<Attribute<'a>>,
     pub metadata: Option<ElementMetadata>,
     pub node_id: Option<NodeId>,
@@ -177,12 +152,12 @@ pub struct Element<'a> {
 
 impl<'a> AsNode<'a> for Element<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Element(self);
+        return Node::Element(RcCell::new(self));
     }
 }
 
 impl<'a> Element<'a> {
-    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+    pub fn push(&mut self, node: Node<'a>) {
         self.nodes.push(node);
     }
 }
@@ -246,7 +221,7 @@ impl<'a> Text<'a> {
 
 impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Text(self);
+        return Node::Text(RcCell::new(self));
     }
 }
 
@@ -300,7 +275,7 @@ pub struct VirtualConcatenation<'a> {
 
 impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::VirtualConcatenation(self);
+        return Node::VirtualConcatenation(RcCell::new(self));
     }
 }
 
@@ -330,33 +305,42 @@ impl<'a> ScriptTag<'a> {
     }
 }
 
+impl<'a> Into<ScriptTag<'a>> for Node<'a> {
+    fn into(self) -> ScriptTag<'a> {
+        return match self {
+            Node::ScriptTag(script_tag) => script_tag.unwrap(),
+            _ => panic!("node is not ScriptTag"),
+        };
+    }
+}
+
 impl<'a> AsNode<'a> for ScriptTag<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::ScriptTag(self);
+        return Node::ScriptTag(RcCell::new(self));
     }
 }
 
 #[derive(Debug)]
 pub struct Fragment<'a> {
-    pub nodes: Vec<RcCell<Node<'a>>>,
+    pub nodes: Vec<Node<'a>>,
     pub metadata: Option<FragmentMetadata>,
     pub node_id: Option<NodeId>,
 }
 
 impl<'a> Fragment<'a> {
-    pub fn push(&mut self, node: RcCell<Node<'a>>) {
+    pub fn push(&mut self, node: Node<'a>) {
         self.nodes.push(node);
     }
 
-    pub fn iter(&self) -> Iter<RcCell<Node<'a>>> {
+    pub fn iter(&self) -> Iter<Node<'a>> {
         return self.nodes.iter();
     }
 
-    pub fn first(&self) -> Option<&RcCell<Node<'a>>> {
+    pub fn first(&self) -> Option<&Node<'a>> {
         return self.nodes.first();
     }
 
-    pub fn from(nodes: Vec<RcCell<Node<'a>>>) -> Self {
+    pub fn from(nodes: Vec<Node<'a>>) -> Self {
         return Self {
             metadata: None,
             nodes,
@@ -378,7 +362,7 @@ impl<'a> Fragment<'a> {
 }
 
 impl<'a> Index<usize> for Fragment<'a> {
-    type Output = RcCell<Node<'a>>;
+    type Output = Node<'a>;
 
     fn index(&self, idx: usize) -> &Self::Output {
         return &self.nodes[idx];
