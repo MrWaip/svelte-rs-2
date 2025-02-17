@@ -338,7 +338,7 @@ mod tests {
         let mut ast = parser.parse().unwrap();
         analyzer.analyze(&mut ast);
 
-        let Node::Interpolation(interpolation) = &ast.template.nodes[0] else {
+        let Node::Interpolation(interpolation) = &ast.template.borrow().nodes[0] else {
             unreachable!()
         };
 
@@ -369,11 +369,11 @@ mod tests {
 
         analyzer.analyze(&mut ast);
 
-        let Node::Element(root_div) = &ast.template.nodes[0] else {
+        let Node::Element(root_div) = &ast.template.borrow().nodes[0] else {
             unreachable!()
         };
 
-        let Node::Element(root_span) = &ast.template.nodes[1] else {
+        let Node::Element(root_span) = &ast.template.borrow().nodes[1] else {
             unreachable!()
         };
 

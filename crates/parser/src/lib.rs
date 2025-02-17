@@ -4,6 +4,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{Language, SourceType};
+use rccell::RcCell;
 use scanner::{
     token::{self, EndTag, ExpressionTag, StartTag, Token, TokenType},
     Scanner,
@@ -171,9 +172,9 @@ impl<'a> Parser<'a> {
         }
 
         return Ok(Ast {
-            template: Template {
+            template: RcCell::new(Template {
                 nodes: Fragment::from(nodes),
-            },
+            }),
             script,
         });
     }
@@ -491,26 +492,32 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+
     use ast::format::FormatNode;
 
     use super::*;
 
+    fn setup_template<'a>(source: &'a str, allocator: &'a Allocator) -> Fragment<'a> {
+        let mut parser = Parser::new(source, &allocator);
+
+        let ast = parser.parse().unwrap();
+
+        return ast.template.unwrap().nodes;
+    }
+
     #[test]
     fn smoke() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new("prefix <div>text</div>", &allocator);
+        let nodes = setup_template("prefix <div>text</div>", &allocator);
 
-        let ast = parser.parse().unwrap().template.nodes;
-
-        assert_node_cell(&ast[0], "prefix ");
-        assert_node_cell(&ast[1], "<div>text</div>");
+        assert_node_cell(&nodes[0], "prefix ");
+        assert_node_cell(&nodes[1], "<div>text</div>");
     }
 
     #[test]
     fn self_closed_element() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new("<img /><body><input/></body>", &allocator);
-        let ast = parser.parse().unwrap().template.nodes;
+        let ast = setup_template("<img /><body><input/></body>", &allocator);
 
         assert_node_cell(&ast[0], "<img/>");
         assert_node_cell(&ast[1], "<body><input/></body>");
@@ -527,8 +534,7 @@ mod tests {
     #[test]
     fn smoke_interpolation() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new("{ id - 22 + 1 }", &allocator);
-        let ast = parser.parse().unwrap().template.nodes;
+        let ast = setup_template("{ id - 22 + 1 }", &allocator);
 
         assert_node_cell(&ast[0], "{ id - 22 + 1 }");
     }
@@ -536,11 +542,10 @@ mod tests {
     #[test]
     fn smoke_tag_with_attributes() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
+        let ast = setup_template(
             r#"<div lang="ts" {id} disabled  value={value} label="at: {date} time">source</div>"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -551,8 +556,7 @@ mod tests {
     #[test]
     fn smoke_if_tag() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(r#"{#if true }<div>title</div>{/if}"#, &allocator);
-        let ast = parser.parse().unwrap().template.nodes;
+        let ast = setup_template(r#"{#if true }<div>title</div>{/if}"#, &allocator);
 
         assert_node_cell(&ast[0], r#"{#if true}<div>title</div>{/if}"#);
     }
@@ -560,11 +564,10 @@ mod tests {
     #[test]
     fn smoke_if_else_tag() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
+        let ast = setup_template(
             r#"{#if true }<div>title</div>{:else}<h1>big title</h1>{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -575,11 +578,10 @@ mod tests {
     #[test]
     fn smoke_if_elseif_tag() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
+        let ast = setup_template(
             r#"<div>{#if false }one{:else if true}two{:else}three{/if}</div>{#if false}one{:else if true}two{:else if 1 == 1}<h1>three</h1>{:else}four{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -595,11 +597,10 @@ mod tests {
     #[test]
     fn if_else_in_if_else() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
+        let ast = setup_template(
             r#"{#if 1 === 1}{#if 2 === 2}inside{/if}{:else}{#if 3 === 3}alternate inside{/if}{/if}"#,
             &allocator,
         );
-        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(
             &ast[0],
@@ -620,12 +621,10 @@ mod tests {
     #[test]
     fn class_directive() {
         let allocator = Allocator::default();
-        let mut parser = Parser::new(
+        let ast = setup_template(
             r#"<input class:visible class:toggled={true} />"#,
             &allocator,
         );
-
-        let ast = parser.parse().unwrap().template.nodes;
 
         assert_node_cell(&ast[0], r#"<input class:visible class:toggled={true}/>"#);
     }
