@@ -8,7 +8,6 @@
 )]
 
 use oxc_ast::ast::Expression;
-use rccell::RcCell;
 
 use ast::{
     Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
@@ -169,7 +168,7 @@ pub trait TemplateVisitor<'a>: Sized {
 }
 
 pub mod walk {
-    use rccell::RcCell;
+    
 
     use ast::Node;
 
