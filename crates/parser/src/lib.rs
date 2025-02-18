@@ -12,9 +12,9 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use ast::{
-    AsNode, Ast, Attribute, AttributeValue, ClassDirective, Concatenation, ConcatenationPart,
-    Element, ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock,
-    Interpolation, Node, ScriptTag, Template, Text,
+    AsNode, Ast, Attribute, AttributeValue, BindDirective, ClassDirective, Concatenation,
+    ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue, Fragment,
+    HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -350,6 +350,15 @@ impl<'a> Parser<'a> {
                             .parse_js_expression(token.expression.value, token.expression.span)?,
                     }));
                 }
+                token::Attribute::BindDirective(token) => {
+                    attributes.push(Attribute::BindDirective(BindDirective {
+                        shorthand: token.shorthand,
+                        metadata: None,
+                        name: token.name,
+                        expression: self
+                            .parse_js_expression(token.expression.value, token.expression.span)?,
+                    }));
+                }
             }
         }
 
@@ -627,6 +636,14 @@ mod tests {
         );
 
         assert_node_cell(&ast[0], r#"<input class:visible class:toggled={true}/>"#);
+    }
+
+    #[test]
+    fn bind_directives() {
+        let allocator = Allocator::default();
+        let ast = setup_template(r#"<input bind:value bind:toggled={true} />"#, &allocator);
+
+        assert_node_cell(&ast[0], r#"<input bind:value bind:toggled={true}/>"#);
     }
 
     #[test]

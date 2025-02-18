@@ -130,6 +130,18 @@ impl<'a> FormatNode for Element<'a> {
                             result.push_str(&format!("={{{}}}", expr_string));
                         }
                     }
+                    Attribute::BindDirective(bind_directive) => {
+                        let expr_string = print_expression(&bind_directive.expression);
+
+                        result.push_str("bind:");
+
+                        if bind_directive.shorthand {
+                            result.push_str(bind_directive.name);
+                        } else {
+                            result.push_str(bind_directive.name);
+                            result.push_str(&format!("={{{}}}", expr_string));
+                        }
+                    }
                 }
 
                 attributes.push(result);
