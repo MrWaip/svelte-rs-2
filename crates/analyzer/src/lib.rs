@@ -19,8 +19,8 @@ use svelte_table::{RuneKind, SvelteTable};
 
 use ast::{
     metadata::{
-        AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
-        InterpolationMetadata, WithMetadata,
+        self, AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
+        InterpolationMetadata, InterpolationSetterKind, WithMetadata,
     },
     Ast, ExpressionAttribute, ExpressionAttributeValue,
 };
@@ -130,9 +130,9 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         self.element_has_dynamic_nodes = false;
 
         let optimizations = compute_optimization(&it.nodes);
-        let node_id = self.svelte_table.add_optimization(optimizations);
+        self.svelte_table
+            .add_optimization(it.node_id(), optimizations);
 
-        it.set_node_id(node_id);
         it.set_metadata(metadata);
     }
 
@@ -167,12 +167,31 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn exit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, _ctx: &mut VisitorContext) {
+    fn exit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, ctx: &mut VisitorContext) {
         let flags = self.resolve_expression_flags();
 
+        let parent = ctx.parent();
+        let node_id = parent.get_node_id();
+        let optimizations = self.svelte_table.get_optimization(node_id).unwrap();
+
+        let need_template =
+            !optimizations.content_type.is_compressible_sequence() || flags.has_reactivity;
+
+        let setter_kind = if flags.has_reactivity {
+            InterpolationSetterKind::SetText
+        } else {
+            if parent.is_fragment_owner() {
+                InterpolationSetterKind::NodeValue
+            } else if optimizations.content_type.is_compressible_sequence() {
+                InterpolationSetterKind::TextContent
+            } else {
+                InterpolationSetterKind::NodeValue
+            }
+        };
+
         it.set_metadata(InterpolationMetadata {
-            has_reactivity: flags.has_reactivity,
-            has_call_expression: flags.has_call_expression,
+            setter_kind,
+            need_template,
         });
     }
 
@@ -288,9 +307,9 @@ impl<'link, 'a> TemplateVisitorImpl<'link> {
             ContentType::NodeWithFragment => FragmentAnchor::Comment,
         };
 
-        let node_id = self.svelte_table.add_optimization(optimizations);
+        self.svelte_table
+            .add_optimization(it.node_id(), optimizations);
 
-        it.set_node_id(node_id);
         it.set_metadata(metadata);
     }
 }
@@ -323,29 +342,6 @@ mod tests {
         for (id, _rune) in result.svelte_table.runes.iter() {
             assert_eq!(result.svelte_table.symbols.get_name(id.clone()), "rune_var");
         }
-    }
-
-    #[test]
-    fn svelte_table_smoke() {
-        let allocator = Allocator::default();
-        let ast_builder = AstBuilder::new(&allocator);
-        let builder = Builder::new(ast_builder);
-        let analyzer = Analyzer::new(&builder);
-        let mut parser = Parser::new(
-            "<script>let rune_var = $state(10); onMount(() => rune_var = 0);</script>{goto(rune_var)}",
-            &allocator,
-        );
-        let mut ast = parser.parse().unwrap();
-        analyzer.analyze(&mut ast);
-
-        let Node::Interpolation(interpolation) = &ast.template.borrow().nodes[0] else {
-            unreachable!()
-        };
-
-        let metadata = interpolation.borrow().get_metadata();
-
-        assert_eq!(metadata.has_reactivity, true);
-        assert_eq!(metadata.has_call_expression, true);
     }
 
     #[test]

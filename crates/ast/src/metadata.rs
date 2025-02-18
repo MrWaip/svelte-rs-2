@@ -11,8 +11,16 @@ pub struct ElementMetadata {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InterpolationMetadata {
-    pub has_reactivity: bool,
-    pub has_call_expression: bool,
+    pub setter_kind: InterpolationSetterKind,
+    pub need_template: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum InterpolationSetterKind {
+    #[default]
+    NodeValue,
+    TextContent,
+    SetText,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,8 +30,8 @@ pub struct AttributeMetadata {
 
 impl InterpolationMetadata {
     pub fn add(&mut self, other: InterpolationMetadata) {
-        self.has_call_expression = self.has_call_expression || other.has_call_expression;
-        self.has_reactivity = self.has_reactivity || other.has_reactivity;
+        self.setter_kind = other.setter_kind;
+        self.need_template = self.need_template || other.need_template;
     }
 }
 
@@ -31,7 +39,7 @@ impl InterpolationMetadata {
 pub struct FragmentMetadata {
     pub need_start_with_next: bool,
     pub anchor: FragmentAnchor,
-    pub is_empty: bool
+    pub is_empty: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
