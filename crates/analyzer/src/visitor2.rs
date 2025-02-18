@@ -169,7 +169,8 @@ pub trait TemplateVisitor<'a>: Sized {
 
 pub mod walk {
 
-    use ast::Node;
+    use ast::{node_id, Node};
+    use oxc_semantic::NodeId;
     use rccell::RcCell;
 
     use crate::ancestor::Ancestor;
@@ -182,7 +183,11 @@ pub mod walk {
         ctx: &mut VisitorContext<'a>,
     ) {
         let template = &mut *it.borrow_mut();
-        ctx.push_stack(Ancestor::Template(it.clone()));
+        let node_id = ctx.next_node_id();
+
+        ctx.push_stack(Ancestor::Template(node_id));
+        template.nodes.set_node_id(node_id);
+
         visitor.enter_template(template, ctx);
 
         walk_fragment(visitor, &mut template.nodes, ctx);
@@ -198,7 +203,7 @@ pub mod walk {
     ) {
         visitor.enter_fragment(it, ctx);
 
-        walk_nodes(visitor, &mut it.nodes, ctx);
+        walk_nodes(visitor, &it.nodes, ctx);
 
         visitor.exit_fragment(it, ctx);
     }
@@ -236,17 +241,11 @@ pub mod walk {
                 visitor.exit_script_tag(it, ctx);
             }
             Node::Element(it) => {
-                ctx.push_stack(Ancestor::Element(it.clone()));
-                let it = &mut *it.borrow_mut();
                 walk_element(visitor, it, ctx);
-                ctx.pop_stack();
             }
             Node::Interpolation(it) => walk_interpolation(visitor, &mut *it.borrow_mut(), ctx),
             Node::IfBlock(it) => {
-                ctx.push_stack(Ancestor::IfBlock(it.clone()));
-                let it = &mut *it.borrow_mut();
                 walk_if_block(visitor, it, ctx);
-                ctx.pop_stack();
             }
             Node::VirtualConcatenation(_) => unreachable!(),
         }
@@ -277,15 +276,22 @@ pub mod walk {
 
     pub fn walk_element<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &mut Element<'a>,
+        cell: &RcCell<Element<'a>>,
         ctx: &mut VisitorContext<'a>,
     ) {
+        let node_id = ctx.next_node_id();
+        let it = &mut *cell.borrow_mut();
+
+        it.set_node_id(node_id);
+
+        ctx.push_stack(Ancestor::Element(node_id));
         visitor.enter_element(it, ctx);
 
         walk_attributes(visitor, &mut it.attributes, ctx);
-        walk_nodes(visitor, &mut it.nodes, ctx);
+        walk_nodes(visitor, &it.nodes, ctx);
 
         visitor.exit_element(it, ctx);
+        ctx.pop_stack();
     }
 
     pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(
@@ -425,9 +431,15 @@ pub mod walk {
 
     pub fn walk_if_block<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &mut IfBlock<'a>,
+        cell: &RcCell<IfBlock<'a>>,
         ctx: &mut VisitorContext<'a>,
     ) {
+        let it = &mut *cell.borrow_mut();
+        let consequent_node_id = ctx.next_node_id();
+
+        ctx.push_stack(Ancestor::IfBlock(consequent_node_id));
+        it.consequent.set_node_id(consequent_node_id);
+
         visitor.enter_if_block(it, ctx);
 
         walk_expression(visitor, &mut it.test, ctx);
@@ -435,9 +447,16 @@ pub mod walk {
         walk_fragment(visitor, &mut it.consequent, ctx);
 
         if let Some(alternate) = &mut it.alternate {
+            let alternate_node_id = ctx.next_node_id();
+            ctx.pop_stack();
+            ctx.push_stack(Ancestor::IfBlock(alternate_node_id));
+            alternate.set_node_id(alternate_node_id);
+
             walk_fragment(visitor, alternate, ctx);
         }
 
         visitor.exit_if_block(it, ctx);
+
+        ctx.pop_stack();
     }
 }

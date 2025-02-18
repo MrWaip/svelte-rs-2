@@ -8,7 +8,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::NodeId;
 
 use ast::{
-    metadata::{FragmentAnchor, InterpolationMetadata, WithMetadata},
+    metadata::{FragmentAnchor, InterpolationMetadata, InterpolationSetterKind, WithMetadata},
     AsNode, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
     ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node,
     Template, Text, VirtualConcatenation,
@@ -33,8 +33,8 @@ pub struct TransformTemplate<'a, 'link> {
 
 #[derive(Debug)]
 pub enum AnchorNodeType {
-    Interpolation(bool),
-    VirtualConcatenation(bool),
+    Interpolation(InterpolationSetterKind),
+    VirtualConcatenation(InterpolationSetterKind),
     IfBlock,
     Element(String),
 }
@@ -163,11 +163,13 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
 
     fn need_direct_parent_access(&self, anchor_type: &AnchorNodeType) -> bool {
         return match anchor_type {
-            AnchorNodeType::Interpolation(has_state) => {
-                self.content_type.is_compressible_sequence() && !has_state
+            AnchorNodeType::Interpolation(kind) => {
+                self.content_type.is_compressible_sequence()
+                    && *kind != InterpolationSetterKind::SetText
             }
-            AnchorNodeType::VirtualConcatenation(has_state) => {
-                self.content_type.is_compressible_sequence() && !has_state
+            AnchorNodeType::VirtualConcatenation(kind) => {
+                self.content_type.is_compressible_sequence()
+                    && *kind != InterpolationSetterKind::SetText
             }
             AnchorNodeType::IfBlock => false,
             AnchorNodeType::Element(_) => false,
@@ -809,17 +811,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         is_concatenation: bool,
         metadata: InterpolationMetadata,
     ) {
-        // whitespace for html text node for text anchor
-        if !ctx.content_type.is_compressible_sequence() || metadata.has_reactivity {
+        if metadata.need_template {
             ctx.push_template(" ".into());
         } else {
             ctx.set_skip_reset_element();
         }
 
         let anchor_type = if is_concatenation {
-            AnchorNodeType::VirtualConcatenation(metadata.has_reactivity)
+            AnchorNodeType::VirtualConcatenation(metadata.setter_kind)
         } else {
-            AnchorNodeType::Interpolation(metadata.has_reactivity)
+            AnchorNodeType::Interpolation(metadata.setter_kind)
         };
 
         ctx.add_anchor(anchor_type);
@@ -827,17 +828,17 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let expression = self.transform_expression(expression);
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
-        if metadata.has_reactivity {
+        if metadata.setter_kind == InterpolationSetterKind::SetText {
             let set_text = self
                 .b
                 .call_stmt("$.set_text", [BArg::Expr(node_id), BArg::Expr(expression)]);
 
             ctx.push_update(set_text);
         } else {
-            let prop: &str = if ctx.at_fragment() || !ctx.content_type.is_compressible_sequence() {
-                "nodeValue"
-            } else {
-                "textContent"
+            let prop = match metadata.setter_kind {
+                InterpolationSetterKind::NodeValue => "nodeValue",
+                InterpolationSetterKind::TextContent => "textContent",
+                InterpolationSetterKind::SetText => unreachable!(),
             };
 
             let member = self.b.static_member_expr(node_id, prop);

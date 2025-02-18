@@ -23,7 +23,7 @@ pub struct SvelteTable {
     pub(crate) symbols: SymbolTable,
     pub(crate) scopes: ScopeTree,
     pub(crate) runes: HashMap<SymbolId, Rune>,
-    pub(crate) optimizations: IndexVec<NodeId, OptimizationResult>,
+    pub(crate) optimizations: HashMap<NodeId, OptimizationResult>,
 }
 
 impl SvelteTable {
@@ -32,7 +32,7 @@ impl SvelteTable {
             runes: HashMap::default(),
             scopes,
             symbols,
-            optimizations: IndexVec::new(),
+            optimizations: HashMap::new(),
         };
     }
 
@@ -102,11 +102,11 @@ impl SvelteTable {
         return self.scopes.root_scope_id();
     }
 
-    pub fn add_optimization(&mut self, opt: OptimizationResult) -> NodeId {
-        return self.optimizations.push(opt);
+    pub fn add_optimization(&mut self, node_id: NodeId, opt: OptimizationResult) {
+        self.optimizations.insert(node_id, opt);
     }
 
     pub fn get_optimization(&self, node_id: NodeId) -> Option<&OptimizationResult> {
-        return self.optimizations.get(node_id);
+        return self.optimizations.get(&node_id);
     }
 }
