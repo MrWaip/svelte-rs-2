@@ -87,8 +87,6 @@ impl<'a> Node<'a> {
     }
 }
 
-
-
 impl<'a> GetSpan for Node<'a> {
     fn span(&self) -> Span {
         match self {
@@ -230,6 +228,7 @@ pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
     Expression(ExpressionAttribute<'a>),
     ClassDirective(ClassDirective<'a>),
+    BindDirective(BindDirective<'a>),
 }
 
 #[derive(Debug)]
@@ -240,6 +239,14 @@ pub struct ExpressionAttribute<'a> {
 
 #[derive(Debug)]
 pub struct ClassDirective<'a> {
+    pub shorthand: bool,
+    pub name: &'a str,
+    pub expression: Expression<'a>,
+    pub metadata: Option<AttributeMetadata>,
+}
+
+#[derive(Debug)]
+pub struct BindDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
     pub expression: Expression<'a>,

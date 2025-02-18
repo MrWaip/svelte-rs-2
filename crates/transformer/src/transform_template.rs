@@ -628,6 +628,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::ClassDirective(directive) => {
                 self.transform_class_directive_attribute(directive, ctx)
             }
+            Attribute::BindDirective(bind_directive) => todo!(),
         }
     }
 

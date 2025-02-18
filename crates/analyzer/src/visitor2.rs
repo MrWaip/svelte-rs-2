@@ -319,6 +319,7 @@ pub mod walk {
             Attribute::HTMLAttribute(it) => walk_html_attribute(visitor, it, ctx),
             Attribute::Expression(it) => walk_expression_attribute(visitor, it, ctx),
             Attribute::ClassDirective(it) => walk_class_directive_attribute(visitor, it, ctx),
+            Attribute::BindDirective(bind_directive) => todo!(),
         }
 
         visitor.exit_attribute(it, ctx);

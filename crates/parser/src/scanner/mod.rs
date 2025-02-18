@@ -2,9 +2,9 @@ pub mod token;
 
 use std::{iter::Peekable, mem, str::Chars, vec};
 use token::{
-    Attribute, AttributeIdentifierType, AttributeValue, ClassDirective, Concatenation,
-    ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag, StartIfTag, StartTag,
-    Token, TokenType,
+    Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
+    Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
+    StartIfTag, StartTag, Token, TokenType,
 };
 
 use diagnostics::Diagnostic;
@@ -140,6 +140,8 @@ impl<'a> Scanner<'a> {
 
             if AttributeIdentifierType::is_class_directive(name) {
                 return AttributeIdentifierType::ClassDirective(value).as_ok();
+            } else if AttributeIdentifierType::is_bind_directive(name) {
+                return AttributeIdentifierType::BindDirective(value).as_ok();
             } else {
                 return Diagnostic::unknown_directive(Span::new(colon_pos, self.current)).as_err();
             }
@@ -275,6 +277,7 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::ClassDirective(value) => {
                         self.class_directive(value)?
                     }
+                    AttributeIdentifierType::BindDirective(value) => self.bind_directive(value)?,
                     AttributeIdentifierType::None => break,
                 }
             };
@@ -310,6 +313,27 @@ impl<'a> Scanner<'a> {
         }
 
         return Ok(Attribute::ClassDirective(ClassDirective {
+            name,
+            expression: JsExpression {
+                span: SPAN,
+                value: &name,
+            },
+            shorthand: true,
+        }));
+    }
+
+    fn bind_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+
+            return Ok(Attribute::BindDirective(BindDirective {
+                expression: res.expression,
+                name,
+                shorthand: false,
+            }));
+        }
+
+        return Ok(Attribute::BindDirective(BindDirective {
             name,
             expression: JsExpression {
                 span: SPAN,
@@ -842,6 +866,23 @@ mod tests {
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
+
+    #[test]
+    fn bind_directives() {
+        let mut scanner = Scanner::new(r#"<input bind:visible bind:toggle={true} />"#);
+
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![("$bindDirective", "visible"), ("$bindDirective", "true")],
+            true,
+        );
+
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
     #[test]
     fn unterminated_start_tag() {
         let mut scanner = Scanner::new("<div disabled");
@@ -953,6 +994,7 @@ mod tests {
                 Attribute::HTMLAttribute(value) => value.name,
                 Attribute::ExpressionTag(_) => "$expression",
                 Attribute::ClassDirective(_class_directive) => "$classDirective",
+                Attribute::BindDirective(_) => "$bindDirective",
             };
 
             let value: AttributeValue = match attribute {
@@ -963,6 +1005,9 @@ mod tests {
                 }
                 Attribute::ClassDirective(class_directive) => {
                     AttributeValue::String(class_directive.expression.value)
+                }
+                Attribute::BindDirective(bind_directive) => {
+                    AttributeValue::String(bind_directive.expression.value)
                 }
             };
 

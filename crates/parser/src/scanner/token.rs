@@ -76,10 +76,18 @@ pub enum Attribute<'a> {
     HTMLAttribute(HTMLAttribute<'a>),
     ExpressionTag(ExpressionTag<'a>),
     ClassDirective(ClassDirective<'a>),
+    BindDirective(BindDirective<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClassDirective<'a> {
+    pub shorthand: bool,
+    pub name: &'a str,
+    pub expression: JsExpression<'a>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BindDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
     pub expression: JsExpression<'a>,
@@ -174,12 +182,17 @@ pub struct ElseTag<'a> {
 pub enum AttributeIdentifierType<'a> {
     HTMLAttribute(&'a str),
     ClassDirective(&'a str),
+    BindDirective(&'a str),
     None,
 }
 
 impl<'a> AttributeIdentifierType<'a> {
     pub fn is_class_directive(name: &str) -> bool {
         return name == "class";
+    }
+
+    pub fn is_bind_directive(name: &str) -> bool {
+        return name == "bind";
     }
 
     pub fn is_empty(&self) -> bool {
