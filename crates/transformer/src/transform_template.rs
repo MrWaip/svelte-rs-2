@@ -24,11 +24,11 @@ use ast_builder::{
 };
 
 pub struct TransformTemplate<'a, 'link> {
-    b: &'a Builder<'a>,
-    hoisted: Vec<Statement<'a>>,
-    root_scope: Rc<RefCell<Scope>>,
-    transform_script: &'link TransformScript<'a, 'link>,
-    svelte_table: &'link SvelteTable,
+    pub(crate) b: &'a Builder<'a>,
+    pub(crate) hoisted: Vec<Statement<'a>>,
+    pub(crate) root_scope: Rc<RefCell<Scope>>,
+    pub(crate) transform_script: &'link TransformScript<'a, 'link>,
+    pub(crate) svelte_table: &'link SvelteTable,
 }
 
 #[derive(Debug)]
@@ -65,19 +65,19 @@ pub struct FragmentContext<'a> {
 }
 
 pub struct NodeContext<'ast, 'reference> {
-    builder: &'reference Builder<'ast>,
-    fragment: &'reference mut FragmentContext<'ast>,
-    parent_node_anchor: Option<&'reference Expression<'ast>>,
-    current_node_anchor: Expression<'ast>,
-    sibling_offset: usize,
-    skip_reset_element: bool,
-    content_type: ContentType,
+    pub(crate) builder: &'reference Builder<'ast>,
+    pub(crate) fragment: &'reference mut FragmentContext<'ast>,
+    pub(crate) parent_node_anchor: Option<&'reference Expression<'ast>>,
+    pub(crate) current_node_anchor: Expression<'ast>,
+    pub(crate) sibling_offset: usize,
+    pub(crate) skip_reset_element: bool,
+    pub(crate) content_type: ContentType,
 
     /**
      * Было ли использовано обращение к parent_anchor или fragment_anchor
      * Все последующие обращения должен строится относительно current_node_anchor
      */
-    parent_or_fragment_used: bool,
+    pub(crate) parent_or_fragment_used: bool,
 }
 
 impl<'ast, 'local> NodeContext<'ast, 'local> {
@@ -628,7 +628,9 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::ClassDirective(directive) => {
                 self.transform_class_directive_attribute(directive, ctx)
             }
-            Attribute::BindDirective(bind_directive) => todo!(),
+            Attribute::BindDirective(bind_directive) => {
+                self.transform_bind_directive(bind_directive, ctx);
+            }
         }
     }
 
@@ -933,7 +935,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx.push_init(self.b.block(statements));
     }
 
-    fn transform_expression(&mut self, expression: &mut Expression<'a>) -> Expression<'a> {
+    pub(crate) fn transform_expression(
+        &mut self,
+        expression: &mut Expression<'a>,
+    ) -> Expression<'a> {
         let expression = self.b.ast.move_expression(expression);
 
         let result = self.transform_script.transform_expression(expression);

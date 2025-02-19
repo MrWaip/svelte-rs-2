@@ -10,9 +10,9 @@
 use oxc_ast::ast::Expression;
 
 use ast::{
-    Attribute, ClassDirective, Concatenation, ConcatenationPart, Element, ExpressionAttribute,
-    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
-    Template, Text,
+    Attribute, BindDirective, ClassDirective, Concatenation, ConcatenationPart, Element,
+    ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation,
+    Node, ScriptTag, Template, Text,
 };
 
 use crate::context::VisitorContext;
@@ -86,6 +86,20 @@ pub trait TemplateVisitor<'a>: Sized {
     fn exit_class_directive_attribute(
         &mut self,
         it: &mut ClassDirective<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
+
+    fn enter_bind_directive_attribute(
+        &mut self,
+        it: &mut BindDirective<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
+
+    fn exit_bind_directive_attribute(
+        &mut self,
+        it: &mut BindDirective<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
     }
@@ -169,7 +183,7 @@ pub trait TemplateVisitor<'a>: Sized {
 
 pub mod walk {
 
-    use ast::{node_id, Node};
+    use ast::{node_id, BindDirective, Node};
     use oxc_semantic::NodeId;
     use rccell::RcCell;
 
@@ -319,7 +333,7 @@ pub mod walk {
             Attribute::HTMLAttribute(it) => walk_html_attribute(visitor, it, ctx),
             Attribute::Expression(it) => walk_expression_attribute(visitor, it, ctx),
             Attribute::ClassDirective(it) => walk_class_directive_attribute(visitor, it, ctx),
-            Attribute::BindDirective(bind_directive) => todo!(),
+            Attribute::BindDirective(it) => walk_bind_directive_attribute(visitor, it, ctx),
         }
 
         visitor.exit_attribute(it, ctx);
@@ -347,6 +361,18 @@ pub mod walk {
         walk_expression(visitor, &mut it.expression, ctx);
 
         visitor.exit_class_directive_attribute(it, ctx);
+    }
+
+    pub fn walk_bind_directive_attribute<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &mut BindDirective<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+        visitor.enter_bind_directive_attribute(it, ctx);
+
+        walk_expression(visitor, &mut it.expression, ctx);
+
+        visitor.exit_bind_directive_attribute(it, ctx);
     }
 
     pub fn walk_html_attribute<'a, V: TemplateVisitor<'a>>(

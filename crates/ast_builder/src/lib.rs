@@ -45,11 +45,13 @@ pub enum BuilderStatement<'a> {
 
 pub enum BuilderAssignmentLeft<'short, 'a> {
     Ident(&'short str),
+    IdentRef(IdentifierReference<'a>),
     StaticMemberExpression(StaticMemberExpression<'a>),
 }
 
-pub enum BuilderAssignmentRight<'a> {
+pub enum BuilderAssignmentRight<'a, 'short> {
     Expr(Expression<'a>),
+    Ident(&'short str),
 }
 
 pub struct Builder<'a> {
@@ -442,7 +444,7 @@ impl<'a> Builder<'a> {
     pub fn assignment_expression<'local>(
         &self,
         left: BuilderAssignmentLeft<'local, 'a>,
-        right: BuilderAssignmentRight<'a>,
+        right: BuilderAssignmentRight<'a, 'local>,
     ) -> AssignmentExpression<'a> {
         let left: ast::AssignmentTarget<'a> = match left {
             BuilderAssignmentLeft::Ident(value) => {
@@ -451,10 +453,16 @@ impl<'a> Builder<'a> {
             BuilderAssignmentLeft::StaticMemberExpression(static_member_expression) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(static_member_expression))
             }
+            BuilderAssignmentLeft::IdentRef(ident) => {
+                AssignmentTarget::AssignmentTargetIdentifier(self.alloc(ident))
+            }
         };
 
         let right: Expression<'a> = match right {
             BuilderAssignmentRight::Expr(expression) => expression,
+            BuilderAssignmentRight::Ident(value) => {
+                self.expr(BuilderExpression::Ident(self.rid(value)))
+            }
         };
 
         let assignment =
@@ -464,15 +472,23 @@ impl<'a> Builder<'a> {
         return assignment;
     }
 
+    pub fn assignment_expression_expr<'local>(
+        &self,
+        left: BuilderAssignmentLeft<'local, 'a>,
+        right: BuilderAssignmentRight<'a, 'local>,
+    ) -> Expression<'a> {
+        let assignment = self.assignment_expression(left, right);
+
+        return self.expr(BuilderExpression::Assignment(assignment));
+    }
+
     pub fn assignment_expression_stmt<'local>(
         &self,
         left: BuilderAssignmentLeft<'local, 'a>,
-        right: BuilderAssignmentRight<'a>,
+        right: BuilderAssignmentRight<'a, 'local>,
     ) -> Statement<'a> {
-        let assignment = self.assignment_expression(left, right);
-
         return self.stmt(BuilderStatement::Expr(
-            self.expr(BuilderExpression::Assignment(assignment)),
+            self.assignment_expression_expr(left, right),
         ));
     }
 

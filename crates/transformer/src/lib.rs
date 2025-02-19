@@ -12,6 +12,8 @@ pub mod scope;
 pub mod transform_script;
 pub mod transform_template;
 
+mod client;
+
 pub fn transform_client<'a>(
     mut ast: Ast<'a>,
     b: &'a Builder<'a>,
