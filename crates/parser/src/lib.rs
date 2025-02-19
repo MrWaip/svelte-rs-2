@@ -12,9 +12,9 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use ast::{
-    AsNode, Ast, Attribute, AttributeValue, BindDirective, ClassDirective, Concatenation,
-    ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue, Fragment,
-    HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Template, Text,
+    AsNode, Ast, Attribute, AttributeValue, BindDirective, BindDirectiveKind, ClassDirective,
+    Concatenation, ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue,
+    Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -355,6 +355,7 @@ impl<'a> Parser<'a> {
                         shorthand: token.shorthand,
                         metadata: None,
                         name: token.name,
+                        kind: BindDirectiveKind::from_str(token.name),
                         expression: self
                             .parse_js_expression(token.expression.value, token.expression.span)?,
                     }));

@@ -167,6 +167,26 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
+    fn enter_bind_directive_attribute(
+        &mut self,
+        _it: &mut ast::BindDirective<'a>,
+        _ctx: &mut VisitorContext<'a>,
+    ) {
+        self.current_reference_flags = ReferenceFlags::read_write();
+    }
+
+    fn exit_bind_directive_attribute(
+        &mut self,
+        it: &mut ast::BindDirective<'a>,
+        _ctx: &mut VisitorContext<'a>,
+    ) {
+        let flags = self.resolve_expression_flags();
+
+        it.set_metadata(AttributeMetadata {
+            has_reactivity: flags.has_reactivity,
+        });
+    }
+
     fn exit_interpolation(&mut self, it: &mut ast::Interpolation<'a>, ctx: &mut VisitorContext) {
         let flags = self.resolve_expression_flags();
 

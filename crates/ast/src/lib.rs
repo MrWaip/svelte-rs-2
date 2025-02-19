@@ -249,8 +249,24 @@ pub struct ClassDirective<'a> {
 pub struct BindDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
+    pub kind: BindDirectiveKind,
     pub expression: Expression<'a>,
     pub metadata: Option<AttributeMetadata>,
+}
+
+#[derive(Debug)]
+pub enum BindDirectiveKind {
+    Unknown,
+    Value,
+}
+
+impl BindDirectiveKind {
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "value" => BindDirectiveKind::Value,
+            _ => BindDirectiveKind::Unknown,
+        }
+    }
 }
 
 #[derive(Debug)]
