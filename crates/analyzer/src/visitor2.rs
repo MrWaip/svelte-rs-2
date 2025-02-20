@@ -199,15 +199,15 @@ pub mod walk {
         let template = &mut *it.borrow_mut();
         let node_id = ctx.next_node_id();
 
-        ctx.push_stack(Ancestor::Template(node_id));
         template.nodes.set_node_id(node_id);
-
+        
         visitor.enter_template(template, ctx);
-
+        
+        ctx.push_stack(Ancestor::Template(node_id));
         walk_fragment(visitor, &mut template.nodes, ctx);
+        ctx.pop_stack();
 
         visitor.exit_template(template, ctx);
-        ctx.pop_stack();
     }
 
     pub fn walk_fragment<'a, V: TemplateVisitor<'a>>(
@@ -297,15 +297,16 @@ pub mod walk {
         let it = &mut *cell.borrow_mut();
 
         it.set_node_id(node_id);
+        ctx.add_default_element_flags(node_id);
 
-        ctx.push_stack(Ancestor::Element(node_id));
         visitor.enter_element(it, ctx);
 
+        ctx.push_stack(Ancestor::Element(node_id));
         walk_attributes(visitor, &mut it.attributes, ctx);
         walk_nodes(visitor, &it.nodes, ctx);
+        ctx.pop_stack();
 
         visitor.exit_element(it, ctx);
-        ctx.pop_stack();
     }
 
     pub fn walk_attributes<'a, V: TemplateVisitor<'a>>(
@@ -464,10 +465,10 @@ pub mod walk {
         let it = &mut *cell.borrow_mut();
         let consequent_node_id = ctx.next_node_id();
 
-        ctx.push_stack(Ancestor::IfBlock(consequent_node_id));
         it.consequent.set_node_id(consequent_node_id);
 
         visitor.enter_if_block(it, ctx);
+        ctx.push_stack(Ancestor::IfBlock(consequent_node_id));
 
         walk_expression(visitor, &mut it.test, ctx);
 
@@ -482,8 +483,7 @@ pub mod walk {
             walk_fragment(visitor, alternate, ctx);
         }
 
-        visitor.exit_if_block(it, ctx);
-
         ctx.pop_stack();
+        visitor.exit_if_block(it, ctx);
     }
 }

@@ -81,7 +81,6 @@ impl<'alloc> Analyzer<'alloc> {
             current_reference_flags: ReferenceFlags::empty(),
             current_expression_flags: ExpressionFlags::empty(),
             svelte_table: script_visitor.svelte_table,
-            element_has_dynamic_nodes: false,
             current_concatenation_metadata: AttributeMetadata::default(),
         };
 
@@ -101,7 +100,6 @@ pub struct TemplateVisitorImpl<'link> {
     pub svelte_table: &'link mut SvelteTable,
     current_reference_flags: ReferenceFlags,
     current_expression_flags: ExpressionFlags,
-    element_has_dynamic_nodes: bool,
     current_concatenation_metadata: AttributeMetadata,
 }
 
@@ -125,33 +123,27 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     }
 
     fn enter_element(&mut self, it: &mut ast::Element<'a>, _ctx: &mut VisitorContext) {
-        let mut metadata = ElementMetadata::default();
-        metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
-        self.element_has_dynamic_nodes = false;
-
-        let optimizations = compute_optimization(&it.nodes);
         self.svelte_table
-            .add_optimization(it.node_id(), optimizations);
-
-        it.set_metadata(metadata);
+            .add_optimization(it.node_id(), compute_optimization(&it.nodes));
     }
 
-    fn exit_element(&mut self, it: &mut ast::Element<'a>, _ctx: &mut VisitorContext) {
-        let mut metadata = it.get_metadata();
+    fn exit_element(&mut self, it: &mut ast::Element<'a>, ctx: &mut VisitorContext) {
+        let flags = ctx.resolve_element_flags(it.node_id());
+        let mut metadata = ElementMetadata::default();
         let optimizations = self.svelte_table.get_optimization(it.node_id()).unwrap();
 
-        let was_dynamic = metadata.has_dynamic_nodes;
-        metadata.has_dynamic_nodes = self.element_has_dynamic_nodes;
-        metadata.need_reset =
-            self.element_has_dynamic_nodes && optimizations.content_type.is_non_text();
+        metadata.has_dynamic_nodes = flags.dynamic;
+        metadata.need_reset = flags.dynamic && optimizations.content_type.is_non_text();
 
-        self.element_has_dynamic_nodes = self.element_has_dynamic_nodes || was_dynamic;
+        if flags.dynamic {
+            ctx.mark_parent_element_as_dynamic();
+        }
 
         it.set_metadata(metadata);
     }
 
-    fn enter_expression(&mut self, it: &Expression<'a>, _ctx: &mut VisitorContext) {
-        self.element_has_dynamic_nodes = true;
+    fn enter_expression(&mut self, it: &Expression<'a>, ctx: &mut VisitorContext) {
+        ctx.mark_parent_element_as_dynamic();
         Visit::visit_expression(self, it);
     }
 
