@@ -13,8 +13,9 @@ use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeValue, BindDirective, BindDirectiveKind, ClassDirective,
-    Concatenation, ConcatenationPart, Element, ExpressionAttribute, ExpressionAttributeValue,
-    Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag, Template, Text,
+    Concatenation, ConcatenationPart, Element, ElementKind, ExpressionAttribute,
+    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
+    Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -192,6 +193,7 @@ impl<'a> Parser<'a> {
             attributes,
             metadata: None,
             node_id: None,
+            kind: ElementKind::from_str(name),
         };
 
         let node = element.as_node();

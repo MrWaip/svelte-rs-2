@@ -146,6 +146,23 @@ pub struct Element<'a> {
     pub attributes: Vec<Attribute<'a>>,
     pub metadata: Option<ElementMetadata>,
     pub node_id: Option<NodeId>,
+    pub kind: ElementKind,
+}
+
+#[derive(Debug)]
+pub enum ElementKind {
+    Unknown,
+    Input,
+    // ... other
+}
+
+impl ElementKind {
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "input" => ElementKind::Input,
+            _ => ElementKind::Unknown,
+        }
+    }
 }
 
 impl<'a> AsNode<'a> for Element<'a> {
