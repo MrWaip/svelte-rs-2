@@ -3,6 +3,25 @@ use oxc_ast::ast::Expression;
 use crate::metadata::AttributeMetadata;
 
 #[derive(Debug)]
+pub enum AttributeKind {
+    Unknown,
+    Value,
+    Checked,
+    Group,
+}
+
+impl AttributeKind {
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "group" => AttributeKind::Group,
+            "checked" => AttributeKind::Checked,
+            "value" => AttributeKind::Value,
+            _ => AttributeKind::Unknown,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum Attribute<'a> {
     ExpressionAttribute(ExpressionAttribute<'a>),
     ClassDirective(ClassDirective<'a>),
@@ -16,6 +35,7 @@ pub enum Attribute<'a> {
 pub struct ExpressionAttribute<'a> {
     pub shorthand: bool,
     pub name: &'a str,
+    pub kind: AttributeKind,
     pub expression: Expression<'a>,
     pub metadata: Option<AttributeMetadata>,
 }
@@ -59,6 +79,8 @@ impl<'a> BindDirective<'a> {
 pub enum BindDirectiveKind {
     Unknown,
     Value,
+    Group,
+    Checked
 }
 
 impl BindDirectiveKind {
@@ -73,6 +95,7 @@ impl BindDirectiveKind {
 #[derive(Debug)]
 pub struct BooleanAttribute<'a> {
     pub name: &'a str,
+    pub kind: AttributeKind,
 }
 
 impl<'a> BooleanAttribute<'a> {
@@ -85,6 +108,7 @@ impl<'a> BooleanAttribute<'a> {
 pub struct StringAttribute<'a> {
     pub name: &'a str,
     pub value: &'a str,
+    pub kind: AttributeKind,
 }
 
 impl<'a> StringAttribute<'a> {
@@ -97,6 +121,7 @@ impl<'a> StringAttribute<'a> {
 pub struct ConcatenationAttribute<'a> {
     pub parts: Vec<ConcatenationPart<'a>>,
     pub name: &'a str,
+    pub kind: AttributeKind,
     pub metadata: Option<AttributeMetadata>,
 }
 

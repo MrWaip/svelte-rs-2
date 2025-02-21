@@ -16,7 +16,7 @@ pub mod metadata;
 pub mod node_id;
 
 pub use attribute::{
-    Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
+    Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
     ConcatenationAttribute, ConcatenationPart, ExpressionAttribute, StringAttribute,
 };
 
@@ -181,6 +181,10 @@ impl ElementKind {
             "input" => ElementKind::Input,
             _ => ElementKind::Unknown,
         }
+    }
+
+    pub fn is_input(&self) -> bool {
+        matches!(self, ElementKind::Input)
     }
 }
 

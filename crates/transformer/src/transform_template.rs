@@ -574,6 +574,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             ctx.add_anchor(AnchorNodeType::Element(element.name.to_string()));
         }
 
+        if metadata.need_remove_input_defaults {
+            ctx.push_init(self.b.call_stmt(
+                "$.remove_input_defaults",
+                [BArg::Expr(self.b.clone_expr(&ctx.current_node_anchor))],
+            ));
+        }
+
         if has_attributes {
             self.transform_attributes(element, ctx);
         } else {

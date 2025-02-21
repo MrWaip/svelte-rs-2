@@ -12,9 +12,10 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use ast::{
-    AsNode, Ast, Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
-    ConcatenationAttribute, ConcatenationPart, Element, ElementKind, ExpressionAttribute, Fragment,
-    IfBlock, Interpolation, Node, ScriptTag, StringAttribute, Template, Text,
+    AsNode, Ast, Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute,
+    ClassDirective, ConcatenationAttribute, ConcatenationPart, Element, ElementKind,
+    ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag, StringAttribute,
+    Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -286,6 +287,7 @@ impl<'a> Parser<'a> {
                     let result: Attribute = match &token_attr.value {
                         token::AttributeValue::String(value) => StringAttribute {
                             name: token_attr.name,
+                            kind: AttributeKind::from_str(token_attr.name),
                             value: &value,
                         }
                         .as_attribute(),
@@ -297,6 +299,7 @@ impl<'a> Parser<'a> {
 
                             ExpressionAttribute {
                                 expression,
+                                kind: AttributeKind::from_str(token_attr.name),
                                 metadata: None,
                                 shorthand: false,
                                 name: token_attr.name,
@@ -325,12 +328,14 @@ impl<'a> Parser<'a> {
                             ConcatenationAttribute {
                                 metadata: None,
                                 name: token_attr.name,
+                                kind: AttributeKind::from_str(token_attr.name),
                                 parts,
                             }
                             .as_attribute()
                         }
                         token::AttributeValue::Empty => BooleanAttribute {
                             name: token_attr.name,
+                            kind: AttributeKind::from_str(token_attr.name),
                         }
                         .as_attribute(),
                     };
@@ -348,6 +353,7 @@ impl<'a> Parser<'a> {
                         shorthand: true,
                         name: expression_tag.expression.value,
                         metadata: None,
+                        kind: AttributeKind::from_str(expression_tag.expression.value),
                     }));
                 }
                 token::Attribute::ClassDirective(token) => {
