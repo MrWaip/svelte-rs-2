@@ -2,7 +2,7 @@ pub mod ancestor;
 pub mod compute_optimization;
 pub mod context;
 pub mod svelte_table;
-pub mod visitor2;
+pub mod visitor;
 
 use std::mem::take;
 
@@ -19,12 +19,12 @@ use svelte_table::{RuneKind, SvelteTable};
 
 use ast::{
     metadata::{
-        self, AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
+        AttributeMetadata, ElementMetadata, FragmentAnchor, FragmentMetadata,
         InterpolationMetadata, InterpolationSetterKind, WithMetadata,
     },
-    Ast, ExpressionAttribute, ExpressionAttributeValue,
+    Ast, ExpressionAttribute,
 };
-use visitor2::{walk::walk_template, TemplateVisitor};
+use visitor::{walk::walk_template, TemplateVisitor};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExpressionFlags {
@@ -219,26 +219,14 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
         });
     }
 
-    fn exit_concatenation_attribute_value(
+    fn exit_concatenation_attribute(
         &mut self,
-        it: &mut ast::Concatenation<'a>,
+        it: &mut ast::ConcatenationAttribute<'a>,
         _ctx: &mut VisitorContext,
     ) {
         let metadata = take(&mut self.current_concatenation_metadata);
 
         it.set_metadata(metadata);
-    }
-
-    fn exit_expression_attribute_value(
-        &mut self,
-        it: &mut ExpressionAttributeValue<'a>,
-        _ctx: &mut VisitorContext,
-    ) {
-        let flags = self.resolve_expression_flags();
-
-        it.set_metadata(AttributeMetadata {
-            has_reactivity: flags.has_reactivity,
-        });
     }
 
     fn exit_expression_concatenation_part(

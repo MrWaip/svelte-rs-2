@@ -1,6 +1,6 @@
 use std::{cell::RefMut, ops::Index, slice::Iter};
 
-use metadata::{AttributeMetadata, ElementMetadata, FragmentMetadata, InterpolationMetadata};
+use metadata::{ElementMetadata, FragmentMetadata, InterpolationMetadata};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program};
 use oxc_span::Language;
@@ -10,9 +10,15 @@ use span::{GetSpan, Span};
 
 use diagnostics::Diagnostic;
 
+mod attribute;
 pub mod format;
 pub mod metadata;
 pub mod node_id;
+
+pub use attribute::{
+    Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
+    ConcatenationAttribute, ConcatenationPart, ExpressionAttribute, StringAttribute,
+};
 
 pub struct Ast<'a> {
     pub template: RcCell<Template<'a>>,
@@ -110,6 +116,19 @@ pub struct Interpolation<'a> {
 impl<'a> AsNode<'a> for Interpolation<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::Interpolation(RcCell::new(self));
+    }
+}
+
+#[derive(Debug)]
+pub struct VirtualConcatenation<'a> {
+    pub parts: Vec<ConcatenationPart<'a>>,
+    pub span: Span,
+    pub metadata: InterpolationMetadata,
+}
+
+impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
+    fn as_node(self) -> Node<'a> {
+        return Node::VirtualConcatenation(RcCell::new(self));
     }
 }
 
@@ -238,98 +257,6 @@ impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
         return Node::Text(RcCell::new(self));
     }
-}
-
-#[derive(Debug)]
-pub enum Attribute<'a> {
-    HTMLAttribute(HTMLAttribute<'a>),
-    Expression(ExpressionAttribute<'a>),
-    ClassDirective(ClassDirective<'a>),
-    BindDirective(BindDirective<'a>),
-}
-
-#[derive(Debug)]
-pub struct ExpressionAttribute<'a> {
-    pub expression: Expression<'a>,
-    pub metadata: Option<AttributeMetadata>,
-}
-
-#[derive(Debug)]
-pub struct ClassDirective<'a> {
-    pub shorthand: bool,
-    pub name: &'a str,
-    pub expression: Expression<'a>,
-    pub metadata: Option<AttributeMetadata>,
-}
-
-#[derive(Debug)]
-pub struct BindDirective<'a> {
-    pub shorthand: bool,
-    pub name: &'a str,
-    pub kind: BindDirectiveKind,
-    pub expression: Expression<'a>,
-    pub metadata: Option<AttributeMetadata>,
-}
-
-#[derive(Debug)]
-pub enum BindDirectiveKind {
-    Unknown,
-    Value,
-}
-
-impl BindDirectiveKind {
-    pub fn from_str(value: &str) -> Self {
-        match value {
-            "value" => BindDirectiveKind::Value,
-            _ => BindDirectiveKind::Unknown,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct HTMLAttribute<'a> {
-    pub name: &'a str,
-    pub value: AttributeValue<'a>,
-}
-
-#[derive(Debug)]
-pub enum AttributeValue<'a> {
-    String(&'a str),
-    Expression(ExpressionAttributeValue<'a>),
-    Boolean,
-    Concatenation(Concatenation<'a>),
-}
-
-#[derive(Debug)]
-pub struct ExpressionAttributeValue<'a> {
-    pub expression: Expression<'a>,
-    pub metadata: Option<AttributeMetadata>,
-}
-
-#[derive(Debug)]
-pub struct VirtualConcatenation<'a> {
-    pub parts: Vec<ConcatenationPart<'a>>,
-    pub span: Span,
-    pub metadata: InterpolationMetadata,
-}
-
-impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
-    fn as_node(self) -> Node<'a> {
-        return Node::VirtualConcatenation(RcCell::new(self));
-    }
-}
-
-#[derive(Debug)]
-pub struct Concatenation<'a> {
-    pub parts: Vec<ConcatenationPart<'a>>,
-    pub span: Span,
-    pub metadata: Option<AttributeMetadata>,
-}
-
-#[derive(Debug)]
-pub enum ConcatenationPart<'a> {
-    String(&'a str),
-    Expression(Expression<'a>),
 }
 
 #[derive(Debug)]

@@ -1,8 +1,8 @@
 use oxc_ast::ast::{Expression, Program};
 
 use crate::{
-    Attribute, AttributeValue, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag,
-    Text, VirtualConcatenation,
+    Attribute, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag, Text,
+    VirtualConcatenation,
 };
 
 pub trait FormatNode {
@@ -84,39 +84,38 @@ impl<'a> FormatNode for Element<'a> {
                 let mut result = String::new();
 
                 match attr {
-                    Attribute::HTMLAttribute(attr) => {
+                    Attribute::ConcatenationAttribute(attr) => {
                         result.push_str(attr.name);
+                        result.push_str("=\"");
 
-                        match &attr.value {
-                            AttributeValue::String(value) => {
-                                result.push_str(format!("=\"{}\"", value).as_str());
-                            }
-                            AttributeValue::Boolean => (),
-                            AttributeValue::Expression(expression) => {
-                                let expr_string = print_expression(&expression.expression);
-                                result.push_str(format!("={{{}}}", expr_string).as_str());
-                            }
-                            AttributeValue::Concatenation(concatenation) => {
-                                result.push_str("=\"");
-
-                                for part in concatenation.parts.iter() {
-                                    match part {
-                                        ConcatenationPart::String(value) => result.push_str(value),
-                                        ConcatenationPart::Expression(expression) => {
-                                            let expr_string = print_expression(expression);
-                                            result
-                                                .push_str(format!("{{{}}}", expr_string).as_str());
-                                        }
-                                    }
+                        for part in attr.parts.iter() {
+                            match part {
+                                ConcatenationPart::String(value) => result.push_str(value),
+                                ConcatenationPart::Expression(expression) => {
+                                    let expr_string = print_expression(expression);
+                                    result.push_str(format!("{{{}}}", expr_string).as_str());
                                 }
-
-                                result.push_str("\"");
                             }
                         }
+
+                        result.push_str("\"");
                     }
-                    Attribute::Expression(expression) => {
-                        let expr_string = print_expression(&expression.expression);
-                        result.push_str(format!("{{{}}}", expr_string).as_str());
+                    Attribute::BooleanAttribute(attr) => {
+                        result.push_str(attr.name);
+                    }
+                    Attribute::StringAttribute(attr) => {
+                        result.push_str(attr.name);
+                        result.push_str(format!("=\"{}\"", attr.value).as_str());
+                    }
+                    Attribute::ExpressionAttribute(attr) => {
+                        let expr_string = print_expression(&attr.expression);
+
+                        if attr.shorthand {
+                            result.push_str(format!("{{{}}}", expr_string).as_str());
+                        } else {
+                            result.push_str(attr.name);
+                            result.push_str(format!("={{{}}}", expr_string).as_str());
+                        }
                     }
                     Attribute::ClassDirective(class_directive) => {
                         let expr_string = print_expression(&class_directive.expression);

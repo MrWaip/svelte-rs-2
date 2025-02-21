@@ -10,9 +10,9 @@
 use oxc_ast::ast::Expression;
 
 use ast::{
-    Attribute, BindDirective, ClassDirective, Concatenation, ConcatenationPart, Element,
-    ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation,
-    Node, ScriptTag, Template, Text,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatenationAttribute,
+    ConcatenationPart, Element, ExpressionAttribute, Fragment, IfBlock, Interpolation, Node,
+    ScriptTag, StringAttribute, Template, Text,
 };
 
 use crate::context::VisitorContext;
@@ -58,10 +58,6 @@ pub trait TemplateVisitor<'a>: Sized {
 
     fn exit_attribute(&mut self, it: &mut Attribute<'a>, ctx: &mut VisitorContext<'a>) {}
 
-    fn enter_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext<'a>) {}
-
-    fn exit_html_attribute(&mut self, it: &mut HTMLAttribute<'a>, ctx: &mut VisitorContext<'a>) {}
-
     fn enter_expression_attribute(
         &mut self,
         it: &mut ExpressionAttribute<'a>,
@@ -104,38 +100,44 @@ pub trait TemplateVisitor<'a>: Sized {
     ) {
     }
 
-    fn enter_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
-
-    fn exit_string_attribute_value(&mut self, it: &str, ctx: &mut VisitorContext<'a>) {}
-
-    fn enter_expression_attribute_value(
+    fn enter_string_attribute(
         &mut self,
-        it: &mut ExpressionAttributeValue<'a>,
+        it: &mut StringAttribute<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn exit_expression_attribute_value(
+    fn exit_string_attribute(
         &mut self,
-        it: &mut ExpressionAttributeValue<'a>,
+        it: &mut StringAttribute<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn enter_boolean_attribute_value(&mut self, ctx: &mut VisitorContext<'a>) {}
-
-    fn exit_boolean_attribute_value(&mut self, ctx: &mut VisitorContext<'a>) {}
-
-    fn enter_concatenation_attribute_value(
+    fn enter_boolean_attribute(
         &mut self,
-        it: &mut Concatenation<'a>,
+        it: &mut BooleanAttribute<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
     }
 
-    fn exit_concatenation_attribute_value(
+    fn exit_boolean_attribute(
         &mut self,
-        it: &mut Concatenation<'a>,
+        it: &mut BooleanAttribute<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
+
+    fn enter_concatenation_attribute(
+        &mut self,
+        it: &mut ConcatenationAttribute<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+    }
+
+    fn exit_concatenation_attribute(
+        &mut self,
+        it: &mut ConcatenationAttribute<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
     }
@@ -200,9 +202,9 @@ pub mod walk {
         let node_id = ctx.next_node_id();
 
         template.nodes.set_node_id(node_id);
-        
+
         visitor.enter_template(template, ctx);
-        
+
         ctx.push_stack(Ancestor::Template(node_id));
         walk_fragment(visitor, &mut template.nodes, ctx);
         ctx.pop_stack();
@@ -331,13 +333,33 @@ pub mod walk {
         visitor.enter_attribute(it, ctx);
 
         match it {
-            Attribute::HTMLAttribute(it) => walk_html_attribute(visitor, it, ctx),
-            Attribute::Expression(it) => walk_expression_attribute(visitor, it, ctx),
+            Attribute::ExpressionAttribute(it) => walk_expression_attribute(visitor, it, ctx),
             Attribute::ClassDirective(it) => walk_class_directive_attribute(visitor, it, ctx),
             Attribute::BindDirective(it) => walk_bind_directive_attribute(visitor, it, ctx),
+            Attribute::BooleanAttribute(it) => walk_boolean_attribute(visitor, it, ctx),
+            Attribute::StringAttribute(it) => walk_string_attribute(visitor, it, ctx),
+            Attribute::ConcatenationAttribute(it) => walk_concatenation_attribute(visitor, it, ctx),
         }
 
         visitor.exit_attribute(it, ctx);
+    }
+
+    pub fn walk_string_attribute<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &mut StringAttribute<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+        visitor.enter_string_attribute(it, ctx);
+        visitor.exit_string_attribute(it, ctx);
+    }
+
+    pub fn walk_boolean_attribute<'a, V: TemplateVisitor<'a>>(
+        visitor: &mut V,
+        it: &mut BooleanAttribute<'a>,
+        ctx: &mut VisitorContext<'a>,
+    ) {
+        visitor.enter_boolean_attribute(it, ctx);
+        visitor.exit_boolean_attribute(it, ctx);
     }
 
     pub fn walk_expression_attribute<'a, V: TemplateVisitor<'a>>(
@@ -376,55 +398,18 @@ pub mod walk {
         visitor.exit_bind_directive_attribute(it, ctx);
     }
 
-    pub fn walk_html_attribute<'a, V: TemplateVisitor<'a>>(
+    pub fn walk_concatenation_attribute<'a, V: TemplateVisitor<'a>>(
         visitor: &mut V,
-        it: &mut HTMLAttribute<'a>,
+        it: &mut ConcatenationAttribute<'a>,
         ctx: &mut VisitorContext<'a>,
     ) {
-        visitor.enter_html_attribute(it, ctx);
-
-        match &mut it.value {
-            ast::AttributeValue::String(it) => {
-                visitor.enter_string_attribute_value(*it, ctx);
-                visitor.exit_string_attribute_value(*it, ctx);
-            }
-            ast::AttributeValue::Expression(it) => {
-                walk_expression_attribute_value(visitor, it, ctx);
-            }
-            ast::AttributeValue::Boolean => {
-                visitor.enter_boolean_attribute_value(ctx);
-                visitor.exit_boolean_attribute_value(ctx);
-            }
-            ast::AttributeValue::Concatenation(it) => {
-                walk_concatenation_attribute_value(visitor, it, ctx);
-            }
-        }
-
-        visitor.exit_html_attribute(it, ctx);
-    }
-
-    pub fn walk_expression_attribute_value<'a, V: TemplateVisitor<'a>>(
-        visitor: &mut V,
-        it: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut VisitorContext<'a>,
-    ) {
-        visitor.enter_expression_attribute_value(it, ctx);
-        walk_expression(visitor, &mut it.expression, ctx);
-        visitor.exit_expression_attribute_value(it, ctx);
-    }
-
-    pub fn walk_concatenation_attribute_value<'a, V: TemplateVisitor<'a>>(
-        visitor: &mut V,
-        it: &mut Concatenation<'a>,
-        ctx: &mut VisitorContext<'a>,
-    ) {
-        visitor.enter_concatenation_attribute_value(it, ctx);
+        visitor.enter_concatenation_attribute(it, ctx);
 
         for part in it.parts.iter_mut() {
             walk_concatenation_part(visitor, part, ctx);
         }
 
-        visitor.exit_concatenation_attribute_value(it, ctx);
+        visitor.exit_concatenation_attribute(it, ctx);
     }
 
     pub fn walk_concatenation_part<'a, V: TemplateVisitor<'a>>(
