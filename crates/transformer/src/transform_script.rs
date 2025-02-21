@@ -42,6 +42,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
             svelte_table: self.svelte_table,
             builder: self.b,
             imports: vec![],
+            proxy_rune: true,
         };
 
         traverse_mut(
@@ -60,6 +61,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
     pub fn transform_expression(
         &self,
         expression: Expression<'a>,
+        proxy_rune: bool,
     ) -> TransformExpressionResult<'a> {
         let mut program = self.b.program(vec![self
             .b
@@ -71,6 +73,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
             svelte_table: self.svelte_table,
             builder: self.b,
             imports: vec![],
+            proxy_rune,
         };
 
         traverse_mut(
@@ -97,6 +100,7 @@ struct TransformerImpl<'link, 'a> {
     svelte_table: &'link SvelteTable,
     builder: &'link Builder<'a>,
     imports: Vec<Statement<'a>>,
+    proxy_rune: bool,
 }
 
 impl<'link, 'a> TransformerImpl<'link, 'a> {
@@ -171,7 +175,7 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
         if let Some(name) = ident {
             let mut right = self.builder.ast.move_expression(&mut assign.right);
 
-            if !right.is_literal() {
+            if !right.is_literal() && self.proxy_rune {
                 right = self
                     .builder
                     .call_expr("$.proxy", [BuilderFunctionArgument::Expr(right)]);

@@ -649,7 +649,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let metadata = directive.get_metadata();
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
-        let expression = self.transform_expression(&mut directive.expression);
+        let expression = self.transform_expression(&mut directive.expression, true);
 
         let call = self.b.call_stmt(
             "$.toggle_class",
@@ -675,7 +675,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
         let metadata = attr.get_metadata();
 
-        let expression = self.transform_expression(&mut attr.expression);
+        let expression = self.transform_expression(&mut attr.expression, true);
 
         let call = self.b.call_stmt(
             "$.set_attribute",
@@ -725,7 +725,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         for part in attr.parts.iter_mut() {
             if let ConcatenationPart::Expression(expr) = part {
-                *expr = self.transform_expression(expr);
+                *expr = self.transform_expression(expr, true);
             }
         }
 
@@ -796,7 +796,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         ctx.add_anchor(anchor_type);
 
-        let expression = self.transform_expression(expression);
+        let expression = self.transform_expression(expression, true);
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
         if metadata.setter_kind == InterpolationSetterKind::SetText {
@@ -843,7 +843,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let mut statements = vec![];
         ctx.add_anchor(AnchorNodeType::IfBlock);
 
-        let test = self.transform_expression(&mut if_block.test);
+        let test = self.transform_expression(&mut if_block.test, true);
 
         let consequent_fragment = self.transform_fragment(&mut if_block.consequent);
         let consequent_id = ctx.generate("consequent");
@@ -906,10 +906,13 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
     pub(crate) fn transform_expression(
         &mut self,
         expression: &mut Expression<'a>,
+        proxy_rune: bool,
     ) -> Expression<'a> {
         let expression = self.b.ast.move_expression(expression);
 
-        let result = self.transform_script.transform_expression(expression);
+        let result = self
+            .transform_script
+            .transform_expression(expression, proxy_rune);
 
         return result.expression;
     }

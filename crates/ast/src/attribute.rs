@@ -80,12 +80,14 @@ pub enum BindDirectiveKind {
     Unknown,
     Value,
     Group,
-    Checked
+    Checked,
 }
 
 impl BindDirectiveKind {
     pub fn from_str(value: &str) -> Self {
         match value {
+            "checked" => BindDirectiveKind::Checked,
+            "group" => BindDirectiveKind::Group,
             "value" => BindDirectiveKind::Value,
             _ => BindDirectiveKind::Unknown,
         }
