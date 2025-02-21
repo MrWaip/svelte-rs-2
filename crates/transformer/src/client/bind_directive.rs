@@ -20,8 +20,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             todo!()
         };
 
-        let getter_expr =
-            self.transform_expression(&mut self.b.expr(BuilderExpression::Ident(ident.clone())));
+        let getter_expr = self.transform_expression(
+            &mut self.b.expr(BuilderExpression::Ident(ident.clone())),
+            false,
+        );
 
         let getter = self.b.arrow(
             self.b.params([]),
@@ -33,7 +35,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             BuilderAssignmentRight::Ident("$$value"),
         );
 
-        assignment = self.transform_expression(&mut assignment);
+        assignment = self.transform_expression(&mut assignment, false);
 
         let setter = self.b.arrow(
             self.b.params(["$$value"]),
@@ -50,8 +52,24 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                     BuilderFunctionArgument::Arrow(setter),
                 ],
             ),
-            ast::BindDirectiveKind::Group => todo!(),
-            ast::BindDirectiveKind::Checked => todo!(),
+            ast::BindDirectiveKind::Group => {
+                self.b.call_stmt(
+                    "$.binding_group",
+                    [
+                        BuilderFunctionArgument::Expr(node_id),
+                        BuilderFunctionArgument::Arrow(getter),
+                        BuilderFunctionArgument::Arrow(setter),
+                    ],
+                )
+            },
+            ast::BindDirectiveKind::Checked => self.b.call_stmt(
+                "$.bind_checked",
+                [
+                    BuilderFunctionArgument::Expr(node_id),
+                    BuilderFunctionArgument::Arrow(getter),
+                    BuilderFunctionArgument::Arrow(setter),
+                ],
+            ),
         };
 
         ctx.push_after_update(stmt);
