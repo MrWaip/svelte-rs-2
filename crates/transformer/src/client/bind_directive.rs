@@ -1,6 +1,6 @@
-use ast::metadata::WithMetadata;
 use ast_builder::{
-    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderFunctionArgument, BuilderStatement,
+    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression, BuilderFunctionArgument,
+    BuilderStatement,
 };
 use oxc_ast::ast::Expression;
 
@@ -12,13 +12,21 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         directive: &mut ast::BindDirective<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        // let metadata = directive.get_metadata();
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
 
-        let Expression::Identifier(ident) = self.b.ast.move_expression(&mut directive.expression)
-        else {
+        let expression = self.b.ast.move_expression(&mut directive.expression);
+
+        let Expression::Identifier(ident) = expression else {
             todo!()
         };
+
+        let getter_expr =
+            self.transform_expression(&mut self.b.expr(BuilderExpression::Ident(ident.clone())));
+
+        let getter = self.b.arrow(
+            self.b.params([]),
+            [self.b.stmt(BuilderStatement::Expr(getter_expr))],
+        );
 
         let mut assignment = self.b.assignment_expression_expr(
             BuilderAssignmentLeft::IdentRef(ident.unbox()),
@@ -34,16 +42,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         let stmt = match directive.kind {
             ast::BindDirectiveKind::Unknown => todo!(),
-            ast::BindDirectiveKind::Value => {
-                // call = b.call(`$.bind_value`, context.state.node, get, set);
-                self.b.call_stmt(
-                    "$.bind_value",
-                    [
-                        BuilderFunctionArgument::Expr(node_id),
-                        BuilderFunctionArgument::Arrow(setter),
-                    ],
-                )
-            }
+            ast::BindDirectiveKind::Value => self.b.call_stmt(
+                "$.bind_value",
+                [
+                    BuilderFunctionArgument::Expr(node_id),
+                    BuilderFunctionArgument::Arrow(getter),
+                    BuilderFunctionArgument::Arrow(setter),
+                ],
+            ),
+            ast::BindDirectiveKind::Group => todo!(),
+            ast::BindDirectiveKind::Checked => todo!(),
         };
 
         ctx.push_after_update(stmt);

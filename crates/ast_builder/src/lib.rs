@@ -38,6 +38,7 @@ pub enum BuilderExpression<'a> {
 }
 pub enum BuilderStatement<'a> {
     Expr(Expression<'a>),
+    Ident(IdentifierReference<'a>),
     Block(BlockStatement<'a>),
     Arrow(ArrowFunctionExpression<'a>),
     IfBlock(IfStatement<'a>),
@@ -305,6 +306,11 @@ impl<'a> Builder<'a> {
             }
             BuilderStatement::IfBlock(if_statement) => {
                 Statement::IfStatement(self.alloc(if_statement))
+            }
+            BuilderStatement::Ident(identifier_reference) => {
+                return self.stmt(BuilderStatement::Expr(
+                    self.expr(BuilderExpression::Ident(identifier_reference)),
+                ));
             }
         };
     }

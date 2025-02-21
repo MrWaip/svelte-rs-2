@@ -7,6 +7,7 @@ use crate::{
 pub struct ElementMetadata {
     pub has_dynamic_nodes: bool,
     pub need_reset: bool,
+    pub need_remove_input_defaults: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

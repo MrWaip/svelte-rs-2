@@ -134,6 +134,8 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
 
         metadata.has_dynamic_nodes = flags.dynamic;
         metadata.need_reset = flags.dynamic && optimizations.content_type.is_non_text();
+        metadata.need_remove_input_defaults =
+            it.kind.is_input() && flags.possible_remove_input_defaults;
 
         if flags.dynamic {
             ctx.mark_parent_element_as_dynamic();
@@ -170,9 +172,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     fn exit_bind_directive_attribute(
         &mut self,
         it: &mut ast::BindDirective<'a>,
-        _ctx: &mut VisitorContext<'a>,
+        ctx: &mut VisitorContext<'a>,
     ) {
         let flags = self.resolve_expression_flags();
+
+        let element_flags = ctx.parent_element_flags().unwrap();
+
+        element_flags.set_possible_remove_input_defaults_by_directive_kind(&it.kind);
 
         it.set_metadata(AttributeMetadata {
             has_reactivity: flags.has_reactivity,
@@ -210,9 +216,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     fn exit_expression_attribute(
         &mut self,
         it: &mut ExpressionAttribute<'a>,
-        _ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext,
     ) {
         let flags = self.resolve_expression_flags();
+
+        let element_flags = ctx.parent_element_flags().unwrap();
+
+        element_flags.set_possible_remove_input_defaults_by_attribute_kind(&it.kind);
 
         it.set_metadata(AttributeMetadata {
             has_reactivity: flags.has_reactivity,
@@ -222,9 +232,13 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     fn exit_concatenation_attribute(
         &mut self,
         it: &mut ast::ConcatenationAttribute<'a>,
-        _ctx: &mut VisitorContext,
+        ctx: &mut VisitorContext,
     ) {
         let metadata = take(&mut self.current_concatenation_metadata);
+
+        let element_flags = ctx.parent_element_flags().unwrap();
+
+        element_flags.set_possible_remove_input_defaults_by_attribute_kind(&it.kind);
 
         it.set_metadata(metadata);
     }
