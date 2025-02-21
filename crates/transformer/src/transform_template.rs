@@ -1,4 +1,4 @@
-use std::{cell::RefCell, mem::replace, rc::Rc};
+use std::mem::replace;
 
 use analyzer::{
     compute_optimization::{ContentType, NodeOptimizationAction, TrimAction},
@@ -14,6 +14,7 @@ use ast::{
     VirtualConcatenation,
 };
 
+use rccell::RcCell;
 use span::SPAN;
 
 use super::{scope::Scope, transform_script::TransformScript};
@@ -26,7 +27,7 @@ use ast_builder::{
 pub struct TransformTemplate<'a, 'link> {
     pub(crate) b: &'a Builder<'a>,
     pub(crate) hoisted: Vec<Statement<'a>>,
-    pub(crate) root_scope: Rc<RefCell<Scope>>,
+    pub(crate) root_scope: RcCell<Scope>,
     pub(crate) transform_script: &'link TransformScript<'a, 'link>,
     pub(crate) svelte_table: &'link SvelteTable,
 }
@@ -59,7 +60,7 @@ pub struct FragmentContext<'a> {
     update: Vec<Statement<'a>>,
     after_update: Vec<Statement<'a>>,
     template: Vec<String>,
-    scope: Rc<RefCell<Scope>>,
+    scope: RcCell<Scope>,
     /** identifier на фрагмент */
     anchor: Expression<'a>,
 }
@@ -381,11 +382,12 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         builder: &'a Builder<'a>,
         transform_script: &'link TransformScript<'a, 'link>,
         svelte_table: &'link SvelteTable,
+        root_scope: RcCell<Scope>,
     ) -> Self {
         return Self {
             b: builder,
             hoisted: vec![],
-            root_scope: Rc::new(RefCell::new(Scope::new(None))),
+            root_scope,
             transform_script,
             svelte_table,
         };

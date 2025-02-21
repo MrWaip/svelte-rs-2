@@ -4,8 +4,8 @@ use ::ast::ConcatenationPart;
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
-        self, Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget,
-        BindingIdentifier, BindingPatternKind, BlockStatement, CallExpression,
+        self, Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression,
+        AssignmentTarget, BindingIdentifier, BindingPatternKind, BlockStatement, CallExpression,
         ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
         IdentifierReference, IfStatement, ImportDeclarationSpecifier, ImportOrExportKind,
         LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement,
@@ -26,7 +26,10 @@ pub enum BuilderFunctionArgument<'a, 'short> {
     Arrow(ArrowFunctionExpression<'a>),
     Bool(bool),
     Call(CallExpression<'a>),
+    Array(ArrayExpression<'a>),
 }
+
+pub enum BuilderArrayElement {}
 
 pub enum BuilderExpression<'a> {
     Call(CallExpression<'a>),
@@ -35,6 +38,7 @@ pub enum BuilderExpression<'a> {
     TemplateLiteral(TemplateLiteral<'a>),
     Ident(IdentifierReference<'a>),
     Expr(Expression<'a>),
+    Array(ArrayExpression<'a>),
 }
 pub enum BuilderStatement<'a> {
     Expr(Expression<'a>),
@@ -202,6 +206,9 @@ impl<'a> Builder<'a> {
                 Argument::CallExpression(self.alloc(call_expression))
             }
             BuilderFunctionArgument::IdentRef(ident) => Argument::Identifier(self.alloc(ident)),
+            BuilderFunctionArgument::Array(array_expression) => {
+                Argument::ArrayExpression(self.alloc(array_expression))
+            }
         }
     }
 
@@ -272,6 +279,32 @@ impl<'a> Builder<'a> {
         return Statement::VariableDeclaration(self.alloc(declaration));
     }
 
+    pub fn const_stmt(&self, name: &str, init: BuilderExpression<'a>) -> Statement<'a> {
+        let ident = self.ast.binding_identifier(SPAN, name);
+        let pattern = self.ast.binding_pattern(
+            BindingPatternKind::BindingIdentifier(self.alloc(ident)),
+            NONE,
+            false,
+        );
+
+        let decl = self.ast.variable_declarator(
+            SPAN,
+            VariableDeclarationKind::Var,
+            pattern,
+            Some(self.expr(init)),
+            false,
+        );
+
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Const,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+
+        return Statement::VariableDeclaration(self.alloc(declaration));
+    }
+
     pub fn expr(&self, expr: BuilderExpression<'a>) -> Expression<'a> {
         return match expr {
             BuilderExpression::Call(value) => Expression::CallExpression(self.alloc(value)),
@@ -287,6 +320,9 @@ impl<'a> Builder<'a> {
             }
             BuilderExpression::Assignment(assignment_expression) => {
                 Expression::AssignmentExpression(self.alloc(assignment_expression))
+            }
+            BuilderExpression::Array(array_expression) => {
+                Expression::ArrayExpression(self.alloc(array_expression))
             }
         };
     }
@@ -510,5 +546,16 @@ impl<'a> Builder<'a> {
             .static_member_expression(SPAN, object, property, false);
 
         return expr;
+    }
+
+    pub fn array(
+        &self,
+        elements: impl IntoIterator<Item = BuilderArrayElement>,
+    ) -> ArrayExpression<'a> {
+        let elements = self
+            .ast
+            .vec_from_iter(elements.into_iter().map(|item| match item {}));
+
+        return self.ast.array_expression(SPAN, elements, None);
     }
 }

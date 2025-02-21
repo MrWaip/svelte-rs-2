@@ -24,6 +24,7 @@ pub struct SvelteTable {
     pub(crate) scopes: ScopeTree,
     pub(crate) runes: HashMap<SymbolId, Rune>,
     pub(crate) optimizations: HashMap<NodeId, OptimizationResult>,
+    pub(crate) need_binding_group: bool,
 }
 
 impl SvelteTable {
@@ -33,6 +34,7 @@ impl SvelteTable {
             scopes,
             symbols,
             optimizations: HashMap::new(),
+            need_binding_group: false,
         };
     }
 
@@ -108,5 +110,13 @@ impl SvelteTable {
 
     pub fn get_optimization(&self, node_id: NodeId) -> Option<&OptimizationResult> {
         return self.optimizations.get(&node_id);
+    }
+
+    pub fn need_binding_group(&self) -> bool {
+        return self.need_binding_group;
+    }
+
+    pub fn set_need_binding_group(&mut self) {
+        self.need_binding_group = true;
     }
 }

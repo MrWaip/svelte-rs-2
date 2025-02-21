@@ -180,6 +180,10 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
 
         element_flags.set_possible_remove_input_defaults_by_directive_kind(&it.kind);
 
+        if it.kind.is_group() {
+            self.svelte_table.set_need_binding_group();
+        }
+
         it.set_metadata(AttributeMetadata {
             has_reactivity: flags.has_reactivity,
         });

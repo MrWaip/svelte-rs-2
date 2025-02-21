@@ -11,7 +11,7 @@ https://mrwaip.github.io/svelte-rs-2/
 
 - [x] $state rune
     - [x] Update rune (`count++, --count`)
-    - [ ] Assign rune (`count = 12`)
+    - [x] Assign rune (`count = 12`)
     - [x] Read rune (`{ name }`)
 - [ ] $props rune
     - [ ] Update prop (`count++`)
@@ -30,7 +30,7 @@ https://mrwaip.github.io/svelte-rs-2/
   - [x] Shorthand identifier attribute (`{ name }`)
   - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
   - [x] Class directive (`class:toggle`) 
-  - [ ] Bind directive (`bind:value`)
+  - [x] Bind directive (`bind:value`)
   - [ ] Use directive (`use:action`)
   - [ ] Event listeners (`onclick={handler}`) 
   - [ ] Style directive (`style:toggle`) 
@@ -50,7 +50,7 @@ https://mrwaip.github.io/svelte-rs-2/
 - [x] single element optimization
 - [x] only text and interpolation nodes optimization
 - [x] not wrap runes if not mutated
-- [ ] Not reactive attributes optimization
+- [x] Not reactive attributes optimization
 
 ## WASM
 

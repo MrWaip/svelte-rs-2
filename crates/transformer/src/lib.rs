@@ -1,8 +1,10 @@
 use std::vec;
 
 use ast::Ast;
-use ast_builder::Builder;
+use ast_builder::{Builder, BuilderExpression};
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
+use rccell::RcCell;
+use scope::Scope;
 use transform_script::TransformScript;
 use transform_template::TransformTemplate;
 
@@ -14,17 +16,22 @@ pub mod transform_template;
 
 mod client;
 
-pub fn transform_client<'a>(
-    mut ast: Ast<'a>,
-    b: &'a Builder<'a>,
-    analyze: AnalyzeResult,
-) -> String {
+pub fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>, analyze: AnalyzeResult) -> String {
     let svelte_table = analyze.svelte_table;
     let script_transformer = TransformScript::new(b, &svelte_table);
+    let root_scope = RcCell::new(Scope::new(None));
 
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
     let mut program_body = vec![];
     let mut component_body = vec![];
+
+    if svelte_table.need_binding_group() {
+        let ident = root_scope.borrow_mut().generate("binding_group");
+
+        component_body.push(
+            b.const_stmt(&ident, BuilderExpression::Array(b.array([])))
+        );
+    }
 
     if let Some(mut script) = ast.script {
         let script_result = script_transformer.transform(&mut script.program);
@@ -38,7 +45,7 @@ pub fn transform_client<'a>(
         }
     }
 
-    let mut template_transformer = TransformTemplate::new(b, &script_transformer, &svelte_table);
+    let mut template_transformer = TransformTemplate::new(b, &script_transformer, &svelte_table, root_scope.clone());
     let mut template_result = template_transformer.transform(&mut ast.template.borrow_mut());
 
     program_body.append(&mut imports);
