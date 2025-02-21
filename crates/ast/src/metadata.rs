@@ -1,6 +1,6 @@
 use crate::{
-    BindDirective, ClassDirective, Concatenation, Element, ExpressionAttribute,
-    ExpressionAttributeValue, Fragment, Interpolation, VirtualConcatenation,
+    BindDirective, ClassDirective, ConcatenationAttribute, Element, ExpressionAttribute, Fragment,
+    Interpolation, VirtualConcatenation,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -130,19 +130,7 @@ impl<'a> WithMetadata for BindDirective<'a> {
     }
 }
 
-impl<'a> WithMetadata for Concatenation<'a> {
-    type Metadata = AttributeMetadata;
-
-    fn get_metadata(&self) -> Self::Metadata {
-        self.metadata.unwrap()
-    }
-
-    fn set_metadata(&mut self, metadata: Self::Metadata) {
-        self.metadata = Some(metadata)
-    }
-}
-
-impl<'a> WithMetadata for ExpressionAttributeValue<'a> {
+impl<'a> WithMetadata for ConcatenationAttribute<'a> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {

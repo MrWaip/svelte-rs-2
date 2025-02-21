@@ -9,9 +9,9 @@ use oxc_semantic::NodeId;
 
 use ast::{
     metadata::{FragmentAnchor, InterpolationMetadata, InterpolationSetterKind, WithMetadata},
-    AsNode, Attribute, AttributeValue, Concatenation, ConcatenationPart, Element,
-    ExpressionAttribute, ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Node,
-    Template, Text, VirtualConcatenation,
+    AsNode, Attribute, BooleanAttribute, ConcatenationAttribute, ConcatenationPart, Element,
+    ExpressionAttribute, Fragment, IfBlock, Node, StringAttribute, Template, Text,
+    VirtualConcatenation,
 };
 
 use span::SPAN;
@@ -621,15 +621,15 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx: &mut NodeContext<'a, 'local>,
     ) {
         match attr {
-            Attribute::HTMLAttribute(attr) => self.transform_html_attribute(attr, ctx),
-            Attribute::Expression(expression) => {
-                self.transform_expression_attribute(expression, ctx)
+            Attribute::ExpressionAttribute(attr) => self.transform_expression_attribute(attr, ctx),
+            Attribute::ClassDirective(attr) => self.transform_class_directive_attribute(attr, ctx),
+            Attribute::BindDirective(attr) => {
+                self.transform_bind_directive(attr, ctx);
             }
-            Attribute::ClassDirective(directive) => {
-                self.transform_class_directive_attribute(directive, ctx)
-            }
-            Attribute::BindDirective(bind_directive) => {
-                self.transform_bind_directive(bind_directive, ctx);
+            Attribute::BooleanAttribute(attr) => self.transform_boolean_attribute(attr, ctx),
+            Attribute::StringAttribute(attr) => self.transform_string_attribute(attr, ctx),
+            Attribute::ConcatenationAttribute(attr) => {
+                self.transform_concatenation_attribute(attr, ctx)
             }
         }
     }
@@ -668,74 +668,14 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         let node_id = self.b.clone_expr(&ctx.current_node_anchor);
         let metadata = attr.get_metadata();
 
-        let arg: BArg = match &attr.expression {
-            Expression::Identifier(id) => BArg::Str(id.name.to_string()),
-            _ => unreachable!(),
-        };
         let expression = self.transform_expression(&mut attr.expression);
 
         let call = self.b.call_stmt(
             "$.set_attribute",
-            [BArg::Expr(node_id), arg, BArg::Expr(expression)],
-        );
-
-        if metadata.has_reactivity {
-            ctx.push_update(call);
-        } else {
-            ctx.push_init(call);
-        }
-    }
-
-    fn transform_html_attribute<'local>(
-        &mut self,
-        attr: &mut HTMLAttribute<'a>,
-        ctx: &mut NodeContext<'a, 'local>,
-    ) {
-        if matches!(
-            attr.value,
-            AttributeValue::String(_) | AttributeValue::Boolean
-        ) {
-            ctx.push_template(" ".into());
-            ctx.push_template(attr.name.into());
-        }
-
-        match &mut attr.value {
-            AttributeValue::String(value) => self.transform_string_attribute_value(*value, ctx),
-            AttributeValue::Expression(value) => {
-                self.transform_expression_attribute_value(&attr.name, value, ctx)
-            }
-            AttributeValue::Boolean => {
-                ctx.push_template("=\"\"".to_string());
-            }
-            AttributeValue::Concatenation(value) => {
-                self.transform_concatenation_attribute_value(&attr.name, value, ctx)
-            }
-        };
-    }
-
-    fn transform_string_attribute_value<'local>(
-        &self,
-        value: &str,
-        ctx: &mut NodeContext<'a, 'local>,
-    ) {
-        ctx.push_template(format!("=\"{value}\"").into());
-    }
-
-    fn transform_expression_attribute_value<'local>(
-        &mut self,
-        name: &str,
-        value: &mut ExpressionAttributeValue<'a>,
-        ctx: &mut NodeContext<'a, 'local>,
-    ) {
-        let metadata = value.get_metadata();
-        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
-        let value = self.transform_expression(&mut value.expression);
-        let call = self.b.call_stmt(
-            "$.set_attribute",
             [
                 BArg::Expr(node_id),
-                BArg::Str(name.into()),
-                BArg::Expr(value),
+                BArg::Str(attr.name.to_string()),
+                BArg::Expr(expression),
             ],
         );
 
@@ -746,22 +686,43 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         }
     }
 
-    fn transform_concatenation_attribute_value<'local>(
-        &mut self,
-        name: &str,
-        value: &mut Concatenation<'a>,
+    fn transform_string_attribute<'local>(
+        &self,
+        attr: &mut StringAttribute<'a>,
         ctx: &mut NodeContext<'a, 'local>,
     ) {
-        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
-        let metadata = value.get_metadata();
+        ctx.push_template(" ".into());
+        ctx.push_template(attr.name.into());
+        let value = attr.value;
+        ctx.push_template(format!("=\"{value}\"").into());
+    }
 
-        for part in value.parts.iter_mut() {
+    fn transform_boolean_attribute<'local>(
+        &self,
+        attr: &mut BooleanAttribute<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        ctx.push_template(" ".into());
+        ctx.push_template(attr.name.into());
+        ctx.push_template("=\"\"".to_string());
+    }
+
+    fn transform_concatenation_attribute<'local>(
+        &mut self,
+        attr: &mut ConcatenationAttribute<'a>,
+        ctx: &mut NodeContext<'a, 'local>,
+    ) {
+        let name = attr.name;
+        let node_id = self.b.clone_expr(&ctx.current_node_anchor);
+        let metadata = attr.get_metadata();
+
+        for part in attr.parts.iter_mut() {
             if let ConcatenationPart::Expression(expr) = part {
                 *expr = self.transform_expression(expr);
             }
         }
 
-        let template_literal = self.b.template_literal(&mut value.parts);
+        let template_literal = self.b.template_literal(&mut attr.parts);
         let template_expr = self.b.expr(BExpr::TemplateLiteral(template_literal));
 
         let call = self.b.call_stmt(

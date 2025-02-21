@@ -12,10 +12,9 @@ use scanner::{
 use span::{GetSpan, Span};
 
 use ast::{
-    AsNode, Ast, Attribute, AttributeValue, BindDirective, BindDirectiveKind, ClassDirective,
-    Concatenation, ConcatenationPart, Element, ElementKind, ExpressionAttribute,
-    ExpressionAttributeValue, Fragment, HTMLAttribute, IfBlock, Interpolation, Node, ScriptTag,
-    Template, Text,
+    AsNode, Ast, Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
+    ConcatenationAttribute, ConcatenationPart, Element, ElementKind, ExpressionAttribute, Fragment,
+    IfBlock, Interpolation, Node, ScriptTag, StringAttribute, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -284,18 +283,25 @@ impl<'a> Parser<'a> {
         for attribute in token_attrs.iter() {
             match attribute {
                 token::Attribute::HTMLAttribute(token_attr) => {
-                    let value: AttributeValue = match &token_attr.value {
-                        token::AttributeValue::String(value) => AttributeValue::String(value),
+                    let result: Attribute = match &token_attr.value {
+                        token::AttributeValue::String(value) => StringAttribute {
+                            name: token_attr.name,
+                            value: &value,
+                        }
+                        .as_attribute(),
                         token::AttributeValue::ExpressionTag(expression_tag) => {
                             let expression = self.parse_js_expression(
                                 &expression_tag.expression.value,
                                 expression_tag.span,
                             )?;
 
-                            AttributeValue::Expression(ExpressionAttributeValue {
+                            ExpressionAttribute {
                                 expression,
                                 metadata: None,
-                            })
+                                shorthand: false,
+                                name: token_attr.name,
+                            }
+                            .as_attribute()
                         }
                         token::AttributeValue::Concatenation(token) => {
                             let mut parts: Vec<ConcatenationPart<'a>> = vec![];
@@ -316,21 +322,20 @@ impl<'a> Parser<'a> {
                                 }
                             }
 
-                            AttributeValue::Concatenation(Concatenation {
-                                parts,
+                            ConcatenationAttribute {
                                 metadata: None,
-                                span: Span::new(token.start, token.end),
-                            })
+                                name: token_attr.name,
+                                parts,
+                            }
+                            .as_attribute()
                         }
-                        token::AttributeValue::Empty => AttributeValue::Boolean,
+                        token::AttributeValue::Empty => BooleanAttribute {
+                            name: token_attr.name,
+                        }
+                        .as_attribute(),
                     };
 
-                    let html_attr = HTMLAttribute {
-                        name: token_attr.name,
-                        value,
-                    };
-
-                    attributes.push(Attribute::HTMLAttribute(html_attr));
+                    attributes.push(result);
                 }
                 token::Attribute::ExpressionTag(expression_tag) => {
                     let expression = self.parse_js_expression(
@@ -338,8 +343,10 @@ impl<'a> Parser<'a> {
                         expression_tag.span,
                     )?;
 
-                    attributes.push(Attribute::Expression(ExpressionAttribute {
+                    attributes.push(Attribute::ExpressionAttribute(ExpressionAttribute {
                         expression,
+                        shorthand: true,
+                        name: expression_tag.expression.value,
                         metadata: None,
                     }));
                 }
