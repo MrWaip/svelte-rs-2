@@ -52,16 +52,16 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                     BuilderFunctionArgument::Arrow(setter),
                 ],
             ),
-            ast::BindDirectiveKind::Group => {
-                self.b.call_stmt(
-                    "$.binding_group",
-                    [
-                        BuilderFunctionArgument::Expr(node_id),
-                        BuilderFunctionArgument::Arrow(getter),
-                        BuilderFunctionArgument::Arrow(setter),
-                    ],
-                )
-            },
+            ast::BindDirectiveKind::Group => self.b.call_stmt(
+                "$.bind_group",
+                [
+                    BuilderFunctionArgument::Ident("binding_group"),
+                    BuilderFunctionArgument::Array(self.b.array([])),
+                    BuilderFunctionArgument::Expr(node_id),
+                    BuilderFunctionArgument::Arrow(getter),
+                    BuilderFunctionArgument::Arrow(setter),
+                ],
+            ),
             ast::BindDirectiveKind::Checked => self.b.call_stmt(
                 "$.bind_checked",
                 [

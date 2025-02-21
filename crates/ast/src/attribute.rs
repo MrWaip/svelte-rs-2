@@ -84,6 +84,10 @@ pub enum BindDirectiveKind {
 }
 
 impl BindDirectiveKind {
+    pub fn is_group(&self) -> bool {
+        matches!(self, BindDirectiveKind::Group)
+    }
+
     pub fn from_str(value: &str) -> Self {
         match value {
             "checked" => BindDirectiveKind::Checked,
