@@ -7,6 +7,10 @@ https://mrwaip.github.io/svelte-rs-2/
 
 # Checklist
 
+# Passes
+
+https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
+
 ## Script Tag / JavaScript
 
 - [x] $state rune
