@@ -12,6 +12,8 @@ parser = { path = "crates/parser" }
 analyzer = { path = "crates/analyzer" }
 transformer = { path = "crates/transformer" }
 compiler = { path = "crates/compiler" }
+hir = { path = "crates/hir" }
+ast_to_hir = { path = "crates/ast_to_hir" }
 compact_str = "0.8.1"
 glob = "0.3.2"
 oxc_allocator = "0.44.0"

@@ -1,0 +1,55 @@
+use crate::ExpressionId;
+
+#[derive(Debug)]
+pub enum Attribute<'hir> {
+    StringAttribute(&'hir StringAttribute<'hir>),
+    ExpressionAttribute(&'hir ExpressionAttribute<'hir>),
+    ClassDirective(&'hir ClassDirective<'hir>),
+    BindDirective(&'hir BindDirective<'hir>),
+    BooleanAttribute(&'hir BooleanAttribute<'hir>),
+    ConcatenationAttribute(&'hir ConcatenationAttribute<'hir>),
+}
+
+#[derive(Debug)]
+pub struct StringAttribute<'hir> {
+    pub name: &'hir str,
+    pub value: &'hir str,
+}
+
+#[derive(Debug)]
+pub struct ExpressionAttribute<'hir> {
+    pub shorthand: bool,
+    pub name: &'hir str,
+    pub expression_id: ExpressionId,
+}
+
+#[derive(Debug)]
+pub struct ClassDirective<'hir> {
+    pub shorthand: bool,
+    pub name: &'hir str,
+    pub expression_id: ExpressionId,
+}
+
+#[derive(Debug)]
+pub struct BindDirective<'hir> {
+    pub shorthand: bool,
+    pub name: &'hir str,
+    pub expression_id: ExpressionId,
+}
+
+#[derive(Debug)]
+pub struct BooleanAttribute<'hir> {
+    pub name: &'hir str,
+}
+
+#[derive(Debug)]
+pub struct ConcatenationAttribute<'hir> {
+    pub parts: Vec<ConcatenationAttributePart<'hir>>,
+    pub name: &'hir str,
+}
+
+#[derive(Debug)]
+pub enum ConcatenationAttributePart<'hir> {
+    String(&'hir str),
+    Expression(ExpressionId),
+}
