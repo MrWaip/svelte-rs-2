@@ -1,0 +1,15 @@
+[package]
+name = "ast_to_hir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hir = { workspace = true }
+ast = { workspace = true }
+analyzer = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_index = { workspace = true }
+oxc_allocator = { workspace = true }
+
+[dev-dependencies]
+parser = { workspace = true }

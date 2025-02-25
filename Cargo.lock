@@ -69,6 +69,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ast_to_hir"
+version = "0.1.0"
+dependencies = [
+ "analyzer",
+ "ast",
+ "hir",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_index",
+ "parser",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -395,6 +408,14 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
+]
+
+[[package]]
+name = "hir"
+version = "0.1.0"
+dependencies = [
+ "oxc_ast",
+ "oxc_index",
 ]
 
 [[package]]
