@@ -1,3 +1,4 @@
+use analyze_hir::AnalyzeHir;
 use ast_builder::Builder;
 use ast_to_hir::AstToHir;
 use diagnostics::Diagnostic;
@@ -5,7 +6,9 @@ use oxc_allocator::Allocator;
 use oxc_ast::AstBuilder as OxcBuilder;
 
 use analyzer::Analyzer;
+use oxc_codegen::Codegen;
 use parser::Parser;
+use transform_hir::transform_hir;
 use transformer::transform_client;
 
 pub struct Compiler {}
@@ -43,17 +46,19 @@ impl Compiler {
         allocator: &'a Allocator,
     ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
-        // let oxc_builder = OxcBuilder::new(allocator);
-        // let builder = Builder::new(oxc_builder);
+        let codegen = Codegen::default();
+        let analyze_hir = AnalyzeHir::new();
+
         let mut lowerer = AstToHir::new();
 
-        // let analyzer = Analyzer::new(&builder);
+        let ast = parser.parse()?;
 
-        let mut ast = parser.parse()?;
-        let mut hir = lowerer.traverse(ast, &allocator);
+        let _hir = lowerer.traverse(ast, &allocator);
+        analyze_hir.analyze();
+        let program = transform_hir(allocator);
 
         return Ok(CompilerResult {
-            js: String::from("value"),
+            js: codegen.build(&program).code,
         });
     }
 }
@@ -80,5 +85,15 @@ mod tests {
 export default function App($$anchor) {}
 "#
         );
+    }
+
+    #[test]
+    fn smoke_compile2() {
+        let allocator = Allocator::default();
+        let compiler = Compiler::new();
+
+        let result = compiler.compile2("text", &allocator).unwrap();
+
+        assert_eq!(result.js, r#""#);
     }
 }
