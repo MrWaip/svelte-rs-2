@@ -25,6 +25,26 @@ pub enum Node<'hir> {
     Phantom,
 }
 
+impl<'hir> Node<'hir> {
+    pub fn is_element(&self) -> bool {
+        matches!(self, Node::Element(_))
+    }
+
+    pub fn as_element(&self) -> Option<&'hir Element<'hir>> {
+        match self {
+            Node::Element(element) => Some(element),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<&'hir Text<'hir>> {
+        match self {
+            Node::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum OwnerNode<'hir> {
     Element(&'hir Element<'hir>),
