@@ -11,11 +11,14 @@ doctest = false
 analyzer = { workspace = true }
 ast_to_hir = { workspace = true }
 ast_builder = { workspace = true }
+analyze_hir = { workspace = true }
+transform_hir = { workspace = true }
 diagnostics = { workspace = true }
 parser = { workspace = true }
 transformer = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
+oxc_codegen = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use ::ast::ConcatenationPart;
-use oxc_allocator::{Box, CloneIn};
+use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression,
@@ -66,6 +66,11 @@ pub struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub fn new(ast: AstBuilder<'a>) -> Builder<'a> {
         return Builder { ast };
+    }
+
+    pub fn new_with_ast(allocator: &'a Allocator) -> Self {
+        let ast_builder = AstBuilder::new(allocator);
+        return Self { ast: ast_builder };
     }
 
     pub fn import_all(&self, specifier: &'a str, source: &'a str) -> Statement<'a> {
