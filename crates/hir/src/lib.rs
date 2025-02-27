@@ -7,10 +7,12 @@ pub use attributes::{
 };
 pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
 
+#[derive(Debug)]
 pub struct Template {
     pub node_ids: Vec<NodeId>,
 }
 
+#[derive(Debug)]
 pub enum Node<'hir> {
     Text(&'hir Text<'hir>),
     Interpolation(&'hir Interpolation),
@@ -23,6 +25,7 @@ pub enum Node<'hir> {
     Phantom,
 }
 
+#[derive(Debug)]
 pub enum OwnerNode<'hir> {
     Element(&'hir Element<'hir>),
     Template(&'hir Template),
@@ -31,29 +34,34 @@ pub enum OwnerNode<'hir> {
     Phantom,
 }
 
+#[derive(Debug)]
 pub struct Text<'hir> {
     pub owner_id: OwnerId,
     pub node_id: NodeId,
     pub value: &'hir str,
 }
 
+#[derive(Debug)]
 pub struct Interpolation {
     pub owner_id: OwnerId,
     pub node_id: NodeId,
     pub expression_id: ExpressionId,
 }
 
+#[derive(Debug)]
 pub struct Concatenation<'hir> {
     pub owner_id: OwnerId,
     pub node_id: NodeId,
     pub parts: Vec<ConcatenationPart<'hir>>,
 }
 
+#[derive(Debug)]
 pub enum ConcatenationPart<'hir> {
     Text(&'hir str),
     Expression(ExpressionId),
 }
 
+#[derive(Debug)]
 pub struct Element<'hir> {
     pub node_id: NodeId,
     pub owner_id: OwnerId,
@@ -62,6 +70,7 @@ pub struct Element<'hir> {
     pub node_ids: Vec<NodeId>,
 }
 
+#[derive(Debug)]
 pub struct IfBlock {
     pub node_id: NodeId,
     pub owner_id: OwnerId,
