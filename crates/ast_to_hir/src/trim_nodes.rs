@@ -48,6 +48,10 @@ impl AstToHir {
             }
         }
 
+        if start > end {
+            return Vec::new();
+        }
+
         for (idx, current) in nodes[start..end].iter().enumerate() {
             let prev = if idx == 0 { None } else { nodes.get(idx - 1) };
             let next = nodes.get(idx + 1);
@@ -68,5 +72,78 @@ impl AstToHir {
         }
 
         return new_nodes;
+    }
+}
+
+#[cfg(test)]
+mod trim_nodes {
+    use hir::NodeId;
+    use oxc_allocator::Allocator;
+    use oxc_index::IndexVec;
+    use parser::Parser;
+
+    static ALLOCATOR: std::sync::LazyLock<Allocator> =
+        std::sync::LazyLock::new(|| Allocator::default());
+
+    use super::*;
+
+    fn prepare<'hir>(text: &'hir str) -> (&'hir hir::Template, IndexVec<NodeId, hir::Node>) {
+        let mut lowerer = AstToHir::new();
+        let ast = Parser::new(text, &ALLOCATOR).parse().unwrap();
+
+        let hir = lowerer.traverse(ast, &ALLOCATOR);
+
+        let hir::OwnerNode::Template(template) = hir.owners.first().unwrap() else {
+            unreachable!()
+        };
+
+        return (template, hir.nodes);
+    }
+
+    #[test]
+    fn trim_single_node() {
+        let (template, _) = prepare(" \n\t\r");
+
+        assert!(template.node_ids.is_empty())
+    }
+
+    #[test]
+    fn trim_edges_of_single_node() {
+        let (template, nodes) = prepare("\ttext\t");
+        assert_eq!(template.node_ids.len(), 1);
+
+        let hir::Node::Text(text) = &nodes[NodeId::new(0)] else {
+            unreachable!()
+        };
+
+        assert_eq!(text.value, "text");
+    }
+
+    #[test]
+    fn trim_around_element() {
+        let (template, nodes) = prepare("\t<input />\t");
+
+        assert_eq!(template.node_ids.len(), 1);
+        assert!(nodes.first().unwrap().is_element())
+    }
+
+    #[test]
+    fn trim_between_right() {
+        let (template, nodes) = prepare("some_text      <input />\t");
+
+        assert_eq!(template.node_ids.len(), 2);
+
+        let text = nodes.first().unwrap().as_text().unwrap();
+        assert_eq!(text.value, "some_text ");
+    }
+
+    #[test]
+    fn trim_between_left() {
+        let (template, nodes) = prepare("<input />     some_text");
+
+        assert_eq!(template.node_ids.len(), 2);
+
+        let text = nodes.last().unwrap().as_text().unwrap();
+        assert_eq!(text.value, " some_text");
     }
 }
