@@ -1,4 +1,6 @@
+mod compress_nodes;
 pub mod context;
+mod trim_nodes;
 
 use hir::{AttributeId, ExpressionId, NodeId, OwnerId, OwnerNode};
 use oxc_allocator::Allocator;
@@ -9,6 +11,7 @@ use crate::context::ToHirContext;
 
 pub struct AstToHir {}
 
+#[derive(Debug)]
 pub struct AstToHirRet<'hir> {
     pub nodes: IndexVec<NodeId, hir::Node<'hir>>,
     pub owners: IndexVec<OwnerId, hir::OwnerNode<'hir>>,
@@ -57,12 +60,9 @@ impl AstToHir {
         ctx: &mut ToHirContext<'hir>,
         nodes: Vec<ast::Node<'hir>>,
     ) -> Vec<NodeId> {
-        return nodes
-            .into_iter()
-            .map(|node| {
-                return self.lower_node(node, ctx);
-            })
-            .collect();
+        let trimmed = self.trim_text_nodes(nodes, ctx);
+
+        return self.compress_and_lower_nodes(trimmed, ctx);
     }
 
     fn lower_node<'hir>(&self, node: ast::Node<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
@@ -296,7 +296,7 @@ mod tests {
 
         let mut lowerer = AstToHir::new();
         let ast = Parser::new(
-            r#"some text { name }<div name="" ok title="idx: {idx}">inside div</div>{#if true}text{/if}"#,
+            r#"some text { name }<div class:toggle bind:value name="" ok title="idx: {idx}">inside div</div>{#if true}text{/if}"#,
             &allocator,
         )
         .parse()
@@ -304,21 +304,20 @@ mod tests {
 
         let hir = lowerer.traverse(ast, &allocator);
 
-        assert!(hir.nodes.len() == 6);
+        assert!(hir.nodes.len() == 5);
         assert!(hir.owners.len() == 3);
-        assert!(hir.attributes.len() == 3);
-        assert!(hir.expressions.len() == 3);
+        assert!(hir.attributes.len() == 5);
+        assert!(hir.expressions.len() == 5);
 
         let hir::OwnerNode::Template(template) = hir.owners.first().unwrap() else {
             unreachable!()
         };
 
-        let hir::Node::Text(text_node) = hir.nodes.first().unwrap() else {
+        let hir::Node::Concatenation(concatenation) = hir.nodes.first().unwrap() else {
             unreachable!();
         };
 
-        assert!(template.node_ids.len() == 4);
-        assert!(text_node.owner_id == OwnerId::new(0));
-        assert!(text_node.value == "some text ");
+        assert!(template.node_ids.len() == 3);
+        assert!(concatenation.owner_id == OwnerId::new(0));
     }
 }

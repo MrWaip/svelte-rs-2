@@ -217,6 +217,7 @@ version = "0.1.0"
 dependencies = [
  "analyzer",
  "ast_builder",
+ "ast_to_hir",
  "diagnostics",
  "oxc_allocator",
  "oxc_ast",
