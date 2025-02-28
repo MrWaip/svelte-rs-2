@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+analyze_hir = { workspace = true }
+hir = { workspace = true }
 ast_builder = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_allocator = { workspace = true }

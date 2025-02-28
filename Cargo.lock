@@ -18,6 +18,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "analyze_hir"
+version = "0.1.0"
+dependencies = [
+ "hir",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_semantic",
+]
+
+[[package]]
 name = "analyzer"
 version = "0.1.0"
 dependencies = [
@@ -74,6 +84,7 @@ version = "0.1.0"
 dependencies = [
  "analyzer",
  "ast",
+ "ast_builder",
  "hir",
  "oxc_allocator",
  "oxc_ast",
@@ -215,14 +226,17 @@ dependencies = [
 name = "compiler"
 version = "0.1.0"
 dependencies = [
+ "analyze_hir",
  "analyzer",
  "ast_builder",
  "ast_to_hir",
  "diagnostics",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_codegen",
  "parser",
  "pretty_assertions",
+ "transform_hir",
  "transformer",
 ]
 
@@ -1261,6 +1275,17 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "winnow",
+]
+
+[[package]]
+name = "transform_hir"
+version = "0.1.0"
+dependencies = [
+ "analyze_hir",
+ "ast_builder",
+ "hir",
+ "oxc_allocator",
+ "oxc_ast",
 ]
 
 [[package]]

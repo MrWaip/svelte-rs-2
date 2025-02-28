@@ -5,6 +5,7 @@ mod visit;
 
 pub use analises::HirAnalises;
 use oxc_allocator::Allocator;
+use oxc_semantic::{ScopeTree, SymbolTable};
 
 pub struct AnalyzeHir<'hir> {
     allocator: &'hir Allocator,
@@ -34,7 +35,7 @@ impl<'hir> AnalyzeHir<'hir> {
         // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
     }
 
-    pub fn analyze(&self, hir_store: &hir::HirStore) {
-        // return HirAnalises {};
+    pub fn analyze(&self, hir_store: &hir::HirStore) -> HirAnalises {
+        HirAnalises::new(ScopeTree::default(), SymbolTable::default())
     }
 }
