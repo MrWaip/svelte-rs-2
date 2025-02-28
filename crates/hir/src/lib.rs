@@ -57,6 +57,29 @@ pub enum OwnerNode<'hir> {
     Phantom,
 }
 
+impl<'hir> OwnerNode<'hir> {
+    pub fn as_element(&self) -> Option<&Element> {
+        match self {
+            OwnerNode::Element(element) => Some(element),
+            _ => None,
+        }
+    }
+
+    pub fn as_template(&self) -> Option<&Template> {
+        match self {
+            OwnerNode::Template(template) => Some(template),
+            _ => None,
+        }
+    }
+
+    pub fn as_if_block(&self) -> Option<&IfBlock> {
+        match self {
+            OwnerNode::IfBlock(if_block) => Some(if_block),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Text<'hir> {
     pub owner_id: OwnerId,

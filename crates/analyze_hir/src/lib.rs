@@ -3,7 +3,7 @@ mod analyze_expression;
 mod analyze_template;
 mod visit;
 
-pub use analises::HirAnalises;
+pub use analises::HirAnalyses;
 use oxc_allocator::Allocator;
 use oxc_semantic::{ScopeTree, SymbolTable};
 
@@ -35,7 +35,7 @@ impl<'hir> AnalyzeHir<'hir> {
         // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
     }
 
-    pub fn analyze(&self, hir_store: &hir::HirStore) -> HirAnalises {
-        HirAnalises::new(ScopeTree::default(), SymbolTable::default())
+    pub fn analyze(&self, hir_store: &hir::HirStore) -> HirAnalyses {
+        HirAnalyses::new(ScopeTree::default(), SymbolTable::default())
     }
 }
