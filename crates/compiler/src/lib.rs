@@ -53,9 +53,9 @@ impl Compiler {
 
         let ast = parser.parse()?;
 
-        let hir = lowerer.traverse(ast);
-        analyze_hir.analyze(&hir.store);
-        let program = transform_hir(allocator);
+        let mut hir = lowerer.traverse(ast);
+        let analyses = analyze_hir.analyze(&hir.store);
+        let program = transform_hir(allocator, analyses, &mut hir.store);
 
         return Ok(CompilerResult {
             js: codegen.build(&program).code,
@@ -92,8 +92,13 @@ export default function App($$anchor) {}
         let allocator = Allocator::default();
         let compiler = Compiler::new();
 
-        let result = compiler.compile2("text", &allocator).unwrap();
+        let result = compiler.compile2("", &allocator).unwrap();
 
-        assert_eq!(result.js, r#""#);
+        assert_eq!(
+            result.js,
+            r#"import * as $ from "svelte/internal/client";
+export default function App($$anchor) {}
+"#
+        );
     }
 }

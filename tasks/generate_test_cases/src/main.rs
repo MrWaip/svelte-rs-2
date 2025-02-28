@@ -7,8 +7,8 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn main() {
-    let files = glob("./tasks/compiler_tests/cases/**/*.svelte").expect("Не удалось считать компоненты");
-
+    let files =
+        glob("./tasks/compiler_tests/cases2/**/*.svelte").expect("Не удалось считать компоненты");
 
     for entry in files {
         let entry = entry.unwrap();
