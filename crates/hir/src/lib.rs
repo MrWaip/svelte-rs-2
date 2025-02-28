@@ -1,11 +1,14 @@
 mod attributes;
 mod id;
+mod store;
 
 pub use attributes::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatenationAttribute,
     ConcatenationAttributePart, ExpressionAttribute, StringAttribute,
 };
 pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
+use oxc_ast::ast::Language;
+pub use store::HirStore;
 
 #[derive(Debug)]
 pub struct Template {
@@ -98,4 +101,10 @@ pub struct IfBlock {
     pub test: ExpressionId,
     pub consequent: Vec<NodeId>,
     pub alternate: Option<Vec<NodeId>>,
+}
+
+#[derive(Debug)]
+pub struct Program<'hir> {
+    pub language: Language,
+    pub program: oxc_ast::ast::Program<'hir>,
 }

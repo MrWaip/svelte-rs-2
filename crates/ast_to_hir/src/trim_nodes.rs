@@ -1,7 +1,7 @@
 use crate::{AstToHir, context::ToHirContext};
 
-impl AstToHir {
-    pub(crate) fn trim_text_nodes<'hir>(
+impl<'hir> AstToHir<'hir> {
+    pub(crate) fn trim_text_nodes(
         &self,
         nodes: Vec<ast::Node<'hir>>,
         ctx: &mut ToHirContext<'hir>,
@@ -87,17 +87,17 @@ mod trim_nodes {
 
     use super::*;
 
-    fn prepare<'hir>(text: &'hir str) -> (&'hir hir::Template, IndexVec<NodeId, hir::Node>) {
-        let mut lowerer = AstToHir::new();
+    fn prepare(text: &str) -> (&hir::Template, IndexVec<NodeId, hir::Node>) {
+        let mut lowerer = AstToHir::new(&ALLOCATOR);
         let ast = Parser::new(text, &ALLOCATOR).parse().unwrap();
 
-        let hir = lowerer.traverse(ast, &ALLOCATOR);
+        let hir = lowerer.traverse(ast);
 
-        let hir::OwnerNode::Template(template) = hir.owners.first().unwrap() else {
+        let hir::OwnerNode::Template(template) = hir.store.owners.first().unwrap() else {
             unreachable!()
         };
 
-        return (template, hir.nodes);
+        return (template, hir.store.nodes);
     }
 
     #[test]

@@ -2,50 +2,58 @@ mod compress_nodes;
 pub mod context;
 mod trim_nodes;
 
-use hir::{AttributeId, ExpressionId, NodeId, OwnerId, OwnerNode};
+use hir::{NodeId, OwnerNode};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::Expression;
-use oxc_index::IndexVec;
+use oxc_ast::ast::Language;
 
 use crate::context::ToHirContext;
 
-pub struct AstToHir {}
+pub struct AstToHir<'hir> {
+    allocator: &'hir Allocator,
+    builder: ast_builder::Builder<'hir>,
+}
 
 #[derive(Debug)]
 pub struct AstToHirRet<'hir> {
-    pub nodes: IndexVec<NodeId, hir::Node<'hir>>,
-    pub owners: IndexVec<OwnerId, hir::OwnerNode<'hir>>,
-    pub expressions: IndexVec<ExpressionId, Expression<'hir>>,
-    pub attributes: IndexVec<AttributeId, hir::Attribute<'hir>>,
+    pub store: hir::HirStore<'hir>,
 }
 
-impl AstToHir {
-    pub fn new() -> Self {
-        Self {}
+impl<'hir> AstToHir<'hir> {
+    pub fn new(allocator: &'hir Allocator) -> Self {
+        Self {
+            builder: ast_builder::Builder::new_with_ast(allocator),
+            allocator,
+        }
     }
 
-    pub fn traverse<'hir>(
-        &mut self,
-        ast: ast::Ast<'hir>,
-        allocator: &'hir Allocator,
-    ) -> AstToHirRet<'hir> {
-        let mut ctx = ToHirContext::new(allocator);
+    pub fn traverse(&mut self, ast: ast::Ast<'hir>) -> AstToHirRet<'hir> {
+        let hir_program = self.lower_root_script(ast.script);
+        let mut ctx = ToHirContext::new(self.allocator, hir_program);
 
         self.lower_template(&mut ctx, ast.template.unwrap());
 
-        return AstToHirRet {
-            nodes: ctx.nodes,
-            owners: ctx.owners,
-            attributes: ctx.attributes,
-            expressions: ctx.expressions,
-        };
+        return AstToHirRet { store: ctx.store };
     }
 
-    fn lower_template<'hir>(
-        &mut self,
-        ctx: &mut ToHirContext<'hir>,
-        template: ast::Template<'hir>,
-    ) {
+    fn lower_root_script(&self, script: Option<ast::ScriptTag<'hir>>) -> hir::Program<'hir> {
+        let hir_program = script
+            .map(|script| hir::Program {
+                language: script.language,
+                program: script.program,
+            })
+            .unwrap_or_else(|| {
+                let oxc_program = self.builder.program(Vec::new());
+
+                return hir::Program {
+                    language: Language::JavaScript,
+                    program: oxc_program,
+                };
+            });
+
+        return hir_program;
+    }
+
+    fn lower_template(&mut self, ctx: &mut ToHirContext<'hir>, template: ast::Template<'hir>) {
         ctx.push_root_owner(|ctx| {
             let node_ids: Vec<NodeId> = self.lower_nodes(ctx, template.nodes.nodes);
 
@@ -55,7 +63,7 @@ impl AstToHir {
         });
     }
 
-    fn lower_nodes<'hir>(
+    fn lower_nodes(
         &self,
         ctx: &mut ToHirContext<'hir>,
         nodes: Vec<ast::Node<'hir>>,
@@ -65,7 +73,7 @@ impl AstToHir {
         return self.compress_and_lower_nodes(trimmed, ctx);
     }
 
-    fn lower_node<'hir>(&self, node: ast::Node<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
+    fn lower_node(&self, node: ast::Node<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
         return match node {
             ast::Node::Element(cell) => self.lower_element(cell.unwrap(), ctx),
             ast::Node::Text(cell) => self.lower_text(cell.unwrap(), ctx),
@@ -76,11 +84,7 @@ impl AstToHir {
         };
     }
 
-    fn lower_if_block<'hir>(
-        &self,
-        if_block: ast::IfBlock<'hir>,
-        ctx: &mut ToHirContext<'hir>,
-    ) -> NodeId {
+    fn lower_if_block(&self, if_block: ast::IfBlock<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
         return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let expression_id = ctx.push_expression(if_block.test);
 
@@ -104,11 +108,7 @@ impl AstToHir {
         });
     }
 
-    fn lower_element<'hir>(
-        &self,
-        element: ast::Element<'hir>,
-        ctx: &mut ToHirContext<'hir>,
-    ) -> NodeId {
+    fn lower_element(&self, element: ast::Element<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
         return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let hir_element = hir::Element {
                 node_id: self_node_id,
@@ -127,7 +127,7 @@ impl AstToHir {
         });
     }
 
-    fn lower_attributes<'hir>(
+    fn lower_attributes(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attributes: Vec<ast::Attribute<'hir>>,
@@ -138,7 +138,7 @@ impl AstToHir {
             .collect()
     }
 
-    fn lower_attribute<'hir>(
+    fn lower_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attribute: ast::Attribute<'hir>,
@@ -155,7 +155,7 @@ impl AstToHir {
         };
     }
 
-    fn lower_class_directive<'hir>(
+    fn lower_class_directive(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ClassDirective<'hir>,
@@ -171,7 +171,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::ClassDirective(ctx.alloc(attribute)));
     }
 
-    fn lower_bind_directive<'hir>(
+    fn lower_bind_directive(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BindDirective<'hir>,
@@ -186,7 +186,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::BindDirective(ctx.alloc(attribute)));
     }
 
-    fn lower_boolean_attribute<'hir>(
+    fn lower_boolean_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BooleanAttribute<'hir>,
@@ -196,7 +196,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::BooleanAttribute(ctx.alloc(attribute)));
     }
 
-    fn lower_concatenation_attribute<'hir>(
+    fn lower_concatenation_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ConcatenationAttribute<'hir>,
@@ -224,7 +224,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute)));
     }
 
-    fn lower_expression_attribute<'hir>(
+    fn lower_expression_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ExpressionAttribute<'hir>,
@@ -240,7 +240,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::ExpressionAttribute(ctx.alloc(attribute)));
     }
 
-    fn lower_string_attribute<'hir>(
+    fn lower_string_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::StringAttribute<'hir>,
@@ -253,7 +253,7 @@ impl AstToHir {
         return ctx.push_attribute(hir::Attribute::StringAttribute(ctx.alloc(attribute)));
     }
 
-    fn lower_interpolation<'hir>(
+    fn lower_interpolation(
         &self,
         interpolation: ast::Interpolation<'hir>,
         ctx: &mut ToHirContext<'hir>,
@@ -271,7 +271,7 @@ impl AstToHir {
         });
     }
 
-    fn lower_text<'hir>(&self, text: ast::Text<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
+    fn lower_text(&self, text: ast::Text<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
         return ctx.push_node(|ctx, node_id, owner_id| {
             let hir_text = hir::Text {
                 node_id,
@@ -294,7 +294,7 @@ mod tests {
     fn smoke() {
         let allocator = Allocator::default();
 
-        let mut lowerer = AstToHir::new();
+        let mut lowerer = AstToHir::new(&allocator);
         let ast = Parser::new(
             r#"some text { name }<div class:toggle bind:value name="" ok title="idx: {idx}">inside div</div>{#if true}text{/if}"#,
             &allocator,
@@ -302,22 +302,22 @@ mod tests {
         .parse()
         .unwrap();
 
-        let hir = lowerer.traverse(ast, &allocator);
+        let store = lowerer.traverse(ast).store;
 
-        assert!(hir.nodes.len() == 5);
-        assert!(hir.owners.len() == 3);
-        assert!(hir.attributes.len() == 5);
-        assert!(hir.expressions.len() == 5);
+        assert!(store.nodes.len() == 5);
+        assert!(store.owners.len() == 3);
+        assert!(store.attributes.len() == 5);
+        assert!(store.expressions.len() == 5);
 
-        let hir::OwnerNode::Template(template) = hir.owners.first().unwrap() else {
+        let hir::OwnerNode::Template(template) = store.owners.first().unwrap() else {
             unreachable!()
         };
 
-        let hir::Node::Concatenation(concatenation) = hir.nodes.first().unwrap() else {
+        let hir::Node::Concatenation(concatenation) = store.nodes.first().unwrap() else {
             unreachable!();
         };
 
         assert!(template.node_ids.len() == 3);
-        assert!(concatenation.owner_id == OwnerId::new(0));
+        assert!(concatenation.owner_id == hir::OwnerId::new(0));
     }
 }
