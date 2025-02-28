@@ -47,14 +47,14 @@ impl Compiler {
     ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
         let codegen = Codegen::default();
-        let analyze_hir = AnalyzeHir::new();
+        let analyze_hir = AnalyzeHir::new(&allocator);
 
-        let mut lowerer = AstToHir::new();
+        let mut lowerer = AstToHir::new(&allocator);
 
         let ast = parser.parse()?;
 
-        let _hir = lowerer.traverse(ast, &allocator);
-        analyze_hir.analyze();
+        let hir = lowerer.traverse(ast);
+        analyze_hir.analyze(&hir.store);
         let program = transform_hir(allocator);
 
         return Ok(CompilerResult {

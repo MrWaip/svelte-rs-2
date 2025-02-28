@@ -8,8 +8,8 @@ pub(crate) enum Compressable<'hir> {
     Interpolation(ast::Interpolation<'hir>),
 }
 
-impl AstToHir {
-    pub(crate) fn compress_and_lower_nodes<'hir>(
+impl<'hir> AstToHir<'hir> {
+    pub(crate) fn compress_and_lower_nodes(
         &self,
         nodes: Vec<ast::Node<'hir>>,
         ctx: &mut ToHirContext<'hir>,
@@ -67,7 +67,7 @@ impl AstToHir {
         return result;
     }
 
-    fn lower_compressible_sequence<'hir>(
+    fn lower_compressible_sequence(
         &self,
         nodes: Vec<Compressable<'hir>>,
         ctx: &mut ToHirContext<'hir>,

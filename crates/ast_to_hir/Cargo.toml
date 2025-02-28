@@ -7,6 +7,7 @@ edition = "2024"
 hir = { workspace = true }
 ast = { workspace = true }
 analyzer = { workspace = true }
+ast_builder = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_index = { workspace = true }
 oxc_allocator = { workspace = true }
