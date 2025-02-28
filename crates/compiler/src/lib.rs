@@ -47,6 +47,7 @@ impl Compiler {
     ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
         let codegen = Codegen::default();
+        let builder = Builder::new_with_ast(&allocator);
         let analyze_hir = AnalyzeHir::new(&allocator);
 
         let mut lowerer = AstToHir::new(&allocator);
@@ -55,7 +56,7 @@ impl Compiler {
 
         let mut hir = lowerer.traverse(ast);
         let analyses = analyze_hir.analyze(&hir.store);
-        let program = transform_hir(allocator, analyses, &mut hir.store);
+        let program = transform_hir(&analyses, &mut hir.store, &builder);
 
         return Ok(CompilerResult {
             js: codegen.build(&program).code,

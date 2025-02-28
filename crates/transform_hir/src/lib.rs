@@ -1,7 +1,6 @@
-use analyze_hir::HirAnalises;
+use analyze_hir::HirAnalyses;
 use ast_builder::Builder;
 use hir::HirStore;
-use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use script::transform_script;
 use template::{TransformRet, transform_template};
@@ -10,12 +9,10 @@ mod script;
 mod template;
 
 pub fn transform_hir<'hir>(
-    allocator: &'hir Allocator,
-    analyses: HirAnalises,
-    store: &mut HirStore<'hir>,
+    analyses: &'hir HirAnalyses,
+    store: &'hir mut HirStore<'hir>,
+    b: &'hir Builder<'hir>,
 ) -> Program<'hir> {
-    let b = Builder::new_with_ast(allocator);
-
     transform_script(&analyses, &b, &mut store.program);
     let TransformRet { mut template_body } = transform_template(&analyses, &b, store);
 

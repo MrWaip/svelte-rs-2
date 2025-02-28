@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use oxc_index::IndexVec;
 
-use crate::{Attribute, AttributeId, ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program};
+use crate::{Attribute, AttributeId, ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template};
 
 #[derive(Debug)]
 pub struct HirStore<'hir> {
@@ -13,6 +13,8 @@ pub struct HirStore<'hir> {
 }
 
 impl<'hir> HirStore<'hir> {
+    pub const TEMPLATE_OWNER_ID: OwnerId = OwnerId::new(0);
+
     pub fn new(program: Program<'hir>) -> Self {
         HirStore {
             owners: IndexVec::new(),
@@ -37,5 +39,9 @@ impl<'hir> HirStore<'hir> {
 
     pub fn get_node(&self, node_id: NodeId) -> &Node<'hir> {
         self.nodes.get(node_id).unwrap()
+    }
+
+    pub fn get_template(&self) -> &Template {
+        self.get_owner(Self::TEMPLATE_OWNER_ID).as_template().unwrap()
     }
 }

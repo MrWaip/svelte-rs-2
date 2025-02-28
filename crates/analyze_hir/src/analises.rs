@@ -1,11 +1,11 @@
 use oxc_semantic::{ScopeTree, SymbolTable};
 
-pub struct HirAnalises {
+pub struct HirAnalyses {
     scope: ScopeTree,
     symbols: SymbolTable,
 }
 
-impl HirAnalises {
+impl HirAnalyses {
     pub fn new(scope: ScopeTree, symbols: SymbolTable) -> Self {
         Self { scope, symbols }
     }
