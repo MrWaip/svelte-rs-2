@@ -1,51 +1,22 @@
 mod attributes;
 mod id;
+mod node;
 mod store;
+
+use std::cell::RefCell;
 
 pub use attributes::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatenationAttribute,
     ConcatenationAttributePart, ExpressionAttribute, StringAttribute,
 };
 pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
+pub use node::*;
 use oxc_ast::ast::Language;
 pub use store::HirStore;
 
 #[derive(Debug)]
 pub struct Template {
     pub node_ids: Vec<NodeId>,
-}
-
-#[derive(Debug)]
-pub enum Node<'hir> {
-    Text(&'hir Text<'hir>),
-    Interpolation(&'hir Interpolation),
-    Element(&'hir Element<'hir>),
-    Comment,
-    IfBlock(&'hir IfBlock),
-    EachBlock,
-    Script,
-    Concatenation(&'hir Concatenation<'hir>),
-    Phantom,
-}
-
-impl<'hir> Node<'hir> {
-    pub fn is_element(&self) -> bool {
-        matches!(self, Node::Element(_))
-    }
-
-    pub fn as_element(&self) -> Option<&'hir Element<'hir>> {
-        match self {
-            Node::Element(element) => Some(element),
-            _ => None,
-        }
-    }
-
-    pub fn as_text(&self) -> Option<&'hir Text<'hir>> {
-        match self {
-            Node::Text(text) => Some(text),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -58,6 +29,10 @@ pub enum OwnerNode<'hir> {
 }
 
 impl<'hir> OwnerNode<'hir> {
+    pub fn is_if_block(&self) -> bool {
+        return matches!(self, OwnerNode::IfBlock(_));
+    }
+
     pub fn as_element(&self) -> Option<&Element> {
         match self {
             OwnerNode::Element(element) => Some(element),
@@ -77,6 +52,16 @@ impl<'hir> OwnerNode<'hir> {
             OwnerNode::IfBlock(if_block) => Some(if_block),
             _ => None,
         }
+    }
+
+    pub fn first(&self) -> Option<&NodeId> {
+        return match self {
+            OwnerNode::Element(it) => it.node_ids.first(),
+            OwnerNode::Template(it) => it.node_ids.first(),
+            OwnerNode::IfBlock(it) => it.consequent.first(),
+            OwnerNode::EachBlock => todo!(),
+            OwnerNode::Phantom => todo!(),
+        };
     }
 }
 
@@ -129,5 +114,5 @@ pub struct IfBlock {
 #[derive(Debug)]
 pub struct Program<'hir> {
     pub language: Language,
-    pub program: oxc_ast::ast::Program<'hir>,
+    pub program: RefCell<oxc_ast::ast::Program<'hir>>,
 }

@@ -6,9 +6,10 @@ use oxc_ast::ast::Statement;
 use super::context::{FragmentContext, OwnerContext};
 
 pub struct TemplateTransformer<'hir> {
-    analyses: &'hir HirAnalyses,
-    builder: &'hir Builder<'hir>,
-    store: &'hir HirStore<'hir>,
+    pub(crate) analyses: &'hir HirAnalyses,
+    pub(crate) b: &'hir Builder<'hir>,
+    pub(crate) store: &'hir HirStore<'hir>,
+    pub(crate) hoisted: Vec<Statement<'hir>>,
 }
 
 impl<'hir> TemplateTransformer<'hir> {
@@ -19,8 +20,9 @@ impl<'hir> TemplateTransformer<'hir> {
     ) -> Self {
         Self {
             analyses,
-            builder,
+            b: builder,
             store,
+            hoisted: Vec::new(),
         }
     }
 
@@ -31,37 +33,10 @@ impl<'hir> TemplateTransformer<'hir> {
     }
 
     fn transform_template(&mut self, template: &hir::Template) -> Vec<Statement<'hir>> {
-        return self.transform_fragment(&template.node_ids);
+        return self.transform_fragment(&template.node_ids, HirStore::TEMPLATE_OWNER_ID);
     }
 
-    fn transform_fragment(&mut self, nodes: &Vec<NodeId>) -> Vec<Statement<'hir>> {
-        let mut context = FragmentContext::new();
-        let mut body = Vec::new();
-
-        let identifier = "fragment";
-
-        self.transform_nodes(nodes, &mut context);
-
-        body.extend(context.before_init);
-        body.extend(context.init);
-
-        if !context.update.is_empty() {
-            // body.push(self.build_template_effect(context.update));
-        }
-
-        body.extend(context.after_update);
-
-        let close = self.builder.call_stmt(
-            "$.append",
-            [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
-        );
-
-        body.push(close);
-
-        return body;
-    }
-
-    fn transform_nodes<'local>(
+    pub(crate) fn transform_nodes<'local>(
         &mut self,
         nodes: &Vec<NodeId>,
         fragment_ctx: &'local mut FragmentContext<'hir>,
@@ -90,6 +65,6 @@ impl<'hir> TemplateTransformer<'hir> {
         it: &hir::Text<'hir>,
         owner_ctx: &mut OwnerContext<'hir, 'local>,
     ) {
-        //
+        owner_ctx.push_template(it.value.to_string());
     }
 }

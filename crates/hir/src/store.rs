@@ -1,7 +1,9 @@
 use oxc_ast::ast::Expression;
 use oxc_index::IndexVec;
 
-use crate::{Attribute, AttributeId, ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template};
+use crate::{
+    Attribute, AttributeId, ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template,
+};
 
 #[derive(Debug)]
 pub struct HirStore<'hir> {
@@ -42,6 +44,40 @@ impl<'hir> HirStore<'hir> {
     }
 
     pub fn get_template(&self) -> &Template {
-        self.get_owner(Self::TEMPLATE_OWNER_ID).as_template().unwrap()
+        self.get_owner(Self::TEMPLATE_OWNER_ID)
+            .as_template()
+            .unwrap()
+    }
+
+    pub fn first_of(&self, owner_id: OwnerId) -> Option<&Node<'hir>> {
+        let owner = self.owners.get(owner_id);
+
+        if let Some(owner) = owner {
+            let option = owner.first();
+
+            if option.is_none() {
+                return None;
+            }
+
+            return Some(self.get_node(*option.unwrap()));
+        } else {
+            return None;
+        }
+    }
+
+    pub fn is_first_of(&self, owner_id: OwnerId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {
+        let owner = self.owners.get(owner_id);
+
+        if let Some(owner) = owner {
+            let option = owner.first();
+
+            if option.is_none() {
+                return false;
+            }
+
+            return f(self.get_node(*option.unwrap()));
+        } else {
+            return false;
+        }
     }
 }
