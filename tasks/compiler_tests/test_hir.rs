@@ -29,6 +29,11 @@ fn asser_compiler(case: &str) {
 }
 
 #[rstest]
-fn single_text_node() {
+fn empty() {
     asser_compiler("single_text_node");
+}
+
+#[rstest]
+fn single_text_node() {
+    asser_compiler("empty");
 }

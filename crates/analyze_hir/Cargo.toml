@@ -8,3 +8,4 @@ hir = { workspace = true }
 oxc_semantic = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
+bitflags = { workspace = true }

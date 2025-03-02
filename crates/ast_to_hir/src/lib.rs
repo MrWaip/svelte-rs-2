@@ -2,6 +2,8 @@ mod compress_nodes;
 pub mod context;
 mod trim_nodes;
 
+use std::cell::RefCell;
+
 use hir::{NodeId, OwnerNode};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Language;
@@ -39,14 +41,14 @@ impl<'hir> AstToHir<'hir> {
         let hir_program = script
             .map(|script| hir::Program {
                 language: script.language,
-                program: script.program,
+                program: RefCell::new(script.program),
             })
             .unwrap_or_else(|| {
                 let oxc_program = self.builder.program(Vec::new());
 
                 return hir::Program {
                     language: Language::JavaScript,
-                    program: oxc_program,
+                    program: RefCell::new(oxc_program),
                 };
             });
 
