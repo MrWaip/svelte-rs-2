@@ -1,4 +1,4 @@
-use std::mem;
+use std::{cell::RefCell, mem};
 
 use hir::{AttributeId, ExpressionId, HirStore, Node, NodeId, OwnerId, OwnerNode};
 use oxc_allocator::Allocator;
@@ -51,7 +51,7 @@ impl<'hir> ToHirContext<'hir> {
     }
 
     pub fn push_expression(&mut self, expression: Expression<'hir>) -> ExpressionId {
-        let expression_id = self.store.expressions.push(expression);
+        let expression_id = self.store.expressions.push(RefCell::new(expression));
         return expression_id;
     }
 

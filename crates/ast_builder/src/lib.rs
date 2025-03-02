@@ -63,6 +63,11 @@ pub struct Builder<'a> {
     pub ast: AstBuilder<'a>,
 }
 
+pub enum TemplateLiteralPart<'a> {
+    String(&'a str),
+    Expression(Expression<'a>),
+}
+
 impl<'a> Builder<'a> {
     pub fn new(ast: AstBuilder<'a>) -> Builder<'a> {
         return Builder { ast };
@@ -430,6 +435,77 @@ impl<'a> Builder<'a> {
         return lit;
     }
 
+    pub fn template_literal2<'short>(
+        &self,
+        parts: impl IntoIterator<Item = TemplateLiteralPart<'a>>,
+    ) -> TemplateLiteral<'a> {
+        let mut quasis = self.ast.vec();
+        let mut expressions = self.ast.vec();
+        let mut iter = parts.into_iter().peekable();
+        let mut is_first = true;
+
+        while let Some(part) = iter.next() {
+            let tail = iter.peek().is_none();
+
+            match part {
+                TemplateLiteralPart::String(value) => {
+                    let temp = self.ast.template_element(
+                        SPAN,
+                        tail,
+                        TemplateElementValue {
+                            cooked: None,
+                            raw: Atom::from(value),
+                        },
+                    );
+
+                    quasis.push(temp);
+                }
+                TemplateLiteralPart::Expression(expression) => {
+                    if is_first {
+                        let temp = self.ast.template_element(
+                            SPAN,
+                            false,
+                            TemplateElementValue {
+                                cooked: None,
+                                raw: Atom::from(""),
+                            },
+                        );
+
+                        quasis.push(temp);
+                    }
+
+                    let expression = self.ast.expression_logical(
+                        SPAN,
+                        expression,
+                        LogicalOperator::Coalesce,
+                        self.ast.expression_string_literal(SPAN, "", None),
+                    );
+
+                    expressions.push(expression);
+
+                    if tail {
+                        let temp = self.ast.template_element(
+                            SPAN,
+                            true,
+                            TemplateElementValue {
+                                cooked: None,
+                                raw: Atom::from(""),
+                            },
+                        );
+
+                        quasis.push(temp);
+                    }
+                }
+            }
+
+            is_first = false;
+        }
+
+        let lit = self.ast.template_literal(SPAN, quasis, expressions);
+
+        return lit;
+    }
+
     pub fn arrow(
         &self,
         params: FormalParameters<'a>,
@@ -537,6 +613,10 @@ impl<'a> Builder<'a> {
         return self.stmt(BuilderStatement::Expr(
             self.assignment_expression_expr(left, right),
         ));
+    }
+
+    pub fn move_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
+        return self.ast.move_expression(expr);
     }
 
     pub fn static_member_expr<'local>(

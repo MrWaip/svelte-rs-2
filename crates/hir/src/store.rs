@@ -1,3 +1,5 @@
+use std::cell::{Ref, RefCell, RefMut};
+
 use oxc_ast::ast::Expression;
 use oxc_index::IndexVec;
 
@@ -8,7 +10,7 @@ use crate::{
 #[derive(Debug)]
 pub struct HirStore<'hir> {
     pub owners: IndexVec<OwnerId, OwnerNode<'hir>>,
-    pub expressions: IndexVec<ExpressionId, Expression<'hir>>,
+    pub expressions: IndexVec<ExpressionId, RefCell<Expression<'hir>>>,
     pub attributes: IndexVec<AttributeId, Attribute<'hir>>,
     pub nodes: IndexVec<NodeId, Node<'hir>>,
     pub program: Program<'hir>,
@@ -31,8 +33,12 @@ impl<'hir> HirStore<'hir> {
         self.owners.get(owner_id).unwrap()
     }
 
-    pub fn get_expression(&self, expression_id: ExpressionId) -> &Expression<'hir> {
-        self.expressions.get(expression_id).unwrap()
+    pub fn get_expression(&self, expression_id: ExpressionId) -> Ref<Expression<'hir>> {
+        return self.expressions.get(expression_id).unwrap().borrow();
+    }
+
+    pub fn get_expression_mut(&self, expression_id: ExpressionId) -> RefMut<Expression<'hir>> {
+        self.expressions.get(expression_id).unwrap().borrow_mut()
     }
 
     pub fn get_attribute(&self, attribute_id: AttributeId) -> &Attribute<'hir> {

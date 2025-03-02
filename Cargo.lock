@@ -74,6 +74,7 @@ name = "ast_builder"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "hir",
  "oxc_allocator",
  "oxc_ast",
  "oxc_span",
