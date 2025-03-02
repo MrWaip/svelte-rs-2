@@ -1,5 +1,6 @@
 mod context;
 mod fragment;
+mod interpolation;
 mod template_transformer;
 
 use analyze_hir::HirAnalyses;

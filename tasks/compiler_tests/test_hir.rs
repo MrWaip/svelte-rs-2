@@ -37,3 +37,8 @@ fn empty() {
 fn single_text_node() {
     asser_compiler("empty");
 }
+
+#[rstest]
+fn any_text_like() {
+    asser_compiler("any_text_like");
+}

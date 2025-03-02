@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 ast = { workspace = true }
+hir = { workspace = true }
 oxc_span = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_allocator = { workspace = true }
