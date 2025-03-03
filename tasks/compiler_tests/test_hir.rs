@@ -39,6 +39,11 @@ fn single_text_node() {
 }
 
 #[rstest]
-fn any_text_like() {
-    asser_compiler("any_text_like");
+fn single_concatenation() {
+    asser_compiler("single_concatenation");
+}
+
+#[rstest]
+fn single_interpolation() {
+    asser_compiler("single_interpolation");
 }

@@ -16,6 +16,21 @@ impl<'hir> TemplateTransformer<'hir> {
         node: &hir::Interpolation,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
+        let mut expression = self.store.get_expression_mut(node.expression_id);
+        let expression = self.b.move_expr(&mut expression);
+
+        let prop = "nodeValue";
+
+        let member = self
+            .b
+            .static_member_expr(self.b.expr(BExpr::Ident(self.b.rid("text"))), prop);
+
+        let set_text = self.b.assignment_expression_stmt(
+            BuilderAssignmentLeft::StaticMemberExpression(member),
+            BuilderAssignmentRight::Expr(expression),
+        );
+
+        ctx.push_init(set_text);
     }
 
     pub(crate) fn transform_concatenation<'short>(

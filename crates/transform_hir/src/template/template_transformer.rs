@@ -1,7 +1,7 @@
 use analyze_hir::HirAnalyses;
 use ast_builder::{Builder, BuilderFunctionArgument as BArg};
 use hir::{HirStore, NodeId};
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 
 use super::context::{FragmentContext, OwnerContext};
 
@@ -39,10 +39,8 @@ impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_nodes<'local>(
         &mut self,
         nodes: &Vec<NodeId>,
-        fragment_ctx: &'local mut FragmentContext<'hir>,
+        mut owner_ctx: OwnerContext<'hir, 'local>,
     ) {
-        let mut owner_ctx = OwnerContext::new(fragment_ctx);
-
         for node_id in nodes {
             let node = self.store.get_node(*node_id);
 

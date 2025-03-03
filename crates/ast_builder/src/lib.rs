@@ -164,6 +164,12 @@ impl<'a> Builder<'a> {
         return self.ast.identifier_reference(SPAN, name);
     }
 
+    pub fn rid_expr(&self, name: &str) -> Expression<'a> {
+        let rid = self.rid(name);
+
+        return Expression::Identifier(self.alloc(rid));
+    }
+
     pub fn export_default(&self, declaration: ExportDefaultDeclarationKind<'a>) -> Statement<'a> {
         let ident = self.ast.identifier_name(SPAN, "default");
 
