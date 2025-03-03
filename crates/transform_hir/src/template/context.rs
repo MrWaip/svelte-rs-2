@@ -23,6 +23,7 @@ impl<'hir> FragmentContext<'hir> {
 
 pub struct OwnerContext<'hir, 'short> {
     pub(crate) fragment: &'short mut FragmentContext<'hir>,
+    pub(crate) anchor: Expression<'hir>,
     // pub(crate) owner_anchor: Option<&'short Expression<'hir>>,
     // pub(crate) self_anchor: Expression<'ast>,
     // pub(crate) sibling_offset: usize,
@@ -32,11 +33,12 @@ pub struct OwnerContext<'hir, 'short> {
 impl<'hir, 'short> OwnerContext<'hir, 'short> {
     pub fn new(
         fragment_context: &'short mut FragmentContext<'hir>,
+        anchor: Expression<'hir>,
         // parent_node_anchor: Option<&'short Expression<'hir>>,
     ) -> Self {
         return Self {
             fragment: fragment_context,
-            // owner_anchor: parent_node_anchor,
+            anchor, // owner_anchor: parent_node_anchor,
         };
     }
 

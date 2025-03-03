@@ -27,8 +27,10 @@ impl<'hir> TemplateTransformer<'hir> {
             return self.fragment_interpolation_shortcut(owner_id);
         }
 
-        let mut context = FragmentContext::new();
+        let anchor = self.b.rid_expr("fragment");
         let mut body = Vec::new();
+        let mut context = FragmentContext::new();
+        let owner_ctx = OwnerContext::new(&mut context, anchor);
 
         let identifier = "text";
 
@@ -36,17 +38,9 @@ impl<'hir> TemplateTransformer<'hir> {
             body.push(self.b.call_stmt("$.next", []));
         }
 
-        self.transform_nodes(nodes, &mut context);
+        self.transform_nodes(nodes, owner_ctx);
         self.add_template(&mut context, identifier, Some(1.0));
-
-        body.extend(context.before_init);
-        body.extend(context.init);
-
-        if !context.update.is_empty() {
-            body.push(self.build_template_effect(context.update));
-        }
-
-        body.extend(context.after_update);
+        self.build_fragment(context, &mut body);
 
         let close = self.b.call_stmt(
             "$.append",
@@ -67,37 +61,17 @@ impl<'hir> TemplateTransformer<'hir> {
         return call;
     }
 
-    fn add_template(
-        &mut self,
-        ctx: &mut FragmentContext<'hir>,
-        name: &str,
-        bit_flags: Option<f64>,
-    ) {
-        let template = ctx.template.concat();
-        let lit = self.b.template_from_str(&template);
-        let mut args = vec![BArg::TemplateStr(lit)];
-
-        if let Some(flags) = bit_flags {
-            args.push(BArg::Num(flags));
-        }
-
-        let call = self.b.call("$.template", args);
-
-        let var = self.b.var(name, BExpr::Call(call));
-
-        self.hoisted.push(var);
-    }
-
     /// Build a fragment for interpolation or concatenation
     ///
     /// !svelte specific optimization
     fn fragment_interpolation_shortcut(&mut self, owner_id: OwnerId) -> Vec<Statement<'hir>> {
         let node = self.store.first_of(owner_id).unwrap();
         let identifier = "text";
+        let anchor = self.b.rid_expr(identifier);
         let mut body: Vec<Statement<'hir>> = vec![self.b.call_stmt("$.next", [])];
 
         let mut fragment_ctx = FragmentContext::new();
-        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx);
+        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor);
 
         match node {
             hir::Node::Interpolation(interpolation) => {
@@ -112,15 +86,7 @@ impl<'hir> TemplateTransformer<'hir> {
 
         let call = self.b.call("$.text", []);
         body.push(self.b.var(&identifier, BExpr::Call(call)));
-
-        body.extend(fragment_ctx.before_init);
-        body.extend(fragment_ctx.init);
-
-        if !fragment_ctx.update.is_empty() {
-            body.push(self.build_template_effect(fragment_ctx.update));
-        }
-
-        body.extend(fragment_ctx.after_update);
+        self.build_fragment(fragment_ctx, &mut body);
 
         body.push(self.b.call_stmt(
             "$.append",
@@ -148,5 +114,41 @@ impl<'hir> TemplateTransformer<'hir> {
         ));
 
         return body;
+    }
+
+    fn build_fragment(
+        &mut self,
+        fragment_ctx: FragmentContext<'hir>,
+        body: &mut Vec<Statement<'hir>>,
+    ) {
+        body.extend(fragment_ctx.before_init);
+        body.extend(fragment_ctx.init);
+
+        if !fragment_ctx.update.is_empty() {
+            body.push(self.build_template_effect(fragment_ctx.update));
+        }
+
+        body.extend(fragment_ctx.after_update);
+    }
+
+    fn add_template(
+        &mut self,
+        ctx: &mut FragmentContext<'hir>,
+        name: &str,
+        bit_flags: Option<f64>,
+    ) {
+        let template = ctx.template.concat();
+        let lit = self.b.template_from_str(&template);
+        let mut args = vec![BArg::TemplateStr(lit)];
+
+        if let Some(flags) = bit_flags {
+            args.push(BArg::Num(flags));
+        }
+
+        let call = self.b.call("$.template", args);
+
+        let var = self.b.var(name, BExpr::Call(call));
+
+        self.hoisted.push(var);
     }
 }
