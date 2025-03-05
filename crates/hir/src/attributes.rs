@@ -10,6 +10,19 @@ pub enum Attribute<'hir> {
     ConcatenationAttribute(&'hir ConcatenationAttribute<'hir>),
 }
 
+impl<'hir> Attribute<'hir> {
+    pub fn name(&self) -> &'hir str {
+        match self {
+            Attribute::StringAttribute(it) => it.name,
+            Attribute::ExpressionAttribute(it) => it.name,
+            Attribute::ClassDirective(it) => it.name,
+            Attribute::BindDirective(it) => it.name,
+            Attribute::BooleanAttribute(it) => it.name,
+            Attribute::ConcatenationAttribute(it) => it.name,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct StringAttribute<'hir> {
     pub name: &'hir str,

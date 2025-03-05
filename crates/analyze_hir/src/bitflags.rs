@@ -3,11 +3,11 @@ use bitflags::bitflags;
 bitflags! {
      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct OwnerContentTypeFlags: u32 {
-        const Text = 1 << 0;
-        const Interpolation = 1 << 1;
-        const Concatenation = 1 << 2;
-        const Element = 1 << 2;
-        const IfBlock = 1 << 2;
+        const Text = 1 << 1;
+        const Interpolation = 1 << 2;
+        const Concatenation = 1 << 3;
+        const Element = 1 << 4;
+        const IfBlock = 1 << 5;
     }
 }
 
@@ -26,22 +26,12 @@ impl OwnerContentTypeFlags {
         }
     }
 
-    // metadata.anchor = match optimizations.content_type {
-    //     ContentType::Mixed => FragmentAnchor::Fragment,
-    //     ContentType::TextAndInterpolation => FragmentAnchor::Text,
-    //     ContentType::Text => FragmentAnchor::TextInline,
-    //     ContentType::Interpolation => FragmentAnchor::Text,
-    //     ContentType::Element => FragmentAnchor::Element,
-    //     ContentType::Nope => FragmentAnchor::Fragment,
-    //     ContentType::NodeWithFragment => FragmentAnchor::Comment,
-    // };
-    //
     pub fn only_element(&self) -> bool {
-        return self.contains(OwnerContentTypeFlags::Element);
+        return *self == OwnerContentTypeFlags::Element;
     }
 
     pub fn only_text(&self) -> bool {
-        return self.contains(OwnerContentTypeFlags::Text);
+        return *self == OwnerContentTypeFlags::Text;
     }
 
     pub fn any_text_like(&self) -> bool {
@@ -53,7 +43,7 @@ impl OwnerContentTypeFlags {
     }
 
     pub fn only_fragment_owner(&self) -> bool {
-        return self.contains(OwnerContentTypeFlags::IfBlock);
+        return *self == OwnerContentTypeFlags::IfBlock;
     }
 }
 

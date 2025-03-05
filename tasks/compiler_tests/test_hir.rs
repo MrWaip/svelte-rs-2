@@ -47,3 +47,13 @@ fn single_concatenation() {
 fn single_interpolation() {
     asser_compiler("single_interpolation");
 }
+
+#[rstest]
+fn single_element() {
+    asser_compiler("single_element");
+}
+
+#[rstest]
+fn generic_root_sequence() {
+    asser_compiler("generic_root_sequence");
+}

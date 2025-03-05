@@ -14,7 +14,10 @@ pub fn transform_hir<'hir>(
     b: &'hir Builder<'hir>,
 ) -> Program<'hir> {
     transform_script(&analyses, &b, &mut store.program);
-    let TransformRet { mut template_body } = transform_template(&analyses, &b, store);
+    let TransformRet {
+        mut template_body,
+        mut hoisted,
+    } = transform_template(&analyses, &b, store);
 
     let mut program_body = vec![];
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
@@ -26,6 +29,7 @@ pub fn transform_hir<'hir>(
 
     let component = b.function_declaration(b.bid("App"), component_body, component_params);
     program_body.append(&mut imports);
+    program_body.append(&mut hoisted);
     program_body.push(
         b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
             b.alloc(component),

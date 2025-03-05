@@ -32,6 +32,14 @@ impl<'hir> Node<'hir> {
         }
     }
 
+    pub fn is_interpolation_like(&self) -> bool {
+        matches!(self, Node::Interpolation(_) | Node::Concatenation(_))
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, Node::Text(_))
+    }
+
     pub fn is_text_like(&self) -> bool {
         matches!(
             self,

@@ -99,6 +99,7 @@ pub struct Element<'hir> {
     pub name: &'hir str,
     pub attributes: Vec<AttributeId>,
     pub node_ids: Vec<NodeId>,
+    pub self_closing: bool,
 }
 
 #[derive(Debug)]

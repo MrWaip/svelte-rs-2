@@ -1,6 +1,10 @@
+mod attributes;
 mod context;
+mod element;
 mod fragment;
 mod interpolation;
+mod is_static;
+mod nodes;
 mod template_transformer;
 
 use analyze_hir::HirAnalyses;
@@ -11,6 +15,7 @@ use template_transformer::TemplateTransformer;
 
 pub struct TransformRet<'hir> {
     pub template_body: Vec<Statement<'hir>>,
+    pub hoisted: Vec<Statement<'hir>>,
 }
 
 pub fn transform_template<'hir>(
@@ -21,5 +26,8 @@ pub fn transform_template<'hir>(
     let mut transformer = TemplateTransformer::new(analyses, builder, store);
     let template_body = transformer.transform();
 
-    return TransformRet { template_body };
+    return TransformRet {
+        template_body,
+        hoisted: transformer.hoisted,
+    };
 }
