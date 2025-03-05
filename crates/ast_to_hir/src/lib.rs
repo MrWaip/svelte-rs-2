@@ -118,6 +118,7 @@ impl<'hir> AstToHir<'hir> {
                 name: ctx.alloc(element.name),
                 node_ids: self.lower_nodes(ctx, element.nodes),
                 attributes: self.lower_attributes(ctx, element.attributes),
+                self_closing: element.self_closing,
             };
 
             let hir_element = ctx.alloc(hir_element);

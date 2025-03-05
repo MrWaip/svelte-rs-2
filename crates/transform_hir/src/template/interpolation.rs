@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ast_builder::{
     BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr,
     BuilderFunctionArgument as BArg, TemplateLiteralPart,
@@ -18,18 +20,18 @@ impl<'hir> TemplateTransformer<'hir> {
     ) {
         let mut expression = self.store.get_expression_mut(node.expression_id);
         let expression = self.b.move_expr(&mut expression);
+        let anchor = ctx.anchor();
 
         let prop = "nodeValue";
 
-        let member = self
-            .b
-            .static_member_expr(self.b.expr(BExpr::Ident(self.b.rid("text"))), prop);
+        let member = self.b.static_member_expr(anchor, prop);
 
         let set_text = self.b.assignment_expression_stmt(
             BuilderAssignmentLeft::StaticMemberExpression(member),
             BuilderAssignmentRight::Expr(expression),
         );
 
+        ctx.push_template(Cow::Borrowed(" "));
         ctx.push_init(set_text);
     }
 
@@ -39,6 +41,7 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
         let mut parts = Vec::new();
+        let anchor = ctx.anchor();
 
         for part in node.parts.iter() {
             match part {
@@ -59,15 +62,14 @@ impl<'hir> TemplateTransformer<'hir> {
 
         let prop = "nodeValue";
 
-        let member = self
-            .b
-            .static_member_expr(self.b.expr(BExpr::Ident(self.b.rid("text"))), prop);
+        let member = self.b.static_member_expr(anchor, prop);
 
         let set_text = self.b.assignment_expression_stmt(
             BuilderAssignmentLeft::StaticMemberExpression(member),
             BuilderAssignmentRight::Expr(self.b.expr(BExpr::TemplateLiteral(expression))),
         );
 
+        ctx.push_template(Cow::Borrowed(" "));
         ctx.push_init(set_text);
     }
 }

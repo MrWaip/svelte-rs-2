@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use analyze_hir::HirAnalyses;
 use ast_builder::{Builder, BuilderFunctionArgument as BArg};
 use hir::{HirStore, NodeId};
@@ -36,33 +38,11 @@ impl<'hir> TemplateTransformer<'hir> {
         return self.transform_fragment(&template.node_ids, HirStore::TEMPLATE_OWNER_ID);
     }
 
-    pub(crate) fn transform_nodes<'local>(
-        &mut self,
-        nodes: &Vec<NodeId>,
-        mut owner_ctx: OwnerContext<'hir, 'local>,
-    ) {
-        for node_id in nodes {
-            let node = self.store.get_node(*node_id);
-
-            match node {
-                hir::Node::Text(it) => self.transform_text(it, &mut owner_ctx),
-                hir::Node::Interpolation(interpolation) => todo!(),
-                hir::Node::Element(element) => todo!(),
-                hir::Node::Comment => todo!(),
-                hir::Node::IfBlock(if_block) => todo!(),
-                hir::Node::EachBlock => todo!(),
-                hir::Node::Script => todo!(),
-                hir::Node::Concatenation(concatenation) => todo!(),
-                hir::Node::Phantom => todo!(),
-            }
-        }
-    }
-
-    fn transform_text<'local>(
+    pub(crate) fn transform_text<'local>(
         &mut self,
         it: &hir::Text<'hir>,
         owner_ctx: &mut OwnerContext<'hir, 'local>,
     ) {
-        owner_ctx.push_template(it.value.to_string());
+        owner_ctx.push_template(Cow::Borrowed(it.value));
     }
 }
