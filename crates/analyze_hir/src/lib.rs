@@ -2,6 +2,7 @@ mod analises;
 mod analyze_expression;
 mod analyze_template;
 mod bitflags;
+mod indentifier_gen;
 mod visit;
 
 pub use analises::HirAnalyses;
