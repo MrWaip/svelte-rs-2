@@ -24,7 +24,8 @@ impl<'hir> TemplateTransformer<'hir> {
                 // node.metadata.is_controlled = true;
                 todo!()
             } else if node.is_interpolation_like() {
-                owner_ctx.flush_node(false, "text");
+                let name = self.analyses.generate_ident("text");
+                owner_ctx.flush_node(false, &name);
             } else if node.is_text() {
                 owner_ctx.next_sibling();
             } else {
@@ -33,7 +34,9 @@ impl<'hir> TemplateTransformer<'hir> {
                     _ => "node",
                 };
 
-                owner_ctx.flush_node(false, name);
+                let name = self.analyses.generate_ident(name);
+
+                owner_ctx.flush_node(false, &name);
             }
 
             self.transform_node(node, &mut owner_ctx);

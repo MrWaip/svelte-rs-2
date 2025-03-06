@@ -113,7 +113,7 @@ impl<'hir> TemplateTransformer<'hir> {
     ///
     /// !svelte specific optimization
     fn fragment_text_shortcut(&mut self, owner_id: OwnerId) -> Vec<Statement<'hir>> {
-        let identifier = "text";
+        let identifier = self.analyses.generate_ident("text");
         let mut body = Vec::new();
         let text = self.store.first_of(owner_id).unwrap().as_text().unwrap();
 
