@@ -1,9 +1,8 @@
-use ast_builder::{BuilderExpression as BExpr, BuilderFunctionArgument as BArg};
-use hir::{NodeId, OwnerId};
-use oxc_ast::ast::{Expression, Statement};
+use ast_builder::BuilderFunctionArgument as BArg;
+use hir::NodeId;
 
 use super::{
-    context::{FragmentContext, OwnerContext},
+    context::OwnerContext,
     is_static::is_static_element,
     template_transformer::TemplateTransformer,
 };

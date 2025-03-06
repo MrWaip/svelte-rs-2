@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use oxc_index::IndexVec;
 use oxc_semantic::{
     NodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolId, SymbolTable,
 };
