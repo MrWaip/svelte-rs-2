@@ -1,14 +1,11 @@
 use std::borrow::Cow;
 
 use ast_builder::{
-    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr,
-    BuilderFunctionArgument as BArg, TemplateLiteralPart,
+    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr, TemplateLiteralPart,
 };
-use hir::{NodeId, OwnerId};
-use oxc_ast::ast::Statement;
 
 use super::{
-    context::{FragmentContext, OwnerContext},
+    context::OwnerContext,
     template_transformer::TemplateTransformer,
 };
 

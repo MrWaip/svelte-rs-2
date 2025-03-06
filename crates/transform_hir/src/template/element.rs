@@ -1,11 +1,8 @@
 use std::borrow::Cow;
 
-use ast_builder::{BuilderExpression as BExpr, BuilderFunctionArgument as BArg};
-use hir::{NodeId, OwnerId};
-use oxc_ast::ast::Statement;
 
 use super::{
-    context::{FragmentContext, OwnerContext},
+    context::OwnerContext,
     template_transformer::TemplateTransformer,
 };
 

@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
 use analyze_hir::HirAnalyses;
-use ast_builder::{Builder, BuilderFunctionArgument as BArg};
-use hir::{HirStore, NodeId};
-use oxc_ast::ast::{Expression, Statement};
+use ast_builder::Builder;
+use hir::HirStore;
+use oxc_ast::ast::Statement;
 
-use super::context::{FragmentContext, OwnerContext};
+use super::context::OwnerContext;
 
 pub struct TemplateTransformer<'hir> {
     pub(crate) analyses: &'hir HirAnalyses,

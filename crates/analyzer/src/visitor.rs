@@ -185,8 +185,8 @@ pub trait TemplateVisitor<'a>: Sized {
 
 pub mod walk {
 
-    use ast::{node_id, BindDirective, Node};
-    use oxc_semantic::NodeId;
+    use ast::{BindDirective, Node};
+    
     use rccell::RcCell;
 
     use crate::ancestor::Ancestor;

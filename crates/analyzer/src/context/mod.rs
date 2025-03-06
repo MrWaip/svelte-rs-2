@@ -5,7 +5,7 @@ use element_flags::ElementFlags;
 use oxc_index::Idx;
 use oxc_semantic::NodeId;
 
-use crate::{ancestor::Ancestor, compute_optimization::OptimizationResult};
+use crate::ancestor::Ancestor;
 
 pub mod ancestry;
 pub mod element_flags;

@@ -1,8 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, env::consts::OS};
+use std::{cell::RefCell, collections::HashMap};
 
 use hir::OwnerId;
 use oxc_ast::ast::Span;
-use oxc_semantic::{NodeId, ScopeTree, SymbolFlags, SymbolId, SymbolTable};
+use oxc_semantic::{NodeId, ScopeTree, SymbolFlags, SymbolTable};
 
 use crate::{
     bitflags::{OwnerContentType, OwnerContentTypeFlags},
