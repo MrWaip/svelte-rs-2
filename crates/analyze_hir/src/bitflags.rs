@@ -42,6 +42,12 @@ impl OwnerContentTypeFlags {
         return self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0;
     }
 
+    pub fn any_interpolation_like(&self) -> bool {
+        let allowed = OwnerContentTypeFlags::Interpolation | OwnerContentTypeFlags::Concatenation;
+
+        return self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0;
+    }
+
     pub fn only_fragment_owner(&self) -> bool {
         return *self == OwnerContentTypeFlags::IfBlock;
     }

@@ -2,9 +2,7 @@ use ast_builder::BuilderFunctionArgument as BArg;
 use hir::NodeId;
 
 use super::{
-    context::OwnerContext,
-    is_static::is_static_element,
-    template_transformer::TemplateTransformer,
+    context::OwnerContext, is_static::is_static_element, template_transformer::TemplateTransformer,
 };
 
 impl<'hir> TemplateTransformer<'hir> {
@@ -16,7 +14,7 @@ impl<'hir> TemplateTransformer<'hir> {
         for node_id in nodes {
             let node = self.store.get_node(*node_id);
 
-            if is_static_element(node, self.store) {
+            if is_static_element(node, self.store, self.analyses) {
                 owner_ctx.next_sibling();
             } else if matches!(node, hir::Node::EachBlock) {
                 // if (node.type === 'EachBlock' && nodes.length === 1 && is_element)

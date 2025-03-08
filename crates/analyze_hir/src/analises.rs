@@ -1,8 +1,11 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+};
 
-use hir::OwnerId;
+use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
-use oxc_semantic::{NodeId, ScopeTree, SymbolFlags, SymbolTable};
+use oxc_semantic::{NodeId as OxcNodeId, ScopeTree, SymbolFlags, SymbolTable};
 
 use crate::{
     bitflags::{OwnerContentType, OwnerContentTypeFlags},
@@ -14,6 +17,7 @@ pub struct HirAnalyses {
     symbols: RefCell<SymbolTable>,
     content_types: HashMap<OwnerId, OwnerContentType>,
     identifier_generators: RefCell<HashMap<String, IdentifierGen>>,
+    dynamic_nodes: HashSet<NodeId>,
 }
 
 impl HirAnalyses {
@@ -23,6 +27,7 @@ impl HirAnalyses {
             symbols: RefCell::new(symbols),
             content_types: HashMap::new(),
             identifier_generators: RefCell::new(HashMap::new()),
+            dynamic_nodes: HashSet::new(),
         }
     }
 
@@ -36,6 +41,14 @@ impl HirAnalyses {
 
     pub fn get_common_content_type(&self, owner_id: &OwnerId) -> OwnerContentTypeFlags {
         return self.get_content_type(owner_id).as_common_or_empty();
+    }
+
+    pub fn mark_node_as_dynamic(&mut self, node_id: NodeId) {
+        self.dynamic_nodes.insert(node_id);
+    }
+
+    pub fn is_dynamic(&self, node_id: &NodeId) -> bool {
+        self.dynamic_nodes.contains(node_id)
     }
 
     pub fn generate_ident(&self, preferable_name: &str) -> String {
@@ -68,7 +81,7 @@ impl HirAnalyses {
             &identifier,
             SymbolFlags::empty(),
             root_scope_id,
-            NodeId::DUMMY,
+            OxcNodeId::DUMMY,
         );
 
         self.scope

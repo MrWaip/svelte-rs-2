@@ -7,13 +7,16 @@ pub fn is_custom_element(element: &hir::Element, store: &hir::HirStore) -> bool 
         });
 }
 
-pub fn is_static_element(node: &hir::Node, store: &hir::HirStore) -> bool {
-    let dynamic = false;
+pub fn is_static_element(
+    node: &hir::Node,
+    store: &hir::HirStore,
+    analyses: &analyze_hir::HirAnalyses,
+) -> bool {
     let hir::Node::Element(element) = node else {
         return false;
     };
 
-    if dynamic {
+    if analyses.is_dynamic(&element.node_id) {
         return false;
     }
 

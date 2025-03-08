@@ -112,7 +112,7 @@ mod trim_nodes {
         let (template, nodes) = prepare("\ttext\t");
         assert_eq!(template.node_ids.len(), 1);
 
-        let hir::Node::Text(text) = &nodes[NodeId::new(0)] else {
+        let hir::Node::Text(text) = &nodes[NodeId::new(1)] else {
             unreachable!()
         };
 
@@ -124,7 +124,7 @@ mod trim_nodes {
         let (template, nodes) = prepare("\t<input />\t");
 
         assert_eq!(template.node_ids.len(), 1);
-        assert!(nodes.first().unwrap().is_element())
+        assert!(nodes.get(NodeId::new(1)).unwrap().is_element())
     }
 
     #[test]
@@ -133,7 +133,7 @@ mod trim_nodes {
 
         assert_eq!(template.node_ids.len(), 2);
 
-        let text = nodes.first().unwrap().as_text().unwrap();
+        let text = nodes.get(NodeId::new(1)).unwrap().as_text().unwrap();
         assert_eq!(text.value, "some_text ");
     }
 
