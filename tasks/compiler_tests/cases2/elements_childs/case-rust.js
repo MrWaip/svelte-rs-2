@@ -7,6 +7,5 @@ export default function App($$anchor) {
 	var div_1 = $.sibling(div, 2);
 	div_1.textContent = `concatenated + ${interpolation ?? ""} + concatenated`;
 	$.next(4);
-	$.next(4);
 	$.append($$anchor, fragment);
 }

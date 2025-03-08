@@ -85,6 +85,10 @@ impl<'hir> HirStore<'hir> {
         *self.node_to_owner.get(node_id).unwrap()
     }
 
+    pub fn owner_to_node(&self, owner_id: OwnerId) -> NodeId {
+        return  self.owners[owner_id].node_id();
+    }
+
     pub fn is_first_of(&self, owner_id: OwnerId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {
         let owner = self.owners.get(owner_id);
 

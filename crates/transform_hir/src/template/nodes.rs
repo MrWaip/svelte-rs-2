@@ -12,6 +12,13 @@ impl<'hir> TemplateTransformer<'hir> {
         nodes: &Vec<NodeId>,
         mut owner_ctx: OwnerContext<'hir, 'local>,
     ) {
+        if nodes.is_empty() {
+            return;
+        }
+
+        let self_node_id = self.store.owner_to_node(owner_ctx.owner_id());
+        let is_dynamic = self.analyses.is_dynamic(&self_node_id);
+
         for node_id in nodes {
             let node = self.store.get_node(*node_id);
 
@@ -42,7 +49,7 @@ impl<'hir> TemplateTransformer<'hir> {
 
         // if there are trailing static text nodes/elements,
         // traverse to the last (n - 1) one when hydrating
-        if owner_ctx.trailing_static_nodes() {
+        if owner_ctx.trailing_static_nodes() && is_dynamic {
             let offset = owner_ctx.sibling_offset() - 1;
             let mut args = vec![];
 

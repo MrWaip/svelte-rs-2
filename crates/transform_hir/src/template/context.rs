@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use ast_builder::{Builder, BuilderExpression as BExpr, BuilderFunctionArgument as BArg};
+use hir::OwnerId;
 use oxc_ast::ast::{Expression, Statement};
 
 pub struct FragmentContext<'hir> {
@@ -31,6 +32,7 @@ pub struct OwnerContext<'hir, 'short> {
     // pub(crate) self_anchor: Expression<'ast>,
     sibling_offset: usize,
     b: &'hir Builder<'hir>,
+    owner_id: OwnerId,
     // pub(crate) skip_reset_element: bool,
 }
 
@@ -39,6 +41,7 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
         fragment_context: &'short mut FragmentContext<'hir>,
         anchor: Expression<'hir>,
         builder: &'hir Builder<'hir>,
+        owner_id: OwnerId,
         // parent_node_anchor: Option<&'short Expression<'hir>>,
     ) -> Self {
         return Self {
@@ -46,7 +49,12 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
             prev: anchor, // owner_anchor: parent_node_anchor,
             sibling_offset: 0,
             b: builder,
+            owner_id
         };
+    }
+    
+    pub fn owner_id(&self) -> OwnerId {
+        return self.owner_id;
     }
 
     pub fn anchor(&self) -> Expression<'hir> {
