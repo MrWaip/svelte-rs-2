@@ -5,7 +5,8 @@
     "jsr:@std/internal@^1.0.5": "1.0.5",
     "npm:@types/node@*": "22.5.4",
     "npm:fast-glob@*": "3.3.3",
-    "npm:svelte@*": "5.18.0_acorn@8.14.0"
+    "npm:svelte@*": "5.18.0_acorn@8.14.0",
+    "npm:svelte@5.22.6": "5.22.6_acorn@8.14.0"
   },
   "jsr": {
     "@std/assert@1.0.10": {
@@ -65,6 +66,12 @@
       "dependencies": [
         "@nodelib/fs.scandir",
         "fastq"
+      ]
+    },
+    "@sveltejs/acorn-typescript@1.0.5_acorn@8.14.0": {
+      "integrity": "sha512-IwQk4yfwLdibDlrXVE04jTZYlLnwsTT2PIOQQGNLWfjavGifnk1JD1LcZjZaBTRcxZu2FfPfNLOE04DSu9lqtQ==",
+      "dependencies": [
+        "acorn"
       ]
     },
     "@types/estree@1.0.6": {
@@ -197,6 +204,25 @@
         "@types/estree",
         "acorn",
         "acorn-typescript",
+        "aria-query",
+        "axobject-query",
+        "clsx",
+        "esm-env",
+        "esrap",
+        "is-reference",
+        "locate-character",
+        "magic-string",
+        "zimmerframe"
+      ]
+    },
+    "svelte@5.22.6_acorn@8.14.0": {
+      "integrity": "sha512-dxHyh3USJyayafSt5I5QD7KuoCM5ZGdIOtLQiKHEro7tymdh0jMcNkiSBVHW+LOA2jEqZEHhyfwN6/pCjx0Fug==",
+      "dependencies": [
+        "@ampproject/remapping",
+        "@jridgewell/sourcemap-codec",
+        "@sveltejs/acorn-typescript",
+        "@types/estree",
+        "acorn",
         "aria-query",
         "axobject-query",
         "clsx",
