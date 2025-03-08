@@ -43,7 +43,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let anchor = self
             .b
             .call_expr("$.first_child", [BArg::Ident(&identifier)]);
-        let owner_ctx = OwnerContext::new(&mut context, anchor, self.b);
+        let owner_ctx = OwnerContext::new(&mut context, anchor, self.b, owner_id);
 
         if self.store.is_first_of(owner_id, |node| node.is_text_like()) {
             body.push(self.b.call_stmt("$.next", []));
@@ -87,7 +87,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let mut body: Vec<Statement<'hir>> = vec![self.b.call_stmt("$.next", [])];
 
         let mut fragment_ctx = FragmentContext::new();
-        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b);
+        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b, owner_id);
 
         match node {
             hir::Node::Interpolation(interpolation) => {
@@ -149,8 +149,12 @@ impl<'hir> TemplateTransformer<'hir> {
         let identifier = self.analyses.generate_ident(element.name);
 
         let mut fragment_ctx = FragmentContext::new();
-        let mut owner_ctx =
-            OwnerContext::new(&mut fragment_ctx, self.b.rid_expr(&identifier), self.b);
+        let mut owner_ctx = OwnerContext::new(
+            &mut fragment_ctx,
+            self.b.rid_expr(&identifier),
+            self.b,
+            owner_id,
+        );
 
         self.transform_element(&element, &mut owner_ctx);
         self.add_template(&mut fragment_ctx, "root", None);

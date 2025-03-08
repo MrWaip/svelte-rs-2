@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use ast_builder::{BuilderAssignmentLeft, BuilderAssignmentRight, BuilderFunctionArgument};
+use ast_builder::BuilderFunctionArgument;
+use hir::OwnerId;
 
 use super::{
     context::OwnerContext, interpolation::TransformInterpolationOptions,
@@ -23,9 +24,9 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx.push_template(Cow::Borrowed(">"));
 
         if content_type.any_interpolation_like() {
-            self.element_text_shortcut(element, ctx);
+            self.element_text_shortcut(element, ctx, self_owner_id);
         } else {
-            self.element_common(element, ctx);
+            self.element_common(element, ctx, self_owner_id);
         }
 
         if !element.self_closing {
@@ -37,12 +38,13 @@ impl<'hir> TemplateTransformer<'hir> {
         &mut self,
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
+        self_owner_id: OwnerId,
     ) {
         let anchor = self
             .b
             .call_expr("$.child", [BuilderFunctionArgument::Expr(ctx.anchor())]);
 
-        let owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b);
+        let owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b, self_owner_id);
 
         self.transform_nodes(&element.node_ids, owner_ctx);
     }
@@ -51,11 +53,12 @@ impl<'hir> TemplateTransformer<'hir> {
         &mut self,
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
+        self_owner_id: OwnerId,
     ) {
         let node = self.store.get_node(*element.node_ids.first().unwrap());
 
         let anchor = ctx.anchor();
-        let mut owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b);
+        let mut owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b, self_owner_id);
 
         let opts = TransformInterpolationOptions {
             need_empty_template: false,
