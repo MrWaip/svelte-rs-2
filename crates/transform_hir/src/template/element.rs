@@ -2,7 +2,10 @@ use std::borrow::Cow;
 
 use ast_builder::{BuilderAssignmentLeft, BuilderAssignmentRight, BuilderFunctionArgument};
 
-use super::{context::OwnerContext, template_transformer::TemplateTransformer};
+use super::{
+    context::OwnerContext, interpolation::TransformInterpolationOptions,
+    template_transformer::TemplateTransformer,
+};
 
 impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_element<'short>(
@@ -49,20 +52,25 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        // let node = self.store.get_node(*element.node_ids.first().unwrap());
+        let node = self.store.get_node(*element.node_ids.first().unwrap());
 
-        // let anchor = ctx.anchor();
-        // let mut owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b);
+        let anchor = ctx.anchor();
+        let mut owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b);
 
-        // match node {
-        //     hir::Node::Interpolation(interpolation) => {
-        //         self.transform_interpolation(interpolation, &mut owner_ctx);
-        //     }
+        let opts = TransformInterpolationOptions {
+            need_empty_template: false,
+            property: super::interpolation::InterpolationProperty::TextContent,
+        };
 
-        //     hir::Node::Concatenation(concatenation) => {
-        //         self.transform_concatenation(concatenation, &mut owner_ctx);
-        //     }
-        //     _ => unreachable!(),
-        // };
+        match node {
+            hir::Node::Interpolation(interpolation) => {
+                self.transform_interpolation(interpolation, &mut owner_ctx, opts);
+            }
+
+            hir::Node::Concatenation(concatenation) => {
+                self.transform_concatenation(concatenation, &mut owner_ctx, opts);
+            }
+            _ => unreachable!(),
+        };
     }
 }

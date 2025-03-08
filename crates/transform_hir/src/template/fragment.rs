@@ -4,6 +4,7 @@ use oxc_ast::ast::Statement;
 
 use super::{
     context::{FragmentContext, OwnerContext},
+    interpolation::TransformInterpolationOptions,
     template_transformer::TemplateTransformer,
 };
 
@@ -90,11 +91,19 @@ impl<'hir> TemplateTransformer<'hir> {
 
         match node {
             hir::Node::Interpolation(interpolation) => {
-                self.transform_interpolation(interpolation, &mut owner_ctx);
+                self.transform_interpolation(
+                    interpolation,
+                    &mut owner_ctx,
+                    TransformInterpolationOptions::default(),
+                );
             }
 
             hir::Node::Concatenation(concatenation) => {
-                self.transform_concatenation(concatenation, &mut owner_ctx);
+                self.transform_concatenation(
+                    concatenation,
+                    &mut owner_ctx,
+                    TransformInterpolationOptions::default(),
+                );
             }
             _ => unreachable!(),
         };

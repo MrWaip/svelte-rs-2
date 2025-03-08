@@ -2,7 +2,8 @@ use ast_builder::BuilderFunctionArgument as BArg;
 use hir::NodeId;
 
 use super::{
-    context::OwnerContext, is_static::is_static_element, template_transformer::TemplateTransformer,
+    context::OwnerContext, interpolation::TransformInterpolationOptions,
+    is_static::is_static_element, template_transformer::TemplateTransformer,
 };
 
 impl<'hir> TemplateTransformer<'hir> {
@@ -60,10 +61,18 @@ impl<'hir> TemplateTransformer<'hir> {
     ) {
         match node {
             hir::Node::Text(it) => self.transform_text(it, owner_ctx),
-            hir::Node::Interpolation(it) => self.transform_interpolation(it, owner_ctx),
+            hir::Node::Interpolation(it) => self.transform_interpolation(
+                it,
+                owner_ctx,
+                TransformInterpolationOptions::default(),
+            ),
             hir::Node::Element(it) => self.transform_element(it, owner_ctx),
-            hir::Node::Concatenation(it) => self.transform_concatenation(it, owner_ctx),
-            hir::Node::IfBlock(if_block) => todo!(),
+            hir::Node::Concatenation(it) => self.transform_concatenation(
+                it,
+                owner_ctx,
+                TransformInterpolationOptions::default(),
+            ),
+            hir::Node::IfBlock(_if_block) => todo!(),
             hir::Node::Comment => todo!(),
             hir::Node::EachBlock => todo!(),
             hir::Node::Script => todo!(),
