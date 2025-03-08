@@ -46,4 +46,18 @@ impl<'hir> Node<'hir> {
             Node::Text(_) | Node::Interpolation(_) | Node::Concatenation(_)
         )
     }
+
+    pub fn contains_expression(&self) -> bool {
+        match self {
+            Node::Element(_) => false,
+            Node::Interpolation(_) => true,
+            Node::Text(_) => false,
+            Node::IfBlock(_) => true,
+            Node::Script => true,
+            Node::Concatenation(_) => true,
+            Node::EachBlock => true,
+            Node::Phantom => false,
+            Node::Comment => false,
+        }
+    }
 }

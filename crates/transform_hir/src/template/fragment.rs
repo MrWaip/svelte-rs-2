@@ -23,7 +23,7 @@ impl<'hir> TemplateTransformer<'hir> {
             return self.fragment_text_shortcut(owner_id);
         }
 
-        if content_type.any_text_like() {
+        if content_type.any_interpolation_like() {
             return self.fragment_interpolation_shortcut(owner_id);
         }
 

@@ -16,7 +16,7 @@ impl<'hir> ToHirContext<'hir> {
         Self {
             store: HirStore::new(program),
             allocator,
-            current_owner_id: OwnerId::new(0),
+            current_owner_id: HirStore::TEMPLATE_OWNER_ID,
         }
     }
 
@@ -42,6 +42,8 @@ impl<'hir> ToHirContext<'hir> {
         let node_id = self.store.nodes.push(Node::Phantom);
         let prev_owner_id = mem::replace(&mut self.current_owner_id, owner_id);
 
+        self.store.node_to_owner.insert(node_id, owner_id);
+
         let (node, owner) = f(self, node_id, prev_owner_id);
         self.store.nodes[node_id] = node;
         self.store.owners[owner_id] = owner;
@@ -58,17 +60,6 @@ impl<'hir> ToHirContext<'hir> {
     pub fn push_attribute(&mut self, attribute: hir::Attribute<'hir>) -> AttributeId {
         let attribute_id = self.store.attributes.push(attribute);
         return attribute_id;
-    }
-
-    pub fn push_root_owner(
-        &mut self,
-        f: impl FnOnce(&mut ToHirContext<'hir>) -> hir::OwnerNode<'hir>,
-    ) -> OwnerId {
-        let owner_id = self.store.owners.push(OwnerNode::Phantom);
-        let prev_owner_id = mem::replace(&mut self.current_owner_id, owner_id);
-        self.store.owners[owner_id] = f(self);
-        self.current_owner_id = prev_owner_id;
-        return owner_id;
     }
 
     pub fn alloc<T>(&self, value: T) -> &'hir mut T {

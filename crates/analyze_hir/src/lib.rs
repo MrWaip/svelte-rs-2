@@ -63,6 +63,32 @@ impl<'hir> AnalyzeHir<'hir> {
         }
     }
 
+    fn dynamic_markers_pass(&self, analyses: &mut HirAnalyses, store: &hir::HirStore<'hir>) {
+        for owner in store.owners.iter().rev() {
+            let self_node_id = owner.node_id();
+
+            let mut dynamic = false;
+
+            for node_id in owner.iter_nodes_rev() {
+                if analyses.is_dynamic(node_id) {
+                    dynamic = true;
+                    continue;
+                }
+
+                let node = store.get_node(*node_id);
+
+                if node.contains_expression() {
+                    analyses.mark_node_as_dynamic(*node_id);
+                    dynamic = true;
+                }
+            }
+
+            if dynamic {
+                analyses.mark_node_as_dynamic(self_node_id);
+            }
+        }
+    }
+
     fn compute_content_type(
         &self,
         nodes: &Vec<NodeId>,
@@ -84,7 +110,61 @@ impl<'hir> AnalyzeHir<'hir> {
         let mut analyses = HirAnalyses::new(symbols, scopes);
 
         self.content_type_pass(&mut analyses, hir_store);
+        self.dynamic_markers_pass(&mut analyses, hir_store);
 
         return analyses;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ast_to_hir::AstToHir;
+    use parser::Parser;
+
+    use super::*;
+
+    static ALLOCATOR: std::sync::LazyLock<Allocator> =
+        std::sync::LazyLock::new(|| Allocator::default());
+
+    #[test]
+    fn dynamic_nodes_check() {
+        let source = r#"
+<div>
+    {name}
+</div>
+
+<div>
+        <span>some_text</span>
+
+        <div>
+            {name}
+        </div>
+</div>
+
+<span></span>
+"#;
+        let mut parser = Parser::new(source, &ALLOCATOR);
+        let analyze_hir = AnalyzeHir::new(&ALLOCATOR);
+
+        let mut lowerer = AstToHir::new(&ALLOCATOR);
+
+        let ast = parser.parse().unwrap();
+
+        let hir = lowerer.traverse(ast);
+        let analyses = analyze_hir.analyze(&hir.store);
+
+        let template = hir.store.get_nth_owner(0);
+        let first_root_div = hir.store.get_nth_owner(1);
+        let second_root_div = hir.store.get_nth_owner(2);
+        let first_nested_span = hir.store.get_nth_owner(3);
+        let second_nested_div = hir.store.get_nth_owner(4);
+        let last_root_span = hir.store.get_nth_owner(5);
+
+        assert!(analyses.is_dynamic(&template.node_id()));
+        assert!(analyses.is_dynamic(&first_root_div.node_id()));
+        assert!(analyses.is_dynamic(&second_root_div.node_id()));
+        assert!(!analyses.is_dynamic(&first_nested_span.node_id()));
+        assert!(analyses.is_dynamic(&second_nested_div.node_id()));
+        assert!(!analyses.is_dynamic(&last_root_span.node_id()));
     }
 }

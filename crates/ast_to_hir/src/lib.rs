@@ -56,12 +56,12 @@ impl<'hir> AstToHir<'hir> {
     }
 
     fn lower_template(&mut self, ctx: &mut ToHirContext<'hir>, template: ast::Template<'hir>) {
-        ctx.push_root_owner(|ctx| {
+        ctx.push_owner_node(|ctx, node_id, _| {
             let node_ids: Vec<NodeId> = self.lower_nodes(ctx, template.nodes.nodes);
 
-            let template = hir::Template { node_ids };
+            let template = hir::Template { node_ids, node_id };
 
-            return OwnerNode::Template(ctx.alloc(template));
+            return (hir::Node::Phantom, OwnerNode::Template(ctx.alloc(template)));
         });
     }
 
@@ -289,6 +289,7 @@ impl<'hir> AstToHir<'hir> {
 
 #[cfg(test)]
 mod tests {
+    use hir::HirStore;
     use parser::Parser;
 
     use super::*;
@@ -307,7 +308,7 @@ mod tests {
 
         let store = lowerer.traverse(ast).store;
 
-        assert!(store.nodes.len() == 5);
+        assert!(store.nodes.len() == 6);
         assert!(store.owners.len() == 3);
         assert!(store.attributes.len() == 5);
         assert!(store.expressions.len() == 5);
@@ -316,11 +317,12 @@ mod tests {
             unreachable!()
         };
 
-        let hir::Node::Concatenation(concatenation) = store.nodes.first().unwrap() else {
+        let hir::Node::Concatenation(concatenation) = store.nodes.get(NodeId::new(1)).unwrap()
+        else {
             unreachable!();
         };
 
         assert!(template.node_ids.len() == 3);
-        assert!(concatenation.owner_id == hir::OwnerId::new(0));
+        assert!(concatenation.owner_id == HirStore::TEMPLATE_OWNER_ID);
     }
 }

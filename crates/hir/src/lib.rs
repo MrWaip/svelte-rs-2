@@ -1,6 +1,7 @@
 mod attributes;
 mod id;
 mod node;
+mod owner;
 mod store;
 
 use std::cell::RefCell;
@@ -11,58 +12,14 @@ pub use attributes::{
 };
 pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
 pub use node::*;
+pub use owner::*;
 use oxc_ast::ast::Language;
 pub use store::HirStore;
 
 #[derive(Debug)]
 pub struct Template {
     pub node_ids: Vec<NodeId>,
-}
-
-#[derive(Debug)]
-pub enum OwnerNode<'hir> {
-    Element(&'hir Element<'hir>),
-    Template(&'hir Template),
-    IfBlock(&'hir IfBlock),
-    EachBlock,
-    Phantom,
-}
-
-impl<'hir> OwnerNode<'hir> {
-    pub fn is_if_block(&self) -> bool {
-        return matches!(self, OwnerNode::IfBlock(_));
-    }
-
-    pub fn as_element(&self) -> Option<&Element> {
-        match self {
-            OwnerNode::Element(element) => Some(element),
-            _ => None,
-        }
-    }
-
-    pub fn as_template(&self) -> Option<&Template> {
-        match self {
-            OwnerNode::Template(template) => Some(template),
-            _ => None,
-        }
-    }
-
-    pub fn as_if_block(&self) -> Option<&IfBlock> {
-        match self {
-            OwnerNode::IfBlock(if_block) => Some(if_block),
-            _ => None,
-        }
-    }
-
-    pub fn first(&self) -> Option<&NodeId> {
-        return match self {
-            OwnerNode::Element(it) => it.node_ids.first(),
-            OwnerNode::Template(it) => it.node_ids.first(),
-            OwnerNode::IfBlock(it) => it.consequent.first(),
-            OwnerNode::EachBlock => todo!(),
-            OwnerNode::Phantom => todo!(),
-        };
-    }
+    pub node_id: NodeId,
 }
 
 #[derive(Debug)]

@@ -57,3 +57,8 @@ fn single_element() {
 fn generic_root_sequence() {
     asser_compiler("generic_root_sequence");
 }
+
+#[rstest]
+fn elements_childs() {
+    asser_compiler("elements_childs");
+}

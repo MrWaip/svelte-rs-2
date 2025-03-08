@@ -25,7 +25,7 @@ impl<'hir> FragmentContext<'hir> {
 }
 
 pub struct OwnerContext<'hir, 'short> {
-    fragment: &'short mut FragmentContext<'hir>,
+    pub(crate) fragment: &'short mut FragmentContext<'hir>,
     prev: Expression<'hir>,
     // pub(crate) owner_anchor: Option<&'short Expression<'hir>>,
     // pub(crate) self_anchor: Expression<'ast>,
