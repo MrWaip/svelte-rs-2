@@ -1,1 +1,8 @@
-<div title="hockey" visible expression={name} {description}></div>
+<div 
+    title="hockey"
+    visible
+    expression={name} 
+    {description}
+    index="number: {idx}"
+>
+</div>
