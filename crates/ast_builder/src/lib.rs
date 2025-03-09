@@ -512,6 +512,13 @@ impl<'a> Builder<'a> {
         return lit;
     }
 
+    pub fn template_literal2_expr<'short>(
+        &self,
+        parts: impl IntoIterator<Item = TemplateLiteralPart<'a>>,
+    ) -> Expression<'a> {
+        return Expression::TemplateLiteral(self.alloc(self.template_literal2(parts)))
+    }
+
     pub fn arrow(
         &self,
         params: FormalParameters<'a>,
