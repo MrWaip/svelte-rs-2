@@ -35,7 +35,9 @@ impl<'hir> TemplateTransformer<'hir> {
     }
 
     fn transform_template(&mut self, template: &hir::Template) -> Vec<Statement<'hir>> {
-        return self.transform_fragment(&template.node_ids, HirStore::TEMPLATE_OWNER_ID);
+        let content_type = self.analyses.get_common_content_type(&HirStore::TEMPLATE_OWNER_ID);
+
+        return self.transform_fragment(&template.node_ids, HirStore::TEMPLATE_OWNER_ID, content_type);
     }
 
     pub(crate) fn transform_text<'local>(
