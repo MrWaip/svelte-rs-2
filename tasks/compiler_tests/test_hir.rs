@@ -68,3 +68,10 @@ fn elements_childs() {
 fn element_attributes() {
     asser_compiler("element_attributes");
 }
+
+
+
+#[rstest]
+fn single_if_block() {
+    asser_compiler("single_if_block");
+}

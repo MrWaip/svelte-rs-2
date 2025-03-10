@@ -1,3 +1,4 @@
+use analyze_hir::OwnerContentTypeFlags;
 use ast_builder::{BuilderExpression as BExpr, BuilderFunctionArgument as BArg};
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Statement;
@@ -13,8 +14,8 @@ impl<'hir> TemplateTransformer<'hir> {
         &mut self,
         nodes: &Vec<NodeId>,
         owner_id: OwnerId,
+        content_type: OwnerContentTypeFlags
     ) -> Vec<Statement<'hir>> {
-        let content_type = self.analyses.get_common_content_type(&owner_id);
 
         if content_type.is_empty() {
             return Vec::new();
@@ -30,6 +31,10 @@ impl<'hir> TemplateTransformer<'hir> {
 
         if content_type.only_element() && nodes.len() == 1 {
             return self.fragment_element_shortcut(owner_id);
+        }
+
+        if content_type.only_synthetic_node() && nodes.len() == 1 {
+            return self.fragment_synthetic_shortcut(owner_id, nodes);
         }
 
         return self.fragment_common(owner_id, nodes);
@@ -75,6 +80,43 @@ impl<'hir> TemplateTransformer<'hir> {
         );
 
         return call;
+    }
+
+    fn fragment_synthetic_shortcut(
+        &mut self,
+        owner_id: OwnerId,
+        nodes: &Vec<NodeId>,
+    ) -> Vec<Statement<'hir>> {
+        let mut body = Vec::new();
+
+        let identifier = self.analyses.generate_ident("fragment");
+        let anchor = self
+            .b
+            .call_expr("$.first_child", [BArg::Ident(&identifier)]);
+
+        let mut fragment_ctx = FragmentContext::new();
+        let owner_ctx = OwnerContext::new(
+            &mut fragment_ctx,
+            anchor,
+            self.b,
+            owner_id,
+        );
+
+        self.transform_nodes(nodes, owner_ctx);
+
+        body.push(
+            self.b
+                .var(&identifier, BExpr::Call(self.b.call("$.comment", []))),
+        );
+
+        self.build_fragment(fragment_ctx, &mut body);
+
+        body.push(self.b.call_stmt(
+            "$.append",
+            [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
+        ));
+
+        return body;
     }
 
     /// Build a fragment for interpolation or concatenation

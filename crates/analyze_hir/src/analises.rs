@@ -35,7 +35,7 @@ impl HirAnalyses {
         self.content_types.insert(owner_id, content_type);
     }
 
-    fn get_content_type(&self, owner_id: &OwnerId) -> &OwnerContentType {
+    pub fn get_content_type(&self, owner_id: &OwnerId) -> &OwnerContentType {
         return self.content_types.get(owner_id).unwrap();
     }
 

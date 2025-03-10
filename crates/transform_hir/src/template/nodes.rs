@@ -79,7 +79,7 @@ impl<'hir> TemplateTransformer<'hir> {
                 owner_ctx,
                 TransformInterpolationOptions::default(),
             ),
-            hir::Node::IfBlock(_if_block) => todo!(),
+            hir::Node::IfBlock(it) => self.transform_if_block(it, owner_ctx),
             hir::Node::Comment => todo!(),
             hir::Node::EachBlock => todo!(),
             hir::Node::Script => todo!(),

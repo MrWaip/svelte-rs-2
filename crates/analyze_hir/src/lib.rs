@@ -6,7 +6,7 @@ mod indentifier_gen;
 mod visit;
 
 pub use analises::HirAnalyses;
-use bitflags::{OwnerContentType, OwnerContentTypeFlags};
+pub use bitflags::{OwnerContentType, OwnerContentTypeFlags};
 use hir::NodeId;
 use oxc_allocator::Allocator;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};

@@ -30,6 +30,13 @@ impl OwnerContentTypeFlags {
         return *self == OwnerContentTypeFlags::Element;
     }
 
+    pub fn only_synthetic_node(&self) -> bool {
+        match *self {
+            OwnerContentTypeFlags::IfBlock => true,
+            _ => false,
+        }
+    }
+
     pub fn only_text(&self) -> bool {
         return *self == OwnerContentTypeFlags::Text;
     }
@@ -64,5 +71,13 @@ impl OwnerContentType {
             OwnerContentType::Common(flags) => flags.clone(),
             OwnerContentType::IfBlock(_, _) => OwnerContentTypeFlags::empty(),
         };
+    }
+
+    pub fn as_if(&self) -> (OwnerContentTypeFlags, OwnerContentTypeFlags) {
+        let OwnerContentType::IfBlock(consequent, alternate) = self else {
+            unreachable!()
+        };
+
+        return (*consequent, *alternate);
     }
 }

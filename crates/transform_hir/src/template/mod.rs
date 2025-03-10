@@ -6,6 +6,7 @@ mod interpolation;
 mod is_static;
 mod nodes;
 mod template_transformer;
+mod if_block;
 
 use analyze_hir::HirAnalyses;
 use ast_builder::Builder;
