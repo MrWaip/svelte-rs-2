@@ -13,34 +13,37 @@ impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_fragment(
         &mut self,
         nodes: &Vec<NodeId>,
-        owner_id: OwnerId,
-        content_type: OwnerContentTypeFlags
+        self_owner_id: OwnerId,
+        content_type: OwnerContentTypeFlags,
     ) -> Vec<Statement<'hir>> {
-
         if content_type.is_empty() {
             return Vec::new();
         }
 
         if content_type.only_text() {
-            return self.fragment_text_shortcut(owner_id);
+            return self.fragment_text_shortcut(self_owner_id, nodes);
         }
 
         if content_type.any_interpolation_like() {
-            return self.fragment_interpolation_shortcut(owner_id);
+            return self.fragment_interpolation_shortcut(self_owner_id, nodes);
         }
 
         if content_type.only_element() && nodes.len() == 1 {
-            return self.fragment_element_shortcut(owner_id);
+            return self.fragment_element_shortcut(self_owner_id, nodes);
         }
 
         if content_type.only_synthetic_node() && nodes.len() == 1 {
-            return self.fragment_synthetic_shortcut(owner_id, nodes);
+            return self.fragment_synthetic_shortcut(self_owner_id, nodes);
         }
 
-        return self.fragment_common(owner_id, nodes);
+        return self.fragment_common(self_owner_id, nodes);
     }
 
-    fn fragment_common(&mut self, owner_id: OwnerId, nodes: &Vec<NodeId>) -> Vec<Statement<'hir>> {
+    fn fragment_common(
+        &mut self,
+        self_owner_id: OwnerId,
+        nodes: &Vec<NodeId>,
+    ) -> Vec<Statement<'hir>> {
         let mut body = Vec::new();
         let mut context = FragmentContext::new();
 
@@ -48,11 +51,9 @@ impl<'hir> TemplateTransformer<'hir> {
         let anchor = self
             .b
             .call_expr("$.first_child", [BArg::Ident(&identifier)]);
-        let owner_ctx = OwnerContext::new(&mut context, anchor, self.b, owner_id);
+        let owner_ctx = OwnerContext::new(&mut context, anchor, self.b, self_owner_id);
 
-        if self.store.is_first_of(owner_id, |node| node.is_text_like()) {
-            body.push(self.b.call_stmt("$.next", []));
-        }
+        self.handle_first_text_like(self_owner_id, &mut body);
 
         self.transform_nodes(nodes, owner_ctx);
         self.add_template(&mut context, "root", Some(1.0));
@@ -84,7 +85,7 @@ impl<'hir> TemplateTransformer<'hir> {
 
     fn fragment_synthetic_shortcut(
         &mut self,
-        owner_id: OwnerId,
+        self_owner_id: OwnerId,
         nodes: &Vec<NodeId>,
     ) -> Vec<Statement<'hir>> {
         let mut body = Vec::new();
@@ -95,12 +96,7 @@ impl<'hir> TemplateTransformer<'hir> {
             .call_expr("$.first_child", [BArg::Ident(&identifier)]);
 
         let mut fragment_ctx = FragmentContext::new();
-        let owner_ctx = OwnerContext::new(
-            &mut fragment_ctx,
-            anchor,
-            self.b,
-            owner_id,
-        );
+        let owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b, self_owner_id);
 
         self.transform_nodes(nodes, owner_ctx);
 
@@ -122,14 +118,14 @@ impl<'hir> TemplateTransformer<'hir> {
     /// Build a fragment for interpolation or concatenation
     ///
     /// !svelte specific optimization
-    fn fragment_interpolation_shortcut(&mut self, owner_id: OwnerId) -> Vec<Statement<'hir>> {
-        let node = self.store.first_of(owner_id).unwrap();
+    fn fragment_interpolation_shortcut(&mut self, self_owner_id: OwnerId, nodes: &Vec<NodeId>) -> Vec<Statement<'hir>> {
+        let node = self.store.get_node(nodes[0]);
         let identifier = self.analyses.generate_ident("text");
         let anchor = self.b.rid_expr(&identifier);
-        let mut body: Vec<Statement<'hir>> = vec![self.b.call_stmt("$.next", [])];
+        let mut body: Vec<Statement<'hir>> = vec![];
 
         let mut fragment_ctx = FragmentContext::new();
-        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b, owner_id);
+        let mut owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b, self_owner_id);
 
         match node {
             hir::Node::Interpolation(interpolation) => {
@@ -150,6 +146,7 @@ impl<'hir> TemplateTransformer<'hir> {
             _ => unreachable!(),
         };
 
+        self.handle_first_text_like(self_owner_id, &mut body);
         let call = self.b.call("$.text", []);
         body.push(self.b.var(&identifier, BExpr::Call(call)));
         self.build_fragment(fragment_ctx, &mut body);
@@ -165,14 +162,18 @@ impl<'hir> TemplateTransformer<'hir> {
     /// Builds a fragment that contains only one text node
     ///
     /// !svelte specific optimization
-    fn fragment_text_shortcut(&mut self, owner_id: OwnerId) -> Vec<Statement<'hir>> {
+    fn fragment_text_shortcut(
+        &mut self,
+        self_owner_id: OwnerId,
+        nodes: &Vec<NodeId>,
+    ) -> Vec<Statement<'hir>> {
         let identifier = self.analyses.generate_ident("text");
         let mut body = Vec::new();
-        let text = self.store.first_of(owner_id).unwrap().as_text().unwrap();
 
+        let text = self.store.get_node(nodes[0]).as_text().unwrap();
         let call = self.b.call("$.text", [BArg::Str(text.value.to_string())]);
 
-        body.push(self.b.call_stmt("$.next", []));
+        self.handle_first_text_like(self_owner_id, &mut body);
         body.push(self.b.var(&identifier, BExpr::Call(call)));
         body.push(self.b.call_stmt(
             "$.append",
@@ -185,9 +186,13 @@ impl<'hir> TemplateTransformer<'hir> {
     /// Builds a fragment that contains only one text node
     ///
     /// !svelte specific optimization
-    fn fragment_element_shortcut(&mut self, owner_id: OwnerId) -> Vec<Statement<'hir>> {
+    fn fragment_element_shortcut(
+        &mut self,
+        self_owner_id: OwnerId,
+        nodes: &Vec<NodeId>,
+    ) -> Vec<Statement<'hir>> {
         let mut body = Vec::new();
-        let element = self.store.first_of(owner_id).unwrap().as_element().unwrap();
+        let element = self.store.get_node(nodes[0]).as_element().unwrap();
         let identifier = self.analyses.generate_ident(element.name);
 
         let mut fragment_ctx = FragmentContext::new();
@@ -195,7 +200,7 @@ impl<'hir> TemplateTransformer<'hir> {
             &mut fragment_ctx,
             self.b.rid_expr(&identifier),
             self.b,
-            owner_id,
+            self_owner_id,
         );
 
         self.transform_element(&element, &mut owner_ctx);
@@ -248,5 +253,17 @@ impl<'hir> TemplateTransformer<'hir> {
         let var = self.b.var(name, BExpr::Call(call));
 
         self.hoisted.push(var);
+    }
+
+    fn handle_first_text_like(&mut self, self_owner_id: OwnerId, body: &mut Vec<Statement<'hir>>) {
+        let owner = self.store.get_owner(self_owner_id);
+
+        if self
+            .store
+            .is_first_of(self_owner_id, |node| node.is_text_like())
+            && owner.is_require_next()
+        {
+            body.push(self.b.call_stmt("$.next", []))
+        }
     }
 }

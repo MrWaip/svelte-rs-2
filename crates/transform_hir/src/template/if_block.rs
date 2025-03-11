@@ -19,12 +19,10 @@ impl<'hir> TemplateTransformer<'hir> {
         let mut test = self.store.get_expression_mut(node.test);
         let test = self.b.move_expr(&mut test);
 
-        let consequent_fragment = self.transform_fragment(&node.consequent, self_owner_id, content_type.0);
+        let consequent_fragment =
+            self.transform_fragment(&node.consequent, self_owner_id, content_type.0);
         let consequent_id = self.analyses.generate_ident("consequent");
 
-
-        dbg!(&node.consequent);
-        
         let consequent = self.b.var(
             &consequent_id,
             BuilderExpression::Arrow(
@@ -33,31 +31,32 @@ impl<'hir> TemplateTransformer<'hir> {
             ),
         );
 
-        dbg!(&consequent);
-
         statements.push(consequent);
 
-        // let alternate_stmt = if let Some(alt) = &mut if_block.alternate {
-        //     let alternate_fragment = self.transform_fragment(alt);
-        //     let alternate_id = ctx.generate("alternate");
+        let alternate_stmt = if let Some(alt) = &node.alternate {
+            let alternate_fragment = self.transform_fragment(alt, self_owner_id, content_type.1);
+            let alternate_id = self.analyses.generate_ident("alternate");
 
-        //     let alternate = self.b.var(
-        //         &alternate_id,
-        //         BExpr::Arrow(
-        //             self.b
-        //                 .arrow(self.b.params(["$$anchor"]), alternate_fragment.body),
-        //         ),
-        //     );
+            let alternate = self.b.var(
+                &alternate_id,
+                BuilderExpression::Arrow(
+                    self.b
+                        .arrow(self.b.params(["$$anchor"]), alternate_fragment),
+                ),
+            );
 
-        //     statements.push(alternate);
+            statements.push(alternate);
 
-        //     Some(
-        //         self.b
-        //             .call_stmt("$$render", [BArg::Ident(&alternate_id), BArg::Bool(false)]),
-        //     )
-        // } else {
-        //     None
-        // };
+            Some(self.b.call_stmt(
+                "$$render",
+                [
+                    BuilderFunctionArgument::Ident(&alternate_id),
+                    BuilderFunctionArgument::Bool(false),
+                ],
+            ))
+        } else {
+            None
+        };
 
         let mut args = vec![BuilderFunctionArgument::Expr(ctx.anchor())];
 
@@ -65,7 +64,7 @@ impl<'hir> TemplateTransformer<'hir> {
             test,
             self.b
                 .call_stmt("$$render", [BuilderFunctionArgument::Ident(&consequent_id)]),
-            None,
+            alternate_stmt,
         );
 
         let render = self.b.arrow(self.b.params(["$$render"]), [if_stmt]);

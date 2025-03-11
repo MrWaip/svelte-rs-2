@@ -4,3 +4,5 @@ some text
 <input />
 text + {name}
 <div></div>
+{#if true}
+{/if}

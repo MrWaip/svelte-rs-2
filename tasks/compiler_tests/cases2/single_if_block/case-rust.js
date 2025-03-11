@@ -4,7 +4,6 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			$.next();
 			var text = $.text("some text");
 			$.append($$anchor, text);
 		};
