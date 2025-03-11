@@ -75,3 +75,11 @@ fn element_attributes() {
 fn single_if_block() {
     asser_compiler("single_if_block");
 }
+
+
+
+#[rstest]
+fn single_if_else_block() {
+    asser_compiler("single_if_else_block");
+}
+

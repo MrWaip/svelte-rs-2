@@ -71,4 +71,18 @@ impl<'hir> OwnerNode<'hir> {
             _ => todo!(),
         };
     }
+
+    /// if a component/snippet/each block starts with text,
+    /// we need to add an anchor comment so that its text node doesn't get fused with its surroundings
+    pub fn is_require_next(&self) -> bool {
+        // (parent.type === 'Fragment' ||
+        // 		parent.type === 'SnippetBlock' ||
+        // 		parent.type === 'EachBlock' ||
+        // 		parent.type === 'SvelteComponent' ||
+        // 		parent.type === 'SvelteBoundary' ||
+        // 		parent.type === 'Component' ||
+        // 		parent.type === 'SvelteSelf') &&
+
+        return matches!(self, OwnerNode::EachBlock | OwnerNode::Template(_));
+    }
 }
