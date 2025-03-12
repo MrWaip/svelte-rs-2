@@ -14,6 +14,8 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
+        let is_dynamic = self.analyses.is_dynamic(&element.node_id);
+
         let self_owner_id = self.store.node_to_owner(&element.node_id);
         let content_type = self.analyses.get_common_content_type(&self_owner_id);
         ctx.push_template(Cow::Owned(format!("<{}", &element.name)));
@@ -47,6 +49,14 @@ impl<'hir> TemplateTransformer<'hir> {
         let owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b, self_owner_id);
 
         self.transform_nodes(&element.node_ids, owner_ctx);
+
+        
+        // ctx.push_init(self.b.call_stmt(
+        //     "$.reset",
+        //     [BuilderFunctionArgument::Expr(
+        //         self.b.clone_expr(&ctx.anchor()),
+        //     )],
+        // ));
     }
 
     fn element_text_shortcut<'short>(

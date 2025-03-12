@@ -34,15 +34,22 @@ impl<'hir> TemplateTransformer<'hir> {
         statements.push(consequent);
 
         let alternate_stmt = if let Some(alt) = &node.alternate {
-            let alternate_fragment = self.transform_fragment(alt, self_owner_id, content_type.1);
             let alternate_id = self.analyses.generate_ident("alternate");
+            let alternate_fragment = self.transform_fragment(alt, self_owner_id, content_type.1);
+
+            let mut args = vec!["$$anchor"];
+
+            if alt.len() == 1
+                && self
+                    .store
+                    .lookup_node(alt[0], |node| node.is_elseif_block())
+            {
+                args.push("$$elseif")
+            }
 
             let alternate = self.b.var(
                 &alternate_id,
-                BuilderExpression::Arrow(
-                    self.b
-                        .arrow(self.b.params(["$$anchor"]), alternate_fragment),
-                ),
+                BuilderExpression::Arrow(self.b.arrow(self.b.params(args), alternate_fragment)),
             );
 
             statements.push(alternate);
@@ -58,7 +65,13 @@ impl<'hir> TemplateTransformer<'hir> {
             None
         };
 
-        let mut args = vec![BuilderFunctionArgument::Expr(ctx.anchor())];
+        let mut args = vec![];
+
+        if node.is_elseif {
+            args.push(BuilderFunctionArgument::Ident("$$anchor"));
+        } else {
+            args.push(BuilderFunctionArgument::Expr(ctx.anchor()));
+        }
 
         let if_stmt = self.b.if_stmt(
             test,
@@ -72,7 +85,7 @@ impl<'hir> TemplateTransformer<'hir> {
         args.push(BuilderFunctionArgument::Arrow(render));
 
         if node.is_elseif {
-            args.push(BuilderFunctionArgument::Bool(true));
+            args.push(BuilderFunctionArgument::Ident("$$elseif"));
         }
 
         let if_call = self.b.call_stmt("$.if", args);
