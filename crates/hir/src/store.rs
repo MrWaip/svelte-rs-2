@@ -81,12 +81,18 @@ impl<'hir> HirStore<'hir> {
         }
     }
 
+    pub fn lookup_node(&self, node_id: NodeId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {
+        let node = self.get_node(node_id);
+
+        return f(node);
+    }
+
     pub fn node_to_owner(&self, node_id: &NodeId) -> OwnerId {
         *self.node_to_owner.get(node_id).unwrap()
     }
 
     pub fn owner_to_node(&self, owner_id: OwnerId) -> NodeId {
-        return  self.owners[owner_id].node_id();
+        return self.owners[owner_id].node_id();
     }
 
     pub fn is_first_of(&self, owner_id: OwnerId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {

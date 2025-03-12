@@ -14,5 +14,12 @@
     <div>more nested</div>
 </div>
 
+<div>
+
+{#if 1 !== 1}
+    <div></div>
+{/if}
+
+</div>
 
 <div></div>

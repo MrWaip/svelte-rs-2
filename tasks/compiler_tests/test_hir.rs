@@ -21,7 +21,10 @@ fn asser_compiler(case: &str) {
 
     let expected = read_to_string(path.join("case-svelte.js")).unwrap();
 
-    let mut file = File::create(path.join("case-rust.js")).unwrap();
+    let output_path = path.join("case-rust.js");
+    let mut file = File::create(&output_path).unwrap();
+
+    println!("Output path: {}", &output_path.into_os_string().into_string().unwrap());
 
     file.write_all(actual.js.as_bytes()).unwrap();
 
@@ -63,23 +66,17 @@ fn elements_childs() {
     asser_compiler("elements_childs");
 }
 
-
 #[rstest]
 fn element_attributes() {
     asser_compiler("element_attributes");
 }
-
-
 
 #[rstest]
 fn single_if_block() {
     asser_compiler("single_if_block");
 }
 
-
-
 #[rstest]
 fn single_if_else_block() {
     asser_compiler("single_if_else_block");
 }
-

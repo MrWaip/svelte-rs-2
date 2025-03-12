@@ -5,4 +5,6 @@ some text
 text + {name}
 <div></div>
 {#if true}
+{:else if false}
+{:else}
 {/if}

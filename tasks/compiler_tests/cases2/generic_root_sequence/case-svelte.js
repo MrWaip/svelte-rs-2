@@ -10,8 +10,19 @@ export default function App($$anchor) {
 	var node = $.sibling(text_1, 3);
 	{
 		var consequent = ($$anchor) => {};
+		var alternate = ($$anchor, $$elseif) => {
+			{
+				var consequent_1 = ($$anchor) => {};
+				var alternate_1 = ($$anchor) => {};
+				$.if($$anchor, ($$render) => {
+					if (false) $$render(consequent_1);
+else $$render(alternate_1, false);
+				}, $$elseif);
+			}
+		};
 		$.if(node, ($$render) => {
 			if (true) $$render(consequent);
+else $$render(alternate, false);
 		});
 	}
 	$.append($$anchor, fragment);

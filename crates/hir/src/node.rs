@@ -1,4 +1,4 @@
-use crate::{Concatenation, Element, IfBlock, Interpolation, Text};
+use crate::{Concatenation, Element, IfBlock, Interpolation, OwnerNode, Text};
 
 #[derive(Debug)]
 pub enum Node<'hir> {
@@ -45,6 +45,10 @@ impl<'hir> Node<'hir> {
             self,
             Node::Text(_) | Node::Interpolation(_) | Node::Concatenation(_)
         )
+    }
+
+    pub fn is_elseif_block(&self) -> bool {
+        return matches!(self, Node::IfBlock(it) if it.is_elseif);
     }
 
     pub fn contains_expression(&self) -> bool {

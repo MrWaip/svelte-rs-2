@@ -7,28 +7,25 @@ export default function App($$anchor) {
 			var text = $.text("if text");
 			$.append($$anchor, text);
 		};
-		var alternate_1 = ($$anchor) => {
-			var fragment_1 = $.comment();
-			var node_1 = $.first_child(fragment_1);
+		var alternate = ($$anchor, $$elseif) => {
 			{
 				var consequent_1 = ($$anchor) => {
 					var text_1 = $.text("else if text");
 					$.append($$anchor, text_1);
 				};
-				var alternate = ($$anchor) => {
+				var alternate_1 = ($$anchor) => {
 					var text_2 = $.text("else text");
 					$.append($$anchor, text_2);
 				};
-				$.if(node_1, ($$render) => {
+				$.if($$anchor, ($$render) => {
 					if (false) $$render(consequent_1);
-else $$render(alternate, false);
-				}, true);
+else $$render(alternate_1, false);
+				}, $$elseif);
 			}
-			$.append($$anchor, fragment_1);
 		};
 		$.if(node, ($$render) => {
 			if (visible) $$render(consequent);
-else $$render(alternate_1, false);
+else $$render(alternate, false);
 		});
 	}
 	$.append($$anchor, fragment);
