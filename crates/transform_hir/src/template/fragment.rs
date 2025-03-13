@@ -97,6 +97,9 @@ impl<'hir> TemplateTransformer<'hir> {
         self_owner_id: OwnerId,
         nodes: &Vec<NodeId>,
     ) -> Vec<Statement<'hir>> {
+        // to match numbers of ident with svelte
+        self.analyses.generate_ident("root");
+
         let mut body = Vec::new();
         let mut fragment_ctx = FragmentContext::new();
         let node = self.store.get_node(nodes[0]);
