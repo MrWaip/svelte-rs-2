@@ -4,7 +4,8 @@ use ast_builder::BuilderFunctionArgument;
 use hir::OwnerId;
 
 use super::{
-    context::OwnerContext, interpolation::TransformInterpolationOptions,
+    context::{FragmentContext, OwnerContext},
+    interpolation::TransformInterpolationOptions,
     template_transformer::TemplateTransformer,
 };
 
@@ -46,9 +47,20 @@ impl<'hir> TemplateTransformer<'hir> {
             .b
             .call_expr("$.child", [BuilderFunctionArgument::Expr(ctx.anchor())]);
 
-        let owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b, self_owner_id);
+        let mut fragment_ctx = FragmentContext::new();
+        let owner_ctx = OwnerContext::new(&mut fragment_ctx, anchor, self.b, self_owner_id);
 
         self.transform_nodes(&element.node_ids, owner_ctx);
+
+        if is_dynamic {
+            ctx.append_template(&mut fragment_ctx.template);
+            ctx.append_before_init(&mut fragment_ctx.before_init);
+            ctx.append_init(&mut fragment_ctx.init);
+            ctx.append_update(&mut fragment_ctx.update);
+            ctx.append_after_update(&mut fragment_ctx.after_update);
+        } else {
+            ctx.append_template(&mut fragment_ctx.template);
+        }
 
         if is_dynamic && !content_type.only_text() {
             ctx.push_init(self.b.call_stmt(
