@@ -1,4 +1,3 @@
-use std::{iter::Chain, slice::Iter};
 
 use crate::{Element, HirStore, IfBlock, NodeId, Template};
 
