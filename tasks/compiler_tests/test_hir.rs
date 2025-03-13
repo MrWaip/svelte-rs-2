@@ -24,7 +24,10 @@ fn asser_compiler(case: &str) {
     let output_path = path.join("case-rust.js");
     let mut file = File::create(&output_path).unwrap();
 
-    println!("Output path: {}", &output_path.into_os_string().into_string().unwrap());
+    println!(
+        "Output path: {}",
+        &output_path.into_os_string().into_string().unwrap()
+    );
 
     file.write_all(actual.js.as_bytes()).unwrap();
 
@@ -81,8 +84,17 @@ fn single_if_else_block() {
     asser_compiler("single_if_else_block");
 }
 
-
 #[rstest]
 fn utf8() {
     asser_compiler("utf8");
+}
+
+#[rstest]
+fn nested_elements() {
+    asser_compiler("nested_elements");
+}
+
+#[rstest]
+fn nested_resets() {
+    asser_compiler("nested_resets");
 }
