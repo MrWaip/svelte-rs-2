@@ -49,10 +49,10 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
             prev: anchor, // owner_anchor: parent_node_anchor,
             sibling_offset: 0,
             b: builder,
-            owner_id
+            owner_id,
         };
     }
-    
+
     pub fn owner_id(&self) -> OwnerId {
         return self.owner_id;
     }
@@ -102,6 +102,26 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
             self.push_init(self.b.var(name, BExpr::Expr(expression)));
             self.prev = id;
         };
+    }
+
+    pub fn append_template(&mut self, value: &mut Vec<Cow<'hir, str>>) {
+        self.fragment.template.append(value);
+    }
+
+    pub fn append_init(&mut self, value: &mut Vec<Statement<'hir>>) {
+        self.fragment.init.append(value);
+    }
+
+    pub fn append_update(&mut self, value: &mut Vec<Statement<'hir>>) {
+        self.fragment.update.append(value);
+    }
+
+    pub fn append_after_update(&mut self, value: &mut Vec<Statement<'hir>>) {
+        self.fragment.after_update.append(value);
+    }
+
+    pub fn append_before_init(&mut self, value: &mut Vec<Statement<'hir>>) {
+        self.fragment.before_init.append(value);
     }
 
     pub fn next_sibling(&mut self) {

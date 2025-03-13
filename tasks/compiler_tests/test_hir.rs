@@ -80,3 +80,9 @@ fn single_if_block() {
 fn single_if_else_block() {
     asser_compiler("single_if_else_block");
 }
+
+
+#[rstest]
+fn utf8() {
+    asser_compiler("utf8");
+}
