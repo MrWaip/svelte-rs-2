@@ -14,8 +14,6 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        let is_dynamic = self.analyses.is_dynamic(&element.node_id);
-
         let self_owner_id = self.store.node_to_owner(&element.node_id);
         let content_type = self.analyses.get_common_content_type(&self_owner_id);
         ctx.push_template(Cow::Owned(format!("<{}", &element.name)));
@@ -42,6 +40,8 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx: &mut OwnerContext<'hir, 'short>,
         self_owner_id: OwnerId,
     ) {
+        let is_dynamic = self.analyses.is_dynamic(&element.node_id);
+        let content_type = self.analyses.get_common_content_type(&self_owner_id);
         let anchor = self
             .b
             .call_expr("$.child", [BuilderFunctionArgument::Expr(ctx.anchor())]);
@@ -50,13 +50,14 @@ impl<'hir> TemplateTransformer<'hir> {
 
         self.transform_nodes(&element.node_ids, owner_ctx);
 
-        
-        // ctx.push_init(self.b.call_stmt(
-        //     "$.reset",
-        //     [BuilderFunctionArgument::Expr(
-        //         self.b.clone_expr(&ctx.anchor()),
-        //     )],
-        // ));
+        if is_dynamic && !content_type.only_text() {
+            ctx.push_init(self.b.call_stmt(
+                "$.reset",
+                [BuilderFunctionArgument::Expr(
+                    self.b.clone_expr(&ctx.anchor()),
+                )],
+            ));
+        }
     }
 
     fn element_text_shortcut<'short>(

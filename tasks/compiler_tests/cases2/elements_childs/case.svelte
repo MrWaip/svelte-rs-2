@@ -18,6 +18,10 @@
 
 {#if 1 !== 1}
     <div></div>
+{:else if 2 === 2}
+    <div></div>
+{:else}
+    <div></div>
 {/if}
 
 </div>
