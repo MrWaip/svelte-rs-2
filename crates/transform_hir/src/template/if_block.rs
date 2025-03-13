@@ -1,5 +1,4 @@
-use ast_builder::{BuilderExpression, BuilderFunctionArgument, TemplateLiteralPart};
-use hir::AttributeId;
+use ast_builder::{BuilderExpression, BuilderFunctionArgument};
 
 use super::{context::OwnerContext, template_transformer::TemplateTransformer};
 
