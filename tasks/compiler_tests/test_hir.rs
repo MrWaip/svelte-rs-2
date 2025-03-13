@@ -98,3 +98,9 @@ fn nested_elements() {
 fn nested_resets() {
     asser_compiler("nested_resets");
 }
+
+
+#[rstest]
+fn smoke() {
+    asser_compiler("smoke");
+}
