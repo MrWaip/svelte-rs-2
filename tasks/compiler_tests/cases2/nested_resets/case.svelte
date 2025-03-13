@@ -1,8 +1,8 @@
 
-<div>
-  <div>
-    <div>{name}</div>
-  </div>
+<section>
+  <span>
+    <span>{name}</span>
+  </span>
 
   <div>
     <div>
@@ -10,9 +10,9 @@
     </div>
   </div>
 
-  <div>
-    <div>
-      <div {name}></div>
-    </div>
-  </div>
-</div>
+  <p>
+    <b>
+      <i {name}></i>
+    </b>
+  </p>
+</section>

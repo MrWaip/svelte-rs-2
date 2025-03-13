@@ -1,12 +1,17 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div><div><div></div></div> <div><div><div>text</div></div></div> <div><div><div></div></div></div></div>`);
+var root = $.template(`<section><span><span></span></span> <div><div><div>text</div></div></div> <p><b><i></i></b></p></section>`);
 export default function App($$anchor) {
-	var div = root();
-	var div_1 = $.child(div);
-	var div_2 = $.child(div_1);
-	div_2.textContent = name;
-	$.reset(div_1);
-	$.next(4);
-	$.reset(div);
-	$.append($$anchor, div);
+	var section = root();
+	var span = $.child(section);
+	var span_1 = $.child(span);
+	span_1.textContent = name;
+	$.reset(span);
+	var p = $.sibling(span, 4);
+	var b = $.child(p);
+	var i = $.child(b);
+	$.set_attribute(i, "name", name);
+	$.reset(b);
+	$.reset(p);
+	$.reset(section);
+	$.append($$anchor, section);
 }

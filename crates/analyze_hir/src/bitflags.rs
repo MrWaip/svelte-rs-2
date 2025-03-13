@@ -41,6 +41,14 @@ impl OwnerContentTypeFlags {
         return *self == OwnerContentTypeFlags::Text;
     }
 
+    pub fn none_text(&self) -> bool {
+        if self.is_empty() {
+            return false;
+        }
+
+        return !self.only_text();
+    }
+
     pub fn any_text_like(&self) -> bool {
         let allowed = OwnerContentTypeFlags::Text
             | OwnerContentTypeFlags::Interpolation
