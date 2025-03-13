@@ -21,6 +21,16 @@ impl<'hir> Attribute<'hir> {
             Attribute::ConcatenationAttribute(it) => it.name,
         }
     }
+
+    pub fn contains_expression(&self) -> bool {
+        return matches!(
+            self,
+            Self::BindDirective(_)
+                | Self::ClassDirective(_)
+                | Self::ConcatenationAttribute(_)
+                | Self::ExpressionAttribute(_)
+        );
+    }
 }
 
 #[derive(Debug)]

@@ -62,7 +62,7 @@ impl<'hir> TemplateTransformer<'hir> {
             ctx.append_template(&mut fragment_ctx.template);
         }
 
-        if is_dynamic && !content_type.only_text() {
+        if is_dynamic && content_type.none_text() {
             ctx.push_init(self.b.call_stmt(
                 "$.reset",
                 [BuilderFunctionArgument::Expr(
