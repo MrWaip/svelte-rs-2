@@ -1,4 +1,5 @@
 mod attributes;
+mod element;
 mod id;
 mod node;
 mod owner;
@@ -10,6 +11,7 @@ pub use attributes::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatenationAttribute,
     ConcatenationAttributePart, ExpressionAttribute, StringAttribute,
 };
+pub use element::*;
 pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
 pub use node::*;
 pub use owner::*;
@@ -47,16 +49,6 @@ pub struct Concatenation<'hir> {
 pub enum ConcatenationPart<'hir> {
     Text(&'hir str),
     Expression(ExpressionId),
-}
-
-#[derive(Debug)]
-pub struct Element<'hir> {
-    pub node_id: NodeId,
-    pub owner_id: OwnerId,
-    pub name: &'hir str,
-    pub attributes: Vec<AttributeId>,
-    pub node_ids: Vec<NodeId>,
-    pub self_closing: bool,
 }
 
 #[derive(Debug)]

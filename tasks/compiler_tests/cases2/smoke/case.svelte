@@ -5,6 +5,8 @@
     some long text
 </h1>
 
+<noscript> any content </noscript>
+
 {#if !loading}
     <div>
         {#if featureA}
