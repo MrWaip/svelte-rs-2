@@ -112,13 +112,16 @@ impl<'hir> AstToHir<'hir> {
 
     fn lower_element(&self, element: ast::Element<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
         return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
+            let name = ctx.alloc(element.name);
+
             let hir_element = hir::Element {
                 node_id: self_node_id,
                 owner_id,
-                name: ctx.alloc(element.name),
+                name,
                 node_ids: self.lower_nodes(ctx, element.nodes),
                 attributes: self.lower_attributes(ctx, element.attributes),
                 self_closing: element.self_closing,
+                kind: hir::ElementKind::from_str(&name)
             };
 
             let hir_element = ctx.alloc(hir_element);

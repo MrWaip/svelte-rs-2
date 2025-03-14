@@ -4,7 +4,7 @@ var root_4 = $.template(`<div><p>Lorem</p></div>`);
 var root_5 = $.template(`<h2>Old UI</h2>`);
 var root_1 = $.template(`<div><!></div>`);
 var root_6 = $.template(`<div></div>`);
-var root = $.template(`<h1><span></span> <button>+</button> some long text</h1> <!>`, 1);
+var root = $.template(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
 	var h1 = $.first_child(fragment);
@@ -12,7 +12,7 @@ export default function App($$anchor) {
 	span.textContent = `Entities ${logged_in ?? ""}`;
 	$.next(3);
 	$.reset(h1);
-	var node = $.sibling(h1, 2);
+	var node = $.sibling(h1, 4);
 	{
 		var consequent_2 = ($$anchor) => {
 			var div = root_1();
