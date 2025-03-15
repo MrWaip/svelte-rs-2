@@ -2,7 +2,7 @@ mod compress_nodes;
 pub mod context;
 mod trim_nodes;
 
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::HashSet};
 
 use hir::{NodeId, OwnerNode};
 use oxc_allocator::Allocator;
@@ -114,15 +114,21 @@ impl<'hir> AstToHir<'hir> {
         return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let name = ctx.alloc(element.name);
 
-            let hir_element = hir::Element {
+            let mut hir_element = hir::Element {
                 node_id: self_node_id,
                 owner_id,
                 name,
                 node_ids: self.lower_nodes(ctx, element.nodes),
-                attributes: self.lower_attributes(ctx, element.attributes),
+                attributes: vec![],
+                attribute_set: HashSet::new(),
+                directives: vec![],
+                class_directives: vec![],
+                style_directives: vec![],
                 self_closing: element.self_closing,
-                kind: hir::ElementKind::from_str(&name)
+                kind: hir::ElementKind::from_str(&name),
             };
+
+            self.lower_attributes(ctx, element.attributes, &mut hir_element);
 
             let hir_element = ctx.alloc(hir_element);
 
@@ -137,26 +143,49 @@ impl<'hir> AstToHir<'hir> {
         &self,
         ctx: &mut ToHirContext<'hir>,
         attributes: Vec<ast::Attribute<'hir>>,
-    ) -> Vec<hir::AttributeId> {
-        attributes
-            .into_iter()
-            .map(|attr| self.lower_attribute(ctx, attr))
-            .collect()
+        hir_element: &mut hir::Element<'hir>,
+    ) {
+        for attribute in attributes {
+            self.lower_attribute(ctx, attribute, hir_element);
+        }
     }
 
     fn lower_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attribute: ast::Attribute<'hir>,
-    ) -> hir::AttributeId {
-        return match attribute {
-            ast::Attribute::ExpressionAttribute(attr) => self.lower_expression_attribute(ctx, attr),
-            ast::Attribute::ClassDirective(attr) => self.lower_class_directive(ctx, attr),
-            ast::Attribute::BindDirective(attr) => self.lower_bind_directive(ctx, attr),
-            ast::Attribute::BooleanAttribute(attr) => self.lower_boolean_attribute(ctx, attr),
-            ast::Attribute::StringAttribute(attr) => self.lower_string_attribute(ctx, attr),
+        hir_element: &mut hir::Element<'hir>,
+    ) {
+        match attribute {
             ast::Attribute::ConcatenationAttribute(attr) => {
-                self.lower_concatenation_attribute(ctx, attr)
+                hir_element
+                    .attributes
+                    .push(self.lower_concatenation_attribute(ctx, attr));
+            }
+            ast::Attribute::ExpressionAttribute(attr) => {
+                hir_element
+                    .attributes
+                    .push(self.lower_expression_attribute(ctx, attr));
+            }
+            ast::Attribute::ClassDirective(attr) => {
+                hir_element
+                    .class_directives
+                    .push(self.lower_class_directive(ctx, attr));
+            }
+            ast::Attribute::BindDirective(attr) => {
+                hir_element
+                    .directives
+                    .push(self.lower_bind_directive(ctx, attr));
+            }
+            ast::Attribute::BooleanAttribute(attr) => {
+                hir_element
+                    .attributes
+                    .push(self.lower_boolean_attribute(ctx, attr));
+            }
+            ast::Attribute::StringAttribute(attr) => {
+                hir_element
+                    .attributes
+                    .push(self.lower_string_attribute(ctx, attr));
             }
         };
     }
@@ -165,23 +194,21 @@ impl<'hir> AstToHir<'hir> {
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ClassDirective<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::ClassDirective<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
 
-        let attribute = hir::ClassDirective {
+        return hir::ClassDirective {
             name: attr.name,
             shorthand: attr.shorthand,
             expression_id,
         };
-
-        return ctx.push_attribute(hir::Attribute::ClassDirective(ctx.alloc(attribute)));
     }
 
     fn lower_bind_directive(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BindDirective<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::Directive<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
         let attribute = hir::BindDirective {
             expression_id,
@@ -189,24 +216,24 @@ impl<'hir> AstToHir<'hir> {
             shorthand: attr.shorthand,
         };
 
-        return ctx.push_attribute(hir::Attribute::BindDirective(ctx.alloc(attribute)));
+        return hir::Directive::Bind(ctx.alloc(attribute));
     }
 
     fn lower_boolean_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BooleanAttribute<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::Attribute<'hir> {
         let attribute = hir::BooleanAttribute { name: attr.name };
 
-        return ctx.push_attribute(hir::Attribute::BooleanAttribute(ctx.alloc(attribute)));
+        return hir::Attribute::BooleanAttribute(ctx.alloc(attribute));
     }
 
     fn lower_concatenation_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ConcatenationAttribute<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::Attribute<'hir> {
         let parts: Vec<hir::ConcatenationAttributePart<'hir>> = attr
             .parts
             .into_iter()
@@ -227,14 +254,14 @@ impl<'hir> AstToHir<'hir> {
             parts,
         };
 
-        return ctx.push_attribute(hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute)));
+        return hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute));
     }
 
     fn lower_expression_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ExpressionAttribute<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::Attribute<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
 
         let attribute = hir::ExpressionAttribute {
@@ -243,20 +270,20 @@ impl<'hir> AstToHir<'hir> {
             expression_id,
         };
 
-        return ctx.push_attribute(hir::Attribute::ExpressionAttribute(ctx.alloc(attribute)));
+        return hir::Attribute::ExpressionAttribute(ctx.alloc(attribute));
     }
 
     fn lower_string_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::StringAttribute<'hir>,
-    ) -> hir::AttributeId {
+    ) -> hir::Attribute<'hir> {
         let attribute = hir::StringAttribute {
             name: attr.name,
             value: attr.value,
         };
 
-        return ctx.push_attribute(hir::Attribute::StringAttribute(ctx.alloc(attribute)));
+        return hir::Attribute::StringAttribute(ctx.alloc(attribute));
     }
 
     fn lower_interpolation(

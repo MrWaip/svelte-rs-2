@@ -1,17 +1,14 @@
 use ast_builder::{BuilderFunctionArgument, TemplateLiteralPart};
-use hir::AttributeId;
 
 use super::{context::OwnerContext, template_transformer::TemplateTransformer};
 
 impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_attributes<'short>(
         &mut self,
-        attributes: &Vec<AttributeId>,
+        attributes: &Vec<hir::Attribute<'hir>>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        for attribute_id in attributes.iter() {
-            let attribute = self.store.get_attribute(*attribute_id);
-
+        for attribute in attributes.iter() {
             match attribute {
                 hir::Attribute::StringAttribute(it) => self.transform_string_attribute(it, ctx),
                 hir::Attribute::BooleanAttribute(it) => self.transform_boolean_attribute(it, ctx),
@@ -21,8 +18,6 @@ impl<'hir> TemplateTransformer<'hir> {
                 hir::Attribute::ConcatenationAttribute(it) => {
                     self.transform_concatenation_attribute(it, ctx)
                 }
-                hir::Attribute::ClassDirective(it) => self.transform_class_directive(it, ctx),
-                hir::Attribute::BindDirective(it) => self.transform_bind_directive(it, ctx),
             }
         }
     }

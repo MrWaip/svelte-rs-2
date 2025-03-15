@@ -15,12 +15,19 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-
         if element.is_noscript() {
             ctx.push_template("<noscript></noscript>".into());
             return;
         }
-        
+
+        if element.is_video() || element.is_custom_element() {
+            todo!()
+        }
+
+        if element.is_script() {
+            todo!();
+        }
+
         let self_owner_id = self.store.node_to_owner(&element.node_id);
         let content_type = self.analyses.get_common_content_type(&self_owner_id);
         ctx.push_template(Cow::Owned(format!("<{}", &element.name)));

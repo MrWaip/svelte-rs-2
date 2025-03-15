@@ -1,6 +1,6 @@
 use std::{cell::RefCell, mem};
 
-use hir::{AttributeId, ExpressionId, HirStore, Node, NodeId, OwnerId, OwnerNode};
+use hir::{ExpressionId, HirStore, Node, NodeId, OwnerId, OwnerNode};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 
@@ -55,11 +55,6 @@ impl<'hir> ToHirContext<'hir> {
     pub fn push_expression(&mut self, expression: Expression<'hir>) -> ExpressionId {
         let expression_id = self.store.expressions.push(RefCell::new(expression));
         return expression_id;
-    }
-
-    pub fn push_attribute(&mut self, attribute: hir::Attribute<'hir>) -> AttributeId {
-        let attribute_id = self.store.attributes.push(attribute);
-        return attribute_id;
     }
 
     pub fn alloc<T>(&self, value: T) -> &'hir mut T {

@@ -1,4 +1,5 @@
 mod attributes;
+mod directives;
 mod element;
 mod id;
 mod node;
@@ -7,12 +8,10 @@ mod store;
 
 use std::cell::RefCell;
 
-pub use attributes::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatenationAttribute,
-    ConcatenationAttributePart, ExpressionAttribute, StringAttribute,
-};
+pub use attributes::*;
+pub use directives::*;
 pub use element::*;
-pub use id::{AttributeId, ExpressionId, NodeId, OwnerId};
+pub use id::*;
 pub use node::*;
 pub use owner::*;
 use oxc_ast::ast::Language;
