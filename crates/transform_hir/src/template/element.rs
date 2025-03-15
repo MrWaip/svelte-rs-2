@@ -35,6 +35,19 @@ impl<'hir> TemplateTransformer<'hir> {
         if !element.attributes.is_empty() {
             self.transform_attributes(&element.attributes, ctx);
         }
+
+        if !element.class_directives.is_empty() {
+            todo!();
+        }
+
+        if !element.style_directives.is_empty() {
+            todo!()
+        }
+
+        if !element.directives.is_empty() {
+            todo!()
+        }
+
         ctx.push_template(Cow::Borrowed(">"));
 
         if content_type.any_interpolation_like() {
