@@ -6,7 +6,7 @@ use std::{
 use oxc_ast::ast::Expression;
 use oxc_index::IndexVec;
 
-use crate::{Attribute, ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template};
+use crate::{ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template};
 
 #[derive(Debug)]
 pub struct HirStore<'hir> {
