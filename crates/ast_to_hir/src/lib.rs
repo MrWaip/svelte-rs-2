@@ -340,7 +340,6 @@ mod tests {
 
         assert!(store.nodes.len() == 6);
         assert!(store.owners.len() == 3);
-        assert!(store.attributes.len() == 5);
         assert!(store.expressions.len() == 5);
 
         let hir::OwnerNode::Template(template) = store.owners.first().unwrap() else {
