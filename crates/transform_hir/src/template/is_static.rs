@@ -1,12 +1,3 @@
-pub fn is_custom_element(element: &hir::Element, store: &hir::HirStore) -> bool {
-    return element.name.contains("-")
-        || element.attributes.iter().any(|attribute_id| {
-            let attr = store.get_attribute(*attribute_id);
-
-            attr.name() == "is"
-        });
-}
-
 pub fn is_static_element(
     node: &hir::Node,
     store: &hir::HirStore,
@@ -21,7 +12,7 @@ pub fn is_static_element(
     }
 
     // we're setting all attributes on custom elements through properties
-    if is_custom_element(element, store) {
+    if element.is_custom_element() {
         return false;
     }
 

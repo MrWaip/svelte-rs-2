@@ -84,18 +84,15 @@ impl<'hir> AnalyzeHir<'hir> {
                 }
 
                 if let Some(element) = node.as_element() {
-                    for attr_id in element.attributes.iter() {
-                        let attribute = store.get_attribute(*attr_id);
-
+                    for attribute in element.attributes.iter() {
                         if attribute.contains_expression() {
-                            analyses.mark_node_as_dynamic(*node_id); 
+                            analyses.mark_node_as_dynamic(*node_id);
                             dynamic = true;
                             break;
                         }
                     }
                 }
             }
-
 
             if dynamic {
                 analyses.mark_node_as_dynamic(self_node_id);
