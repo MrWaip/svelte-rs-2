@@ -99,8 +99,12 @@ fn nested_resets() {
     asser_compiler("nested_resets");
 }
 
-
 #[rstest]
 fn smoke() {
     asser_compiler("smoke");
+}
+
+#[rstest]
+fn spread_attribute() {
+    asser_compiler("spread_attribute");
 }
