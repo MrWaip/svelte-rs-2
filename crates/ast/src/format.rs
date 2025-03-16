@@ -141,6 +141,11 @@ impl<'a> FormatNode for Element<'a> {
                             result.push_str(&format!("={{{}}}", expr_string));
                         }
                     }
+                    Attribute::SpreadAttribute(attr) => {
+                        let expr_string = print_expression(&attr.expression);
+
+                        result.push_str(format!("{{...{}}}", expr_string).as_str());
+                    }
                 }
 
                 attributes.push(result);

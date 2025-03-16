@@ -186,7 +186,7 @@ pub trait TemplateVisitor<'a>: Sized {
 pub mod walk {
 
     use ast::{BindDirective, Node};
-    
+
     use rccell::RcCell;
 
     use crate::ancestor::Ancestor;
@@ -339,6 +339,7 @@ pub mod walk {
             Attribute::BooleanAttribute(it) => walk_boolean_attribute(visitor, it, ctx),
             Attribute::StringAttribute(it) => walk_string_attribute(visitor, it, ctx),
             Attribute::ConcatenationAttribute(it) => walk_concatenation_attribute(visitor, it, ctx),
+            Attribute::SpreadAttribute(spread_attribute) => todo!(),
         }
 
         visitor.exit_attribute(it, ctx);

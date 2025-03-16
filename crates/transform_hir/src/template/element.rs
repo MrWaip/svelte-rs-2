@@ -32,21 +32,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let content_type = self.analyses.get_common_content_type(&self_owner_id);
         ctx.push_template(Cow::Owned(format!("<{}", &element.name)));
 
-        if !element.attributes.is_empty() {
-            self.transform_attributes(&element.attributes, ctx);
-        }
-
-        if !element.class_directives.is_empty() {
-            todo!();
-        }
-
-        if !element.style_directives.is_empty() {
-            todo!()
-        }
-
-        if !element.directives.is_empty() {
-            todo!()
-        }
+        self.transform_attributes(&element, ctx);
 
         ctx.push_template(Cow::Borrowed(">"));
 

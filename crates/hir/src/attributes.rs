@@ -4,20 +4,12 @@ use crate::ExpressionId;
 pub enum Attribute<'hir> {
     StringAttribute(&'hir StringAttribute<'hir>),
     ExpressionAttribute(&'hir ExpressionAttribute<'hir>),
+    SpreadAttribute(&'hir SpreadAttribute),
     BooleanAttribute(&'hir BooleanAttribute<'hir>),
     ConcatenationAttribute(&'hir ConcatenationAttribute<'hir>),
 }
 
 impl<'hir> Attribute<'hir> {
-    pub fn name(&self) -> &'hir str {
-        match self {
-            Attribute::StringAttribute(it) => it.name,
-            Attribute::ExpressionAttribute(it) => it.name,
-            Attribute::BooleanAttribute(it) => it.name,
-            Attribute::ConcatenationAttribute(it) => it.name,
-        }
-    }
-
     pub fn contains_expression(&self) -> bool {
         return matches!(
             self,
@@ -36,6 +28,11 @@ pub struct StringAttribute<'hir> {
 pub struct ExpressionAttribute<'hir> {
     pub shorthand: bool,
     pub name: &'hir str,
+    pub expression_id: ExpressionId,
+}
+
+#[derive(Debug)]
+pub struct SpreadAttribute {
     pub expression_id: ExpressionId,
 }
 

@@ -9,6 +9,7 @@ pub struct Element<'hir> {
     pub name: &'hir str,
     pub node_ids: Vec<NodeId>,
     pub self_closing: bool,
+    pub has_spread: bool,
     pub kind: ElementKind,
     pub attribute_set: HashSet<&'hir str>,
     pub attributes: Vec<Attribute<'hir>>,
@@ -18,6 +19,23 @@ pub struct Element<'hir> {
 }
 
 impl<'hir> Element<'hir> {
+    pub fn new(owner_id: OwnerId, node_id: NodeId, name: &'hir str, self_closing: bool) -> Self {
+        return Self {
+            node_id,
+            has_spread: false,
+            owner_id,
+            name,
+            node_ids: vec![],
+            attributes: vec![],
+            attribute_set: HashSet::new(),
+            directives: vec![],
+            class_directives: vec![],
+            style_directives: vec![],
+            self_closing,
+            kind: ElementKind::from_str(&name),
+        };
+    }
+
     pub fn is_noscript(&self) -> bool {
         return matches!(self.kind, ElementKind::Noscript);
     }
