@@ -8,7 +8,8 @@ use oxc_ast::{
         AssignmentTarget, BindingIdentifier, BindingPatternKind, BlockStatement, CallExpression,
         ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
         IdentifierReference, IfStatement, ImportDeclarationSpecifier, ImportOrExportKind,
-        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, Program, Statement,
+        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, ObjectExpression,
+        ObjectProperty, ObjectPropertyKind, Program, SpreadElement, Statement,
         StaticMemberExpression, StringLiteral, TemplateElement, TemplateElementValue,
         TemplateLiteral, VariableDeclarationKind,
     },
@@ -39,6 +40,7 @@ pub enum BuilderExpression<'a> {
     Ident(IdentifierReference<'a>),
     Expr(Expression<'a>),
     Array(ArrayExpression<'a>),
+    Str(String),
 }
 pub enum BuilderStatement<'a> {
     Expr(Expression<'a>),
@@ -340,6 +342,9 @@ impl<'a> Builder<'a> {
             BuilderExpression::Array(array_expression) => {
                 Expression::ArrayExpression(self.alloc(array_expression))
             }
+            BuilderExpression::Str(value) => {
+                Expression::StringLiteral(self.alloc(self.ast.string_literal(SPAN, value, None)))
+            }
         };
     }
 
@@ -516,7 +521,7 @@ impl<'a> Builder<'a> {
         &self,
         parts: impl IntoIterator<Item = TemplateLiteralPart<'a>>,
     ) -> Expression<'a> {
-        return Expression::TemplateLiteral(self.alloc(self.template_literal2(parts)))
+        return Expression::TemplateLiteral(self.alloc(self.template_literal2(parts)));
     }
 
     pub fn arrow(
@@ -655,5 +660,66 @@ impl<'a> Builder<'a> {
             .vec_from_iter(elements.into_iter().map(|item| match item {}));
 
         return self.ast.array_expression(SPAN, elements, None);
+    }
+
+    pub fn init_prop(&self, name: &str, value: Expression<'a>) -> ObjectPropertyKind<'a> {
+        return ObjectPropertyKind::ObjectProperty(self.ast.alloc(ObjectProperty {
+            computed: false,
+            method: false,
+            kind: ast::PropertyKind::Init,
+            shorthand: false,
+            span: SPAN,
+            value,
+            key: ast::PropertyKey::Identifier(self.alloc(self.rid(name))),
+        }));
+    }
+
+    pub fn spread_prop(&self, value: Expression<'a>) -> ObjectPropertyKind<'a> {
+        return ObjectPropertyKind::SpreadProperty(self.ast.alloc(SpreadElement {
+            argument: value,
+            span: SPAN,
+        }));
+    }
+
+    pub fn object(
+        &self,
+        props: impl IntoIterator<Item = ObjectPropertyKind<'a>>,
+    ) -> ObjectExpression<'a> {
+        return self
+            .ast
+            .object_expression(SPAN, self.ast.vec_from_iter(props), None);
+    }
+
+    pub fn object_expr(
+        &self,
+        props: impl IntoIterator<Item = ObjectPropertyKind<'a>>,
+    ) -> Expression<'a> {
+        return Expression::ObjectExpression(self.alloc(self.object(props)));
+    }
+
+    pub fn let_stmt(&self, name: &str, init: Option<BuilderExpression<'a>>) -> Statement<'a> {
+        let ident = self.ast.binding_identifier(SPAN, name);
+        let pattern = self.ast.binding_pattern(
+            BindingPatternKind::BindingIdentifier(self.alloc(ident)),
+            NONE,
+            false,
+        );
+
+        let decl = self.ast.variable_declarator(
+            SPAN,
+            VariableDeclarationKind::Let,
+            pattern,
+            init.map(|e| self.expr(e)),
+            false,
+        );
+
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Let,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+
+        return Statement::VariableDeclaration(self.alloc(declaration));
     }
 }

@@ -1,4 +1,4 @@
-use ast_builder::{BuilderFunctionArgument, TemplateLiteralPart};
+use ast_builder::{BuilderExpression, BuilderFunctionArgument, TemplateLiteralPart};
 
 use super::{context::OwnerContext, template_transformer::TemplateTransformer};
 
@@ -9,7 +9,7 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
         if element.has_spread {
-            self.attributes_spread_shortcut();
+            self.attributes_spread_shortcut(element, ctx);
         } else {
             self.attributes_common(element, ctx);
         }
@@ -47,8 +47,46 @@ impl<'hir> TemplateTransformer<'hir> {
         }
     }
 
-    fn attributes_spread_shortcut(&mut self) {
-        //
+    fn attributes_spread_shortcut<'short>(
+        &mut self,
+        element: &hir::Element<'hir>,
+        ctx: &mut OwnerContext<'hir, 'short>,
+    ) {
+        let attributes_id = self.analyses.generate_ident("attributes");
+        let mut props = vec![];
+
+        for attribute in element.attributes.iter() {
+            match attribute {
+                hir::Attribute::StringAttribute(attr) => {
+                    props.push(self.b.init_prop(
+                        attr.name,
+                        self.b.expr(BuilderExpression::Str(attr.value.into())),
+                    ));
+                }
+                hir::Attribute::ExpressionAttribute(expression_attribute) => todo!(),
+                hir::Attribute::SpreadAttribute(attr) => {
+                    props.push(self.b.spread_prop(self.take_expression(attr.expression_id)));
+                }
+                hir::Attribute::BooleanAttribute(boolean_attribute) => todo!(),
+                hir::Attribute::ConcatenationAttribute(concatenation_attribute) => todo!(),
+            }
+        }
+
+        let args = vec![
+            BuilderFunctionArgument::Expr(ctx.anchor()),
+            BuilderFunctionArgument::Ident(&attributes_id),
+            BuilderFunctionArgument::Expr(self.b.object_expr(props)),
+        ];
+        let call = self.b.call_expr("$.set_attributes", args);
+
+        ctx.push_init(self.b.let_stmt(&attributes_id, None));
+
+        let update = self.b.assignment_expression_stmt(
+            ast_builder::BuilderAssignmentLeft::Ident(&attributes_id),
+            ast_builder::BuilderAssignmentRight::Expr(call),
+        );
+
+        ctx.push_update(update);
     }
 
     fn transform_string_attribute<'short>(

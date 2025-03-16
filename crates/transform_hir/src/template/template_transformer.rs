@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use analyze_hir::HirAnalyses;
 use ast_builder::Builder;
-use hir::HirStore;
-use oxc_ast::ast::Statement;
+use hir::{ExpressionId, HirStore};
+use oxc_ast::ast::{Expression, Statement};
 
 use super::context::OwnerContext;
 
@@ -35,9 +35,15 @@ impl<'hir> TemplateTransformer<'hir> {
     }
 
     fn transform_template(&mut self, template: &hir::Template) -> Vec<Statement<'hir>> {
-        let content_type = self.analyses.get_common_content_type(&HirStore::TEMPLATE_OWNER_ID);
+        let content_type = self
+            .analyses
+            .get_common_content_type(&HirStore::TEMPLATE_OWNER_ID);
 
-        return self.transform_fragment(&template.node_ids, HirStore::TEMPLATE_OWNER_ID, content_type);
+        return self.transform_fragment(
+            &template.node_ids,
+            HirStore::TEMPLATE_OWNER_ID,
+            content_type,
+        );
     }
 
     pub(crate) fn transform_text<'local>(
@@ -46,5 +52,10 @@ impl<'hir> TemplateTransformer<'hir> {
         owner_ctx: &mut OwnerContext<'hir, 'local>,
     ) {
         owner_ctx.push_template(Cow::Borrowed(it.value));
+    }
+
+    pub(crate) fn take_expression(&self, expression_id: ExpressionId) -> Expression<'hir> {
+        let mut expression = self.store.get_expression_mut(expression_id);
+        return self.b.move_expr(&mut expression);
     }
 }
