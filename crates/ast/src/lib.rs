@@ -15,10 +15,7 @@ pub mod format;
 pub mod metadata;
 pub mod node_id;
 
-pub use attribute::{
-    Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective,
-    ConcatenationAttribute, ConcatenationPart, ExpressionAttribute, StringAttribute,
-};
+pub use attribute::*;
 
 pub struct Ast<'a> {
     pub template: RcCell<Template<'a>>,

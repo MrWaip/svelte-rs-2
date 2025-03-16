@@ -24,24 +24,12 @@ impl AttributeKind {
 #[derive(Debug)]
 pub enum Attribute<'a> {
     ExpressionAttribute(ExpressionAttribute<'a>),
+    SpreadAttribute(SpreadAttribute<'a>),
     ClassDirective(ClassDirective<'a>),
     BindDirective(BindDirective<'a>),
     BooleanAttribute(BooleanAttribute<'a>),
     StringAttribute(StringAttribute<'a>),
     ConcatenationAttribute(ConcatenationAttribute<'a>),
-}
-
-impl<'a> Attribute<'a> {
-    pub fn name(&self) -> &'a str {
-        match self {
-            Attribute::ExpressionAttribute(it) => it.name,
-            Attribute::ClassDirective(_) => "class",
-            Attribute::BindDirective(it) => it.name,
-            Attribute::BooleanAttribute(it) => it.name,
-            Attribute::StringAttribute(it) => it.name,
-            Attribute::ConcatenationAttribute(it) => it.name,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -51,6 +39,11 @@ pub struct ExpressionAttribute<'a> {
     pub kind: AttributeKind,
     pub expression: Expression<'a>,
     pub metadata: Option<AttributeMetadata>,
+}
+
+#[derive(Debug)]
+pub struct SpreadAttribute<'a> {
+    pub expression: Expression<'a>,
 }
 
 impl<'a> ExpressionAttribute<'a> {

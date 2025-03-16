@@ -114,21 +114,12 @@ impl<'hir> AstToHir<'hir> {
         return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let name = ctx.alloc(element.name);
 
-            let mut hir_element = hir::Element {
-                node_id: self_node_id,
-                owner_id,
-                name,
-                node_ids: self.lower_nodes(ctx, element.nodes),
-                attributes: vec![],
-                attribute_set: HashSet::new(),
-                directives: vec![],
-                class_directives: vec![],
-                style_directives: vec![],
-                self_closing: element.self_closing,
-                kind: hir::ElementKind::from_str(&name),
-            };
+            let mut hir_element =
+                hir::Element::new(owner_id, self_node_id, name, element.self_closing);
 
             self.lower_attributes(ctx, element.attributes, &mut hir_element);
+
+            hir_element.node_ids = self.lower_nodes(ctx, element.nodes);
 
             let hir_element = ctx.alloc(hir_element);
 
@@ -186,6 +177,12 @@ impl<'hir> AstToHir<'hir> {
                 hir_element
                     .attributes
                     .push(self.lower_string_attribute(ctx, attr));
+            }
+            ast::Attribute::SpreadAttribute(attr) => {
+                hir_element.has_spread = true;
+                hir_element
+                    .attributes
+                    .push(self.lower_spread_attribute(ctx, attr));
             }
         };
     }
@@ -271,6 +268,18 @@ impl<'hir> AstToHir<'hir> {
         };
 
         return hir::Attribute::ExpressionAttribute(ctx.alloc(attribute));
+    }
+
+    fn lower_spread_attribute(
+        &self,
+        ctx: &mut ToHirContext<'hir>,
+        attr: ast::SpreadAttribute<'hir>,
+    ) -> hir::Attribute<'hir> {
+        let expression_id = ctx.push_expression(attr.expression);
+
+        let attribute = hir::SpreadAttribute { expression_id };
+
+        return hir::Attribute::SpreadAttribute(ctx.alloc(attribute));
     }
 
     fn lower_string_attribute(

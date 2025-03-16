@@ -14,8 +14,8 @@ use span::{GetSpan, Span};
 use ast::{
     AsNode, Ast, Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute,
     ClassDirective, ConcatenationAttribute, ConcatenationPart, Element, ElementKind,
-    ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag, StringAttribute,
-    Template, Text,
+    ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag, SpreadAttribute,
+    StringAttribute, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -343,18 +343,27 @@ impl<'a> Parser<'a> {
                     attributes.push(result);
                 }
                 token::Attribute::ExpressionTag(expression_tag) => {
-                    let expression = self.parse_js_expression(
-                        &expression_tag.expression.value,
-                        expression_tag.span,
-                    )?;
+                    if expression_tag.expression.value.starts_with("...") {
+                        let expression = self.parse_js_expression(
+                            &expression_tag.expression.value[3..],
+                            expression_tag.span,
+                        )?;
 
-                    attributes.push(Attribute::ExpressionAttribute(ExpressionAttribute {
-                        expression,
-                        shorthand: true,
-                        name: expression_tag.expression.value,
-                        metadata: None,
-                        kind: AttributeKind::from_str(expression_tag.expression.value),
-                    }));
+                        attributes.push(Attribute::SpreadAttribute(SpreadAttribute { expression }));
+                    } else {
+                        let expression = self.parse_js_expression(
+                            &expression_tag.expression.value,
+                            expression_tag.span,
+                        )?;
+
+                        attributes.push(Attribute::ExpressionAttribute(ExpressionAttribute {
+                            expression,
+                            shorthand: true,
+                            name: expression_tag.expression.value,
+                            metadata: None,
+                            kind: AttributeKind::from_str(expression_tag.expression.value),
+                        }));
+                    }
                 }
                 token::Attribute::ClassDirective(token) => {
                     attributes.push(Attribute::ClassDirective(ClassDirective {
@@ -576,6 +585,14 @@ mod tests {
             &ast[0],
             r#"<div lang="ts" {id} disabled value={value} label="at: {date} time">source</div>"#,
         );
+    }
+
+    #[test]
+    fn spread_attribute() {
+        let allocator = Allocator::default();
+        let ast = setup_template(r#"<div {...attributes} />"#, &allocator);
+
+        assert_node_cell(&ast[0], r#"<div {...attributes}/>"#);
     }
 
     #[test]

@@ -640,6 +640,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             Attribute::ConcatenationAttribute(attr) => {
                 self.transform_concatenation_attribute(attr, ctx)
             }
+            Attribute::SpreadAttribute(_spread_attribute) => todo!(),
         }
     }
 
