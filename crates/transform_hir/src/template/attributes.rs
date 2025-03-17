@@ -63,13 +63,38 @@ impl<'hir> TemplateTransformer<'hir> {
                         self.b.expr(BuilderExpression::Str(attr.value.into())),
                     ));
                 }
-                hir::Attribute::ExpressionAttribute(expression_attribute) => todo!(),
+                hir::Attribute::ExpressionAttribute(attr) => {
+                    props.push(
+                        self.b
+                            .init_prop(attr.name, self.take_expression(attr.expression_id)),
+                    );
+                }
                 hir::Attribute::SpreadAttribute(attr) => {
                     props.push(self.b.spread_prop(self.take_expression(attr.expression_id)));
                 }
-                hir::Attribute::BooleanAttribute(boolean_attribute) => todo!(),
-                hir::Attribute::ConcatenationAttribute(concatenation_attribute) => todo!(),
+                hir::Attribute::BooleanAttribute(attr) => {
+                    props.push(self.b.init_prop(attr.name, self.b.bool_expr(true)));
+                }
+                hir::Attribute::ConcatenationAttribute(attr) => {
+                    let parts = self.concatenation_to_template(&attr.parts);
+                    props.push(
+                        self.b
+                            .init_prop(attr.name, self.b.template_literal2_expr(parts)),
+                    );
+                }
             }
+        }
+
+        if !element.class_directives.is_empty() {
+            todo!();
+        }
+
+        if !element.style_directives.is_empty() {
+            todo!()
+        }
+
+        if !element.directives.is_empty() {
+            todo!()
         }
 
         let args = vec![
@@ -135,23 +160,7 @@ impl<'hir> TemplateTransformer<'hir> {
         attr: &hir::ConcatenationAttribute<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        let mut parts = Vec::new();
-
-        for part in attr.parts.iter() {
-            match part {
-                hir::ConcatenationAttributePart::String(value) => {
-                    parts.push(TemplateLiteralPart::String(value));
-                }
-                hir::ConcatenationAttributePart::Expression(expression_id) => {
-                    let mut expr = self.store.get_expression_mut(*expression_id);
-
-                    let expr = self.b.move_expr(&mut *expr);
-
-                    parts.push(TemplateLiteralPart::Expression(expr));
-                }
-            }
-        }
-
+        let parts = self.concatenation_to_template(&attr.parts);
         let expression = self.b.template_literal2_expr(parts);
 
         let call = self.b.call_stmt(
@@ -182,5 +191,29 @@ impl<'hir> TemplateTransformer<'hir> {
     ) {
         // https://github.com/sveltejs/svelte/blob/61a0da8a5fdf5ac86431ceadfae0f54d38dc9a66/packages/svelte/src/compiler/phases/3-transform/client/visitors/BindDirective.js#L15
         todo!()
+    }
+
+    fn concatenation_to_template(
+        &self,
+        in_parts: &Vec<hir::ConcatenationAttributePart<'hir>>,
+    ) -> Vec<TemplateLiteralPart<'hir>> {
+        let mut parts = Vec::new();
+
+        for part in in_parts.iter() {
+            match part {
+                hir::ConcatenationAttributePart::String(value) => {
+                    parts.push(TemplateLiteralPart::String(value));
+                }
+                hir::ConcatenationAttributePart::Expression(expression_id) => {
+                    let mut expr = self.store.get_expression_mut(*expression_id);
+
+                    let expr = self.b.move_expr(&mut *expr);
+
+                    parts.push(TemplateLiteralPart::Expression(expr));
+                }
+            }
+        }
+
+        return parts;
     }
 }

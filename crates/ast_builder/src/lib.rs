@@ -5,11 +5,11 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression,
-        AssignmentTarget, BindingIdentifier, BindingPatternKind, BlockStatement, CallExpression,
-        ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
-        IdentifierReference, IfStatement, ImportDeclarationSpecifier, ImportOrExportKind,
-        LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral, ObjectExpression,
-        ObjectProperty, ObjectPropertyKind, Program, SpreadElement, Statement,
+        AssignmentTarget, BindingIdentifier, BindingPatternKind, BlockStatement, BooleanLiteral,
+        CallExpression, ExportDefaultDeclarationKind, Expression, FormalParameters, Function,
+        FunctionType, IdentifierReference, IfStatement, ImportDeclarationSpecifier,
+        ImportOrExportKind, LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral,
+        ObjectExpression, ObjectProperty, ObjectPropertyKind, Program, SpreadElement, Statement,
         StaticMemberExpression, StringLiteral, TemplateElement, TemplateElementValue,
         TemplateLiteral, VariableDeclarationKind,
     },
@@ -228,6 +228,14 @@ impl<'a> Builder<'a> {
                 Argument::ArrayExpression(self.alloc(array_expression))
             }
         }
+    }
+
+    pub fn bool(&self, value: bool) -> BooleanLiteral {
+        return self.ast.boolean_literal(SPAN, value);
+    }
+
+    pub fn bool_expr(&self, value: bool) -> Expression<'a> {
+        return Expression::BooleanLiteral(self.alloc(self.bool(value)));
     }
 
     pub fn call<'short>(
@@ -663,14 +671,20 @@ impl<'a> Builder<'a> {
     }
 
     pub fn init_prop(&self, name: &str, value: Expression<'a>) -> ObjectPropertyKind<'a> {
+        let mut shorthand = false;
+
+        if let Expression::Identifier(ident) = &value {
+            shorthand = ident.name.as_str() == name;
+        }
+
         return ObjectPropertyKind::ObjectProperty(self.ast.alloc(ObjectProperty {
             computed: false,
             method: false,
             kind: ast::PropertyKind::Init,
-            shorthand: false,
+            shorthand,
             span: SPAN,
             value,
-            key: ast::PropertyKey::Identifier(self.alloc(self.rid(name))),
+            key: ast::PropertyKey::StaticIdentifier(self.ast.alloc_identifier_name(SPAN, name)),
         }));
     }
 
