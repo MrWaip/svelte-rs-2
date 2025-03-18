@@ -1,4 +1,5 @@
 # Rust implementation of svelte compile (WIP)
+
 [![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
 
 # Demo
@@ -13,36 +14,36 @@ https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
 
 ## Script Tag / JavaScript
 
-- [x] $state rune
-    - [x] Update rune (`count++, --count`)
-    - [x] Assign rune (`count = 12`)
-    - [x] Read rune (`{ name }`)
+- [ ] $state rune
+  - [ ] Update rune (`count++, --count`)
+  - [ ] Assign rune (`count = 12`)
+  - [ ] Read rune (`{ name }`)
 - [ ] $props rune
-    - [ ] Update prop (`count++`)
-    - [ ] Assign prop (`name = 'world'`)
-    - [ ] Read prop  (`{ name }`)
-    - [ ] Destructure prop (`let {name} = $props()`)
-- [x] Hoist imports
+  - [ ] Update prop (`count++`)
+  - [ ] Assign prop (`name = 'world'`)
+  - [ ] Read prop (`{ name }`)
+  - [ ] Destructure prop (`let {name} = $props()`)
+- [ ] Hoist imports
 - [ ] Omit typescript
 
 ## Template
 
 - [ ] HTML Element
-  - [x] Self-closed tags (`<input />`)
+  - [ ] Self-closed tags (`<input />`)
   - [x] Simple attribute (`attr="name"`)
   - [x] Interpolation attribute (`attr={some expression}`)
   - [x] Shorthand identifier attribute (`{ name }`)
   - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
-  - [x] Class directive (`class:toggle`) 
-  - [x] Bind directive (`bind:value`)
+  - [ ] Class directive (`class:toggle`)
+  - [ ] Bind directive (`bind:value`)
   - [ ] Use directive (`use:action`)
-  - [ ] Event listeners (`onclick={handler}`) 
-  - [ ] Style directive (`style:toggle`) 
+  - [ ] Event listeners (`onclick={handler}`)
+  - [ ] Style directive (`style:toggle`)
   - [ ] Spread attributes (`{...attrs}`)
 - [x] Text
 - [x] Interpolation (`{name}`)
 - [x] IfBlock (`{#if expression} a {:else} b {/if}`)
-- [x] Script Tag
+- [ ] Script Tag
 - [ ] Component
 - [ ] EachBlock
 
@@ -53,8 +54,12 @@ https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
 - [x] text as first node optimization
 - [x] single element optimization
 - [x] only text and interpolation nodes optimization
-- [x] not wrap runes if not mutated
+- [ ] not wrap runes if not mutated
 - [x] Not reactive attributes optimization
+
+## Skipped
+
+- Namespace support
 
 ## WASM
 
