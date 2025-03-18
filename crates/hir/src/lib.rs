@@ -1,5 +1,5 @@
 mod attributes;
-mod directives;
+mod attributes_store;
 mod element;
 mod id;
 mod node;
@@ -9,11 +9,12 @@ mod store;
 use std::cell::RefCell;
 
 pub use attributes::*;
-pub use directives::*;
+pub use attributes_store::*;
 pub use element::*;
 pub use id::*;
 pub use node::*;
 pub use owner::*;
+
 use oxc_ast::ast::Language;
 pub use store::HirStore;
 
