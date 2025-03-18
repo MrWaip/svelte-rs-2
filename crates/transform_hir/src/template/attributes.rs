@@ -8,7 +8,7 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        if element.has_spread {
+        if element.attributes.has_spread() {
             self.attributes_spread_shortcut(element, ctx);
         } else {
             self.attributes_common(element, ctx);
@@ -20,19 +20,7 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        if !element.class_directives.is_empty() {
-            todo!();
-        }
-
-        if !element.style_directives.is_empty() {
-            todo!()
-        }
-
-        if !element.directives.is_empty() {
-            todo!()
-        }
-
-        for attribute in element.attributes.iter() {
+        for attribute in element.attributes.iter_attrs() {
             match attribute {
                 hir::Attribute::StringAttribute(it) => self.transform_string_attribute(it, ctx),
                 hir::Attribute::BooleanAttribute(it) => self.transform_boolean_attribute(it, ctx),
@@ -55,7 +43,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let attributes_id = self.analyses.generate_ident("attributes");
         let mut props = vec![];
 
-        for attribute in element.attributes.iter() {
+        for attribute in element.attributes.iter_attrs() {
             match attribute {
                 hir::Attribute::StringAttribute(attr) => {
                     props.push(self.b.init_prop(
@@ -83,18 +71,6 @@ impl<'hir> TemplateTransformer<'hir> {
                     );
                 }
             }
-        }
-
-        if !element.class_directives.is_empty() {
-            todo!();
-        }
-
-        if !element.style_directives.is_empty() {
-            todo!()
-        }
-
-        if !element.directives.is_empty() {
-            todo!()
         }
 
         let args = vec![

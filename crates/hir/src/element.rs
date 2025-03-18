@@ -1,6 +1,4 @@
-use std::collections::HashSet;
-
-use crate::{Attribute, ClassDirective, Directive, NodeId, OwnerId, StyleDirective};
+use crate::{AttributeStore, NodeId, OwnerId};
 
 #[derive(Debug)]
 pub struct Element<'hir> {
@@ -9,32 +7,20 @@ pub struct Element<'hir> {
     pub name: &'hir str,
     pub node_ids: Vec<NodeId>,
     pub self_closing: bool,
-    pub has_spread: bool,
-    pub has_use: bool,
     pub kind: ElementKind,
-    pub attribute_set: HashSet<&'hir str>,
-    pub attributes: Vec<Attribute<'hir>>,
-    pub style_directives: Vec<StyleDirective<'hir>>,
-    pub class_directives: Vec<ClassDirective<'hir>>,
-    pub directives: Vec<Directive<'hir>>,
+    pub attributes: AttributeStore<'hir>,
 }
 
 impl<'hir> Element<'hir> {
     pub fn new(owner_id: OwnerId, node_id: NodeId, name: &'hir str, self_closing: bool) -> Self {
         return Self {
             node_id,
-            has_spread: false,
             owner_id,
             name,
-            has_use: false,
             node_ids: vec![],
-            attributes: vec![],
-            attribute_set: HashSet::new(),
-            directives: vec![],
-            class_directives: vec![],
-            style_directives: vec![],
             self_closing,
             kind: ElementKind::from_str(&name),
+            attributes: AttributeStore::default(),
         };
     }
 
@@ -47,7 +33,7 @@ impl<'hir> Element<'hir> {
             return true;
         };
 
-        return self.attribute_set.contains("is");
+        return self.attributes.has_by_name("is");
     }
 
     pub fn is_video(&self) -> bool {

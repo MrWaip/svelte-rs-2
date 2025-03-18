@@ -84,8 +84,8 @@ impl<'hir> AnalyzeHir<'hir> {
                 }
 
                 if let Some(element) = node.as_element() {
-                    for attribute in element.attributes.iter() {
-                        if attribute.contains_expression() {
+                    for attribute in element.attributes.iter_all() {
+                        if attribute.is_dynamic() {
                             analyses.mark_node_as_dynamic(*node_id);
                             dynamic = true;
                             break;

@@ -151,38 +151,37 @@ impl<'hir> AstToHir<'hir> {
             ast::Attribute::ConcatenationAttribute(attr) => {
                 hir_element
                     .attributes
-                    .push(self.lower_concatenation_attribute(ctx, attr));
+                    .push_attr(self.lower_concatenation_attribute(ctx, attr));
             }
             ast::Attribute::ExpressionAttribute(attr) => {
                 hir_element
                     .attributes
-                    .push(self.lower_expression_attribute(ctx, attr));
+                    .push_attr(self.lower_expression_attribute(ctx, attr));
             }
             ast::Attribute::ClassDirective(attr) => {
                 hir_element
-                    .class_directives
-                    .push(self.lower_class_directive(ctx, attr));
+                    .attributes
+                    .push_class_directive(self.lower_class_directive(ctx, attr));
             }
             ast::Attribute::BindDirective(attr) => {
                 hir_element
-                    .directives
-                    .push(self.lower_bind_directive(ctx, attr));
+                    .attributes
+                    .push_bind_directive(self.lower_bind_directive(ctx, attr));
             }
             ast::Attribute::BooleanAttribute(attr) => {
                 hir_element
                     .attributes
-                    .push(self.lower_boolean_attribute(ctx, attr));
+                    .push_attr(self.lower_boolean_attribute(ctx, attr));
             }
             ast::Attribute::StringAttribute(attr) => {
                 hir_element
                     .attributes
-                    .push(self.lower_string_attribute(ctx, attr));
+                    .push_attr(self.lower_string_attribute(ctx, attr));
             }
             ast::Attribute::SpreadAttribute(attr) => {
-                hir_element.has_spread = true;
                 hir_element
                     .attributes
-                    .push(self.lower_spread_attribute(ctx, attr));
+                    .push_attr(self.lower_spread_attribute(ctx, attr));
             }
         };
     }
@@ -191,29 +190,31 @@ impl<'hir> AstToHir<'hir> {
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ClassDirective<'hir>,
-    ) -> hir::ClassDirective<'hir> {
+    ) -> &'hir hir::ClassDirective<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
 
-        return hir::ClassDirective {
+        let attr = hir::ClassDirective {
             name: attr.name,
             shorthand: attr.shorthand,
             expression_id,
         };
+
+        return ctx.alloc(attr);
     }
 
     fn lower_bind_directive(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BindDirective<'hir>,
-    ) -> hir::Directive<'hir> {
+    ) -> &'hir hir::BindDirective<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
-        let attribute = hir::BindDirective {
+        let attr = hir::BindDirective {
             expression_id,
             name: attr.name,
             shorthand: attr.shorthand,
         };
 
-        return hir::Directive::Bind(ctx.alloc(attribute));
+        return ctx.alloc(attr)
     }
 
     fn lower_boolean_attribute(
