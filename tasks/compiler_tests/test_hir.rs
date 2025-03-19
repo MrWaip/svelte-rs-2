@@ -9,7 +9,7 @@ use compiler::Compiler;
 use oxc_allocator::Allocator;
 use pretty_assertions::assert_eq;
 
-fn asser_compiler(case: &str) {
+fn assert_compiler(case: &str) {
     let path = Path::new("./cases2").join(case).join("case.svelte");
     let allocator = Allocator::default();
     let file = read_to_string(&path).unwrap();
@@ -36,75 +36,81 @@ fn asser_compiler(case: &str) {
 
 #[rstest]
 fn empty() {
-    asser_compiler("single_text_node");
+    assert_compiler("single_text_node");
 }
 
 #[rstest]
 fn single_text_node() {
-    asser_compiler("empty");
+    assert_compiler("empty");
 }
 
 #[rstest]
 fn single_concatenation() {
-    asser_compiler("single_concatenation");
+    assert_compiler("single_concatenation");
 }
 
 #[rstest]
 fn single_interpolation() {
-    asser_compiler("single_interpolation");
+    assert_compiler("single_interpolation");
 }
 
 #[rstest]
 fn single_element() {
-    asser_compiler("single_element");
+    assert_compiler("single_element");
 }
 
 #[rstest]
 fn generic_root_sequence() {
-    asser_compiler("generic_root_sequence");
+    assert_compiler("generic_root_sequence");
 }
 
 #[rstest]
 fn elements_childs() {
-    asser_compiler("elements_childs");
+    assert_compiler("elements_childs");
 }
 
 #[rstest]
 fn element_attributes() {
-    asser_compiler("element_attributes");
+    assert_compiler("element_attributes");
 }
 
 #[rstest]
 fn single_if_block() {
-    asser_compiler("single_if_block");
+    assert_compiler("single_if_block");
 }
 
 #[rstest]
 fn single_if_else_block() {
-    asser_compiler("single_if_else_block");
+    assert_compiler("single_if_else_block");
 }
 
 #[rstest]
 fn utf8() {
-    asser_compiler("utf8");
+    assert_compiler("utf8");
 }
 
 #[rstest]
 fn nested_elements() {
-    asser_compiler("nested_elements");
+    assert_compiler("nested_elements");
 }
 
 #[rstest]
 fn nested_resets() {
-    asser_compiler("nested_resets");
+    assert_compiler("nested_resets");
 }
 
 #[rstest]
 fn smoke() {
-    asser_compiler("smoke");
+    assert_compiler("smoke");
 }
 
 #[rstest]
 fn spread_attribute() {
-    asser_compiler("spread_attribute");
+    assert_compiler("spread_attribute");
+}
+
+
+#[rstest]
+fn state_runes() {
+    assert_compiler("state_runes");
 }
