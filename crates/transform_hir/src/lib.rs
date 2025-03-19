@@ -3,7 +3,7 @@ use ast_builder::Builder;
 use hir::HirStore;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use script::transform_script;
-use template::{TransformRet, transform_template};
+use template::transform_template;
 
 mod script;
 mod template;
@@ -13,11 +13,8 @@ pub fn transform_hir<'hir>(
     store: &'hir mut HirStore<'hir>,
     b: &'hir Builder<'hir>,
 ) -> Program<'hir> {
-    transform_script(&analyses, &b, &mut store.program);
-    let TransformRet {
-        mut template_body,
-        mut hoisted,
-    } = transform_template(&analyses, &b, store);
+    let mut script_res = transform_script(&analyses, &b, store);
+    let mut template_res = transform_template(&analyses, &b, store);
 
     let mut program_body = vec![];
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
@@ -25,11 +22,13 @@ pub fn transform_hir<'hir>(
     let mut component_body = vec![];
     let component_params = b.params(["$$anchor"]);
 
-    component_body.append(&mut template_body);
+    component_body.append(&mut script_res.body);
+    component_body.append(&mut template_res.template_body);
 
     let component = b.function_declaration(b.bid("App"), component_body, component_params);
     program_body.append(&mut imports);
-    program_body.append(&mut hoisted);
+    program_body.append(&mut script_res.imports);
+    program_body.append(&mut template_res.hoisted);
     program_body.push(
         b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
             b.alloc(component),

@@ -9,3 +9,5 @@ hir = { workspace = true }
 ast_builder = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_allocator = { workspace = true }
+oxc_traverse = { workspace = true }
+oxc_semantic = { workspace = true }
