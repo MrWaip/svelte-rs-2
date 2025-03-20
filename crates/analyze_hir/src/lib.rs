@@ -1,14 +1,17 @@
 mod analises;
 mod analyze_expression;
+mod analyze_script;
 mod analyze_template;
 mod bitflags;
 mod indentifier_gen;
 mod visit;
 
 pub use analises::HirAnalyses;
+use analyze_script::AnalyzeScript;
 pub use bitflags::{OwnerContentType, OwnerContentTypeFlags};
 use hir::NodeId;
 use oxc_allocator::Allocator;
+use oxc_ast::visit::walk::walk_program;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 
 pub struct AnalyzeHir<'hir> {
@@ -115,6 +118,13 @@ impl<'hir> AnalyzeHir<'hir> {
         return flags;
     }
 
+    pub fn script_pass(&self, analyses: &mut HirAnalyses, store: &hir::HirStore<'hir>) {
+        let mut script_analyze = AnalyzeScript { analyses };
+        let program = store.program.program.borrow_mut();
+
+        walk_program(&mut script_analyze, &*program);
+    }
+
     pub fn analyze(&self, hir_store: &hir::HirStore<'hir>) -> HirAnalyses {
         let (symbols, scopes) = self.oxc_semantic_pass(&hir_store.program);
 
@@ -122,6 +132,7 @@ impl<'hir> AnalyzeHir<'hir> {
 
         self.content_type_pass(&mut analyses, hir_store);
         self.dynamic_markers_pass(&mut analyses, hir_store);
+        self.script_pass(&mut analyses, hir_store);
 
         return analyses;
     }
