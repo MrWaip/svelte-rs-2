@@ -5,9 +5,10 @@ use std::{
 
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
-use oxc_semantic::{NodeId as OxcNodeId, ScopeTree, SymbolFlags, SymbolTable};
+use oxc_semantic::{NodeId as OxcNodeId, ScopeTree, SymbolFlags, SymbolId, SymbolTable};
 
 use crate::{
+    analyze_script::SvelteRune,
     bitflags::{OwnerContentType, OwnerContentTypeFlags},
     indentifier_gen::IdentifierGen,
 };
@@ -18,6 +19,7 @@ pub struct HirAnalyses {
     content_types: HashMap<OwnerId, OwnerContentType>,
     identifier_generators: RefCell<HashMap<String, IdentifierGen>>,
     dynamic_nodes: HashSet<NodeId>,
+    runes: HashMap<SymbolId, SvelteRune>,
 }
 
 impl HirAnalyses {
@@ -28,6 +30,7 @@ impl HirAnalyses {
             content_types: HashMap::new(),
             identifier_generators: RefCell::new(HashMap::new()),
             dynamic_nodes: HashSet::new(),
+            runes: HashMap::new(),
         }
     }
 
@@ -58,6 +61,10 @@ impl HirAnalyses {
 
     pub fn is_dynamic(&self, node_id: &NodeId) -> bool {
         self.dynamic_nodes.contains(node_id)
+    }
+
+    pub fn add_rune(&mut self, symbol_id: SymbolId, rune: SvelteRune) {
+        self.runes.insert(symbol_id, rune);
     }
 
     pub fn generate_ident(&self, preferable_name: &str) -> String {
