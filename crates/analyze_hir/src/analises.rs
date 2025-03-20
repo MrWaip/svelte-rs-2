@@ -31,6 +31,15 @@ impl HirAnalyses {
         }
     }
 
+    pub fn take_scoping(&self) -> (SymbolTable, ScopeTree) {
+        return (self.symbols.take(), self.scope.take());
+    }
+
+    pub fn set_scoping(&self, symbols: SymbolTable, scope: ScopeTree) {
+        self.symbols.replace(symbols);
+        self.scope.replace(scope);
+    }
+
     pub fn set_content_type(&mut self, owner_id: OwnerId, content_type: OwnerContentType) {
         self.content_types.insert(owner_id, content_type);
     }
