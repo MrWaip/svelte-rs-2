@@ -3,7 +3,7 @@ use std::path::Path;
 use analyze_hir::HirAnalyses;
 use ast_builder::Builder;
 use hir::HirStore;
-use oxc_ast::ast::{Language, Statement};
+use oxc_ast::ast::{Expression, Language, Statement};
 use oxc_semantic::{ScopeTree, SymbolTable};
 use oxc_transformer::{TransformOptions, Transformer as OxcTransformer};
 use oxc_traverse::{Traverse, traverse_mut};
@@ -73,4 +73,31 @@ impl<'hir> ScriptTransformer<'hir> {
     }
 }
 
-impl<'hir> Traverse<'hir> for ScriptTransformer<'hir> {}
+impl<'hir> Traverse<'hir> for ScriptTransformer<'hir> {
+    fn enter_variable_declarator(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclarator<'hir>,
+        _ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+    ) {
+        self.transform_rune_declaration(node);
+    }
+
+    // fn enter_expression(
+    //     &mut self,
+    //     node: &mut Expression<'hir>,
+    //     ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+    // ) {
+    //     // match node {
+    //     //     Expression::Identifier(_) => {
+    //     //         // self.transform_rune_reference(node, ctx);
+    //     //     }
+    //     //     // Expression::AssignmentExpression(_) => {
+    //     //     //     self.transform_rune_assignment(node, ctx);
+    //     //     // }
+    //     //     // Expression::UpdateExpression(_) => {
+    //     //     //     self.transform_rune_update(node, ctx);
+    //     //     // }
+    //     //     _ => return,
+    //     // }
+    // }
+}

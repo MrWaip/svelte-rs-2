@@ -11,7 +11,7 @@ use oxc_ast::{
         ImportOrExportKind, LogicalOperator, ModuleDeclaration, ModuleExportName, NumericLiteral,
         ObjectExpression, ObjectProperty, ObjectPropertyKind, Program, SpreadElement, Statement,
         StaticMemberExpression, StringLiteral, TemplateElement, TemplateElementValue,
-        TemplateLiteral, VariableDeclarationKind,
+        TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
@@ -194,6 +194,10 @@ impl<'a> Builder<'a> {
         return self
             .ast
             .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal);
+    }
+
+    pub fn numeric_literal_expr(&self, value: f64) -> Expression<'a> {
+        return Expression::NumericLiteral(self.alloc(self.numeric_literal(value)));
     }
 
     pub fn arg<'local>(&self, arg: BuilderFunctionArgument<'a, 'local>) -> Argument<'a> {
@@ -709,6 +713,16 @@ impl<'a> Builder<'a> {
         props: impl IntoIterator<Item = ObjectPropertyKind<'a>>,
     ) -> Expression<'a> {
         return Expression::ObjectExpression(self.alloc(self.object(props)));
+    }
+
+    pub fn unary(&self, operator: UnaryOperator, argument: Expression<'a>) -> UnaryExpression<'a> {
+        let unary = self.ast.unary_expression(SPAN, operator, argument);
+
+        return unary;
+    }
+
+    pub fn unary_expr(&self, operator: UnaryOperator, argument: Expression<'a>) -> Expression<'a> {
+        return Expression::UnaryExpression(self.alloc(self.unary(operator, argument)));
     }
 
     pub fn let_stmt(&self, name: &str, init: Option<BuilderExpression<'a>>) -> Statement<'a> {
