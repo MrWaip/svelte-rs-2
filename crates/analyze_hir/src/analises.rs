@@ -67,6 +67,10 @@ impl HirAnalyses {
         self.runes.insert(symbol_id, rune);
     }
 
+    pub fn get_rune(&self, symbol_id: SymbolId) -> Option<&SvelteRune> {
+        return self.runes.get(&symbol_id);
+    }
+
     pub fn generate_ident(&self, preferable_name: &str) -> String {
         let mut identifiers = self.identifier_generators.borrow_mut();
 

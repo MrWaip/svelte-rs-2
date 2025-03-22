@@ -1,4 +1,4 @@
-import { compile } from "npm:svelte@5.22.6/compiler";
+import { compile } from "npm:svelte@5.25.2/compiler";
 
 const text = await Deno.readTextFile(Deno.args[0]);
 

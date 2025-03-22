@@ -9,7 +9,7 @@ pub struct AnalyzeScript<'a> {
     pub analyses: &'a mut HirAnalyses,
 }
 
-pub enum SvelteRune {
+pub enum SvelteRuneKind {
     State,
     StateRaw,
     StateSnapshot,
@@ -28,7 +28,7 @@ pub enum SvelteRune {
     Host,
 }
 
-impl SvelteRune {
+impl SvelteRuneKind {
     pub fn from_str(name: &str) -> Option<Self> {
         match name {
             "$state" => Self::State.into(),
@@ -52,16 +52,27 @@ impl SvelteRune {
     }
 }
 
+pub struct SvelteRune {
+    pub kind: SvelteRuneKind,
+    pub mutated: bool,
+}
+
 impl<'hir> Visit<'hir> for AnalyzeScript<'hir> {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'hir>) {
         if let Some(Expression::CallExpression(call)) = &declarator.init {
-            let rune = SvelteRune::from_str(call.callee_name().unwrap_or(""));
+            let kind = SvelteRuneKind::from_str(call.callee_name().unwrap_or(""));
 
-            if let Some(rune) = rune {
+            if let Some(kind) = kind {
                 if let BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind {
                     let symbol_id = id.symbol_id();
 
-                    self.analyses.add_rune(symbol_id, rune);
+                    self.analyses.add_rune(
+                        symbol_id,
+                        SvelteRune {
+                            kind,
+                            mutated: false,
+                        },
+                    );
                 }
             }
         }
