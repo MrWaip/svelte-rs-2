@@ -109,8 +109,12 @@ fn spread_attribute() {
     assert_compiler("spread_attribute");
 }
 
-
 #[rstest]
 fn state_runes() {
     assert_compiler("state_runes");
+}
+
+#[rstest]
+fn bind_directives() {
+    assert_compiler("bind_directives");
 }
