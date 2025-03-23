@@ -214,24 +214,24 @@ impl<'hir> AstToHir<'hir> {
             shorthand: attr.shorthand,
         };
 
-        return ctx.alloc(attr)
+        return ctx.alloc(attr);
     }
 
     fn lower_boolean_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::BooleanAttribute<'hir>,
-    ) -> hir::Attribute<'hir> {
+    ) -> &'hir hir::Attribute<'hir> {
         let attribute = hir::BooleanAttribute { name: attr.name };
 
-        return hir::Attribute::BooleanAttribute(ctx.alloc(attribute));
+        return ctx.alloc(hir::Attribute::BooleanAttribute(ctx.alloc(attribute)));
     }
 
     fn lower_concatenation_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ConcatenationAttribute<'hir>,
-    ) -> hir::Attribute<'hir> {
+    ) -> &'hir hir::Attribute<'hir> {
         let parts: Vec<hir::ConcatenationAttributePart<'hir>> = attr
             .parts
             .into_iter()
@@ -252,14 +252,14 @@ impl<'hir> AstToHir<'hir> {
             parts,
         };
 
-        return hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute));
+        return ctx.alloc(hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute)));
     }
 
     fn lower_expression_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::ExpressionAttribute<'hir>,
-    ) -> hir::Attribute<'hir> {
+    ) -> &'hir hir::Attribute<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
 
         let attribute = hir::ExpressionAttribute {
@@ -268,32 +268,32 @@ impl<'hir> AstToHir<'hir> {
             expression_id,
         };
 
-        return hir::Attribute::ExpressionAttribute(ctx.alloc(attribute));
+        return ctx.alloc(hir::Attribute::ExpressionAttribute(ctx.alloc(attribute)));
     }
 
     fn lower_spread_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::SpreadAttribute<'hir>,
-    ) -> hir::Attribute<'hir> {
+    ) -> &'hir hir::Attribute<'hir> {
         let expression_id = ctx.push_expression(attr.expression);
 
         let attribute = hir::SpreadAttribute { expression_id };
 
-        return hir::Attribute::SpreadAttribute(ctx.alloc(attribute));
+        return ctx.alloc(hir::Attribute::SpreadAttribute(ctx.alloc(attribute)));
     }
 
     fn lower_string_attribute(
         &self,
         ctx: &mut ToHirContext<'hir>,
         attr: ast::StringAttribute<'hir>,
-    ) -> hir::Attribute<'hir> {
+    ) -> &'hir hir::Attribute<'hir> {
         let attribute = hir::StringAttribute {
             name: attr.name,
             value: attr.value,
         };
 
-        return hir::Attribute::StringAttribute(ctx.alloc(attribute));
+        return ctx.alloc(hir::Attribute::StringAttribute(ctx.alloc(attribute)));
     }
 
     fn lower_interpolation(

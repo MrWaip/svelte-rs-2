@@ -33,7 +33,7 @@ impl<'hir> Element<'hir> {
             return true;
         };
 
-        return self.attributes.has_by_name("is");
+        return self.attributes.get_attribute_by_name("is").is_some();
     }
 
     pub fn is_video(&self) -> bool {
@@ -42,6 +42,10 @@ impl<'hir> Element<'hir> {
 
     pub fn is_script(&self) -> bool {
         return matches!(self.kind, ElementKind::Script);
+    }
+
+    pub fn is_input(&self) -> bool {
+        return matches!(self.kind, ElementKind::Input);
     }
 }
 

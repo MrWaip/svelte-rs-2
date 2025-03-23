@@ -7,3 +7,6 @@
 
 <input bind:value={name} />
 
+<input bind:value={name} {...other} />
+
+<input defaultValue="123" bind:value={name}  />

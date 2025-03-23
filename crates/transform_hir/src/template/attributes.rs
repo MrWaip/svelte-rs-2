@@ -8,10 +8,46 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
+        self.element_specific(element, ctx);
+
         if element.attributes.has_spread() {
             self.attributes_spread_shortcut(element, ctx);
         } else {
             self.attributes_common(element, ctx);
+        }
+    }
+
+    fn element_specific<'short>(
+        &mut self,
+        element: &hir::Element<'hir>,
+        ctx: &mut OwnerContext<'hir, 'short>,
+    ) {
+        if element.is_input() {
+            let value_attr = element
+                .attributes
+                .get_attribute_by_name("value")
+                .or_else(|| element.attributes.get_attribute_by_name("checked"));
+
+            let default_value_attr = element
+                .attributes
+                .get_attribute_by_name("defaultValue")
+                .or_else(|| element.attributes.get_attribute_by_name("defaultChecked"));
+
+            let has_value_attribute = value_attr.is_some_and(|attr| attr.contains_expression());
+            let has_default_value_attribute = default_value_attr.is_some();
+
+            if !has_default_value_attribute
+                && (element.attributes.has_spread()
+                    || element.attributes.has_binding("value")
+                    || element.attributes.has_binding("checked")
+                    || element.attributes.has_binding("group")
+                    || (!element.attributes.has_binding("group") && has_value_attribute))
+            {
+                ctx.push_init(self.b.call_stmt(
+                    "$.remove_input_defaults",
+                    [BuilderFunctionArgument::Expr(ctx.anchor())],
+                ));
+            }
         }
     }
 

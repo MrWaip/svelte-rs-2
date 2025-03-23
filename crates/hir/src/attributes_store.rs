@@ -8,7 +8,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct AttributeStore<'hir> {
     has_spread: bool,
-    attributes: Vec<Attribute<'hir>>,
+    attributes: Vec<&'hir Attribute<'hir>>,
     style_directives: Vec<&'hir StyleDirective<'hir>>,
     class_directives: Vec<&'hir ClassDirective<'hir>>,
     use_directives: Vec<&'hir UseDirective<'hir>>,
@@ -17,7 +17,7 @@ pub struct AttributeStore<'hir> {
     transition_directives: Vec<&'hir TransitionDirective<'hir>>,
     on_directives: Vec<&'hir OnDirective<'hir>>,
     bind_directives: HashMap<&'hir str, &'hir BindDirective<'hir>>,
-    attribute_names: HashSet<&'hir str>,
+    attributes_by_name: HashMap<&'hir str, &'hir Attribute<'hir>>,
 }
 
 impl<'hir> AttributeStore<'hir> {
@@ -29,12 +29,11 @@ impl<'hir> AttributeStore<'hir> {
         return !self.use_directives.is_empty();
     }
 
-    pub fn has_by_name(&self, name: &str) -> bool {
-        return self.attribute_names.contains(name);
+    pub fn get_attribute_by_name(&self, name: &str) -> Option<&&Attribute<'hir>> {
+        return self.attributes_by_name.get(name);
     }
 
     pub fn push_class_directive(&mut self, directive: &'hir ClassDirective<'hir>) {
-        self.attribute_names.insert("class");
         self.class_directives.push(directive);
     }
 
@@ -55,25 +54,23 @@ impl<'hir> AttributeStore<'hir> {
     }
 
     pub fn push_style_directive(&mut self, directive: &'hir StyleDirective<'hir>) {
-        self.attribute_names.insert("style");
         self.style_directives.push(directive);
     }
 
     pub fn push_bind_directive(&mut self, directive: &'hir BindDirective<'hir>) {
-        self.attribute_names.insert(directive.name);
         self.bind_directives.insert(directive.name, directive);
     }
 
-    pub fn push_attr(&mut self, attr: Attribute<'hir>) {
+    pub fn push_attr(&mut self, attr: &'hir Attribute<'hir>) {
         if let Some(name) = attr.name() {
-            self.attribute_names.insert(name);
+            self.attributes_by_name.insert(name, attr);
         }
 
         self.has_spread = attr.is_spread();
         self.attributes.push(attr);
     }
 
-    pub fn iter_attrs(&self) -> impl Iterator<Item = &Attribute<'hir>> {
+    pub fn iter_attrs(&self) -> impl Iterator<Item = &&'hir Attribute<'hir>> {
         return self.attributes.iter();
     }
 
@@ -132,5 +129,9 @@ impl<'hir> AttributeStore<'hir> {
             .chain(ons)
             .chain(transitions)
             .chain(animations);
+    }
+
+    pub fn has_binding(&self, arg: &str) -> bool {
+        return self.bind_directives.contains_key(arg);
     }
 }
