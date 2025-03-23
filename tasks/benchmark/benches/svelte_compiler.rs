@@ -23,7 +23,7 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
                 let _ = runner.run(|| {
                     let compiler = Compiler::new();
 
-                    let result = compiler.compile(&source, &allocator);
+                    let result = compiler.compile2(&source, &allocator);
 
                     result
                 });
