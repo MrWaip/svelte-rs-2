@@ -1672,6 +1672,9 @@ dependencies = [
  "compiler",
  "diagnostics",
  "oxc_allocator",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_span",
  "serde-wasm-bindgen",
  "wasm-bindgen",
 ]

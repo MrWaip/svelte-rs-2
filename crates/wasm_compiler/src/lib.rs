@@ -1,5 +1,7 @@
 use compiler::Compiler;
 use oxc_allocator::Allocator;
+use oxc_codegen::Codegen;
+use oxc_span::SourceType;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -19,9 +21,20 @@ impl WasmCompiler {
         let compiler = Compiler::new();
 
         let result = compiler
-            .compile(source, &allocator)
+            .compile2(source, &allocator)
             .map_err(|diagnostic| serde_wasm_bindgen::Error::new(diagnostic))?;
 
         return Ok(result.js);
+    }
+
+    #[wasm_bindgen(catch, method)]
+    pub fn format(&self, source: &str) -> String {
+        let allocator = Allocator::default();
+        let parser = oxc_parser::Parser::new(&allocator, source, SourceType::default());
+        let codegen = Codegen::default();
+
+        let ast = parser.parse();
+
+        return codegen.build(&ast.program).code;
     }
 }

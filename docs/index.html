@@ -98,7 +98,7 @@
     <script type="module">
       import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
       import prettyMs from "prettyMs";
-      import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.19.6/compiler/index.js/+esm";
+      import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.25.2/compiler/index.js/+esm";
 
       import { example } from "./example.js";
 
@@ -213,8 +213,7 @@
             "svelte"
           );
 
-          const code = result.js.code.replaceAll(/^\s*\n/gm, "");
-
+          const code = compiler.format(result.js.code);
           sveltePreviewInstance.setValue(code);
         } catch (e) {
           console.error(e);

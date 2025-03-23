@@ -4,6 +4,7 @@ export class WasmCompiler {
   free(): void;
   constructor();
   compile(source: string): string;
+  format(source: string): string;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -13,6 +14,7 @@ export interface InitOutput {
   readonly __wbg_wasmcompiler_free: (a: number, b: number) => void;
   readonly wasmcompiler_new: () => number;
   readonly wasmcompiler_compile: (a: number, b: number, c: number) => [number, number, number, number];
+  readonly wasmcompiler_format: (a: number, b: number, c: number) => [number, number];
   readonly __wbindgen_export_0: WebAssembly.Table;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
