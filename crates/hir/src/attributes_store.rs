@@ -66,7 +66,9 @@ impl<'hir> AttributeStore<'hir> {
             self.attributes_by_name.insert(name, attr);
         }
 
-        self.has_spread = attr.is_spread();
+        if attr.is_spread() {
+            self.has_spread = true;
+        }
         self.attributes.push(attr);
     }
 

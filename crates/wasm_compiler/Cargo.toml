@@ -13,3 +13,6 @@ diagnostics = { workspace = true }
 compiler = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 wasm-bindgen = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_span = { workspace = true }

@@ -72,3 +72,10 @@ https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
 ## SSR
 
 - [-] unimplemented at all
+
+
+## wasm 
+
+```
+wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler
+```
