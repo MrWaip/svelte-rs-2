@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 var root = $.template(`<input> <input> <input> <input defaultValue="123">`, 1);
 export default function App($$anchor) {
-	let value = "";
+	let value = $.state("");
 	let name = "";
 	var fragment = root();
 	var input = $.first_child(fragment);

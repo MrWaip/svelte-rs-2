@@ -4,6 +4,7 @@ mod analyze_script;
 mod analyze_template;
 mod bitflags;
 mod indentifier_gen;
+mod rune_reference;
 mod visit;
 
 pub use analises::HirAnalyses;
@@ -133,6 +134,7 @@ impl<'hir> AnalyzeHir<'hir> {
         self.content_type_pass(&mut analyses, hir_store);
         self.dynamic_markers_pass(&mut analyses, hir_store);
         self.script_pass(&mut analyses, hir_store);
+        self.rune_reference_pass(&mut analyses, hir_store);
 
         return analyses;
     }

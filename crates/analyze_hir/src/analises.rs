@@ -5,7 +5,10 @@ use std::{
 
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
-use oxc_semantic::{NodeId as OxcNodeId, ScopeTree, SymbolFlags, SymbolId, SymbolTable};
+use oxc_semantic::{
+    NodeId as OxcNodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolFlags, SymbolId,
+    SymbolTable,
+};
 
 use crate::{
     analyze_script::SvelteRune,
@@ -109,5 +112,41 @@ impl HirAnalyses {
             .add_binding(root_scope_id, &identifier, symbol_id);
 
         return identifier;
+    }
+
+    fn sync_rune(&mut self, symbol_id: SymbolId) {
+        let mutated = self.symbol_is_mutated(symbol_id);
+        let option = self.runes.get_mut(&symbol_id);
+
+        if let Some(rune) = option {
+            rune.mutated = mutated;
+        }
+    }
+
+    pub fn symbol_is_mutated(&self, symbol_id: SymbolId) -> bool {
+        return self.symbols.borrow().symbol_is_mutated(symbol_id);
+    }
+
+    pub(crate) fn add_reference(
+        &mut self,
+        name: &str,
+        flags: oxc_semantic::ReferenceFlags,
+    ) -> Option<ReferenceId> {
+        let symbol_id = self.scope.borrow().get_root_binding(name);
+
+        if let Some(symbol_id) = symbol_id {
+            let mut reference = Reference::new(OxcNodeId::DUMMY, flags);
+            reference.set_symbol_id(symbol_id);
+            let reference_id = self.symbols.borrow_mut().create_reference(reference);
+            self.symbols
+                .borrow_mut()
+                .add_resolved_reference(symbol_id, reference_id);
+
+            self.sync_rune(symbol_id);
+
+            return Some(reference_id);
+        }
+
+        return None;
     }
 }
