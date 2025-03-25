@@ -1,4 +1,4 @@
-use ast_builder::BuilderFunctionArgument;
+use ast_builder::{BuilderExpression, BuilderFunctionArgument};
 use oxc_ast::ast::{BindingPatternKind, Expression};
 
 use super::script_transformer::ScriptTransformer;
@@ -24,7 +24,20 @@ impl<'hir> ScriptTransformer<'hir> {
 
         if let Expression::CallExpression(mut call) = rune_argument {
             if rune.mutated {
-                todo!();
+                call.callee = self.b.expr(BuilderExpression::Ident(self.b.rid("$.state")));
+
+                if call.arguments.is_empty() {
+                    call.arguments.push(
+                        self.b
+                            .unary_expr(
+                                oxc_ast::ast::UnaryOperator::Void,
+                                self.b.numeric_literal_expr(0.0),
+                            )
+                            .into(),
+                    );
+                }
+
+                node.init = Some(Expression::CallExpression(call))
             } else {
                 let expr = if call.arguments.is_empty() {
                     self.b.unary_expr(
