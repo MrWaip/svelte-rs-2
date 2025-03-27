@@ -1,4 +1,8 @@
-use ast_builder::{BuilderExpression, BuilderFunctionArgument, TemplateLiteralPart};
+use ast_builder::{
+    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression, BuilderFunctionArgument,
+    BuilderStatement, TemplateLiteralPart,
+};
+use oxc_ast::ast::Expression;
 
 use super::{context::OwnerContext, template_transformer::TemplateTransformer};
 
@@ -56,6 +60,10 @@ impl<'hir> TemplateTransformer<'hir> {
         element: &hir::Element<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
+        for (_, bind) in element.attributes.bind_directives_iter() {
+            self.transform_bind_directive(bind, ctx);
+        }
+
         for attribute in element.attributes.iter_attrs() {
             match attribute {
                 hir::Attribute::StringAttribute(it) => self.transform_string_attribute(it, ctx),
@@ -198,11 +206,53 @@ impl<'hir> TemplateTransformer<'hir> {
 
     fn transform_bind_directive<'short>(
         &self,
-        _attr: &hir::BindDirective<'hir>,
-        _ctx: &mut OwnerContext<'hir, 'short>,
+        attr: &hir::BindDirective<'hir>,
+        ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        // https://github.com/sveltejs/svelte/blob/61a0da8a5fdf5ac86431ceadfae0f54d38dc9a66/packages/svelte/src/compiler/phases/3-transform/client/visitors/BindDirective.js#L15
-        todo!()
+        let expression = self.take_expression(attr.expression_id);
+
+        let (get, set) = if let Expression::SequenceExpression(seq) = expression {
+            let mut seq = seq.unbox();
+
+            (
+                self.b.move_expr(&mut seq.expressions[0]),
+                self.b.move_expr(&mut seq.expressions[1]),
+            )
+        } else {
+            let Expression::Identifier(ident) = expression else {
+                todo!()
+            };
+
+            let ident = ident.unbox();
+
+            let get = self.b.arrow_expr(
+                self.b.params([]),
+                [self.b.stmt(BuilderStatement::Ident(ident.clone()))],
+            );
+
+            let assignment = self.b.assignment_expression_expr(
+                BuilderAssignmentLeft::IdentRef(ident),
+                BuilderAssignmentRight::Ident("$$value"),
+            );
+
+            let set = self.b.arrow_expr(
+                self.b.params(["$$value"]),
+                [self.b.stmt(BuilderStatement::Expr(assignment))],
+            );
+
+            (get, set)
+        };
+
+        let stmt = self.b.call_stmt(
+            "$.bind_value",
+            [
+                BuilderFunctionArgument::Expr(ctx.anchor()),
+                BuilderFunctionArgument::Expr(get),
+                BuilderFunctionArgument::Expr(set),
+            ],
+        );
+
+        ctx.push_after_update(stmt);
     }
 
     fn concatenation_to_template(

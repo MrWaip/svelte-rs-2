@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Iter};
 
 use crate::{
     AnimationDirective, AnyAttribute, Attribute, BindDirective, ClassDirective, Directives,
@@ -135,5 +135,9 @@ impl<'hir> AttributeStore<'hir> {
 
     pub fn has_binding(&self, arg: &str) -> bool {
         return self.bind_directives.contains_key(arg);
+    }
+
+    pub fn bind_directives_iter(&self) -> Iter<&str, &BindDirective<'hir>> {
+        return self.bind_directives.iter();
     }
 }
