@@ -7,6 +7,9 @@
 
 <input bind:value={name} />
 
-<input bind:value={name} {...other} />
+<input bind:value={
+    () => value,
+    (newValue) => value = newValue
+} />
 
-<input defaultValue="123" bind:value={name}  />
+<input bind:value={name}  />

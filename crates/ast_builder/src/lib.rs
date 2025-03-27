@@ -554,6 +554,16 @@ impl<'a> Builder<'a> {
         return arrow;
     }
 
+    pub fn arrow_expr(
+        &self,
+        params: FormalParameters<'a>,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+    ) -> Expression<'a> {
+        let arrow = self.arrow(params, statements);
+
+        return Expression::ArrowFunctionExpression(self.alloc(arrow));
+    }
+
     pub fn clone_expr(&self, expr: &Expression<'a>) -> Expression<'a> {
         return expr.clone_in(&self.ast.allocator);
     }
