@@ -1,6 +1,8 @@
 use ast_builder::{BuilderExpression, BuilderFunctionArgument};
 
-use super::{context::OwnerContext, template_transformer::TemplateTransformer};
+use crate::context::OwnerContext;
+
+use super::template_transformer::TemplateTransformer;
 
 const COMMENT_NODE_ANCHOR: &str = "<!>";
 

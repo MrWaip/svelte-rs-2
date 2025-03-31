@@ -1,9 +1,11 @@
 use ast_builder::BuilderFunctionArgument as BArg;
 use hir::NodeId;
 
+use crate::context::OwnerContext;
+
 use super::{
-    context::OwnerContext, interpolation::TransformInterpolationOptions,
-    is_static::is_static_element, template_transformer::TemplateTransformer,
+    interpolation::TransformInterpolationOptions, is_static::is_static_element,
+    template_transformer::TemplateTransformer,
 };
 
 impl<'hir> TemplateTransformer<'hir> {

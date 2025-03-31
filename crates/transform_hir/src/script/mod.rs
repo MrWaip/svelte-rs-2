@@ -1,7 +1,7 @@
-mod rune_declaration;
-mod script_transformer;
 mod run_reference;
 mod rune_assignment;
+mod rune_declaration;
+mod script_transformer;
 
 use analyze_hir::HirAnalyses;
 use ast_builder::Builder;

@@ -3,8 +3,9 @@ use std::borrow::Cow;
 use ast_builder::BuilderFunctionArgument;
 use hir::OwnerId;
 
+use crate::context::{FragmentContext, OwnerContext};
+
 use super::{
-    context::{FragmentContext, OwnerContext},
     interpolation::TransformInterpolationOptions,
     template_transformer::TemplateTransformer,
 };

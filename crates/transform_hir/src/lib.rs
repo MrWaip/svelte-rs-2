@@ -5,6 +5,7 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Program};
 use script::transform_script;
 use template::transform_template;
 
+mod context;
 mod script;
 mod template;
 

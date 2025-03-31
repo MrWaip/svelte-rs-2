@@ -173,14 +173,14 @@ impl<'hir> Traverse<'hir> for ScriptTransformer<'hir> {
     fn enter_expression(
         &mut self,
         node: &mut Expression<'hir>,
-        _ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+        ctx: &mut oxc_traverse::TraverseCtx<'hir>,
     ) {
         match node {
             Expression::Identifier(_) => {
                 self.transform_rune_reference(node);
             }
             Expression::AssignmentExpression(_) => {
-                self.transform_rune_assignment(node);
+                self.transform_rune_assignment(node, ctx);
             }
             _ => return,
         }
