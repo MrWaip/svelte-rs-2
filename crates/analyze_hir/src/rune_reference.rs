@@ -4,7 +4,10 @@ use hir::{ConcatenationAttributePart, ConcatenationPart};
 use oxc_ast::{
     Visit,
     ast::{Expression, IdentifierReference},
-    visit::walk::{walk_assignment_expression, walk_update_expression},
+    visit::walk::{
+        walk_arrow_function_expression, walk_assignment_expression, walk_function,
+        walk_update_expression,
+    },
 };
 use oxc_semantic::ReferenceFlags;
 
@@ -121,5 +124,26 @@ impl<'hir> Visit<'hir> for AnalyzeTemplateExpression<'hir> {
     fn visit_assignment_expression(&mut self, it: &oxc_ast::ast::AssignmentExpression<'hir>) {
         self.current_reference_flags = ReferenceFlags::write();
         walk_assignment_expression(self, it);
+    }
+
+    fn visit_arrow_function_expression(
+        &mut self,
+        it: &oxc_ast::ast::ArrowFunctionExpression<'hir>,
+    ) {
+        let scope_id = self.analyses.add_scope();
+        it.set_scope_id(scope_id);
+
+        walk_arrow_function_expression(self, it);
+    }
+
+    fn visit_function(
+        &mut self,
+        it: &oxc_ast::ast::Function<'hir>,
+        flags: oxc_semantic::ScopeFlags,
+    ) {
+        let scope_id = self.analyses.add_scope();
+        it.set_scope_id(scope_id);
+
+        walk_function(self, it, flags);
     }
 }

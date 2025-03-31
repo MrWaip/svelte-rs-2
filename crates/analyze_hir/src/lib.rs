@@ -14,6 +14,8 @@ use hir::NodeId;
 use oxc_allocator::Allocator;
 use oxc_ast::visit::walk::walk_program;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
+pub use analyze_script::SvelteRune;
+
 
 pub struct AnalyzeHir<'hir> {
     allocator: &'hir Allocator,

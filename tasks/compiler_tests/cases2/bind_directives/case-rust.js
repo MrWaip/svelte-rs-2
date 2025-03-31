@@ -12,9 +12,9 @@ export default function App($$anchor) {
 	$.remove_input_defaults(input_2);
 	var input_3 = $.sibling(input_2, 2);
 	$.remove_input_defaults(input_3);
-	$.bind_value(input, () => value, ($$value) => value = $$value);
+	$.bind_value(input, () => $.get(value), ($$value) => $.set(value, $$value, true));
 	$.bind_value(input_1, () => name, ($$value) => name = $$value);
-	$.bind_value(input_2, () => value, (newValue) => value = newValue);
+	$.bind_value(input_2, () => $.get(value), (newValue) => $.set(value, newValue, true));
 	$.bind_value(input_3, () => name, ($$value) => name = $$value);
 	$.append($$anchor, fragment);
 }

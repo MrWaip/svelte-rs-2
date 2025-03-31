@@ -1,11 +1,13 @@
-mod script_transformer;
 mod rune_declaration;
+mod script_transformer;
+mod run_reference;
+mod rune_assignment;
 
 use analyze_hir::HirAnalyses;
 use ast_builder::Builder;
 use hir::HirStore;
 use oxc_ast::ast::Statement;
-use script_transformer::ScriptTransformer;
+pub use script_transformer::ScriptTransformer;
 
 pub struct TransformRet<'hir> {
     pub body: Vec<Statement<'hir>>,
