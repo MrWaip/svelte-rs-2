@@ -8,11 +8,26 @@ use oxc_traverse::TraverseCtx;
 use super::script_transformer::ScriptTransformer;
 
 impl<'hir> ScriptTransformer<'hir> {
-    fn needs_proxy(&self, e: &Expression, operator: AssignmentOperator) -> bool {
-        return self.should_proxy_rune_init(e) && (operator.is_logical() || operator.is_assign());
+    fn needs_proxy(
+        &self,
+        e: &Expression,
+        operator: AssignmentOperator,
+        ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+    ) -> bool {
+        // self.owner_ctx
+
+        // self.store.get_owner(self.owner_ctx)
+
+        let is_non_coercive_operator = operator.is_logical() || operator.is_assign();
+
+        return self.should_proxy_rune_init(e) && is_non_coercive_operator;
     }
 
-    pub(crate) fn transform_rune_assignment(&mut self, node: &mut Expression<'hir>) {
+    pub(crate) fn transform_rune_assignment(
+        &mut self,
+        node: &mut Expression<'hir>,
+        ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+    ) {
         let Expression::AssignmentExpression(assign) = node else {
             unreachable!();
         };
@@ -29,7 +44,7 @@ impl<'hir> ScriptTransformer<'hir> {
 
         if let Some(name) = ident {
             let right = self.b.ast.move_expression(&mut assign.right);
-            let needs_proxy = self.needs_proxy(&right, assign.operator);
+            let needs_proxy = self.needs_proxy(&right, assign.operator, ctx);
 
             let mut args = vec![
                 BuilderFunctionArgument::Ident(name),

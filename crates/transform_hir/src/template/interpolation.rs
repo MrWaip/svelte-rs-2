@@ -4,7 +4,9 @@ use ast_builder::{
     BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr, TemplateLiteralPart,
 };
 
-use super::{context::OwnerContext, template_transformer::TemplateTransformer};
+use crate::context::OwnerContext;
+
+use super::{ template_transformer::TemplateTransformer};
 
 #[derive(Debug, Default)]
 pub enum InterpolationProperty {

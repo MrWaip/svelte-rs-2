@@ -4,7 +4,9 @@ use ast_builder::{
 };
 use oxc_ast::ast::Expression;
 
-use super::{context::OwnerContext, template_transformer::TemplateTransformer};
+use crate::context::OwnerContext;
+
+use super::{ template_transformer::TemplateTransformer};
 
 impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_attributes<'short>(

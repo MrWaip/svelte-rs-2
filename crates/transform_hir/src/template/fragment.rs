@@ -3,10 +3,10 @@ use ast_builder::{BuilderExpression as BExpr, BuilderFunctionArgument as BArg};
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Statement;
 
+use crate::context::{FragmentContext, OwnerContext};
+
 use super::{
-    context::{FragmentContext, OwnerContext},
-    interpolation::TransformInterpolationOptions,
-    template_transformer::TemplateTransformer,
+    interpolation::TransformInterpolationOptions, template_transformer::TemplateTransformer,
 };
 
 impl<'hir> TemplateTransformer<'hir> {
