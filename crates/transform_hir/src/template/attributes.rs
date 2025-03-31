@@ -205,7 +205,7 @@ impl<'hir> TemplateTransformer<'hir> {
     }
 
     fn transform_bind_directive<'short>(
-        &self,
+        &mut self,
         attr: &hir::BindDirective<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
@@ -215,8 +215,8 @@ impl<'hir> TemplateTransformer<'hir> {
             let mut seq = seq.unbox();
 
             (
-                self.b.move_expr(&mut seq.expressions[0]),
-                self.b.move_expr(&mut seq.expressions[1]),
+                self.transform_expression(seq.expressions.remove(0), ctx),
+                self.transform_expression(seq.expressions.remove(0), ctx),
             )
         } else {
             let Expression::Identifier(ident) = expression else {
@@ -225,22 +225,27 @@ impl<'hir> TemplateTransformer<'hir> {
 
             let ident = ident.unbox();
 
-            let get = self.b.arrow_expr(
+            let getter_result = self
+                .transform_expression(self.b.expr(BuilderExpression::Ident(ident.clone())), ctx);
+
+            let getter = self.b.arrow_expr(
                 self.b.params([]),
-                [self.b.stmt(BuilderStatement::Ident(ident.clone()))],
+                [self.b.stmt(BuilderStatement::Expr(getter_result))],
             );
 
-            let assignment = self.b.assignment_expression_expr(
+            let mut assignment = self.b.assignment_expression_expr(
                 BuilderAssignmentLeft::IdentRef(ident),
                 BuilderAssignmentRight::Ident("$$value"),
             );
+
+            assignment = self.transform_expression(assignment, ctx);
 
             let set = self.b.arrow_expr(
                 self.b.params(["$$value"]),
                 [self.b.stmt(BuilderStatement::Expr(assignment))],
             );
 
-            (get, set)
+            (getter, set)
         };
 
         let stmt = self.b.call_stmt(

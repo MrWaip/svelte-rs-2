@@ -6,8 +6,8 @@ use std::{
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
 use oxc_semantic::{
-    NodeId as OxcNodeId, Reference, ReferenceFlags, ReferenceId, ScopeTree, SymbolFlags, SymbolId,
-    SymbolTable,
+    NodeId as OxcNodeId, Reference, ReferenceFlags, ReferenceId, ScopeFlags, ScopeId, ScopeTree,
+    SymbolFlags, SymbolId, SymbolTable,
 };
 
 use crate::{
@@ -127,6 +127,10 @@ impl HirAnalyses {
         return self.symbols.borrow().symbol_is_mutated(symbol_id);
     }
 
+    pub fn root_scope_id(&self) -> ScopeId {
+        return self.scope.borrow().root_scope_id();
+    }
+
     pub(crate) fn add_reference(
         &mut self,
         name: &str,
@@ -148,5 +152,26 @@ impl HirAnalyses {
         }
 
         return None;
+    }
+
+    pub fn get_rune_by_reference(&self, reference_id: ReferenceId) -> Option<&SvelteRune> {
+        let binding = self.symbols.borrow();
+        let reference = binding.get_reference(reference_id);
+        let symbol_id = reference.symbol_id();
+
+        if symbol_id.is_none() {
+            return None;
+        }
+
+        return self.runes.get(&symbol_id.unwrap());
+    }
+
+    pub(crate) fn add_scope(&self) -> ScopeId {
+        let root_scope = self.root_scope_id();
+        return self.scope.borrow_mut().add_scope(
+            Some(root_scope),
+            OxcNodeId::DUMMY,
+            ScopeFlags::empty(),
+        );
     }
 }
