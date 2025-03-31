@@ -2,7 +2,7 @@ use std::path::Path;
 
 use analyze_hir::{HirAnalyses, SvelteRune};
 use ast_builder::{Builder, BuilderStatement};
-use hir::HirStore;
+use hir::{HirStore, OwnerId};
 use oxc_ast::ast::{Expression, IdentifierReference, Language, Statement};
 use oxc_semantic::{ScopeTree, SymbolTable};
 use oxc_transformer::{TransformOptions, Transformer as OxcTransformer};
@@ -13,6 +13,7 @@ pub struct ScriptTransformer<'hir> {
     pub(crate) b: &'hir Builder<'hir>,
     pub(crate) store: &'hir HirStore<'hir>,
     pub(crate) imports: Vec<Statement<'hir>>,
+    pub(crate) owner_id: OwnerId,
 }
 
 impl<'hir> ScriptTransformer<'hir> {
@@ -20,12 +21,14 @@ impl<'hir> ScriptTransformer<'hir> {
         analyses: &'hir HirAnalyses,
         builder: &'hir Builder<'hir>,
         store: &'hir HirStore<'hir>,
+        owner_id: OwnerId,
     ) -> Self {
         Self {
             analyses,
             b: builder,
             store,
             imports: vec![],
+            owner_id,
         }
     }
 
