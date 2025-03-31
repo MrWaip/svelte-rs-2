@@ -19,7 +19,8 @@ pub fn transform_script<'hir>(
     builder: &'hir Builder,
     store: &'hir HirStore<'hir>,
 ) -> TransformRet<'hir> {
-    let mut transformer = ScriptTransformer::new(analyses, builder, store);
+    let mut transformer =
+        ScriptTransformer::new(analyses, builder, store, HirStore::TEMPLATE_OWNER_ID);
 
     let body = transformer.transform();
 

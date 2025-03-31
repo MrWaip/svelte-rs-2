@@ -21,7 +21,8 @@ impl<'hir> TemplateTransformer<'hir> {
         expression: Expression<'hir>,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) -> Expression<'hir> {
-        let mut transformer = ScriptTransformer::new(self.analyses, self.b, self.store);
+        let mut transformer =
+            ScriptTransformer::new(self.analyses, self.b, self.store, ctx.owner_id());
 
         return transformer.transform_expression(expression);
     }
