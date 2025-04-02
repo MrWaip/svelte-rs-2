@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Expression, Program};
 
 use crate::{
-    Attribute, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag, Text,
+    Attribute, Comment, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag, Text,
     VirtualConcatenation,
 };
 
@@ -18,6 +18,7 @@ impl<'a> FormatNode for Node<'a> {
             Node::IfBlock(it) => it.borrow().format_node(),
             Node::VirtualConcatenation(it) => it.borrow().format_node(),
             Node::ScriptTag(it) => it.borrow().format_node(),
+            Node::Comment(it) => it.borrow().format_node(),
         };
     }
 }
@@ -171,6 +172,12 @@ impl<'a> FormatNode for Element<'a> {
         result.push_str(">");
 
         return result;
+    }
+}
+
+impl<'a> FormatNode for Comment<'a> {
+    fn format_node(&self) -> String {
+        return self.value.into();
     }
 }
 

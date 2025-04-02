@@ -9,6 +9,7 @@ use span::{GetSpan, Span};
 
 pub enum TokenType<'a> {
     Text,
+    Comment,
     StartTag(StartTag<'a>),
     EndTag(EndTag<'a>),
     Interpolation(ExpressionTag<'a>),

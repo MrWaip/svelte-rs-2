@@ -557,6 +557,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                 self.transform_virtual_concatenation(&mut *it.borrow_mut(), ctx)
             }
             Node::ScriptTag(_script_tag) => todo!(),
+            Node::Comment(_) => return,
         };
     }
 

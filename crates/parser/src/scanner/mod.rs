@@ -53,10 +53,12 @@ impl<'a> Scanner<'a> {
         let char = self.advance();
 
         if char == '<' {
-            if self.peek() == Some('/') {
-                return self.end_tag();
-            } else {
-                return self.start_tag();
+            let peeked = self.peek();
+
+            match peeked {
+                Some('/') => return self.end_tag(),
+                Some('!') => return self.comment(),
+                _ => return self.start_tag(),
             }
         }
 
@@ -709,6 +711,44 @@ impl<'a> Scanner<'a> {
 
         return Ok(());
     }
+
+    fn comment(&mut self) -> Result<(), Diagnostic> {
+        let start = self.current;
+        self.advance();
+
+        if !self.match_char('-') {
+            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+        }
+
+        if !self.match_char('-') {
+            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+        }
+
+        while !self.is_at_end() {
+            if self.match_char('-') {
+                if self.match_char('-') {
+                    if self.peek() == Some('>') {
+                        break;
+                    }
+                }
+            }
+
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start,
+                self.current,
+            )));
+        }
+
+        self.advance();
+
+        self.add_token(TokenType::Comment);
+
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
@@ -866,7 +906,6 @@ mod tests {
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
-
     #[test]
     fn bind_directives() {
         let mut scanner = Scanner::new(r#"<input bind:visible bind:toggle={true} />"#);
@@ -940,6 +979,16 @@ mod tests {
         let err = scanner.scan_tokens().unwrap_err();
 
         assert_eq!(err.error_type, DiagnosticType::UnterminatedStartTag)
+    }
+
+    #[test]
+    fn comment() {
+        let mut scanner = Scanner::new("<!-- \nsome comment\n -->");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert!(tokens[0].token_type == TokenType::Comment);
+        assert_eq!(tokens[0].lexeme, "<!-- \nsome comment\n -->");
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     fn assert_script_tag<'a>(
