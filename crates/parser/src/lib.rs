@@ -13,7 +13,7 @@ use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute,
-    ClassDirective, ConcatenationAttribute, ConcatenationPart, Element, ElementKind,
+    ClassDirective, Comment, ConcatenationAttribute, ConcatenationPart, Element, ElementKind,
     ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag, SpreadAttribute,
     StringAttribute, Template, Text,
 };
@@ -102,6 +102,7 @@ impl<'a> NodeStack<'a> {
                 Node::Text(_) => unreachable!(),
                 Node::Interpolation(_) => unreachable!(),
                 Node::VirtualConcatenation(_) => unreachable!(),
+                Node::Comment(_) => unreachable!(),
             };
 
             return Ok(true);
@@ -153,6 +154,7 @@ impl<'a> Parser<'a> {
                 TokenType::ScriptTag(script_tag) => {
                     self.parse_script_tag(script_tag, token.span)?
                 }
+                TokenType::Comment => self.parse_comment(&token)?,
             }
         }
 
@@ -522,6 +524,17 @@ impl<'a> Parser<'a> {
 
         return Ok(());
     }
+
+    fn parse_comment(&mut self, token: &Token<'a>) -> Result<(), Diagnostic> {
+        let node = Comment {
+            value: token.lexeme,
+            span: token.span,
+        };
+
+        self.node_stack.add_leaf(node.as_node())?;
+
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
@@ -677,6 +690,14 @@ mod tests {
         let ast = setup_template(r#"<input bind:value bind:toggled={true} />"#, &allocator);
 
         assert_node_cell(&ast[0], r#"<input bind:value bind:toggled={true}/>"#);
+    }
+
+    #[test]
+    fn comments() {
+        let allocator = Allocator::default();
+        let ast = setup_template(r#"<!-- some comment -->"#, &allocator);
+
+        assert_node_cell(&ast[0], r#"<!-- some comment -->"#);
     }
 
     #[test]

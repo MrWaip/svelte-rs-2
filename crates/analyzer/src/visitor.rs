@@ -264,6 +264,7 @@ pub mod walk {
                 walk_if_block(visitor, it, ctx);
             }
             Node::VirtualConcatenation(_) => unreachable!(),
+            Node::Comment(rc_cell) => todo!(),
         }
 
         visitor.exit_node(it, ctx);

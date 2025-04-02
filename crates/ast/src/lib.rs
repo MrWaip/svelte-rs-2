@@ -34,6 +34,7 @@ pub trait AsNode<'a> {
 #[derive(Debug, Clone)]
 pub enum Node<'a> {
     Element(RcCell<Element<'a>>),
+    Comment(RcCell<Comment<'a>>),
     Text(RcCell<Text<'a>>),
     Interpolation(RcCell<Interpolation<'a>>),
     IfBlock(RcCell<IfBlock<'a>>),
@@ -99,6 +100,7 @@ impl<'a> GetSpan for Node<'a> {
             Node::IfBlock(it) => it.borrow().span,
             Node::VirtualConcatenation(it) => it.borrow().span,
             Node::ScriptTag(it) => it.borrow().span,
+            Node::Comment(it) => it.borrow().span,
         }
     }
 }
@@ -194,6 +196,18 @@ impl<'a> AsNode<'a> for Element<'a> {
 impl<'a> Element<'a> {
     pub fn push(&mut self, node: Node<'a>) {
         self.nodes.push(node);
+    }
+}
+
+#[derive(Debug)]
+pub struct Comment<'a> {
+    pub value: &'a str,
+    pub span: Span,
+}
+
+impl<'a> AsNode<'a> for Comment<'a> {
+    fn as_node(self) -> Node<'a> {
+        return Node::Comment(RcCell::new(self));
     }
 }
 

@@ -83,6 +83,7 @@ impl<'hir> AstToHir<'hir> {
             ast::Node::IfBlock(cell) => self.lower_if_block(cell.unwrap(), ctx),
             ast::Node::VirtualConcatenation(_) => unreachable!(),
             ast::Node::ScriptTag(_) => todo!(),
+            ast::Node::Comment(_) => todo!(),
         };
     }
 
