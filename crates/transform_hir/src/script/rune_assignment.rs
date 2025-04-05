@@ -1,9 +1,7 @@
-use analyze_hir::SvelteRune;
-use ast_builder::{BuilderExpression, BuilderFunctionArgument};
+use ast_builder::BuilderFunctionArgument;
 use oxc_ast::ast::{
-    AssignmentOperator, AssignmentTarget, BindingPatternKind, Expression, IdentifierReference,
+    AssignmentOperator, AssignmentTarget, Expression,
 };
-use oxc_traverse::TraverseCtx;
 
 use super::script_transformer::ScriptTransformer;
 
