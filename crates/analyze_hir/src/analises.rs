@@ -6,7 +6,7 @@ use std::{
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
 use oxc_semantic::{
-    NodeId as OxcNodeId, Reference, ReferenceFlags, ReferenceId, ScopeFlags, ScopeId, ScopeTree,
+    NodeId as OxcNodeId, Reference, ReferenceId, ScopeFlags, ScopeId, ScopeTree,
     SymbolFlags, SymbolId, SymbolTable,
 };
 

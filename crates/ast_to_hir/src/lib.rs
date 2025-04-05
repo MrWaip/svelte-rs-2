@@ -2,7 +2,7 @@ mod compress_nodes;
 pub mod context;
 mod trim_nodes;
 
-use std::{cell::RefCell, collections::HashSet};
+use std::cell::RefCell;
 
 use hir::{NodeId, OwnerNode};
 use oxc_allocator::Allocator;
