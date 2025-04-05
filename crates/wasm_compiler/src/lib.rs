@@ -14,7 +14,7 @@ impl WasmCompiler {
         return Self {};
     }
 
-    #[wasm_bindgen(catch, method)]
+    #[wasm_bindgen()]
     pub fn compile(&self, source: &str) -> Result<String, serde_wasm_bindgen::Error> {
         let allocator = Allocator::default();
 
@@ -27,7 +27,7 @@ impl WasmCompiler {
         return Ok(result.js);
     }
 
-    #[wasm_bindgen(catch, method)]
+    #[wasm_bindgen()]
     pub fn format(&self, source: &str) -> String {
         let allocator = Allocator::default();
         let parser = oxc_parser::Parser::new(&allocator, source, SourceType::default());
