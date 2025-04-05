@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet, hash_map::Iter};
+use std::collections::{HashMap, hash_map::Iter};
 
 use crate::{
-    AnimationDirective, AnyAttribute, Attribute, BindDirective, ClassDirective, Directives,
+    AnimationDirective, AnyAttribute, Attribute, BindDirective, ClassDirective,
     LetDirective, OnDirective, StyleDirective, TransitionDirective, UseDirective,
 };
 
