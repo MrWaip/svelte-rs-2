@@ -89,7 +89,7 @@ impl<'hir> AnalyzeHir<'hir> {
                     let expression = store.get_expression(it.test);
                     analyzer.analyze(&expression, ReferenceFlags::read());
                 }
-                hir::Node::Comment => continue,
+                hir::Node::Comment(_) => continue,
                 hir::Node::Phantom => continue,
                 hir::Node::EachBlock => todo!(),
                 hir::Node::Script => todo!(),

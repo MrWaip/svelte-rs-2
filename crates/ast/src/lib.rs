@@ -89,6 +89,10 @@ impl<'a> Node<'a> {
             unimplemented!()
         }
     }
+
+    pub fn is_comment(&self) -> bool {
+        return matches!(self, Node::Comment(_));
+    }
 }
 
 impl<'a> GetSpan for Node<'a> {

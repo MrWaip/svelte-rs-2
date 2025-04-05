@@ -46,6 +46,7 @@ impl<'hir> AstToHir<'hir> {
             }
 
             let node_id = self.lower_node(node, ctx);
+
             result.push(node_id);
         }
 

@@ -8,6 +8,7 @@ bitflags! {
         const Concatenation = 1 << 3;
         const Element = 1 << 4;
         const IfBlock = 1 << 5;
+        const Comment = 1 << 6;
     }
 }
 
@@ -21,7 +22,7 @@ impl OwnerContentTypeFlags {
             hir::Node::IfBlock(_) => self.insert(OwnerContentTypeFlags::IfBlock),
             hir::Node::EachBlock => todo!(),
             hir::Node::Script => todo!(),
-            hir::Node::Comment => todo!(),
+            hir::Node::Comment(_) => (),
             hir::Node::Phantom => todo!(),
         }
     }

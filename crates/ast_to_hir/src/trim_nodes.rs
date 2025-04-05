@@ -138,6 +138,13 @@ mod trim_nodes {
     }
 
     #[test]
+    fn trim_after_comment_remove() {
+        let (template, _nodes) = prepare("<div>    <!-- comment -->   </div>");
+
+        assert_eq!(template.node_ids.len(), 1);
+    }
+
+    #[test]
     fn trim_between_left() {
         let (template, nodes) = prepare("<input />     some_text");
 

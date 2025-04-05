@@ -1,11 +1,11 @@
-use crate::{Concatenation, Element, IfBlock, Interpolation, Text};
+use crate::{Comment, Concatenation, Element, IfBlock, Interpolation, Text};
 
 #[derive(Debug)]
 pub enum Node<'hir> {
     Text(&'hir Text<'hir>),
     Interpolation(&'hir Interpolation),
     Element(&'hir Element<'hir>),
-    Comment,
+    Comment(&'hir Comment<'hir>),
     IfBlock(&'hir IfBlock),
     EachBlock,
     Script,
@@ -61,7 +61,7 @@ impl<'hir> Node<'hir> {
             Node::Concatenation(_) => true,
             Node::EachBlock => true,
             Node::Phantom => false,
-            Node::Comment => false,
+            Node::Comment(_) => false,
         }
     }
 }
