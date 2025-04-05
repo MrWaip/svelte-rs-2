@@ -1,4 +1,3 @@
-use std::mem;
 
 use oxc_ast::ast::{
     self, AssignmentTarget, BindingPatternKind, Expression, Program, SimpleAssignmentTarget,
@@ -31,10 +30,10 @@ impl<'a, 'link> TransformScript<'a, 'link> {
         builder: &'a Builder<'a>,
         svelte_table: &'link SvelteTable,
     ) -> TransformScript<'a, 'link> {
-        return Self {
+        Self {
             b: builder,
-            svelte_table: svelte_table,
-        };
+            svelte_table,
+        }
     }
 
     pub fn transform(&self, program: &mut Program<'a>) -> TransformResult {
@@ -47,15 +46,15 @@ impl<'a, 'link> TransformScript<'a, 'link> {
 
         traverse_mut(
             &mut transformer,
-            &self.b.ast.allocator,
+            self.b.ast.allocator,
             program,
             SymbolTable::default(),
             ScopeTree::default(),
         );
 
-        let imports = mem::replace(&mut transformer.imports, vec![]);
+        let imports = std::mem::take(&mut transformer.imports);
 
-        return TransformResult { imports };
+        TransformResult { imports }
     }
 
     pub fn transform_expression(
@@ -78,7 +77,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
 
         traverse_mut(
             &mut transformer,
-            &self.b.ast.allocator,
+            self.b.ast.allocator,
             &mut program,
             SymbolTable::default(),
             ScopeTree::default(),
@@ -92,7 +91,7 @@ impl<'a, 'link> TransformScript<'a, 'link> {
             unreachable!()
         };
 
-        return TransformExpressionResult { expression };
+        TransformExpressionResult { expression }
     }
 }
 
@@ -103,7 +102,7 @@ struct TransformerImpl<'link, 'a> {
     proxy_rune: bool,
 }
 
-impl<'link, 'a> TransformerImpl<'link, 'a> {
+impl<'a> TransformerImpl<'_, 'a> {
     fn transform_rune_reference(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         let Expression::Identifier(ident) = node else {
             unreachable!()
@@ -151,7 +150,7 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
                 args.push(BuilderFunctionArgument::Num(-1.0));
             }
 
-            let call = self.builder.call(&callee, args);
+            let call = self.builder.call(callee, args);
 
             *node = Expression::CallExpression(self.builder.alloc(call))
         }
@@ -194,23 +193,21 @@ impl<'link, 'a> TransformerImpl<'link, 'a> {
     }
 
     fn is_rune_reference(&self, ident: &ast::IdentifierReference<'a>) -> bool {
-        return self.get_rune_by_reference(ident).is_some();
+        self.get_rune_by_reference(ident).is_some()
     }
 
     fn get_rune_by_reference(&self, ident: &ast::IdentifierReference<'a>) -> Option<&Rune> {
         let reference_id = ident.reference_id.get();
 
-        if reference_id.is_none() {
-            return None;
-        }
+        reference_id?;
 
         let reference_id = reference_id.unwrap();
 
-        return self.svelte_table.get_rune_by_reference(reference_id);
+        self.svelte_table.get_rune_by_reference(reference_id)
     }
 }
 
-impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
+impl<'a> Traverse<'a> for TransformerImpl<'_, 'a> {
     fn enter_variable_declarator(
         &mut self,
         node: &mut ast::VariableDeclarator<'a>,
@@ -253,12 +250,12 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
 
     fn enter_program(&mut self, node: &mut Program<'a>, _ctx: &mut TraverseCtx<'a>) {
         node.body.retain_mut(|stmt| {
-            return if matches!(stmt, Statement::ImportDeclaration(_)) {
+            if matches!(stmt, Statement::ImportDeclaration(_)) {
                 self.imports.push(self.builder.ast.move_statement(stmt));
                 false
             } else {
                 true
-            };
+            }
         });
     }
 
@@ -273,7 +270,7 @@ impl<'a, 'link> Traverse<'a> for TransformerImpl<'link, 'a> {
             Expression::UpdateExpression(_) => {
                 self.transform_rune_update(node, ctx);
             }
-            _ => return,
+            _ => (),
         }
     }
 }

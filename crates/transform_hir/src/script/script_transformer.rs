@@ -55,7 +55,7 @@ impl<'hir> ScriptTransformer<'hir> {
 
             traverse_mut(
                 self,
-                &self.b.ast.allocator,
+                self.b.ast.allocator,
                 &mut oxc_program,
                 SymbolTable::default(),
                 ScopeTree::default(),
@@ -72,7 +72,7 @@ impl<'hir> ScriptTransformer<'hir> {
             }
         }
 
-        return res;
+        res
     }
 
     pub(crate) fn transform_expression(
@@ -87,7 +87,7 @@ impl<'hir> ScriptTransformer<'hir> {
 
         traverse_mut(
             self,
-            &self.b.ast.allocator,
+            self.b.ast.allocator,
             &mut program,
             SymbolTable::default(),
             ScopeTree::default(),
@@ -101,7 +101,7 @@ impl<'hir> ScriptTransformer<'hir> {
             unreachable!()
         };
 
-        return expression;
+        expression
     }
 
     pub(crate) fn get_rune_by_reference(
@@ -110,13 +110,11 @@ impl<'hir> ScriptTransformer<'hir> {
     ) -> Option<&SvelteRune> {
         let reference_id = ident.reference_id.get();
 
-        if reference_id.is_none() {
-            return None;
-        }
+        reference_id?;
 
         let reference_id = reference_id.unwrap();
 
-        return self.analyses.get_rune_by_reference(reference_id);
+        self.analyses.get_rune_by_reference(reference_id)
     }
 
     pub(crate) fn should_proxy_rune_init(&self, e: &Expression) -> bool {
@@ -160,7 +158,7 @@ impl<'hir> ScriptTransformer<'hir> {
         // 	}
         // }
 
-        return true;
+        true
     }
 }
 
@@ -185,7 +183,7 @@ impl<'hir> Traverse<'hir> for ScriptTransformer<'hir> {
             Expression::AssignmentExpression(_) => {
                 self.transform_rune_assignment(node, ctx);
             }
-            _ => return,
+            _ => (),
         }
     }
 }

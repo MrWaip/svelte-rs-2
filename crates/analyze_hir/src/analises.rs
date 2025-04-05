@@ -38,7 +38,7 @@ impl HirAnalyses {
     }
 
     pub fn take_scoping(&self) -> (SymbolTable, ScopeTree) {
-        return (self.symbols.take(), self.scope.take());
+        (self.symbols.take(), self.scope.take())
     }
 
     pub fn set_scoping(&self, symbols: SymbolTable, scope: ScopeTree) {
@@ -51,11 +51,11 @@ impl HirAnalyses {
     }
 
     pub fn get_content_type(&self, owner_id: &OwnerId) -> &OwnerContentType {
-        return self.content_types.get(owner_id).unwrap();
+        self.content_types.get(owner_id).unwrap()
     }
 
     pub fn get_common_content_type(&self, owner_id: &OwnerId) -> OwnerContentTypeFlags {
-        return self.get_content_type(owner_id).as_common_or_empty();
+        self.get_content_type(owner_id).as_common_or_empty()
     }
 
     pub fn mark_node_as_dynamic(&mut self, node_id: NodeId) {
@@ -71,7 +71,7 @@ impl HirAnalyses {
     }
 
     pub fn get_rune(&self, symbol_id: SymbolId) -> Option<&SvelteRune> {
-        return self.runes.get(&symbol_id);
+        self.runes.get(&symbol_id)
     }
 
     pub fn generate_ident(&self, preferable_name: &str) -> String {
@@ -111,7 +111,7 @@ impl HirAnalyses {
             .borrow_mut()
             .add_binding(root_scope_id, &identifier, symbol_id);
 
-        return identifier;
+        identifier
     }
 
     fn sync_rune(&mut self, symbol_id: SymbolId) {
@@ -151,7 +151,7 @@ impl HirAnalyses {
             return Some(reference_id);
         }
 
-        return None;
+        None
     }
 
     pub fn get_rune_by_reference(&self, reference_id: ReferenceId) -> Option<&SvelteRune> {
@@ -159,11 +159,9 @@ impl HirAnalyses {
         let reference = binding.get_reference(reference_id);
         let symbol_id = reference.symbol_id();
 
-        if symbol_id.is_none() {
-            return None;
-        }
+        symbol_id?;
 
-        return self.runes.get(&symbol_id.unwrap());
+        self.runes.get(&symbol_id.unwrap())
     }
 
     pub(crate) fn add_scope(&self) -> ScopeId {

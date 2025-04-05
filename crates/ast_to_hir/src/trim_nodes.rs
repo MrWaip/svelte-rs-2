@@ -60,18 +60,18 @@ impl<'hir> AstToHir<'hir> {
                 let mut text = cell.borrow_mut();
 
                 if !prev.is_some_and(|node| node.is_interpolation()) {
-                    text.trim_start_one_whitespace(&ctx.allocator);
+                    text.trim_start_one_whitespace(ctx.allocator);
                 }
 
                 if !next.is_some_and(|node| node.is_interpolation()) {
-                    text.trim_end_one_whitespace(&ctx.allocator);
+                    text.trim_end_one_whitespace(ctx.allocator);
                 }
             }
 
             new_nodes.push(current.clone());
         }
 
-        return new_nodes;
+        new_nodes
     }
 }
 
@@ -83,7 +83,7 @@ mod trim_nodes {
     use parser::Parser;
 
     static ALLOCATOR: std::sync::LazyLock<Allocator> =
-        std::sync::LazyLock::new(|| Allocator::default());
+        std::sync::LazyLock::new(Allocator::default);
 
     use super::*;
 
@@ -97,7 +97,7 @@ mod trim_nodes {
             unreachable!()
         };
 
-        return (template, hir.store.nodes);
+        (template, hir.store.nodes)
     }
 
     #[test]

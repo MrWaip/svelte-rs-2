@@ -40,7 +40,7 @@ impl<'hir> HirStore<'hir> {
     }
 
     pub fn get_expression(&self, expression_id: ExpressionId) -> Ref<Expression<'hir>> {
-        return self.expressions.get(expression_id).unwrap().borrow();
+        self.expressions.get(expression_id).unwrap().borrow()
     }
 
     pub fn get_expression_mut(&self, expression_id: ExpressionId) -> RefMut<Expression<'hir>> {
@@ -63,20 +63,18 @@ impl<'hir> HirStore<'hir> {
         if let Some(owner) = owner {
             let option = owner.first();
 
-            if option.is_none() {
-                return None;
-            }
+            option?;
 
-            return Some(self.get_node(*option.unwrap()));
+            Some(self.get_node(*option.unwrap()))
         } else {
-            return None;
+            None
         }
     }
 
     pub fn lookup_node(&self, node_id: NodeId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {
         let node = self.get_node(node_id);
 
-        return f(node);
+        f(node)
     }
 
     pub fn node_to_owner(&self, node_id: &NodeId) -> OwnerId {
@@ -84,7 +82,7 @@ impl<'hir> HirStore<'hir> {
     }
 
     pub fn owner_to_node(&self, owner_id: OwnerId) -> NodeId {
-        return self.owners[owner_id].node_id();
+        self.owners[owner_id].node_id()
     }
 
     pub fn is_first_of(&self, owner_id: OwnerId, f: impl FnOnce(&Node<'hir>) -> bool) -> bool {
@@ -97,9 +95,9 @@ impl<'hir> HirStore<'hir> {
                 return false;
             }
 
-            return f(self.get_node(*option.unwrap()));
+            f(self.get_node(*option.unwrap()))
         } else {
-            return false;
+            false
         }
     }
 }

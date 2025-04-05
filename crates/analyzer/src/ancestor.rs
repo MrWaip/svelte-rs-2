@@ -8,21 +8,21 @@ pub enum Ancestor<'b> {
     Nope(&'b str),
 }
 
-impl<'a> Ancestor<'a> {
+impl Ancestor<'_> {
     pub fn is_template(&self) -> bool {
-        return matches!(self, Ancestor::Template(_));
+        matches!(self, Ancestor::Template(_))
     }
 
     pub fn is_fragment_owner(&self) -> bool {
-        return matches!(self, Ancestor::Template(_) | Ancestor::IfBlock(_));
+        matches!(self, Ancestor::Template(_) | Ancestor::IfBlock(_))
     }
 
     pub fn get_node_id(&self) -> NodeId {
-        return match self {
+        match self {
             Ancestor::Template(node_id) => *node_id,
             Ancestor::IfBlock(node_id) => *node_id,
             Ancestor::Element(node_id) => *node_id,
             Ancestor::Nope(_) => unreachable!(),
-        };
+        }
     }
 }

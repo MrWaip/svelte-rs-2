@@ -276,13 +276,13 @@ impl<'hir> TemplateTransformer<'hir> {
                 hir::ConcatenationAttributePart::Expression(expression_id) => {
                     let mut expr = self.store.get_expression_mut(*expression_id);
 
-                    let expr = self.b.move_expr(&mut *expr);
+                    let expr = self.b.move_expr(&mut expr);
 
                     parts.push(TemplateLiteralPart::Expression(expr));
                 }
             }
         }
 
-        return parts;
+        parts
     }
 }

@@ -19,19 +19,19 @@ impl IdentifierGen {
         };
 
         self.counter += 1;
-        return id;
+        id
     }
 
     fn sanitize(preferable_name: String) -> String {
         let mut result = String::new();
 
         for ch in preferable_name.chars() {
-            if result.is_empty() && ch.is_digit(10) {
+            if result.is_empty() && ch.is_ascii_digit() {
                 result.push('_');
                 continue;
             }
 
-            if ch.is_ascii_alphabetic() || ch.is_digit(10) {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
                 result.push(ch);
                 continue;
             }
@@ -44,6 +44,6 @@ impl IdentifierGen {
             result.push('_');
         }
 
-        return result;
+        result
     }
 }

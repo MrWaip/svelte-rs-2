@@ -21,7 +21,7 @@ impl Span {
     }
 
     pub fn source_text<'a>(&self, source_text: &'a str) -> &'a str {
-        &source_text[self.start as usize..self.end as usize]
+        &source_text[self.start..self.end]
     }
 }
 

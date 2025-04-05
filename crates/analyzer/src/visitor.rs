@@ -259,7 +259,7 @@ pub mod walk {
             Node::Element(it) => {
                 walk_element(visitor, it, ctx);
             }
-            Node::Interpolation(it) => walk_interpolation(visitor, &mut *it.borrow_mut(), ctx),
+            Node::Interpolation(it) => walk_interpolation(visitor, &mut it.borrow_mut(), ctx),
             Node::IfBlock(it) => {
                 walk_if_block(visitor, it, ctx);
             }

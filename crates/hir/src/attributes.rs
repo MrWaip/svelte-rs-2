@@ -29,7 +29,7 @@ impl<'hir> AnyAttribute<'hir> {
     }
 
     pub fn is_dynamic(&self) -> bool {
-        return !matches!(self, Self::StringAttribute(_) | Self::BooleanAttribute(_));
+        !matches!(self, Self::StringAttribute(_) | Self::BooleanAttribute(_))
     }
 }
 
@@ -44,24 +44,24 @@ pub enum Attribute<'hir> {
 
 impl<'hir> Attribute<'hir> {
     pub fn name(&self) -> Option<&'hir str> {
-        return match self {
+        match self {
             Attribute::StringAttribute(it) => it.name.into(),
             Attribute::ExpressionAttribute(it) => it.name.into(),
             Attribute::SpreadAttribute(_) => None,
             Attribute::BooleanAttribute(it) => it.name.into(),
             Attribute::ConcatenationAttribute(it) => it.name.into(),
-        };
+        }
     }
 
     pub fn contains_expression(&self) -> bool {
-        return matches!(
+        matches!(
             self,
             Self::ConcatenationAttribute(_) | Self::ExpressionAttribute(_)
-        );
+        )
     }
 
     pub fn is_spread(&self) -> bool {
-        return matches!(self, Self::SpreadAttribute(_));
+        matches!(self, Self::SpreadAttribute(_))
     }
 }
 

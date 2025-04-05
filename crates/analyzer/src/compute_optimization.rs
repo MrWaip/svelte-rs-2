@@ -28,18 +28,18 @@ pub enum ContentType {
 
 impl ContentType {
     pub fn is_non_text(&self) -> bool {
-        return !matches!(self, ContentType::Text | ContentType::Nope);
+        !matches!(self, ContentType::Text | ContentType::Nope)
     }
 
     pub fn is_compressible_sequence(&self) -> bool {
-        return matches!(
+        matches!(
             self,
             ContentType::TextAndInterpolation | ContentType::Interpolation
-        );
+        )
     }
 
     pub fn is_element(&self) -> bool {
-        return matches!(self, ContentType::Element);
+        matches!(self, ContentType::Element)
     }
 }
 
@@ -51,7 +51,7 @@ pub struct OptimizationResult {
     pub start_with_compressible: bool,
 }
 
-pub fn compute_optimization<'a>(nodes: &Vec<Node<'a>>) -> OptimizationResult {
+pub fn compute_optimization(nodes: &Vec<Node<'_>>) -> OptimizationResult {
     if nodes.is_empty() {
         return OptimizationResult {
             actions: vec![],
@@ -114,7 +114,7 @@ pub fn compute_optimization<'a>(nodes: &Vec<Node<'a>>) -> OptimizationResult {
         let next = nodes.get(idx + 1);
         length += 1;
 
-        compute_content_type(&current, &mut content_type);
+        compute_content_type(current, &mut content_type);
 
         if current.is_text() {
             if !prev.is_some_and(|node| node.is_interpolation()) {
@@ -137,12 +137,12 @@ pub fn compute_optimization<'a>(nodes: &Vec<Node<'a>>) -> OptimizationResult {
         }
     }
 
-    return OptimizationResult {
+    OptimizationResult {
         actions,
         content_type,
         length,
         start_with_compressible,
-    };
+    }
 }
 
 fn compute_content_type<'a>(node: &Node, content_type: &mut ContentType) {

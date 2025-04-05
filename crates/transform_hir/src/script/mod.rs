@@ -24,8 +24,8 @@ pub fn transform_script<'hir>(
 
     let body = transformer.transform();
 
-    return TransformRet {
+    TransformRet {
         body,
         imports: transformer.imports,
-    };
+    }
 }

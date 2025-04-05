@@ -61,12 +61,12 @@ pub fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>, analyze: AnalyzeRe
         )),
     );
 
-    return print(b.program(program_body));
+    print(b.program(program_body))
 }
 
 fn print(program: Program) -> String {
     let codegen = oxc_codegen::Codegen::default();
     let result = codegen.build(&program);
 
-    return result.code;
+    result.code
 }

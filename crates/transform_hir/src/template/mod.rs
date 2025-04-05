@@ -27,8 +27,8 @@ pub fn transform_template<'hir>(
     let mut transformer = TemplateTransformer::new(analyses, builder, store);
     let template_body = transformer.transform();
 
-    return TransformRet {
+    TransformRet {
         template_body,
         hoisted: transformer.hoisted,
-    };
+    }
 }

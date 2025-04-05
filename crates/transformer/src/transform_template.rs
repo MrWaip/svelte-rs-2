@@ -1,4 +1,3 @@
-use std::mem::replace;
 
 use analyzer::{
     compute_optimization::{ContentType, NodeOptimizationAction, TrimAction},
@@ -42,7 +41,7 @@ pub enum AnchorNodeType {
 
 impl AnchorNodeType {
     pub fn is_element(&self) -> bool {
-        return matches!(self, AnchorNodeType::Element(_));
+        matches!(self, AnchorNodeType::Element(_))
     }
 }
 
@@ -88,7 +87,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
         parent_node_anchor: Option<&'local Expression<'ast>>,
         content_type: ContentType,
     ) -> Self {
-        return Self {
+        Self {
             fragment: fragment_context,
             current_node_anchor: builder.cheap_expr(),
             sibling_offset: 0,
@@ -97,7 +96,7 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             parent_or_fragment_used: false,
             skip_reset_element: false,
             content_type,
-        };
+        }
     }
 
     fn as_child(&self, expr: &Expression<'ast>) -> Expression<'ast> {
@@ -153,17 +152,17 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             return false;
         }
 
-        return match anchor_type {
+        match anchor_type {
             AnchorNodeType::Interpolation(_) | AnchorNodeType::VirtualConcatenation(_) => {
                 self.content_type.is_compressible_sequence()
             }
             AnchorNodeType::IfBlock => false,
             AnchorNodeType::Element(_) => self.content_type.is_element(),
-        };
+        }
     }
 
     fn need_direct_parent_access(&self, anchor_type: &AnchorNodeType) -> bool {
-        return match anchor_type {
+        match anchor_type {
             AnchorNodeType::Interpolation(kind) => {
                 self.content_type.is_compressible_sequence()
                     && *kind != InterpolationSetterKind::SetText
@@ -174,21 +173,21 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             }
             AnchorNodeType::IfBlock => false,
             AnchorNodeType::Element(_) => false,
-        };
+        }
     }
 
     fn at_fragment(&self) -> bool {
-        return self.parent_node_anchor.is_none();
+        self.parent_node_anchor.is_none()
     }
 
     fn preferable_name(&self, anchor_type: &AnchorNodeType) -> String {
-        return match anchor_type {
+        match anchor_type {
             AnchorNodeType::Interpolation(_) | AnchorNodeType::VirtualConcatenation(_) => {
                 String::from("text")
             }
             AnchorNodeType::IfBlock => String::from("node"),
             AnchorNodeType::Element(name) => name.clone(),
-        };
+        }
     }
 
     /**
@@ -196,32 +195,30 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
      */
     fn next_anchor(&mut self, anchor_type: &AnchorNodeType) -> (Expression<'ast>, bool) {
         if self.parent_or_fragment_used {
-            return (
+            (
                 self.builder
                     .ast
                     .move_expression(&mut self.current_node_anchor),
                 false,
-            );
+            )
         } else {
             self.parent_or_fragment_used = true;
 
             if self.need_direct_fragment_access(anchor_type) {
-                return (self.builder.clone_expr(&self.fragment.anchor), true);
-            } else {
-                if self.parent_node_anchor.is_some() {
-                    if self.need_direct_parent_access(anchor_type) {
-                        return (
-                            self.builder.clone_expr(&self.parent_node_anchor.unwrap()),
-                            true,
-                        );
-                    } else {
-                        return (self.as_child(self.parent_node_anchor.unwrap()), false);
-                    }
+                (self.builder.clone_expr(&self.fragment.anchor), true)
+            } else if self.parent_node_anchor.is_some() {
+                if self.need_direct_parent_access(anchor_type) {
+                    (
+                        self.builder.clone_expr(self.parent_node_anchor.unwrap()),
+                        true,
+                    )
                 } else {
-                    return (self.as_first_child(&self.fragment.anchor), false);
+                    (self.as_child(self.parent_node_anchor.unwrap()), false)
                 }
+            } else {
+                (self.as_first_child(&self.fragment.anchor), false)
             }
-        };
+        }
     }
 
     pub fn set_skip_reset_element(&mut self) {
@@ -259,11 +256,9 @@ impl<'ast, 'local> NodeContext<'ast, 'local> {
             }
 
             anchor = self.builder.call_expr("$.sibling", args);
-        } else {
-            if let Expression::CallExpression(call) = &mut anchor {
-                if possibly_create_empty_text_node {
-                    call.arguments.push(self.builder.arg(BArg::Bool(true)));
-                }
+        } else if let Expression::CallExpression(call) = &mut anchor {
+            if possibly_create_empty_text_node {
+                call.arguments.push(self.builder.arg(BArg::Bool(true)));
             }
         }
 
@@ -287,12 +282,12 @@ struct CompressNodesIter<'a, 'reference> {
 // !svelte optimization
 impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
     pub fn iter(nodes: &'reference Vec<Node<'a>>, builder: &'reference Builder<'a>) -> Self {
-        return Self {
+        Self {
             builder,
             nodes,
             idx: 0,
             to_compress: vec![],
-        };
+        }
     }
 
     fn validate_to_compress<'local>(&mut self) -> Option<Node<'a>> {
@@ -306,7 +301,7 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             return res;
         }
 
-        return None;
+        None
     }
 
     fn compress_nodes<'local>(&mut self) -> Node<'a> {
@@ -330,16 +325,16 @@ impl<'a, 'reference> CompressNodesIter<'a, 'reference> {
             })
             .collect();
 
-        return VirtualConcatenation {
+        VirtualConcatenation {
             parts,
             span: SPAN,
             metadata,
         }
-        .as_node();
+        .as_node()
     }
 }
 
-impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
+impl<'a> Iterator for CompressNodesIter<'a, '_> {
     type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -369,7 +364,7 @@ impl<'a, 'reference> Iterator for CompressNodesIter<'a, 'reference> {
             return Some(rc.clone());
         }
 
-        return self.validate_to_compress();
+        self.validate_to_compress()
     }
 }
 
@@ -384,24 +379,24 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         svelte_table: &'link SvelteTable,
         root_scope: RcCell<Scope>,
     ) -> Self {
-        return Self {
+        Self {
             b: builder,
             hoisted: vec![],
             root_scope,
             transform_script,
             svelte_table,
-        };
+        }
     }
 
     pub fn transform(&mut self, fragment: &mut Template<'a>) -> TransformTemplateResult<'a> {
         let result = self.transform_fragment(&mut fragment.nodes);
 
-        let hoisted = replace(&mut self.hoisted, vec![]);
+        let hoisted = std::mem::take(&mut self.hoisted);
 
-        return TransformTemplateResult {
+        TransformTemplateResult {
             body: result.body,
             hoisted,
-        };
+        }
     }
 
     fn transform_fragment(&mut self, fragment: &mut Fragment<'a>) -> FragmentResult<'a> {
@@ -501,7 +496,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
 
         body.push(self.b.stmt(BStmt::Expr(self.b.expr(BExpr::Call(close)))));
 
-        return FragmentResult { body };
+        FragmentResult { body }
     }
 
     fn transform_nodes<'local>(
@@ -541,24 +536,24 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             node_context.push_init(self.b.call_stmt("$.next", args));
         }
 
-        return node_context;
+        node_context
     }
 
     fn transform_node<'local>(&mut self, node: Node<'a>, ctx: &mut NodeContext<'a, 'local>) {
         match node {
-            Node::Element(it) => self.transform_element(&mut *it.borrow_mut(), ctx),
-            Node::Text(it) => self.transform_text(&mut *it.borrow_mut(), ctx),
+            Node::Element(it) => self.transform_element(&mut it.borrow_mut(), ctx),
+            Node::Text(it) => self.transform_text(&mut it.borrow_mut(), ctx),
             Node::Interpolation(it) => {
                 let metadata = it.borrow().get_metadata();
                 self.transform_interpolation(&mut it.borrow_mut().expression, ctx, false, metadata)
             }
-            Node::IfBlock(it) => self.transform_if_block(&mut *it.borrow_mut(), ctx),
+            Node::IfBlock(it) => self.transform_if_block(&mut it.borrow_mut(), ctx),
             Node::VirtualConcatenation(it) => {
-                self.transform_virtual_concatenation(&mut *it.borrow_mut(), ctx)
+                self.transform_virtual_concatenation(&mut it.borrow_mut(), ctx)
             }
             Node::ScriptTag(_script_tag) => todo!(),
-            Node::Comment(_) => return,
-        };
+            Node::Comment(_) => (),
+        }
     }
 
     fn transform_element<'local>(
@@ -705,7 +700,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
         ctx.push_template(" ".into());
         ctx.push_template(attr.name.into());
         let value = attr.value;
-        ctx.push_template(format!("=\"{value}\"").into());
+        ctx.push_template(format!("=\"{value}\""));
     }
 
     fn transform_boolean_attribute<'local>(
@@ -772,7 +767,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             [BArg::Arrow(b.arrow(self.b.params([]), update))],
         );
 
-        return b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))));
+        b.stmt(BStmt::Expr(b.expr(BExpr::Call(call))))
     }
 
     fn transform_text<'local>(&self, text: &Text<'a>, ctx: &mut NodeContext<'a, 'local>) {
@@ -918,7 +913,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             .transform_script
             .transform_expression(expression, proxy_rune);
 
-        return result.expression;
+        result.expression
     }
 
     fn optimize_nodes(&self, nodes: &mut Vec<Node<'a>>, actions: &Vec<NodeOptimizationAction>) {
@@ -940,10 +935,10 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
                                 text.trim_end();
                             }
                             TrimAction::LeftOneWhitespace => {
-                                text.trim_start_one_whitespace(&self.b.ast.allocator);
+                                text.trim_start_one_whitespace(self.b.ast.allocator);
                             }
                             TrimAction::RightOneWhitespace => {
-                                text.trim_end_one_whitespace(&self.b.ast.allocator);
+                                text.trim_end_one_whitespace(self.b.ast.allocator);
                             }
                         };
                     }

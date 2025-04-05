@@ -7,10 +7,10 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(parent: Option<Rc<RefCell<Scope>>>) -> Self {
-        return Self {
+        Self {
             _parent: parent,
             identifiers: HashMap::new(),
-        };
+        }
     }
 
     pub fn generate(&mut self, preferable_name: &str) -> String {
@@ -26,19 +26,19 @@ impl Scope {
             self.identifiers.insert(preferable_name.clone(), 1);
         }
 
-        return preferable_name;
+        preferable_name
     }
 
     pub fn sanitize(preferable_name: &str) -> String {
         let mut result = String::new();
 
         for ch in preferable_name.chars() {
-            if result.is_empty() && ch.is_digit(10) {
+            if result.is_empty() && ch.is_ascii_digit() {
                 result.push('_');
                 continue;
             }
 
-            if ch.is_ascii_alphabetic() || ch.is_digit(10) {
+            if ch.is_ascii_alphabetic() || ch.is_ascii_digit() {
                 result.push(ch);
                 continue;
             }
@@ -51,7 +51,7 @@ impl Scope {
             result.push('_');
         }
 
-        return result;
+        result
     }
 }
 

@@ -5,7 +5,7 @@ pub struct OwnerId(usize);
 
 impl OwnerId {
     pub const fn new(idx: usize) -> Self {
-        return Self(idx);
+        Self(idx)
     }
 }
 
@@ -24,7 +24,7 @@ pub struct ExpressionId(usize);
 
 impl ExpressionId {
     pub const fn new(idx: usize) -> Self {
-        return Self(idx);
+        Self(idx)
     }
 }
 
@@ -43,7 +43,7 @@ pub struct NodeId(usize);
 
 impl NodeId {
     pub const fn new(idx: usize) -> Self {
-        return Self(idx);
+        Self(idx)
     }
 }
 

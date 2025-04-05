@@ -6,7 +6,7 @@ use oxc_ast::ast::Expression;
 
 use crate::transform_template::{NodeContext, TransformTemplate};
 
-impl<'a, 'link> TransformTemplate<'a, 'link> {
+impl<'a> TransformTemplate<'a, '_> {
     pub(crate) fn transform_bind_directive<'local>(
         &mut self,
         directive: &mut ast::BindDirective<'a>,

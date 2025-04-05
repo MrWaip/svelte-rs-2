@@ -27,7 +27,7 @@ impl<'hir> ToHirContext<'hir> {
         let node_id = self.store.nodes.push(Node::Phantom);
         self.store.nodes[node_id] = f(self, node_id, self.current_owner_id);
 
-        return node_id;
+        node_id
     }
 
     pub fn push_owner_node(
@@ -49,15 +49,15 @@ impl<'hir> ToHirContext<'hir> {
         self.store.owners[owner_id] = owner;
         self.current_owner_id = prev_owner_id;
 
-        return node_id;
+        node_id
     }
 
     pub fn push_expression(&mut self, expression: Expression<'hir>) -> ExpressionId {
-        let expression_id = self.store.expressions.push(RefCell::new(expression));
-        return expression_id;
+        
+        self.store.expressions.push(RefCell::new(expression))
     }
 
     pub fn alloc<T>(&self, value: T) -> &'hir mut T {
-        return self.allocator.alloc(value);
+        self.allocator.alloc(value)
     }
 }

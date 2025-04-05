@@ -48,7 +48,7 @@ impl<'hir> Node<'hir> {
     }
 
     pub fn is_elseif_block(&self) -> bool {
-        return matches!(self, Node::IfBlock(it) if it.is_elseif);
+        matches!(self, Node::IfBlock(it) if it.is_elseif)
     }
 
     pub fn contains_expression(&self) -> bool {
