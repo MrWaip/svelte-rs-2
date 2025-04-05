@@ -28,13 +28,13 @@ pub struct SvelteTable {
 
 impl SvelteTable {
     pub fn new(symbols: SymbolTable, scopes: ScopeTree) -> Self {
-        return Self {
+        Self {
             runes: HashMap::default(),
             scopes,
             symbols,
             optimizations: HashMap::new(),
             need_binding_group: false,
-        };
+        }
     }
 
     pub fn add_rune(&mut self, id: SymbolId, kind: RuneKind) {
@@ -64,7 +64,7 @@ impl SvelteTable {
             return Some(reference_id);
         }
 
-        return None;
+        None
     }
 
     fn sync_rune(&mut self, symbol_id: SymbolId) {
@@ -77,30 +77,28 @@ impl SvelteTable {
     }
 
     pub fn symbol_is_mutated(&self, symbol_id: SymbolId) -> bool {
-        return self.symbols.symbol_is_mutated(symbol_id);
+        self.symbols.symbol_is_mutated(symbol_id)
     }
 
     pub fn is_rune_reference(&self, reference_id: ReferenceId) -> bool {
-        return self.get_rune_by_reference(reference_id).is_some();
+        self.get_rune_by_reference(reference_id).is_some()
     }
 
     pub fn get_rune_by_reference(&self, reference_id: ReferenceId) -> Option<&Rune> {
         let reference = self.symbols.get_reference(reference_id);
         let symbol_id = reference.symbol_id();
 
-        if symbol_id.is_none() {
-            return None;
-        }
+        symbol_id?;
 
-        return self.runes.get(&symbol_id.unwrap());
+        self.runes.get(&symbol_id.unwrap())
     }
 
     pub fn get_rune_by_symbol_id(&self, symbol_id: SymbolId) -> Option<&Rune> {
-        return self.runes.get(&symbol_id);
+        self.runes.get(&symbol_id)
     }
 
     pub fn root_scope_id(&self) -> oxc_semantic::ScopeId {
-        return self.scopes.root_scope_id();
+        self.scopes.root_scope_id()
     }
 
     pub fn add_optimization(&mut self, node_id: NodeId, opt: OptimizationResult) {
@@ -108,11 +106,11 @@ impl SvelteTable {
     }
 
     pub fn get_optimization(&self, node_id: NodeId) -> Option<&OptimizationResult> {
-        return self.optimizations.get(&node_id);
+        self.optimizations.get(&node_id)
     }
 
     pub fn need_binding_group(&self) -> bool {
-        return self.need_binding_group;
+        self.need_binding_group
     }
 
     pub fn set_need_binding_group(&mut self) {

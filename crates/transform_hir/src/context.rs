@@ -13,15 +13,15 @@ pub struct FragmentContext<'hir> {
     // anchor: Expression<'a>,
 }
 
-impl<'hir> FragmentContext<'hir> {
+impl FragmentContext<'_> {
     pub fn new() -> Self {
-        return Self {
+        Self {
             before_init: Vec::new(),
             init: Vec::new(),
             update: Vec::new(),
             after_update: Vec::new(),
             template: Vec::new(),
-        };
+        }
     }
 }
 
@@ -44,29 +44,29 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
         owner_id: OwnerId,
         // parent_node_anchor: Option<&'short Expression<'hir>>,
     ) -> Self {
-        return Self {
+        Self {
             fragment: fragment_context,
             prev: anchor, // owner_anchor: parent_node_anchor,
             sibling_offset: 0,
             b: builder,
             owner_id,
-        };
+        }
     }
 
     pub fn owner_id(&self) -> OwnerId {
-        return self.owner_id;
+        self.owner_id
     }
 
     pub fn anchor(&self) -> Expression<'hir> {
-        return self.b.clone_expr(&self.prev);
+        self.b.clone_expr(&self.prev)
     }
 
     pub fn trailing_static_nodes(&self) -> bool {
-        return self.sibling_offset > 1;
+        self.sibling_offset > 1
     }
 
     pub fn sibling_offset(&self) -> usize {
-        return self.sibling_offset;
+        self.sibling_offset
     }
 
     fn get_node(&mut self, is_text: bool) -> Expression<'hir> {
@@ -86,7 +86,7 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
             args.push(BArg::Bool(true));
         }
 
-        return self.b.call_expr("$.sibling", args);
+        self.b.call_expr("$.sibling", args)
     }
 
     pub fn flush_node(&mut self, is_text: bool, name: &str) {
@@ -94,14 +94,14 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
 
         self.sibling_offset = 1;
 
-        return if expression.is_identifier_reference() {
+        if expression.is_identifier_reference() {
             self.prev = expression;
         } else {
             let id = self.b.rid_expr(name);
 
             self.push_init(self.b.var(name, BExpr::Expr(expression)));
             self.prev = id;
-        };
+        }
     }
 
     pub fn append_template(&mut self, value: &mut Vec<Cow<'hir, str>>) {

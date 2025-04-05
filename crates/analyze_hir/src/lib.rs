@@ -29,7 +29,7 @@ impl<'hir> AnalyzeHir<'hir> {
     }
 
     fn oxc_semantic_pass(&self, program: &hir::Program<'hir>) -> (SymbolTable, ScopeTree) {
-        let result = SemanticBuilder::new().build(&mut *program.program.borrow_mut());
+        let result = SemanticBuilder::new().build(&mut program.program.borrow_mut());
 
         if !result.errors.is_empty() {
             todo!();
@@ -37,7 +37,7 @@ impl<'hir> AnalyzeHir<'hir> {
 
         let (symbols, scopes) = result.semantic.into_symbol_table_and_scope_tree();
 
-        return (symbols, scopes);
+        (symbols, scopes)
     }
 
     fn content_type_pass(&self, analyses: &mut HirAnalyses, store: &hir::HirStore<'hir>) {
@@ -56,7 +56,7 @@ impl<'hir> AnalyzeHir<'hir> {
                     let alternate_flags = if_block
                         .alternate
                         .as_ref()
-                        .map(|alternate| self.compute_content_type(&alternate, store))
+                        .map(|alternate| self.compute_content_type(alternate, store))
                         .unwrap_or(OwnerContentTypeFlags::empty());
 
                     OwnerContentType::IfBlock(consequent_flags, alternate_flags)
@@ -118,14 +118,14 @@ impl<'hir> AnalyzeHir<'hir> {
             flags.set_from(node);
         }
 
-        return flags;
+        flags
     }
 
     pub fn script_pass(&self, analyses: &mut HirAnalyses, store: &hir::HirStore<'hir>) {
         let mut script_analyze = AnalyzeScript { analyses };
         let program = store.program.program.borrow_mut();
 
-        walk_program(&mut script_analyze, &*program);
+        walk_program(&mut script_analyze, &program);
     }
 
     pub fn analyze(&self, hir_store: &hir::HirStore<'hir>) -> HirAnalyses {
@@ -138,7 +138,7 @@ impl<'hir> AnalyzeHir<'hir> {
         self.script_pass(&mut analyses, hir_store);
         self.rune_reference_pass(&mut analyses, hir_store);
 
-        return analyses;
+        analyses
     }
 }
 
@@ -150,7 +150,7 @@ mod tests {
     use super::*;
 
     static ALLOCATOR: std::sync::LazyLock<Allocator> =
-        std::sync::LazyLock::new(|| Allocator::default());
+        std::sync::LazyLock::new(Allocator::default);
 
     #[test]
     fn dynamic_nodes_check() {

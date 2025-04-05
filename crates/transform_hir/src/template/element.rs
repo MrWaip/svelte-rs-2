@@ -33,7 +33,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let content_type = self.analyses.get_common_content_type(&self_owner_id);
         ctx.push_template(Cow::Owned(format!("<{}", &element.name)));
 
-        self.transform_attributes(&element, ctx);
+        self.transform_attributes(element, ctx);
 
         ctx.push_template(Cow::Borrowed(">"));
 
@@ -94,7 +94,7 @@ impl<'hir> TemplateTransformer<'hir> {
         let node = self.store.get_node(*element.node_ids.first().unwrap());
 
         let anchor = ctx.anchor();
-        let mut owner_ctx = OwnerContext::new(&mut ctx.fragment, anchor, self.b, self_owner_id);
+        let mut owner_ctx = OwnerContext::new(ctx.fragment, anchor, self.b, self_owner_id);
 
         let opts = TransformInterpolationOptions {
             need_empty_template: false,

@@ -1,6 +1,6 @@
 pub mod token;
 
-use std::{iter::Peekable, mem, str::Chars, vec};
+use std::{iter::Peekable, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
@@ -22,7 +22,7 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Scanner<'a> {
-        return Scanner {
+        Scanner {
             source,
             tokens: vec![],
             // not optimal
@@ -30,7 +30,7 @@ impl<'a> Scanner<'a> {
             prev: 0,
             current: 0,
             start: 0,
-        };
+        }
     }
 
     pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Diagnostic> {
@@ -45,8 +45,8 @@ impl<'a> Scanner<'a> {
             lexeme: "",
         });
 
-        let tokens = mem::replace(&mut self.tokens, vec![]);
-        return Ok(tokens);
+        let tokens = std::mem::take(&mut self.tokens);
+        Ok(tokens)
     }
 
     fn scan_token(&mut self) -> Result<(), Diagnostic> {
@@ -73,7 +73,7 @@ impl<'a> Scanner<'a> {
 
         self.text();
 
-        return Ok(());
+        Ok(())
     }
 
     fn add_token(&mut self, token_type: TokenType<'a>) {
@@ -90,13 +90,13 @@ impl<'a> Scanner<'a> {
         let char = self.chars.next().unwrap();
 
         self.prev = self.current;
-        self.current = self.current + char.len_utf8();
+        self.current += char.len_utf8();
 
-        return char;
+        char
     }
 
     fn is_at_end(&mut self) -> bool {
-        return self.chars.peek().is_none();
+        self.chars.peek().is_none()
     }
 
     fn identifier(&mut self) -> &'a str {
@@ -110,11 +110,11 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        return self.slice_source(start, self.current);
+        self.slice_source(start, self.current)
     }
 
     fn slice_source(&self, start: usize, end: usize) -> &'a str {
-        return &self.source[start..end];
+        &self.source[start..end]
     }
 
     fn attribute_identifier(&mut self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
@@ -141,21 +141,19 @@ impl<'a> Scanner<'a> {
             let value = self.slice_source(colon_pos + 1, self.current);
 
             if AttributeIdentifierType::is_class_directive(name) {
-                return AttributeIdentifierType::ClassDirective(value).as_ok();
+                AttributeIdentifierType::ClassDirective(value).as_ok()
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 return AttributeIdentifierType::BindDirective(value).as_ok();
             } else {
                 return Diagnostic::unknown_directive(Span::new(colon_pos, self.current)).as_err();
             }
+        } else if start == self.current {
+            AttributeIdentifierType::None.as_ok()
         } else {
-            if start == self.current {
-                return AttributeIdentifierType::None.as_ok();
-            } else {
-                return AttributeIdentifierType::HTMLAttribute(
-                    self.slice_source(start, self.current),
-                )
-                .as_ok();
-            }
+            AttributeIdentifierType::HTMLAttribute(
+                self.slice_source(start, self.current),
+            )
+            .as_ok()
         }
     }
 
@@ -170,7 +168,7 @@ impl<'a> Scanner<'a> {
 
         self.advance();
 
-        return true;
+        true
     }
 
     fn peek(&mut self) -> Option<char> {
@@ -178,7 +176,7 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        return self.chars.peek().map(|x| *x);
+        self.chars.peek().copied()
     }
 
     fn collect_until<F>(&mut self, condition: F) -> Result<&'a str, Diagnostic>
@@ -188,7 +186,7 @@ impl<'a> Scanner<'a> {
         let start = self.current;
 
         while !self.is_at_end() {
-            if self.peek().is_some_and(|c| condition(c)) {
+            if self.peek().is_some_and(&condition) {
                 break;
             }
 
@@ -202,7 +200,7 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        return Ok(self.slice_source(start, self.current));
+        Ok(self.slice_source(start, self.current))
     }
 
     fn skip_whitespace(&mut self) {
@@ -245,7 +243,7 @@ impl<'a> Scanner<'a> {
             self_closing,
         }));
 
-        return Ok(());
+        Ok(())
     }
 
     fn attributes(&mut self) -> Result<Vec<Attribute<'a>>, Diagnostic> {
@@ -290,7 +288,7 @@ impl<'a> Scanner<'a> {
             self.skip_whitespace();
         }
 
-        return Ok(attributes);
+        Ok(attributes)
     }
 
     fn html_attribute(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
@@ -300,7 +298,7 @@ impl<'a> Scanner<'a> {
             value = self.attribute_value()?;
         }
 
-        return Ok(Attribute::HTMLAttribute(HTMLAttribute { name, value }));
+        Ok(Attribute::HTMLAttribute(HTMLAttribute { name, value }))
     }
 
     fn class_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
@@ -314,14 +312,14 @@ impl<'a> Scanner<'a> {
             }));
         }
 
-        return Ok(Attribute::ClassDirective(ClassDirective {
+        Ok(Attribute::ClassDirective(ClassDirective {
             name,
             expression: JsExpression {
                 span: SPAN,
-                value: &name,
+                value: name,
             },
             shorthand: true,
-        }));
+        }))
     }
 
     fn bind_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
@@ -335,14 +333,14 @@ impl<'a> Scanner<'a> {
             }));
         }
 
-        return Ok(Attribute::BindDirective(BindDirective {
+        Ok(Attribute::BindDirective(BindDirective {
             name,
             expression: JsExpression {
                 span: SPAN,
-                value: &name,
+                value: name,
             },
             shorthand: true,
-        }));
+        }))
     }
 
     fn attribute_value(&mut self) -> Result<AttributeValue<'a>, Diagnostic> {
@@ -351,7 +349,7 @@ impl<'a> Scanner<'a> {
         if self.peek() == Some('{') {
             return self
                 .expression_tag()
-                .map(|v| AttributeValue::ExpressionTag(v));
+                .map(AttributeValue::ExpressionTag);
         }
 
         if let Some(quote) = peeked.filter(|c| *c == '"' || *c == '\'') {
@@ -365,13 +363,13 @@ impl<'a> Scanner<'a> {
          */
 
         let value = self.collect_until(|char| {
-            return match char {
+            match char {
                 '"' | '\'' | '>' | '<' | '`' => true,
                 char => char.is_whitespace(),
-            };
+            }
         })?;
 
-        return Ok(AttributeValue::String(value));
+        Ok(AttributeValue::String(value))
     }
 
     fn expression_tag(&mut self) -> Result<ExpressionTag<'a>, Diagnostic> {
@@ -382,10 +380,10 @@ impl<'a> Scanner<'a> {
 
         let expression = self.collect_js_expression()?;
 
-        return Ok(ExpressionTag {
+        Ok(ExpressionTag {
             expression,
             span: Span::new(start, self.current),
-        });
+        })
     }
 
     fn attribute_concatenation_or_string(
@@ -439,11 +437,11 @@ impl<'a> Scanner<'a> {
             return Ok(AttributeValue::String(last_part));
         }
 
-        return Ok(AttributeValue::Concatenation(Concatenation {
+        Ok(AttributeValue::Concatenation(Concatenation {
             start,
             end: self.current,
             parts,
-        }));
+        }))
     }
 
     fn end_tag(&mut self) -> Result<(), Diagnostic> {
@@ -464,7 +462,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::EndTag(token::EndTag { name }));
 
-        return Ok(());
+        Ok(())
     }
 
     fn text(&mut self) {
@@ -483,7 +481,7 @@ impl<'a> Scanner<'a> {
             span: Span::new(self.start, self.current),
         }));
 
-        return Ok(());
+        Ok(())
     }
 
     fn collect_js_expression(&mut self) -> Result<JsExpression<'a>, Diagnostic> {
@@ -507,26 +505,24 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            if char == '}' {
-                if stack.pop().is_none() {
-                    let value = if self.current - start > 2 {
-                        self.slice_source(start, self.prev)
-                    } else {
-                        ""
-                    };
+            if char == '}' && stack.pop().is_none() {
+                let value = if self.current - start > 2 {
+                    self.slice_source(start, self.prev)
+                } else {
+                    ""
+                };
 
-                    return Ok(JsExpression {
-                        span: Span::new(start, self.current),
-                        value,
-                    });
-                }
+                return Ok(JsExpression {
+                    span: Span::new(start, self.current),
+                    value,
+                });
             }
         }
 
-        return Err(Diagnostic::unexpected_end_of_file(Span::new(
+        Err(Diagnostic::unexpected_end_of_file(Span::new(
             start,
             self.current,
-        )));
+        )))
     }
 
     fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
@@ -544,7 +540,7 @@ impl<'a> Scanner<'a> {
 
         self.advance();
 
-        return Ok(());
+        Ok(())
     }
 
     fn start_template(&mut self) -> Result<(), Diagnostic> {
@@ -562,7 +558,7 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        return match keyword {
+        match keyword {
             "if" => {
                 let expression = self.collect_js_expression()?;
 
@@ -574,7 +570,7 @@ impl<'a> Scanner<'a> {
                 start,
                 self.current,
             ))),
-        };
+        }
     }
 
     fn end_template(&mut self) -> Result<(), Diagnostic> {
@@ -592,7 +588,7 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        return match keyword {
+        match keyword {
             "if" => {
                 self.skip_whitespace();
 
@@ -608,7 +604,7 @@ impl<'a> Scanner<'a> {
                 start,
                 self.current,
             ))),
-        };
+        }
     }
 
     fn middle_template(&mut self) -> Result<(), Diagnostic> {
@@ -626,7 +622,7 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        return match keyword {
+        match keyword {
             "else" => {
                 self.skip_whitespace();
 
@@ -634,7 +630,7 @@ impl<'a> Scanner<'a> {
                 let elseif = self.identifier();
 
                 if !elseif.is_empty() {
-                    if elseif != "if".to_string() {
+                    if elseif != "if" {
                         return Err(Diagnostic::unexpected_keyword(Span::new(
                             start,
                             self.current,
@@ -664,7 +660,7 @@ impl<'a> Scanner<'a> {
                 start,
                 self.current,
             ))),
-        };
+        }
     }
 
     fn script_tag(&mut self, attributes: Vec<Attribute<'a>>) -> Result<(), Diagnostic> {
@@ -709,7 +705,7 @@ impl<'a> Scanner<'a> {
             attributes,
         }));
 
-        return Ok(());
+        Ok(())
     }
 
     fn comment(&mut self) -> Result<(), Diagnostic> {
@@ -725,12 +721,8 @@ impl<'a> Scanner<'a> {
         }
 
         while !self.is_at_end() {
-            if self.match_char('-') {
-                if self.match_char('-') {
-                    if self.peek() == Some('>') {
-                        break;
-                    }
-                }
+            if self.match_char('-') && self.match_char('-') && self.peek() == Some('>') {
+                break;
             }
 
             self.advance();
@@ -747,7 +739,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::Comment);
 
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -1002,7 +994,7 @@ mod tests {
 
         assert_attributes(&tag.attributes, expected_attributes);
 
-        return tag;
+        tag
     }
 
     fn assert_start_tag(

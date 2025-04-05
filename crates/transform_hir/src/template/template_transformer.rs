@@ -33,7 +33,7 @@ impl<'hir> TemplateTransformer<'hir> {
     pub fn transform(&mut self) -> Vec<Statement<'hir>> {
         let template = self.store.get_template();
 
-        return self.transform_template(template);
+        self.transform_template(template)
     }
 
     fn transform_template(&mut self, template: &hir::Template) -> Vec<Statement<'hir>> {
@@ -41,11 +41,11 @@ impl<'hir> TemplateTransformer<'hir> {
             .analyses
             .get_common_content_type(&HirStore::TEMPLATE_OWNER_ID);
 
-        return self.transform_fragment(
+        self.transform_fragment(
             &template.node_ids,
             HirStore::TEMPLATE_OWNER_ID,
             content_type,
-        );
+        )
     }
 
     pub(crate) fn transform_text<'local>(
@@ -58,6 +58,6 @@ impl<'hir> TemplateTransformer<'hir> {
 
     pub(crate) fn take_expression(&self, expression_id: ExpressionId) -> Expression<'hir> {
         let mut expression = self.store.get_expression_mut(expression_id);
-        return self.b.move_expr(&mut expression);
+        self.b.move_expr(&mut expression)
     }
 }

@@ -1,4 +1,3 @@
-use std::mem;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
@@ -36,11 +35,11 @@ struct NodeStack<'a> {
 
 impl<'a> NodeStack<'a> {
     fn new() -> NodeStack<'a> {
-        return NodeStack {
+        NodeStack {
             roots: vec![],
             stack: vec![],
             scripts: vec![],
-        };
+        }
     }
 
     /**
@@ -51,7 +50,7 @@ impl<'a> NodeStack<'a> {
 
         self.stack.push(node);
 
-        return Ok(());
+        Ok(())
     }
 
     /**
@@ -64,7 +63,7 @@ impl<'a> NodeStack<'a> {
             self.roots.push(node);
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn add_script(&mut self, node: Node<'a>) -> Result<(), Diagnostic> {
@@ -74,7 +73,7 @@ impl<'a> NodeStack<'a> {
             self.scripts.push(node);
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn add_to_root(&mut self, node: Node<'a>) {
@@ -82,11 +81,11 @@ impl<'a> NodeStack<'a> {
     }
 
     pub fn pop(&mut self) -> Option<Node<'a>> {
-        return self.stack.pop();
+        self.stack.pop()
     }
 
     pub fn last_mut(&mut self) -> Option<&mut Node<'a>> {
-        return self.stack.last_mut();
+        self.stack.last_mut()
     }
 
     pub fn add_child(&mut self, node: Node<'a>) -> Result<bool, Diagnostic> {
@@ -108,18 +107,18 @@ impl<'a> NodeStack<'a> {
             return Ok(true);
         }
 
-        return Ok(false);
+        Ok(false)
     }
 
     pub fn is_stack_empty(&self) -> bool {
-        return self.stack.is_empty();
+        self.stack.is_empty()
     }
 
     pub fn take_nodes(&mut self) -> (Vec<Node<'a>>, Vec<Node<'a>>) {
-        let template = mem::replace(&mut self.roots, vec![]);
-        let scripts = mem::replace(&mut self.scripts, vec![]);
+        let template = std::mem::take(&mut self.roots);
+        let scripts = std::mem::take(&mut self.scripts);
 
-        return (template, scripts);
+        (template, scripts)
     }
 }
 
@@ -127,11 +126,11 @@ impl<'a> Parser<'a> {
     pub fn new(source: &'a str, allocator: &'a Allocator) -> Parser<'a> {
         let scanner = Scanner::new(source);
 
-        return Parser {
+        Parser {
             scanner,
             allocator,
             node_stack: NodeStack::new(),
-        };
+        }
     }
 
     pub fn parse(&mut self) -> Result<Ast<'a>, Diagnostic> {
@@ -174,12 +173,12 @@ impl<'a> Parser<'a> {
             script = Some(scripts.remove(0).into());
         }
 
-        return Ok(Ast {
+        Ok(Ast {
             template: RcCell::new(Template {
                 nodes: Fragment::from(nodes),
             }),
             script,
-        });
+        })
     }
 
     fn parse_start_tag(&mut self, tag: &StartTag<'a>, start_span: Span) -> Result<(), Diagnostic> {
@@ -206,7 +205,7 @@ impl<'a> Parser<'a> {
             self.node_stack.add_node(node)?;
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_end_tag(&mut self, tag: &EndTag<'a>, end_tag_span: Span) -> Result<(), Diagnostic> {
@@ -245,12 +244,12 @@ impl<'a> Parser<'a> {
 
         self.node_stack.add_leaf(node.as_node())?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_interpolation(&mut self, interpolation: ExpressionTag<'a>) -> Result<(), Diagnostic> {
         let expression =
-            self.parse_js_expression(&interpolation.expression.value, interpolation.span)?;
+            self.parse_js_expression(interpolation.expression.value, interpolation.span)?;
 
         let node = Interpolation {
             expression,
@@ -260,7 +259,7 @@ impl<'a> Parser<'a> {
 
         self.node_stack.add_leaf(node.as_node())?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_js_expression(
@@ -268,13 +267,13 @@ impl<'a> Parser<'a> {
         source: &'a str,
         span: Span,
     ) -> Result<Expression<'a>, Diagnostic> {
-        let oxc_parser = OxcParser::new(&self.allocator, source, SourceType::default());
+        let oxc_parser = OxcParser::new(self.allocator, source, SourceType::default());
 
         let expression = oxc_parser
             .parse_expression()
             .map_err(|_| Diagnostic::invalid_expression(span))?;
 
-        return Ok(expression);
+        Ok(expression)
     }
 
     fn parse_attributes(
@@ -290,12 +289,12 @@ impl<'a> Parser<'a> {
                         token::AttributeValue::String(value) => StringAttribute {
                             name: token_attr.name,
                             kind: AttributeKind::from_str(token_attr.name),
-                            value: &value,
+                            value,
                         }
                         .as_attribute(),
                         token::AttributeValue::ExpressionTag(expression_tag) => {
                             let expression = self.parse_js_expression(
-                                &expression_tag.expression.value,
+                                expression_tag.expression.value,
                                 expression_tag.span,
                             )?;
 
@@ -318,7 +317,7 @@ impl<'a> Parser<'a> {
                                     }
                                     token::ConcatenationPart::Expression(expression_tag) => {
                                         let expression = self.parse_js_expression(
-                                            &expression_tag.expression.value,
+                                            expression_tag.expression.value,
                                             expression_tag.span,
                                         )?;
 
@@ -354,7 +353,7 @@ impl<'a> Parser<'a> {
                         attributes.push(Attribute::SpreadAttribute(SpreadAttribute { expression }));
                     } else {
                         let expression = self.parse_js_expression(
-                            &expression_tag.expression.value,
+                            expression_tag.expression.value,
                             expression_tag.span,
                         )?;
 
@@ -389,7 +388,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        return Ok(attributes);
+        Ok(attributes)
     }
 
     fn parse_start_if_tag(
@@ -403,7 +402,7 @@ impl<'a> Parser<'a> {
             alternate: None,
             consequent: Fragment::empty(),
             test: self.parse_js_expression(
-                &start_if_tag.expression.value,
+                start_if_tag.expression.value,
                 start_if_tag.expression.span,
             )?,
         };
@@ -412,7 +411,7 @@ impl<'a> Parser<'a> {
 
         self.node_stack.add_node(node)?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_else_tag(
@@ -423,7 +422,7 @@ impl<'a> Parser<'a> {
         let expression = else_tag
             .expression
             .as_ref()
-            .map(|v| self.parse_js_expression(&v.value, span));
+            .map(|v| self.parse_js_expression(v.value, span));
 
         let cell = if else_tag.elseif {
             let else_if_block = IfBlock {
@@ -459,7 +458,7 @@ impl<'a> Parser<'a> {
             self.node_stack.add_node(cell)?;
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_end_if_tag(&mut self, span: Span) -> Result<(), Diagnostic> {
@@ -505,7 +504,7 @@ impl<'a> Parser<'a> {
     ) -> Result<(), Diagnostic> {
         let language = script_tag.language();
         let source_type = SourceType::default().with_typescript(language == Language::TypeScript);
-        let oxc_parser = OxcParser::new(&self.allocator, &script_tag.source, source_type);
+        let oxc_parser = OxcParser::new(self.allocator, script_tag.source, source_type);
 
         let program_result = oxc_parser.parse();
 
@@ -522,7 +521,7 @@ impl<'a> Parser<'a> {
             .as_node(),
         )?;
 
-        return Ok(());
+        Ok(())
     }
 
     fn parse_comment(&mut self, token: &Token<'a>) -> Result<(), Diagnostic> {
@@ -533,7 +532,7 @@ impl<'a> Parser<'a> {
 
         self.node_stack.add_leaf(node.as_node())?;
 
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -545,11 +544,11 @@ mod tests {
     use super::*;
 
     fn setup_template<'a>(source: &'a str, allocator: &'a Allocator) -> Fragment<'a> {
-        let mut parser = Parser::new(source, &allocator);
+        let mut parser = Parser::new(source, allocator);
 
         let ast = parser.parse().unwrap();
 
-        return ast.template.unwrap().nodes;
+        ast.template.unwrap().nodes
     }
 
     #[test]

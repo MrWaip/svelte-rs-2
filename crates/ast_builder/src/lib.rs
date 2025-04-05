@@ -72,12 +72,12 @@ pub enum TemplateLiteralPart<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(ast: AstBuilder<'a>) -> Builder<'a> {
-        return Builder { ast };
+        Builder { ast }
     }
 
     pub fn new_with_ast(allocator: &'a Allocator) -> Self {
         let ast_builder = AstBuilder::new(allocator);
-        return Self { ast: ast_builder };
+        Self { ast: ast_builder }
     }
 
     pub fn import_all(&self, specifier: &'a str, source: &'a str) -> Statement<'a> {
@@ -97,11 +97,11 @@ impl<'a> Builder<'a> {
             ImportOrExportKind::Value,
         ));
 
-        return stmt;
+        stmt
     }
 
     pub fn program(&self, body: Vec<Statement<'a>>) -> Program<'a> {
-        return Program {
+        Program {
             body: self.ast.vec_from_iter(body),
             span: SPAN,
             comments: self.ast.vec(),
@@ -110,7 +110,7 @@ impl<'a> Builder<'a> {
             source_text: "",
             source_type: SourceType::default(),
             scope_id: Cell::from(None),
-        };
+        }
     }
 
     pub fn params(&self, items: impl IntoIterator<Item = &'a str>) -> FormalParameters<'a> {
@@ -123,12 +123,12 @@ impl<'a> Builder<'a> {
                 .formal_parameter(SPAN, self.ast.vec(), pattern, None, false, false)
         });
 
-        return self.ast.formal_parameters(
+        self.ast.formal_parameters(
             SPAN,
             ast::FormalParameterKind::FormalParameter,
             self.ast.vec_from_iter(params),
             NONE,
-        );
+        )
     }
 
     pub fn function_declaration(
@@ -155,21 +155,21 @@ impl<'a> Builder<'a> {
             Some(body),
         );
 
-        return function;
+        function
     }
 
     pub fn bid(&self, name: &str) -> BindingIdentifier<'a> {
-        return self.ast.binding_identifier(SPAN, name);
+        self.ast.binding_identifier(SPAN, name)
     }
 
     pub fn rid(&self, name: &str) -> IdentifierReference<'a> {
-        return self.ast.identifier_reference(SPAN, name);
+        self.ast.identifier_reference(SPAN, name)
     }
 
     pub fn rid_expr(&self, name: &str) -> Expression<'a> {
         let rid = self.rid(name);
 
-        return Expression::Identifier(self.alloc(rid));
+        Expression::Identifier(self.alloc(rid))
     }
 
     pub fn export_default(&self, declaration: ExportDefaultDeclarationKind<'a>) -> Statement<'a> {
@@ -183,21 +183,21 @@ impl<'a> Builder<'a> {
 
         let res = ModuleDeclaration::ExportDefaultDeclaration(res);
 
-        return Statement::from(res);
+        Statement::from(res)
     }
 
     pub fn string_literal(&self, value: String) -> StringLiteral<'a> {
-        return self.ast.string_literal(SPAN, value, None);
+        self.ast.string_literal(SPAN, value, None)
     }
 
     pub fn numeric_literal(&self, value: f64) -> NumericLiteral<'a> {
-        return self
+        self
             .ast
-            .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal);
+            .numeric_literal(SPAN, value, None, ast::NumberBase::Decimal)
     }
 
     pub fn numeric_literal_expr(&self, value: f64) -> Expression<'a> {
-        return Expression::NumericLiteral(self.alloc(self.numeric_literal(value)));
+        Expression::NumericLiteral(self.alloc(self.numeric_literal(value)))
     }
 
     pub fn arg<'local>(&self, arg: BuilderFunctionArgument<'a, 'local>) -> Argument<'a> {
@@ -235,11 +235,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn bool(&self, value: bool) -> BooleanLiteral {
-        return self.ast.boolean_literal(SPAN, value);
+        self.ast.boolean_literal(SPAN, value)
     }
 
     pub fn bool_expr(&self, value: bool) -> Expression<'a> {
-        return Expression::BooleanLiteral(self.alloc(self.bool(value)));
+        Expression::BooleanLiteral(self.alloc(self.bool(value)))
     }
 
     pub fn call<'short>(
@@ -254,7 +254,7 @@ impl<'a> Builder<'a> {
             .ast
             .call_expression(SPAN, ident, NONE, self.ast.vec_from_iter(args), false);
 
-        return res;
+        res
     }
 
     pub fn call_expr<'short>(
@@ -264,7 +264,7 @@ impl<'a> Builder<'a> {
     ) -> Expression<'a> {
         let expr = self.call(callee, args);
 
-        return self.expr(BuilderExpression::Call(expr));
+        self.expr(BuilderExpression::Call(expr))
     }
 
     pub fn call_stmt<'short>(
@@ -274,13 +274,13 @@ impl<'a> Builder<'a> {
     ) -> Statement<'a> {
         let expr = self.call(callee, args);
 
-        return self.stmt(BuilderStatement::Expr(
+        self.stmt(BuilderStatement::Expr(
             self.expr(BuilderExpression::Call(expr)),
-        ));
+        ))
     }
 
     pub fn alloc<T>(&self, value: T) -> Box<'a, T> {
-        return self.ast.alloc(value);
+        self.ast.alloc(value)
     }
 
     pub fn var(&self, name: &str, init: BuilderExpression<'a>) -> Statement<'a> {
@@ -306,7 +306,7 @@ impl<'a> Builder<'a> {
             false,
         );
 
-        return Statement::VariableDeclaration(self.alloc(declaration));
+        Statement::VariableDeclaration(self.alloc(declaration))
     }
 
     pub fn const_stmt(&self, name: &str, init: BuilderExpression<'a>) -> Statement<'a> {
@@ -332,11 +332,11 @@ impl<'a> Builder<'a> {
             false,
         );
 
-        return Statement::VariableDeclaration(self.alloc(declaration));
+        Statement::VariableDeclaration(self.alloc(declaration))
     }
 
     pub fn expr(&self, expr: BuilderExpression<'a>) -> Expression<'a> {
-        return match expr {
+        match expr {
             BuilderExpression::Call(value) => Expression::CallExpression(self.alloc(value)),
             BuilderExpression::TemplateLiteral(template_literal) => {
                 Expression::TemplateLiteral(self.alloc(template_literal))
@@ -357,11 +357,11 @@ impl<'a> Builder<'a> {
             BuilderExpression::Str(value) => {
                 Expression::StringLiteral(self.alloc(self.ast.string_literal(SPAN, value, None)))
             }
-        };
+        }
     }
 
     pub fn stmt(&self, expr: BuilderStatement<'a>) -> Statement<'a> {
-        return match expr {
+        match expr {
             BuilderStatement::Expr(value) => Statement::ExpressionStatement(
                 self.alloc(self.ast.expression_statement(SPAN, value)),
             ),
@@ -369,23 +369,23 @@ impl<'a> Builder<'a> {
                 Statement::BlockStatement(self.alloc(block_statement))
             }
             BuilderStatement::Arrow(arrow_function_expression) => {
-                return self.stmt(BuilderStatement::Expr(
+                self.stmt(BuilderStatement::Expr(
                     self.expr(BuilderExpression::Arrow(arrow_function_expression)),
-                ));
+                ))
             }
             BuilderStatement::IfBlock(if_statement) => {
                 Statement::IfStatement(self.alloc(if_statement))
             }
             BuilderStatement::Ident(identifier_reference) => {
-                return self.stmt(BuilderStatement::Expr(
+                self.stmt(BuilderStatement::Expr(
                     self.expr(BuilderExpression::Ident(identifier_reference)),
-                ));
+                ))
             }
-        };
+        }
     }
 
     pub fn empty_stmt(&self) -> Statement<'a> {
-        return Statement::EmptyStatement(self.ast.alloc_empty_statement(SPAN));
+        Statement::EmptyStatement(self.ast.alloc_empty_statement(SPAN))
     }
 
     pub fn template_literal(&self, parts: &mut Vec<ConcatenationPart<'a>>) -> TemplateLiteral<'a> {
@@ -455,7 +455,7 @@ impl<'a> Builder<'a> {
 
         let lit = self.ast.template_literal(SPAN, quasis, expressions);
 
-        return lit;
+        lit
     }
 
     pub fn template_literal2<'short>(
@@ -526,14 +526,14 @@ impl<'a> Builder<'a> {
 
         let lit = self.ast.template_literal(SPAN, quasis, expressions);
 
-        return lit;
+        lit
     }
 
     pub fn template_literal2_expr<'short>(
         &self,
         parts: impl IntoIterator<Item = TemplateLiteralPart<'a>>,
     ) -> Expression<'a> {
-        return Expression::TemplateLiteral(self.alloc(self.template_literal2(parts)));
+        Expression::TemplateLiteral(self.alloc(self.template_literal2(parts)))
     }
 
     pub fn arrow(
@@ -551,7 +551,7 @@ impl<'a> Builder<'a> {
             .ast
             .arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body);
 
-        return arrow;
+        arrow
     }
 
     pub fn arrow_expr(
@@ -561,21 +561,21 @@ impl<'a> Builder<'a> {
     ) -> Expression<'a> {
         let arrow = self.arrow(params, statements);
 
-        return Expression::ArrowFunctionExpression(self.alloc(arrow));
+        Expression::ArrowFunctionExpression(self.alloc(arrow))
     }
 
     pub fn clone_expr(&self, expr: &Expression<'a>) -> Expression<'a> {
-        return expr.clone_in(&self.ast.allocator);
+        expr.clone_in(self.ast.allocator)
     }
 
     pub fn cheap_expr(&self) -> Expression<'a> {
-        return self.ast.expression_boolean_literal(SPAN, false);
+        self.ast.expression_boolean_literal(SPAN, false)
     }
 
     pub fn block(&self, body: Vec<Statement<'a>>) -> Statement<'a> {
         let block = self.ast.block_statement(SPAN, self.ast.vec_from_iter(body));
 
-        return self.stmt(BuilderStatement::Block(block));
+        self.stmt(BuilderStatement::Block(block))
     }
 
     pub fn if_stmt(
@@ -586,7 +586,7 @@ impl<'a> Builder<'a> {
     ) -> Statement<'a> {
         let if_stmt = self.ast.if_statement(SPAN, test, consequent, alternate);
 
-        return self.stmt(BuilderStatement::IfBlock(if_stmt));
+        self.stmt(BuilderStatement::IfBlock(if_stmt))
     }
 
     pub fn template_from_str<'local>(&self, value: &'local str) -> TemplateLiteral<'a> {
@@ -597,11 +597,11 @@ impl<'a> Builder<'a> {
             tail: true,
             value: TemplateElementValue {
                 cooked: None,
-                raw: self.ast.atom(&value),
+                raw: self.ast.atom(value),
             },
         });
 
-        return self.ast.template_literal(SPAN, quasis, self.ast.vec());
+        self.ast.template_literal(SPAN, quasis, self.ast.vec())
     }
 
     pub fn assignment_expression<'local>(
@@ -632,7 +632,7 @@ impl<'a> Builder<'a> {
             self.ast
                 .assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);
 
-        return assignment;
+        assignment
     }
 
     pub fn assignment_expression_expr<'local>(
@@ -642,7 +642,7 @@ impl<'a> Builder<'a> {
     ) -> Expression<'a> {
         let assignment = self.assignment_expression(left, right);
 
-        return self.expr(BuilderExpression::Assignment(assignment));
+        self.expr(BuilderExpression::Assignment(assignment))
     }
 
     pub fn assignment_expression_stmt<'local>(
@@ -650,13 +650,13 @@ impl<'a> Builder<'a> {
         left: BuilderAssignmentLeft<'local, 'a>,
         right: BuilderAssignmentRight<'a, 'local>,
     ) -> Statement<'a> {
-        return self.stmt(BuilderStatement::Expr(
+        self.stmt(BuilderStatement::Expr(
             self.assignment_expression_expr(left, right),
-        ));
+        ))
     }
 
     pub fn move_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
-        return self.ast.move_expression(expr);
+        self.ast.move_expression(expr)
     }
 
     pub fn static_member_expr<'local>(
@@ -670,7 +670,7 @@ impl<'a> Builder<'a> {
             .ast
             .static_member_expression(SPAN, object, property, false);
 
-        return expr;
+        expr
     }
 
     pub fn array(
@@ -681,7 +681,7 @@ impl<'a> Builder<'a> {
             .ast
             .vec_from_iter(elements.into_iter().map(|item| match item {}));
 
-        return self.ast.array_expression(SPAN, elements, None);
+        self.ast.array_expression(SPAN, elements, None)
     }
 
     pub fn init_prop(&self, name: &str, value: Expression<'a>) -> ObjectPropertyKind<'a> {
@@ -691,7 +691,7 @@ impl<'a> Builder<'a> {
             shorthand = ident.name.as_str() == name;
         }
 
-        return ObjectPropertyKind::ObjectProperty(self.ast.alloc(ObjectProperty {
+        ObjectPropertyKind::ObjectProperty(self.ast.alloc(ObjectProperty {
             computed: false,
             method: false,
             kind: ast::PropertyKind::Init,
@@ -699,40 +699,40 @@ impl<'a> Builder<'a> {
             span: SPAN,
             value,
             key: ast::PropertyKey::StaticIdentifier(self.ast.alloc_identifier_name(SPAN, name)),
-        }));
+        }))
     }
 
     pub fn spread_prop(&self, value: Expression<'a>) -> ObjectPropertyKind<'a> {
-        return ObjectPropertyKind::SpreadProperty(self.ast.alloc(SpreadElement {
+        ObjectPropertyKind::SpreadProperty(self.ast.alloc(SpreadElement {
             argument: value,
             span: SPAN,
-        }));
+        }))
     }
 
     pub fn object(
         &self,
         props: impl IntoIterator<Item = ObjectPropertyKind<'a>>,
     ) -> ObjectExpression<'a> {
-        return self
+        self
             .ast
-            .object_expression(SPAN, self.ast.vec_from_iter(props), None);
+            .object_expression(SPAN, self.ast.vec_from_iter(props), None)
     }
 
     pub fn object_expr(
         &self,
         props: impl IntoIterator<Item = ObjectPropertyKind<'a>>,
     ) -> Expression<'a> {
-        return Expression::ObjectExpression(self.alloc(self.object(props)));
+        Expression::ObjectExpression(self.alloc(self.object(props)))
     }
 
     pub fn unary(&self, operator: UnaryOperator, argument: Expression<'a>) -> UnaryExpression<'a> {
         let unary = self.ast.unary_expression(SPAN, operator, argument);
 
-        return unary;
+        unary
     }
 
     pub fn unary_expr(&self, operator: UnaryOperator, argument: Expression<'a>) -> Expression<'a> {
-        return Expression::UnaryExpression(self.alloc(self.unary(operator, argument)));
+        Expression::UnaryExpression(self.alloc(self.unary(operator, argument)))
     }
 
     pub fn let_stmt(&self, name: &str, init: Option<BuilderExpression<'a>>) -> Statement<'a> {
@@ -758,6 +758,6 @@ impl<'a> Builder<'a> {
             false,
         );
 
-        return Statement::VariableDeclaration(self.alloc(declaration));
+        Statement::VariableDeclaration(self.alloc(declaration))
     }
 }

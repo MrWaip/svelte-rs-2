@@ -28,7 +28,7 @@ impl OwnerContentTypeFlags {
     }
 
     pub fn only_element(&self) -> bool {
-        return *self == OwnerContentTypeFlags::Element;
+        *self == OwnerContentTypeFlags::Element
     }
 
     pub fn only_synthetic_node(&self) -> bool {
@@ -39,7 +39,7 @@ impl OwnerContentTypeFlags {
     }
 
     pub fn only_text(&self) -> bool {
-        return *self == OwnerContentTypeFlags::Text;
+        *self == OwnerContentTypeFlags::Text
     }
 
     pub fn none_text(&self) -> bool {
@@ -47,7 +47,7 @@ impl OwnerContentTypeFlags {
             return false;
         }
 
-        return !self.only_text();
+        !self.only_text()
     }
 
     pub fn any_text_like(&self) -> bool {
@@ -55,17 +55,17 @@ impl OwnerContentTypeFlags {
             | OwnerContentTypeFlags::Interpolation
             | OwnerContentTypeFlags::Concatenation;
 
-        return self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0;
+        self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0
     }
 
     pub fn any_interpolation_like(&self) -> bool {
         let allowed = OwnerContentTypeFlags::Interpolation | OwnerContentTypeFlags::Concatenation;
 
-        return self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0;
+        self.intersects(allowed) && (self.bits() & !allowed.bits()) == 0
     }
 
     pub fn only_fragment_owner(&self) -> bool {
-        return *self == OwnerContentTypeFlags::IfBlock;
+        *self == OwnerContentTypeFlags::IfBlock
     }
 }
 
@@ -76,10 +76,10 @@ pub enum OwnerContentType {
 
 impl OwnerContentType {
     pub fn as_common_or_empty(&self) -> OwnerContentTypeFlags {
-        return match self {
-            OwnerContentType::Common(flags) => flags.clone(),
+        match self {
+            OwnerContentType::Common(flags) => *flags,
             OwnerContentType::IfBlock(_, _) => OwnerContentTypeFlags::empty(),
-        };
+        }
     }
 
     pub fn as_if(&self) -> (OwnerContentTypeFlags, OwnerContentTypeFlags) {
@@ -87,6 +87,6 @@ impl OwnerContentType {
             unreachable!()
         };
 
-        return (*consequent, *alternate);
+        (*consequent, *alternate)
     }
 }

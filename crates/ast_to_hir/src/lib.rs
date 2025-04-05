@@ -34,7 +34,7 @@ impl<'hir> AstToHir<'hir> {
 
         self.lower_template(&mut ctx, ast.template.unwrap());
 
-        return AstToHirRet { store: ctx.store };
+        AstToHirRet { store: ctx.store }
     }
 
     fn lower_root_script(&self, script: Option<ast::ScriptTag<'hir>>) -> hir::Program<'hir> {
@@ -46,13 +46,13 @@ impl<'hir> AstToHir<'hir> {
             .unwrap_or_else(|| {
                 let oxc_program = self.builder.program(Vec::new());
 
-                return hir::Program {
+                hir::Program {
                     language: Language::JavaScript,
                     program: RefCell::new(oxc_program),
-                };
+                }
             });
 
-        return hir_program;
+        hir_program
     }
 
     fn lower_template(&mut self, ctx: &mut ToHirContext<'hir>, template: ast::Template<'hir>) {
@@ -61,7 +61,7 @@ impl<'hir> AstToHir<'hir> {
 
             let template = hir::Template { node_ids, node_id };
 
-            return (hir::Node::Phantom, OwnerNode::Template(ctx.alloc(template)));
+            (hir::Node::Phantom, OwnerNode::Template(ctx.alloc(template)))
         });
     }
 
@@ -74,11 +74,11 @@ impl<'hir> AstToHir<'hir> {
 
         nodes = self.trim_text_nodes(nodes, ctx);
 
-        return self.compress_and_lower_nodes(nodes, ctx);
+        self.compress_and_lower_nodes(nodes, ctx)
     }
 
     fn lower_node(&self, node: ast::Node<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
-        return match node {
+        match node {
             ast::Node::Element(cell) => self.lower_element(cell.unwrap(), ctx),
             ast::Node::Text(cell) => self.lower_text(cell.unwrap(), ctx),
             ast::Node::Interpolation(cell) => self.lower_interpolation(cell.unwrap(), ctx),
@@ -86,11 +86,11 @@ impl<'hir> AstToHir<'hir> {
             ast::Node::VirtualConcatenation(_) => unreachable!(),
             ast::Node::ScriptTag(_) => todo!(),
             ast::Node::Comment(cell) => self.lower_comment(cell.unwrap(), ctx),
-        };
+        }
     }
 
     fn lower_if_block(&self, if_block: ast::IfBlock<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
-        return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
+        ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let expression_id = ctx.push_expression(if_block.test);
 
             let hir_if_block = hir::IfBlock {
@@ -100,21 +100,21 @@ impl<'hir> AstToHir<'hir> {
                 consequent: self.lower_nodes(ctx, if_block.consequent.nodes),
                 is_elseif: if_block.is_elseif,
                 alternate: if_block.alternate.map(|fragment| {
-                    return self.lower_nodes(ctx, fragment.nodes);
+                    self.lower_nodes(ctx, fragment.nodes)
                 }),
             };
 
             let hir_if_block = ctx.alloc(hir_if_block);
 
-            return (
+            (
                 hir::Node::IfBlock(hir_if_block),
                 hir::OwnerNode::IfBlock(hir_if_block),
-            );
-        });
+            )
+        })
     }
 
     fn lower_element(&self, element: ast::Element<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
-        return ctx.push_owner_node(|ctx, self_node_id, owner_id| {
+        ctx.push_owner_node(|ctx, self_node_id, owner_id| {
             let name = ctx.alloc(element.name);
 
             let mut hir_element =
@@ -126,11 +126,11 @@ impl<'hir> AstToHir<'hir> {
 
             let hir_element = ctx.alloc(hir_element);
 
-            return (
+            (
                 hir::Node::Element(hir_element),
                 hir::OwnerNode::Element(hir_element),
-            );
-        });
+            )
+        })
     }
 
     fn lower_attributes(
@@ -202,7 +202,7 @@ impl<'hir> AstToHir<'hir> {
             expression_id,
         };
 
-        return ctx.alloc(attr);
+        ctx.alloc(attr)
     }
 
     fn lower_bind_directive(
@@ -217,7 +217,7 @@ impl<'hir> AstToHir<'hir> {
             shorthand: attr.shorthand,
         };
 
-        return ctx.alloc(attr);
+        ctx.alloc(attr)
     }
 
     fn lower_boolean_attribute(
@@ -227,7 +227,7 @@ impl<'hir> AstToHir<'hir> {
     ) -> &'hir hir::Attribute<'hir> {
         let attribute = hir::BooleanAttribute { name: attr.name };
 
-        return ctx.alloc(hir::Attribute::BooleanAttribute(ctx.alloc(attribute)));
+        ctx.alloc(hir::Attribute::BooleanAttribute(ctx.alloc(attribute)))
     }
 
     fn lower_concatenation_attribute(
@@ -255,7 +255,7 @@ impl<'hir> AstToHir<'hir> {
             parts,
         };
 
-        return ctx.alloc(hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute)));
+        ctx.alloc(hir::Attribute::ConcatenationAttribute(ctx.alloc(attribute)))
     }
 
     fn lower_expression_attribute(
@@ -271,7 +271,7 @@ impl<'hir> AstToHir<'hir> {
             expression_id,
         };
 
-        return ctx.alloc(hir::Attribute::ExpressionAttribute(ctx.alloc(attribute)));
+        ctx.alloc(hir::Attribute::ExpressionAttribute(ctx.alloc(attribute)))
     }
 
     fn lower_spread_attribute(
@@ -283,7 +283,7 @@ impl<'hir> AstToHir<'hir> {
 
         let attribute = hir::SpreadAttribute { expression_id };
 
-        return ctx.alloc(hir::Attribute::SpreadAttribute(ctx.alloc(attribute)));
+        ctx.alloc(hir::Attribute::SpreadAttribute(ctx.alloc(attribute)))
     }
 
     fn lower_string_attribute(
@@ -296,7 +296,7 @@ impl<'hir> AstToHir<'hir> {
             value: attr.value,
         };
 
-        return ctx.alloc(hir::Attribute::StringAttribute(ctx.alloc(attribute)));
+        ctx.alloc(hir::Attribute::StringAttribute(ctx.alloc(attribute)))
     }
 
     fn lower_interpolation(
@@ -304,7 +304,7 @@ impl<'hir> AstToHir<'hir> {
         interpolation: ast::Interpolation<'hir>,
         ctx: &mut ToHirContext<'hir>,
     ) -> NodeId {
-        return ctx.push_node(|ctx, node_id, owner_id| {
+        ctx.push_node(|ctx, node_id, owner_id| {
             let expression_id = ctx.push_expression(interpolation.expression);
 
             let hir_interpolation = hir::Interpolation {
@@ -313,32 +313,32 @@ impl<'hir> AstToHir<'hir> {
                 expression_id,
             };
 
-            return hir::Node::Interpolation(ctx.alloc(hir_interpolation));
-        });
+            hir::Node::Interpolation(ctx.alloc(hir_interpolation))
+        })
     }
 
     fn lower_text(&self, text: ast::Text<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
-        return ctx.push_node(|ctx, node_id, owner_id| {
+        ctx.push_node(|ctx, node_id, owner_id| {
             let hir_text = hir::Text {
                 node_id,
                 owner_id,
                 value: text.value,
             };
 
-            return hir::Node::Text(ctx.alloc(hir_text));
-        });
+            hir::Node::Text(ctx.alloc(hir_text))
+        })
     }
 
     fn lower_comment(&self, comment: ast::Comment<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
-        return ctx.push_node(|ctx, node_id, owner_id| {
+        ctx.push_node(|ctx, node_id, owner_id| {
             let hir_text = hir::Comment {
                 node_id,
                 owner_id,
                 value: comment.value,
             };
 
-            return hir::Node::Comment(ctx.alloc(hir_text));
-        });
+            hir::Node::Comment(ctx.alloc(hir_text))
+        })
     }
 
     fn clean_comments(
@@ -365,7 +365,7 @@ impl<'hir> AstToHir<'hir> {
                 };
 
                 let mut new_string = prev_text.borrow().value.to_string();
-                new_string.push_str(next_text.borrow().value.into());
+                new_string.push_str(next_text.borrow().value);
 
                 prev_text.borrow_mut().value = ctx.alloc(new_string);
 
@@ -377,7 +377,7 @@ impl<'hir> AstToHir<'hir> {
             result.push(current.clone());
         }
 
-        return result;
+        result
     }
 }
 

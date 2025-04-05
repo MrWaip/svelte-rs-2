@@ -34,10 +34,10 @@ pub struct ExpressionFlags {
 
 impl ExpressionFlags {
     pub fn empty() -> Self {
-        return Self {
+        Self {
             has_call_expression: false,
             has_reactivity: false,
-        };
+        }
     }
 }
 
@@ -51,7 +51,7 @@ pub struct AnalyzeResult {
 
 impl<'alloc> Analyzer<'alloc> {
     pub fn new(b: &'alloc Builder<'alloc>) -> Self {
-        return Self { b };
+        Self { b }
     }
 
     pub fn analyze<'link>(&self, ast: &'link mut Ast<'alloc>) -> AnalyzeResult {
@@ -62,7 +62,7 @@ impl<'alloc> Analyzer<'alloc> {
             .map(|script| &script.program)
             .unwrap_or_else(|| &empty);
 
-        let ret = SemanticBuilder::new().build(&program);
+        let ret = SemanticBuilder::new().build(program);
 
         if !ret.errors.is_empty() {
             todo!();
@@ -75,7 +75,7 @@ impl<'alloc> Analyzer<'alloc> {
             svelte_table: &mut svelte_table,
         };
 
-        script_visitor.visit_program(&program);
+        script_visitor.visit_program(program);
 
         let mut template_visitor = TemplateVisitorImpl {
             current_reference_flags: ReferenceFlags::empty(),
@@ -88,7 +88,7 @@ impl<'alloc> Analyzer<'alloc> {
 
         walk_template(&mut template_visitor, &mut ast.template, &mut ctx);
 
-        return AnalyzeResult { svelte_table };
+        AnalyzeResult { svelte_table }
     }
 }
 
@@ -103,7 +103,7 @@ pub struct TemplateVisitorImpl<'link> {
     current_concatenation_metadata: AttributeMetadata,
 }
 
-impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
+impl<'a> Visit<'a> for ScriptVisitorImpl<'_> {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &declarator.init {
             if call.callee_name() == Some("$state") {
@@ -117,7 +117,7 @@ impl<'a, 'link> Visit<'a> for ScriptVisitorImpl<'link> {
     }
 }
 
-impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
+impl<'a> TemplateVisitor<'a> for TemplateVisitorImpl<'_> {
     fn enter_fragment(&mut self, it: &mut ast::Fragment<'a>, ctx: &mut VisitorContext) {
         self.analyze_fragment(it, ctx.parent().is_template());
     }
@@ -201,14 +201,12 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
 
         let setter_kind = if flags.has_reactivity {
             InterpolationSetterKind::SetText
+        } else if parent.is_fragment_owner() {
+            InterpolationSetterKind::NodeValue
+        } else if optimizations.content_type.is_compressible_sequence() {
+            InterpolationSetterKind::TextContent
         } else {
-            if parent.is_fragment_owner() {
-                InterpolationSetterKind::NodeValue
-            } else if optimizations.content_type.is_compressible_sequence() {
-                InterpolationSetterKind::TextContent
-            } else {
-                InterpolationSetterKind::NodeValue
-            }
+            InterpolationSetterKind::NodeValue
         };
 
         it.set_metadata(InterpolationMetadata {
@@ -258,7 +256,7 @@ impl<'a, 'link> TemplateVisitor<'a> for TemplateVisitorImpl<'link> {
     }
 }
 
-impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
+impl<'a> Visit<'a> for TemplateVisitorImpl<'_> {
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
         self.reference_identifier(it);
     }
@@ -279,7 +277,7 @@ impl<'a, 'link> Visit<'a> for TemplateVisitorImpl<'link> {
     }
 }
 
-impl<'link, 'a> TemplateVisitorImpl<'link> {
+impl<'a> TemplateVisitorImpl<'_> {
     fn reference_identifier(&mut self, ident: &IdentifierReference<'a>) {
         let flags = self.resolve_reference_usages();
 
@@ -297,7 +295,7 @@ impl<'link, 'a> TemplateVisitorImpl<'link> {
     }
 
     fn resolve_expression_flags(&mut self) -> ExpressionFlags {
-        return take(&mut self.current_expression_flags);
+        take(&mut self.current_expression_flags)
     }
 
     fn resolve_reference_usages(&mut self) -> ReferenceFlags {
@@ -358,7 +356,7 @@ mod tests {
         assert!(!result.svelte_table.runes.is_empty());
 
         for (id, _rune) in result.svelte_table.runes.iter() {
-            assert_eq!(result.svelte_table.symbols.get_name(id.clone()), "rune_var");
+            assert_eq!(result.svelte_table.symbols.get_name(*id), "rune_var");
         }
     }
 
@@ -399,9 +397,9 @@ mod tests {
             unreachable!()
         };
 
-        assert_eq!(root_div.borrow().get_metadata().has_dynamic_nodes, true);
-        assert_eq!(root_span.borrow().get_metadata().has_dynamic_nodes, false);
-        assert_eq!(sub_h1.borrow().get_metadata().has_dynamic_nodes, false);
-        assert_eq!(sub_div.borrow().get_metadata().has_dynamic_nodes, true);
+        assert!(root_div.borrow().get_metadata().has_dynamic_nodes);
+        assert!(!root_span.borrow().get_metadata().has_dynamic_nodes);
+        assert!(!sub_h1.borrow().get_metadata().has_dynamic_nodes);
+        assert!(sub_div.borrow().get_metadata().has_dynamic_nodes);
     }
 }

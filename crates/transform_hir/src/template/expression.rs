@@ -13,7 +13,7 @@ impl<'hir> TemplateTransformer<'hir> {
     ) -> Expression<'hir> {
         let expression = self.take_expression(expression_id);
 
-        return self.transform_expression(expression, ctx);
+        self.transform_expression(expression, ctx)
     }
 
     pub(crate) fn transform_expression<'short>(
@@ -24,6 +24,6 @@ impl<'hir> TemplateTransformer<'hir> {
         let mut transformer =
             ScriptTransformer::new(self.analyses, self.b, self.store, ctx.owner_id());
 
-        return transformer.transform_expression(expression);
+        transformer.transform_expression(expression)
     }
 }

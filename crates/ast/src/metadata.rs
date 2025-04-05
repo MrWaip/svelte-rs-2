@@ -55,11 +55,11 @@ pub enum FragmentAnchor {
 
 impl FragmentAnchor {
     pub fn is_text(&self) -> bool {
-        return matches!(self, FragmentAnchor::Text);
+        matches!(self, FragmentAnchor::Text)
     }
 
     pub fn is_element(&self) -> bool {
-        return matches!(self, FragmentAnchor::Element);
+        matches!(self, FragmentAnchor::Element)
     }
 }
 
@@ -71,7 +71,7 @@ pub trait WithMetadata {
     fn set_metadata(&mut self, metadata: Self::Metadata);
 }
 
-impl<'a> WithMetadata for Element<'a> {
+impl WithMetadata for Element<'_> {
     type Metadata = ElementMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -83,7 +83,7 @@ impl<'a> WithMetadata for Element<'a> {
     }
 }
 
-impl<'a> WithMetadata for Interpolation<'a> {
+impl WithMetadata for Interpolation<'_> {
     type Metadata = InterpolationMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -95,7 +95,7 @@ impl<'a> WithMetadata for Interpolation<'a> {
     }
 }
 
-impl<'a> WithMetadata for VirtualConcatenation<'a> {
+impl WithMetadata for VirtualConcatenation<'_> {
     type Metadata = InterpolationMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -107,7 +107,7 @@ impl<'a> WithMetadata for VirtualConcatenation<'a> {
     }
 }
 
-impl<'a> WithMetadata for ClassDirective<'a> {
+impl WithMetadata for ClassDirective<'_> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -119,7 +119,7 @@ impl<'a> WithMetadata for ClassDirective<'a> {
     }
 }
 
-impl<'a> WithMetadata for BindDirective<'a> {
+impl WithMetadata for BindDirective<'_> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -131,7 +131,7 @@ impl<'a> WithMetadata for BindDirective<'a> {
     }
 }
 
-impl<'a> WithMetadata for ConcatenationAttribute<'a> {
+impl WithMetadata for ConcatenationAttribute<'_> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -143,7 +143,7 @@ impl<'a> WithMetadata for ConcatenationAttribute<'a> {
     }
 }
 
-impl<'a> WithMetadata for ExpressionAttribute<'a> {
+impl WithMetadata for ExpressionAttribute<'_> {
     type Metadata = AttributeMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {
@@ -155,7 +155,7 @@ impl<'a> WithMetadata for ExpressionAttribute<'a> {
     }
 }
 
-impl<'a> WithMetadata for Fragment<'a> {
+impl WithMetadata for Fragment<'_> {
     type Metadata = FragmentMetadata;
 
     fn get_metadata(&self) -> Self::Metadata {

@@ -17,9 +17,15 @@ pub struct CompilerResult {
     pub js: String,
 }
 
+impl Default for Compiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compiler {
     pub fn new() -> Self {
-        return Self {};
+        Self {}
     }
 
     pub fn compile<'a>(
@@ -37,7 +43,7 @@ impl Compiler {
 
         let code = transform_client(ast, &builder, analyze_result);
 
-        return Ok(CompilerResult { js: code });
+        Ok(CompilerResult { js: code })
     }
 
     pub fn compile2<'a>(
@@ -47,10 +53,10 @@ impl Compiler {
     ) -> Result<CompilerResult, Diagnostic> {
         let mut parser = Parser::new(source, allocator);
         let codegen = Codegen::default();
-        let builder = Builder::new_with_ast(&allocator);
-        let analyze_hir = AnalyzeHir::new(&allocator);
+        let builder = Builder::new_with_ast(allocator);
+        let analyze_hir = AnalyzeHir::new(allocator);
 
-        let mut lowerer = AstToHir::new(&allocator);
+        let mut lowerer = AstToHir::new(allocator);
 
         let ast = parser.parse()?;
 
@@ -58,9 +64,9 @@ impl Compiler {
         let analyses = analyze_hir.analyze(&hir.store);
         let program = transform_hir(&analyses, &mut hir.store, &builder);
 
-        return Ok(CompilerResult {
+        Ok(CompilerResult {
             js: codegen.build(&program).code,
-        });
+        })
     }
 }
 

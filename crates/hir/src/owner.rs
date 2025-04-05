@@ -10,9 +10,9 @@ pub enum OwnerNode<'hir> {
     Phantom,
 }
 
-impl<'hir> OwnerNode<'hir> {
+impl OwnerNode<'_> {
     pub fn is_if_block(&self) -> bool {
-        return matches!(self, OwnerNode::IfBlock(_));
+        matches!(self, OwnerNode::IfBlock(_))
     }
 
     pub fn as_element(&self) -> Option<&Element> {
@@ -37,13 +37,13 @@ impl<'hir> OwnerNode<'hir> {
     }
 
     pub fn first(&self) -> Option<&NodeId> {
-        return match self {
+        match self {
             OwnerNode::Element(it) => it.node_ids.first(),
             OwnerNode::Template(it) => it.node_ids.first(),
             OwnerNode::IfBlock(it) => it.consequent.first(),
             OwnerNode::EachBlock => todo!(),
             OwnerNode::Phantom => todo!(),
-        };
+        }
     }
 
     pub fn node_id(&self) -> NodeId {
@@ -57,7 +57,7 @@ impl<'hir> OwnerNode<'hir> {
     }
 
     pub fn iter_nodes_rev(&self) -> Box<dyn Iterator<Item = &NodeId> + '_> {
-        return match self {
+        match self {
             OwnerNode::Element(it) => Box::new(it.node_ids.iter().rev()),
             OwnerNode::Template(it) => Box::new(it.node_ids.iter().rev()),
             OwnerNode::IfBlock(it) => {
@@ -65,10 +65,10 @@ impl<'hir> OwnerNode<'hir> {
                     return Box::new(alternate.iter().rev().chain(it.consequent.iter().rev()));
                 }
 
-                return Box::new(it.consequent.iter().rev());
+                Box::new(it.consequent.iter().rev())
             }
             _ => todo!(),
-        };
+        }
     }
 
     /// if a component/snippet/each block starts with text,
@@ -82,6 +82,6 @@ impl<'hir> OwnerNode<'hir> {
         // 		parent.type === 'Component' ||
         // 		parent.type === 'SvelteSelf') &&
 
-        return matches!(self, OwnerNode::EachBlock | OwnerNode::Template(_));
+        matches!(self, OwnerNode::EachBlock | OwnerNode::Template(_))
     }
 }

@@ -44,7 +44,7 @@ impl<'hir> TemplateTransformer<'hir> {
             return self.fragment_synthetic_shortcut(self_owner_id, nodes);
         }
 
-        return self.fragment_common(self_owner_id, nodes);
+        self.fragment_common(self_owner_id, nodes)
     }
 
     fn fragment_common(
@@ -80,7 +80,7 @@ impl<'hir> TemplateTransformer<'hir> {
 
         body.push(close);
 
-        return body;
+        body
     }
 
     fn build_template_effect(&self, update: Vec<Statement<'hir>>) -> Statement<'hir> {
@@ -89,7 +89,7 @@ impl<'hir> TemplateTransformer<'hir> {
             [BArg::Arrow(self.b.arrow(self.b.params([]), update))],
         );
 
-        return call;
+        call
     }
 
     fn fragment_without_template_shortcut(
@@ -111,7 +111,7 @@ impl<'hir> TemplateTransformer<'hir> {
 
         self.build_fragment(fragment_ctx, &mut body);
 
-        return body;
+        body
     }
 
     fn fragment_synthetic_shortcut(
@@ -143,7 +143,7 @@ impl<'hir> TemplateTransformer<'hir> {
             [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         ));
 
-        return body;
+        body
     }
 
     /// Build a fragment for interpolation or concatenation
@@ -191,7 +191,7 @@ impl<'hir> TemplateTransformer<'hir> {
             [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         ));
 
-        return body;
+        body
     }
 
     /// Builds a fragment that contains only one text node
@@ -215,7 +215,7 @@ impl<'hir> TemplateTransformer<'hir> {
             [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         ));
 
-        return body;
+        body
     }
 
     /// Builds a fragment that contains only one text node
@@ -239,7 +239,7 @@ impl<'hir> TemplateTransformer<'hir> {
             self_owner_id,
         );
 
-        self.transform_element(&element, &mut owner_ctx);
+        self.transform_element(element, &mut owner_ctx);
         self.add_template(&mut fragment_ctx, &template_name, None);
 
         body.push(
@@ -252,7 +252,7 @@ impl<'hir> TemplateTransformer<'hir> {
             [BArg::Ident("$$anchor"), BArg::Ident(&identifier)],
         ));
 
-        return body;
+        body
     }
 
     fn build_fragment(

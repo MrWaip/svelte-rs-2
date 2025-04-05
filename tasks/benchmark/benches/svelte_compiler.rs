@@ -13,7 +13,7 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
     for entry in files {
         let path = entry.unwrap();
         let source = read_to_string(&path).unwrap();
-        let id = BenchmarkId::from_parameter(&path.display().to_string());
+        let id = BenchmarkId::from_parameter(path.display().to_string());
         let mut allocator = Allocator::default();
 
         group.bench_function(id, |b| {
@@ -23,9 +23,9 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
                 let _ = runner.run(|| {
                     let compiler = Compiler::new();
 
-                    let result = compiler.compile2(&source, &allocator);
+                    
 
-                    result
+                    compiler.compile2(&source, &allocator)
                 });
             });
         });

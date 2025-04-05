@@ -45,57 +45,57 @@ pub enum Node<'a> {
 
 impl<'a> Node<'a> {
     pub fn as_element(self) -> Option<RcCell<Element<'a>>> {
-        return if let Node::Element(element) = self {
+        if let Node::Element(element) = self {
             Some(element)
         } else {
             None
-        };
+        }
     }
 
     pub fn as_text_mut(&mut self) -> Option<RefMut<'_, Text<'a>>> {
-        return if let Node::Text(it) = self {
+        if let Node::Text(it) = self {
             Some(it.borrow_mut())
         } else {
             None
-        };
+        }
     }
 
     pub fn is_if_block(&self) -> bool {
-        return matches!(self, Node::IfBlock(_));
+        matches!(self, Node::IfBlock(_))
     }
 
     pub fn is_compressible(&self) -> bool {
-        return matches!(self, Node::Text(_) | Node::Interpolation(_));
+        matches!(self, Node::Text(_) | Node::Interpolation(_))
     }
 
     pub fn is_text(&self) -> bool {
-        return matches!(self, Node::Text(_));
+        matches!(self, Node::Text(_))
     }
 
     pub fn is_element(&self) -> bool {
-        return matches!(self, Node::Element(_));
+        matches!(self, Node::Element(_))
     }
 
     pub fn is_interpolation(&self) -> bool {
-        return matches!(self, Node::Interpolation(_));
+        matches!(self, Node::Interpolation(_))
     }
 
     pub fn from_option_mut<'local, 'long>(
         option: Option<&'local mut Node<'long>>,
     ) -> Result<&'local mut Node<'long>, Diagnostic> {
         if let Some(node) = option {
-            return Ok(node);
+            Ok(node)
         } else {
             unimplemented!()
         }
     }
 
     pub fn is_comment(&self) -> bool {
-        return matches!(self, Node::Comment(_));
+        matches!(self, Node::Comment(_))
     }
 }
 
-impl<'a> GetSpan for Node<'a> {
+impl GetSpan for Node<'_> {
     fn span(&self) -> Span {
         match self {
             Node::Element(it) => it.borrow().span,
@@ -118,7 +118,7 @@ pub struct Interpolation<'a> {
 
 impl<'a> AsNode<'a> for Interpolation<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Interpolation(RcCell::new(self));
+        Node::Interpolation(RcCell::new(self))
     }
 }
 
@@ -131,7 +131,7 @@ pub struct VirtualConcatenation<'a> {
 
 impl<'a> AsNode<'a> for VirtualConcatenation<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::VirtualConcatenation(RcCell::new(self));
+        Node::VirtualConcatenation(RcCell::new(self))
     }
 }
 
@@ -155,7 +155,7 @@ impl<'a> IfBlock<'a> {
 
 impl<'a> AsNode<'a> for IfBlock<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::IfBlock(RcCell::new(self));
+        Node::IfBlock(RcCell::new(self))
     }
 }
 
@@ -193,7 +193,7 @@ impl ElementKind {
 
 impl<'a> AsNode<'a> for Element<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Element(RcCell::new(self));
+        Node::Element(RcCell::new(self))
     }
 }
 
@@ -211,7 +211,7 @@ pub struct Comment<'a> {
 
 impl<'a> AsNode<'a> for Comment<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Comment(RcCell::new(self));
+        Node::Comment(RcCell::new(self))
     }
 }
 
@@ -223,21 +223,21 @@ pub struct Text<'a> {
 
 impl<'a> Text<'a> {
     pub fn is_removable(&self) -> bool {
-        return self.value.chars().all(|char| char.is_whitespace());
+        self.value.chars().all(|char| char.is_whitespace())
     }
 
     pub fn trim_start(&mut self) -> bool {
         let new = self.value.trim_ascii_start();
         let trimmed = new.len() != self.value.len();
         self.value = new;
-        return trimmed;
+        trimmed
     }
 
     pub fn trim_end(&mut self) -> bool {
         let new = self.value.trim_ascii_end();
         let trimmed = new.len() != self.value.len();
         self.value = new;
-        return trimmed;
+        trimmed
     }
 
     pub fn trim(&mut self) {
@@ -255,7 +255,7 @@ impl<'a> Text<'a> {
         }
 
         let mut new = String::from(" ");
-        new.push_str(&self.value);
+        new.push_str(self.value);
 
         self.value = allocator.alloc_str(new.as_str());
     }
@@ -274,7 +274,7 @@ impl<'a> Text<'a> {
 
 impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::Text(RcCell::new(self));
+        Node::Text(RcCell::new(self))
     }
 }
 
@@ -285,24 +285,24 @@ pub struct ScriptTag<'a> {
     pub language: Language,
 }
 
-impl<'a> ScriptTag<'a> {
+impl ScriptTag<'_> {
     pub fn is_typescript(&self) -> bool {
-        return self.language == Language::TypeScript;
+        self.language == Language::TypeScript
     }
 }
 
-impl<'a> Into<ScriptTag<'a>> for Node<'a> {
-    fn into(self) -> ScriptTag<'a> {
-        return match self {
+impl<'a> From<Node<'a>> for ScriptTag<'a> {
+    fn from(val: Node<'a>) -> Self {
+        match val {
             Node::ScriptTag(script_tag) => script_tag.unwrap(),
             _ => panic!("node is not ScriptTag"),
-        };
+        }
     }
 }
 
 impl<'a> AsNode<'a> for ScriptTag<'a> {
     fn as_node(self) -> Node<'a> {
-        return Node::ScriptTag(RcCell::new(self));
+        Node::ScriptTag(RcCell::new(self))
     }
 }
 
@@ -319,31 +319,31 @@ impl<'a> Fragment<'a> {
     }
 
     pub fn iter(&self) -> Iter<Node<'a>> {
-        return self.nodes.iter();
+        self.nodes.iter()
     }
 
     pub fn first(&self) -> Option<&Node<'a>> {
-        return self.nodes.first();
+        self.nodes.first()
     }
 
     pub fn from(nodes: Vec<Node<'a>>) -> Self {
-        return Self {
+        Self {
             metadata: None,
             nodes,
             node_id: None,
-        };
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.nodes.is_empty();
+        self.nodes.is_empty()
     }
 
     pub fn empty() -> Self {
-        return Self {
+        Self {
             metadata: None,
             nodes: vec![],
             node_id: None,
-        };
+        }
     }
 }
 
@@ -351,6 +351,6 @@ impl<'a> Index<usize> for Fragment<'a> {
     type Output = Node<'a>;
 
     fn index(&self, idx: usize) -> &Self::Output {
-        return &self.nodes[idx];
+        &self.nodes[idx]
     }
 }

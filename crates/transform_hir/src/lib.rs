@@ -14,8 +14,8 @@ pub fn transform_hir<'hir>(
     store: &'hir mut HirStore<'hir>,
     b: &'hir Builder<'hir>,
 ) -> Program<'hir> {
-    let mut script_res = transform_script(&analyses, &b, store);
-    let mut template_res = transform_template(&analyses, &b, store);
+    let mut script_res = transform_script(analyses, b, store);
+    let mut template_res = transform_template(analyses, b, store);
 
     let mut program_body = vec![];
     let mut imports = vec![b.import_all("$", "svelte/internal/client")];
@@ -36,5 +36,5 @@ pub fn transform_hir<'hir>(
         )),
     );
 
-    return b.program(program_body);
+    b.program(program_body)
 }

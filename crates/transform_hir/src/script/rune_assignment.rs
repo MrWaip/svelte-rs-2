@@ -19,7 +19,7 @@ impl<'hir> ScriptTransformer<'hir> {
 
         let is_non_coercive_operator = operator.is_logical() || operator.is_assign();
 
-        return self.should_proxy_rune_init(e) && is_non_coercive_operator;
+        self.should_proxy_rune_init(e) && is_non_coercive_operator
     }
 
     pub(crate) fn transform_rune_assignment(

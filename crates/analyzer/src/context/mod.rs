@@ -16,17 +16,23 @@ pub struct VisitorContext<'a> {
     elements_metadata: HashMap<NodeId, ElementFlags>,
 }
 
+impl Default for VisitorContext<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> VisitorContext<'a> {
     pub fn new() -> Self {
-        return Self {
+        Self {
             ancestry: VisitorAncestry::new(),
             current_node_id: 0,
             elements_metadata: HashMap::default(),
-        };
+        }
     }
 
     pub fn parent(&self) -> &Ancestor<'a> {
-        return self.ancestry.parent();
+        self.ancestry.parent()
     }
 
     pub(crate) fn push_stack(&mut self, ancestor: Ancestor<'a>) {
@@ -42,11 +48,11 @@ impl<'a> VisitorContext<'a> {
 
         self.current_node_id += 1;
 
-        return res;
+        res
     }
 
     pub fn node_id(&self) -> NodeId {
-        return NodeId::from_usize(self.current_node_id);
+        NodeId::from_usize(self.current_node_id)
     }
 
     pub(crate) fn add_default_element_flags(&mut self, node_id: NodeId) {
@@ -57,11 +63,11 @@ impl<'a> VisitorContext<'a> {
     pub fn parent_element_flags(&mut self) -> Option<&mut ElementFlags> {
         let node_id = self.parent().get_node_id();
 
-        return self.elements_metadata.get_mut(&node_id);
+        self.elements_metadata.get_mut(&node_id)
     }
 
     pub fn resolve_element_flags(&mut self, node_id: NodeId) -> ElementFlags {
-        return self.elements_metadata.remove(&node_id).unwrap();
+        self.elements_metadata.remove(&node_id).unwrap()
     }
 
     pub fn mark_parent_element_as_dynamic(&mut self) {

@@ -19,7 +19,7 @@ pub fn is_static_element(
     // todo
     //
 
-    return true;
+    true
 }
 
 // /**

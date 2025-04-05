@@ -9,9 +9,9 @@ pub trait FormatNode {
     fn format_node(&self) -> String;
 }
 
-impl<'a> FormatNode for Node<'a> {
+impl FormatNode for Node<'_> {
     fn format_node(&self) -> String {
-        return match self {
+        match self {
             Node::Element(it) => it.borrow().format_node(),
             Node::Text(it) => it.borrow().format_node(),
             Node::Interpolation(it) => it.borrow().format_node(),
@@ -19,11 +19,11 @@ impl<'a> FormatNode for Node<'a> {
             Node::VirtualConcatenation(it) => it.borrow().format_node(),
             Node::ScriptTag(it) => it.borrow().format_node(),
             Node::Comment(it) => it.borrow().format_node(),
-        };
+        }
     }
 }
 
-impl<'a> FormatNode for Interpolation<'a> {
+impl FormatNode for Interpolation<'_> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
@@ -34,11 +34,11 @@ impl<'a> FormatNode for Interpolation<'a> {
 
         result.push_str(" }");
 
-        return result;
+        result
     }
 }
 
-impl<'a> FormatNode for ScriptTag<'a> {
+impl FormatNode for ScriptTag<'_> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
@@ -48,37 +48,37 @@ impl<'a> FormatNode for ScriptTag<'a> {
             result.push_str(" lang=\"ts\"");
         }
 
-        result.push_str(">");
+        result.push('>');
 
         result.push_str(&print_program(&self.program));
 
         result.push_str("</script>");
 
-        return result;
+        result
     }
 }
 
-impl<'a> FormatNode for VirtualConcatenation<'a> {
+impl FormatNode for VirtualConcatenation<'_> {
     fn format_node(&self) -> String {
         todo!()
     }
 }
 
-impl<'a> FormatNode for Text<'a> {
+impl FormatNode for Text<'_> {
     fn format_node(&self) -> String {
-        return self.value.to_string();
+        self.value.to_string()
     }
 }
 
-impl<'a> FormatNode for Element<'a> {
+impl FormatNode for Element<'_> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
-        result.push_str("<");
+        result.push('<');
         result.push_str(&self.name);
 
         if !self.attributes.is_empty() {
-            result.push_str(" ");
+            result.push(' ');
             let mut attributes = vec![];
 
             for attr in self.attributes.iter() {
@@ -99,7 +99,7 @@ impl<'a> FormatNode for Element<'a> {
                             }
                         }
 
-                        result.push_str("\"");
+                        result.push('"');
                     }
                     Attribute::BooleanAttribute(attr) => {
                         result.push_str(attr.name);
@@ -159,7 +159,7 @@ impl<'a> FormatNode for Element<'a> {
             result.push_str("/>");
             return result;
         } else {
-            result.push_str(">");
+            result.push('>');
         }
 
         for node in self.nodes.iter() {
@@ -169,19 +169,19 @@ impl<'a> FormatNode for Element<'a> {
 
         result.push_str("</");
         result.push_str(&self.name);
-        result.push_str(">");
+        result.push('>');
 
-        return result;
+        result
     }
 }
 
-impl<'a> FormatNode for Comment<'a> {
+impl FormatNode for Comment<'_> {
     fn format_node(&self) -> String {
-        return self.value.into();
+        self.value.into()
     }
 }
 
-impl<'a> FormatNode for IfBlock<'a> {
+impl FormatNode for IfBlock<'_> {
     fn format_node(&self) -> String {
         let mut result = String::new();
 
@@ -217,18 +217,18 @@ impl<'a> FormatNode for IfBlock<'a> {
             result.push_str("{/if}");
         }
 
-        return result;
+        result
     }
 }
 
-fn print_expression<'a>(expression: &Expression<'a>) -> String {
+fn print_expression(expression: &Expression<'_>) -> String {
     let mut codegen = oxc_codegen::Codegen::default();
     codegen.print_expression(expression);
-    return codegen.into_source_text();
+    codegen.into_source_text()
 }
 
-fn print_program<'a>(program: &Program<'a>) -> String {
+fn print_program(program: &Program<'_>) -> String {
     let codegen = oxc_codegen::Codegen::default();
 
-    return codegen.build(program).code;
+    codegen.build(program).code
 }

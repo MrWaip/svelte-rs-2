@@ -13,19 +13,19 @@ pub struct Element<'hir> {
 
 impl<'hir> Element<'hir> {
     pub fn new(owner_id: OwnerId, node_id: NodeId, name: &'hir str, self_closing: bool) -> Self {
-        return Self {
+        Self {
             node_id,
             owner_id,
             name,
             node_ids: vec![],
             self_closing,
-            kind: ElementKind::from_str(&name),
+            kind: ElementKind::from_str(name),
             attributes: AttributeStore::default(),
-        };
+        }
     }
 
     pub fn is_noscript(&self) -> bool {
-        return matches!(self.kind, ElementKind::Noscript);
+        matches!(self.kind, ElementKind::Noscript)
     }
 
     pub fn is_custom_element(&self) -> bool {
@@ -33,19 +33,19 @@ impl<'hir> Element<'hir> {
             return true;
         };
 
-        return self.attributes.get_attribute_by_name("is").is_some();
+        self.attributes.get_attribute_by_name("is").is_some()
     }
 
     pub fn is_video(&self) -> bool {
-        return matches!(self.kind, ElementKind::Video);
+        matches!(self.kind, ElementKind::Video)
     }
 
     pub fn is_script(&self) -> bool {
-        return matches!(self.kind, ElementKind::Script);
+        matches!(self.kind, ElementKind::Script)
     }
 
     pub fn is_input(&self) -> bool {
-        return matches!(self.kind, ElementKind::Input);
+        matches!(self.kind, ElementKind::Input)
     }
 }
 

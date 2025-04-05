@@ -65,7 +65,7 @@ impl<'hir> AstToHir<'hir> {
             result.push(node_id);
         }
 
-        return result;
+        result
     }
 
     fn lower_compressible_sequence(

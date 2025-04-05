@@ -22,15 +22,15 @@ pub struct AttributeStore<'hir> {
 
 impl<'hir> AttributeStore<'hir> {
     pub fn has_spread(&self) -> bool {
-        return self.has_spread;
+        self.has_spread
     }
 
     pub fn has_use(&self) -> bool {
-        return !self.use_directives.is_empty();
+        !self.use_directives.is_empty()
     }
 
     pub fn get_attribute_by_name(&self, name: &str) -> Option<&&Attribute<'hir>> {
-        return self.attributes_by_name.get(name);
+        self.attributes_by_name.get(name)
     }
 
     pub fn push_class_directive(&mut self, directive: &'hir ClassDirective<'hir>) {
@@ -73,7 +73,7 @@ impl<'hir> AttributeStore<'hir> {
     }
 
     pub fn iter_attrs(&self) -> impl Iterator<Item = &&'hir Attribute<'hir>> {
-        return self.attributes.iter();
+        self.attributes.iter()
     }
 
     pub fn iter_all(&self) -> impl Iterator<Item = AnyAttribute<'hir>> {
@@ -122,7 +122,7 @@ impl<'hir> AttributeStore<'hir> {
             .iter()
             .map(|directive| AnyAttribute::Transition(directive));
 
-        return attrs
+        attrs
             .chain(classes)
             .chain(styles)
             .chain(binds)
@@ -130,14 +130,14 @@ impl<'hir> AttributeStore<'hir> {
             .chain(lets)
             .chain(ons)
             .chain(transitions)
-            .chain(animations);
+            .chain(animations)
     }
 
     pub fn has_binding(&self, arg: &str) -> bool {
-        return self.bind_directives.contains_key(arg);
+        self.bind_directives.contains_key(arg)
     }
 
     pub fn bind_directives_iter(&self) -> Iter<&str, &BindDirective<'hir>> {
-        return self.bind_directives.iter();
+        self.bind_directives.iter()
     }
 }

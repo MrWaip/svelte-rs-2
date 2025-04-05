@@ -4,13 +4,19 @@ pub struct VisitorAncestry<'a> {
     stack: Vec<Ancestor<'a>>,
 }
 
+impl Default for VisitorAncestry<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> VisitorAncestry<'a> {
     pub fn new() -> Self {
-        return Self { stack: vec![] };
+        Self { stack: vec![] }
     }
 
     pub fn parent(&self) -> &Ancestor<'a> {
-        return self.stack.last().unwrap();
+        self.stack.last().unwrap()
     }
 
     pub fn pop_stack(&mut self) {

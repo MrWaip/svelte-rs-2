@@ -4,7 +4,7 @@ use crate::{Element, Fragment};
 
 impl Element<'_> {
     pub fn node_id(&self) -> NodeId {
-        return self.node_id.unwrap();
+        self.node_id.unwrap()
     }
 
     pub fn set_node_id(&mut self, node_id: NodeId) {
@@ -14,7 +14,7 @@ impl Element<'_> {
 
 impl Fragment<'_> {
     pub fn node_id(&self) -> NodeId {
-        return self.node_id.unwrap();
+        self.node_id.unwrap()
     }
 
     pub fn set_node_id(&mut self, node_id: NodeId) {

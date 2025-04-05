@@ -26,7 +26,7 @@ pub struct ScriptTag<'a> {
     pub attributes: Vec<Attribute<'a>>,
 }
 
-impl<'a> ScriptTag<'a> {
+impl ScriptTag<'_> {
     pub fn language(&self) -> Language {
         let lang_attr = self.attributes.iter().find_map(|item| match item {
             Attribute::HTMLAttribute(attr) => {
@@ -34,23 +34,20 @@ impl<'a> ScriptTag<'a> {
                     return Some(attr);
                 }
 
-                return None;
+                None
             }
             _ => None,
         });
 
         if let Some(attr) = lang_attr {
-            match attr.value {
-                AttributeValue::String(value) => {
-                    if value == "ts" {
-                        return Language::TypeScript;
-                    }
+            if let AttributeValue::String(value) = attr.value {
+                if value == "ts" {
+                    return Language::TypeScript;
                 }
-                _ => (),
             };
         }
 
-        return Language::JavaScript;
+        Language::JavaScript
     }
 }
 
@@ -116,7 +113,7 @@ pub struct JsExpression<'a> {
     pub value: &'a str,
 }
 
-impl<'a> fmt::Display for AttributeValue<'a> {
+impl fmt::Display for AttributeValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AttributeValue::String(value) => write!(f, "{}", value),
@@ -136,7 +133,7 @@ impl<'a> fmt::Display for AttributeValue<'a> {
                     }
                 });
 
-                return write!(f, "{}", result);
+                write!(f, "{}", result)
             }
         }
     }
@@ -162,9 +159,9 @@ pub struct Token<'a> {
     pub lexeme: &'a str,
 }
 
-impl<'a> GetSpan for Token<'a> {
+impl GetSpan for Token<'_> {
     fn span(&self) -> Span {
-        return self.span;
+        self.span
     }
 }
 
@@ -189,18 +186,18 @@ pub enum AttributeIdentifierType<'a> {
 
 impl<'a> AttributeIdentifierType<'a> {
     pub fn is_class_directive(name: &str) -> bool {
-        return name == "class";
+        name == "class"
     }
 
     pub fn is_bind_directive(name: &str) -> bool {
-        return name == "bind";
+        name == "bind"
     }
 
     pub fn is_empty(&self) -> bool {
-        return matches!(self, AttributeIdentifierType::None);
+        matches!(self, AttributeIdentifierType::None)
     }
 
     pub fn as_ok(self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
-        return Ok(self);
+        Ok(self)
     }
 }

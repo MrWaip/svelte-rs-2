@@ -29,7 +29,7 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let error_type = &self.error_type;
         f.write_str(&format!("{error_type:?}"))?;
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -39,58 +39,58 @@ impl Diagnostic {
     }
 
     pub fn unexpected_end_of_file(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedEndOfFile, span);
+        Diagnostic::new(DiagnosticType::UnexpectedEndOfFile, span)
     }
 
     pub fn invalid_tag_name(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidTagName, span);
+        Diagnostic::new(DiagnosticType::InvalidTagName, span)
     }
 
     pub fn unterminated_start_tag(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnterminatedStartTag, span);
+        Diagnostic::new(DiagnosticType::UnterminatedStartTag, span)
     }
 
     pub fn invalid_attribute_name(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidAttributeName, span);
+        Diagnostic::new(DiagnosticType::InvalidAttributeName, span)
     }
 
     pub fn unexpected_token(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedToken, span);
+        Diagnostic::new(DiagnosticType::UnexpectedToken, span)
     }
 
     pub fn unexpected_keyword(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnexpectedKeyword, span);
+        Diagnostic::new(DiagnosticType::UnexpectedKeyword, span)
     }
 
     pub fn no_element_to_close(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::NoElementToClose, span);
+        Diagnostic::new(DiagnosticType::NoElementToClose, span)
     }
 
     pub fn no_if_block_to_close(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::NoIfBlockToClose, span);
+        Diagnostic::new(DiagnosticType::NoIfBlockToClose, span)
     }
 
     pub fn no_if_block_for_else(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::NoIfBlockForElse, span);
+        Diagnostic::new(DiagnosticType::NoIfBlockForElse, span)
     }
 
     pub fn unclosed_node(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnclosedNode, span);
+        Diagnostic::new(DiagnosticType::UnclosedNode, span)
     }
 
     pub fn invalid_expression(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::InvalidExpression, span);
+        Diagnostic::new(DiagnosticType::InvalidExpression, span)
     }
 
     pub fn as_err<T>(self) -> Result<T, Diagnostic> {
-        return Err(self);
+        Err(self)
     }
 
     pub fn only_single_top_level_script(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::OnlyOneTopLevelScript, span);
+        Diagnostic::new(DiagnosticType::OnlyOneTopLevelScript, span)
     }
 
     pub fn unknown_directive(span: Span) -> Diagnostic {
-        return Diagnostic::new(DiagnosticType::UnknownDirective, span);
+        Diagnostic::new(DiagnosticType::UnknownDirective, span)
     }
 }
