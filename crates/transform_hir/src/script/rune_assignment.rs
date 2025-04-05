@@ -14,6 +14,7 @@ impl<'hir> ScriptTransformer<'hir> {
         operator: AssignmentOperator,
         ctx: &mut oxc_traverse::TraverseCtx<'hir>,
     ) -> bool {
+        return false;
         // self.owner_ctx
 
         // self.store.get_owner(self.owner_ctx)

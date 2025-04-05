@@ -32,6 +32,13 @@ pub struct Text<'hir> {
 }
 
 #[derive(Debug)]
+pub struct Comment<'hir> {
+    pub owner_id: OwnerId,
+    pub node_id: NodeId,
+    pub value: &'hir str,
+}
+
+#[derive(Debug)]
 pub struct Interpolation {
     pub owner_id: OwnerId,
     pub node_id: NodeId,

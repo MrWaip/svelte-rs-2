@@ -68,11 +68,13 @@ impl<'hir> AstToHir<'hir> {
     fn lower_nodes(
         &self,
         ctx: &mut ToHirContext<'hir>,
-        nodes: Vec<ast::Node<'hir>>,
+        mut nodes: Vec<ast::Node<'hir>>,
     ) -> Vec<NodeId> {
-        let trimmed = self.trim_text_nodes(nodes, ctx);
+        nodes = self.clean_comments(nodes, ctx);
 
-        return self.compress_and_lower_nodes(trimmed, ctx);
+        nodes = self.trim_text_nodes(nodes, ctx);
+
+        return self.compress_and_lower_nodes(nodes, ctx);
     }
 
     fn lower_node(&self, node: ast::Node<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
@@ -83,7 +85,7 @@ impl<'hir> AstToHir<'hir> {
             ast::Node::IfBlock(cell) => self.lower_if_block(cell.unwrap(), ctx),
             ast::Node::VirtualConcatenation(_) => unreachable!(),
             ast::Node::ScriptTag(_) => todo!(),
-            ast::Node::Comment(_) => todo!(),
+            ast::Node::Comment(cell) => self.lower_comment(cell.unwrap(), ctx),
         };
     }
 
@@ -325,6 +327,57 @@ impl<'hir> AstToHir<'hir> {
 
             return hir::Node::Text(ctx.alloc(hir_text));
         });
+    }
+
+    fn lower_comment(&self, comment: ast::Comment<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
+        return ctx.push_node(|ctx, node_id, owner_id| {
+            let hir_text = hir::Comment {
+                node_id,
+                owner_id,
+                value: comment.value,
+            };
+
+            return hir::Node::Comment(ctx.alloc(hir_text));
+        });
+    }
+
+    fn clean_comments(
+        &self,
+        nodes: Vec<ast::Node<'hir>>,
+        ctx: &mut ToHirContext<'hir>,
+    ) -> Vec<ast::Node<'hir>> {
+        let mut result = vec![];
+        let mut idx: usize = 0;
+
+        while idx < nodes.len() {
+            let prev = if idx == 0 { None } else { nodes.get(idx - 1) };
+            let next = nodes.get(idx + 1);
+            let current = &nodes[idx];
+            idx += 1;
+
+            if current.is_comment() {
+                let Some(ast::Node::Text(prev_text)) = prev else {
+                    continue;
+                };
+
+                let Some(ast::Node::Text(next_text)) = next else {
+                    continue;
+                };
+
+                let mut new_string = prev_text.borrow().value.to_string();
+                new_string.push_str(next_text.borrow().value.into());
+
+                prev_text.borrow_mut().value = ctx.alloc(new_string);
+
+                // skip next text node
+                idx += 1;
+                continue;
+            }
+
+            result.push(current.clone());
+        }
+
+        return result;
     }
 }
 
