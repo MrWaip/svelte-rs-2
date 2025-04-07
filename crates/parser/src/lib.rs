@@ -713,4 +713,15 @@ mod tests {
             "<script lang=\"ts\">const i: number = 10;\n</script>",
         );
     }
+
+    #[test]
+    fn smoke_each_block() {
+        let allocator = Allocator::default();
+        let ast = setup_template(
+            r#"{#each values as value}value: {value}{/each}"#,
+            &allocator,
+        );
+
+        assert_node_cell(&ast[0], r#"<!-- some comment -->"#);
+    }
 }
