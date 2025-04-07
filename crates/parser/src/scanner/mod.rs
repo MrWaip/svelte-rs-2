@@ -4,7 +4,7 @@ use std::{iter::Peekable, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
-    StartIfTag, StartTag, Token, TokenType,
+    StartEachTag, StartIfTag, StartTag, Token, TokenType,
 };
 
 use diagnostics::Diagnostic;
@@ -150,10 +150,7 @@ impl<'a> Scanner<'a> {
         } else if start == self.current {
             AttributeIdentifierType::None.as_ok()
         } else {
-            AttributeIdentifierType::HTMLAttribute(
-                self.slice_source(start, self.current),
-            )
-            .as_ok()
+            AttributeIdentifierType::HTMLAttribute(self.slice_source(start, self.current)).as_ok()
         }
     }
 
@@ -347,9 +344,7 @@ impl<'a> Scanner<'a> {
         let peeked = self.peek();
 
         if self.peek() == Some('{') {
-            return self
-                .expression_tag()
-                .map(AttributeValue::ExpressionTag);
+            return self.expression_tag().map(AttributeValue::ExpressionTag);
         }
 
         if let Some(quote) = peeked.filter(|c| *c == '"' || *c == '\'') {
@@ -362,11 +357,9 @@ impl<'a> Scanner<'a> {
          * must not be the empty string
          */
 
-        let value = self.collect_until(|char| {
-            match char {
-                '"' | '\'' | '>' | '<' | '`' => true,
-                char => char.is_whitespace(),
-            }
+        let value = self.collect_until(|char| match char {
+            '"' | '\'' | '>' | '<' | '`' => true,
+            char => char.is_whitespace(),
         })?;
 
         Ok(AttributeValue::String(value))
@@ -566,6 +559,7 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "each" => self.start_each_tag(),
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start,
                 self.current,
@@ -738,6 +732,62 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         self.add_token(TokenType::Comment);
+
+        Ok(())
+    }
+
+    fn start_each_tag(&mut self) -> Result<(), Diagnostic> {
+        let mut collection = None;
+        let mut item = None;
+
+        self.skip_whitespace();
+
+        let start_collection_pos = self.current;
+
+        while !self.is_at_end() {
+            let peeked = self.peek();
+
+            if !peeked.is_some_and(|c| c.is_ascii_whitespace()) {
+                self.advance();
+                continue;
+            }
+
+            let end_collection_pos = self.current;
+
+            self.skip_whitespace();
+
+            let as_keyword = self.identifier();
+
+            if as_keyword != "as" {
+                continue;
+            }
+
+            collection = self.source[start_collection_pos..end_collection_pos].into();
+
+            self.skip_whitespace();
+
+            item = self.collect_js_expression()?.into();
+
+            break;
+        }
+
+        let Some(collection) = collection else {
+            return Diagnostic::unexpected_token(Span::new(self.start, self.current)).as_err();
+        };
+
+        let Some(item) = item else {
+            return Diagnostic::unexpected_token(Span::new(self.start, self.current)).as_err();
+        };
+
+        self.add_token(TokenType::StartEachTag(StartEachTag {
+            collection: JsExpression {
+                span: SPAN,
+                value: collection,
+            },
+            item,
+            key: None,
+            index: None,
+        }));
 
         Ok(())
     }
@@ -974,6 +1024,15 @@ mod tests {
     }
 
     #[test]
+    fn each_block() {
+        let mut scanner = Scanner::new("{#each [1,2,3] as { value, flag }}");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_each_tag(&tokens[0], "[1,2,3]", "{ value, flag }");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
     fn comment() {
         let mut scanner = Scanner::new("<!-- \nsome comment\n -->");
         let tokens = scanner.scan_tokens().unwrap();
@@ -981,6 +1040,16 @@ mod tests {
         assert!(tokens[0].token_type == TokenType::Comment);
         assert_eq!(tokens[0].lexeme, "<!-- \nsome comment\n -->");
         assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    fn assert_start_each_tag(token: &Token, expected_collection: &str, expected_item: &str) {
+        let tag = match &token.token_type {
+            TokenType::StartEachTag(t) => t,
+            _ => panic!("Expected token.type = StartEachTag"),
+        };
+
+        assert_eq!(tag.collection.value, expected_collection);
+        assert_eq!(tag.item.value, expected_item);
     }
 
     fn assert_script_tag<'a>(

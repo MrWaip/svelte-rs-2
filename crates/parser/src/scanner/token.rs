@@ -17,6 +17,8 @@ pub enum TokenType<'a> {
     ElseTag(ElseTag<'a>),
     ScriptTag(ScriptTag<'a>),
     EndIfTag,
+    StartEachTag(StartEachTag<'a>),
+    EndEachTag,
     EOF,
 }
 
@@ -61,6 +63,14 @@ pub struct StartTag<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct EndTag<'a> {
     pub name: &'a str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartEachTag<'a> {
+    pub collection: JsExpression<'a>,
+    pub item: JsExpression<'a>,
+    pub index: Option<JsExpression<'a>>,
+    pub key: Option<JsExpression<'a>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

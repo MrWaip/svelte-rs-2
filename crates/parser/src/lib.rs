@@ -1,4 +1,3 @@
-
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
@@ -154,6 +153,8 @@ impl<'a> Parser<'a> {
                     self.parse_script_tag(script_tag, token.span)?
                 }
                 TokenType::Comment => self.parse_comment(&token)?,
+                TokenType::StartEachTag(start_each_tag) => todo!(),
+                TokenType::EndEachTag => todo!(),
             }
         }
 
@@ -401,10 +402,8 @@ impl<'a> Parser<'a> {
             is_elseif: false,
             alternate: None,
             consequent: Fragment::empty(),
-            test: self.parse_js_expression(
-                start_if_tag.expression.value,
-                start_if_tag.expression.span,
-            )?,
+            test: self
+                .parse_js_expression(start_if_tag.expression.value, start_if_tag.expression.span)?,
         };
 
         let node = if_block.as_node();
