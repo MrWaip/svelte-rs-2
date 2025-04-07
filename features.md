@@ -26,6 +26,8 @@
     - [ ] transform: with key `{#each nodes as {a,b,c}, idx (any expression)}`
     - [ ] transform: `{:else}`
     - [ ] transform: without `as` `{#each {length: 10}, value}`
+- [ ] Component
+    - [ ] research
 - [ ] Rune assignment 
     - [x] analyze: track rune mutation
     - [x] transform: common case assignment `rune = 10;`
