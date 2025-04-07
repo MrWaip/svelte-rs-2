@@ -1,0 +1,38 @@
+# Feature list
+
+- [ ] HTML Element
+    - [ ] transform: `$.remove_input_defaults`
+    - [ ] transform: `$.remove_textarea_child`
+    - [ ] transform: `setup_select_synchronization`
+    - [ ] attributes with spread
+        - [x] transform: common case `{...attributes}`
+        - [ ] transform: `$.init_select`
+        - [ ] transform: `$.select_option`
+    - [ ] attributes without spread
+        - [ ] transform: `$.replay_events`
+        - [ ] transform: `$.hydrate_template`
+        - [ ] Bind directive
+            - [x] Common cases: `bind:value={id} or bind:value`
+            - [ ] SequenceExpression: `bind:value={() => value, (newValue) => value = newValue}`
+            - [ ] bind event attributes
+            - [ ] `bind:group`
+            - [ ] `bind:this`
+            - [ ] case with `UseDirective`
+            - [ ] case with `getter === setter`
+- [ ] Each block
+    - [ ] transform: common case `{#each nodes as node}`
+    - [ ] transform: with index `{#each nodes as node, idx}`
+    - [ ] transform: destructuring `{#each nodes as {a,b,c}, idx}` `${each nodes as [a,b,c,], idx}`
+    - [ ] transform: with key `{#each nodes as {a,b,c}, idx (any expression)}`
+    - [ ] transform: `{:else}`
+    - [ ] transform: without `as` `{#each {length: 10}, value}`
+- [ ] Rune assignment 
+    - [x] analyze: track rune mutation
+    - [x] transform: common case assignment `rune = 10;`
+    - [ ] transform: private identifier
+    - [ ] transform/analyze: compute `needs_proxy` argument in `$.set(run, value, needs_proxy)` 
+    - [ ] transform: special case — ignore `onclick={() => (...)}`
+    - [ ] transform: special case — ignore `bind:prop={getter, (v) => (...)}` / `bind:value={x.y}`
+    - [ ] transform: mutate case
+    - [ ] transform: runtime method by operator (`&&= ||= ??= =`)
+
