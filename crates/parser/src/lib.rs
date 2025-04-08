@@ -4,16 +4,16 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{Language, SourceType};
 use rccell::RcCell;
 use scanner::{
-    token::{self, EndTag, ExpressionTag, StartTag, Token, TokenType},
+    token::{self, EndTag, ExpressionTag, StartEachTag, StartTag, Token, TokenType},
     Scanner,
 };
 use span::{GetSpan, Span};
 
 use ast::{
     AsNode, Ast, Attribute, AttributeKind, BindDirective, BindDirectiveKind, BooleanAttribute,
-    ClassDirective, Comment, ConcatenationAttribute, ConcatenationPart, Element, ElementKind,
-    ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag, SpreadAttribute,
-    StringAttribute, Template, Text,
+    ClassDirective, Comment, ConcatenationAttribute, ConcatenationPart, EachBlock, Element,
+    ElementKind, ExpressionAttribute, Fragment, IfBlock, Interpolation, Node, ScriptTag,
+    SpreadAttribute, StringAttribute, Template, Text,
 };
 
 use diagnostics::Diagnostic;
@@ -96,6 +96,9 @@ impl<'a> NodeStack<'a> {
                 Node::IfBlock(if_block) => {
                     if_block.borrow_mut().push(node.clone());
                 }
+                Node::EachBlock(it) => {
+                    it.borrow_mut().nodes.push(node.clone());
+                }
                 Node::ScriptTag(_) => unreachable!(),
                 Node::Text(_) => unreachable!(),
                 Node::Interpolation(_) => unreachable!(),
@@ -153,8 +156,10 @@ impl<'a> Parser<'a> {
                     self.parse_script_tag(script_tag, token.span)?
                 }
                 TokenType::Comment => self.parse_comment(&token)?,
-                TokenType::StartEachTag(_start_each_tag) => todo!(),
-                TokenType::EndEachTag => todo!(),
+                TokenType::StartEachTag(each_block) => {
+                    self.parse_start_each_block(&each_block, token.span)?
+                }
+                TokenType::EndEachTag => self.parse_end_each_block(&token)?,
             }
         }
 
@@ -275,6 +280,48 @@ impl<'a> Parser<'a> {
             .map_err(|_| Diagnostic::invalid_expression(span))?;
 
         Ok(expression)
+    }
+
+    fn parse_start_each_block(
+        &mut self,
+        token: &StartEachTag<'a>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        let block = EachBlock {
+            span,
+            collection: self.parse_js_expression(token.collection.value, token.collection.span)?,
+            item: self.parse_js_expression(token.item.value, token.item.span)?,
+            nodes: Fragment::empty(),
+            key: None,
+            index: None,
+        };
+
+        self.node_stack.add_node(block.as_node())?;
+
+        Ok(())
+    }
+
+    fn parse_end_each_block(&mut self, token: &Token<'a>) -> Result<(), Diagnostic> {
+        let option = self.node_stack.pop();
+
+        let Some(node) = option else {
+            return Err(Diagnostic::unexpected_token(token.span));
+        };
+
+        let Node::EachBlock(each_block) = &node else {
+            return Err(Diagnostic::unexpected_token(token.span));
+        };
+
+        let mut borrow = each_block.borrow_mut();
+        borrow.span = borrow.span.merge(&token.span);
+
+        let is_empty = self.node_stack.is_stack_empty();
+
+        if is_empty {
+            self.node_stack.add_to_root(node.clone())
+        }
+
+        Ok(())
     }
 
     fn parse_attributes(
@@ -722,6 +769,6 @@ mod tests {
             &allocator,
         );
 
-        assert_node_cell(&ast[0], r#"<!-- some comment -->"#);
+        assert_node_cell(&ast[0], r#"{#each values as value}value: { value }{/each}"#);
     }
 }

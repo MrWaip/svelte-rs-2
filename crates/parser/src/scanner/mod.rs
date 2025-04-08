@@ -594,6 +594,17 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "each" => {
+                self.skip_whitespace();
+
+                if !self.match_char('}') {
+                    return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+                }
+
+                self.add_token(TokenType::EndEachTag);
+
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start,
                 self.current,
@@ -1029,6 +1040,15 @@ mod tests {
         let tokens = scanner.scan_tokens().unwrap();
 
         assert_start_each_tag(&tokens[0], "[1,2,3]", "{ value, flag }");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn end_each_block() {
+        let mut scanner = Scanner::new("{/each}");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert!(tokens[0].token_type == TokenType::EndEachTag);
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 

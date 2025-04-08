@@ -1,8 +1,7 @@
 use oxc_ast::ast::{Expression, Program};
 
 use crate::{
-    Attribute, Comment, ConcatenationPart, Element, IfBlock, Interpolation, Node, ScriptTag, Text,
-    VirtualConcatenation,
+    Attribute, Comment, ConcatenationPart, EachBlock, Element, IfBlock, Interpolation, Node, ScriptTag, Text, VirtualConcatenation
 };
 
 pub trait FormatNode {
@@ -19,6 +18,7 @@ impl FormatNode for Node<'_> {
             Node::VirtualConcatenation(it) => it.borrow().format_node(),
             Node::ScriptTag(it) => it.borrow().format_node(),
             Node::Comment(it) => it.borrow().format_node(),
+            Node::EachBlock(it) => it.borrow().format_node(),
         }
     }
 }
@@ -178,6 +178,27 @@ impl FormatNode for Element<'_> {
 impl FormatNode for Comment<'_> {
     fn format_node(&self) -> String {
         self.value.into()
+    }
+}
+
+impl FormatNode for EachBlock<'_> {
+    fn format_node(&self) -> String {
+        let mut result = String::new();
+
+        result.push_str("{#each ");
+        result.push_str(&print_expression(&self.collection));
+        result.push_str(" as ");
+        result.push_str(&print_expression(&self.item));
+        result.push_str("}");
+
+        for node in self.nodes.iter() {
+            let formatted = &node.format_node();
+            result.push_str(formatted);
+        }
+
+        result.push_str("{/each}");
+
+        return result;
     }
 }
 
