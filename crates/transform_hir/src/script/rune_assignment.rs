@@ -8,18 +8,18 @@ use super::script_transformer::ScriptTransformer;
 impl<'hir> ScriptTransformer<'hir> {
     fn needs_proxy(
         &self,
-        e: &Expression,
-        operator: AssignmentOperator,
-        ctx: &mut oxc_traverse::TraverseCtx<'hir>,
+        _e: &Expression,
+        _operator: AssignmentOperator,
+        _ctx: &mut oxc_traverse::TraverseCtx<'hir>,
     ) -> bool {
         return false;
         // self.owner_ctx
 
         // self.store.get_owner(self.owner_ctx)
 
-        let is_non_coercive_operator = operator.is_logical() || operator.is_assign();
+        // let is_non_coercive_operator = operator.is_logical() || operator.is_assign();
 
-        self.should_proxy_rune_init(e) && is_non_coercive_operator
+        // self.should_proxy_rune_init(e) && is_non_coercive_operator
     }
 
     pub(crate) fn transform_rune_assignment(

@@ -197,7 +197,7 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx.push_init(call);
     }
 
-    fn transform_class_directive<'short>(
+    fn _transform_class_directive<'short>(
         &self,
         _attr: &hir::ClassDirective<'hir>,
         _ctx: &mut OwnerContext<'hir, 'short>,

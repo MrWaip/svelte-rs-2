@@ -1,6 +1,6 @@
 pub fn is_static_element(
     node: &hir::Node,
-    store: &hir::HirStore,
+    _store: &hir::HirStore,
     analyses: &analyze_hir::HirAnalyses,
 ) -> bool {
     let hir::Node::Element(element) = node else {

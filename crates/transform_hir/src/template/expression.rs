@@ -6,7 +6,7 @@ use crate::{context::OwnerContext, script::ScriptTransformer};
 use super::template_transformer::TemplateTransformer;
 
 impl<'hir> TemplateTransformer<'hir> {
-    pub(crate) fn transform_expression_by_id<'short>(
+    pub(crate) fn _transform_expression_by_id<'short>(
         &mut self,
         expression_id: ExpressionId,
         ctx: &mut OwnerContext<'hir, 'short>,

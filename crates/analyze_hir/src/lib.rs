@@ -1,7 +1,5 @@
 mod analises;
-mod analyze_expression;
 mod analyze_script;
-mod analyze_template;
 mod bitflags;
 mod indentifier_gen;
 mod rune_reference;
@@ -18,14 +16,14 @@ pub use analyze_script::SvelteRune;
 
 
 pub struct AnalyzeHir<'hir> {
-    allocator: &'hir Allocator,
+    _allocator: &'hir Allocator,
 }
 
 pub struct AnalyzeHirResult {}
 
 impl<'hir> AnalyzeHir<'hir> {
     pub fn new(allocator: &'hir Allocator) -> Self {
-        AnalyzeHir { allocator }
+        AnalyzeHir { _allocator: allocator }
     }
 
     fn oxc_semantic_pass(&self, program: &hir::Program<'hir>) -> (SymbolTable, ScopeTree) {
