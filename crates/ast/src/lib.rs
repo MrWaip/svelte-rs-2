@@ -41,6 +41,7 @@ pub enum Node<'a> {
     /** Напоминание для себя. Сейчас во время трансформации шаблона последовательность Text + Interpolation схлопывается в эту Node */
     VirtualConcatenation(RcCell<VirtualConcatenation<'a>>),
     ScriptTag(RcCell<ScriptTag<'a>>),
+    EachBlock(RcCell<EachBlock<'a>>),
 }
 
 impl<'a> Node<'a> {
@@ -105,6 +106,7 @@ impl GetSpan for Node<'_> {
             Node::VirtualConcatenation(it) => it.borrow().span,
             Node::ScriptTag(it) => it.borrow().span,
             Node::Comment(it) => it.borrow().span,
+            Node::EachBlock(it) => it.borrow().span,
         }
     }
 }
@@ -275,6 +277,22 @@ impl<'a> Text<'a> {
 impl<'a> AsNode<'a> for Text<'a> {
     fn as_node(self) -> Node<'a> {
         Node::Text(RcCell::new(self))
+    }
+}
+
+#[derive(Debug)]
+pub struct EachBlock<'a> {
+    pub span: Span,
+    pub collection: Expression<'a>,
+    pub item: Expression<'a>,
+    pub index: Option<Expression<'a>>,
+    pub key: Option<Expression<'a>>,
+    pub nodes: Fragment<'a>,
+}
+
+impl<'a> AsNode<'a> for EachBlock<'a> {
+    fn as_node(self) -> Node<'a> {
+        Node::EachBlock(RcCell::new(self))
     }
 }
 
