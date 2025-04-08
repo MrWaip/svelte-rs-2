@@ -86,6 +86,7 @@ impl<'hir> AstToHir<'hir> {
             ast::Node::VirtualConcatenation(_) => unreachable!(),
             ast::Node::ScriptTag(_) => todo!(),
             ast::Node::Comment(cell) => self.lower_comment(cell.unwrap(), ctx),
+            ast::Node::EachBlock(cell) => todo!(),
         }
     }
 

@@ -265,6 +265,7 @@ pub mod walk {
             }
             Node::VirtualConcatenation(_) => unreachable!(),
             Node::Comment(rc_cell) => todo!(),
+            Node::EachBlock(rc_cell) => todo!(),
         }
 
         visitor.exit_node(it, ctx);

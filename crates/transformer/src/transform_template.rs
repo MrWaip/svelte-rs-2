@@ -1,4 +1,3 @@
-
 use analyzer::{
     compute_optimization::{ContentType, NodeOptimizationAction, TrimAction},
     svelte_table::SvelteTable,
@@ -553,6 +552,7 @@ impl<'a, 'link> TransformTemplate<'a, 'link> {
             }
             Node::ScriptTag(_script_tag) => todo!(),
             Node::Comment(_) => (),
+            Node::EachBlock(rc_cell) => todo!(),
         }
     }
 

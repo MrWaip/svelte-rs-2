@@ -118,3 +118,8 @@ fn state_runes() {
 fn bind_directives() {
     assert_compiler("bind_directives");
 }
+
+#[rstest]
+fn each_block() {
+    assert_compiler("each_block");
+}
