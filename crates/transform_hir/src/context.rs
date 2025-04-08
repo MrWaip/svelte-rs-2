@@ -144,7 +144,7 @@ impl<'hir, 'short> OwnerContext<'hir, 'short> {
         self.fragment.update.push(stmt);
     }
 
-    pub fn push_before_init(&mut self, stmt: Statement<'hir>) {
+    pub fn _push_before_init(&mut self, stmt: Statement<'hir>) {
         self.fragment.before_init.push(stmt);
     }
 }

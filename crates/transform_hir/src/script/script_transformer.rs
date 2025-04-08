@@ -13,7 +13,7 @@ pub struct ScriptTransformer<'hir> {
     pub(crate) b: &'hir Builder<'hir>,
     pub(crate) store: &'hir HirStore<'hir>,
     pub(crate) imports: Vec<Statement<'hir>>,
-    pub(crate) owner_id: OwnerId,
+    pub(crate) _owner_id: OwnerId,
 }
 
 impl<'hir> ScriptTransformer<'hir> {
@@ -28,7 +28,7 @@ impl<'hir> ScriptTransformer<'hir> {
             b: builder,
             store,
             imports: vec![],
-            owner_id,
+            _owner_id: owner_id,
         }
     }
 

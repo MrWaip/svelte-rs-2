@@ -1,3 +1,12 @@
+#![allow(
+    unused_variables,
+    // clippy::extra_unused_type_parameters,
+    // clippy::explicit_iter_loop,
+    // clippy::self_named_module_files,
+    // clippy::semicolon_if_nothing_returned,
+    // clippy::match_wildcard_for_single_variants
+)]
+
 use compiler::Compiler;
 use oxc_allocator::Allocator;
 use oxc_codegen::Codegen;

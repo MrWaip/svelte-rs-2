@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
                     self.parse_script_tag(script_tag, token.span)?
                 }
                 TokenType::Comment => self.parse_comment(&token)?,
-                TokenType::StartEachTag(start_each_tag) => todo!(),
+                TokenType::StartEachTag(_start_each_tag) => todo!(),
                 TokenType::EndEachTag => todo!(),
             }
         }
