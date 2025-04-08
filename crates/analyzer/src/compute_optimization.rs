@@ -156,6 +156,7 @@ fn compute_content_type<'a>(node: &Node, content_type: &mut ContentType) {
             Node::VirtualConcatenation(_) => unreachable!(),
             Node::ScriptTag(_) => ContentType::Mixed,
             Node::Comment(_) => ContentType::Nope,
+            Node::EachBlock(rc_cell) => todo!(),
         };
         // second or other
     } else if *content_type == ContentType::Interpolation {
