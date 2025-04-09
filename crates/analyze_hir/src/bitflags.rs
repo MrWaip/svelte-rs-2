@@ -9,6 +9,7 @@ bitflags! {
         const Element = 1 << 4;
         const IfBlock = 1 << 5;
         const Comment = 1 << 6;
+        const EachBlock = 1 << 7;
     }
 }
 
@@ -20,7 +21,7 @@ impl OwnerContentTypeFlags {
             hir::Node::Element(_) => self.insert(OwnerContentTypeFlags::Element),
             hir::Node::Concatenation(_) => self.insert(OwnerContentTypeFlags::Concatenation),
             hir::Node::IfBlock(_) => self.insert(OwnerContentTypeFlags::IfBlock),
-            hir::Node::EachBlock => todo!(),
+            hir::Node::EachBlock(_) => self.insert(OwnerContentTypeFlags::EachBlock),
             hir::Node::Script => todo!(),
             hir::Node::Comment(_) => (),
             hir::Node::Phantom => todo!(),
@@ -34,6 +35,7 @@ impl OwnerContentTypeFlags {
     pub fn only_synthetic_node(&self) -> bool {
         match *self {
             OwnerContentTypeFlags::IfBlock => true,
+            OwnerContentTypeFlags::EachBlock => true,
             _ => false,
         }
     }

@@ -1,12 +1,11 @@
-
-use crate::{Element, HirStore, IfBlock, NodeId, Template};
+use crate::{EachBlock, Element, HirStore, IfBlock, NodeId, Template};
 
 #[derive(Debug)]
 pub enum OwnerNode<'hir> {
     Element(&'hir Element<'hir>),
     Template(&'hir Template),
     IfBlock(&'hir IfBlock),
-    EachBlock,
+    EachBlock(&'hir EachBlock),
     Phantom,
 }
 
@@ -41,7 +40,7 @@ impl OwnerNode<'_> {
             OwnerNode::Element(it) => it.node_ids.first(),
             OwnerNode::Template(it) => it.node_ids.first(),
             OwnerNode::IfBlock(it) => it.consequent.first(),
-            OwnerNode::EachBlock => todo!(),
+            OwnerNode::EachBlock(it) => it.node_ids.first(),
             OwnerNode::Phantom => todo!(),
         }
     }
@@ -51,7 +50,7 @@ impl OwnerNode<'_> {
             OwnerNode::Element(it) => it.node_id,
             OwnerNode::Template(_) => HirStore::TEMPLATE_NODE_ID,
             OwnerNode::IfBlock(it) => it.node_id,
-            OwnerNode::EachBlock => todo!(),
+            OwnerNode::EachBlock(it) => it.node_id,
             OwnerNode::Phantom => todo!(),
         }
     }
@@ -60,6 +59,7 @@ impl OwnerNode<'_> {
         match self {
             OwnerNode::Element(it) => Box::new(it.node_ids.iter().rev()),
             OwnerNode::Template(it) => Box::new(it.node_ids.iter().rev()),
+            OwnerNode::EachBlock(it) => Box::new(it.node_ids.iter().rev()),
             OwnerNode::IfBlock(it) => {
                 if let Some(alternate) = &it.alternate {
                     return Box::new(alternate.iter().rev().chain(it.consequent.iter().rev()));
@@ -82,6 +82,10 @@ impl OwnerNode<'_> {
         // 		parent.type === 'Component' ||
         // 		parent.type === 'SvelteSelf') &&
 
-        matches!(self, OwnerNode::EachBlock | OwnerNode::Template(_))
+        matches!(self, OwnerNode::EachBlock(_) | OwnerNode::Template(_))
+    }
+
+    pub fn is_element(&self) -> bool {
+        matches!(self, OwnerNode::Element(_))
     }
 }

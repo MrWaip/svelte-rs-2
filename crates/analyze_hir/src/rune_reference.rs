@@ -91,7 +91,13 @@ impl<'hir> AnalyzeHir<'hir> {
                 }
                 hir::Node::Comment(_) => continue,
                 hir::Node::Phantom => continue,
-                hir::Node::EachBlock => todo!(),
+                hir::Node::EachBlock(it) => {
+                    let expression = store.get_expression(it.collection);
+                    analyzer.analyze(&expression, ReferenceFlags::read());
+
+                    let expression = store.get_expression(it.item);
+                    analyzer.analyze(&expression, ReferenceFlags::read());
+                }
                 hir::Node::Script => todo!(),
             };
         }

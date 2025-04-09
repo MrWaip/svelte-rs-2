@@ -7,13 +7,12 @@ mod visit;
 
 pub use analises::HirAnalyses;
 use analyze_script::AnalyzeScript;
+pub use analyze_script::SvelteRune;
 pub use bitflags::{OwnerContentType, OwnerContentTypeFlags};
 use hir::NodeId;
 use oxc_allocator::Allocator;
 use oxc_ast::visit::walk::walk_program;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-pub use analyze_script::SvelteRune;
-
 
 pub struct AnalyzeHir<'hir> {
     _allocator: &'hir Allocator,
@@ -23,7 +22,9 @@ pub struct AnalyzeHirResult {}
 
 impl<'hir> AnalyzeHir<'hir> {
     pub fn new(allocator: &'hir Allocator) -> Self {
-        AnalyzeHir { _allocator: allocator }
+        AnalyzeHir {
+            _allocator: allocator,
+        }
     }
 
     fn oxc_semantic_pass(&self, program: &hir::Program<'hir>) -> (SymbolTable, ScopeTree) {
@@ -59,7 +60,10 @@ impl<'hir> AnalyzeHir<'hir> {
 
                     OwnerContentType::IfBlock(consequent_flags, alternate_flags)
                 }
-                hir::OwnerNode::EachBlock => todo!(),
+                hir::OwnerNode::EachBlock(each_block) => {
+                    let flags = self.compute_content_type(&each_block.node_ids, store);
+                    OwnerContentType::Common(flags)
+                }
                 hir::OwnerNode::Phantom => todo!(),
             };
 
@@ -147,8 +151,7 @@ mod tests {
 
     use super::*;
 
-    static ALLOCATOR: std::sync::LazyLock<Allocator> =
-        std::sync::LazyLock::new(Allocator::default);
+    static ALLOCATOR: std::sync::LazyLock<Allocator> = std::sync::LazyLock::new(Allocator::default);
 
     #[test]
     fn dynamic_nodes_check() {
