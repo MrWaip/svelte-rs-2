@@ -20,11 +20,11 @@ impl<'hir> TemplateTransformer<'hir> {
 
         for node_id in nodes {
             let node = self.store.get_node(*node_id);
+            let owner = self.store.get_owner(node.owner_id());
 
             if is_static_element(node, self.store, self.analyses) {
                 owner_ctx.next_sibling();
-            } else if matches!(node, hir::Node::EachBlock) {
-                // if (node.type === 'EachBlock' && nodes.length === 1 && is_element)
+            } else if matches!(node, hir::Node::EachBlock(each) if each.node_ids.len() == 1) && owner.is_element()  {
                 // node.metadata.is_controlled = true;
                 todo!()
             } else if node.is_interpolation_like() {
@@ -79,8 +79,8 @@ impl<'hir> TemplateTransformer<'hir> {
                 TransformInterpolationOptions::default(),
             ),
             hir::Node::IfBlock(it) => self.transform_if_block(it, owner_ctx),
+            hir::Node::EachBlock(it) => self.transform_each_block(it, owner_ctx),
             hir::Node::Comment(_) => (),
-            hir::Node::EachBlock => todo!(),
             hir::Node::Script => todo!(),
             hir::Node::Phantom => todo!(),
         }

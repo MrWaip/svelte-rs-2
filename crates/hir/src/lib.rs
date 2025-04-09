@@ -69,6 +69,18 @@ pub struct IfBlock {
 }
 
 #[derive(Debug)]
+pub struct EachBlock {
+    pub node_id: NodeId,
+    pub owner_id: OwnerId,
+
+    pub node_ids: Vec<NodeId>,
+    pub collection: ExpressionId,
+    pub item: ExpressionId,
+    pub index: Option<ExpressionId>,
+    pub key: Option<ExpressionId>,
+}
+
+#[derive(Debug)]
 pub struct Program<'hir> {
     pub language: Language,
     pub program: RefCell<oxc_ast::ast::Program<'hir>>,

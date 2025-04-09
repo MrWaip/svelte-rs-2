@@ -6,6 +6,7 @@ mod is_static;
 mod nodes;
 mod template_transformer;
 mod if_block;
+mod each_block;
 mod expression;
 
 use analyze_hir::HirAnalyses;

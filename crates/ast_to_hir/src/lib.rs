@@ -86,8 +86,32 @@ impl<'hir> AstToHir<'hir> {
             ast::Node::VirtualConcatenation(_) => unreachable!(),
             ast::Node::ScriptTag(_) => todo!(),
             ast::Node::Comment(cell) => self.lower_comment(cell.unwrap(), ctx),
-            ast::Node::EachBlock(cell) => todo!(),
+            ast::Node::EachBlock(cell) => self.lower_each_block(cell.unwrap(), ctx),
         }
+    }
+
+    fn lower_each_block(&self, node: ast::EachBlock<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
+        ctx.push_owner_node(|ctx, self_node_id, owner_id| {
+            let collection_id = ctx.push_expression(node.collection);
+            let item_id = ctx.push_expression(node.item);
+
+            let hir_each_block = hir::EachBlock {
+                node_id: self_node_id,
+                owner_id,
+                node_ids: self.lower_nodes(ctx, node.nodes.nodes),
+                index: None,
+                collection: collection_id,
+                key: None,
+                item: item_id,
+            };
+
+            let hir_each_block = ctx.alloc(hir_each_block);
+
+            (
+                hir::Node::EachBlock(hir_each_block),
+                hir::OwnerNode::EachBlock(hir_each_block),
+            )
+        })
     }
 
     fn lower_if_block(&self, if_block: ast::IfBlock<'hir>, ctx: &mut ToHirContext<'hir>) -> NodeId {
@@ -100,9 +124,9 @@ impl<'hir> AstToHir<'hir> {
                 test: expression_id,
                 consequent: self.lower_nodes(ctx, if_block.consequent.nodes),
                 is_elseif: if_block.is_elseif,
-                alternate: if_block.alternate.map(|fragment| {
-                    self.lower_nodes(ctx, fragment.nodes)
-                }),
+                alternate: if_block
+                    .alternate
+                    .map(|fragment| self.lower_nodes(ctx, fragment.nodes)),
             };
 
             let hir_if_block = ctx.alloc(hir_if_block);

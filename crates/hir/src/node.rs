@@ -1,4 +1,4 @@
-use crate::{Comment, Concatenation, Element, IfBlock, Interpolation, Text};
+use crate::{Comment, Concatenation, EachBlock, Element, IfBlock, Interpolation, Text};
 
 #[derive(Debug)]
 pub enum Node<'hir> {
@@ -7,7 +7,7 @@ pub enum Node<'hir> {
     Element(&'hir Element<'hir>),
     Comment(&'hir Comment<'hir>),
     IfBlock(&'hir IfBlock),
-    EachBlock,
+    EachBlock(&'hir EachBlock),
     Script,
     Concatenation(&'hir Concatenation<'hir>),
     Phantom,
@@ -59,9 +59,23 @@ impl<'hir> Node<'hir> {
             Node::IfBlock(_) => true,
             Node::Script => true,
             Node::Concatenation(_) => true,
-            Node::EachBlock => true,
+            Node::EachBlock(_) => true,
             Node::Phantom => false,
             Node::Comment(_) => false,
+        }
+    }
+
+    pub fn owner_id(&self) -> crate::OwnerId {
+        match self {
+            Node::Text(it) => it.owner_id,
+            Node::Interpolation(it) => it.owner_id,
+            Node::Element(it) => it.owner_id,
+            Node::Comment(it) => it.owner_id,
+            Node::IfBlock(it) => it.owner_id,
+            Node::EachBlock(it) => it.owner_id,
+            Node::Concatenation(it) => it.owner_id,
+            Node::Script => todo!(),
+            Node::Phantom => todo!(),
         }
     }
 }
