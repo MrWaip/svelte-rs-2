@@ -9,6 +9,7 @@ pub struct AnalyzeScript<'a> {
     pub analyses: &'a mut HirAnalyses,
 }
 
+#[derive(Debug)]
 pub enum SvelteRuneKind {
     State,
     StateRaw,
@@ -52,6 +53,7 @@ impl SvelteRuneKind {
     }
 }
 
+#[derive(Debug)]
 pub struct SvelteRune {
     pub kind: SvelteRuneKind,
     pub mutated: bool,

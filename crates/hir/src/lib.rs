@@ -6,7 +6,7 @@ mod node;
 mod owner;
 mod store;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 pub use attributes::*;
 pub use attributes_store::*;
@@ -16,6 +16,7 @@ pub use node::*;
 pub use owner::*;
 
 use oxc_ast::ast::Language;
+use oxc_syntax::scope::ScopeId;
 pub use store::HirStore;
 
 #[derive(Debug)]
@@ -78,6 +79,7 @@ pub struct EachBlock {
     pub item: ExpressionId,
     pub index: Option<ExpressionId>,
     pub key: Option<ExpressionId>,
+    pub scope_id: Cell<Option<ScopeId>>,
 }
 
 #[derive(Debug)]

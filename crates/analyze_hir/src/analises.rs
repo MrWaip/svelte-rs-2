@@ -6,9 +6,10 @@ use std::{
 use hir::{NodeId, OwnerId};
 use oxc_ast::ast::Span;
 use oxc_semantic::{
-    NodeId as OxcNodeId, Reference, ReferenceId, ScopeFlags, ScopeId, ScopeTree,
-    SymbolFlags, SymbolId, SymbolTable,
+    NodeId as OxcNodeId, Reference, ReferenceId, ScopeFlags, ScopeId, ScopeTree, SymbolFlags,
+    SymbolId, SymbolTable,
 };
+use oxc_span::SPAN;
 
 use crate::{
     analyze_script::SvelteRune,
@@ -135,8 +136,9 @@ impl HirAnalyses {
         &mut self,
         name: &str,
         flags: oxc_semantic::ReferenceFlags,
+        scope_id: ScopeId,
     ) -> Option<ReferenceId> {
-        let symbol_id = self.scope.borrow().get_root_binding(name);
+        let symbol_id = self.scope.borrow().get_binding(scope_id, name);
 
         if let Some(symbol_id) = symbol_id {
             let mut reference = Reference::new(OxcNodeId::DUMMY, flags);
@@ -171,5 +173,20 @@ impl HirAnalyses {
             OxcNodeId::DUMMY,
             ScopeFlags::empty(),
         );
+    }
+
+    pub(crate) fn add_binding(&mut self, name: &str, scope_id: ScopeId) -> SymbolId {
+        let symbol_id = self.symbols.borrow_mut().create_symbol(
+            SPAN,
+            name,
+            SymbolFlags::empty(),
+            scope_id,
+            OxcNodeId::DUMMY,
+        );
+        self.scope
+            .borrow_mut()
+            .add_binding(scope_id, name, symbol_id);
+
+        return symbol_id;
     }
 }

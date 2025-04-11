@@ -27,6 +27,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_semantic",
+ "oxc_span",
  "parser",
 ]
 
@@ -518,6 +519,7 @@ version = "0.1.0"
 dependencies = [
  "oxc_ast",
  "oxc_index",
+ "oxc_syntax",
 ]
 
 [[package]]
