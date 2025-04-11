@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 oxc_ast = { workspace = true }
 oxc_index = { workspace = true }
+oxc_syntax = { workspace = true }

@@ -2,7 +2,7 @@ mod compress_nodes;
 pub mod context;
 mod trim_nodes;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use hir::{NodeId, OwnerNode};
 use oxc_allocator::Allocator;
@@ -103,6 +103,7 @@ impl<'hir> AstToHir<'hir> {
                 collection: collection_id,
                 key: None,
                 item: item_id,
+                scope_id: Cell::new(None),
             };
 
             let hir_each_block = ctx.alloc(hir_each_block);

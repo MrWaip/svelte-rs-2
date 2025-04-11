@@ -4,6 +4,7 @@ mod bitflags;
 mod indentifier_gen;
 mod rune_reference;
 mod visit;
+mod scope_adding;
 
 pub use analises::HirAnalyses;
 use analyze_script::AnalyzeScript;
@@ -130,6 +131,7 @@ impl<'hir> AnalyzeHir<'hir> {
         walk_program(&mut script_analyze, &program);
     }
 
+
     pub fn analyze(&self, hir_store: &hir::HirStore<'hir>) -> HirAnalyses {
         let (symbols, scopes) = self.oxc_semantic_pass(&hir_store.program);
 
@@ -138,6 +140,7 @@ impl<'hir> AnalyzeHir<'hir> {
         self.content_type_pass(&mut analyses, hir_store);
         self.dynamic_markers_pass(&mut analyses, hir_store);
         self.script_pass(&mut analyses, hir_store);
+        self.scope_adding_pass(&mut analyses, hir_store);
         self.rune_reference_pass(&mut analyses, hir_store);
 
         analyses

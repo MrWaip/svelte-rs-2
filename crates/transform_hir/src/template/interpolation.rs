@@ -6,7 +6,7 @@ use ast_builder::{
 
 use crate::context::OwnerContext;
 
-use super::{ template_transformer::TemplateTransformer};
+use super::template_transformer::TemplateTransformer;
 
 #[derive(Debug, Default)]
 pub enum InterpolationProperty {
@@ -46,8 +46,7 @@ impl<'hir> TemplateTransformer<'hir> {
         ctx: &mut OwnerContext<'hir, 'short>,
         options: TransformInterpolationOptions,
     ) {
-        let mut expression = self.store.get_expression_mut(node.expression_id);
-        let expression = self.b.move_expr(&mut expression);
+        let expression = self.transform_expression_by_id(node.expression_id, ctx);
         let anchor = ctx.anchor();
 
         let member = self.b.static_member_expr(anchor, options.property.to_str());
@@ -79,9 +78,7 @@ impl<'hir> TemplateTransformer<'hir> {
                     parts.push(TemplateLiteralPart::String(value));
                 }
                 hir::ConcatenationPart::Expression(expression_id) => {
-                    let mut expr = self.store.get_expression_mut(*expression_id);
-
-                    let expr = self.b.move_expr(&mut expr);
+                    let expr = self.transform_expression_by_id(*expression_id, ctx);
 
                     parts.push(TemplateLiteralPart::Expression(expr));
                 }
