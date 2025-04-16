@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use analyze_hir::ExpressionFlags;
 use ast_builder::{
     BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr, TemplateLiteralPart,
 };
@@ -48,19 +49,24 @@ impl<'hir> TemplateTransformer<'hir> {
     ) {
         let expression = self.transform_expression_by_id(node.expression_id, ctx);
         let anchor = ctx.anchor();
+        let expr_flags = self.analyses.get_expression_flags(node.expression_id);
 
-        let member = self.b.static_member_expr(anchor, options.property.to_str());
+        if expr_flags.has_rune_reference() {
+            //
+        } else {
+            let member = self.b.static_member_expr(anchor, options.property.to_str());
 
-        let set_text = self.b.assignment_expression_stmt(
-            BuilderAssignmentLeft::StaticMemberExpression(member),
-            BuilderAssignmentRight::Expr(expression),
-        );
+            let set_text = self.b.assignment_expression_stmt(
+                BuilderAssignmentLeft::StaticMemberExpression(member),
+                BuilderAssignmentRight::Expr(expression),
+            );
 
-        if options.need_empty_template {
-            ctx.push_template(Cow::Borrowed(" "));
+            if options.need_empty_template {
+                ctx.push_template(Cow::Borrowed(" "));
+            }
+
+            ctx.push_init(set_text);
         }
-
-        ctx.push_init(set_text);
     }
 
     pub(crate) fn transform_concatenation<'short>(
@@ -71,6 +77,7 @@ impl<'hir> TemplateTransformer<'hir> {
     ) {
         let mut parts = Vec::new();
         let anchor = ctx.anchor();
+        let mut expr_flags = ExpressionFlags::empty();
 
         for part in node.parts.iter() {
             match part {
@@ -79,25 +86,30 @@ impl<'hir> TemplateTransformer<'hir> {
                 }
                 hir::ConcatenationPart::Expression(expression_id) => {
                     let expr = self.transform_expression_by_id(*expression_id, ctx);
+                    let flags = self.analyses.get_expression_flags(*expression_id);
 
                     parts.push(TemplateLiteralPart::Expression(expr));
+                    expr_flags = expr_flags | *flags;
                 }
             }
         }
 
         let expression = self.b.template_literal2(parts);
 
-        let member = self.b.static_member_expr(anchor, options.property.to_str());
+        if expr_flags.has_rune_reference() {
+        } else {
+            let member = self.b.static_member_expr(anchor, options.property.to_str());
 
-        let set_text = self.b.assignment_expression_stmt(
-            BuilderAssignmentLeft::StaticMemberExpression(member),
-            BuilderAssignmentRight::Expr(self.b.expr(BExpr::TemplateLiteral(expression))),
-        );
+            let set_text = self.b.assignment_expression_stmt(
+                BuilderAssignmentLeft::StaticMemberExpression(member),
+                BuilderAssignmentRight::Expr(self.b.expr(BExpr::TemplateLiteral(expression))),
+            );
 
-        if options.need_empty_template {
-            ctx.push_template(Cow::Borrowed(" "));
+            if options.need_empty_template {
+                ctx.push_template(Cow::Borrowed(" "));
+            }
+
+            ctx.push_init(set_text);
         }
-
-        ctx.push_init(set_text);
     }
 }

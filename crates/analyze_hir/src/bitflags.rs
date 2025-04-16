@@ -92,3 +92,17 @@ impl OwnerContentType {
         (*consequent, *alternate)
     }
 }
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+   pub struct ExpressionFlags: u32 {
+       const RuneReference = 1 << 1;
+       const FunctionCall = 1 << 2;
+   }
+}
+
+impl ExpressionFlags {
+    pub fn has_rune_reference(&self) -> bool {
+        return self.contains(ExpressionFlags::RuneReference);
+    }
+}

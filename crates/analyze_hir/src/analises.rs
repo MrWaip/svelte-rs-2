@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use hir::{NodeId, OwnerId};
+use hir::{ExpressionId, NodeId, OwnerId};
 use oxc_ast::ast::Span;
 use oxc_semantic::{
     NodeId as OxcNodeId, Reference, ReferenceId, ScopeFlags, ScopeId, ScopeTree, SymbolFlags,
@@ -13,7 +13,7 @@ use oxc_span::SPAN;
 
 use crate::{
     analyze_script::SvelteRune,
-    bitflags::{OwnerContentType, OwnerContentTypeFlags},
+    bitflags::{ExpressionFlags, OwnerContentType, OwnerContentTypeFlags},
     indentifier_gen::IdentifierGen,
 };
 
@@ -24,6 +24,7 @@ pub struct HirAnalyses {
     identifier_generators: RefCell<HashMap<String, IdentifierGen>>,
     dynamic_nodes: HashSet<NodeId>,
     runes: HashMap<SymbolId, SvelteRune>,
+    expression_flags: HashMap<ExpressionId, ExpressionFlags>,
 }
 
 impl HirAnalyses {
@@ -35,6 +36,7 @@ impl HirAnalyses {
             identifier_generators: RefCell::new(HashMap::new()),
             dynamic_nodes: HashSet::new(),
             runes: HashMap::new(),
+            expression_flags: HashMap::new(),
         }
     }
 
@@ -188,5 +190,18 @@ impl HirAnalyses {
             .add_binding(scope_id, name, symbol_id);
 
         return symbol_id;
+    }
+
+    pub(crate) fn set_expression_flags(
+        &mut self,
+        expression_id: ExpressionId,
+        expression_flags: ExpressionFlags,
+    ) {
+        self.expression_flags
+            .insert(expression_id, expression_flags);
+    }
+
+    pub fn get_expression_flags(&self, expression_id: ExpressionId) -> &ExpressionFlags {
+        return self.expression_flags.get(&expression_id).unwrap();
     }
 }

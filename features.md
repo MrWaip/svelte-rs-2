@@ -19,6 +19,8 @@
             - [ ] `bind:this`
             - [ ] case with `UseDirective`
             - [ ] case with `getter === setter`
+- [ ] Interpolation / Concatenation
+    - [ ] transform: case inside contenteditable
 - [ ] Each block
     - [ ] transform: common case `{#each nodes as node}`
     - [ ] transform: with index `{#each nodes as node, idx}`
