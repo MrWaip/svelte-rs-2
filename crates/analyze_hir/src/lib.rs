@@ -9,7 +9,7 @@ mod scope_adding;
 pub use analises::HirAnalyses;
 use analyze_script::AnalyzeScript;
 pub use analyze_script::SvelteRune;
-pub use bitflags::{OwnerContentType, OwnerContentTypeFlags};
+pub use bitflags::{OwnerContentType, OwnerContentTypeFlags, ExpressionFlags};
 use hir::NodeId;
 use oxc_allocator::Allocator;
 use oxc_ast::visit::walk::walk_program;
