@@ -1,4 +1,6 @@
-use crate::{EachBlock, Element, HirStore, IfBlock, NodeId, Template};
+use oxc_syntax::scope::ScopeId;
+
+use crate::{EachBlock, Element, HirStore, IfBlock, NodeId, OwnerId, Template};
 
 #[derive(Debug)]
 pub enum OwnerNode<'hir> {
@@ -87,5 +89,15 @@ impl OwnerNode<'_> {
 
     pub fn is_element(&self) -> bool {
         matches!(self, OwnerNode::Element(_))
+    }
+
+    pub fn scope_id(&self) -> Option<ScopeId> {
+        match self {
+            OwnerNode::Element(it) => it.scope_id.get(),
+            OwnerNode::Template(it) => it.scope_id.get(),
+            OwnerNode::IfBlock(it) => it.scope_id.get(),
+            OwnerNode::EachBlock(it) => it.scope_id.get(),
+            OwnerNode::Phantom => todo!(),
+        }
     }
 }

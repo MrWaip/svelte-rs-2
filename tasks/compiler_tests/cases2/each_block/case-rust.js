@@ -9,7 +9,7 @@ export default function App($$anchor) {
 	], $.index, ($$anchor, item) => {
 		$.next();
 		var text = $.text();
-		text.nodeValue = item;
+		$.template_effect(() => $.set_text(text, item));
 		$.append($$anchor, text);
 	});
 	$.append($$anchor, fragment);

@@ -26,20 +26,25 @@ impl<'hir> AnalyzeHir<'hir> {
         analyses: &mut HirAnalyses,
         store: &hir::HirStore<'hir>,
     ) {
-        let root_scope_id = analyses.root_scope_id();
-
         let mut analyzer = AnalyzeTemplateExpression::new(analyses);
 
         for node in store.nodes.iter() {
+            if node.is_phantom() {
+                continue;
+            }
+
+            let parent_scope_id = store.get_owner_scope_id(node.owner_id()).unwrap();
+
             match node {
                 hir::Node::Text(_) => continue,
                 hir::Node::Interpolation(it) => {
                     let expression = store.get_expression(it.expression_id);
+
                     analyzer.analyze(
                         it.expression_id,
                         &expression,
                         ReferenceFlags::read(),
-                        root_scope_id,
+                        parent_scope_id,
                     );
                 }
                 hir::Node::Element(it) => {
@@ -51,7 +56,7 @@ impl<'hir> AnalyzeHir<'hir> {
                                     it.expression_id,
                                     &expression,
                                     ReferenceFlags::read_write(),
-                                    root_scope_id,
+                                    parent_scope_id,
                                 );
                             }
                             hir::AnyAttribute::ExpressionAttribute(it) => {
@@ -60,7 +65,7 @@ impl<'hir> AnalyzeHir<'hir> {
                                     it.expression_id,
                                     &expression,
                                     ReferenceFlags::read(),
-                                    root_scope_id,
+                                    parent_scope_id,
                                 );
                             }
                             hir::AnyAttribute::SpreadAttribute(it) => {
@@ -69,7 +74,7 @@ impl<'hir> AnalyzeHir<'hir> {
                                     it.expression_id,
                                     &expression,
                                     ReferenceFlags::read(),
-                                    root_scope_id,
+                                    parent_scope_id,
                                 );
                             }
                             hir::AnyAttribute::ConcatenationAttribute(it) => {
@@ -85,7 +90,7 @@ impl<'hir> AnalyzeHir<'hir> {
                                         *expression_id,
                                         &expression,
                                         ReferenceFlags::read(),
-                                        root_scope_id,
+                                        parent_scope_id,
                                     );
                                 }
                             }
@@ -112,13 +117,18 @@ impl<'hir> AnalyzeHir<'hir> {
                             *expression_id,
                             &expression,
                             ReferenceFlags::read(),
-                            root_scope_id,
+                            parent_scope_id,
                         );
                     }
                 }
                 hir::Node::IfBlock(it) => {
                     let expression = store.get_expression(it.test);
-                    analyzer.analyze(it.test, &expression, ReferenceFlags::read(), root_scope_id);
+                    analyzer.analyze(
+                        it.test,
+                        &expression,
+                        ReferenceFlags::read(),
+                        parent_scope_id,
+                    );
                 }
                 hir::Node::Comment(_) => continue,
                 hir::Node::Phantom => continue,
@@ -205,7 +215,7 @@ impl<'hir> Visit<'hir> for AnalyzeTemplateExpression<'hir> {
         &mut self,
         it: &oxc_ast::ast::ArrowFunctionExpression<'hir>,
     ) {
-        let scope_id = self.analyses.add_scope();
+        let scope_id = self.analyses.add_scope(None);
         it.set_scope_id(scope_id);
 
         walk_arrow_function_expression(self, it);
@@ -216,7 +226,7 @@ impl<'hir> Visit<'hir> for AnalyzeTemplateExpression<'hir> {
         it: &oxc_ast::ast::Function<'hir>,
         flags: oxc_semantic::ScopeFlags,
     ) {
-        let scope_id = self.analyses.add_scope();
+        let scope_id = self.analyses.add_scope(None);
         it.set_scope_id(scope_id);
 
         walk_function(self, it, flags);

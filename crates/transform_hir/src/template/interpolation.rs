@@ -2,7 +2,8 @@ use std::borrow::Cow;
 
 use analyze_hir::ExpressionFlags;
 use ast_builder::{
-    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr, TemplateLiteralPart,
+    BuilderAssignmentLeft, BuilderAssignmentRight, BuilderExpression as BExpr,
+    BuilderFunctionArgument, TemplateLiteralPart,
 };
 
 use crate::context::OwnerContext;
@@ -52,7 +53,15 @@ impl<'hir> TemplateTransformer<'hir> {
         let expr_flags = self.analyses.get_expression_flags(node.expression_id);
 
         if expr_flags.has_rune_reference() {
-            //
+            let call = self.b.call_stmt(
+                "$.set_text",
+                [
+                    BuilderFunctionArgument::Expr(anchor),
+                    BuilderFunctionArgument::Expr(expression),
+                ],
+            );
+
+            ctx.push_update(call);
         } else {
             let member = self.b.static_member_expr(anchor, options.property.to_str());
 

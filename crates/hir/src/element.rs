@@ -1,3 +1,7 @@
+use std::cell::Cell;
+
+use oxc_syntax::scope::ScopeId;
+
 use crate::{AttributeStore, NodeId, OwnerId};
 
 #[derive(Debug)]
@@ -9,6 +13,7 @@ pub struct Element<'hir> {
     pub self_closing: bool,
     pub kind: ElementKind,
     pub attributes: AttributeStore<'hir>,
+    pub scope_id: Cell<Option<ScopeId>>,
 }
 
 impl<'hir> Element<'hir> {
@@ -21,6 +26,7 @@ impl<'hir> Element<'hir> {
             self_closing,
             kind: ElementKind::from_str(name),
             attributes: AttributeStore::default(),
+            scope_id: Cell::new(None),
         }
     }
 

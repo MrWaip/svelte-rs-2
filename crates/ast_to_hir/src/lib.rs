@@ -59,7 +59,11 @@ impl<'hir> AstToHir<'hir> {
         ctx.push_owner_node(|ctx, node_id, _| {
             let node_ids: Vec<NodeId> = self.lower_nodes(ctx, template.nodes.nodes);
 
-            let template = hir::Template { node_ids, node_id };
+            let template = hir::Template {
+                node_ids,
+                node_id,
+                scope_id: Cell::new(None),
+            };
 
             (hir::Node::Phantom, OwnerNode::Template(ctx.alloc(template)))
         });
@@ -125,6 +129,7 @@ impl<'hir> AstToHir<'hir> {
                 test: expression_id,
                 consequent: self.lower_nodes(ctx, if_block.consequent.nodes),
                 is_elseif: if_block.is_elseif,
+                scope_id: Cell::new(None),
                 alternate: if_block
                     .alternate
                     .map(|fragment| self.lower_nodes(ctx, fragment.nodes)),
