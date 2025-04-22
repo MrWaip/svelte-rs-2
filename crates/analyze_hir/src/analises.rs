@@ -168,10 +168,10 @@ impl HirAnalyses {
         self.runes.get(&symbol_id.unwrap())
     }
 
-    pub(crate) fn add_scope(&self) -> ScopeId {
+    pub(crate) fn add_scope(&self, parent_scope_id: Option<ScopeId>) -> ScopeId {
         let root_scope = self.root_scope_id();
         return self.scope.borrow_mut().add_scope(
-            Some(root_scope),
+            parent_scope_id.or(Some(root_scope)),
             OxcNodeId::DUMMY,
             ScopeFlags::empty(),
         );

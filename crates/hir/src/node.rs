@@ -78,4 +78,8 @@ impl<'hir> Node<'hir> {
             Node::Phantom => todo!(),
         }
     }
+
+    pub fn is_phantom(&self) -> bool {
+        matches!(self, Node::Phantom)
+    }
 }

@@ -23,6 +23,7 @@ pub use store::HirStore;
 pub struct Template {
     pub node_ids: Vec<NodeId>,
     pub node_id: NodeId,
+    pub scope_id: Cell<Option<ScopeId>>,
 }
 
 #[derive(Debug)]
@@ -67,6 +68,7 @@ pub struct IfBlock {
     pub test: ExpressionId,
     pub consequent: Vec<NodeId>,
     pub alternate: Option<Vec<NodeId>>,
+    pub scope_id: Cell<Option<ScopeId>>,
 }
 
 #[derive(Debug)]

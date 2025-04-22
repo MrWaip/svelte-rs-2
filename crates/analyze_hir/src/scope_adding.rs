@@ -14,10 +14,18 @@ impl<'hir> AnalyzeHir<'hir> {
         analyses: &mut HirAnalyses,
         store: &hir::HirStore<'hir>,
     ) {
-        for node in store.nodes.iter() {
-            match node {
-                hir::Node::EachBlock(it) => {
-                    let scope_id = analyses.add_scope();
+        // для каждой node нужно проставить scope_id
+        // чтобы потом передавать его в rune_reference
+
+        for owner in store.owners.iter() {
+            match owner {
+                hir::OwnerNode::Template(it) => {
+                    it.scope_id.set(Some(analyses.root_scope_id()));
+                }
+                hir::OwnerNode::EachBlock(it) => {
+                    let parent_scope_id = store.get_owner_scope_id(it.owner_id);
+                    let scope_id = analyses.add_scope(parent_scope_id);
+
                     let mut visit = Visitor::new(analyses, scope_id);
 
                     it.scope_id.set(Some(scope_id));
@@ -25,7 +33,19 @@ impl<'hir> AnalyzeHir<'hir> {
                     let expression = store.get_expression(it.item);
                     visit.visit_expression(&expression);
                 }
-                _ => (),
+                hir::OwnerNode::Element(it) => {
+                    let parent_scope_id = store.get_owner_scope_id(it.owner_id);
+                    let scope_id = analyses.add_scope(parent_scope_id);
+
+                    it.scope_id.set(Some(scope_id));
+                }
+                hir::OwnerNode::IfBlock(it) => {
+                    let parent_scope_id = store.get_owner_scope_id(it.owner_id);
+                    let scope_id = analyses.add_scope(parent_scope_id);
+
+                    it.scope_id.set(Some(scope_id));
+                }
+                hir::OwnerNode::Phantom => unreachable!(),
             };
         }
     }

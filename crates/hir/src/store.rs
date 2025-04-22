@@ -5,6 +5,7 @@ use std::{
 
 use oxc_ast::ast::Expression;
 use oxc_index::IndexVec;
+use oxc_syntax::scope::ScopeId;
 
 use crate::{ExpressionId, Node, NodeId, OwnerId, OwnerNode, Program, Template};
 
@@ -33,6 +34,10 @@ impl<'hir> HirStore<'hir> {
 
     pub fn get_owner(&self, owner_id: OwnerId) -> &OwnerNode<'hir> {
         self.owners.get(owner_id).unwrap()
+    }
+
+    pub fn get_owner_scope_id(&self, owner_id: OwnerId) -> Option<ScopeId> {
+        return self.get_owner(owner_id).scope_id();
     }
 
     pub fn get_nth_owner(&self, idx: usize) -> &OwnerNode<'hir> {
