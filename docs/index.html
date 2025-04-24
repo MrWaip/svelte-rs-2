@@ -28,7 +28,9 @@
         </div>
         <div class="editor-box">
           <h2>
-            Rust JS output <br />
+            Rust JS output <span id="status"></span>
+
+            <br />
             <span class="perf" id="rust-perf"></span>
           </h2>
           <div id="preview" class="editor"></div>
@@ -174,12 +176,25 @@
           editorInstance.onDidChangeModelContent(() => {
             setTimeout(compileRust);
             setTimeout(compileSvelte);
+            setTimeout(compare);
           });
 
           setTimeout(compileRust);
           setTimeout(compileSvelte);
+          setTimeout(compare);
         });
       });
+
+      function compare() {
+        const status = document.getElementById("status");
+
+        if(sveltePreviewInstance.getValue() === rustPreviewInstance.getValue()) {
+          status.textContent = '✅'
+        } else {
+          status.textContent = '⚠️ different output' 
+        }
+
+      }
 
       function compileRust() {
         try {

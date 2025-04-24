@@ -17,6 +17,8 @@ pub struct TemplateTransformer<'hir> {
 }
 
 impl<'hir> TemplateTransformer<'hir> {
+    pub const COMMENT_NODE_ANCHOR: &'static str = "<!>";
+
     pub fn new(
         analyses: &'hir HirAnalyses,
         builder: &'hir Builder<'hir>,

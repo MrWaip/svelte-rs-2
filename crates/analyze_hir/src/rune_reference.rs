@@ -140,7 +140,7 @@ impl<'hir> AnalyzeHir<'hir> {
                         it.collection,
                         &expression,
                         ReferenceFlags::read(),
-                        each_scope_id,
+                        parent_scope_id,
                     );
 
                     let expression = store.get_expression(it.item);
@@ -215,7 +215,7 @@ impl<'hir> Visit<'hir> for AnalyzeTemplateExpression<'hir> {
         &mut self,
         it: &oxc_ast::ast::ArrowFunctionExpression<'hir>,
     ) {
-        let scope_id = self.analyses.add_scope(None);
+        let scope_id = self.analyses.add_scope(self.scope_id);
         it.set_scope_id(scope_id);
 
         walk_arrow_function_expression(self, it);
@@ -226,7 +226,7 @@ impl<'hir> Visit<'hir> for AnalyzeTemplateExpression<'hir> {
         it: &oxc_ast::ast::Function<'hir>,
         flags: oxc_semantic::ScopeFlags,
     ) {
-        let scope_id = self.analyses.add_scope(None);
+        let scope_id = self.analyses.add_scope(self.scope_id);
         it.set_scope_id(scope_id);
 
         walk_function(self, it, flags);

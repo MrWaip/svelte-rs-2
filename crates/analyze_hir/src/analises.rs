@@ -140,7 +140,7 @@ impl HirAnalyses {
         flags: oxc_semantic::ReferenceFlags,
         scope_id: ScopeId,
     ) -> Option<ReferenceId> {
-        let symbol_id = self.scope.borrow().get_binding(scope_id, name);
+        let symbol_id = self.scope.borrow().find_binding(scope_id, name);
 
         if let Some(symbol_id) = symbol_id {
             let mut reference = Reference::new(OxcNodeId::DUMMY, flags);
@@ -168,10 +168,9 @@ impl HirAnalyses {
         self.runes.get(&symbol_id.unwrap())
     }
 
-    pub(crate) fn add_scope(&self, parent_scope_id: Option<ScopeId>) -> ScopeId {
-        let root_scope = self.root_scope_id();
+    pub(crate) fn add_scope(&self, parent_scope_id: ScopeId) -> ScopeId {
         return self.scope.borrow_mut().add_scope(
-            parent_scope_id.or(Some(root_scope)),
+            Some(parent_scope_id),
             OxcNodeId::DUMMY,
             ScopeFlags::empty(),
         );

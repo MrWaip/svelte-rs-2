@@ -4,15 +4,13 @@ use crate::context::OwnerContext;
 
 use super::template_transformer::TemplateTransformer;
 
-const COMMENT_NODE_ANCHOR: &str = "<!>";
-
 impl<'hir> TemplateTransformer<'hir> {
     pub(crate) fn transform_if_block<'short>(
         &mut self,
         node: &hir::IfBlock,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
-        ctx.push_template(COMMENT_NODE_ANCHOR.into());
+        ctx.push_template(Self::COMMENT_NODE_ANCHOR.into());
         let mut statements = vec![];
         let self_owner_id = self.store.node_to_owner(&node.node_id);
         let content_type = self.analyses.get_content_type(&self_owner_id).as_if();
