@@ -24,7 +24,7 @@ impl<'hir> AnalyzeHir<'hir> {
                 }
                 hir::OwnerNode::EachBlock(it) => {
                     let parent_scope_id = store.get_owner_scope_id(it.owner_id);
-                    let scope_id = analyses.add_scope(parent_scope_id);
+                    let scope_id = analyses.add_scope(parent_scope_id.unwrap());
 
                     let mut visit = Visitor::new(analyses, scope_id);
 
@@ -35,13 +35,13 @@ impl<'hir> AnalyzeHir<'hir> {
                 }
                 hir::OwnerNode::Element(it) => {
                     let parent_scope_id = store.get_owner_scope_id(it.owner_id);
-                    let scope_id = analyses.add_scope(parent_scope_id);
+                    let scope_id = analyses.add_scope(parent_scope_id.unwrap());
 
                     it.scope_id.set(Some(scope_id));
                 }
                 hir::OwnerNode::IfBlock(it) => {
                     let parent_scope_id = store.get_owner_scope_id(it.owner_id);
-                    let scope_id = analyses.add_scope(parent_scope_id);
+                    let scope_id = analyses.add_scope(parent_scope_id.unwrap());
 
                     it.scope_id.set(Some(scope_id));
                 }

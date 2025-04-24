@@ -10,6 +10,7 @@ impl<'hir> TemplateTransformer<'hir> {
         node: &hir::EachBlock,
         ctx: &mut OwnerContext<'hir, 'short>,
     ) {
+        ctx.push_template(Self::COMMENT_NODE_ANCHOR.into());
         let self_owner_id = self.store.node_to_owner(&node.node_id);
         let collection_expr = self.transform_expression_by_id(node.collection, ctx);
         //

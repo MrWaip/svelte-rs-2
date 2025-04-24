@@ -53,6 +53,8 @@ impl<'hir> TemplateTransformer<'hir> {
         let expr_flags = self.analyses.get_expression_flags(node.expression_id);
 
         if expr_flags.has_rune_reference() {
+            ctx.push_template(Cow::Borrowed(" "));
+
             let call = self.b.call_stmt(
                 "$.set_text",
                 [
@@ -103,15 +105,26 @@ impl<'hir> TemplateTransformer<'hir> {
             }
         }
 
-        let expression = self.b.template_literal2(parts);
+        let expression = self.b.template_literal2_expr(parts);
 
         if expr_flags.has_rune_reference() {
+            ctx.push_template(Cow::Borrowed(" "));
+
+            let call = self.b.call_stmt(
+                "$.set_text",
+                [
+                    BuilderFunctionArgument::Expr(anchor),
+                    BuilderFunctionArgument::Expr(expression),
+                ],
+            );
+
+            ctx.push_update(call);
         } else {
             let member = self.b.static_member_expr(anchor, options.property.to_str());
 
             let set_text = self.b.assignment_expression_stmt(
                 BuilderAssignmentLeft::StaticMemberExpression(member),
-                BuilderAssignmentRight::Expr(self.b.expr(BExpr::TemplateLiteral(expression))),
+                BuilderAssignmentRight::Expr(expression),
             );
 
             if options.need_empty_template {

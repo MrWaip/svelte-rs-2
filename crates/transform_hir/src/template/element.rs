@@ -6,8 +6,7 @@ use hir::OwnerId;
 use crate::context::{FragmentContext, OwnerContext};
 
 use super::{
-    interpolation::TransformInterpolationOptions,
-    template_transformer::TemplateTransformer,
+    interpolation::TransformInterpolationOptions, template_transformer::TemplateTransformer,
 };
 
 impl<'hir> TemplateTransformer<'hir> {
@@ -37,7 +36,41 @@ impl<'hir> TemplateTransformer<'hir> {
 
         ctx.push_template(Cow::Borrowed(">"));
 
-        if content_type.any_interpolation_like() {
+        let has_state = element.node_ids.iter().any(|id| {
+            let node = self.store.get_node(*id);
+
+            match node {
+                hir::Node::Interpolation(interpolation) => {
+                    if self
+                        .analyses
+                        .get_expression_flags(interpolation.expression_id)
+                        .has_rune_reference()
+                    {
+                        return true;
+                    }
+                }
+                hir::Node::Concatenation(concatenation) => {
+                    for part in concatenation.parts.iter() {
+                        let hir::ConcatenationPart::Expression(expr_id) = part else {
+                            continue;
+                        };
+
+                        if self
+                            .analyses
+                            .get_expression_flags(*expr_id)
+                            .has_rune_reference()
+                        {
+                            return true;
+                        }
+                    }
+                }
+                _ => (),
+            }
+
+            return false;
+        });
+
+        if content_type.any_interpolation_like() && !has_state {
             self.element_text_shortcut(element, ctx, self_owner_id);
         } else {
             self.element_common(element, ctx, self_owner_id);
