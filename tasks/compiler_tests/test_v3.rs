@@ -81,3 +81,33 @@ fn utf8() { assert_compiler("utf8"); }
 
 #[rstest]
 fn smoke() { assert_compiler("smoke"); }
+
+// TODO: not yet implemented — stack overflow (class: directive codegen)
+// #[rstest]
+// fn class_directive() { assert_compiler("class_directive"); }
+
+// TODO: not yet implemented — stack overflow (update/update_pre codegen)
+// #[rstest]
+// fn rune_update() { assert_compiler("rune_update"); }
+
+// TODO: not yet implemented — $.set() in template expression
+// #[rstest]
+// fn assign_in_template() { assert_compiler("assign_in_template"); }
+
+#[rstest]
+fn only_script() { assert_compiler("only_script"); }
+
+#[rstest]
+fn hoist_imports() { assert_compiler("hoist_imports"); }
+
+// TODO: not yet implemented — bind:checked, bind:group
+// #[rstest]
+// fn bind_directives_extended() { assert_compiler("bind_directives_extended"); }
+
+// TODO: not yet implemented — full mutated state lifecycle
+// #[rstest]
+// fn mutated_state_rune() { assert_compiler("mutated_state_rune"); }
+
+// TODO: not yet implemented — static interpolation optimization
+// #[rstest]
+// fn static_interpolation() { assert_compiler("static_interpolation"); }

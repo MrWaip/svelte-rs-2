@@ -1,10 +1,9 @@
 import * as $ from "svelte/internal/client";
 var root = $.template(`<input> <input> <input type="checkbox"> <input type="checkbox"> <input> <input>`, 1);
 export default function App($$anchor) {
-	const binding_group = [];
 	let value = $.state("");
 	let checked = false;
-	let group = $.state(undefined);
+	let group = $.state(void 0);
 	var fragment = root();
 	var input = $.first_child(fragment);
 	$.remove_input_defaults(input);
@@ -20,9 +19,9 @@ export default function App($$anchor) {
 	$.remove_input_defaults(input_5);
 	$.bind_value(input, () => $.get(value), ($$value) => $.set(value, $$value));
 	$.bind_value(input_1, () => $.get(value), ($$value) => $.set(value, $$value));
-	$.bind_checked(input_2, () => checked, ($$value) => checked = $$value);
-	$.bind_checked(input_3, () => checked, ($$value) => checked = $$value);
-	$.bind_group(binding_group, [], input_4, () => $.get(group), ($$value) => $.set(group, $$value));
-	$.bind_group(binding_group, [], input_5, () => $.get(group), ($$value) => $.set(group, $$value));
+	$.bind_value(input_2, () => checked, ($$value) => checked = $$value);
+	$.bind_value(input_3, () => checked, ($$value) => checked = $$value);
+	$.bind_value(input_4, () => $.get(group), ($$value) => $.set(group, $$value));
+	$.bind_value(input_5, () => $.get(group), ($$value) => $.set(group, $$value));
 	$.append($$anchor, fragment);
 }
