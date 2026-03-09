@@ -1,4 +1,4 @@
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
+use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
 
 use crate::data::AnalysisData;
 
@@ -22,7 +22,7 @@ fn walk_node(node: &Node, component: &Component, data: &mut AnalysisData) {
         Node::Element(el) => {
             let mut needs_ref = false;
             for (attr_idx, attr) in el.attributes.iter().enumerate() {
-                if attr_references_rune(attr, component, data) {
+                if attr_references_rune(attr, attr_idx, el.id, data) {
                     data.dynamic_attrs.insert((el.id, attr_idx));
                     needs_ref = true;
                 }
@@ -54,65 +54,25 @@ fn walk_node(node: &Node, component: &Component, data: &mut AnalysisData) {
     }
 }
 
-fn expr_references_rune(node_id: &svelte_ast::NodeId, data: &AnalysisData) -> bool {
+fn expr_references_rune(node_id: &NodeId, data: &AnalysisData) -> bool {
     if let Some(info) = data.expressions.get(node_id) {
         return info
             .references
             .iter()
-            .any(|r| data.symbol_by_name.get(&r.name).is_some_and(|&idx| data.runes.contains_key(&idx)));
+            .any(|r| data.symbol_by_name.get(&r.name).is_some_and(|id| data.runes.contains_key(id)));
     }
     false
 }
 
-fn attr_references_rune(attr: &Attribute, component: &Component, data: &AnalysisData) -> bool {
-    match attr {
-        Attribute::ExpressionAttribute(a) => {
-            let source = component.source_text(a.expression_span);
-            let offset = a.expression_span.start as u32;
-            analyze_refs(source, offset, data)
-        }
-        Attribute::ConcatenationAttribute(a) => {
-            for part in &a.parts {
-                if let ConcatPart::Dynamic(span) = part {
-                    let source = component.source_text(*span);
-                    let offset = span.start as u32;
-                    if analyze_refs(source, offset, data) {
-                        return true;
-                    }
-                }
-            }
-            false
-        }
-        Attribute::ClassDirective(a) => {
-            if let Some(span) = a.expression_span {
-                let source = component.source_text(span);
-                let offset = span.start as u32;
-                return analyze_refs(source, offset, data);
-            }
-            false
-        }
-        Attribute::BindDirective(a) => {
-            if let Some(span) = a.expression_span {
-                let source = component.source_text(span);
-                let offset = span.start as u32;
-                return analyze_refs(source, offset, data);
-            }
-            false
-        }
-        Attribute::ShorthandOrSpread(a) => {
-            let source = component.source_text(a.expression_span);
-            let offset = a.expression_span.start as u32;
-            analyze_refs(source, offset, data)
-        }
-        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => false,
-    }
-}
-
-fn analyze_refs(source: &str, offset: u32, data: &AnalysisData) -> bool {
-    let Ok(info) = svelte_js::analyze_expression(source, offset) else {
+fn attr_references_rune(attr: &Attribute, attr_idx: usize, el_id: NodeId, data: &AnalysisData) -> bool {
+    if matches!(attr, Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)) {
         return false;
-    };
-    info.references
-        .iter()
-        .any(|r| data.symbol_by_name.get(&r.name).is_some_and(|&idx| data.runes.contains_key(&idx)))
+    }
+    if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
+        return info
+            .references
+            .iter()
+            .any(|r| data.symbol_by_name.get(&r.name).is_some_and(|id| data.runes.contains_key(id)));
+    }
+    false
 }
