@@ -1,6 +1,7 @@
 mod content_types;
 mod data;
 mod lower;
+mod mutations;
 mod parse_js;
 mod reactivity;
 mod runes;
@@ -18,13 +19,14 @@ use svelte_diagnostics::Diagnostic;
 /// Run all analysis passes over a parsed component.
 ///
 /// Pass order:
-/// 1. parse_js  — parse JS expressions + script block
-/// 2. symbols   — extract symbol declarations
-/// 3. runes     — detect rune symbols
-/// 4. lower     — trim whitespace, group text+expressions
-/// 5. reactivity — mark dynamic nodes and attributes
-/// 6. content_types — classify fragment content
-/// 7. validate  — semantic checks
+/// 1. parse_js    — parse JS expressions + script block
+/// 2. symbols     — extract symbol declarations
+/// 3. runes       — detect rune symbols
+/// 4. mutations   — detect mutated runes (script assignments + bind directives)
+/// 5. lower       — trim whitespace, group text+expressions
+/// 6. reactivity  — mark dynamic nodes and attributes
+/// 7. content_types — classify fragment content
+/// 8. validate    — semantic checks
 pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
@@ -32,6 +34,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     parse_js::parse_js(component, &mut data, &mut diags);
     symbols::collect_symbols(&mut data);
     runes::detect_runes(&mut data);
+    mutations::detect_mutations(component, &mut data);
     lower::lower(component, &mut data);
     reactivity::mark_reactivity(component, &mut data);
     content_types::classify_content(component, &mut data);

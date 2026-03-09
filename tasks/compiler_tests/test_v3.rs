@@ -74,7 +74,6 @@ fn elements_childs() { assert_compiler("elements_childs"); }
 fn generic_root_sequence() { assert_compiler("generic_root_sequence"); }
 
 #[rstest]
-#[ignore] // spread attrs not supported yet
 fn spread_attribute() { assert_compiler("spread_attribute"); }
 
 #[rstest]
