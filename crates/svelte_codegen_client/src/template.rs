@@ -514,6 +514,14 @@ fn process_attr<'a>(
                 [Arg::Ident(el_name), Arg::Str(a.name.clone()), Arg::Expr(val)],
             ));
         }
+        Attribute::ShorthandOrSpread(a) if !a.is_spread => {
+            let val = parse_expr(ctx, a.expression_span);
+            let name = ctx.component.source_text(a.expression_span).to_string();
+            target.push(ctx.b.call_stmt(
+                "$.set_attribute",
+                [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
+            ));
+        }
         Attribute::ShorthandOrSpread(_)
         | Attribute::ClassDirective(_)
         | Attribute::BindDirective(_) => {
@@ -677,7 +685,7 @@ fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
                 html.push_str(&format!(" {}=\"{}\"", a.name, ctx.component.source_text(a.value_span)));
             }
             Attribute::BooleanAttribute(a) => {
-                html.push_str(&format!(" {}", a.name));
+                html.push_str(&format!(" {}=\"\"", a.name));
             }
             _ => {}
         }
