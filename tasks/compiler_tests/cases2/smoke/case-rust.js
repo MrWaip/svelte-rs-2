@@ -14,9 +14,7 @@ export default function App($$anchor) {
 					var div_1 = root_2();
 					$.append($$anchor, div_1);
 				};
-				var alternate = ($$anchor) => {
-					var fragment_1 = $.comment();
-					var node_2 = $.first_child(fragment_1);
+				var alternate = ($$anchor, $$elseif) => {
 					{
 						var consequent_2 = ($$anchor) => {
 							var root_3 = $.template(`<div><p>Lorem</p></div>`);
@@ -28,17 +26,16 @@ export default function App($$anchor) {
 							var h2 = root_4();
 							$.append($$anchor, h2);
 						};
-						$.if(node_2, ($$render) => {
+						$.if($$anchor, ($$render) => {
 							if (featureB) $$render(consequent_2);
 else $$render(alternate_1, false);
-						});
+						}, $$elseif);
 					}
-					$.append($$anchor, fragment_1);
 				};
 				$.if(node_1, ($$render) => {
 					if (featureA) $$render(consequent_1);
 else $$render(alternate, false);
-				}, true);
+				});
 			}
 			$.append($$anchor, div);
 		};
