@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<h1><span></span><button>+</button> </h1><noscript>any content</noscript><!>`, 1);
+var root = $.template(`<h1><span></span> <button>+</button> some long text</h1> <noscript>any content</noscript> <!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
-	var node = $.sibling($.first_child(fragment), 2);
+	var node = $.sibling($.first_child(fragment), 4);
 	{
 		var consequent = ($$anchor) => {
 			var root_1 = $.template(`<div><!></div>`);
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 			var node_1 = $.child(div);
 			{
 				var consequent_1 = ($$anchor) => {
-					var root_2 = $.template(`<div><div></div><button></button></div>`);
+					var root_2 = $.template(`<div><div></div> <button></button></div>`);
 					var div_1 = root_2();
 					$.append($$anchor, div_1);
 				};

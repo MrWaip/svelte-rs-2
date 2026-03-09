@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<input><input><input>`, 1);
+var root = $.template(`<input> <input>  <input>`, 1);
 export default function App($$anchor) {
 	let value = "";
 	let name = "";
