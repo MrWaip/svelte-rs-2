@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<h1><span></span><button>+</button> </h1><noscript> any content </noscript><!>`, 1);
+var root = $.template(`<h1><span></span><button>+</button> </h1><noscript>any content</noscript><!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
 	var node = $.sibling($.first_child(fragment), 2);
@@ -24,7 +24,7 @@ export default function App($$anchor) {
 							$.append($$anchor, div_2);
 						};
 						var alternate_1 = ($$anchor) => {
-							var root_4 = $.template(`<h2> Old UI </h2>`);
+							var root_4 = $.template(`<h2>Old UI</h2>`);
 							var h2 = root_4();
 							$.append($$anchor, h2);
 						};
@@ -45,7 +45,7 @@ else $$render(alternate, false);
 		var alternate_2 = ($$anchor) => {
 			var root_5 = $.template(`<div></div>`);
 			var div_3 = root_5();
-			div_3.textContent = ` Spinner ${percent ?? ""}`;
+			div_3.textContent = `Spinner ${percent ?? ""}`;
 			$.append($$anchor, div_3);
 		};
 		$.if(node, ($$render) => {
