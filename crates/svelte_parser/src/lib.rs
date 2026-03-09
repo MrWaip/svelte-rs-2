@@ -492,126 +492,99 @@ mod tests {
         Parser::new(source).parse().unwrap()
     }
 
+    fn assert_node(c: &Component, index: usize, expected: &str) {
+        assert_eq!(c.source_text(c.fragment.nodes[index].span()), expected);
+    }
+
+    fn assert_script(c: &Component, expected: &str) {
+        let script = c.script.as_ref().expect("expected script");
+        assert_eq!(c.source_text(script.content_span), expected);
+    }
+
+    fn assert_if_block(c: &Component, index: usize, expected_test: &str) {
+        if let Node::IfBlock(ref ib) = c.fragment.nodes[index] {
+            assert_eq!(c.source_text(ib.test_span), expected_test);
+        } else {
+            panic!("expected IfBlock at index {index}");
+        }
+    }
+
     #[test]
     fn smoke_text_and_element() {
         let c = parse("prefix <div>text</div>");
-        assert_eq!(c.fragment.nodes.len(), 2);
-        assert!(c.fragment.nodes[0].is_text());
-        assert!(c.fragment.nodes[1].is_element());
+        assert_node(&c, 0, "prefix ");
+        assert_node(&c, 1, "<div>text</div>");
     }
 
     #[test]
     fn self_closed_element() {
         let c = parse("<img /><body><input/></body>");
-        assert_eq!(c.fragment.nodes.len(), 2);
-        assert!(c.fragment.nodes[0].is_element());
-        assert!(c.fragment.nodes[1].is_element());
-
-        // Check inner child of body
-        if let Node::Element(ref el) = c.fragment.nodes[1] {
-            assert_eq!(el.name, "body");
-            assert_eq!(el.fragment.nodes.len(), 1);
-        } else {
-            panic!("expected element");
-        }
+        assert_node(&c, 0, "<img />");
+        assert_node(&c, 1, "<body><input/></body>");
     }
 
     #[test]
     fn interpolation() {
         let c = parse("{ id - 22 + 1 }");
-        assert_eq!(c.fragment.nodes.len(), 1);
-        assert!(c.fragment.nodes[0].is_expression_tag());
+        assert_node(&c, 0, "{ id - 22 + 1 }");
     }
 
     #[test]
     fn if_block() {
         let c = parse("{#if true}<div>title</div>{/if}");
-        assert_eq!(c.fragment.nodes.len(), 1);
-        assert!(c.fragment.nodes[0].is_if_block());
-
-        if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
-            assert_eq!(ib.consequent.nodes.len(), 1);
-            assert!(ib.alternate.is_none());
-        }
+        assert_node(&c, 0, "{#if true}<div>title</div>{/if}");
+        assert_if_block(&c, 0, "true");
     }
 
     #[test]
     fn if_else_block() {
         let c = parse("{#if true}<div>title</div>{:else}<h1>big</h1>{/if}");
-        assert_eq!(c.fragment.nodes.len(), 1);
-
-        if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
-            assert_eq!(ib.consequent.nodes.len(), 1);
-            assert!(ib.alternate.is_some());
-            assert_eq!(ib.alternate.as_ref().unwrap().nodes.len(), 1);
-        }
+        assert_node(&c, 0, "{#if true}<div>title</div>{:else}<h1>big</h1>{/if}");
+        assert_if_block(&c, 0, "true");
     }
 
     #[test]
     fn if_elseif_else_block() {
         let c = parse("{#if false}one{:else if true}two{:else}three{/if}");
-        assert_eq!(c.fragment.nodes.len(), 1);
-
-        if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
-            assert_eq!(ib.consequent.nodes.len(), 1); // "one"
-            assert!(ib.alternate.is_some());
-            // alternate contains the else-if block
-            let alt = ib.alternate.as_ref().unwrap();
-            assert_eq!(alt.nodes.len(), 1);
-            assert!(alt.nodes[0].is_if_block());
-        }
+        assert_node(&c, 0, "{#if false}one{:else if true}two{:else}three{/if}");
+        assert_if_block(&c, 0, "false");
     }
 
     #[test]
     fn each_block() {
         let c = parse("{#each values as value}item: {value}{/each}");
-        assert_eq!(c.fragment.nodes.len(), 1);
-
-        if let Node::EachBlock(ref eb) = c.fragment.nodes[0] {
-            assert_eq!(eb.body.nodes.len(), 2); // text + expression_tag
-        }
+        assert_node(&c, 0, "{#each values as value}item: {value}{/each}");
     }
 
     #[test]
     fn script_tag() {
         let c = parse("<script>const i = 10;</script>");
-        assert!(c.script.is_some());
-        let script = c.script.as_ref().unwrap();
-        let content = c.source_text(script.content_span);
-        assert_eq!(content, "const i = 10;");
+        assert_script(&c, "const i = 10;");
     }
 
     #[test]
     fn script_tag_lang_ts() {
         let c = parse(r#"<script lang="ts">const i: number = 10;</script>"#);
-        assert!(c.script.is_some());
-        let script = c.script.as_ref().unwrap();
+        let script = c.script.as_ref().expect("expected script");
         assert_eq!(script.language, ScriptLanguage::TypeScript);
     }
 
     #[test]
     fn comment() {
         let c = parse("<!-- some comment -->");
-        assert_eq!(c.fragment.nodes.len(), 1);
-        assert!(c.fragment.nodes[0].is_comment());
+        assert_node(&c, 0, "<!-- some comment -->");
     }
 
     #[test]
     fn element_with_attributes() {
         let c = parse(r#"<div lang="ts" disabled value={expr}>text</div>"#);
-        assert_eq!(c.fragment.nodes.len(), 1);
-        if let Node::Element(ref el) = c.fragment.nodes[0] {
-            assert_eq!(el.attributes.len(), 3);
-        }
+        assert_node(&c, 0, r#"<div lang="ts" disabled value={expr}>text</div>"#);
     }
 
     #[test]
     fn nested_if_in_element() {
         let c = parse("<div>{#if true}inside{/if}</div>");
-        if let Node::Element(ref el) = c.fragment.nodes[0] {
-            assert_eq!(el.fragment.nodes.len(), 1);
-            assert!(el.fragment.nodes[0].is_if_block());
-        }
+        assert_node(&c, 0, "<div>{#if true}inside{/if}</div>");
     }
 
     #[test]
@@ -623,6 +596,8 @@ mod tests {
     #[test]
     fn multiple_roots() {
         let c = parse("<div>a</div><span>b</span>text");
-        assert_eq!(c.fragment.nodes.len(), 3);
+        assert_node(&c, 0, "<div>a</div>");
+        assert_node(&c, 1, "<span>b</span>");
+        assert_node(&c, 2, "text");
     }
 }

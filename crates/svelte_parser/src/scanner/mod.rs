@@ -490,14 +490,20 @@ impl<'a> Scanner<'a> {
             }
 
             if char == '}' && stack.pop().is_none() {
-                let value = if self.current - start > 2 {
+                let raw = if self.current - start > 2 {
                     self.slice_source(start, self.prev)
                 } else {
                     ""
                 };
 
+                let value = raw.trim();
+                let trim_start = raw.len() - raw.trim_start().len();
+                let trim_end = raw.len() - raw.trim_end().len();
+                let span_start = start + trim_start;
+                let span_end = self.prev - trim_end;
+
                 return Ok(JsExpression {
-                    span: Span::new(start, self.current),
+                    span: Span::new(span_start, span_end),
                     value,
                 });
             }
