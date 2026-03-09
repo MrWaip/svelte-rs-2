@@ -747,6 +747,7 @@ impl<'a> Scanner<'a> {
     fn start_each_tag(&mut self) -> Result<(), Diagnostic> {
         let mut collection = None;
         let mut item = None;
+        let mut end_collection_pos = 0;
 
         self.skip_whitespace();
 
@@ -760,7 +761,7 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            let end_collection_pos = self.current;
+            end_collection_pos = self.current;
 
             self.skip_whitespace();
 
@@ -789,7 +790,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection: JsExpression {
-                span: SPAN,
+                span: Span::new(start_collection_pos, end_collection_pos),
                 value: collection,
             },
             item,
