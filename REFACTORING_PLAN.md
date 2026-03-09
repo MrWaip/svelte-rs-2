@@ -1,32 +1,10 @@
 # Рефакторинг Svelte-RS: План и прогресс
 
-### Stage 3c: Тесты в стиле cases2 ⏳
-
-**Структура**: `case.svelte` (вход) + `case-svelte.js` (expected output от Svelte).
-`case-rust.js` — фиксируется как output Rust-компилятора после прохождения тестов.
-
-**Задачи:**
-1. Тест-раннер в `svelte_compiler`: читает папки из `tasks/compiler_tests/cases2/`, для каждой `compile(case.svelte)` → сравнивает с `case-svelte.js`
-2. Покрыть кейсы: empty, single_text_node, single_element, single_interpolation, element_attributes, state_runes, single_if_block, single_if_else_block, each_block, bind_directives, smoke
-3. `cargo test` — все зелёные
-
-Запуск конкретного теста: `cargo test -p compiler_tests <test_name>`
-
-### Stage 3d-1: Text whitespace trimming ⏳
-Тесты: `single_text_node`, `single_if_block`, `single_if_else_block`
-Проблема: лишние пробелы в строках `$.text(" some long text line ")`
-
-### Stage 3d-2: Dynamic text API ⏳
-Тесты: `single_interpolation`, `single_concatenation`
-Проблема: генерируем `$.set_text(text, expr)`, ожидается `text.nodeValue = expr`
-
-### Stage 3d-3: else-if codegen ⏳
-Тесты: `single_if_else_block`, `generic_root_sequence`
-Проблема: alternate должен быть `($$anchor, $$elseif)`, вложенный `$.if` получает `$$anchor`, лишний `, true` в конце внешнего `$.if`, лишнее создание fragment+first_child в else-if ветке
-
-### Stage 3d-4: Whitespace between siblings in templates ⏳
-Тесты: `utf8`, `nested_resets`, `bind_directives`
-Проблема: пробелы между соседними элементами в template строках убираются, должны сохраняться
+### Stage 3c: Тесты в стиле cases2 ✅
+### Stage 3d-1: Text whitespace trimming ✅
+### Stage 3d-2: Dynamic text API ✅
+### Stage 3d-3: else-if codegen ✅
+### Stage 3d-4: Whitespace between siblings in templates ✅
 
 ### Stage 3d-5: Boolean attribute format + shorthand attr as dynamic ⏳
 Тесты: `element_attributes`
