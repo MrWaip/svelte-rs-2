@@ -755,8 +755,10 @@ fn emit_text_update<'a>(
         let eff = ctx.b.arrow(ctx.b.no_params(), [set]);
         body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
     } else {
-        let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
-        body.push(set);
+        body.push(ctx.b.assign_stmt(
+            AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
+            AssignRight::Expr(expr),
+        ));
     }
 }
 
