@@ -7,7 +7,7 @@ export default function App($$anchor) {
 	var text = $.first_child(fragment);
 	text.nodeValue = `${title ?? ""} `;
 	var div = $.sibling(text);
-	var text_1 = $.sibling($.child(div));
+	var text_1 = $.sibling($.child(div), 1, true);
 	text_1.nodeValue = ` ${title ?? ""}`;
 	$.reset(div);
 	var div_1 = $.sibling(div, 2);
