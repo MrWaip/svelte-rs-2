@@ -1,101 +1,31 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
-use svelte_ast::{Component, NodeId};
+use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use svelte_span::Span;
 
 use crate::builder::Builder;
 
-/// Accumulated output for one "fragment owner" (root, element child, if branch, each body).
-pub struct FragmentCtx<'a> {
-    /// HTML string pieces for the `$.template(...)` call.
-    pub template: Vec<String>,
-    /// DOM traversal + one-time init statements.
-    pub init: Vec<Statement<'a>>,
-    /// Statements that go inside `$.template_effect(...)`.
-    pub update: Vec<Statement<'a>>,
-    /// Statements that run after the template_effect (e.g. bind directives).
-    pub after_update: Vec<Statement<'a>>,
-}
-
-impl<'a> FragmentCtx<'a> {
-    pub fn new() -> Self {
-        Self {
-            template: Vec::new(),
-            init: Vec::new(),
-            update: Vec::new(),
-            after_update: Vec::new(),
-        }
-    }
-
-    pub fn template_html(&self) -> String {
-        self.template.concat()
-    }
-}
-
-/// Tracks the DOM cursor position while traversing fragment items.
-pub struct DomCursor<'a> {
-    /// The current "previous" DOM expression (e.g. `$.first_child(fragment)` or a var reference).
-    pub prev: Expression<'a>,
-    /// Number of DOM siblings traversed since the last assigned variable.
-    pub sibling_offset: usize,
-    /// True until the first variable assignment inside this fragment has been made.
-    pub is_first: bool,
-}
-
-impl<'a> DomCursor<'a> {
-    pub fn new(anchor: Expression<'a>) -> Self {
-        Self { prev: anchor, sibling_offset: 0, is_first: true }
-    }
-
-    /// Advance past a static sibling (increment offset).
-    pub fn next_sibling(&mut self) {
-        self.sibling_offset += 1;
-    }
-
-    /// Build the expression to get the current item node, then reset offset to 0.
-    /// Returns the expression WITHOUT assigning it to a variable.
-    pub fn take_node_expr<'b>(&mut self, b: &Builder<'a>) -> Expression<'a> {
-        let expr = b.move_expr(&mut self.prev);
-
-        if self.sibling_offset == 0 {
-            // Current item IS the prev expression
-            return expr;
-        }
-
-        let args: Vec<crate::builder::Arg<'a, '_>> = if self.sibling_offset == 1 {
-            vec![crate::builder::Arg::Expr(expr)]
-        } else {
-            vec![
-                crate::builder::Arg::Expr(expr),
-                crate::builder::Arg::Num(self.sibling_offset as f64),
-            ]
-        };
-
-        b.call_expr("$.sibling", args)
-    }
-
-    /// Reset after assigning a variable: set sibling_offset = 1 (next is 1 away),
-    /// and record the variable as prev.
-    pub fn after_assign(&mut self, var_expr: Expression<'a>) {
-        self.prev = var_expr;
-        self.sibling_offset = 1;
-        self.is_first = false;
-    }
-}
-
 /// Central codegen context. Holds refs to allocator, builder, component, analysis,
-/// and mutable state (ident counter, mutated runes set).
+/// and mutable state (ident counter, node index, rune caches).
 pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
     pub analysis: &'a AnalysisData,
     /// Monotonically incrementing counter per name prefix.
     ident_counters: HashMap<String, u32>,
-    /// Rune symbol names that are mutated (assigned at least once in script).
-    pub mutated_runes: std::collections::HashSet<String>,
     /// Template declarations from nested fragments, hoisted to module scope.
     pub module_hoisted: Vec<Statement<'a>>,
+
+    // -- Node index (O(1) lookup by NodeId) --
+    elements: HashMap<NodeId, &'a Element>,
+    if_blocks: HashMap<NodeId, &'a IfBlock>,
+    each_blocks: HashMap<NodeId, &'a EachBlock>,
+    expr_spans: HashMap<NodeId, Span>,
+
+    // -- Cached rune metadata --
+    pub rune_names: HashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -104,15 +34,57 @@ impl<'a> Ctx<'a> {
         component: &'a Component,
         analysis: &'a AnalysisData,
     ) -> Self {
+        let mut elements = HashMap::new();
+        let mut if_blocks = HashMap::new();
+        let mut each_blocks = HashMap::new();
+        let mut expr_spans = HashMap::new();
+        build_node_index(
+            &component.fragment,
+            &mut elements,
+            &mut if_blocks,
+            &mut each_blocks,
+            &mut expr_spans,
+        );
+
+        let rune_names: HashSet<String> = analysis
+            .symbol_by_name
+            .iter()
+            .filter_map(|(name, sid)| analysis.runes.contains_key(sid).then(|| name.clone()))
+            .collect();
+
         Self {
             b: Builder::new(allocator),
             component,
             analysis,
             ident_counters: HashMap::new(),
-            mutated_runes: std::collections::HashSet::new(),
             module_hoisted: Vec::new(),
+            elements,
+            if_blocks,
+            each_blocks,
+            expr_spans,
+            rune_names,
         }
     }
+
+    // -- Node lookups (O(1)) --
+
+    pub fn element(&self, id: NodeId) -> &'a Element {
+        self.elements.get(&id).copied().expect("element not found")
+    }
+
+    pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
+        self.if_blocks.get(&id).copied().expect("if block not found")
+    }
+
+    pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
+        self.each_blocks.get(&id).copied().expect("each block not found")
+    }
+
+    pub fn expr_span(&self, id: NodeId) -> Span {
+        self.expr_spans.get(&id).copied().expect("expr tag not found")
+    }
+
+    // -- Identifiers --
 
     /// Generate a unique identifier like `root`, `root_1`, `root_2`, …
     pub fn gen_ident(&mut self, prefix: &str) -> String {
@@ -126,19 +98,44 @@ impl<'a> Ctx<'a> {
         name
     }
 
-    /// Look up the source text for a span.
-    pub fn span_text(&self, span: svelte_span::Span) -> &str {
-        self.component.source_text(span)
-    }
+}
 
-    /// Check if a node (ExpressionTag / IfBlock / EachBlock) is dynamic
-    /// (references a rune symbol).
-    pub fn is_dynamic_node(&self, id: NodeId) -> bool {
-        self.analysis.dynamic_nodes.contains(&id)
-    }
 
-    /// Check if a rune symbol name is mutated (assigned in script).
-    pub fn rune_is_mutated(&self, name: &str) -> bool {
-        self.mutated_runes.contains(name)
+// ---------------------------------------------------------------------------
+// Index builder — walks AST once, populates HashMaps
+// ---------------------------------------------------------------------------
+
+fn build_node_index<'a>(
+    fragment: &'a Fragment,
+    elements: &mut HashMap<NodeId, &'a Element>,
+    if_blocks: &mut HashMap<NodeId, &'a IfBlock>,
+    each_blocks: &mut HashMap<NodeId, &'a EachBlock>,
+    expr_spans: &mut HashMap<NodeId, Span>,
+) {
+    for node in &fragment.nodes {
+        match node {
+            Node::Element(el) => {
+                elements.insert(el.id, el);
+                build_node_index(&el.fragment, elements, if_blocks, each_blocks, expr_spans);
+            }
+            Node::IfBlock(b) => {
+                if_blocks.insert(b.id, b);
+                build_node_index(&b.consequent, elements, if_blocks, each_blocks, expr_spans);
+                if let Some(alt) = &b.alternate {
+                    build_node_index(alt, elements, if_blocks, each_blocks, expr_spans);
+                }
+            }
+            Node::EachBlock(b) => {
+                each_blocks.insert(b.id, b);
+                build_node_index(&b.body, elements, if_blocks, each_blocks, expr_spans);
+                if let Some(fb) = &b.fallback {
+                    build_node_index(fb, elements, if_blocks, each_blocks, expr_spans);
+                }
+            }
+            Node::ExpressionTag(t) => {
+                expr_spans.insert(t.id, t.expression_span);
+            }
+            _ => {}
+        }
     }
 }

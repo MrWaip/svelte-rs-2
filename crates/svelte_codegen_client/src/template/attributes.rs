@@ -1,0 +1,248 @@
+//! Attribute processing (per-attribute and spread).
+
+use oxc_ast::ast::Statement;
+
+use svelte_ast::{Attribute, Element};
+
+use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
+use crate::context::Ctx;
+
+use super::expression::{build_attr_concat, parse_expr};
+
+/// Process a single attribute (non-spread path).
+pub(crate) fn process_attr<'a>(
+    ctx: &mut Ctx<'a>,
+    attr: &Attribute,
+    el_name: &str,
+    is_dyn: bool,
+    init: &mut Vec<Statement<'a>>,
+    update: &mut Vec<Statement<'a>>,
+    after_update: &mut Vec<Statement<'a>>,
+) {
+    let target = if is_dyn {
+        update as &mut Vec<_>
+    } else {
+        init as &mut Vec<_>
+    };
+
+    match attr {
+        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {
+            // Static — already in template HTML
+        }
+        Attribute::ExpressionAttribute(a) => {
+            let val = parse_expr(ctx, a.expression_span);
+            target.push(ctx.b.call_stmt(
+                "$.set_attribute",
+                [
+                    Arg::Ident(el_name),
+                    Arg::Str(a.name.clone()),
+                    Arg::Expr(val),
+                ],
+            ));
+        }
+        Attribute::ConcatenationAttribute(a) => {
+            let val = build_attr_concat(ctx, &a.parts);
+            target.push(ctx.b.call_stmt(
+                "$.set_attribute",
+                [
+                    Arg::Ident(el_name),
+                    Arg::Str(a.name.clone()),
+                    Arg::Expr(val),
+                ],
+            ));
+        }
+        Attribute::ShorthandOrSpread(a) if !a.is_spread => {
+            let val = parse_expr(ctx, a.expression_span);
+            let name = ctx.component.source_text(a.expression_span).to_string();
+            target.push(ctx.b.call_stmt(
+                "$.set_attribute",
+                [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
+            ));
+        }
+        Attribute::BindDirective(bind) => {
+            let var_name = if bind.shorthand {
+                bind.name.clone()
+            } else if let Some(span) = bind.expression_span {
+                ctx.component.source_text(span).trim().to_string()
+            } else {
+                return;
+            };
+
+            let is_mutated_rune = ctx.analysis.mutated_runes.contains(&var_name)
+                && ctx
+                    .analysis
+                    .symbol_by_name
+                    .get(&var_name)
+                    .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+
+            let getter_body = if is_mutated_rune {
+                ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+            } else {
+                ctx.b.rid_expr(&var_name)
+            };
+            let getter = ctx
+                .b
+                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
+
+            let setter_body = if is_mutated_rune {
+                ctx.b
+                    .call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
+            } else {
+                ctx.b.assign_expr(
+                    AssignLeft::Ident(var_name),
+                    AssignRight::Expr(ctx.b.rid_expr("$$value")),
+                )
+            };
+            let setter = ctx.b.arrow_expr(
+                ctx.b.params(["$$value"]),
+                [ctx.b.expr_stmt(setter_body)],
+            );
+
+            after_update.push(ctx.b.call_stmt(
+                "$.bind_value",
+                [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+            ));
+        }
+        Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) => {
+            // Spread handled by process_attrs_spread; class directives TODO
+        }
+    }
+}
+
+/// Check if an element has any spread attribute.
+pub(crate) fn has_spread(el: &Element) -> bool {
+    el.attributes
+        .iter()
+        .any(|a| matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread))
+}
+
+/// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
+pub(crate) fn process_attrs_spread<'a>(
+    ctx: &mut Ctx<'a>,
+    el: &Element,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+    after_update: &mut Vec<Statement<'a>>,
+) {
+    let attrs_var = ctx.gen_ident("attributes");
+
+    // `let attributes;`
+    init.push(ctx.b.let_stmt(&attrs_var));
+
+    // Build object literal with all attributes
+    let mut props: Vec<ObjProp<'a>> = Vec::new();
+
+    for attr in &el.attributes {
+        match attr {
+            Attribute::BooleanAttribute(a) => {
+                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                props.push(ObjProp::KeyValue(name_alloc, ctx.b.bool_expr(true)));
+            }
+            Attribute::StringAttribute(a) => {
+                let val = ctx.component.source_text(a.value_span).to_string();
+                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(&val)));
+            }
+            Attribute::ExpressionAttribute(a) => {
+                let expr = parse_expr(ctx, a.expression_span);
+                let expr_text = ctx.component.source_text(a.expression_span).trim();
+                if a.name == expr_text {
+                    // Property shorthand: name matches expression
+                    let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                    props.push(ObjProp::Shorthand(name_alloc));
+                } else {
+                    let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                    props.push(ObjProp::KeyValue(name_alloc, expr));
+                }
+            }
+            Attribute::ConcatenationAttribute(a) => {
+                let val = build_attr_concat(ctx, &a.parts);
+                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                props.push(ObjProp::KeyValue(name_alloc, val));
+            }
+            Attribute::ShorthandOrSpread(a) if a.is_spread => {
+                // expression_span includes "..." prefix — skip it
+                let span = svelte_span::Span::new(
+                    a.expression_span.start + 3,
+                    a.expression_span.end,
+                );
+                let expr = parse_expr(ctx, span);
+                props.push(ObjProp::Spread(expr));
+            }
+            Attribute::ShorthandOrSpread(a) => {
+                let name = ctx.component.source_text(a.expression_span).trim();
+                let name_alloc = ctx.b.ast.allocator.alloc_str(name);
+                props.push(ObjProp::Shorthand(name_alloc));
+            }
+            Attribute::BindDirective(bind) => {
+                // Bind directives are handled separately
+                let var_name = if bind.shorthand {
+                    bind.name.clone()
+                } else if let Some(span) = bind.expression_span {
+                    ctx.component.source_text(span).trim().to_string()
+                } else {
+                    continue;
+                };
+
+                let is_mutated_rune = ctx.analysis.mutated_runes.contains(&var_name)
+                    && ctx
+                        .analysis
+                        .symbol_by_name
+                        .get(&var_name)
+                        .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+
+                let getter_body = if is_mutated_rune {
+                    ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+                } else {
+                    ctx.b.rid_expr(&var_name)
+                };
+                let getter = ctx
+                    .b
+                    .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
+
+                let setter_body = if is_mutated_rune {
+                    ctx.b
+                        .call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
+                } else {
+                    ctx.b.assign_expr(
+                        AssignLeft::Ident(var_name),
+                        AssignRight::Expr(ctx.b.rid_expr("$$value")),
+                    )
+                };
+                let setter = ctx.b.arrow_expr(
+                    ctx.b.params(["$$value"]),
+                    [ctx.b.expr_stmt(setter_body)],
+                );
+
+                after_update.push(ctx.b.call_stmt(
+                    "$.bind_value",
+                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                ));
+                continue;
+            }
+            Attribute::ClassDirective(_) => continue,
+        }
+    }
+
+    // $.set_attributes(el, attributes, { ... })
+    let obj = ctx.b.object_expr(props);
+    let set_attrs = ctx.b.call_expr(
+        "$.set_attributes",
+        [
+            Arg::Ident(el_name),
+            Arg::Ident(&attrs_var),
+            Arg::Expr(obj),
+        ],
+    );
+
+    // attributes = $.set_attributes(...)
+    let assign = ctx.b.assign_expr(
+        AssignLeft::Ident(attrs_var),
+        AssignRight::Expr(set_attrs),
+    );
+
+    // Wrap in template_effect
+    let effect_body = ctx.b.expr_stmt(assign);
+    let effect_fn = ctx.b.arrow(ctx.b.no_params(), [effect_body]);
+    init.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(effect_fn)]));
+}

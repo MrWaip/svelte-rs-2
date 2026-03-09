@@ -150,6 +150,29 @@ impl<'a> Builder<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Let)
     }
 
+    /// `let name;` — uninitialized variable declaration.
+    pub fn let_stmt(&self, name: &str) -> Statement<'a> {
+        let pattern = self.ast.binding_pattern(
+            BindingPatternKind::BindingIdentifier(self.alloc(self.bid(name))),
+            NONE,
+            false,
+        );
+        let decl = self.ast.variable_declarator(
+            SPAN,
+            VariableDeclarationKind::Let,
+            pattern,
+            None,
+            false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Let,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     pub fn const_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Const)
     }
@@ -450,4 +473,68 @@ impl<'a> Builder<'a> {
             scope_id: Cell::from(None),
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Object expressions (for spread attributes)
+    // -----------------------------------------------------------------------
+
+    pub fn object_expr(
+        &self,
+        props: impl IntoIterator<Item = ObjProp<'a>>,
+    ) -> Expression<'a> {
+        let properties = props.into_iter().map(|p| self.obj_prop_to_ast(p));
+        Expression::ObjectExpression(self.alloc(
+            self.ast.object_expression(SPAN, self.ast.vec_from_iter(properties), None),
+        ))
+    }
+
+    fn obj_prop_to_ast(&self, prop: ObjProp<'a>) -> ast::ObjectPropertyKind<'a> {
+        match prop {
+            ObjProp::KeyValue(key, value) => {
+                let key_node = ast::PropertyKey::StaticIdentifier(
+                    self.alloc(self.ast.identifier_name(SPAN, key)),
+                );
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Init,
+                    key_node,
+                    value,
+                    false,  // method
+                    false,  // shorthand
+                    false,  // computed
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
+            ObjProp::Shorthand(name) => {
+                let key_node = ast::PropertyKey::StaticIdentifier(
+                    self.alloc(self.ast.identifier_name(SPAN, name)),
+                );
+                let value = self.rid_expr(name);
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Init,
+                    key_node,
+                    value,
+                    false,  // method
+                    true,   // shorthand
+                    false,  // computed
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
+            ObjProp::Spread(expr) => {
+                let spread = self.ast.spread_element(SPAN, expr);
+                ast::ObjectPropertyKind::SpreadProperty(self.alloc(spread))
+            }
+        }
+    }
+}
+
+/// Property in an object literal expression.
+pub enum ObjProp<'a> {
+    /// `key: value`
+    KeyValue(&'a str, Expression<'a>),
+    /// `name` (property shorthand, equivalent to `name: name`)
+    Shorthand(&'a str),
+    /// `...expr`
+    Spread(Expression<'a>),
 }

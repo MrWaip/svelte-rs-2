@@ -52,6 +52,8 @@ pub struct AnalysisData {
     pub node_needs_ref: HashSet<NodeId>,
     /// Content classification for each fragment.
     pub content_types: HashMap<FragmentKey, ContentType>,
+    /// Rune symbol names that are mutated (assigned in script or via bind directives).
+    pub mutated_runes: HashSet<String>,
 }
 
 impl AnalysisData {
@@ -68,6 +70,7 @@ impl AnalysisData {
             dynamic_nodes: HashSet::new(),
             node_needs_ref: HashSet::new(),
             content_types: HashMap::new(),
+            mutated_runes: HashSet::new(),
         }
     }
 }

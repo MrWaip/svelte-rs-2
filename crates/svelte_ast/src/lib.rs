@@ -152,6 +152,61 @@ pub struct Element {
     pub kind: ElementKind,
 }
 
+impl Element {
+    /// Clone element metadata without children (fragment set to empty).
+    /// Used when we need owned attribute data while borrowing the AST elsewhere.
+    pub fn clone_without_fragment(&self) -> Element {
+        let attrs = self.attributes.iter().map(|a| match a {
+            Attribute::StringAttribute(x) => Attribute::StringAttribute(StringAttribute {
+                name: x.name.clone(),
+                value_span: x.value_span,
+            }),
+            Attribute::BooleanAttribute(x) => {
+                Attribute::BooleanAttribute(BooleanAttribute { name: x.name.clone() })
+            }
+            Attribute::ExpressionAttribute(x) => Attribute::ExpressionAttribute(ExpressionAttribute {
+                name: x.name.clone(),
+                expression_span: x.expression_span,
+                shorthand: x.shorthand,
+            }),
+            Attribute::ConcatenationAttribute(x) => {
+                Attribute::ConcatenationAttribute(ConcatenationAttribute {
+                    name: x.name.clone(),
+                    parts: x.parts.iter().map(|p| match p {
+                        ConcatPart::Static(s) => ConcatPart::Static(s.clone()),
+                        ConcatPart::Dynamic(sp) => ConcatPart::Dynamic(*sp),
+                    }).collect(),
+                })
+            }
+            Attribute::ShorthandOrSpread(x) => Attribute::ShorthandOrSpread(ShorthandOrSpread {
+                expression_span: x.expression_span,
+                is_spread: x.is_spread,
+            }),
+            Attribute::ClassDirective(x) => Attribute::ClassDirective(ClassDirective {
+                name: x.name.clone(),
+                expression_span: x.expression_span,
+                shorthand: x.shorthand,
+            }),
+            Attribute::BindDirective(x) => Attribute::BindDirective(BindDirective {
+                name: x.name.clone(),
+                kind: x.kind,
+                expression_span: x.expression_span,
+                shorthand: x.shorthand,
+            }),
+        }).collect();
+
+        Element {
+            id: self.id,
+            span: self.span,
+            name: self.name.clone(),
+            self_closing: self.self_closing,
+            attributes: attrs,
+            fragment: Fragment::empty(),
+            kind: self.kind,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElementKind {
     Unknown,

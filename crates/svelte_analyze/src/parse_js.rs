@@ -138,8 +138,14 @@ fn walk_attr_expressions(
                 }
             }
             Attribute::ShorthandOrSpread(a) => {
-                let source = component.source_text(a.expression_span);
-                let offset = a.expression_span.start;
+                // For spread attrs, skip the "..." prefix
+                let span = if a.is_spread {
+                    svelte_span::Span::new(a.expression_span.start + 3, a.expression_span.end)
+                } else {
+                    a.expression_span
+                };
+                let source = component.source_text(span);
+                let offset = span.start;
                 match svelte_js::analyze_expression(source, offset) {
                     Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
                     Err(diag) => diags.push(diag),

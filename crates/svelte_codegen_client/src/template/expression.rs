@@ -1,0 +1,216 @@
+//! Expression parsing, concatenation building, and emit helpers.
+
+use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, Statement};
+use oxc_parser::Parser as OxcParser;
+use oxc_semantic::SemanticBuilder;
+use oxc_span::SourceType;
+use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
+use std::collections::HashSet;
+
+use svelte_analyze::{ConcatPart, FragmentItem};
+use svelte_ast::ConcatPart as AstConcatPart;
+use svelte_span::Span;
+
+use crate::builder::{Arg, AssignLeft, AssignRight, Builder, TemplatePart};
+use crate::context::Ctx;
+
+// ---------------------------------------------------------------------------
+// Expression parsing + rune transformation
+// ---------------------------------------------------------------------------
+
+pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
+    let source = ctx.component.source_text(span);
+    let mutated = &ctx.analysis.mutated_runes;
+    let rune_names = &ctx.rune_names;
+    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names)
+}
+
+fn parse_and_transform<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    mutated: &HashSet<String>,
+    rune_names: &HashSet<String>,
+) -> Expression<'a> {
+    let b = Builder::new(alloc);
+    let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
+        return b.str_expr(source);
+    };
+    let stmt = b.expr_stmt(expr);
+    let mut program = b.program(vec![stmt]);
+
+    let mut tr = RuneRefTransformer { b: &b, mutated, rune_names };
+    let sem = SemanticBuilder::new().build(&program);
+    let (symbols, scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+    traverse_mut(&mut tr, alloc, &mut program, symbols, scopes);
+
+    if let Some(Statement::ExpressionStatement(mut es)) = program.body.into_iter().next() {
+        b.move_expr(&mut es.expression)
+    } else {
+        b.str_expr(source)
+    }
+}
+
+struct RuneRefTransformer<'b, 'a> {
+    b: &'b Builder<'a>,
+    mutated: &'b HashSet<String>,
+    rune_names: &'b HashSet<String>,
+}
+
+impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
+    fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
+        if let Expression::Identifier(id) = node {
+            let name = id.name.as_str().to_string();
+            if self.rune_names.contains(&name) && self.mutated.contains(&name) {
+                *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Concatenation builders
+// ---------------------------------------------------------------------------
+
+pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expression<'a> {
+    match item {
+        FragmentItem::TextConcat { parts } => build_concat_from_parts(ctx, parts),
+        _ => ctx.b.str_expr(""),
+    }
+}
+
+pub(crate) fn build_concat_from_parts<'a>(
+    ctx: &mut Ctx<'a>,
+    parts: &[ConcatPart],
+) -> Expression<'a> {
+    if parts.len() == 1 {
+        if let ConcatPart::Expr(nid) = parts[0] {
+            let span = ctx.expr_span(nid);
+            return parse_expr(ctx, span);
+        }
+    }
+
+    let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
+    for part in parts {
+        match part {
+            ConcatPart::Text(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
+            ConcatPart::Expr(nid) => {
+                let span = ctx.expr_span(*nid);
+                let expr = parse_expr(ctx, span);
+                tpl_parts.push(TemplatePart::Expr(expr));
+            }
+        }
+    }
+    ctx.b.template_parts_expr(tpl_parts)
+}
+
+pub(crate) fn build_attr_concat<'a>(
+    ctx: &mut Ctx<'a>,
+    parts: &[AstConcatPart],
+) -> Expression<'a> {
+    let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
+    for part in parts {
+        match part {
+            AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
+            AstConcatPart::Dynamic(span) => {
+                let expr = parse_expr(ctx, *span);
+                tpl_parts.push(TemplatePart::Expr(expr));
+            }
+        }
+    }
+    ctx.b.template_parts_expr(tpl_parts)
+}
+
+pub(crate) fn static_text_of(item: &FragmentItem) -> String {
+    match item {
+        FragmentItem::TextConcat { parts } => parts
+            .iter()
+            .filter_map(|p| {
+                if let ConcatPart::Text(s) = p {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        _ => String::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Emit helpers
+// ---------------------------------------------------------------------------
+
+/// Emit a text update (set_text or nodeValue assignment) depending on dynamism.
+pub(crate) fn emit_text_update<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &FragmentItem,
+    node_name: &str,
+    body: &mut Vec<Statement<'a>>,
+) {
+    let is_dyn = item_is_dynamic(item, ctx);
+    let expr = build_concat(ctx, item);
+
+    if is_dyn {
+        let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
+        let eff = ctx.b.arrow(ctx.b.no_params(), [set]);
+        body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
+    } else {
+        body.push(ctx.b.assign_stmt(
+            AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
+            AssignRight::Expr(expr),
+        ));
+    }
+}
+
+pub(crate) fn emit_template_effect<'a>(
+    ctx: &mut Ctx<'a>,
+    update: Vec<Statement<'a>>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    if update.is_empty() {
+        return;
+    }
+    let eff = ctx.b.arrow(ctx.b.no_params(), update);
+    body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
+}
+
+/// Emit `$.next()` or `$.next(N)` for trailing static siblings after the last named var.
+pub(crate) fn emit_trailing_next<'a>(
+    ctx: &mut Ctx<'a>,
+    trailing: usize,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    if trailing <= 1 {
+        return;
+    }
+    let offset = trailing - 1;
+    if offset == 1 {
+        stmts.push(ctx.b.call_stmt("$.next", []));
+    } else {
+        stmts.push(ctx.b.call_stmt("$.next", [Arg::Num(offset as f64)]));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Analysis helpers
+// ---------------------------------------------------------------------------
+
+pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
+    match item {
+        FragmentItem::TextConcat { parts } => parts_are_dynamic(parts, ctx),
+        FragmentItem::Element(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) => {
+            ctx.analysis.dynamic_nodes.contains(id)
+        }
+    }
+}
+
+pub(crate) fn parts_are_dynamic(parts: &[ConcatPart], ctx: &Ctx<'_>) -> bool {
+    parts.iter().any(|p| {
+        if let ConcatPart::Expr(id) = p {
+            ctx.analysis.dynamic_nodes.contains(id)
+        } else {
+            false
+        }
+    })
+}

@@ -1,0 +1,113 @@
+//! HTML template string builders.
+
+use svelte_analyze::{ConcatPart, ContentType, FragmentItem, FragmentKey};
+use svelte_ast::{Attribute, Element};
+
+use crate::context::Ctx;
+
+use super::expression::static_text_of;
+
+/// Build the HTML string for a fragment (used in `$.template(...)`).
+pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
+    let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
+        return String::new();
+    };
+    let mut html = String::new();
+    for item in &lf.items {
+        match item {
+            FragmentItem::TextConcat { parts } => {
+                let has_expr = parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)));
+                if has_expr {
+                    html.push(' ');
+                } else {
+                    for part in parts {
+                        if let ConcatPart::Text(t) = part {
+                            html.push_str(t);
+                        }
+                    }
+                }
+            }
+            FragmentItem::Element(id) => {
+                let el = ctx.element(*id);
+                html.push_str(&element_html(ctx, el));
+            }
+            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) => html.push_str("<!>"),
+        }
+    }
+    html
+}
+
+/// Build the HTML string for a single element (opening tag + attrs + children + closing tag).
+pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
+    let has_spread = el
+        .attributes
+        .iter()
+        .any(|a| matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread));
+
+    let mut html = format!("<{}", el.name);
+
+    // When spread attrs are present, skip all attributes from HTML template
+    if !has_spread {
+        for attr in &el.attributes {
+            match attr {
+                Attribute::StringAttribute(a) => {
+                    html.push_str(&format!(
+                        " {}=\"{}\"",
+                        a.name,
+                        ctx.component.source_text(a.value_span)
+                    ));
+                }
+                Attribute::BooleanAttribute(a) => {
+                    html.push_str(&format!(" {}=\"\"", a.name));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if el.self_closing {
+        html.push('>');
+        return html;
+    }
+    html.push('>');
+
+    let child_key = FragmentKey::Element(el.id);
+    let ct = ctx
+        .analysis
+        .content_types
+        .get(&child_key)
+        .copied()
+        .unwrap_or(ContentType::Empty);
+    let has_state = has_dynamic_children(ctx, el.id);
+
+    match ct {
+        ContentType::Empty => {}
+        ContentType::StaticText => {
+            let lf = ctx.analysis.lowered_fragments.get(&child_key).unwrap();
+            html.push_str(&static_text_of(&lf.items[0]));
+        }
+        ContentType::DynamicText if !has_state => {
+            // textContent shortcut — no placeholder
+        }
+        ContentType::DynamicText => {
+            // space placeholder for the text node
+            html.push(' ');
+        }
+        ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
+            html.push_str(&fragment_html(ctx, child_key));
+        }
+    }
+
+    html.push_str(&format!("</{}>", el.name));
+    html
+}
+
+fn has_dynamic_children(ctx: &Ctx<'_>, el_id: svelte_ast::NodeId) -> bool {
+    let key = FragmentKey::Element(el_id);
+    let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
+        return false;
+    };
+    lf.items
+        .iter()
+        .any(|item| super::expression::item_is_dynamic(item, ctx))
+}

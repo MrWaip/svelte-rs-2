@@ -190,6 +190,63 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
     Ok(ScriptInfo { declarations })
 }
 
+/// Scan script source for identifiers that are assignment targets.
+/// Returns the set of names that appear on the left side of `=`, `+=`, etc. or in `++`/`--`.
+pub fn find_script_mutations(source: &str, typescript: bool) -> std::collections::HashSet<String> {
+    let allocator = Allocator::default();
+    let source_type = if typescript {
+        SourceType::default().with_typescript(true)
+    } else {
+        SourceType::default()
+    };
+    let result = OxcParser::new(&allocator, source, source_type).parse();
+
+    let mut mutated = std::collections::HashSet::new();
+    for stmt in &result.program.body {
+        collect_mutations_stmt(stmt, &mut mutated);
+    }
+    mutated
+}
+
+fn collect_mutations_stmt(stmt: &oxc_ast::ast::Statement<'_>, out: &mut std::collections::HashSet<String>) {
+    use oxc_ast::ast::Statement;
+    match stmt {
+        Statement::ExpressionStatement(es) => collect_mutations_expr(&es.expression, out),
+        Statement::BlockStatement(b) => {
+            for s in &b.body { collect_mutations_stmt(s, out); }
+        }
+        Statement::IfStatement(s) => {
+            collect_mutations_stmt(&s.consequent, out);
+            if let Some(alt) = &s.alternate { collect_mutations_stmt(alt, out); }
+        }
+        Statement::ForStatement(s) => {
+            if let Some(upd) = &s.update { collect_mutations_expr(upd, out); }
+            collect_mutations_stmt(&s.body, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_mutations_expr(expr: &Expression<'_>, out: &mut std::collections::HashSet<String>) {
+    match expr {
+        Expression::AssignmentExpression(assign) => {
+            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
+                out.insert(id.name.as_str().to_string());
+            }
+            collect_mutations_expr(&assign.right, out);
+        }
+        Expression::UpdateExpression(upd) => {
+            if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
+                out.insert(id.name.as_str().to_string());
+            }
+        }
+        Expression::SequenceExpression(seq) => {
+            for e in &seq.expressions { collect_mutations_expr(e, out); }
+        }
+        _ => {}
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
