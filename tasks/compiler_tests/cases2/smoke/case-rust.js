@@ -1,28 +1,39 @@
 import * as $ from "svelte/internal/client";
+var root_1 = $.template(`<div><!></div>`);
+var root_2 = $.template(`<div><div></div> <button></button></div>`);
+var root_3 = $.template(`<div><p>Lorem</p></div>`);
+var root_4 = $.template(`<h2>Old UI</h2>`);
+var root_5 = $.template(`<div></div>`);
 var root = $.template(`<h1><span></span> <button>+</button> some long text</h1> <noscript>any content</noscript> <!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
-	var node = $.sibling($.first_child(fragment), 4);
+	var h1 = $.first_child(fragment);
+	var span = $.child(h1);
+	span.textContent = `Entities ${logged_in ?? ""}`;
+	$.next(3);
+	$.reset(h1);
+	var node = $.sibling(h1, 4);
 	{
 		var consequent = ($$anchor) => {
-			var root_1 = $.template(`<div><!></div>`);
 			var div = root_1();
 			var node_1 = $.child(div);
 			{
 				var consequent_1 = ($$anchor) => {
-					var root_2 = $.template(`<div><div></div> <button></button></div>`);
 					var div_1 = root_2();
+					var div_2 = $.child(div_1);
+					div_2.textContent = user_name;
+					var button = $.sibling(div_2, 2);
+					button.textContent = counter;
+					$.reset(div_1);
 					$.append($$anchor, div_1);
 				};
 				var alternate = ($$anchor, $$elseif) => {
 					{
 						var consequent_2 = ($$anchor) => {
-							var root_3 = $.template(`<div><p>Lorem</p></div>`);
-							var div_2 = root_3();
-							$.append($$anchor, div_2);
+							var div_3 = root_3();
+							$.append($$anchor, div_3);
 						};
 						var alternate_1 = ($$anchor) => {
-							var root_4 = $.template(`<h2>Old UI</h2>`);
 							var h2 = root_4();
 							$.append($$anchor, h2);
 						};
@@ -37,13 +48,13 @@ else $$render(alternate_1, false);
 else $$render(alternate, false);
 				});
 			}
+			$.reset(div);
 			$.append($$anchor, div);
 		};
 		var alternate_2 = ($$anchor) => {
-			var root_5 = $.template(`<div></div>`);
-			var div_3 = root_5();
-			div_3.textContent = `Spinner ${percent ?? ""}`;
-			$.append($$anchor, div_3);
+			var div_4 = root_5();
+			div_4.textContent = `Spinner ${percent ?? ""}`;
+			$.append($$anchor, div_4);
 		};
 		$.if(node, ($$render) => {
 			if (!loading) $$render(consequent);

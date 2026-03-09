@@ -94,6 +94,8 @@ pub struct Ctx<'a> {
     ident_counters: HashMap<String, u32>,
     /// Rune symbol names that are mutated (assigned at least once in script).
     pub mutated_runes: std::collections::HashSet<String>,
+    /// Template declarations from nested fragments, hoisted to module scope.
+    pub module_hoisted: Vec<Statement<'a>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -108,6 +110,7 @@ impl<'a> Ctx<'a> {
             analysis,
             ident_counters: HashMap::new(),
             mutated_runes: std::collections::HashSet::new(),
+            module_hoisted: Vec::new(),
         }
     }
 
