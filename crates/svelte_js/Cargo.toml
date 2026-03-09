@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-span = { path = "../span" }
+svelte_span = { path = "../svelte_span" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }

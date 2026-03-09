@@ -8,7 +8,7 @@ pub fn parse_js(component: &Component, data: &mut AnalysisData, diags: &mut Vec<
     if let Some(script) = &component.script {
         let source = component.source_text(script.content_span);
         let typescript = matches!(script.language, ScriptLanguage::TypeScript);
-        match svelte_js::analyze_script(source, script.content_span.start as u32, typescript) {
+        match svelte_js::analyze_script(source, script.content_span.start, typescript) {
             Ok(info) => data.script = Some(info),
             Err(errs) => diags.extend(errs),
         }
@@ -37,7 +37,7 @@ fn walk_node(
     match node {
         Node::ExpressionTag(tag) => {
             let source = component.source_text(tag.expression_span);
-            let offset = tag.expression_span.start as u32;
+            let offset = tag.expression_span.start;
             match svelte_js::analyze_expression(source, offset) {
                 Ok(info) => {
                     data.expressions.insert(tag.id, info);
@@ -51,7 +51,7 @@ fn walk_node(
         }
         Node::IfBlock(block) => {
             let source = component.source_text(block.test_span);
-            let offset = block.test_span.start as u32;
+            let offset = block.test_span.start;
             match svelte_js::analyze_expression(source, offset) {
                 Ok(info) => {
                     data.expressions.insert(block.id, info);
@@ -65,7 +65,7 @@ fn walk_node(
         }
         Node::EachBlock(block) => {
             let source = component.source_text(block.expression_span);
-            let offset = block.expression_span.start as u32;
+            let offset = block.expression_span.start;
             match svelte_js::analyze_expression(source, offset) {
                 Ok(info) => {
                     data.expressions.insert(block.id, info);
@@ -92,7 +92,7 @@ fn walk_attr_expressions(
         match attr {
             Attribute::ExpressionAttribute(a) => {
                 let source = component.source_text(a.expression_span);
-                let offset = a.expression_span.start as u32;
+                let offset = a.expression_span.start;
                 match svelte_js::analyze_expression(source, offset) {
                     Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
                     Err(diag) => diags.push(diag),
@@ -103,7 +103,7 @@ fn walk_attr_expressions(
                 for part in &a.parts {
                     if let ConcatPart::Dynamic(span) = part {
                         let source = component.source_text(*span);
-                        let offset = span.start as u32;
+                        let offset = span.start;
                         match svelte_js::analyze_expression(source, offset) {
                             Ok(info) => all_refs.extend(info.references),
                             Err(diag) => diags.push(diag),
@@ -120,7 +120,7 @@ fn walk_attr_expressions(
             Attribute::ClassDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    let offset = span.start as u32;
+                    let offset = span.start;
                     match svelte_js::analyze_expression(source, offset) {
                         Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
                         Err(diag) => diags.push(diag),
@@ -130,7 +130,7 @@ fn walk_attr_expressions(
             Attribute::BindDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    let offset = span.start as u32;
+                    let offset = span.start;
                     match svelte_js::analyze_expression(source, offset) {
                         Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
                         Err(diag) => diags.push(diag),
@@ -139,7 +139,7 @@ fn walk_attr_expressions(
             }
             Attribute::ShorthandOrSpread(a) => {
                 let source = component.source_text(a.expression_span);
-                let offset = a.expression_span.start as u32;
+                let offset = a.expression_span.start;
                 match svelte_js::analyze_expression(source, offset) {
                     Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
                     Err(diag) => diags.push(diag),

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use span::Span;
+use svelte_span::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {

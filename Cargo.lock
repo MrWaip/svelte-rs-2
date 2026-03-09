@@ -1427,25 +1427,25 @@ name = "svelte_analyze"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",
- "span",
  "svelte_ast",
  "svelte_diagnostics",
  "svelte_js",
  "svelte_parser",
+ "svelte_span",
 ]
 
 [[package]]
 name = "svelte_ast"
 version = "0.1.0"
 dependencies = [
- "span",
+ "svelte_span",
 ]
 
 [[package]]
 name = "svelte_diagnostics"
 version = "0.1.0"
 dependencies = [
- "span",
+ "svelte_span",
 ]
 
 [[package]]
@@ -1459,8 +1459,8 @@ dependencies = [
  "oxc_span",
  "oxc_syntax",
  "pretty_assertions",
- "span",
  "svelte_diagnostics",
+ "svelte_span",
 ]
 
 [[package]]
@@ -1468,10 +1468,14 @@ name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",
- "span",
  "svelte_ast",
  "svelte_diagnostics",
+ "svelte_span",
 ]
+
+[[package]]
+name = "svelte_span"
+version = "0.1.0"
 
 [[package]]
 name = "syn"

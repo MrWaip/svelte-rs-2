@@ -1,5 +1,5 @@
 use core::fmt;
-use span::{GetSpan, Span};
+use svelte_span::{GetSpan, Span};
 use svelte_diagnostics::Diagnostic;
 
 #[derive(Debug, PartialEq, Eq)]

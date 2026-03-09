@@ -5,6 +5,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # New crates (Stage 1 refactoring)
+svelte_span = { path = "crates/svelte_span" }
 svelte_ast = { path = "crates/svelte_ast" }
 svelte_parser = { path = "crates/svelte_parser" }
 svelte_js = { path = "crates/svelte_js" }
