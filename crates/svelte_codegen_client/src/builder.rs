@@ -26,6 +26,7 @@ pub enum Arg<'a, 'short> {
 
 pub enum AssignLeft<'a> {
     StaticMember(StaticMemberExpression<'a>),
+    Ident(String),
 }
 
 pub enum AssignRight<'a> {
@@ -196,6 +197,11 @@ impl<'a> Builder<'a> {
         let left = match left {
             AssignLeft::StaticMember(m) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(m))
+            }
+            AssignLeft::Ident(ref name) => {
+                AssignmentTarget::AssignmentTargetIdentifier(self.alloc(
+                    self.ast.identifier_reference(SPAN, name.as_str()),
+                ))
             }
         };
         let right = match right {

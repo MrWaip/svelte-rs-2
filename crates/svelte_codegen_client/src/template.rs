@@ -94,9 +94,11 @@ fn gen_root_single_element<'a>(
 
     let mut init = Vec::new();
     let mut update = Vec::new();
-    process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted);
+    let mut after_update = Vec::new();
+    process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
     body.extend(init);
     emit_template_effect(ctx, update, body);
+    body.extend(after_update);
     body.push(ctx.b.call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&el_name)]));
 }
 
@@ -155,9 +157,11 @@ fn gen_root_mixed<'a>(
     let first_child = ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]);
     let mut init = Vec::new();
     let mut update = Vec::new();
-    traverse_items(ctx, &items, first_child, &mut init, &mut update, hoisted);
+    let mut after_update = Vec::new();
+    traverse_items(ctx, &items, first_child, &mut init, &mut update, hoisted, &mut after_update);
     body.extend(init);
     emit_template_effect(ctx, update, body);
+    body.extend(after_update);
     body.push(ctx.b.call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]));
 }
 
@@ -221,7 +225,8 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
             let mut init = Vec::new();
             let mut update = Vec::new();
             let mut sub_hoisted = Vec::new();
-            process_element(ctx, el_id, &el_name, &mut init, &mut update, &mut sub_hoisted);
+            let mut after_update = Vec::new();
+            process_element(ctx, el_id, &el_name, &mut init, &mut update, &mut sub_hoisted, &mut after_update);
             // Prepend sub_hoisted + hoisted before body (template vars declared before use)
             let mut result = Vec::new();
             result.extend(hoisted);
@@ -229,6 +234,7 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
             result.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
             result.extend(init);
             emit_template_effect(ctx, update, &mut result);
+            result.extend(after_update);
             result.push(ctx.b.call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&el_name)]));
             return result;
         }
@@ -277,13 +283,15 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
             let mut init = Vec::new();
             let mut update = Vec::new();
             let mut sub_hoisted = Vec::new();
-            traverse_items(ctx, &items, first, &mut init, &mut update, &mut sub_hoisted);
+            let mut after_update = Vec::new();
+            traverse_items(ctx, &items, first, &mut init, &mut update, &mut sub_hoisted, &mut after_update);
             // sub_hoisted: template declarations from nested elements
             // Insert before init in body
             let insert_pos = body.len();
             body.extend(sub_hoisted);
             body.extend(init);
             emit_template_effect(ctx, update, &mut body);
+            body.extend(after_update);
             body.push(ctx.b.call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]));
             return body;
         }
@@ -305,6 +313,7 @@ fn traverse_items<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
     hoisted: &mut Vec<Statement<'a>>,
+    after_update: &mut Vec<Statement<'a>>,
 ) {
     // Track current DOM position: (prev_expr or ident, offset since last named node)
     let mut prev_expr: Option<Expression<'a>> = Some(first_child_expr);
@@ -368,7 +377,7 @@ fn traverse_items<'a>(
                     init.push(ctx.b.var_stmt(&el_name, node_expr));
                     prev_ident = Some(el_name.clone());
                     sibling_offset = 1;
-                    process_element(ctx, *el_id, &el_name, init, update, hoisted);
+                    process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update);
                 }
 
                 FragmentItem::IfBlock(id) => {
@@ -407,15 +416,23 @@ fn process_element<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
     hoisted: &mut Vec<Statement<'a>>,
+    after_update: &mut Vec<Statement<'a>>,
 ) {
     let el = find_el(ctx, el_id);
     let child_key = FragmentKey::Element(el_id);
     let ct = ctx.analysis.content_types.get(&child_key).copied().unwrap_or(ContentType::Empty);
 
+    // $.remove_input_defaults for <input> elements with any bind directive
+    let is_input = el.name == "input";
+    let has_bind = el.attributes.iter().any(|a| matches!(a, Attribute::BindDirective(_)));
+    if is_input && has_bind {
+        init.push(ctx.b.call_stmt("$.remove_input_defaults", [Arg::Ident(el_name)]));
+    }
+
     // Attributes
     for (idx, attr) in el.attributes.iter().enumerate() {
         let is_dyn = ctx.analysis.dynamic_attrs.contains(&(el_id, idx));
-        process_attr(ctx, attr, el_name, is_dyn, init, update);
+        process_attr(ctx, attr, el_name, is_dyn, init, update, after_update);
     }
 
     // Children
@@ -468,7 +485,7 @@ fn process_element<'a>(
             let first_child = ctx.b.call_expr("$.child", [Arg::Ident(el_name)]);
             let mut child_init = Vec::new();
             let mut child_update = Vec::new();
-            traverse_items(ctx, &child_items, first_child, &mut child_init, &mut child_update, hoisted);
+            traverse_items(ctx, &child_items, first_child, &mut child_init, &mut child_update, hoisted, after_update);
 
             if has_dynamic_children(ctx, el_id) {
                 // Insert $.reset(el) after the traversal inits but before updates
@@ -493,6 +510,7 @@ fn process_attr<'a>(
     is_dyn: bool,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
+    after_update: &mut Vec<Statement<'a>>,
 ) {
     let target = if is_dyn { update as &mut Vec<_> } else { init as &mut Vec<_> };
 
@@ -522,9 +540,45 @@ fn process_attr<'a>(
                 [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
             ));
         }
+        Attribute::BindDirective(bind) => {
+            let var_name = if bind.shorthand {
+                bind.name.clone()
+            } else if let Some(span) = bind.expression_span {
+                ctx.component.source_text(span).trim().to_string()
+            } else {
+                return;
+            };
+
+            let is_mutated_rune = ctx.mutated_runes.contains(&var_name)
+                && ctx.analysis.symbol_by_name.get(&var_name)
+                    .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+
+            // getter: () => $.get(value) OR () => name
+            let getter_body = if is_mutated_rune {
+                ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+            } else {
+                ctx.b.rid_expr(&var_name)
+            };
+            let getter = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
+
+            // setter: ($$value) => $.set(value, $$value) OR ($$value) => name = $$value
+            let setter_body = if is_mutated_rune {
+                ctx.b.call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
+            } else {
+                ctx.b.assign_expr(
+                    AssignLeft::Ident(var_name),
+                    AssignRight::Expr(ctx.b.rid_expr("$$value")),
+                )
+            };
+            let setter = ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(setter_body)]);
+
+            after_update.push(ctx.b.call_stmt(
+                "$.bind_value",
+                [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+            ));
+        }
         Attribute::ShorthandOrSpread(_)
-        | Attribute::ClassDirective(_)
-        | Attribute::BindDirective(_) => {
+        | Attribute::ClassDirective(_) => {
             // TODO: full support
         }
     }

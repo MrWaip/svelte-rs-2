@@ -26,6 +26,10 @@ fn walk_node(node: &Node, component: &Component, data: &mut AnalysisData) {
                     data.dynamic_attrs.insert((el.id, attr_idx));
                     needs_ref = true;
                 }
+                // Bind directives always need a DOM ref
+                if matches!(attr, Attribute::BindDirective(_)) {
+                    needs_ref = true;
+                }
             }
             if needs_ref {
                 data.node_needs_ref.insert(el.id);

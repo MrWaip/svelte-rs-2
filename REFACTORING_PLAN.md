@@ -1,23 +1,5 @@
 # Рефакторинг Svelte-RS: План и прогресс
 
-### Stage 3c: Тесты в стиле cases2 ✅
-### Stage 3d-1: Text whitespace trimming ✅
-### Stage 3d-2: Dynamic text API ✅
-### Stage 3d-3: else-if codegen ✅
-### Stage 3d-4: Whitespace between siblings in templates ✅
-
-### Stage 3d-5: Boolean attribute format + shorthand attr as dynamic ⏳
-Тесты: `element_attributes`
-Проблема: `visible` → должно быть `visible=""` в шаблоне; `{description}` shorthand не попадает в `$.set_attribute`
-
-### Stage 3d-6: `$.proxy` + TypeScript stripping ⏳
-Тесты: `state_runes`
-Проблема: объектные `$state({})` / `$state(varRef)` → `$.proxy(...)`, TypeScript type declarations попадают в output
-
-### Stage 3d-7: bind directive codegen ⏳
-Тесты: `bind_directives`
-Проблема: `$.bind_value`, `$.remove_input_defaults`, `$.state` для rune-переменных
-
 ### Stage 3d-8: Element children traversal ⏳
 Тесты: `nested_resets`, `elements_childs`
 Проблема: `textContent =` для single-expr children, `$.reset`, правильный обход child/sibling
