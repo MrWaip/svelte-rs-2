@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(` <div></div>`);
+var root_1 = $.template(` <div> </div>`, 1);
 export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
@@ -8,11 +8,16 @@ export default function App($$anchor) {
 		2,
 		3
 	], $.index, ($$anchor, item) => {
-		var fragment_1 = root();
+		$.next();
+		var fragment_1 = root_1();
 		var text = $.first_child(fragment_1);
-		text.nodeValue = `${item ?? ""} `;
 		var div = $.sibling(text);
-		div.textContent = `${item ?? ""} + example`;
+		var text_1 = $.child(div);
+		$.reset(div);
+		$.template_effect(() => {
+			$.set_text(text, `${item ?? ""} `);
+			$.set_text(text_1, `${item ?? ""} + example`);
+		});
 		$.append($$anchor, fragment_1);
 	});
 	$.append($$anchor, fragment);

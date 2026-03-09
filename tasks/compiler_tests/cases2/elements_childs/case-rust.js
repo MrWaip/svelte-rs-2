@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 var root_1 = $.template(`<div></div>`);
-var root_2 = $.template(`<div></div>`);
 var root_3 = $.template(`<div></div>`);
+var root_4 = $.template(`<div></div>`);
 var root = $.template(`<div>text only</div> <div></div> <div></div> <div><div>more nested</div> <div>more nested</div> <div>more nested</div></div> <div><!></div> <div></div>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
@@ -19,11 +19,11 @@ export default function App($$anchor) {
 		var alternate = ($$anchor, $$elseif) => {
 			{
 				var consequent_1 = ($$anchor) => {
-					var div_4 = root_2();
+					var div_4 = root_3();
 					$.append($$anchor, div_4);
 				};
 				var alternate_1 = ($$anchor) => {
-					var div_5 = root_3();
+					var div_5 = root_4();
 					$.append($$anchor, div_5);
 				};
 				$.if($$anchor, ($$render) => {

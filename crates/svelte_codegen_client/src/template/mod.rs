@@ -36,6 +36,9 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         .copied()
         .unwrap_or(ContentType::Empty);
 
+    // Consume "root" name for all content types to keep numbering consistent
+    let tpl_name = ctx.gen_ident("root");
+
     let mut hoisted = Vec::new();
     let mut body = Vec::new();
 
@@ -43,9 +46,9 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         ContentType::Empty => {}
         ContentType::StaticText => gen_root_static_text(ctx, &mut body),
         ContentType::DynamicText => gen_root_dynamic_text(ctx, &mut body),
-        ContentType::SingleElement => gen_root_single_element(ctx, &mut hoisted, &mut body),
+        ContentType::SingleElement => gen_root_single_element(ctx, &tpl_name, &mut hoisted, &mut body),
         ContentType::SingleBlock => gen_root_single_block(ctx, &mut body),
-        ContentType::Mixed => gen_root_mixed(ctx, &mut hoisted, &mut body),
+        ContentType::Mixed => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
     (hoisted, body)
@@ -99,6 +102,7 @@ fn gen_root_dynamic_text<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
 
 fn gen_root_single_element<'a>(
     ctx: &mut Ctx<'a>,
+    tpl_name: &str,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
@@ -114,18 +118,17 @@ fn gen_root_single_element<'a>(
         }
     };
 
-    let tpl_name = ctx.gen_ident("root");
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
     hoisted.push(ctx.b.var_stmt(
-        &tpl_name,
+        tpl_name,
         ctx.b
             .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
     ));
 
     let el_name_str = ctx.element(el_id).name.clone();
     let el_name = ctx.gen_ident(&el_name_str);
-    body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
+    body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
 
     let mut init = Vec::new();
     let mut update = Vec::new();
@@ -176,6 +179,7 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
 
 fn gen_root_mixed<'a>(
     ctx: &mut Ctx<'a>,
+    tpl_name: &str,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
@@ -193,10 +197,9 @@ fn gen_root_mixed<'a>(
         body.push(ctx.b.call_stmt("$.next", []));
     }
 
-    let tpl_name = ctx.gen_ident("root");
     let html = fragment_html(ctx, FragmentKey::Root);
     hoisted.push(ctx.b.var_stmt(
-        &tpl_name,
+        tpl_name,
         ctx.b.call_expr(
             "$.template",
             [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
@@ -204,7 +207,7 @@ fn gen_root_mixed<'a>(
     ));
 
     let frag = ctx.gen_ident("fragment");
-    body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(&tpl_name, [])));
+    body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(tpl_name, [])));
 
     let first_child = ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]);
     let mut init = Vec::new();
@@ -241,6 +244,9 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
         .get(&key)
         .copied()
         .unwrap_or(ContentType::Empty);
+
+    // Consume "root" name for all content types to keep numbering consistent
+    let tpl_name = ctx.gen_ident("root");
 
     let mut body: Vec<Statement<'a>> = Vec::new();
 
@@ -285,14 +291,8 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 }
             };
 
-            let tpl_name = ctx.gen_ident("root");
             let el = ctx.element(el_id);
             let html = element_html(ctx, el);
-            ctx.module_hoisted.push(ctx.b.var_stmt(
-                &tpl_name,
-                ctx.b
-                    .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
-            ));
 
             let el_name_str = ctx.element(el_id).name.clone();
             let el_name = ctx.gen_ident(&el_name_str);
@@ -311,6 +311,13 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 &mut after_update,
             );
             ctx.module_hoisted.extend(sub_hoisted);
+
+            // Hoist AFTER children so inner templates come first (bottom-up order)
+            ctx.module_hoisted.push(ctx.b.var_stmt(
+                &tpl_name,
+                ctx.b
+                    .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
+            ));
 
             let mut result = Vec::new();
             result.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
@@ -356,12 +363,18 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 lf.items.clone()
             };
 
-            let tpl_name = ctx.gen_ident("root");
+            let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
+            if starts_text {
+                body.push(ctx.b.call_stmt("$.next", []));
+            }
+
             let html = fragment_html(ctx, key);
             ctx.module_hoisted.push(ctx.b.var_stmt(
                 &tpl_name,
-                ctx.b
-                    .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
+                ctx.b.call_expr(
+                    "$.template",
+                    [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
+                ),
             ));
 
             let frag = ctx.gen_ident("fragment");
