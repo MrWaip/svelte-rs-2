@@ -74,6 +74,15 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                 let raw = text.value(&component.source);
                 let content = trim_text(raw, i, significant, component);
                 if !content.is_empty() {
+                    // Collapse consecutive whitespace-only text parts
+                    // (happens when comments between elements are dropped)
+                    if content.trim().is_empty() {
+                        if let Some(ConcatPart::Text(prev)) = concat.last() {
+                            if prev.trim().is_empty() {
+                                continue;
+                            }
+                        }
+                    }
                     concat.push(ConcatPart::Text(content));
                 }
             }
