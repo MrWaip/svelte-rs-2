@@ -1,4 +1,4 @@
-use svelte_diagnostics::Diagnostic;
+use svelte_diagnostics::{Diagnostic, Severity};
 
 pub struct CompileResult {
     pub js: String,
@@ -11,7 +11,7 @@ pub fn compile(source: &str) -> Result<CompileResult, Diagnostic> {
     let (analysis, diags) = svelte_analyze::analyze(&component);
 
     // Treat analysis errors as fatal.
-    if let Some(diag) = diags.into_iter().find(|d| d.is_error()) {
+    if let Some(diag) = diags.into_iter().find(|d| d.severity == Severity::Error) {
         return Err(diag);
     }
 

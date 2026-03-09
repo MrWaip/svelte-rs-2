@@ -1,7 +1,7 @@
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::{ScopeTree, SymbolTable};
+use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 use std::collections::HashSet;
@@ -125,7 +125,9 @@ fn transform_script_text<'a>(
 
     let mut transformer = ScriptTransformer { b: &b, mutated_runes: &mutated, rune_names: &rune_names };
 
-    traverse_mut(&mut transformer, allocator, &mut program, SymbolTable::default(), ScopeTree::default());
+    let sem = SemanticBuilder::new().build(&program);
+    let (symbols, scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+    traverse_mut(&mut transformer, allocator, &mut program, symbols, scopes);
 
     let mut imports = vec![];
     let mut body = vec![];

@@ -3,7 +3,7 @@
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::{ScopeTree, SymbolTable};
+use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 use std::collections::HashSet;
@@ -812,7 +812,9 @@ fn parse_and_transform<'a>(
     let mut program = b.program(vec![stmt]);
 
     let mut tr = RuneRefTransformer { b: &b, mutated, rune_names };
-    traverse_mut(&mut tr, alloc, &mut program, SymbolTable::default(), ScopeTree::default());
+    let sem = SemanticBuilder::new().build(&program);
+    let (symbols, scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+    traverse_mut(&mut tr, alloc, &mut program, symbols, scopes);
 
     if let Some(Statement::ExpressionStatement(mut es)) = program.body.into_iter().next() {
         b.move_expr(&mut es.expression)
