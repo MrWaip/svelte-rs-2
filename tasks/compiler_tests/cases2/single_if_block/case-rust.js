@@ -4,7 +4,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var text = $.text(" some text ");
+			var text = $.text("some text");
 			$.append($$anchor, text);
 		};
 		$.if(node, ($$render) => {

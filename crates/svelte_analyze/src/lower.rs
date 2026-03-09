@@ -137,13 +137,13 @@ fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -
         return String::new();
     }
 
-    // Mixed content: preserve leading/trailing spaces based on original whitespace.
+    // Mixed content: preserve a separator space only when adjacent to an expression tag.
     let mut s = String::new();
-    if starts_ws {
+    if starts_ws && prev_is_expr {
         s.push(' ');
     }
     s.push_str(&inner);
-    if ends_ws {
+    if ends_ws && next_is_expr {
         s.push(' ');
     }
     s

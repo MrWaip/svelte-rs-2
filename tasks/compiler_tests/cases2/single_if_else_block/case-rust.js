@@ -4,7 +4,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var text = $.text(" if text ");
+			var text = $.text("if text");
 			$.append($$anchor, text);
 		};
 		var alternate = ($$anchor) => {
@@ -12,11 +12,11 @@ export default function App($$anchor) {
 			var node_1 = $.first_child(fragment_1);
 			{
 				var consequent_1 = ($$anchor) => {
-					var text_1 = $.text(" else if text ");
+					var text_1 = $.text("else if text");
 					$.append($$anchor, text_1);
 				};
 				var alternate_1 = ($$anchor) => {
-					var text_2 = $.text(" else text ");
+					var text_2 = $.text("else text");
 					$.append($$anchor, text_2);
 				};
 				$.if(node_1, ($$render) => {

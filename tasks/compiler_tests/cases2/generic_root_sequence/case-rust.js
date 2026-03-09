@@ -6,7 +6,7 @@ export default function App($$anchor) {
 	var text = $.sibling($.first_child(fragment), 2);
 	text.nodeValue = ` ${some_variable ?? ""} `;
 	var text_1 = $.sibling(text, 2);
-	text_1.nodeValue = ` text + ${name ?? ""} `;
+	text_1.nodeValue = `text + ${name ?? ""} `;
 	var node = $.sibling(text_1, 2);
 	{
 		var consequent = ($$anchor) => {};
