@@ -1423,6 +1423,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
+name = "svelte_ast"
+version = "0.1.0"
+dependencies = [
+ "span",
+]
+
+[[package]]
+name = "svelte_diagnostics"
+version = "0.1.0"
+dependencies = [
+ "span",
+]
+
+[[package]]
+name = "svelte_js"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_syntax",
+ "pretty_assertions",
+ "span",
+ "svelte_diagnostics",
+]
+
+[[package]]
+name = "svelte_parser"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "span",
+ "svelte_ast",
+ "svelte_diagnostics",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"

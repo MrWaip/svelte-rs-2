@@ -1,0 +1,12 @@
+[package]
+name = "svelte_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+span = { path = "../span" }
+svelte_ast = { path = "../svelte_ast" }
+svelte_diagnostics = { path = "../svelte_diagnostics" }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
