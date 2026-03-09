@@ -71,6 +71,12 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     }
     html.push('>');
 
+    // noscript content is stripped in the template
+    if el.name == "noscript" {
+        html.push_str(&format!("</{}>", el.name));
+        return html;
+    }
+
     let child_key = FragmentKey::Element(el.id);
     let ct = ctx
         .analysis

@@ -87,8 +87,7 @@ pub(crate) fn process_element<'a>(
             let text_name = ctx.gen_ident("text");
             init.push(ctx.b.var_stmt(
                 &text_name,
-                ctx.b
-                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]),
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name)]),
             ));
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
 
