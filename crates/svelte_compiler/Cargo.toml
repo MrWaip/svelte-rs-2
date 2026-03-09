@@ -1,0 +1,10 @@
+[package]
+name = "svelte_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+svelte_parser = { workspace = true }
+svelte_analyze = { workspace = true }
+svelte_diagnostics = { workspace = true }
+svelte_codegen_client = { path = "../svelte_codegen_client" }

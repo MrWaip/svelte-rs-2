@@ -1442,6 +1442,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "svelte_codegen_client"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_traverse",
+ "svelte_analyze",
+ "svelte_ast",
+ "svelte_js",
+ "svelte_span",
+]
+
+[[package]]
+name = "svelte_compiler"
+version = "0.1.0"
+dependencies = [
+ "svelte_analyze",
+ "svelte_codegen_client",
+ "svelte_diagnostics",
+ "svelte_parser",
+]
+
+[[package]]
 name = "svelte_diagnostics"
 version = "0.1.0"
 dependencies = [

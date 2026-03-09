@@ -37,20 +37,15 @@
 - `lowered_fragments` корректно группирует Text+ExprTag
 - `cargo test`
 
-### Stage 3: Client codegen и интеграция ⏳
+### Stage 3a: Порт логики кодгена ⏳
 
-**Нужно создать:**
-- `crates/svelte_codegen_client/` — client codegen с OXC внутри `generate()`:
-  - `lib.rs` — `generate()`, allocator живёт здесь
-  - `context.rs` — `ClientContext<'alloc>`: OXC builder, template accumulator
-  - `template.rs` — fragment → `$.template()` + DOM traversal
-  - `element.rs` — Element → attributes, class directives
-  - `expression.rs` — ExpressionTag → `$.set_text()` / template literal
-  - `if_block.rs` — IfBlock → `$.if()`
-  - `each_block.rs` — EachBlock → `$.each()`
-  - `script.rs` — Script → rune declarations, `$.get`/`$.set` wrapping
-  - `bindings.rs` — `bind:value`, `bind:checked`, `bind:group`
-- `crates/svelte_compiler/` — orchestrator: `compile(source, options) -> CompileResult`
+**Каркас уже есть** в `svelte_codegen_client/` (~2000 строк) и `svelte_compiler/`.
+
+**Задачи:**
+1. Починить `svelte_compiler` (`is_error` → `as_err`)
+2. Найти пробелы: сравнить текущий `svelte_codegen_client` с `transform_hir` по покрытию фич
+3. Дописать недостающее: script rune transforms, bind directives, edge cases
+4. `cargo build -p svelte_codegen_client -p svelte_compiler` — без ошибок
 
 **Файлы-источники:**
 - `crates/transform_hir/src/` — текущий codegen (основной)
@@ -58,9 +53,23 @@
 - `crates/ast_builder/src/lib.rs` — OXC builder helpers
 - `crates/compiler/src/lib.rs` — текущий orchestrator
 
-**Верификация:**
-- Сравнение output нового vs старого pipeline на `tasks/compiler_tests/cases/`
-- `cargo test`
+### Stage 3b: End-to-end ⏳
+
+**Задачи:**
+1. Запустить `svelte_compiler::compile()` на нескольких `.svelte` файлах из `tasks/compiler_tests/cases2/`
+2. Сравнить вывод с `case-svelte.js` (expected — output официального Svelte)
+3. Исправить расхождения до приемлемого совпадения
+4. Проверить что OXC lifetime и `&mut` не расползаются за пределы `svelte_js` и `generate()` в `svelte_codegen_client` — публичные API (`analyze_expression`, `analyze_script`, `generate`) возвращают только owned типы без lifetime-параметров
+
+### Stage 3c: Тесты в стиле cases2 ⏳
+
+**Структура**: `case.svelte` (вход) + `case-svelte.js` (expected output от Svelte).
+`case-rust.js` — фиксируется как output Rust-компилятора после прохождения тестов.
+
+**Задачи:**
+1. Тест-раннер в `svelte_compiler`: читает папки из `tasks/compiler_tests/cases2/`, для каждой `compile(case.svelte)` → сравнивает с `case-svelte.js`
+2. Покрыть кейсы: empty, single_text_node, single_element, single_interpolation, element_attributes, state_runes, single_if_block, single_if_else_block, each_block, bind_directives, smoke
+3. `cargo test` — все зелёные
 
 ### Stage 4: Очистка и SSR scaffold ⏳
 

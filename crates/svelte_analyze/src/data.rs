@@ -80,6 +80,7 @@ pub struct LoweredFragment {
     pub items: Vec<FragmentItem>,
 }
 
+#[derive(Clone)]
 pub enum FragmentItem {
     /// A standalone element node.
     Element(NodeId),
@@ -91,6 +92,7 @@ pub enum FragmentItem {
     TextConcat { parts: Vec<ConcatPart> },
 }
 
+#[derive(Clone)]
 pub enum ConcatPart {
     /// Static text content (possibly trimmed).
     Text(String),

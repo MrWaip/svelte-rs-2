@@ -112,21 +112,40 @@ fn is_removable_text(node: &Node, component: &Component) -> bool {
 
 /// Trim a text node's content based on its neighbours.
 ///
-/// - Always collapse internal whitespace sequences to a single space
-/// - Left-trim if the previous non-comment sibling is not an ExpressionTag
-/// - Right-trim if the next non-comment sibling is not an ExpressionTag
+/// Rules:
+/// - Collapse internal runs of whitespace to a single space.
+/// - For pure-whitespace content: keep a single " " if either neighbour is an
+///   ExpressionTag; drop it otherwise.
+/// - For mixed content (non-whitespace characters present): preserve a leading
+///   space when the original starts with whitespace, and a trailing space when
+///   the original ends with whitespace.
 fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -> String {
     let prev_is_expr = prev_significant(idx, siblings).is_some_and(|n| n.is_expression_tag());
     let next_is_expr = next_significant(idx, siblings).is_some_and(|n| n.is_expression_tag());
 
-    // Collapse internal whitespace
-    let collapsed: String = raw
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let starts_ws = raw.starts_with(|c: char| c.is_ascii_whitespace());
+    let ends_ws = raw.ends_with(|c: char| c.is_ascii_whitespace());
 
-    let s = if !prev_is_expr { collapsed.trim_start().to_string() } else { collapsed };
-    let s = if !next_is_expr { s.trim_end().to_string() } else { s };
+    // Collapse internal whitespace sequences.
+    let inner: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if inner.is_empty() {
+        // Pure-whitespace node: keep a separator space only when adjacent to an expression.
+        if prev_is_expr || next_is_expr {
+            return " ".to_string();
+        }
+        return String::new();
+    }
+
+    // Mixed content: preserve leading/trailing spaces based on original whitespace.
+    let mut s = String::new();
+    if starts_ws {
+        s.push(' ');
+    }
+    s.push_str(&inner);
+    if ends_ws {
+        s.push(' ');
+    }
     s
 }
 

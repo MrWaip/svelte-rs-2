@@ -1,0 +1,80 @@
+use svelte_diagnostics::Diagnostic;
+
+pub struct CompileResult {
+    pub js: String,
+}
+
+/// Compile a Svelte source file to client-side JavaScript.
+pub fn compile(source: &str) -> Result<CompileResult, Diagnostic> {
+    let component = svelte_parser::Parser::new(source).parse()?;
+
+    let (analysis, diags) = svelte_analyze::analyze(&component);
+
+    // Treat analysis errors as fatal.
+    if let Some(diag) = diags.into_iter().find(|d| d.is_error()) {
+        return Err(diag);
+    }
+
+    let js = svelte_codegen_client::generate(&component, &analysis);
+
+    Ok(CompileResult { js })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(source: &str, expected: &str) {
+        let result = compile(source).unwrap_or_else(|e| panic!("compile failed: {e:?}"));
+        assert_eq!(result.js, expected);
+    }
+
+    #[test]
+    fn empty_component() {
+        check(
+            "",
+            r#"import * as $ from "svelte/internal/client";
+export default function App($$anchor) {}
+"#,
+        );
+    }
+
+    #[test]
+    fn only_script() {
+        check(
+            r#"<script>
+    let i = 10;
+    i++;
+</script>"#,
+            r#"import * as $ from "svelte/internal/client";
+export default function App($$anchor) {
+	let i = 10;
+	i++;
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn single_interpolation_rune() {
+        // Unmutated $state — no $.state(), no $.get()
+        check(
+            r#"<script>
+    let name = $state();
+</script>{name}"#,
+            r#"import * as $ from "svelte/internal/client";
+export default function App($$anchor) {
+	let name = void 0;
+	$.next();
+	var text = $.text();
+	$.template_effect(() => $.set_text(text, name));
+	$.append($$anchor, text);
+}
+"#,
+        );
+    }
+}

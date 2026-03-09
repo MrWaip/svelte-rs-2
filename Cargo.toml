@@ -11,6 +11,8 @@ svelte_parser = { path = "crates/svelte_parser" }
 svelte_js = { path = "crates/svelte_js" }
 svelte_diagnostics = { path = "crates/svelte_diagnostics" }
 svelte_analyze = { path = "crates/svelte_analyze" }
+svelte_codegen_client = { path = "crates/svelte_codegen_client" }
+svelte_compiler = { path = "crates/svelte_compiler" }
 
 # Old crates (to be removed in Stage 4)
 ast = { path = "crates/ast" }
