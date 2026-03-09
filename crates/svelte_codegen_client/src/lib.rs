@@ -27,6 +27,10 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // -----------------------------------------------------------------------
     let (hoisted, template_body) = template::gen_root_fragment(&mut ctx);
 
+    // Nested fragment templates go before root template
+    let mut all_hoisted: Vec<Statement<'_>> = ctx.module_hoisted.drain(..).collect();
+    all_hoisted.extend(hoisted);
+
     // -----------------------------------------------------------------------
     // 3. Assemble the program
     // -----------------------------------------------------------------------
@@ -55,7 +59,7 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     let mut program_body: Vec<Statement<'_>> = Vec::new();
     program_body.push(import_svelte);
     program_body.extend(script_imports);
-    program_body.extend(hoisted);
+    program_body.extend(all_hoisted);
     program_body.push(export_default);
 
     let program = b.program(program_body);

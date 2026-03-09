@@ -158,7 +158,8 @@ fn gen_root_mixed<'a>(
     let mut init = Vec::new();
     let mut update = Vec::new();
     let mut after_update = Vec::new();
-    traverse_items(ctx, &items, first_child, &mut init, &mut update, hoisted, &mut after_update);
+    let trailing = traverse_items(ctx, &items, first_child, &mut init, &mut update, hoisted, &mut after_update);
+    emit_trailing_next(ctx, trailing, &mut init);
     body.extend(init);
     emit_template_effect(ctx, update, body);
     body.extend(after_update);
@@ -173,8 +174,7 @@ fn gen_root_mixed<'a>(
 fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
     let ct = ctx.analysis.content_types.get(&key).copied().unwrap_or(ContentType::Empty);
 
-    let mut body = Vec::new();
-    let mut hoisted = Vec::new();
+    let mut body: Vec<Statement<'a>> = Vec::new();
 
     match ct {
         ContentType::Empty => {}
@@ -211,26 +211,21 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
             let tpl_name = ctx.gen_ident("root");
             let el = find_el(ctx, el_id);
             let html = element_html(ctx, &el);
-            // NOTE: for nested fragments we add templates to hoisted but they get inlined
-            // into the parent since we can't hoist from a fragment fn. This is a simplification.
-            // For a more complete implementation these would be hoisted to module scope.
-            hoisted.push(ctx.b.var_stmt(
+            ctx.module_hoisted.push(ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b.call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
             ));
 
             let el_name = ctx.gen_ident(&el.name.clone());
-            body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
 
             let mut init = Vec::new();
             let mut update = Vec::new();
             let mut sub_hoisted = Vec::new();
             let mut after_update = Vec::new();
             process_element(ctx, el_id, &el_name, &mut init, &mut update, &mut sub_hoisted, &mut after_update);
-            // Prepend sub_hoisted + hoisted before body (template vars declared before use)
+            ctx.module_hoisted.extend(sub_hoisted);
+
             let mut result = Vec::new();
-            result.extend(hoisted);
-            result.extend(sub_hoisted);
             result.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
             result.extend(init);
             emit_template_effect(ctx, update, &mut result);
@@ -270,13 +265,12 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
 
             let tpl_name = ctx.gen_ident("root");
             let html = fragment_html(ctx, key);
-            hoisted.push(ctx.b.var_stmt(
+            ctx.module_hoisted.push(ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b.call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
             ));
 
             let frag = ctx.gen_ident("fragment");
-            body.extend(hoisted);
             body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(&tpl_name, [])));
 
             let first = ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]);
@@ -284,11 +278,9 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
             let mut update = Vec::new();
             let mut sub_hoisted = Vec::new();
             let mut after_update = Vec::new();
-            traverse_items(ctx, &items, first, &mut init, &mut update, &mut sub_hoisted, &mut after_update);
-            // sub_hoisted: template declarations from nested elements
-            // Insert before init in body
-            let insert_pos = body.len();
-            body.extend(sub_hoisted);
+            let trailing = traverse_items(ctx, &items, first, &mut init, &mut update, &mut sub_hoisted, &mut after_update);
+            ctx.module_hoisted.extend(sub_hoisted);
+            emit_trailing_next(ctx, trailing, &mut init);
             body.extend(init);
             emit_template_effect(ctx, update, &mut body);
             body.extend(after_update);
@@ -306,6 +298,7 @@ fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
 
 /// `first_child_expr` is the initial anchor (e.g. `$.first_child(fragment)`).
 /// Returns via `init` (DOM var declarations) and `update` (template_effect contents).
+/// Returns trailing `sibling_offset` (number of unprocessed static siblings after the last var).
 fn traverse_items<'a>(
     ctx: &mut Ctx<'a>,
     items: &[FragmentItem],
@@ -314,7 +307,7 @@ fn traverse_items<'a>(
     update: &mut Vec<Statement<'a>>,
     hoisted: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
-) {
+) -> usize {
     // Track current DOM position: (prev_expr or ident, offset since last named node)
     let mut prev_expr: Option<Expression<'a>> = Some(first_child_expr);
     let mut prev_ident: Option<String> = None;
@@ -403,6 +396,8 @@ fn traverse_items<'a>(
             sibling_offset += 1;
         }
     }
+
+    sibling_offset
 }
 
 // ---------------------------------------------------------------------------
@@ -485,11 +480,10 @@ fn process_element<'a>(
             let first_child = ctx.b.call_expr("$.child", [Arg::Ident(el_name)]);
             let mut child_init = Vec::new();
             let mut child_update = Vec::new();
-            traverse_items(ctx, &child_items, first_child, &mut child_init, &mut child_update, hoisted, after_update);
+            let trailing = traverse_items(ctx, &child_items, first_child, &mut child_init, &mut child_update, hoisted, after_update);
 
-            if has_dynamic_children(ctx, el_id) {
-                // Insert $.reset(el) after the traversal inits but before updates
-                // In Svelte, reset appears before template_effect in element_common
+            emit_trailing_next(ctx, trailing, &mut child_init);
+            if !child_init.is_empty() {
                 child_init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
             }
 
@@ -877,6 +871,19 @@ fn emit_template_effect<'a>(
     body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
 }
 
+/// Emit `$.next()` or `$.next(N)` for trailing static siblings after the last named var.
+fn emit_trailing_next<'a>(ctx: &mut Ctx<'a>, trailing: usize, stmts: &mut Vec<Statement<'a>>) {
+    if trailing <= 1 {
+        return;
+    }
+    let offset = trailing - 1;
+    if offset == 1 {
+        stmts.push(ctx.b.call_stmt("$.next", []));
+    } else {
+        stmts.push(ctx.b.call_stmt("$.next", [Arg::Num(offset as f64)]));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Expression parsing + rune transformation
 // ---------------------------------------------------------------------------
@@ -942,8 +949,32 @@ impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
 fn item_needs_var(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts } => parts.iter().any(|p| matches!(p, ConcatPart::Expr(_))),
-        FragmentItem::Element(id) => ctx.analysis.node_needs_ref.contains(id),
+        FragmentItem::Element(id) => element_needs_var(ctx, *id),
         FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) => true,
+    }
+}
+
+fn element_needs_var(ctx: &Ctx<'_>, id: NodeId) -> bool {
+    if ctx.analysis.node_needs_ref.contains(&id) {
+        return true;
+    }
+    // Any non-static attribute (expression, shorthand, bind, etc.) needs a DOM ref
+    let el = find_el_ref(ctx, id);
+    let has_runtime_attrs = el.attributes.iter().any(|a| {
+        !matches!(a, Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_))
+    });
+    if has_runtime_attrs {
+        return true;
+    }
+    let key = FragmentKey::Element(id);
+    let ct = ctx.analysis.content_types.get(&key).copied().unwrap_or(ContentType::Empty);
+    match ct {
+        ContentType::Empty | ContentType::StaticText => false,
+        ContentType::DynamicText | ContentType::SingleBlock => true,
+        ContentType::SingleElement | ContentType::Mixed => {
+            let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else { return false };
+            lf.items.iter().any(|item| item_needs_var(item, ctx))
+        }
     }
 }
 
