@@ -8,8 +8,8 @@ mod symbols;
 mod validate;
 
 pub use data::{
-    alternate_id, AnalysisData, ConcatPart, ContentType, FragmentItem, LoweredFragment,
-    SymbolInfo, ROOT_FRAGMENT_ID,
+    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
+    SymbolId, SymbolInfo,
 };
 
 use svelte_ast::Component;
@@ -159,7 +159,7 @@ mod tests {
     }
 
     fn assert_root_content_type(data: &AnalysisData, expected: ContentType) {
-        let actual = data.content_types.get(&ROOT_FRAGMENT_ID).expect("no root content type");
+        let actual = data.content_types.get(&FragmentKey::Root).expect("no root content type");
         assert_eq!(*actual, expected);
     }
 
@@ -172,11 +172,11 @@ mod tests {
     }
 
     fn assert_is_rune(data: &AnalysisData, name: &str) {
-        let idx = data
+        let id = data
             .symbol_by_name
             .get(name)
             .unwrap_or_else(|| panic!("no symbol '{name}'"));
-        assert!(data.runes.contains_key(idx), "expected '{name}' to be a rune");
+        assert!(data.runes.contains_key(id), "expected '{name}' to be a rune");
     }
 
     fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -232,7 +232,7 @@ mod tests {
     ) {
         let el = find_element(&component.fragment, tag_name)
             .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-        let actual = data.content_types.get(&el.id)
+        let actual = data.content_types.get(&FragmentKey::Element(el.id))
             .unwrap_or_else(|| panic!("no content type for <{tag_name}>"));
         assert_eq!(*actual, expected);
     }
@@ -245,7 +245,7 @@ mod tests {
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-        let actual = data.content_types.get(&block.id)
+        let actual = data.content_types.get(&FragmentKey::IfConsequent(block.id))
             .unwrap_or_else(|| panic!("no consequent content type for IfBlock '{test_text}'"));
         assert_eq!(*actual, expected);
     }
@@ -258,25 +258,24 @@ mod tests {
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-        let alt_id = alternate_id(block.id);
-        let actual = data.content_types.get(&alt_id)
+        let actual = data.content_types.get(&FragmentKey::IfAlternate(block.id))
             .unwrap_or_else(|| panic!("no alternate content type for IfBlock '{test_text}'"));
         assert_eq!(*actual, expected);
     }
 
-    fn assert_lowered_item_count(data: &AnalysisData, owner_id: NodeId, expected_count: usize) {
+    fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
         let lf = data
             .lowered_fragments
-            .get(&owner_id)
-            .unwrap_or_else(|| panic!("no lowered fragment for {:?}", owner_id));
+            .get(&key)
+            .unwrap_or_else(|| panic!("no lowered fragment for {:?}", key));
         assert_eq!(lf.items.len(), expected_count, "expected {expected_count} items in lowered fragment");
     }
 
-    fn assert_root_text_concat(data: &AnalysisData) {
-        let lf = data.lowered_fragments.get(&ROOT_FRAGMENT_ID).expect("no root lowered fragment");
+    fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
+        let lf = data.lowered_fragments.get(&key).expect("no lowered fragment");
         assert!(
-            matches!(lf.items.first(), Some(FragmentItem::TextConcat { .. })),
-            "expected first root item to be TextConcat",
+            matches!(lf.items.get(index), Some(FragmentItem::TextConcat { .. })),
+            "expected item[{index}] to be TextConcat",
         );
     }
 
@@ -332,8 +331,8 @@ mod tests {
     #[test]
     fn lowered_fragment_groups_text_and_expr() {
         let (_c, data) = analyze_source(r#"<script>let x = $state(1);</script>Hello {x} world"#);
-        assert_lowered_item_count(&data, ROOT_FRAGMENT_ID, 1);
-        assert_root_text_concat(&data);
+        assert_lowered_item_count(&data, FragmentKey::Root, 1);
+        assert_item_is_text_concat(&data, FragmentKey::Root, 0);
     }
 
     #[test]
@@ -363,7 +362,7 @@ mod tests {
     fn whitespace_only_text_trimmed_at_boundaries() {
         // Leading and trailing whitespace-only text should not appear as items.
         let (_c, data) = analyze_source("\n  <div></div>\n  ");
-        assert_lowered_item_count(&data, ROOT_FRAGMENT_ID, 1);
+        assert_lowered_item_count(&data, FragmentKey::Root, 1);
         assert_root_content_type(&data, ContentType::SingleElement);
     }
 
@@ -371,7 +370,9 @@ mod tests {
     fn multiple_lowered_groups() {
         // ExprTag, then Element, then ExprTag → three separate items.
         let (_c, data) = analyze_source("{a} <div></div> {b}");
-        assert_lowered_item_count(&data, ROOT_FRAGMENT_ID, 3);
+        assert_lowered_item_count(&data, FragmentKey::Root, 3);
+        assert_item_is_text_concat(&data, FragmentKey::Root, 0);
+        assert_item_is_text_concat(&data, FragmentKey::Root, 2);
         assert_root_content_type(&data, ContentType::Mixed);
     }
 

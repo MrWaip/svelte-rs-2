@@ -5,19 +5,24 @@ use svelte_ast::NodeId;
 use svelte_js::{DeclarationKind, ExpressionInfo, RuneKind, ScriptInfo};
 
 // ---------------------------------------------------------------------------
-// Sentinel NodeId for the root component fragment
+// SymbolId — typed index into symbols Vec
 // ---------------------------------------------------------------------------
 
-/// Key for the root `Component::fragment` in `lowered_fragments` and `content_types`.
-pub const ROOT_FRAGMENT_ID: NodeId = NodeId(u32::MAX);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SymbolId(pub u32);
 
-/// Key for the alternate branch of an IfBlock.
-/// Convention: block_id.0 | ALTERNATE_MASK.
-/// Safe because the parser's NodeIdAllocator never produces IDs >= 2^30.
-const ALTERNATE_MASK: u32 = 1 << 30;
+// ---------------------------------------------------------------------------
+// FragmentKey — typed key for lowered_fragments and content_types
+// ---------------------------------------------------------------------------
 
-pub fn alternate_id(block_id: NodeId) -> NodeId {
-    NodeId(block_id.0 | ALTERNATE_MASK)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FragmentKey {
+    Root,
+    Element(NodeId),
+    IfConsequent(NodeId),
+    IfAlternate(NodeId),
+    EachBody(NodeId),
+    EachFallback(NodeId),
 }
 
 // ---------------------------------------------------------------------------
@@ -25,26 +30,28 @@ pub fn alternate_id(block_id: NodeId) -> NodeId {
 // ---------------------------------------------------------------------------
 
 pub struct AnalysisData {
-    /// Lowered + trimmed representation of each fragment, keyed by owner NodeId.
-    pub lowered_fragments: HashMap<NodeId, LoweredFragment>,
+    /// Lowered + trimmed representation of each fragment.
+    pub lowered_fragments: HashMap<FragmentKey, LoweredFragment>,
     /// Parsed JS metadata for ExpressionTag nodes (and IfBlock/EachBlock test expressions).
     pub expressions: HashMap<NodeId, ExpressionInfo>,
+    /// Parsed JS metadata for element attribute expressions: (element_id, attr_index).
+    pub attr_expressions: HashMap<(NodeId, usize), ExpressionInfo>,
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// All top-level symbols declared in the script block.
     pub symbols: Vec<SymbolInfo>,
     /// Index into `symbols` by name.
-    pub symbol_by_name: HashMap<String, usize>,
-    /// Which symbols (by index into `symbols`) are Svelte runes.
-    pub runes: HashMap<usize, RuneKind>,
+    pub symbol_by_name: HashMap<String, SymbolId>,
+    /// Which symbols are Svelte runes.
+    pub runes: HashMap<SymbolId, RuneKind>,
     /// Element attributes that reference rune symbols: (element NodeId, attr index).
     pub dynamic_attrs: HashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
     pub dynamic_nodes: HashSet<NodeId>,
     /// Elements that need a JS variable reference for reactive updates.
     pub node_needs_ref: HashSet<NodeId>,
-    /// Content classification for each fragment owner.
-    pub content_types: HashMap<NodeId, ContentType>,
+    /// Content classification for each fragment.
+    pub content_types: HashMap<FragmentKey, ContentType>,
 }
 
 impl AnalysisData {
@@ -52,6 +59,7 @@ impl AnalysisData {
         Self {
             lowered_fragments: HashMap::new(),
             expressions: HashMap::new(),
+            attr_expressions: HashMap::new(),
             script: None,
             symbols: Vec::new(),
             symbol_by_name: HashMap::new(),
@@ -75,8 +83,10 @@ pub struct LoweredFragment {
 pub enum FragmentItem {
     /// A standalone element node.
     Element(NodeId),
-    /// An IfBlock or EachBlock (has its own sub-fragments in lowered_fragments).
-    Block(NodeId),
+    /// An IfBlock (has its own sub-fragments in lowered_fragments).
+    IfBlock(NodeId),
+    /// An EachBlock (has its own sub-fragments in lowered_fragments).
+    EachBlock(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<ConcatPart> },
 }
@@ -111,6 +121,8 @@ pub enum ContentType {
     DynamicText,
     /// Exactly one element, nothing else.
     SingleElement,
+    /// Exactly one block (IfBlock or EachBlock), nothing else.
+    SingleBlock,
     /// Mix of elements, blocks, and/or text.
     Mixed,
 }

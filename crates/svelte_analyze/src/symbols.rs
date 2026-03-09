@@ -1,4 +1,4 @@
-use crate::data::{AnalysisData, SymbolInfo};
+use crate::data::{AnalysisData, SymbolId, SymbolInfo};
 
 pub fn collect_symbols(data: &mut AnalysisData) {
     let script = match &data.script {
@@ -7,8 +7,8 @@ pub fn collect_symbols(data: &mut AnalysisData) {
     };
 
     for decl in &script.declarations {
-        let idx = data.symbols.len();
-        data.symbol_by_name.insert(decl.name.clone(), idx);
+        let id = SymbolId(data.symbols.len() as u32);
+        data.symbol_by_name.insert(decl.name.clone(), id);
         data.symbols.push(SymbolInfo {
             name: decl.name.clone(),
             span: decl.span,

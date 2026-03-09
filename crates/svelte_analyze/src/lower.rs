@@ -1,39 +1,35 @@
-use svelte_ast::{Component, Fragment, Node, NodeId};
+use svelte_ast::{Component, Fragment, Node};
 
-use crate::data::{
-    alternate_id, ConcatPart, FragmentItem, LoweredFragment, AnalysisData, ROOT_FRAGMENT_ID,
-};
+use crate::data::{ConcatPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
-    lower_fragment(&component.fragment, ROOT_FRAGMENT_ID, component, data);
+    lower_fragment(&component.fragment, FragmentKey::Root, component, data);
 }
 
 fn lower_fragment(
     fragment: &Fragment,
-    owner_id: NodeId,
+    key: FragmentKey,
     component: &Component,
     data: &mut AnalysisData,
 ) {
     let items = build_items(fragment, component);
-    data.lowered_fragments.insert(owner_id, LoweredFragment { items });
+    data.lowered_fragments.insert(key, LoweredFragment { items });
 
     for node in &fragment.nodes {
         match node {
             Node::Element(el) => {
-                lower_fragment(&el.fragment, el.id, component, data);
+                lower_fragment(&el.fragment, FragmentKey::Element(el.id), component, data);
             }
             Node::IfBlock(block) => {
-                lower_fragment(&block.consequent, block.id, component, data);
+                lower_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), component, data);
                 if let Some(alt) = &block.alternate {
-                    lower_fragment(alt, alternate_id(block.id), component, data);
+                    lower_fragment(alt, FragmentKey::IfAlternate(block.id), component, data);
                 }
             }
             Node::EachBlock(block) => {
-                lower_fragment(&block.body, block.id, component, data);
+                lower_fragment(&block.body, FragmentKey::EachBody(block.id), component, data);
                 if let Some(fb) = &block.fallback {
-                    // Fallback uses a different mask to avoid collision with alternate
-                    let fb_id = NodeId(block.id.0 | (1 << 29));
-                    lower_fragment(fb, fb_id, component, data);
+                    lower_fragment(fb, FragmentKey::EachFallback(block.id), component, data);
                 }
             }
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) => {}
@@ -90,11 +86,11 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
             }
             Node::IfBlock(block) => {
                 flush(&mut concat, &mut items);
-                items.push(FragmentItem::Block(block.id));
+                items.push(FragmentItem::IfBlock(block.id));
             }
             Node::EachBlock(block) => {
                 flush(&mut concat, &mut items);
-                items.push(FragmentItem::Block(block.id));
+                items.push(FragmentItem::EachBlock(block.id));
             }
             Node::Comment(_) => {
                 // Drop comments
