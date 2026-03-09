@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use span::Span;
+use svelte_span::Span;
 use svelte_ast::NodeId;
 use svelte_js::{DeclarationKind, ExpressionInfo, RuneKind, ScriptInfo};
 

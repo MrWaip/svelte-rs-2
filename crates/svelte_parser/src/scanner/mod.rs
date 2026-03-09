@@ -8,7 +8,7 @@ use token::{
 };
 
 use svelte_diagnostics::Diagnostic;
-use span::{Span, SPAN};
+use svelte_span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -39,7 +39,7 @@ impl<'a> Scanner<'a> {
 
         self.tokens.push(Token {
             token_type: TokenType::EOF,
-            span: Span::new(self.start, self.current),
+            span: Span::new(self.start as u32, self.current as u32),
             lexeme: "",
         });
 
@@ -80,7 +80,7 @@ impl<'a> Scanner<'a> {
         self.tokens.push(Token {
             token_type,
             lexeme: text,
-            span: Span::new(self.start, self.current),
+            span: Span::new(self.start as u32, self.current as u32),
         });
     }
 
@@ -143,7 +143,7 @@ impl<'a> Scanner<'a> {
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 AttributeIdentifierType::BindDirective(value).as_ok()
             } else {
-                Diagnostic::unknown_directive(Span::new(colon_pos, self.current)).as_err()
+                Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32)).as_err()
             }
         } else if start == self.current {
             AttributeIdentifierType::None.as_ok()
@@ -190,8 +190,8 @@ impl<'a> Scanner<'a> {
 
         if self.is_at_end() {
             return Err(Diagnostic::unexpected_end_of_file(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
@@ -215,7 +215,7 @@ impl<'a> Scanner<'a> {
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(Span::new(start, self.current)));
+            return Err(Diagnostic::invalid_tag_name(Span::new(start as u32, self.current as u32)));
         }
 
         let attributes = self.attributes()?;
@@ -223,8 +223,8 @@ impl<'a> Scanner<'a> {
 
         if !self.match_char('>') {
             return Err(Diagnostic::unterminated_start_tag(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
@@ -366,7 +366,7 @@ impl<'a> Scanner<'a> {
 
         Ok(ExpressionTag {
             expression,
-            span: Span::new(start, self.current),
+            span: Span::new(start as u32, self.current as u32),
         })
     }
 
@@ -435,13 +435,13 @@ impl<'a> Scanner<'a> {
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(Span::new(start, self.current)));
+            return Err(Diagnostic::invalid_tag_name(Span::new(start as u32, self.current as u32)));
         }
 
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name }));
@@ -462,7 +462,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::Interpolation(ExpressionTag {
             expression,
-            span: Span::new(self.start, self.current),
+            span: Span::new(self.start as u32, self.current as u32),
         }));
 
         Ok(())
@@ -503,15 +503,15 @@ impl<'a> Scanner<'a> {
                 let span_end = self.prev - trim_end;
 
                 return Ok(JsExpression {
-                    span: Span::new(span_start, span_end),
+                    span: Span::new(span_start as u32, span_end as u32),
                     value,
                 });
             }
         }
 
         Err(Diagnostic::unexpected_end_of_file(Span::new(
-            start,
-            self.current,
+            start as u32,
+            self.current as u32,
         )))
     }
 
@@ -523,8 +523,8 @@ impl<'a> Scanner<'a> {
 
         if self.is_at_end() {
             return Err(Diagnostic::unexpected_end_of_file(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
@@ -543,8 +543,8 @@ impl<'a> Scanner<'a> {
 
         if keyword.is_empty() {
             return Err(Diagnostic::unexpected_keyword(Span::new(
-                self.start,
-                self.current,
+                self.start as u32,
+                self.current as u32,
             )));
         }
 
@@ -558,8 +558,8 @@ impl<'a> Scanner<'a> {
             }
             "each" => self.start_each_tag(),
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             ))),
         }
     }
@@ -574,8 +574,8 @@ impl<'a> Scanner<'a> {
 
         if keyword.is_empty() {
             return Err(Diagnostic::unexpected_keyword(Span::new(
-                self.start,
-                self.current,
+                self.start as u32,
+                self.current as u32,
             )));
         }
 
@@ -584,7 +584,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                 }
 
                 self.add_token(TokenType::EndIfTag);
@@ -595,7 +595,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                 }
 
                 self.add_token(TokenType::EndEachTag);
@@ -603,8 +603,8 @@ impl<'a> Scanner<'a> {
                 Ok(())
             }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             ))),
         }
     }
@@ -619,8 +619,8 @@ impl<'a> Scanner<'a> {
 
         if keyword.is_empty() {
             return Err(Diagnostic::unexpected_keyword(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
@@ -634,8 +634,8 @@ impl<'a> Scanner<'a> {
                 if !elseif.is_empty() {
                     if elseif != "if" {
                         return Err(Diagnostic::unexpected_keyword(Span::new(
-                            start,
-                            self.current,
+                            start as u32,
+                            self.current as u32,
                         )));
                     }
 
@@ -647,7 +647,7 @@ impl<'a> Scanner<'a> {
                     }));
                 } else {
                     if !self.match_char('}') {
-                        return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+                        return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                     }
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
@@ -659,8 +659,8 @@ impl<'a> Scanner<'a> {
                 Ok(())
             }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             ))),
         }
     }
@@ -691,15 +691,15 @@ impl<'a> Scanner<'a> {
 
         if self.is_at_end() {
             return Err(Diagnostic::unexpected_end_of_file(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
         }
 
         self.add_token(TokenType::ScriptTag(ScriptTag {
@@ -715,11 +715,11 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         if !self.match_char('-') {
-            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
         }
 
         if !self.match_char('-') {
-            return Err(Diagnostic::unexpected_token(Span::new(start, self.current)));
+            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
         }
 
         while !self.is_at_end() {
@@ -732,8 +732,8 @@ impl<'a> Scanner<'a> {
 
         if self.is_at_end() {
             return Err(Diagnostic::unexpected_end_of_file(Span::new(
-                start,
-                self.current,
+                start as u32,
+                self.current as u32,
             )));
         }
 
@@ -781,16 +781,16 @@ impl<'a> Scanner<'a> {
         }
 
         let Some(collection) = collection else {
-            return Diagnostic::unexpected_token(Span::new(self.start, self.current)).as_err();
+            return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
         };
 
         let Some(item) = item else {
-            return Diagnostic::unexpected_token(Span::new(self.start, self.current)).as_err();
+            return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
         };
 
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection: JsExpression {
-                span: Span::new(start_collection_pos, end_collection_pos),
+                span: Span::new(start_collection_pos as u32, end_collection_pos as u32),
                 value: collection,
             },
             item,

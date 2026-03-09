@@ -1,4 +1,4 @@
-use span::Span;
+use svelte_span::Span;
 
 /// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -35,7 +35,7 @@ impl Component {
 
     /// Get source text for a span.
     pub fn source_text(&self, span: Span) -> &str {
-        &self.source[span.start..span.end]
+        &self.source[span.start as usize..span.end as usize]
     }
 }
 
@@ -134,7 +134,7 @@ pub struct Text {
 impl Text {
     /// Get the text value from source.
     pub fn value<'a>(&self, source: &'a str) -> &'a str {
-        &source[self.span.start..self.span.end]
+        &source[self.span.start as usize..self.span.end as usize]
     }
 }
 
@@ -182,7 +182,7 @@ pub struct Comment {
 
 impl Comment {
     pub fn value<'a>(&self, source: &'a str) -> &'a str {
-        &source[self.span.start..self.span.end]
+        &source[self.span.start as usize..self.span.end as usize]
     }
 }
 

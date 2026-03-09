@@ -2,7 +2,7 @@ use scanner::{
     token::{self, ExpressionTag, Token, TokenType},
     Scanner,
 };
-use span::Span;
+use svelte_span::Span;
 
 use svelte_ast::{
     Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective, Comment,
@@ -254,7 +254,7 @@ impl<'a> Parser<'a> {
 
                     script_data = Some(ScriptData {
                         span: token.span,
-                        content_span: Span::new(content_start, content_end),
+                        content_span: Span::new(content_start as u32, content_end as u32),
                         language,
                     });
                 }
@@ -263,7 +263,7 @@ impl<'a> Parser<'a> {
         }
 
         if !entry_stack.is_empty() {
-            return Diagnostic::unclosed_node(Span::new(0, self.source.len())).as_err();
+            return Diagnostic::unclosed_node(Span::new(0, self.source.len() as u32)).as_err();
         }
 
         let roots = children_stack.pop().unwrap();
@@ -388,7 +388,7 @@ impl<'a> Parser<'a> {
                             let start = self.offset_of(value);
                             Attribute::StringAttribute(StringAttribute {
                                 name: html_attr.name.to_string(),
-                                value_span: Span::new(start, start + value.len()),
+                                value_span: Span::new(start as u32, (start + value.len()) as u32),
                             })
                         }
                         token::AttributeValue::ExpressionTag(expr_tag) => {

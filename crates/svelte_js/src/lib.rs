@@ -8,7 +8,7 @@ use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan as _, SourceType};
 
-use span::Span;
+use svelte_span::Span;
 use svelte_diagnostics::Diagnostic;
 
 // ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ pub fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, D
 
     let expr = parser
         .parse_expression()
-        .map_err(|_| Diagnostic::invalid_expression(Span::new(offset as usize, (offset as usize) + source.len())))?;
+        .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
 
     let info = extract_expression_info(&expr, offset);
     // allocator drops here — all OXC data freed
@@ -120,7 +120,7 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
 
     if !result.errors.is_empty() {
         return Err(result.errors.iter().map(|_| {
-            Diagnostic::invalid_expression(Span::new(offset as usize, offset as usize + source.len()))
+            Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
         }).collect());
     }
 
@@ -144,14 +144,14 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
                     if let oxc_ast::ast::BindingPatternKind::BindingIdentifier(ident) = &declarator.id.kind {
                         let name = ident.name.to_string();
                         let decl_span = Span::new(
-                            ident.span.start as usize + offset as usize,
-                            ident.span.end as usize + offset as usize,
+                            ident.span.start + offset,
+                            ident.span.end + offset,
                         );
 
                         let (init_span, is_rune) = if let Some(init) = &declarator.init {
                             let init_sp = Span::new(
-                                init.span().start as usize + offset as usize,
-                                init.span().end as usize + offset as usize,
+                                init.span().start + offset,
+                                init.span().end + offset,
                             );
                             let rune = detect_rune(init);
                             (Some(init_sp), rune)
@@ -174,8 +174,8 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
                     declarations.push(DeclarationInfo {
                         name: ident.name.to_string(),
                         span: Span::new(
-                            ident.span.start as usize + offset as usize,
-                            ident.span.end as usize + offset as usize,
+                            ident.span.start + offset,
+                            ident.span.end + offset,
                         ),
                         kind: DeclarationKind::Function,
                         init_span: None,
@@ -239,8 +239,8 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
             refs.push(Reference {
                 name: ident.name.to_string(),
                 span: Span::new(
-                    ident.span.start as usize + offset as usize,
-                    ident.span.end as usize + offset as usize,
+                    ident.span.start + offset,
+                    ident.span.end + offset,
                 ),
                 flags: ReferenceFlags::Read,
             });
@@ -251,8 +251,8 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                 refs.push(Reference {
                     name: ident.name.to_string(),
                     span: Span::new(
-                        ident.span.start as usize + offset as usize,
-                        ident.span.end as usize + offset as usize,
+                        ident.span.start + offset,
+                        ident.span.end + offset,
                     ),
                     flags: ReferenceFlags::Write,
                 });

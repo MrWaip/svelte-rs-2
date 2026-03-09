@@ -7,7 +7,7 @@ edition = "2021"
 svelte_ast = { path = "../svelte_ast" }
 svelte_js = { path = "../svelte_js" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
-span = { path = "../span" }
+svelte_span = { path = "../svelte_span" }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
