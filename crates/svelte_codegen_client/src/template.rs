@@ -647,7 +647,18 @@ fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
     let mut html = String::new();
     for item in &lf.items {
         match item {
-            FragmentItem::TextConcat { .. } => html.push(' '),
+            FragmentItem::TextConcat { parts } => {
+                let has_expr = parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)));
+                if has_expr {
+                    html.push(' ');
+                } else {
+                    for part in parts {
+                        if let ConcatPart::Text(t) = part {
+                            html.push_str(t);
+                        }
+                    }
+                }
+            }
             FragmentItem::Element(id) => {
                 let el = find_el_ref(ctx, *id);
                 html.push_str(&element_html(ctx, el));

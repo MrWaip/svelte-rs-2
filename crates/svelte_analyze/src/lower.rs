@@ -120,8 +120,8 @@ fn is_removable_text(node: &Node, component: &Component) -> bool {
 ///   space when the original starts with whitespace, and a trailing space when
 ///   the original ends with whitespace.
 fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -> String {
-    let prev_is_expr = prev_significant(idx, siblings).is_some_and(|n| n.is_expression_tag());
-    let next_is_expr = next_significant(idx, siblings).is_some_and(|n| n.is_expression_tag());
+    let prev_exists = prev_significant(idx, siblings).is_some();
+    let next_exists = next_significant(idx, siblings).is_some();
 
     let starts_ws = raw.starts_with(|c: char| c.is_ascii_whitespace());
     let ends_ws = raw.ends_with(|c: char| c.is_ascii_whitespace());
@@ -130,20 +130,19 @@ fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -
     let inner: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
 
     if inner.is_empty() {
-        // Pure-whitespace node: keep a separator space only when adjacent to an expression.
-        if prev_is_expr || next_is_expr {
+        // Pure-whitespace node: keep a separator space between two significant siblings.
+        if prev_exists && next_exists {
             return " ".to_string();
         }
         return String::new();
     }
 
-    // Mixed content: preserve a separator space only when adjacent to an expression tag.
     let mut s = String::new();
-    if starts_ws && prev_is_expr {
+    if starts_ws && prev_exists {
         s.push(' ');
     }
     s.push_str(&inner);
-    if ends_ws && next_is_expr {
+    if ends_ws && next_exists {
         s.push(' ');
     }
     s
