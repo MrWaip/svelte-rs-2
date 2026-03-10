@@ -2,16 +2,17 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget,
-        BindingIdentifier, BindingPatternKind, CallExpression, ExportDefaultDeclarationKind,
+        BindingIdentifier, BindingPattern, CallExpression, ExportDefaultDeclarationKind,
         Expression, FormalParameters, Function, FunctionType, IdentifierReference,
         ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration, ModuleExportName,
         NumericLiteral, Program, Statement,
-        StaticMemberExpression, StringLiteral, TemplateElement, TemplateElementValue,
+        StaticMemberExpression, StringLiteral, TemplateElementValue,
         TemplateLiteral, VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };
 use oxc_span::{Atom, SourceType, SPAN};
+use oxc_syntax::node::NodeId as OxcNodeId;
 use std::cell::Cell;
 
 pub enum Arg<'a, 'short> {
@@ -110,7 +111,7 @@ impl<'a> Builder<'a> {
         callee: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> CallExpression<'a> {
-        let ident = self.ast.expression_identifier_reference(SPAN, callee);
+        let ident = self.ast.expression_identifier(SPAN, callee);
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         self.ast.call_expression(SPAN, ident, NONE, self.ast.vec_from_iter(args), false)
     }
@@ -162,15 +163,12 @@ impl<'a> Builder<'a> {
 
     /// `let name;` — uninitialized variable declaration.
     pub fn let_stmt(&self, name: &str) -> Statement<'a> {
-        let pattern = self.ast.binding_pattern(
-            BindingPatternKind::BindingIdentifier(self.alloc(self.bid(name))),
-            NONE,
-            false,
-        );
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, name);
         let decl = self.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Let,
             pattern,
+            NONE,
             None,
             false,
         );
@@ -193,12 +191,8 @@ impl<'a> Builder<'a> {
         init: Expression<'a>,
         kind: VariableDeclarationKind,
     ) -> Statement<'a> {
-        let pattern = self.ast.binding_pattern(
-            BindingPatternKind::BindingIdentifier(self.alloc(self.bid(name))),
-            NONE,
-            false,
-        );
-        let decl = self.ast.variable_declarator(SPAN, kind, pattern, Some(init), false);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, name);
+        let decl = self.ast.variable_declarator(SPAN, kind, pattern, NONE, Some(init), false);
         let declaration = self.ast.variable_declaration(
             SPAN,
             kind,
@@ -255,9 +249,8 @@ impl<'a> Builder<'a> {
 
     pub fn params(&self, items: impl IntoIterator<Item = impl AsRef<str>>) -> FormalParameters<'a> {
         let params = items.into_iter().map(|v| {
-            let kind = self.ast.binding_pattern_kind_binding_identifier(SPAN, v.as_ref());
-            let pattern = self.ast.binding_pattern(kind, NONE, false);
-            self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, None, false, false)
+            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, v.as_ref());
+            self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, NONE, NONE, false, None, false, false)
         });
         self.ast.formal_parameters(
             SPAN,
@@ -281,6 +274,7 @@ impl<'a> Builder<'a> {
             self.ast.vec_from_iter(statements),
         );
         self.ast.arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body)
+
     }
 
     pub fn arrow_expr(
@@ -315,6 +309,7 @@ impl<'a> Builder<'a> {
             NONE,
             Some(body),
         )
+
     }
 
     // -----------------------------------------------------------------------
@@ -344,14 +339,15 @@ impl<'a> Builder<'a> {
 
     pub fn template_str(&self, value: &str) -> TemplateLiteral<'a> {
         let mut quasis = self.ast.vec();
-        quasis.push(TemplateElement {
-            span: SPAN,
-            tail: true,
-            value: TemplateElementValue {
+        quasis.push(self.ast.template_element(
+            SPAN,
+            TemplateElementValue {
                 cooked: None,
                 raw: self.ast.atom(value),
             },
-        });
+            true,
+            false,
+        ));
         self.ast.template_literal(SPAN, quasis, self.ast.vec())
     }
 
@@ -366,8 +362,9 @@ impl<'a> Builder<'a> {
         if n == 0 {
             quasis.push(self.ast.template_element(
                 SPAN,
-                true,
                 TemplateElementValue { cooked: None, raw: Atom::from("") },
+                true,
+                false,
             ));
             return self.ast.template_literal(SPAN, quasis, expressions);
         }
@@ -382,16 +379,18 @@ impl<'a> Builder<'a> {
                     if is_last {
                         quasis.push(self.ast.template_element(
                             SPAN,
-                            true,
                             TemplateElementValue { cooked: None, raw: self.ast.atom(&pending) },
+                            true,
+                            false,
                         ));
                     }
                 }
                 TemplatePart::Expr(expr) => {
                     quasis.push(self.ast.template_element(
                         SPAN,
-                        false,
                         TemplateElementValue { cooked: None, raw: self.ast.atom(&pending) },
+                        false,
+                        false,
                     ));
                     pending.clear();
 
@@ -406,8 +405,9 @@ impl<'a> Builder<'a> {
                     if is_last {
                         quasis.push(self.ast.template_element(
                             SPAN,
-                            true,
                             TemplateElementValue { cooked: None, raw: Atom::from("") },
+                            true,
+                            false,
                         ));
                     }
                 }
@@ -433,7 +433,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn move_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
-        self.ast.move_expression(expr)
+        std::mem::replace(expr, self.cheap_expr())
     }
 
     pub fn cheap_expr(&self) -> Expression<'a> {
@@ -473,6 +473,7 @@ impl<'a> Builder<'a> {
 
     pub fn program(&self, body: Vec<Statement<'a>>) -> Program<'a> {
         Program {
+            node_id: Cell::new(OxcNodeId::DUMMY),
             body: self.ast.vec_from_iter(body),
             span: SPAN,
             comments: self.ast.vec(),
