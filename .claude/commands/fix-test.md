@@ -24,11 +24,11 @@ Compare `case-rust.js` vs `case-svelte.js` to understand exactly what's wrong.
 
 The issue is in one of these layers (check in order):
 
-1. **Parser/AST** (`svelte_parser`, `svelte_ast`) — is the input parsed correctly? Check if all nodes, attributes, and expressions are captured.
-2. **Analysis** (`svelte_analyze`) — are the analysis results correct? Check `expressions`, `dynamic_nodes`, `content_types`, `lowered_fragments`, `runes`, `mutated_runes`.
-3. **Codegen** (`svelte_codegen_client`) — is the JS output generated correctly? Compare codegen logic against the Svelte reference visitor.
+1. **Parser/AST** (`svelte_parser`, `svelte_ast`) — is the input parsed correctly? Check if all nodes, attributes, and expressions are captured. Reference: `reference/compiler/phases/1-parse/`.
+2. **Analysis** (`svelte_analyze`) — are the analysis results correct? Check `expressions`, `dynamic_nodes`, `content_types`, `lowered_fragments`, `runes`, `mutated_runes`. Reference: `reference/compiler/phases/2-analyze/visitors/`.
+3. **Codegen** (`svelte_codegen_client`) — is the JS output generated correctly? Compare codegen logic against the Svelte reference visitor. Reference: `reference/compiler/phases/3-transform/client/visitors/`.
 
-To understand what the correct codegen should do, read the corresponding Svelte reference visitor in `reference/compiler/phases/3-transform/client/visitors/`. Use the navigation table in CLAUDE.md.
+Use the navigation table in CLAUDE.md to find the exact file.
 
 For detailed type signatures and module structure, read `CODEBASE_MAP.md`.
 
@@ -47,3 +47,7 @@ Then run ALL tests to check for regressions:
 ```
 cargo test -p compiler_tests --test compiler_tests_v3
 ```
+
+If the fix breaks other tests, stop and report — do NOT fix other tests in the same run.
+
+If the test still fails after 3 fix attempts, stop and report what you've tried.

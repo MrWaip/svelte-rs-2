@@ -14,6 +14,21 @@ Rules:
 
 When writing or modifying any test in `svelte_parser`, apply `/test-pattern` automatically.
 
+### svelte_analyze tests
+
+Tests live in `crates/svelte_analyze/tests/`. Each test parses a `.svelte` snippet, runs `analyze()`, and asserts on `AnalysisData` fields. Follow `/test-pattern` for helpers and structure.
+
+### svelte_codegen_client tests
+
+Compiler tests live in `tasks/compiler_tests/cases2/`. Each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual). Run with:
+```
+cargo test -p compiler_tests --test compiler_tests_v3 <test_name>
+```
+
+## General rules for commands
+
+If stuck after 3 attempts on the same issue, stop and report what you've tried. Do not loop indefinitely.
+
 ## Porting from Svelte compiler
 
 Reference Svelte compiler source is in `reference/compiler/`. Use it to understand **what** output to produce, not **how** to implement it.
