@@ -10,6 +10,8 @@ use std::collections::HashSet;
 
 use svelte_analyze::{ConcatPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
+use svelte_ast::NodeId;
+use svelte_js::ExpressionKind;
 use svelte_span::Span;
 
 use crate::builder::{Arg, AssignLeft, AssignRight, Builder, TemplatePart};
@@ -83,28 +85,67 @@ pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expres
     }
 }
 
+/// Try to resolve an expression tag to a compile-time known value.
+fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
+    let info = ctx.analysis.expressions.get(&nid)?;
+    if let ExpressionKind::Identifier(name) = &info.kind {
+        ctx.analysis.known_values.get(name).cloned()
+    } else {
+        None
+    }
+}
+
 pub(crate) fn build_concat_from_parts<'a>(
     ctx: &mut Ctx<'a>,
     parts: &[ConcatPart],
 ) -> Expression<'a> {
+    // Single expr: try constant propagation first
     if parts.len() == 1 {
         if let ConcatPart::Expr(nid) = parts[0] {
+            if let Some(val) = try_resolve_known(ctx, nid) {
+                return ctx.b.str_expr(&val);
+            }
             let span = ctx.expr_span(nid);
             return parse_expr(ctx, span);
         }
     }
 
+    // Multi-part: fold known values into adjacent text
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
         match part {
-            ConcatPart::Text(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
+            ConcatPart::Text(s) => {
+                // Merge with previous Str part if possible
+                if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
+                    prev.push_str(s);
+                } else {
+                    tpl_parts.push(TemplatePart::Str(s.clone()));
+                }
+            }
             ConcatPart::Expr(nid) => {
-                let span = ctx.expr_span(*nid);
-                let expr = parse_expr(ctx, span);
-                tpl_parts.push(TemplatePart::Expr(expr));
+                if let Some(val) = try_resolve_known(ctx, *nid) {
+                    // Fold into adjacent text
+                    if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
+                        prev.push_str(&val);
+                    } else {
+                        tpl_parts.push(TemplatePart::Str(val));
+                    }
+                } else {
+                    let span = ctx.expr_span(*nid);
+                    let expr = parse_expr(ctx, span);
+                    tpl_parts.push(TemplatePart::Expr(expr));
+                }
             }
         }
     }
+
+    // If all parts folded into strings, emit a single string literal
+    if tpl_parts.len() == 1 {
+        if let TemplatePart::Str(s) = &tpl_parts[0] {
+            return ctx.b.str_expr(s);
+        }
+    }
+
     ctx.b.template_parts_expr(tpl_parts)
 }
 
