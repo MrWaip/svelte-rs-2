@@ -1,5 +1,6 @@
 mod content_types;
 mod data;
+mod elseif;
 mod known_values;
 mod lower;
 mod mutations;
@@ -40,6 +41,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     lower::lower(component, &mut data);
     reactivity::mark_reactivity(component, &mut data);
     content_types::classify_content(component, &mut data);
+    elseif::detect_elseif(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)

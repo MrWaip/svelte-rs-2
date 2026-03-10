@@ -58,6 +58,12 @@ pub struct AnalysisData {
     pub mutated_runes: HashSet<String>,
     /// Compile-time known values for const declarations with literal initializers.
     pub known_values: HashMap<String, String>,
+    /// All rune symbol names (precomputed from runes + symbol_by_name).
+    pub rune_names: HashSet<String>,
+    /// Rune names that are mutated (intersection of mutated_runes and rune_names).
+    pub mutable_runes: HashSet<String>,
+    /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
+    pub alt_is_elseif: HashSet<NodeId>,
 }
 
 impl AnalysisData {
@@ -77,7 +83,26 @@ impl AnalysisData {
             bind_mutated_runes: HashSet::new(),
             mutated_runes: HashSet::new(),
             known_values: HashMap::new(),
+            rune_names: HashSet::new(),
+            mutable_runes: HashSet::new(),
+            alt_is_elseif: HashSet::new(),
         }
+    }
+}
+
+impl AnalysisData {
+    pub fn is_rune(&self, name: &str) -> bool {
+        self.rune_names.contains(name)
+    }
+
+    pub fn is_mutable_rune(&self, name: &str) -> bool {
+        self.mutable_runes.contains(name)
+    }
+
+    pub fn rune_kind(&self, name: &str) -> Option<RuneKind> {
+        self.symbol_by_name
+            .get(name)
+            .and_then(|sid| self.runes.get(sid).copied())
     }
 }
 

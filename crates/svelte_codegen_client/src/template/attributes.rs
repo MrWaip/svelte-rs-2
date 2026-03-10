@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_ast::{Attribute, BindDirectiveKind, Element};
+use svelte_ast::{Attribute, Element};
 
 use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
 use crate::context::Ctx;
@@ -68,12 +68,7 @@ pub(crate) fn process_attr<'a>(
                 return;
             };
 
-            let is_mutated_rune = ctx.analysis.mutated_runes.contains(&var_name)
-                && ctx
-                    .analysis
-                    .symbol_by_name
-                    .get(&var_name)
-                    .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+            let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
 
             let getter_body = if is_mutated_rune {
                 ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
@@ -98,12 +93,12 @@ pub(crate) fn process_attr<'a>(
                 [ctx.b.expr_stmt(setter_body)],
             );
 
-            let stmt = match bind.kind {
-                BindDirectiveKind::Checked => ctx.b.call_stmt(
+            let stmt = match bind.name.as_str() {
+                "checked" => ctx.b.call_stmt(
                     "$.bind_checked",
                     [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
                 ),
-                BindDirectiveKind::Group => {
+                "group" => {
                     ctx.needs_binding_group = true;
                     ctx.b.call_stmt(
                         "$.bind_group",
@@ -164,12 +159,7 @@ pub(crate) fn process_class_directives<'a>(
             (ctx.b.rid_expr(name), true)
         };
 
-        let is_mutated_rune = ctx.analysis.mutated_runes.contains(name)
-            && ctx
-                .analysis
-                .symbol_by_name
-                .get(name)
-                .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+        let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
 
         let name_alloc = ctx.b.ast.allocator.alloc_str(name);
 
@@ -285,12 +275,7 @@ pub(crate) fn process_attrs_spread<'a>(
                     continue;
                 };
 
-                let is_mutated_rune = ctx.analysis.mutated_runes.contains(&var_name)
-                    && ctx
-                        .analysis
-                        .symbol_by_name
-                        .get(&var_name)
-                        .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+                let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
 
                 let getter_body = if is_mutated_rune {
                     ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
@@ -315,12 +300,12 @@ pub(crate) fn process_attrs_spread<'a>(
                     [ctx.b.expr_stmt(setter_body)],
                 );
 
-                let stmt = match bind.kind {
-                    BindDirectiveKind::Checked => ctx.b.call_stmt(
+                let stmt = match bind.name.as_str() {
+                    "checked" => ctx.b.call_stmt(
                         "$.bind_checked",
                         [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
                     ),
-                    BindDirectiveKind::Group => {
+                    "group" => {
                         ctx.needs_binding_group = true;
                         ctx.b.call_stmt(
                             "$.bind_group",

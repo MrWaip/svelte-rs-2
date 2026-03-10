@@ -13,4 +13,10 @@ pub fn detect_runes(data: &mut AnalysisData) {
             }
         }
     }
+
+    data.rune_names = data
+        .symbol_by_name
+        .iter()
+        .filter_map(|(name, sid)| data.runes.contains_key(sid).then(|| name.clone()))
+        .collect();
 }

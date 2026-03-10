@@ -5,8 +5,8 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BindDirectiveKind, BooleanAttribute, ClassDirective, Comment,
-    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, ElementKind,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
+    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
     ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, Script, ScriptContext,
     ScriptLanguage, ShorthandOrSpread, StringAttribute, Text,
 };
@@ -29,7 +29,6 @@ struct ElementEntry {
     name: String,
     span_start: Span, // opening tag span
     attributes: Vec<Attribute>,
-    kind: ElementKind,
 }
 
 struct IfBlockEntry {
@@ -102,7 +101,6 @@ impl<'a> Parser<'a> {
                             self_closing: true,
                             attributes: attrs,
                             fragment: Fragment::empty(),
-                            kind: ElementKind::from_name(tag.name),
                         });
                         children_stack.last_mut().unwrap().push(node);
                     } else {
@@ -110,7 +108,6 @@ impl<'a> Parser<'a> {
                             name: tag.name.to_string(),
                             span_start: token.span,
                             attributes: attrs,
-                            kind: ElementKind::from_name(tag.name),
                         }));
                         children_stack.push(vec![]);
                     }
@@ -138,7 +135,6 @@ impl<'a> Parser<'a> {
                         self_closing: false,
                         attributes: el.attributes,
                         fragment: Fragment::new(children),
-                        kind: el.kind,
                     });
 
                     children_stack.last_mut().unwrap().push(node);
@@ -452,7 +448,6 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::BindDirective(BindDirective {
                         name: bd.name.to_string(),
-                        kind: BindDirectiveKind::from_name(bd.name),
                         expression_span,
                         shorthand: bd.shorthand,
                     }));
