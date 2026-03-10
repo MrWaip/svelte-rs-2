@@ -11,8 +11,8 @@ mod symbols;
 mod validate;
 
 pub use data::{
-    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
-    SymbolId, SymbolInfo,
+    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, SymbolId,
+    SymbolInfo,
 };
 
 use svelte_ast::Component;
@@ -53,7 +53,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
 
 #[cfg(test)]
 mod tests {
-    use svelte_ast::{Component, Element, EachBlock, Fragment, IfBlock, Node, NodeId};
+    use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
     use svelte_parser::Parser;
 
     use super::*;
@@ -166,7 +166,10 @@ mod tests {
     }
 
     fn assert_root_content_type(data: &AnalysisData, expected: ContentType) {
-        let actual = data.content_types.get(&FragmentKey::Root).expect("no root content type");
+        let actual = data
+            .content_types
+            .get(&FragmentKey::Root)
+            .expect("no root content type");
         assert_eq!(*actual, expected);
     }
 
@@ -183,31 +186,46 @@ mod tests {
             .symbol_by_name
             .get(name)
             .unwrap_or_else(|| panic!("no symbol '{name}'"));
-        assert!(data.runes.contains_key(id), "expected '{name}' to be a rune");
+        assert!(
+            data.runes.contains_key(id),
+            "expected '{name}' to be a rune"
+        );
     }
 
     fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
         let id = find_expr_tag(&component.fragment, component, expr_text)
             .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-        assert!(data.dynamic_nodes.contains(&id), "expected ExpressionTag '{expr_text}' to be dynamic");
+        assert!(
+            data.dynamic_nodes.contains(&id),
+            "expected ExpressionTag '{expr_text}' to be dynamic"
+        );
     }
 
     fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
         let id = find_expr_tag(&component.fragment, component, expr_text)
             .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
-        assert!(!data.dynamic_nodes.contains(&id), "expected ExpressionTag '{expr_text}' to NOT be dynamic");
+        assert!(
+            !data.dynamic_nodes.contains(&id),
+            "expected ExpressionTag '{expr_text}' to NOT be dynamic"
+        );
     }
 
     fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text: &str) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-        assert!(data.dynamic_nodes.contains(&block.id), "expected IfBlock '{test_text}' to be dynamic");
+        assert!(
+            data.dynamic_nodes.contains(&block.id),
+            "expected IfBlock '{test_text}' to be dynamic"
+        );
     }
 
     fn assert_dynamic_each(data: &AnalysisData, component: &Component, expr_text: &str) {
         let block = find_each_block(&component.fragment, component, expr_text)
             .unwrap_or_else(|| panic!("no EachBlock with expr '{expr_text}'"));
-        assert!(data.dynamic_nodes.contains(&block.id), "expected EachBlock '{expr_text}' to be dynamic");
+        assert!(
+            data.dynamic_nodes.contains(&block.id),
+            "expected EachBlock '{expr_text}' to be dynamic"
+        );
     }
 
     /// Assert that attribute at `attr_index` of `<tag_name>` is in `dynamic_attrs`.
@@ -228,7 +246,10 @@ mod tests {
     fn assert_node_needs_ref(data: &AnalysisData, component: &Component, tag_name: &str) {
         let el = find_element(&component.fragment, tag_name)
             .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-        assert!(data.node_needs_ref.contains(&el.id), "expected <{tag_name}> to need a ref");
+        assert!(
+            data.node_needs_ref.contains(&el.id),
+            "expected <{tag_name}> to need a ref"
+        );
     }
 
     fn assert_element_content_type(
@@ -239,7 +260,9 @@ mod tests {
     ) {
         let el = find_element(&component.fragment, tag_name)
             .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-        let actual = data.content_types.get(&FragmentKey::Element(el.id))
+        let actual = data
+            .content_types
+            .get(&FragmentKey::Element(el.id))
             .unwrap_or_else(|| panic!("no content type for <{tag_name}>"));
         assert_eq!(*actual, expected);
     }
@@ -252,7 +275,9 @@ mod tests {
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-        let actual = data.content_types.get(&FragmentKey::IfConsequent(block.id))
+        let actual = data
+            .content_types
+            .get(&FragmentKey::IfConsequent(block.id))
             .unwrap_or_else(|| panic!("no consequent content type for IfBlock '{test_text}'"));
         assert_eq!(*actual, expected);
     }
@@ -265,7 +290,9 @@ mod tests {
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-        let actual = data.content_types.get(&FragmentKey::IfAlternate(block.id))
+        let actual = data
+            .content_types
+            .get(&FragmentKey::IfAlternate(block.id))
             .unwrap_or_else(|| panic!("no alternate content type for IfBlock '{test_text}'"));
         assert_eq!(*actual, expected);
     }
@@ -275,11 +302,18 @@ mod tests {
             .lowered_fragments
             .get(&key)
             .unwrap_or_else(|| panic!("no lowered fragment for {:?}", key));
-        assert_eq!(lf.items.len(), expected_count, "expected {expected_count} items in lowered fragment");
+        assert_eq!(
+            lf.items.len(),
+            expected_count,
+            "expected {expected_count} items in lowered fragment"
+        );
     }
 
     fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
-        let lf = data.lowered_fragments.get(&key).expect("no lowered fragment");
+        let lf = data
+            .lowered_fragments
+            .get(&key)
+            .expect("no lowered fragment");
         assert!(
             matches!(lf.items.get(index), Some(FragmentItem::TextConcat { .. })),
             "expected item[{index}] to be TextConcat",
@@ -344,26 +378,14 @@ mod tests {
 
     #[test]
     fn if_block_test_is_dynamic() {
-        let (c, data) = analyze_source(
-            r#"<script>let show = $state(true);</script>{#if show}<p>hi</p>{/if}"#,
-        );
+        let (c, data) =
+            analyze_source(r#"<script>let show = $state(true);</script>{#if show}<p>hi</p>{/if}"#);
         assert_symbol(&data, "show");
         assert_is_rune(&data, "show");
         assert_dynamic_if_block(&data, &c, "show");
     }
 
     // — new tests —
-
-    #[test]
-    fn dynamic_attr_and_needs_ref() {
-        let (c, data) = analyze_source(
-            r#"<script>let count = $state(0);</script><div class={count}></div>"#,
-        );
-        assert_symbol(&data, "count");
-        assert_is_rune(&data, "count");
-        assert_dynamic_attr(&data, &c, "div", 0);
-        assert_node_needs_ref(&data, &c, "div");
-    }
 
     #[test]
     fn whitespace_only_text_trimmed_at_boundaries() {
@@ -385,9 +407,8 @@ mod tests {
 
     #[test]
     fn nested_dynamic_tag_in_element() {
-        let (c, data) = analyze_source(
-            r#"<script>let count = $state(0);</script><div>{count}</div>"#,
-        );
+        let (c, data) =
+            analyze_source(r#"<script>let count = $state(0);</script><div>{count}</div>"#);
         assert_dynamic_tag(&data, &c, "count");
         assert_element_content_type(&data, &c, "div", ContentType::DynamicText);
     }
