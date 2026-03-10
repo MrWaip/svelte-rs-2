@@ -2,6 +2,10 @@
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
+## Roadmap
+
+`TODO_ANALYZE.md` содержит приоритизированный план портирования фич. Аргумент этой команды — пункт из плана (например `1a`, `2b`, `3e`). Перед началом работы прочитай `TODO_ANALYZE.md`, найди соответствующий пункт и используй указанные там файлы и reference-ссылки как отправную точку. По завершении отметь выполненные чекбоксы в `TODO_ANALYZE.md`.
+
 ## Approach
 
 Use Svelte reference to understand the **expected output**, not to copy the implementation.

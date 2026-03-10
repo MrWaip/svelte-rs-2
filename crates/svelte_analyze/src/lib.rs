@@ -228,30 +228,6 @@ mod tests {
         );
     }
 
-    /// Assert that attribute at `attr_index` of `<tag_name>` is in `dynamic_attrs`.
-    fn assert_dynamic_attr(
-        data: &AnalysisData,
-        component: &Component,
-        tag_name: &str,
-        attr_index: usize,
-    ) {
-        let el = find_element(&component.fragment, tag_name)
-            .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-        assert!(
-            data.dynamic_attrs.contains(&(el.id, attr_index)),
-            "expected attr[{attr_index}] of <{tag_name}> to be dynamic",
-        );
-    }
-
-    fn assert_node_needs_ref(data: &AnalysisData, component: &Component, tag_name: &str) {
-        let el = find_element(&component.fragment, tag_name)
-            .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-        assert!(
-            data.node_needs_ref.contains(&el.id),
-            "expected <{tag_name}> to need a ref"
-        );
-    }
-
     fn assert_element_content_type(
         data: &AnalysisData,
         component: &Component,
