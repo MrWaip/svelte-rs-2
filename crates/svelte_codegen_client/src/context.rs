@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
@@ -8,7 +8,7 @@ use svelte_span::Span;
 use crate::builder::Builder;
 
 /// Central codegen context. Holds refs to allocator, builder, component, analysis,
-/// and mutable state (ident counter, node index, rune caches).
+/// and mutable state (ident counter, node index).
 pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
@@ -23,9 +23,6 @@ pub struct Ctx<'a> {
     if_blocks: HashMap<NodeId, &'a IfBlock>,
     each_blocks: HashMap<NodeId, &'a EachBlock>,
     expr_spans: HashMap<NodeId, Span>,
-
-    // -- Cached rune metadata --
-    pub rune_names: HashSet<String>,
 
     // -- Bind group --
     pub needs_binding_group: bool,
@@ -49,12 +46,6 @@ impl<'a> Ctx<'a> {
             &mut expr_spans,
         );
 
-        let rune_names: HashSet<String> = analysis
-            .symbol_by_name
-            .iter()
-            .filter_map(|(name, sid)| analysis.runes.contains_key(sid).then(|| name.clone()))
-            .collect();
-
         Self {
             b: Builder::new(allocator),
             component,
@@ -65,7 +56,6 @@ impl<'a> Ctx<'a> {
             if_blocks,
             each_blocks,
             expr_spans,
-            rune_names,
             needs_binding_group: false,
         }
     }

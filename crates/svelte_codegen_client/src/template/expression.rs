@@ -24,7 +24,7 @@ use crate::context::Ctx;
 pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     let source = ctx.component.source_text(span);
     let mutated = &ctx.analysis.mutated_runes;
-    let rune_names = &ctx.rune_names;
+    let rune_names = &ctx.analysis.rune_names;
     parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names)
 }
 
@@ -63,13 +63,12 @@ impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
     fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         match node {
             Expression::Identifier(id) => {
-                // Generated identifiers (from Builder::rid) have reference_id = None → skip to prevent recursion
                 if id.reference_id.get().is_none() {
                     return;
                 }
                 let name = id.name.as_str().to_string();
                 if self.rune_names.contains(&name) && self.mutated.contains(&name) {
-                    *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
+                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
                 }
             }
             Expression::AssignmentExpression(assign) => {
@@ -86,7 +85,7 @@ impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
 
                 if let Some(name) = ident_name {
                     let right = self.b.move_expr(&mut assign.right);
-                    *node = self.b.call_expr("$.set", [Arg::Ident(&name), Arg::Expr(right)]);
+                    *node = crate::rune_transform::transform_rune_set(self.b, &name, right, false);
                 }
             }
             Expression::UpdateExpression(upd) => {
@@ -102,23 +101,10 @@ impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
                     };
 
                 if let Some(name) = ident_name {
-                    let is_increment =
-                        upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-                    let is_prefix = upd.prefix;
-
-                    let (fn_name, delta): (&str, Option<f64>) = match (is_prefix, is_increment) {
-                        (true, true) => ("$.update_pre", None),
-                        (true, false) => ("$.update_pre", Some(-1.0)),
-                        (false, true) => ("$.update", None),
-                        (false, false) => ("$.update", Some(-1.0)),
-                    };
-
-                    let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
-                    if let Some(d) = delta {
-                        args.push(Arg::Num(d));
-                    }
-
-                    *node = self.b.call_expr(fn_name, args);
+                    let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
+                    *node = crate::rune_transform::transform_rune_update(
+                        self.b, &name, upd.prefix, is_increment,
+                    );
                 }
             }
             _ => {}

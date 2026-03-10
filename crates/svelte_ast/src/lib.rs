@@ -149,7 +149,6 @@ pub struct Element {
     pub self_closing: bool,
     pub attributes: Vec<Attribute>,
     pub fragment: Fragment,
-    pub kind: ElementKind,
 }
 
 impl Element {
@@ -189,7 +188,6 @@ impl Element {
             }),
             Attribute::BindDirective(x) => Attribute::BindDirective(BindDirective {
                 name: x.name.clone(),
-                kind: x.kind,
                 expression_span: x.expression_span,
                 shorthand: x.shorthand,
             }),
@@ -202,27 +200,7 @@ impl Element {
             self_closing: self.self_closing,
             attributes: attrs,
             fragment: Fragment::empty(),
-            kind: self.kind,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ElementKind {
-    Unknown,
-    Input,
-}
-
-impl ElementKind {
-    pub fn from_name(name: &str) -> Self {
-        match name {
-            "input" => ElementKind::Input,
-            _ => ElementKind::Unknown,
-        }
-    }
-
-    pub fn is_input(&self) -> bool {
-        matches!(self, ElementKind::Input)
     }
 }
 
@@ -350,33 +328,9 @@ pub struct ClassDirective {
 
 pub struct BindDirective {
     pub name: String,
-    pub kind: BindDirectiveKind,
     /// Span of the JS expression. None means shorthand (bind:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BindDirectiveKind {
-    Unknown,
-    Value,
-    Group,
-    Checked,
-}
-
-impl BindDirectiveKind {
-    pub fn from_name(name: &str) -> Self {
-        match name {
-            "value" => BindDirectiveKind::Value,
-            "group" => BindDirectiveKind::Group,
-            "checked" => BindDirectiveKind::Checked,
-            _ => BindDirectiveKind::Unknown,
-        }
-    }
-
-    pub fn is_group(&self) -> bool {
-        matches!(self, BindDirectiveKind::Group)
-    }
 }
 
 // ---------------------------------------------------------------------------

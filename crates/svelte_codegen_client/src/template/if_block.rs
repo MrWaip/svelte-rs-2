@@ -3,7 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 use svelte_span::Span;
 
-use svelte_analyze::{FragmentItem, FragmentKey};
+use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -45,23 +45,13 @@ pub(crate) fn gen_if_block<'a>(
         }
 
         let alternate_key = FragmentKey::IfAlternate(current);
-        let alt_is_elseif = {
-            let lf = ctx.analysis.lowered_fragments.get(&alternate_key);
-            lf.is_some_and(|lf| {
-                lf.items.len() == 1
-                    && matches!(&lf.items[0], FragmentItem::IfBlock(id) if {
-                        ctx.if_block(*id).elseif
-                    })
-            })
-        };
+        let alt_is_elseif = ctx.analysis.alt_is_elseif.contains(&current);
 
         if alt_is_elseif {
-            let nested_id = {
-                let lf = ctx.analysis.lowered_fragments.get(&alternate_key).unwrap();
-                match &lf.items[0] {
-                    FragmentItem::IfBlock(id) => *id,
-                    _ => unreachable!(),
-                }
+            let lf = ctx.analysis.lowered_fragments.get(&alternate_key).unwrap();
+            let nested_id = match &lf.items[0] {
+                svelte_analyze::FragmentItem::IfBlock(id) => *id,
+                _ => unreachable!(),
             };
             current = nested_id;
             continue;

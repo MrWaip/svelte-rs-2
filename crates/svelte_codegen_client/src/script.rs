@@ -25,7 +25,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let allocator = ctx.b.ast.allocator;
     let script_text = ctx.component.source_text(script.content_span);
 
-    let rune_names = &ctx.rune_names;
+    let rune_names = &ctx.analysis.rune_names;
     let mutated_runes = &ctx.analysis.mutated_runes;
 
     transform_script_text(allocator, script_text, is_ts, rune_names, mutated_runes)
@@ -219,13 +219,12 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
                 self.transform_update(node, ctx);
             }
             Expression::Identifier(id) => {
-                // Generated identifiers have reference_id = None → skip (prevents recursion)
                 let Some(info) = self.rune_info_for_ref(id) else {
                     return;
                 };
                 if info.mutated {
                     let name = id.name.as_str().to_string();
-                    *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
+                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
                 }
             }
             _ => {}
@@ -257,12 +256,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         if let Some(name) = ident_name {
             let right = self.b.move_expr(&mut assign.right);
             let needs_proxy = Self::should_proxy(&right);
-            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name), Arg::Expr(right)];
-            if needs_proxy {
-                args.push(Arg::Bool(true));
-            }
-            let call = self.b.call("$.set", args);
-            *node = Expression::CallExpression(self.b.alloc(call));
+            *node = crate::rune_transform::transform_rune_set(self.b, &name, right, needs_proxy);
         }
     }
 
@@ -290,21 +284,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
         if let Some(name) = ident_name {
             let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-            let is_prefix = upd.prefix;
-
-            let (fn_name, delta): (&str, Option<f64>) = match (is_prefix, is_increment) {
-                (true, true) => ("$.update_pre", None),
-                (true, false) => ("$.update_pre", Some(-1.0)),
-                (false, true) => ("$.update", None),
-                (false, false) => ("$.update", Some(-1.0)),
-            };
-
-            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
-            if let Some(d) = delta {
-                args.push(Arg::Num(d));
-            }
-
-            *node = self.b.call_expr(fn_name, args);
+            *node = crate::rune_transform::transform_rune_update(
+                self.b, &name, upd.prefix, is_increment,
+            );
         }
     }
 }

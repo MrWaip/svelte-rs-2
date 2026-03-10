@@ -6,16 +6,11 @@ use crate::data::AnalysisData;
 
 /// Detect which rune symbols are mutated: assigned in script (via OXC semantic) or bound via bind directives.
 pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
-    let rune_names: HashSet<String> = data
-        .symbol_by_name
-        .iter()
-        .filter_map(|(name, sid)| data.runes.contains_key(sid).then(|| name.clone()))
-        .collect();
-
-    if rune_names.is_empty() {
+    if data.rune_names.is_empty() {
         return;
     }
 
+    let rune_names = &data.rune_names;
     let mut mutated = HashSet::new();
 
     // Script assignments (via OXC semantic — handles nested functions, arrow functions, etc.)
@@ -31,15 +26,22 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     }
 
     // Template expression assignments (e.g. `{title = 30}`)
-    walk_template_mutations(&component.fragment, &rune_names, data, &mut mutated);
+    walk_template_mutations(&component.fragment, rune_names, data, &mut mutated);
 
     // Bind directives imply mutation
-    walk_binds(&component.fragment, component, &rune_names, &mut data.bind_mutated_runes);
+    walk_binds(&component.fragment, component, rune_names, &mut data.bind_mutated_runes);
 
     // Merge bind mutations into the full set
     mutated.extend(data.bind_mutated_runes.iter().cloned());
 
     data.mutated_runes = mutated;
+
+    data.mutable_runes = data
+        .mutated_runes
+        .iter()
+        .filter(|name| data.rune_names.contains(name.as_str()))
+        .cloned()
+        .collect();
 }
 
 fn walk_template_mutations(
