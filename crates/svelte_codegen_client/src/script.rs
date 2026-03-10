@@ -1,10 +1,11 @@
+use std::collections::HashMap;
+
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::SemanticBuilder;
+use oxc_semantic::{SemanticBuilder, SymbolTable};
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
-use std::collections::HashSet;
 
 use svelte_ast::ScriptLanguage;
 
@@ -24,7 +25,10 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let allocator = ctx.b.ast.allocator;
     let script_text = ctx.component.source_text(script.content_span);
 
-    transform_script_text(allocator, script_text, is_ts, ctx)
+    let rune_names = &ctx.rune_names;
+    let mutated_runes = &ctx.analysis.mutated_runes;
+
+    transform_script_text(allocator, script_text, is_ts, rune_names, mutated_runes)
 }
 
 /// Parse the script source and apply rune transformations, returning (imports, body).
@@ -32,7 +36,8 @@ fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    ctx: &Ctx<'a>,
+    rune_names: &std::collections::HashSet<String>,
+    mutated_runes: &std::collections::HashSet<String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -44,18 +49,31 @@ fn transform_script_text<'a>(
     let b = Builder::new(allocator);
     let mut program = result.program;
 
-    let mutated = &ctx.analysis.mutated_runes;
-    let rune_names = &ctx.rune_names;
+    // Run semantic analysis — annotates AST nodes with symbol_id / reference_id
+    let sem = SemanticBuilder::new().build(&program);
+    let (symbols, _scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+
+    // Build rune_table: OXC SymbolId → RuneInfo
+    let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
+
+    for sym_id in symbols.symbol_ids() {
+        let name = symbols.get_name(sym_id);
+        if rune_names.contains(name) {
+            let mutated = mutated_runes.contains(name);
+            rune_table.insert(sym_id, RuneInfo { mutated });
+        }
+    }
 
     let mut transformer = ScriptTransformer {
         b: &b,
-        mutated_runes: mutated,
-        rune_names,
+        rune_table,
+        symbols,
     };
 
-    let sem = SemanticBuilder::new().build(&program);
-    let (symbols, scopes) = sem.semantic.into_symbol_table_and_scope_tree();
-    traverse_mut(&mut transformer, allocator, &mut program, symbols, scopes);
+    // Pass empty tables to traverse_mut — real IDs are already on AST nodes
+    let empty_symbols = SymbolTable::default();
+    let empty_scopes = oxc_semantic::ScopeTree::default();
+    traverse_mut(&mut transformer, allocator, &mut program, empty_symbols, empty_scopes);
 
     let mut imports = vec![];
     let mut body = vec![];
@@ -79,19 +97,35 @@ fn transform_script_text<'a>(
     (imports, body)
 }
 
+struct RuneInfo {
+    mutated: bool,
+}
+
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
-    mutated_runes: &'b HashSet<String>,
-    rune_names: &'b HashSet<String>,
+    rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo>,
+    /// Kept for reference_id → symbol_id resolution
+    symbols: SymbolTable,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
-    fn is_rune(&self, name: &str) -> bool {
-        self.rune_names.contains(name)
+    /// Look up rune info via OXC SymbolId on a BindingIdentifier.
+    fn rune_info_for_binding(
+        &self,
+        id: &oxc_ast::ast::BindingIdentifier<'a>,
+    ) -> Option<&RuneInfo> {
+        let sym_id = id.symbol_id.get()?;
+        self.rune_table.get(&sym_id)
     }
 
-    fn is_mutated(&self, name: &str) -> bool {
-        self.mutated_runes.contains(name)
+    /// Look up rune info via reference_id on an IdentifierReference.
+    fn rune_info_for_ref(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<&RuneInfo> {
+        let ref_id = id.reference_id.get()?;
+        let sym_id = self.symbols.get_reference(ref_id).symbol_id()?;
+        self.rune_table.get(&sym_id)
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -123,14 +157,17 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
         node: &mut VariableDeclarator<'a>,
         _ctx: &mut TraverseCtx<'a>,
     ) {
-        let name = match &node.id.kind {
-            oxc_ast::ast::BindingPatternKind::BindingIdentifier(id) => id.name.clone(),
+        let rune_info = match &node.id.kind {
+            oxc_ast::ast::BindingPatternKind::BindingIdentifier(id) => {
+                self.rune_info_for_binding(id)
+            }
             _ => return,
         };
 
-        if !self.is_rune(name.as_str()) {
+        let Some(info) = rune_info else {
             return;
-        }
+        };
+        let mutated = info.mutated;
 
         let Some(init) = node.init.as_mut() else {
             return;
@@ -138,7 +175,7 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
         let init_expr = self.b.move_expr(init);
 
         if let Expression::CallExpression(mut call) = init_expr {
-            if self.is_mutated(name.as_str()) {
+            if mutated {
                 call.callee = self.b.rid_expr("$.state");
 
                 if call.arguments.is_empty() {
@@ -182,8 +219,12 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
                 self.transform_update(node, ctx);
             }
             Expression::Identifier(id) => {
-                let name = id.name.as_str().to_string();
-                if self.is_rune(&name) && self.is_mutated(&name) {
+                // Generated identifiers have reference_id = None → skip (prevents recursion)
+                let Some(info) = self.rune_info_for_ref(id) else {
+                    return;
+                };
+                if info.mutated {
+                    let name = id.name.as_str().to_string();
                     *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
                 }
             }
@@ -200,9 +241,12 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
         let ident_name =
             if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
-                let name = id.name.as_str();
-                if self.is_rune(name) && self.is_mutated(name) {
-                    Some(name.to_string())
+                if let Some(info) = self.rune_info_for_ref(id) {
+                    if info.mutated {
+                        Some(id.name.as_str().to_string())
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -212,7 +256,12 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
         if let Some(name) = ident_name {
             let right = self.b.move_expr(&mut assign.right);
-            let call = self.b.call("$.set", [Arg::Ident(&name), Arg::Expr(right)]);
+            let needs_proxy = Self::should_proxy(&right);
+            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name), Arg::Expr(right)];
+            if needs_proxy {
+                args.push(Arg::Bool(true));
+            }
+            let call = self.b.call("$.set", args);
             *node = Expression::CallExpression(self.b.alloc(call));
         }
     }
@@ -226,9 +275,12 @@ impl<'a> ScriptTransformer<'_, 'a> {
             id,
         ) = &upd.argument
         {
-            let name = id.name.as_str();
-            if self.is_rune(name) && self.is_mutated(name) {
-                Some(name.to_string())
+            if let Some(info) = self.rune_info_for_ref(id) {
+                if info.mutated {
+                    Some(id.name.as_str().to_string())
+                } else {
+                    None
+                }
             } else {
                 None
             }

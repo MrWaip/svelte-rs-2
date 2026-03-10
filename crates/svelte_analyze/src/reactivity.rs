@@ -107,10 +107,12 @@ fn attr_is_dynamic(
     }
     if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
         return info.references.iter().any(|r| {
-            data.symbol_by_name
+            let is_mutated_rune = data
+                .symbol_by_name
                 .get(&r.name)
                 .is_some_and(|id| data.runes.contains_key(id))
-                || each_vars.contains(&r.name)
+                && data.mutated_runes.contains(&r.name);
+            is_mutated_rune || each_vars.contains(&r.name)
         });
     }
     false

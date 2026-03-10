@@ -4,7 +4,7 @@ use svelte_ast::{Attribute, Component, Fragment, Node, ScriptLanguage};
 
 use crate::data::AnalysisData;
 
-/// Detect which rune symbols are mutated: assigned in script or bound via bind directives.
+/// Detect which rune symbols are mutated: assigned in script (via OXC semantic) or bound via bind directives.
 pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     let rune_names: HashSet<String> = data
         .symbol_by_name
@@ -18,7 +18,7 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
 
     let mut mutated = HashSet::new();
 
-    // Script assignments
+    // Script assignments (via OXC semantic — handles nested functions, arrow functions, etc.)
     if let Some(script) = &component.script {
         let is_ts = script.language == ScriptLanguage::TypeScript;
         let script_text = component.source_text(script.content_span);
@@ -31,7 +31,10 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     }
 
     // Bind directives imply mutation
-    walk_binds(&component.fragment, component, &rune_names, &mut mutated);
+    walk_binds(&component.fragment, component, &rune_names, &mut data.bind_mutated_runes);
+
+    // Merge bind mutations into the full set
+    mutated.extend(data.bind_mutated_runes.iter().cloned());
 
     data.mutated_runes = mutated;
 }

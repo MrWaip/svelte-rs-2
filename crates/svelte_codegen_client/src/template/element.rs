@@ -87,7 +87,7 @@ pub(crate) fn process_element<'a>(
             let text_name = ctx.gen_ident("text");
             init.push(ctx.b.var_stmt(
                 &text_name,
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name)]),
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]),
             ));
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
 
@@ -114,7 +114,14 @@ pub(crate) fn process_element<'a>(
                 .items
                 .clone();
 
-            let first_child = ctx.b.call_expr("$.child", [Arg::Ident(el_name)]);
+            let first_is_text = child_items.first().is_some_and(|item| {
+                matches!(item, svelte_analyze::FragmentItem::TextConcat { parts } if parts.len() == 1)
+            });
+            let first_child = if first_is_text {
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+            } else {
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
+            };
             let mut child_init = Vec::new();
             let mut child_update = Vec::new();
             let trailing = traverse_items(
