@@ -2,6 +2,10 @@
 
 Fix a single compiler test case. The test name is provided as argument.
 
+## Approach
+
+When reading Svelte reference visitors to understand the fix, focus on **what** output they produce, not **how** they're structured. Don't port visitor patterns, mutable metadata, or JS workarounds. Use our existing architecture: direct recursion, AnalysisData side tables, match/Option.
+
 ## Step 1: Understand the failure
 
 Run the test to see the diff:
