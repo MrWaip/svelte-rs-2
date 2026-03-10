@@ -2,8 +2,6 @@
 
 Rust компилятор Svelte v5. Компилирует `.svelte` → client-side JS.
 
-> **Два поколения кода.** Крейты без префикса `svelte_` — **v2 (legacy/reference)**. Крейты с префиксом `svelte_` — **v3 (новая архитектура)**, описана ниже в разделе «V3». V2 не удалён — используется как reference implementation.
-
 ## Pipeline
 
 ```
@@ -77,12 +75,11 @@ enum Attribute {
     ConcatenationAttribute(ConcatenationAttribute), // name, parts: Vec<ConcatPart>
     ShorthandOrSpread(ShorthandOrSpread),         // expression_span, is_spread
     ClassDirective(ClassDirective),               // name, expression_span?, shorthand
-    BindDirective(BindDirective),                 // name, kind, expression_span?, shorthand
+    BindDirective(BindDirective),                 // name, expression_span?, shorthand
 }
 
 enum ConcatPart { Static(String), Dynamic(Span) }
 enum ElementKind { Unknown, Input }
-enum BindDirectiveKind { Unknown, Value, Group, Checked }
 enum ScriptContext { Default, Module }
 enum ScriptLanguage { JavaScript, TypeScript }
 
@@ -101,6 +98,7 @@ OXC facade — все OXC lifetime'ы замкнуты внутри функци
 // Публичный API
 fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic>
 fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<ScriptInfo, Vec<Diagnostic>>
+fn find_script_mutations(source: &str, typescript: bool) -> HashSet<String>
 
 struct ExpressionInfo {
     kind: ExpressionKind,
@@ -144,14 +142,17 @@ fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>)
 pub use data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, SymbolId, SymbolInfo};
 ```
 
-**7 passes** (порядок важен):
+**10 passes** (порядок важен):
 1. `parse_js` — парсит JS-выражения → `expressions`, `attr_expressions`, `script`
 2. `symbols` — из `script.declarations` → `symbols`, `symbol_by_name`
-3. `runes` — проверяет `DeclarationInfo.is_rune` → `runes`
-4. `lower` — trim whitespace, группирует Text+ExprTag → `lowered_fragments`
-5. `reactivity` — ссылается на rune-символы → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
-6. `content_types` — классификация по lowered items → `content_types`
-7. `validate` — placeholder
+3. `runes` — проверяет `DeclarationInfo.is_rune` → `runes`, `rune_names`
+4. `known_values` — const-декларации с литеральным init → `known_values`
+5. `mutations` — OXC semantic + bind directives → `mutated_runes`, `bind_mutated_runes`, `mutable_runes`
+6. `lower` — trim whitespace, группирует Text+ExprTag → `lowered_fragments`
+7. `reactivity` — ссылается на rune-символы → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
+8. `content_types` — классификация по lowered items → `content_types`
+9. `elseif` — определяет alternate-фрагменты с единственным elseif → `alt_is_elseif`
+10. `validate` — семантические проверки
 
 **Ключевые типы** (`data.rs`):
 ```rust
@@ -169,6 +170,8 @@ enum ConcatPart { Text(String), Expr(NodeId) }  // NB: другой ConcatPart �
 
 enum ContentType { Empty, StaticText, DynamicText, SingleElement, SingleBlock, Mixed }
 
+struct SymbolInfo { name: String, span: Span, kind: DeclarationKind, init_span: Option<Span> }
+
 struct AnalysisData {
     lowered_fragments: HashMap<FragmentKey, LoweredFragment>,
     expressions: HashMap<NodeId, ExpressionInfo>,
@@ -181,7 +184,18 @@ struct AnalysisData {
     dynamic_nodes: HashSet<NodeId>,
     node_needs_ref: HashSet<NodeId>,
     content_types: HashMap<FragmentKey, ContentType>,
+    bind_mutated_runes: HashSet<String>,    // rune-символы, мутируемые через bind:
+    mutated_runes: HashSet<String>,         // все мутируемые rune-символы (script + bind)
+    known_values: HashMap<String, String>,  // compile-time known const values
+    rune_names: HashSet<String>,            // все имена rune-символов
+    mutable_runes: HashSet<String>,         // пересечение mutated_runes и rune_names
+    alt_is_elseif: HashSet<NodeId>,         // IfBlock'и, чей alternate — единственный elseif
 }
+
+// Методы:
+// data.is_rune(name) -> bool
+// data.is_mutable_rune(name) -> bool
+// data.rune_kind(name) -> Option<RuneKind>
 ```
 
 ---
@@ -201,22 +215,26 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 - `b: Builder<'a>` — обёртка над OXC AstBuilder
 - `component: &'a Component`
 - `analysis: &'a AnalysisData`
-- `mutated_runes: HashSet<String>` — rune-символы, которые присваиваются в скрипте
+- `module_hoisted: Vec<Statement<'a>>` — template-объявления из вложенных фрагментов
+- `needs_binding_group: bool` — флаг для генерации `binding_group`
 - `gen_ident(prefix)` — генерирует уникальные имена (`text`, `text_1`, …)
-- `is_dynamic_node(id) -> bool`
-- `FragmentCtx<'a>` — template/init/update/after_update буферы
-- `DomCursor<'a>` — отслеживает DOM-позицию при обходе
+- `element(id) / if_block(id) / each_block(id) / expr_span(id)` — O(1) lookup по NodeId
 
 `builder.rs` — `Builder<'a>`:
-Враппер над OXC `AstBuilder`. Методы: `bid/rid/rid_expr`, `bool_expr/num_expr/str_expr`, `call/call_expr/call_stmt`, `var_stmt/let_stmt_init/const_stmt`, `block_stmt/if_stmt/assign_stmt`, `params/no_params/arrow/arrow_expr/function_decl`, `static_member_expr`, `template_str_expr/template_parts_expr`, `import_all/export_default/program`.
+Враппер над OXC `AstBuilder`. Методы: `bid/rid/rid_expr`, `bool_expr/num_expr/str_expr`, `call/call_expr/call_stmt`, `var_stmt/let_stmt_init/const_stmt`, `block_stmt/if_stmt/assign_stmt`, `params/no_params/arrow/arrow_expr/function_decl`, `static_member_expr`, `template_str_expr/template_parts_expr`, `import_all/export_default/program`, `empty_array_expr`, `alloc`.
 Аргументы: `enum Arg<'a> { Str(String) | Num(f64) | Ident(&str) | IdentRef(…) | Expr(…) | Arrow(…) | Bool(bool) }`
 
+`rune_transform.rs` — хелперы для трансформации rune-выражений:
+- `transform_rune_get(b, name) -> Expression` — `$.get(name)`
+- `transform_rune_set(b, name, right, proxy) -> Expression` — `$.set(name, value)`
+- `transform_rune_update(b, name, …) -> Expression` — `$.update(name)` / `$.update_pre(name)`
+
 `script.rs` — `gen_script(ctx) -> (imports, body)`:
-Трансформации rune:
+Трансформации rune через OXC `SemanticBuilder` + `ScriptTransformer`:
 - mutated rune `$state(val)` → `$.state(val)`, read → `$.get(name)`, `name = x` → `$.set(name, x)`, `name++` → `$.update(name)`, `++name` → `$.update_pre(name)`
 - unmutated rune → inline value (`void 0` если нет аргументов)
 
-`template.rs` — `gen_root_fragment(ctx) -> (hoisted, body)`:
+`template/mod.rs` — `gen_root_fragment(ctx) -> (hoisted, body)`:
 Стратегии по `ContentType`:
 - `Empty` → ничего
 - `StaticText` → `$.next(); var text = $.text("…"); $.append($$anchor, text)`
@@ -225,10 +243,13 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 - `SingleBlock` → `var fragment = $.comment(); var node = $.first_child(fragment); $.if/$.each; $.append`
 - `Mixed` → `var root = $.template(\`…\`, 1); var fragment = root(); traverse_items; $.append`
 
-Атрибуты: static (string/boolean) — только в HTML. Dynamic (`ExpressionAttribute`) → `$.set_attribute(el, name, val)` в update. BindDirective — TODO.
-
-IfBlock → `$.if(anchor, ($$render) => { if (test) $$render(consequent); else $$render(alternate, false); })`
-EachBlock → `$.each(anchor, 16, () => collection, $.index, ($$anchor, item) => { … })`
+`template/element.rs` — генерация элементов (process_element)
+`template/attributes.rs` — атрибуты: static (string/boolean) в HTML, dynamic → `$.set_attribute`, bind directives
+`template/if_block.rs` — `$.if(anchor, ($$render) => { … })`
+`template/each_block.rs` — `$.each(anchor, 16, () => collection, $.index, ($$anchor, item) => { … })`
+`template/expression.rs` — генерация JS-выражений из span'ов
+`template/html.rs` — построение HTML template strings
+`template/traverse.rs` — обход DOM-дерева (`.first_child`, `.sibling`)
 
 ---
 
@@ -240,6 +261,13 @@ struct CompileResult { pub js: String }
 fn compile(source: &str) -> Result<CompileResult, Diagnostic>
 // = parse → analyze → (fatal diag check) → generate
 ```
+
+---
+
+### `wasm_compiler`
+`crates/wasm_compiler/`
+
+WASM-обёртка над `svelte_compiler::compile` для использования из JS.
 
 ---
 
@@ -257,271 +285,14 @@ svelte_parser  svelte_analyze
          svelte_codegen_client
                  ↑
           svelte_compiler
+                 ↑
+          wasm_compiler
 ```
 
-## Ключевые инварианты (V3)
+## Ключевые инварианты
 
 - OXC lifetime'ы **никогда** не выходят из `svelte_js` или `svelte_codegen_client`
 - Все side tables в `AnalysisData` — owned, без lifetime параметров
 - AST хранит `Span` для JS-выражений; codegen re-парсит из source
 - `u32` везде где возможно вместо `usize` (NodeId, Span, SymbolId)
 - `ConcatPart` в `svelte_ast` и `svelte_analyze` — **разные типы** с одинаковым именем
-
----
-
----
-
-# V2 (Legacy / Reference)
-
-Старая архитектура. **Читай как reference**, не переиспользуй напрямую.
-OXC lifetime'ы проникают во все слои. Используется `RcCell<T>` для совместного владения.
-
-## V2 Pipeline
-
-```
-source: &str
-  → parser::Parser → ast::Ast<'a>
-  → analyzer::Analyzer → AnalyzeResult          # v1 pipeline: compiler.compile()
-  → transformer::transform_client → String
-
-  — или —
-
-  → ast_to_hir::AstToHir → AstToHirRet { store: HirStore<'hir> }
-  → analyze_hir::AnalyzeHir → HirAnalyses        # v2 pipeline: compiler.compile2()
-  → transform_hir::transform_hir → Program<'hir>
-  → oxc_codegen::Codegen → String
-```
-
-Entry: `compiler::Compiler::compile(source, allocator)` / `compile2(source, allocator)`
-
----
-
-## V2 Crates
-
-### `ast` (v2 AST)
-`crates/ast/src/lib.rs`
-
-Хранит OXC `Expression<'a>` напрямую. Узлы завёрнуты в `RcCell<T>`.
-
-```rust
-struct Ast<'a> { template: RcCell<Template<'a>>, script: Option<ScriptTag<'a>> }
-struct Template<'a> { nodes: Fragment<'a> }
-struct Fragment<'a> { nodes: Vec<Node<'a>>, metadata: Option<FragmentMetadata>, node_id: Option<NodeId> }
-
-enum Node<'a> {
-    Element(RcCell<Element<'a>>),
-    Comment(RcCell<Comment<'a>>),
-    Text(RcCell<Text<'a>>),
-    Interpolation(RcCell<Interpolation<'a>>),      // { expr } — хранит Expression<'a> напрямую
-    IfBlock(RcCell<IfBlock<'a>>),
-    VirtualConcatenation(RcCell<VirtualConcatenation<'a>>),  // Text+Interpolation слиты вместе
-    ScriptTag(RcCell<ScriptTag<'a>>),
-    EachBlock(RcCell<EachBlock<'a>>),
-}
-
-struct Element<'a> { name, span, self_closing, nodes: Vec<Node<'a>>, attributes: Vec<Attribute<'a>>, metadata?, node_id?, kind: ElementKind }
-struct Interpolation<'a> { expression: Expression<'a>, span, metadata? }
-struct VirtualConcatenation<'a> { parts: Vec<ConcatenationPart<'a>>, span, metadata: InterpolationMetadata }
-struct IfBlock<'a> { span, test: Expression<'a>, is_elseif, consequent: Fragment<'a>, alternate: Option<Fragment<'a>> }
-struct EachBlock<'a> { span, collection: Expression<'a>, item: Expression<'a>, index?, key?, nodes: Fragment<'a> }
-struct Text<'a> { value: &'a str, span }
-struct ScriptTag<'a> { program: Program<'a>, span, language: Language }
-
-enum Attribute<'a> {
-    StringAttribute / ExpressionAttribute / BooleanAttribute / ConcatenationAttribute
-    SpreadAttribute / ClassDirective / BindDirective
-}
-// ast::ConcatenationPart<'a>: String(&'a str) | Expression(Expression<'a>)
-```
-
----
-
-### `hir` (v2 HIR)
-`crates/hir/src/`
-
-Arena-based. Все узлы хранятся в `HirStore` через `IndexVec`. OXC expressions — в `IndexVec<ExpressionId, RefCell<Expression<'hir>>>`.
-
-```rust
-// IDs
-struct NodeId(usize)       // impl Idx
-struct OwnerId(usize)      // impl Idx
-struct ExpressionId(usize) // impl Idx
-
-struct HirStore<'hir> {
-    owners: IndexVec<OwnerId, OwnerNode<'hir>>,
-    expressions: IndexVec<ExpressionId, RefCell<Expression<'hir>>>,
-    node_to_owner: HashMap<NodeId, OwnerId>,
-    nodes: IndexVec<NodeId, Node<'hir>>,
-    program: Program<'hir>,
-}
-// HirStore::TEMPLATE_OWNER_ID = OwnerId(0)
-// HirStore::TEMPLATE_NODE_ID  = NodeId(0)
-
-// store.get_owner(id) / get_node(id) / get_expression(id) / get_expression_mut(id)
-// store.first_of(owner_id) / node_to_owner(node_id) / owner_to_node(owner_id)
-
-enum Node<'hir> {
-    Text(&'hir Text<'hir>),
-    Interpolation(&'hir Interpolation),      // expression_id: ExpressionId
-    Element(&'hir Element<'hir>),
-    Comment(&'hir Comment<'hir>),
-    IfBlock(&'hir IfBlock),                  // test: ExpressionId
-    EachBlock(&'hir EachBlock),              // collection/item: ExpressionId
-    Script,
-    Concatenation(&'hir Concatenation<'hir>), // parts: Vec<ConcatenationPart<'hir>>
-    Phantom,
-}
-// node.contains_expression() / is_text_like() / is_interpolation_like() / owner_id()
-
-enum OwnerNode<'hir> {
-    Template(&'hir Template),   // node_ids: Vec<NodeId>
-    Element(&'hir Element),     // node_ids: Vec<NodeId>, attributes: AttributeStore
-    IfBlock(&'hir IfBlock),     // consequent: Vec<NodeId>, alternate: Option<Vec<NodeId>>
-    EachBlock(&'hir EachBlock), // node_ids: Vec<NodeId>
-    Phantom,
-}
-// owner.first() / iter_nodes_rev() / is_require_next() / scope_id()
-
-struct Template { node_ids: Vec<NodeId>, node_id: NodeId, scope_id: Cell<Option<ScopeId>> }
-struct Element<'hir> { node_id, owner_id, name: &'hir str, node_ids, self_closing, kind: ElementKind, attributes: AttributeStore<'hir>, scope_id }
-struct IfBlock { node_id, owner_id, is_elseif, test: ExpressionId, consequent: Vec<NodeId>, alternate: Option<Vec<NodeId>>, scope_id }
-struct EachBlock { node_id, owner_id, node_ids, collection: ExpressionId, item: ExpressionId, index?, key?, scope_id }
-struct Interpolation { owner_id, node_id, expression_id: ExpressionId }
-struct Concatenation<'hir> { owner_id, node_id, parts: Vec<ConcatenationPart<'hir>> }
-enum ConcatenationPart<'hir> { Text(&'hir str), Expression(ExpressionId) }
-struct Program<'hir> { language: Language, program: RefCell<oxc_ast::ast::Program<'hir>> }
-```
-
-**Атрибуты HIR** (`hir/src/attributes.rs`):
-```rust
-enum Attribute<'hir> { StringAttribute | ExpressionAttribute | SpreadAttribute | BooleanAttribute | ConcatenationAttribute }
-// Directives (только в AnyAttribute): Use | Animation | Bind | On | Transition | Class | Style | Let
-struct ExpressionAttribute<'hir> { shorthand, name: &'hir str, expression_id: ExpressionId }
-struct BindDirective<'hir> { shorthand, name: &'hir str, expression_id: ExpressionId }
-struct ClassDirective<'hir> { shorthand, name: &'hir str, expression_id: ExpressionId }
-```
-
----
-
-### `ast_to_hir`
-`crates/ast_to_hir/src/lib.rs`
-
-```rust
-struct AstToHir<'hir> { allocator, builder: ast_builder::Builder<'hir> }
-struct AstToHirRet<'hir> { store: HirStore<'hir> }
-
-// AstToHir::new(allocator).traverse(ast: Ast<'hir>) -> AstToHirRet<'hir>
-```
-
-Внутри: trim_nodes, compress_nodes (Text+Interpolation → Concatenation), clean_comments.
-
----
-
-### `analyze_hir`
-`crates/analyze_hir/src/`
-
-```rust
-// Публичный API
-struct AnalyzeHir<'hir> { _allocator }
-// AnalyzeHir::new(allocator).analyze(&HirStore) -> HirAnalyses
-
-struct HirAnalyses {
-    scope: RefCell<ScopeTree>,
-    symbols: RefCell<SymbolTable>,
-    content_types: HashMap<OwnerId, OwnerContentType>,
-    dynamic_nodes: HashSet<NodeId>,          // nodes that are or contain reactive expressions
-    runes: HashMap<SymbolId, SvelteRune>,
-    expression_flags: HashMap<ExpressionId, ExpressionFlags>,
-    identifier_generators: RefCell<…>,
-}
-// analyses.is_dynamic(&NodeId) / get_content_type(&OwnerId) / get_rune(SymbolId)
-// analyses.get_expression_flags(ExpressionId) / generate_ident(prefix)
-// analyses.take_scoping() -> (SymbolTable, ScopeTree)
-```
-
-**Passes** (в `analyze()`):
-1. `oxc_semantic_pass` — OXC SemanticBuilder → SymbolTable + ScopeTree
-2. `content_type_pass` → `content_types`
-3. `dynamic_markers_pass` → `dynamic_nodes`
-4. `script_pass` → `runes` (через OXC Visit)
-5. `scope_adding_pass` — добавляет scope_id к owners
-6. `rune_reference_pass` → `expression_flags`
-
-**Типы:**
-```rust
-// bitflags OwnerContentTypeFlags: Text|Interpolation|Concatenation|Element|IfBlock|Comment|EachBlock
-enum OwnerContentType {
-    Common(OwnerContentTypeFlags),
-    IfBlock(OwnerContentTypeFlags, OwnerContentTypeFlags),  // (consequent, alternate)
-}
-// flags.only_element() / only_text() / any_text_like() / any_interpolation_like() / only_synthetic_node()
-
-// bitflags ExpressionFlags: RuneReference | FunctionCall
-// flags.has_rune_reference()
-
-struct SvelteRune { kind: SvelteRuneKind, mutated: bool }
-enum SvelteRuneKind { State|StateRaw|StateSnapshot|Props|PropsId|Bindable|Derived|DerivedBy|Effect|EffectPre|EffectTracking|EffectRoot|Inspect|InspectWith|InspectTrace|Host }
-```
-
----
-
-### `transform_hir`
-`crates/transform_hir/src/`
-
-```rust
-fn transform_hir<'hir>(analyses: &'hir HirAnalyses, store: &'hir mut HirStore<'hir>, b: &'hir Builder<'hir>) -> Program<'hir>
-// Внутри: transform_script + transform_template → собирает Program
-// script: rune declarations + assignments transform (аналог svelte_codegen_client/script.rs)
-// template: nodes/element/fragment/if_block/each_block/interpolation/attributes
-```
-
----
-
-### `transformer` (v1 transformer — использует старый ast без hir)
-`crates/transformer/src/`
-
-```rust
-fn transform_client<'a>(ast: Ast<'a>, b: &'a Builder<'a>, analyze: AnalyzeResult) -> String
-// Принимает v2 ast::Ast и старый AnalyzeResult (из crates/analyzer)
-// Используется в compiler.compile() (v1 path)
-```
-
----
-
-### `compiler` (v2 entry point)
-`crates/compiler/src/lib.rs`
-
-```rust
-struct Compiler {}
-// Compiler::new().compile(source, allocator)  → v1 path (ast → transformer)
-// Compiler::new().compile2(source, allocator) → v2 path (ast → hir → analyze_hir → transform_hir)
-```
-
----
-
-## V2 Dependency graph
-
-```
-span / diagnostics
-  ↑
-ast ← parser
-  ↑          ↑
-analyzer   ast_to_hir ← hir
-  ↑              ↑
-transformer   analyze_hir
-  ↑              ↑
-           transform_hir
-                 ↑
-            compiler (обе ветки)
-```
-
-## V2 vs V3 — ключевые отличия
-
-| | V2 | V3 |
-|---|---|---|
-| AST nodes | `RcCell<T>`, lifetime'ы повсюду | owned, span-based |
-| JS expressions | `Expression<'a>` в каждом узле | `Span` → re-parse |
-| HIR | arena + IndexVec (OwnerId/NodeId/ExpressionId) | нет отдельного HIR |
-| Analysis | `HirAnalyses` (symbols+scopes+runes+dynamic) | `AnalysisData` (7 passes) |
-| Content type | `OwnerContentTypeFlags` (bitflags) | `ContentType` enum |
-| Rune detection | через OXC SymbolId (semantic) | по имени callee |
