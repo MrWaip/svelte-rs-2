@@ -30,6 +30,9 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
         }
     }
 
+    // Template expression assignments (e.g. `{title = 30}`)
+    walk_template_mutations(&component.fragment, &rune_names, data, &mut mutated);
+
     // Bind directives imply mutation
     walk_binds(&component.fragment, component, &rune_names, &mut data.bind_mutated_runes);
 
@@ -37,6 +40,47 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     mutated.extend(data.bind_mutated_runes.iter().cloned());
 
     data.mutated_runes = mutated;
+}
+
+fn walk_template_mutations(
+    fragment: &Fragment,
+    rune_names: &HashSet<String>,
+    data: &AnalysisData,
+    out: &mut HashSet<String>,
+) {
+    for node in &fragment.nodes {
+        match node {
+            Node::ExpressionTag(tag) => {
+                if let Some(info) = data.expressions.get(&tag.id) {
+                    for r in &info.references {
+                        if r.flags == svelte_js::ReferenceFlags::Write
+                            || r.flags == svelte_js::ReferenceFlags::ReadWrite
+                        {
+                            if rune_names.contains(&r.name) {
+                                out.insert(r.name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Element(el) => {
+                walk_template_mutations(&el.fragment, rune_names, data, out);
+            }
+            Node::IfBlock(b) => {
+                walk_template_mutations(&b.consequent, rune_names, data, out);
+                if let Some(alt) = &b.alternate {
+                    walk_template_mutations(alt, rune_names, data, out);
+                }
+            }
+            Node::EachBlock(b) => {
+                walk_template_mutations(&b.body, rune_names, data, out);
+                if let Some(fb) = &b.fallback {
+                    walk_template_mutations(fb, rune_names, data, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn walk_binds(
