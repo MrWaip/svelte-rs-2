@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_ast::{Attribute, Element};
+use svelte_ast::{Attribute, BindDirectiveKind, Element};
 
 use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
 use crate::context::Ctx;
@@ -98,10 +98,30 @@ pub(crate) fn process_attr<'a>(
                 [ctx.b.expr_stmt(setter_body)],
             );
 
-            after_update.push(ctx.b.call_stmt(
-                "$.bind_value",
-                [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-            ));
+            let stmt = match bind.kind {
+                BindDirectiveKind::Checked => ctx.b.call_stmt(
+                    "$.bind_checked",
+                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                ),
+                BindDirectiveKind::Group => {
+                    ctx.needs_binding_group = true;
+                    ctx.b.call_stmt(
+                        "$.bind_group",
+                        [
+                            Arg::Ident("binding_group"),
+                            Arg::Expr(ctx.b.empty_array_expr()),
+                            Arg::Ident(el_name),
+                            Arg::Expr(getter),
+                            Arg::Expr(setter),
+                        ],
+                    )
+                }
+                _ => ctx.b.call_stmt(
+                    "$.bind_value",
+                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                ),
+            };
+            after_update.push(stmt);
         }
         Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) => {
             // Spread handled by process_attrs_spread; class directives TODO
@@ -214,10 +234,30 @@ pub(crate) fn process_attrs_spread<'a>(
                     [ctx.b.expr_stmt(setter_body)],
                 );
 
-                after_update.push(ctx.b.call_stmt(
-                    "$.bind_value",
-                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-                ));
+                let stmt = match bind.kind {
+                    BindDirectiveKind::Checked => ctx.b.call_stmt(
+                        "$.bind_checked",
+                        [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                    ),
+                    BindDirectiveKind::Group => {
+                        ctx.needs_binding_group = true;
+                        ctx.b.call_stmt(
+                            "$.bind_group",
+                            [
+                                Arg::Ident("binding_group"),
+                                Arg::Expr(ctx.b.empty_array_expr()),
+                                Arg::Ident(el_name),
+                                Arg::Expr(getter),
+                                Arg::Expr(setter),
+                            ],
+                        )
+                    }
+                    _ => ctx.b.call_stmt(
+                        "$.bind_value",
+                        [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+                    ),
+                };
+                after_update.push(stmt);
                 continue;
             }
             Attribute::ClassDirective(_) => continue,

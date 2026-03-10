@@ -48,6 +48,9 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // export default function App($$anchor) { ... }
     let fn_params = b.params(["$$anchor"]);
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
+    if ctx.needs_binding_group {
+        fn_body.push(b.const_stmt("binding_group", b.empty_array_expr()));
+    }
     fn_body.extend(script_body);
     fn_body.extend(template_body);
 
