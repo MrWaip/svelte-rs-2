@@ -14,8 +14,8 @@ export default function App($$anchor) {
 		var alternate = ($$anchor) => {};
 		$.if(node, ($$render) => {
 			if (true) $$render(consequent);
-else if (false) $$render(consequent_1, 1);
-else $$render(alternate, -1);
+			else if (false) $$render(consequent_1, 1);
+			else $$render(alternate, -1);
 		});
 	}
 	$.append($$anchor, fragment);

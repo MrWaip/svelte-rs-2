@@ -43,8 +43,8 @@ fn parse_and_transform<'a>(
 
     let mut tr = RuneRefTransformer { b: &b, mutated, rune_names };
     let sem = SemanticBuilder::new().build(&program);
-    let (symbols, scopes) = sem.semantic.into_symbol_table_and_scope_tree();
-    traverse_mut(&mut tr, alloc, &mut program, symbols, scopes);
+    let scoping = sem.semantic.into_scoping();
+    traverse_mut(&mut tr, alloc, &mut program, scoping, ());
 
     if let Some(Statement::ExpressionStatement(mut es)) = program.body.into_iter().next() {
         b.move_expr(&mut es.expression)
@@ -59,8 +59,8 @@ struct RuneRefTransformer<'b, 'a> {
     rune_names: &'b HashSet<String>,
 }
 
-impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
-    fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
+impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
+    fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         match node {
             Expression::Identifier(id) => {
                 if id.reference_id.get().is_none() {

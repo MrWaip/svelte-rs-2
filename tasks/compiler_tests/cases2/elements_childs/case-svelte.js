@@ -26,8 +26,8 @@ export default function App($$anchor) {
 		};
 		$.if(node, ($$render) => {
 			if (1 !== 1) $$render(consequent);
-else if (2 === 2) $$render(consequent_1, 1);
-else $$render(alternate, -1);
+			else if (2 === 2) $$render(consequent_1, 1);
+			else $$render(alternate, -1);
 		});
 	}
 	$.reset(div_2);

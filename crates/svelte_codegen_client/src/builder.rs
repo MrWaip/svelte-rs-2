@@ -57,11 +57,11 @@ impl<'a> Builder<'a> {
     // -----------------------------------------------------------------------
 
     pub fn bid(&self, name: &str) -> BindingIdentifier<'a> {
-        self.ast.binding_identifier(SPAN, name)
+        self.ast.binding_identifier(SPAN, self.ast.atom(name))
     }
 
     pub fn rid(&self, name: &str) -> IdentifierReference<'a> {
-        self.ast.identifier_reference(SPAN, name)
+        self.ast.identifier_reference(SPAN, self.ast.atom(name))
     }
 
     pub fn rid_expr(&self, name: &str) -> Expression<'a> {
@@ -89,7 +89,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn str_lit(&self, value: &str) -> StringLiteral<'a> {
-        self.ast.string_literal(SPAN, value, None)
+        self.ast.string_literal(SPAN, self.ast.atom(value), None)
     }
 
     pub fn str_expr(&self, value: &str) -> Expression<'a> {
@@ -98,7 +98,7 @@ impl<'a> Builder<'a> {
 
     pub fn empty_array_expr(&self) -> Expression<'a> {
         Expression::ArrayExpression(self.alloc(
-            self.ast.array_expression(SPAN, self.ast.vec(), None),
+            self.ast.array_expression(SPAN, self.ast.vec()),
         ))
     }
 
@@ -111,7 +111,7 @@ impl<'a> Builder<'a> {
         callee: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> CallExpression<'a> {
-        let ident = self.ast.expression_identifier(SPAN, callee);
+        let ident = self.ast.expression_identifier(SPAN, self.ast.atom(callee));
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         self.ast.call_expression(SPAN, ident, NONE, self.ast.vec_from_iter(args), false)
     }
@@ -163,7 +163,7 @@ impl<'a> Builder<'a> {
 
     /// `let name;` — uninitialized variable declaration.
     pub fn let_stmt(&self, name: &str) -> Statement<'a> {
-        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, name);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
         let decl = self.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Let,
@@ -191,7 +191,7 @@ impl<'a> Builder<'a> {
         init: Expression<'a>,
         kind: VariableDeclarationKind,
     ) -> Statement<'a> {
-        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, name);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
         let decl = self.ast.variable_declarator(SPAN, kind, pattern, NONE, Some(init), false);
         let declaration = self.ast.variable_declaration(
             SPAN,
@@ -225,9 +225,10 @@ impl<'a> Builder<'a> {
             AssignLeft::StaticMember(m) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(m))
             }
-            AssignLeft::Ident(ref name) => {
+            AssignLeft::Ident(name) => {
+                let atom = self.ast.atom(&name);
                 AssignmentTarget::AssignmentTargetIdentifier(self.alloc(
-                    self.ast.identifier_reference(SPAN, name.as_str()),
+                    self.ast.identifier_reference(SPAN, atom),
                 ))
             }
         };
@@ -248,10 +249,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn params(&self, items: impl IntoIterator<Item = impl AsRef<str>>) -> FormalParameters<'a> {
-        let params = items.into_iter().map(|v| {
-            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, v.as_ref());
+        let params: Vec<_> = items.into_iter().map(|v| {
+            let atom = self.ast.atom(v.as_ref());
+            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
             self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, NONE, NONE, false, None, false, false)
-        });
+        }).collect();
         self.ast.formal_parameters(
             SPAN,
             ast::FormalParameterKind::FormalParameter,
@@ -274,7 +276,6 @@ impl<'a> Builder<'a> {
             self.ast.vec_from_iter(statements),
         );
         self.ast.arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body)
-
     }
 
     pub fn arrow_expr(
@@ -309,7 +310,6 @@ impl<'a> Builder<'a> {
             NONE,
             Some(body),
         )
-
     }
 
     // -----------------------------------------------------------------------
@@ -321,7 +321,7 @@ impl<'a> Builder<'a> {
         object: Expression<'a>,
         prop: &str,
     ) -> StaticMemberExpression<'a> {
-        let property = self.ast.identifier_name(SPAN, prop);
+        let property = self.ast.identifier_name(SPAN, self.ast.atom(prop));
         self.ast.static_member_expression(SPAN, object, property, false)
     }
 
@@ -394,11 +394,12 @@ impl<'a> Builder<'a> {
                     ));
                     pending.clear();
 
+                    let empty_str = self.ast.atom("");
                     let wrapped = self.ast.expression_logical(
                         SPAN,
                         expr,
                         ast::LogicalOperator::Coalesce,
-                        self.ast.expression_string_literal(SPAN, "", None),
+                        self.ast.expression_string_literal(SPAN, empty_str, None),
                     );
                     expressions.push(wrapped);
 
@@ -445,16 +446,18 @@ impl<'a> Builder<'a> {
     // -----------------------------------------------------------------------
 
     pub fn import_all(&self, specifier: &str, source: &str) -> Statement<'a> {
+        let spec_atom = self.ast.atom(specifier);
+        let source_atom = self.ast.atom(source);
         let spec = ImportDeclarationSpecifier::ImportNamespaceSpecifier(
             self.ast.alloc_import_namespace_specifier(
                 SPAN,
-                self.ast.binding_identifier(SPAN, specifier),
+                self.ast.binding_identifier(SPAN, spec_atom),
             ),
         );
         Statement::from(self.ast.module_declaration_import_declaration(
             SPAN,
             Some(self.ast.vec_from_array([spec])),
-            self.ast.string_literal(SPAN, source, None),
+            self.ast.string_literal(SPAN, source_atom, None),
             None,
             NONE,
             ImportOrExportKind::Value,
@@ -462,11 +465,9 @@ impl<'a> Builder<'a> {
     }
 
     pub fn export_default(&self, declaration: ExportDefaultDeclarationKind<'a>) -> Statement<'a> {
-        let ident = self.ast.identifier_name(SPAN, "default");
         let res = self.ast.alloc_export_default_declaration(
             SPAN,
             declaration,
-            ModuleExportName::IdentifierName(ident),
         );
         Statement::from(ModuleDeclaration::ExportDefaultDeclaration(res))
     }
@@ -495,15 +496,16 @@ impl<'a> Builder<'a> {
     ) -> Expression<'a> {
         let properties = props.into_iter().map(|p| self.obj_prop_to_ast(p));
         Expression::ObjectExpression(self.alloc(
-            self.ast.object_expression(SPAN, self.ast.vec_from_iter(properties), None),
+            self.ast.object_expression(SPAN, self.ast.vec_from_iter(properties)),
         ))
     }
 
     fn obj_prop_to_ast(&self, prop: ObjProp<'a>) -> ast::ObjectPropertyKind<'a> {
         match prop {
             ObjProp::KeyValue(key, value) => {
+                let key_atom = self.ast.atom(key);
                 let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, key)),
+                    self.alloc(self.ast.identifier_name(SPAN, key_atom)),
                 );
                 let obj_prop = self.ast.object_property(
                     SPAN,
@@ -517,8 +519,9 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::Shorthand(name) => {
+                let name_atom = self.ast.atom(name);
                 let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, name)),
+                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
                 );
                 let value = self.rid_expr(name);
                 let obj_prop = self.ast.object_property(

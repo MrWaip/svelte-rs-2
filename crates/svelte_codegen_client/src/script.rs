@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::{SemanticBuilder, SymbolTable};
+use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
@@ -51,13 +51,13 @@ fn transform_script_text<'a>(
 
     // Run semantic analysis — annotates AST nodes with symbol_id / reference_id
     let sem = SemanticBuilder::new().build(&program);
-    let (symbols, _scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+    let scoping = sem.semantic.into_scoping();
 
     // Build rune_table: OXC SymbolId → RuneInfo
     let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
 
-    for sym_id in symbols.symbol_ids() {
-        let name = symbols.get_name(sym_id);
+    for sym_id in scoping.symbol_ids() {
+        let name = scoping.symbol_name(sym_id);
         if rune_names.contains(name) {
             let mutated = mutated_runes.contains(name);
             rune_table.insert(sym_id, RuneInfo { mutated });
@@ -67,13 +67,12 @@ fn transform_script_text<'a>(
     let mut transformer = ScriptTransformer {
         b: &b,
         rune_table,
-        symbols,
+        scoping,
     };
 
-    // Pass empty tables to traverse_mut — real IDs are already on AST nodes
-    let empty_symbols = SymbolTable::default();
-    let empty_scopes = oxc_semantic::ScopeTree::default();
-    traverse_mut(&mut transformer, allocator, &mut program, empty_symbols, empty_scopes);
+    // Pass empty scoping to traverse_mut — real IDs are already on AST nodes
+    let empty_scoping = Scoping::default();
+    traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     let mut imports = vec![];
     let mut body = vec![];
@@ -105,7 +104,7 @@ struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo>,
     /// Kept for reference_id → symbol_id resolution
-    symbols: SymbolTable,
+    scoping: Scoping,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -124,7 +123,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         id: &oxc_ast::ast::IdentifierReference<'a>,
     ) -> Option<&RuneInfo> {
         let ref_id = id.reference_id.get()?;
-        let sym_id = self.symbols.get_reference(ref_id).symbol_id()?;
+        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
         self.rune_table.get(&sym_id)
     }
 
@@ -151,14 +150,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     }
 }
 
-impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
+impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn enter_variable_declarator(
         &mut self,
         node: &mut VariableDeclarator<'a>,
-        _ctx: &mut TraverseCtx<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        let rune_info = match &node.id.kind {
-            oxc_ast::ast::BindingPatternKind::BindingIdentifier(id) => {
+        let rune_info = match &node.id {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
                 self.rune_info_for_binding(id)
             }
             _ => return,
@@ -210,7 +209,7 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
         }
     }
 
-    fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+    fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
         match node {
             Expression::AssignmentExpression(_) => {
                 self.transform_assignment(node, ctx);
@@ -233,7 +232,7 @@ impl<'a> Traverse<'a> for ScriptTransformer<'_, 'a> {
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
-    fn transform_assignment(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
+    fn transform_assignment(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         let Expression::AssignmentExpression(assign) = node else {
             return;
         };
@@ -260,7 +259,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    fn transform_update(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
+    fn transform_update(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         let Expression::UpdateExpression(upd) = node else {
             return;
         };
