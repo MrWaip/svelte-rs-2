@@ -60,6 +60,10 @@ struct RuneRefTransformer<'b, 'a> {
 impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
     fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
         if let Expression::Identifier(id) = node {
+            // Generated identifiers (from Builder::rid) have reference_id = None → skip to prevent recursion
+            if id.reference_id.get().is_none() {
+                return;
+            }
             let name = id.name.as_str().to_string();
             if self.rune_names.contains(&name) && self.mutated.contains(&name) {
                 *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
