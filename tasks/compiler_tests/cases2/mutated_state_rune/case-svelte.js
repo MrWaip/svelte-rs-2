@@ -1,13 +1,13 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div> </div> <div> </div>`, 1);
+var root = $.from_html(`<div> </div> <div> </div>`, 1);
 export default function App($$anchor) {
 	let title = $.state(10);
-	let flag = undefined;
-	let flag2 = $.state(undefined);
+	let flag = void 0;
+	let flag2 = $.state(void 0);
 	onMount(() => {
 		$.set(title, 20);
 		window.id = $.get(title);
-		$.set(flag2, $.proxy($.get(title)));
+		$.set(flag2, $.get(title), true);
 		map($.get(title));
 	});
 	function map(value, off = $.get(title)) {
@@ -22,11 +22,11 @@ export default function App($$anchor) {
 	var text = $.child(div, true);
 	$.reset(div);
 	var div_1 = $.sibling(div, 2);
+	$.set_attribute(div_1, "flag", flag);
 	var text_1 = $.child(div_1, true);
 	$.reset(div_1);
 	$.template_effect(() => {
 		$.set_text(text, $.get(title));
-		$.set_attribute(div_1, "flag", flag);
 		$.set_text(text_1, $.get(flag2));
 	});
 	$.append($$anchor, fragment);

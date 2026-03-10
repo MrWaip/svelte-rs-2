@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.template(` <div> </div>`, 1);
+var root_1 = $.from_html(` <div> </div>`, 1);
 export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);

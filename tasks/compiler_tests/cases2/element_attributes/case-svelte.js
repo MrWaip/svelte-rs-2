@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div title="hockey" visible=""></div>`);
+var root = $.from_html(`<div title="hockey" visible=""></div>`);
 export default function App($$anchor) {
 	var div = root();
 	$.set_attribute(div, "expression", name);
