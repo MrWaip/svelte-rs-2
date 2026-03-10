@@ -91,6 +91,12 @@ impl<'a> Builder<'a> {
         Expression::StringLiteral(self.alloc(self.str_lit(value)))
     }
 
+    pub fn empty_array_expr(&self) -> Expression<'a> {
+        Expression::ArrayExpression(self.alloc(
+            self.ast.array_expression(SPAN, self.ast.vec(), None),
+        ))
+    }
+
     // -----------------------------------------------------------------------
     // Call expressions
     // -----------------------------------------------------------------------

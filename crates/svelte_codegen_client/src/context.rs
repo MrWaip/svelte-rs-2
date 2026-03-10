@@ -26,6 +26,9 @@ pub struct Ctx<'a> {
 
     // -- Cached rune metadata --
     pub rune_names: HashSet<String>,
+
+    // -- Bind group --
+    pub needs_binding_group: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -63,6 +66,7 @@ impl<'a> Ctx<'a> {
             each_blocks,
             expr_spans,
             rune_names,
+            needs_binding_group: false,
         }
     }
 
