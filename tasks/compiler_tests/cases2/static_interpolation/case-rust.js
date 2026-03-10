@@ -5,12 +5,12 @@ export default function App($$anchor) {
 	$.next();
 	var fragment = root();
 	var text = $.first_child(fragment);
-	text.nodeValue = `${title ?? ""} `;
+	text.nodeValue = "world ";
 	var div = $.sibling(text);
 	var text_1 = $.sibling($.child(div));
-	text_1.nodeValue = ` ${title ?? ""}`;
+	text_1.nodeValue = " world";
 	$.reset(div);
 	var div_1 = $.sibling(div, 2);
-	div_1.textContent = title;
+	div_1.textContent = "world";
 	$.append($$anchor, fragment);
 }

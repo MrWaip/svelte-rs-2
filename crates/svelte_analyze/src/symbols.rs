@@ -13,6 +13,7 @@ pub fn collect_symbols(data: &mut AnalysisData) {
             name: decl.name.clone(),
             span: decl.span,
             kind: decl.kind,
+            init_span: decl.init_span,
         });
     }
 }

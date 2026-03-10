@@ -1,5 +1,6 @@
 mod content_types;
 mod data;
+mod known_values;
 mod lower;
 mod mutations;
 mod parse_js;
@@ -34,6 +35,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     parse_js::parse_js(component, &mut data, &mut diags);
     symbols::collect_symbols(&mut data);
     runes::detect_runes(&mut data);
+    known_values::collect_known_values(component, &mut data);
     mutations::detect_mutations(component, &mut data);
     lower::lower(component, &mut data);
     reactivity::mark_reactivity(component, &mut data);

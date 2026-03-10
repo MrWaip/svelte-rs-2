@@ -56,6 +56,8 @@ pub struct AnalysisData {
     pub bind_mutated_runes: HashSet<String>,
     /// All rune symbol names that are mutated (script assignments via OXC semantic + bind directives).
     pub mutated_runes: HashSet<String>,
+    /// Compile-time known values for const declarations with literal initializers.
+    pub known_values: HashMap<String, String>,
 }
 
 impl AnalysisData {
@@ -74,6 +76,7 @@ impl AnalysisData {
             content_types: HashMap::new(),
             bind_mutated_runes: HashSet::new(),
             mutated_runes: HashSet::new(),
+            known_values: HashMap::new(),
         }
     }
 }
@@ -114,6 +117,7 @@ pub struct SymbolInfo {
     pub name: String,
     pub span: Span,
     pub kind: DeclarationKind,
+    pub init_span: Option<Span>,
 }
 
 // ---------------------------------------------------------------------------
