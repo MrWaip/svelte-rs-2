@@ -8,7 +8,7 @@ use svelte_ast::{Attribute, NodeId};
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::{has_spread, process_attr, process_attrs_spread};
+use super::attributes::{has_spread, process_attr, process_attrs_spread, process_class_directives};
 use super::expression::{build_concat, emit_trailing_next, item_is_dynamic};
 use super::traverse::traverse_items;
 
@@ -59,6 +59,10 @@ pub(crate) fn process_element<'a>(
             process_attr(ctx, attr, el_name, attr_dynamic[idx], init, update, after_update);
         }
     }
+
+    // Class directives
+    let el = ctx.element(el_id);
+    process_class_directives(ctx, &el.clone_without_fragment(), el_name, init);
 
     // Children
     let has_state = has_dynamic_children(ctx, el_id);
