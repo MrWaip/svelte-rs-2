@@ -66,7 +66,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     }
 
     if el.self_closing {
-        html.push('>');
+        html.push_str("/>");
         return html;
     }
     html.push('>');
