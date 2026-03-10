@@ -4,7 +4,6 @@ resolver = "2"
 
 
 [workspace.dependencies]
-# New crates (Stage 1 refactoring)
 svelte_span = { path = "crates/svelte_span" }
 svelte_ast = { path = "crates/svelte_ast" }
 svelte_parser = { path = "crates/svelte_parser" }
@@ -14,20 +13,6 @@ svelte_analyze = { path = "crates/svelte_analyze" }
 svelte_codegen_client = { path = "crates/svelte_codegen_client" }
 svelte_compiler = { path = "crates/svelte_compiler" }
 
-# Old crates (to be removed in Stage 4)
-ast = { path = "crates/ast" }
-span = { path = "crates/span" }
-ast_builder = { path = "crates/ast_builder" }
-transform_hir = { path = "crates/transform_hir" }
-analyze_hir = { path = "crates/analyze_hir" }
-diagnostics = { path = "crates/diagnostics" }
-parser = { path = "crates/parser" }
-analyzer = { path = "crates/analyzer" }
-transformer = { path = "crates/transformer" }
-compiler = { path = "crates/compiler" }
-hir = { path = "crates/hir" }
-ast_to_hir = { path = "crates/ast_to_hir" }
-bitflags = "2.9.0"
 compact_str = "0.8.1"
 glob = "0.3.2"
 oxc_allocator = "0.44.0"
@@ -36,14 +21,12 @@ oxc_codegen = "0.44.0"
 oxc_index = "2.0.0"
 oxc_parser = "0.44.0"
 oxc_semantic = "0.44.0"
-oxc_data_structures = "0.44.0"
 oxc_syntax = "0.44.0"
 oxc_span = "0.44.0"
 oxc_transformer = "0.44.0"
 oxc_traverse = "0.44.0"
 pretty_assertions = "1.4.1"
 criterion2 = { version = "2.0.0" }
-rccell = "0.1.3"
 rstest = "0.24.0"
 wasm-bindgen = "0.2.99"
 serde-wasm-bindgen = "0.6.5"
