@@ -34,3 +34,76 @@
 - Pass order задокументирован в lib.rs
 - FragmentKey и SymbolId — typed keys
 - content_types работает поверх lowered_fragments, а не raw AST — правильная layering
+
+---
+
+## Сравнение поколений: v1 → v2 → v3
+
+### Объём кода
+
+| Поколение | Crates | ~LOC |
+|-----------|--------|------|
+| **v1** (ast, parser, analyzer, transformer, compiler) | 5 | ~4,800 |
+| **v2** (hir, ast_to_hir, analyze_hir, transform_hir) | 4 | ~2,800 |
+| **v3** (svelte_*) | 8 | ~5,800 |
+
+v3 больше по LOC, но делает значительно больше, и при этом проще в каждом отдельном модуле.
+
+### Lifetime management — главный скачок
+
+| | v1 | v2 | v3 |
+|-|----|----|-----|
+| **AST** | `Node<'a>`, `Expression<'a>` — OXC lifetime пронизывает всё | `Node<'hir>` — отдельный lifetime, но всё ещё параметризован | Owned types, zero lifetimes — `Span` вместо `Expression<'a>` |
+| **Передача между crate'ами** | Требует `'a` на каждой границе | `'hir` чуть лучше, но всё равно заражает | Свободная передача — `Component` и `AnalysisData` полностью owned |
+| **OXC изоляция** | OXC types везде | OXC types в HIR store (`RefCell<Expression>`) | OXC строго внутри svelte_js и svelte_codegen_client |
+
+Span-based подход — правильное решение для Svelte, где JS выражения нужно re-parse в codegen с другим контекстом.
+
+### Мутабельность AST
+
+| v1 | v2 | v3 |
+|----|----|----|
+| `RcCell<T>` на каждом узле — interior mutability, `.borrow()` повсюду, паники при двойном borrow | `RefCell<Expression>` в HIR store — лучше, но всё ещё runtime borrow checking | Иммутабельный AST — анализ пишет в отдельные side tables (`AnalysisData`) |
+
+v3 полностью разделил данные (AST) и метаданные (AnalysisData). Устраняет целый класс runtime-ошибок.
+
+### Анализ
+
+| v1 | v2 | v3 |
+|----|----|----|
+| `SvelteTable` — OXC symbol table + ручной visitor | 5 pass'ов: content_type, dynamic_markers, script, scope, rune_reference | 8 явных pass'ов с чётким порядком и typed side tables |
+
+Ключевые улучшения v3:
+- `SymbolId(u32)` вместо строковых ключей
+- `FragmentKey` enum — точная адресация любого фрагмента
+- `attr_expressions: HashMap<(NodeId, usize), ExpressionInfo>` — атрибуты по (element, index)
+- `lowered_fragments` — whitespace trimming как отдельный pass
+
+### Codegen
+
+| v1 | v2 | v3 |
+|----|----|----|
+| `FragmentContext` с before_init/init/update/after_update | Похожий паттерн на HIR | Content-type driven strategies — паттерн-матчинг по ContentType |
+| Повторные обходы дерева | ID-based lookup'ы | O(1) HashMap'ы по NodeId |
+
+v3 codegen чище: стратегия выбирается один раз по ContentType (Empty/StaticText/DynamicText/SingleElement/SingleBlock/Mixed), нет re-traversal дерева.
+
+### Итоговая оценка
+
+| Критерий | v1 | v2 | v3 |
+|----------|:--:|:--:|:--:|
+| Простота типов | 4/10 | 6/10 | 9/10 |
+| OXC изоляция | 2/10 | 5/10 | 9/10 |
+| Модульность | 5/10 | 7/10 | 8/10 |
+| Корректность reactivity | 5/10 | 7/10 | 6/10 |
+| Error recovery | 3/10 | 3/10 | 3/10 |
+| Тестируемость | 5/10 | 6/10 | 8/10 |
+| Расширяемость | 4/10 | 6/10 | 8/10 |
+
+### Архитектурный долг v3
+
+1. **Scope-aware reactivity.** Pass 6 проверяет по именам — false positive при shadowing each-переменных. v2 имел scope tree через OXC SemanticBuilder; v3 потерял это ради простоты.
+2. **`mutated_runes: HashSet<String>`** — трекинг по именам, а не по `SymbolId`. Inconsistency с остальным дизайном.
+3. **`validate` pass пуст.** Нет семантической валидации (дупликат атрибутов, невалидные bind-targets).
+4. **Нет error recovery.** Парсер падает на первой ошибке — наследие v1. Для LSP нужен partial AST.
+5. **Re-parse в codegen.** Span-based = повторный парсинг выражений. Осознанный trade-off (простота > производительность), оправдан.
