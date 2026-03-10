@@ -144,11 +144,6 @@ pub(crate) fn process_attrs_spread<'a>(
     init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
 ) {
-    let attrs_var = ctx.gen_ident("attributes");
-
-    // `let attributes;`
-    init.push(ctx.b.let_stmt(&attrs_var));
-
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
@@ -264,25 +259,8 @@ pub(crate) fn process_attrs_spread<'a>(
         }
     }
 
-    // $.set_attributes(el, attributes, { ... })
+    // $.attribute_effect(el, () => ({...}))
     let obj = ctx.b.object_expr(props);
-    let set_attrs = ctx.b.call_expr(
-        "$.set_attributes",
-        [
-            Arg::Ident(el_name),
-            Arg::Ident(&attrs_var),
-            Arg::Expr(obj),
-        ],
-    );
-
-    // attributes = $.set_attributes(...)
-    let assign = ctx.b.assign_expr(
-        AssignLeft::Ident(attrs_var),
-        AssignRight::Expr(set_attrs),
-    );
-
-    // Wrap in template_effect
-    let effect_body = ctx.b.expr_stmt(assign);
-    let effect_fn = ctx.b.arrow(ctx.b.no_params(), [effect_body]);
-    init.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(effect_fn)]));
+    let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
+    init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
 }
