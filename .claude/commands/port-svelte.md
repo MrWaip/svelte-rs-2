@@ -21,6 +21,14 @@ DO:
 - Simplify control flow when Rust makes it natural (match, iterators, Option)
 - Keep functions short and focused — if a Svelte visitor does 5 things, split into clear helpers
 
+## Step 0: Branch
+
+Create a feature branch from the latest master:
+```
+git checkout master && git pull && git checkout -b port/<item>-<short-name>
+```
+where `<item>` is the roadmap item (e.g. `1a`) and `<short-name>` is a brief kebab-case description of the feature. All work must be done on this branch.
+
 ## Step 1: Test case
 
 - Check `reference/compiler/tests/` for existing test examples of this feature
