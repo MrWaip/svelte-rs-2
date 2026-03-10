@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div>_</div> `, 1);
+var root = $.from_html(`<div>_</div> `, 1);
 export default function App($$anchor) {
 	let title = $.state(10);
 	let title2 = $.state(12);

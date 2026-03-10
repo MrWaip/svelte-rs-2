@@ -1,10 +1,10 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<input> <input> <input type="checkbox"> <input type="checkbox"> <input> <input>`, 1);
+var root = $.from_html(`<input/> <input/> <input type="checkbox"/> <input type="checkbox"/> <input/> <input/>`, 1);
 export default function App($$anchor) {
 	const binding_group = [];
 	let value = $.state("");
 	let checked = false;
-	let group = $.state(undefined);
+	let group = $.state(void 0);
 	var fragment = root();
 	var input = $.first_child(fragment);
 	$.remove_input_defaults(input);

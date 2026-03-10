@@ -1,21 +1,22 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div>Lorem</div>`);
+var root = $.from_html(`<div>Lorem</div>`);
 export default function App($$anchor) {
-	let absolute = $.state(undefined);
-	let visible = $.state(undefined);
-	let unchanged = undefined;
-	let untouched = undefined;
+	let absolute = $.state(void 0);
+	let visible = $.state(void 0);
+	let unchanged = void 0;
+	let untouched = void 0;
 	const staticClass = true;
 	$.set(visible, 12);
 	$.set(absolute, true);
 	var div = root();
-	$.toggle_class(div, "staticClass", staticClass);
-	$.toggle_class(div, "static2", true);
-	$.template_effect(() => {
-		$.toggle_class(div, "visible", $.get(visible));
-		$.toggle_class(div, "absolute", $.get(absolute));
-		$.toggle_class(div, "unchanged", unchanged);
-		$.toggle_class(div, "untouched", untouched);
-	});
+	let classes;
+	$.template_effect(() => classes = $.set_class(div, 1, "", null, classes, {
+		visible: $.get(visible),
+		absolute: $.get(absolute),
+		unchanged,
+		untouched,
+		staticClass,
+		static2: true
+	}));
 	$.append($$anchor, div);
 }
