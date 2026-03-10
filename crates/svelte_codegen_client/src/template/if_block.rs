@@ -75,14 +75,9 @@ pub(crate) fn gen_if_block<'a>(
 
     // 2. Generate all arrow functions at the same scope level.
     // Naming order: body (gen_fragment) BEFORE name (gen_ident) for each branch.
-    // For elseif branches (index > 0), consume gen_ident("root") for the skipped SingleBlock wrapper.
     let mut branch_names: Vec<String> = Vec::new();
 
-    for (i, branch) in branches.iter().enumerate() {
-        if i > 0 {
-            // Consume "root" for the implicit SingleBlock wrapper that elseif bypasses
-            ctx.gen_ident("root");
-        }
+    for branch in branches.iter() {
         let body = gen_fragment(ctx, branch.consequent_key);
         let name = ctx.gen_ident("consequent");
         let arrow = ctx.b.arrow_expr(ctx.b.params(["$$anchor"]), body);
