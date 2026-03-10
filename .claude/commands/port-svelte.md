@@ -2,6 +2,21 @@
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
+## Approach
+
+Use Svelte reference to understand the **expected output**, not to copy the implementation.
+
+Do NOT port:
+- Visitor/walker dispatch patterns (we use direct recursive functions)
+- Mutable AST metadata (we use AnalysisData side tables)
+- JS-specific workarounds (nullish checks on arrays, var hoisting patterns)
+- Intermediate abstractions that only exist for zimmerframe compatibility
+
+DO:
+- Match the JS output exactly (same function calls, same argument order)
+- Simplify control flow when Rust makes it natural (match, iterators, Option)
+- Keep functions short and focused — if a Svelte visitor does 5 things, split into clear helpers
+
 ## Step 1: Test case
 
 - Create `tasks/compiler_tests/cases2/<test_name>/case.svelte` with a minimal example of the feature

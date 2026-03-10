@@ -16,7 +16,13 @@ When writing or modifying any test in `svelte_parser`, apply `/test-pattern` aut
 
 ## Porting from Svelte compiler
 
-Reference Svelte compiler source is in `reference/compiler/`. Use it to understand how features should work.
+Reference Svelte compiler source is in `reference/compiler/`. Use it to understand **what** output to produce, not **how** to implement it.
+
+### Design principle
+
+Match the JS output exactly. Design the internals for Rust: direct recursion over side tables,
+no visitor/walker patterns, no mutable AST metadata. Don't replicate JS workarounds,
+intermediate abstractions, or patterns that exist only because of zimmerframe/estree-walker.
 
 ### Quick navigation
 
