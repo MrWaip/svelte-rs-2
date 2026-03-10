@@ -162,7 +162,7 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
 
     match item {
         FragmentItem::IfBlock(id) => {
-            let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node), None);
+            let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
             body.push(ctx.b.block_stmt(stmts));
         }
         FragmentItem::EachBlock(id) => {
@@ -344,7 +344,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
             match item {
                 FragmentItem::IfBlock(id) => {
-                    let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node), None);
+                    let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
                     body.push(ctx.b.block_stmt(stmts));
                 }
                 FragmentItem::EachBlock(id) => {

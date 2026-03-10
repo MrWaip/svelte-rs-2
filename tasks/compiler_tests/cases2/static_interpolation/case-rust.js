@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.from_html(` <div><br> </div> <div></div>`, 1);
+var root = $.from_html(` <div><br/> </div> <div></div>`, 1);
 export default function App($$anchor) {
 	const title = "world";
 	$.next();
@@ -7,7 +7,7 @@ export default function App($$anchor) {
 	var text = $.first_child(fragment);
 	text.nodeValue = `${title ?? ""} `;
 	var div = $.sibling(text);
-	var text_1 = $.sibling($.child(div), 1, true);
+	var text_1 = $.sibling($.child(div));
 	text_1.nodeValue = ` ${title ?? ""}`;
 	$.reset(div);
 	var div_1 = $.sibling(div, 2);

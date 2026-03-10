@@ -27,38 +27,31 @@ export default function App($$anchor) {
 					$.reset(div_1);
 					$.append($$anchor, div_1);
 				};
-				var alternate = ($$anchor, $$elseif) => {
-					{
-						var consequent_1 = ($$anchor) => {
-							var div_3 = root_4();
-							$.append($$anchor, div_3);
-						};
-						var alternate_1 = ($$anchor) => {
-							var h2 = root_5();
-							$.append($$anchor, h2);
-						};
-						$.if($$anchor, ($$render) => {
-							if (featureB) $$render(consequent_1);
-else $$render(alternate_1, false);
-						}, $$elseif);
-					}
+				var consequent_1 = ($$anchor) => {
+					var div_3 = root_4();
+					$.append($$anchor, div_3);
+				};
+				var alternate = ($$anchor) => {
+					var h2 = root_5();
+					$.append($$anchor, h2);
 				};
 				$.if(node_1, ($$render) => {
 					if (featureA) $$render(consequent);
-else $$render(alternate, false);
+else if (featureB) $$render(consequent_1, 1);
+else $$render(alternate, -1);
 				});
 			}
 			$.reset(div);
 			$.append($$anchor, div);
 		};
-		var alternate_2 = ($$anchor) => {
+		var alternate_1 = ($$anchor) => {
 			var div_4 = root_6();
 			div_4.textContent = `Spinner ${percent ?? ""}`;
 			$.append($$anchor, div_4);
 		};
 		$.if(node, ($$render) => {
 			if (!loading) $$render(consequent_2);
-else $$render(alternate_2, false);
+else $$render(alternate_1, -1);
 		});
 	}
 	$.append($$anchor, fragment);
