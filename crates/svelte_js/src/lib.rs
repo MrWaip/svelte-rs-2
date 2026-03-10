@@ -294,6 +294,17 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
         Expression::UnaryExpression(un) => {
             collect_references(&un.argument, offset, refs);
         }
+        Expression::UpdateExpression(upd) => {
+            if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) =
+                &upd.argument
+            {
+                refs.push(Reference {
+                    name: ident.name.to_string(),
+                    span: Span::new(ident.span.start + offset, ident.span.end + offset),
+                    flags: ReferenceFlags::Write,
+                });
+            }
+        }
         Expression::CallExpression(call) => {
             collect_references(&call.callee, offset, refs);
             for arg in &call.arguments {

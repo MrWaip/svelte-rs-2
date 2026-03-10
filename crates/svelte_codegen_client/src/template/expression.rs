@@ -61,15 +61,50 @@ struct RuneRefTransformer<'b, 'a> {
 
 impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
     fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a>) {
-        if let Expression::Identifier(id) = node {
-            // Generated identifiers (from Builder::rid) have reference_id = None → skip to prevent recursion
-            if id.reference_id.get().is_none() {
-                return;
+        match node {
+            Expression::Identifier(id) => {
+                // Generated identifiers (from Builder::rid) have reference_id = None → skip to prevent recursion
+                if id.reference_id.get().is_none() {
+                    return;
+                }
+                let name = id.name.as_str().to_string();
+                if self.rune_names.contains(&name) && self.mutated.contains(&name) {
+                    *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
+                }
             }
-            let name = id.name.as_str().to_string();
-            if self.rune_names.contains(&name) && self.mutated.contains(&name) {
-                *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
+            Expression::UpdateExpression(upd) => {
+                let ident_name =
+                    if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
+                        &upd.argument
+                    {
+                        let name = id.name.as_str().to_string();
+                        (self.rune_names.contains(&name) && self.mutated.contains(&name))
+                            .then_some(name)
+                    } else {
+                        None
+                    };
+
+                if let Some(name) = ident_name {
+                    let is_increment =
+                        upd.operator == oxc_ast::ast::UpdateOperator::Increment;
+                    let is_prefix = upd.prefix;
+
+                    let (fn_name, delta): (&str, Option<f64>) = match (is_prefix, is_increment) {
+                        (true, true) => ("$.update_pre", None),
+                        (true, false) => ("$.update_pre", Some(-1.0)),
+                        (false, true) => ("$.update", None),
+                        (false, false) => ("$.update", Some(-1.0)),
+                    };
+
+                    let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
+                    if let Some(d) = delta {
+                        args.push(Arg::Num(d));
+                    }
+
+                    *node = self.b.call_expr(fn_name, args);
+                }
             }
+            _ => {}
         }
     }
 }

@@ -7,8 +7,10 @@ export default function App($$anchor) {
 	$.update_pre(title2);
 	var fragment = root();
 	var div = $.first_child(fragment);
-	$.set_attribute(div, "attr", title++);
 	var text = $.sibling(div);
-	text.nodeValue = ` ${--title2 ?? ""}`;
+	$.template_effect(() => {
+		$.set_attribute(div, "attr", $.update(title));
+		$.set_text(text, ` ${$.update_pre(title2, -1) ?? ""}`);
+	});
 	$.append($$anchor, fragment);
 }
