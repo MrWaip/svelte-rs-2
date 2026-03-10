@@ -141,7 +141,7 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
                 };
 
                 for declarator in &decl.declarations {
-                    if let oxc_ast::ast::BindingPatternKind::BindingIdentifier(ident) = &declarator.id.kind {
+                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
                         let name = ident.name.to_string();
                         let decl_span = Span::new(
                             ident.span.start + offset,
@@ -203,12 +203,12 @@ pub fn find_script_mutations(source: &str, typescript: bool) -> std::collections
     let result = OxcParser::new(&allocator, source, source_type).parse();
 
     let sem = oxc_semantic::SemanticBuilder::new().build(&result.program);
-    let (symbols, _scopes) = sem.semantic.into_symbol_table_and_scope_tree();
+    let scoping = sem.semantic.into_scoping();
 
     let mut mutated = std::collections::HashSet::new();
-    for sym_id in symbols.symbol_ids() {
-        if symbols.symbol_is_mutated(sym_id) {
-            mutated.insert(symbols.get_name(sym_id).to_string());
+    for sym_id in scoping.symbol_ids() {
+        if scoping.symbol_is_mutated(sym_id) {
+            mutated.insert(scoping.symbol_name(sym_id).to_string());
         }
     }
     mutated
