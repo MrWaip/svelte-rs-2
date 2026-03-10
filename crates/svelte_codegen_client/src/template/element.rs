@@ -85,12 +85,6 @@ pub(crate) fn process_element<'a>(
 
         ContentType::DynamicText => {
             let text_name = ctx.gen_ident("text");
-            init.push(ctx.b.var_stmt(
-                &text_name,
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]),
-            ));
-            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-
             let items: Vec<_> = ctx
                 .analysis
                 .lowered_fragments
@@ -98,6 +92,20 @@ pub(crate) fn process_element<'a>(
                 .unwrap()
                 .items
                 .clone();
+            // is_text only for standalone {expression} (single Expr part, no surrounding text)
+            let is_text = matches!(
+                items.first(),
+                Some(svelte_analyze::FragmentItem::TextConcat { parts })
+                if parts.len() == 1 && matches!(parts[0], svelte_analyze::ConcatPart::Expr(_))
+            );
+            let child_call = if is_text {
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+            } else {
+                ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
+            };
+            init.push(ctx.b.var_stmt(&text_name, child_call));
+            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+
             let expr = build_concat(ctx, &items[0]);
             update.push(ctx.b.call_stmt(
                 "$.set_text",

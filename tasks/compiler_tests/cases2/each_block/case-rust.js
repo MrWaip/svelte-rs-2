@@ -12,7 +12,7 @@ export default function App($$anchor) {
 		var fragment_1 = root_1();
 		var text = $.first_child(fragment_1);
 		var div = $.sibling(text);
-		var text_1 = $.child(div, true);
+		var text_1 = $.child(div);
 		$.reset(div);
 		$.template_effect(() => {
 			$.set_text(text, `${item ?? ""} `);
