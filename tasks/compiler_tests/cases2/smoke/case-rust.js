@@ -1,10 +1,10 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.template(`<div><div></div> <button></button></div>`);
-var root_4 = $.template(`<div><p>Lorem</p></div>`);
-var root_5 = $.template(`<h2>Old UI</h2>`);
-var root_1 = $.template(`<div><!></div>`);
-var root_6 = $.template(`<div></div>`);
-var root = $.template(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
+var root_2 = $.from_html(`<div><div></div> <button></button></div>`);
+var root_4 = $.from_html(`<div><p>Lorem</p></div>`);
+var root_5 = $.from_html(`<h2>Old UI</h2>`);
+var root_1 = $.from_html(`<div><!></div>`);
+var root_6 = $.from_html(`<div></div>`);
+var root = $.from_html(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
 	var h1 = $.first_child(fragment);

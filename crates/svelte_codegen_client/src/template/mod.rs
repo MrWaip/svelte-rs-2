@@ -123,7 +123,7 @@ fn gen_root_single_element<'a>(
     hoisted.push(ctx.b.var_stmt(
         tpl_name,
         ctx.b
-            .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
+            .call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))]),
     ));
 
     let el_name_str = ctx.element(el_id).name.clone();
@@ -201,7 +201,7 @@ fn gen_root_mixed<'a>(
     hoisted.push(ctx.b.var_stmt(
         tpl_name,
         ctx.b.call_expr(
-            "$.template",
+            "$.from_html",
             [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
         ),
     ));
@@ -316,7 +316,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ctx.module_hoisted.push(ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b
-                    .call_expr("$.template", [Arg::Expr(ctx.b.template_str_expr(&html))]),
+                    .call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))]),
             ));
 
             let mut result = Vec::new();
@@ -372,7 +372,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ctx.module_hoisted.push(ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b.call_expr(
-                    "$.template",
+                    "$.from_html",
                     [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
                 ),
             ));

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<input> <input> <input type="checkbox"> <input type="checkbox"> <input> <input>`, 1);
+var root = $.from_html(`<input> <input> <input type="checkbox"> <input type="checkbox"> <input> <input>`, 1);
 export default function App($$anchor) {
 	let value = $.state("");
 	let checked = false;
