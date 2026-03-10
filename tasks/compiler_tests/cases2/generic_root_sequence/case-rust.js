@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`some text <div></div> <input> <div></div> <!>`, 1);
+var root = $.from_html(`some text <div></div> <input> <div></div> <!>`, 1);
 export default function App($$anchor) {
 	$.next();
 	var fragment = root();

@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.template(`<div></div>`);
-var root_3 = $.template(`<div></div>`);
-var root_4 = $.template(`<div></div>`);
-var root = $.template(`<div>text only</div> <div></div> <div></div> <div><div>more nested</div> <div>more nested</div> <div>more nested</div></div> <div><!></div> <div></div>`, 1);
+var root_1 = $.from_html(`<div></div>`);
+var root_3 = $.from_html(`<div></div>`);
+var root_4 = $.from_html(`<div></div>`);
+var root = $.from_html(`<div>text only</div> <div></div> <div></div> <div><div>more nested</div> <div>more nested</div> <div>more nested</div></div> <div><!></div> <div></div>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
 	var div = $.sibling($.first_child(fragment), 2);

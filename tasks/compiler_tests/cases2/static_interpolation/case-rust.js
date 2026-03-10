@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(` <div><br> </div> <div></div>`, 1);
+var root = $.from_html(` <div><br> </div> <div></div>`, 1);
 export default function App($$anchor) {
 	const title = "world";
 	$.next();

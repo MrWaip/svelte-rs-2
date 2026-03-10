@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.template(`<div> </div> <div> </div>`, 1);
+var root = $.from_html(`<div> </div> <div> </div>`, 1);
 export default function App($$anchor) {
 	let title = 10;
 	let flag = void 0;
