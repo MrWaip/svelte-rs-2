@@ -1,9 +1,9 @@
 import * as $ from "svelte/internal/client";
 var root_2 = $.from_html(`<div><div></div> <button></button></div>`);
-var root_4 = $.from_html(`<div><p>Lorem</p></div>`);
-var root_5 = $.from_html(`<h2>Old UI</h2>`);
+var root_3 = $.from_html(`<div><p>Lorem</p></div>`);
+var root_4 = $.from_html(`<h2>Old UI</h2>`);
 var root_1 = $.from_html(`<div><!></div>`);
-var root_6 = $.from_html(`<div></div>`);
+var root_5 = $.from_html(`<div></div>`);
 var root = $.from_html(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
 export default function App($$anchor) {
 	var fragment = root();
@@ -28,11 +28,11 @@ export default function App($$anchor) {
 					$.append($$anchor, div_1);
 				};
 				var consequent_1 = ($$anchor) => {
-					var div_3 = root_4();
+					var div_3 = root_3();
 					$.append($$anchor, div_3);
 				};
 				var alternate = ($$anchor) => {
-					var h2 = root_5();
+					var h2 = root_4();
 					$.append($$anchor, h2);
 				};
 				$.if(node_1, ($$render) => {
@@ -45,7 +45,7 @@ else $$render(alternate, -1);
 			$.append($$anchor, div);
 		};
 		var alternate_1 = ($$anchor) => {
-			var div_4 = root_6();
+			var div_4 = root_5();
 			div_4.textContent = `Spinner ${percent ?? ""}`;
 			$.append($$anchor, div_4);
 		};
