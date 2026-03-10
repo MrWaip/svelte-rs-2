@@ -75,6 +75,10 @@ impl<'a> Builder<'a> {
         Expression::BooleanLiteral(self.alloc(self.ast.boolean_literal(SPAN, value)))
     }
 
+    pub fn null_expr(&self) -> Expression<'a> {
+        self.ast.expression_null_literal(SPAN)
+    }
+
     pub fn num(&self, value: f64) -> NumericLiteral<'a> {
         self.ast.numeric_literal(SPAN, value, None, ast::NumberBase::Decimal)
     }

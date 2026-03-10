@@ -124,9 +124,95 @@ pub(crate) fn process_attr<'a>(
             after_update.push(stmt);
         }
         Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) => {
-            // Spread handled by process_attrs_spread; class directives TODO
+            // Spread handled by process_attrs_spread; class directives by process_class_directives
         }
     }
+}
+
+/// Generate `$.set_class(el, 1, "", null, classes, { ... })` for class:name directives.
+pub(crate) fn process_class_directives<'a>(
+    ctx: &mut Ctx<'a>,
+    el: &Element,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+) {
+    let class_dirs: Vec<_> = el
+        .attributes
+        .iter()
+        .filter_map(|a| match a {
+            Attribute::ClassDirective(cd) => Some(cd),
+            _ => None,
+        })
+        .collect();
+
+    if class_dirs.is_empty() {
+        return;
+    }
+
+    let mut props: Vec<ObjProp<'a>> = Vec::new();
+
+    for cd in &class_dirs {
+        let name = &cd.name;
+
+        let (expr, is_simple_ident_same_name) = if let Some(span) = cd.expression_span {
+            let expr_text = ctx.component.source_text(span).trim().to_string();
+            let parsed = parse_expr(ctx, span);
+            let same_name = expr_text == *name;
+            (parsed, same_name)
+        } else {
+            // shorthand: class:name → identifier `name`
+            (ctx.b.rid_expr(name), true)
+        };
+
+        let is_mutated_rune = ctx.analysis.mutated_runes.contains(name)
+            && ctx
+                .analysis
+                .symbol_by_name
+                .get(name)
+                .is_some_and(|sid| ctx.analysis.runes.contains_key(sid));
+
+        let name_alloc = ctx.b.ast.allocator.alloc_str(name);
+
+        if is_mutated_rune {
+            let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+            props.push(ObjProp::KeyValue(name_alloc, get_call));
+        } else if is_simple_ident_same_name {
+            props.push(ObjProp::Shorthand(name_alloc));
+        } else {
+            props.push(ObjProp::KeyValue(name_alloc, expr));
+        }
+    }
+
+    let obj = ctx.b.object_expr(props);
+
+    // $.set_class(el, 1, "", null, classes, { ... })
+    let set_class_call = ctx.b.call_expr(
+        "$.set_class",
+        [
+            Arg::Ident(el_name),
+            Arg::Num(1.0),
+            Arg::Str(String::new()),
+            Arg::Expr(ctx.b.null_expr()),
+            Arg::Ident("classes"),
+            Arg::Expr(obj),
+        ],
+    );
+
+    // classes = $.set_class(...)
+    let assign = ctx.b.assign_expr(
+        AssignLeft::Ident("classes".to_string()),
+        AssignRight::Expr(set_class_call),
+    );
+
+    // () => classes = $.set_class(...)
+    let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(assign)]);
+
+    // $.template_effect(() => ...)
+    let effect_stmt = ctx.b.call_stmt("$.template_effect", [Arg::Expr(arrow)]);
+
+    // let classes;
+    init.push(ctx.b.let_stmt("classes"));
+    init.push(effect_stmt);
 }
 
 /// Check if an element has any spread attribute.

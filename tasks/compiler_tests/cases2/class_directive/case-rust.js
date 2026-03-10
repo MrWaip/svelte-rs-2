@@ -9,5 +9,14 @@ export default function App($$anchor) {
 	$.set(visible, 12);
 	$.set(absolute, true);
 	var div = root();
+	let classes;
+	$.template_effect(() => classes = $.set_class(div, 1, "", null, classes, {
+		visible: $.get(visible),
+		absolute: $.get(absolute),
+		unchanged,
+		untouched,
+		staticClass,
+		static2: true
+	}));
 	$.append($$anchor, div);
 }
