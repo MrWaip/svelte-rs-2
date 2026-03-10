@@ -72,6 +72,23 @@ impl<'a> Traverse<'a> for RuneRefTransformer<'_, 'a> {
                     *node = self.b.call_expr("$.get", [Arg::Ident(&name)]);
                 }
             }
+            Expression::AssignmentExpression(assign) => {
+                let ident_name = if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(
+                    id,
+                ) = &assign.left
+                {
+                    let name = id.name.as_str().to_string();
+                    (self.rune_names.contains(&name) && self.mutated.contains(&name))
+                        .then_some(name)
+                } else {
+                    None
+                };
+
+                if let Some(name) = ident_name {
+                    let right = self.b.move_expr(&mut assign.right);
+                    *node = self.b.call_expr("$.set", [Arg::Ident(&name), Arg::Expr(right)]);
+                }
+            }
             Expression::UpdateExpression(upd) => {
                 let ident_name =
                     if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
