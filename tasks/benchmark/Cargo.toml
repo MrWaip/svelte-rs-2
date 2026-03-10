@@ -14,7 +14,6 @@ name = "svelte_compiler"
 harness = false
 
 [dependencies]
-compiler = { workspace = true }
+svelte_compiler = { workspace = true }
 criterion2 = { workspace = true, features = ["codspeed"] }
-oxc_allocator = { workspace = true }
 glob = { workspace = true }
