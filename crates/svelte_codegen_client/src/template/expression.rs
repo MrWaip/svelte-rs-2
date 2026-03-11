@@ -33,7 +33,7 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, &prop_sources, &prop_non_sources, snippet_params)
 }
 
-fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) {
+pub(crate) fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) {
     let mut prop_sources = HashSet::new();
     let mut prop_non_sources = HashMap::new();
 
@@ -85,13 +85,13 @@ pub(crate) fn parse_and_transform<'a>(
     }
 }
 
-pub(crate) struct RuneRefTransformer<'b, 'a> {
-    pub(crate) b: &'b Builder<'a>,
-    pub(crate) mutated: &'b HashSet<String>,
-    pub(crate) rune_names: &'b HashSet<String>,
-    pub(crate) prop_sources: &'b HashSet<String>,
-    pub(crate) prop_non_sources: &'b HashMap<String, String>,
-    pub(crate) snippet_params: &'b [String],
+struct RuneRefTransformer<'b, 'a> {
+    b: &'b Builder<'a>,
+    mutated: &'b HashSet<String>,
+    rune_names: &'b HashSet<String>,
+    prop_sources: &'b HashSet<String>,
+    prop_non_sources: &'b HashMap<String, String>,
+    snippet_params: &'b [String],
 }
 
 impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
