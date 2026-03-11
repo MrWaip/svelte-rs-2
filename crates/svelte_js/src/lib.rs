@@ -124,6 +124,9 @@ pub fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, D
 ///
 /// `source` is the content between `<script>` tags.
 /// `offset` is the byte offset of the content start in the .svelte file.
+///
+/// If you also need `oxc_semantic::Scoping`, use `analyze_script_with_scoping()`
+/// to avoid a second parse.
 pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<ScriptInfo, Vec<Diagnostic>> {
     let allocator = Allocator::default();
     let source_type = if typescript {
@@ -141,7 +144,10 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
         }).collect());
     }
 
-    let program = &result.program;
+    Ok(extract_script_info(&result.program, offset, source))
+}
+
+fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
 
@@ -276,31 +282,48 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
         }
     }
 
-    Ok(ScriptInfo { declarations, props_declaration })
+    ScriptInfo { declarations, props_declaration }
 }
 
-/// Find mutated identifiers in script source using OXC semantic analysis.
-/// Returns names of top-level symbols that have write references anywhere in the script
-/// (including nested functions, arrow functions, callbacks, etc.).
-pub fn find_script_mutations(source: &str, typescript: bool) -> std::collections::HashSet<String> {
+/// Parse a `<script>` block once and return both owned analysis info and OXC Scoping.
+///
+/// This avoids double-parsing: the single OXC parse produces both the `ScriptInfo`
+/// (declarations, props) and the `Scoping` (symbol table + scope tree for semantic analysis).
+pub fn analyze_script_with_scoping(
+    source: &str,
+    offset: u32,
+    typescript: bool,
+) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>> {
     let allocator = Allocator::default();
     let source_type = if typescript {
         SourceType::default().with_typescript(true)
     } else {
         SourceType::default()
     };
-    let result = OxcParser::new(&allocator, source, source_type).parse();
 
-    let sem = oxc_semantic::SemanticBuilder::new().build(&result.program);
+    let parser = OxcParser::new(&allocator, source, source_type);
+    let result = parser.parse();
+
+    if !result.errors.is_empty() {
+        return Err(result
+            .errors
+            .iter()
+            .map(|_| {
+                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+            })
+            .collect());
+    }
+
+    let program = &result.program;
+
+    // Extract ScriptInfo by walking the AST
+    let script_info = extract_script_info(program, offset, source);
+
+    // Build semantic analysis and extract Scoping
+    let sem = oxc_semantic::SemanticBuilder::new().build(program);
     let scoping = sem.semantic.into_scoping();
 
-    let mut mutated = std::collections::HashSet::new();
-    for sym_id in scoping.symbol_ids() {
-        if scoping.symbol_is_mutated(sym_id) {
-            mutated.insert(scoping.symbol_name(sym_id).to_string());
-        }
-    }
-    mutated
+    Ok((script_info, scoping))
 }
 
 // ---------------------------------------------------------------------------
