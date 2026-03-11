@@ -775,7 +775,7 @@ impl<'a> Scanner<'a> {
 
             self.skip_whitespace();
 
-            item = self.collect_js_expression()?.into();
+            item = self.collect_each_context()?.into();
 
             break;
         }
@@ -788,6 +788,27 @@ impl<'a> Scanner<'a> {
             return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
         };
 
+        // Parse optional index: `, i`
+        let index = if self.slice_source(self.prev, self.prev + 1) == "," {
+            self.skip_whitespace();
+            let idx_start = self.current;
+            let idx_name = self.identifier();
+            if idx_name.is_empty() {
+                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+            }
+            self.skip_whitespace();
+            // Consume closing `}`
+            if !self.match_char('}') {
+                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+            }
+            Some(JsExpression {
+                span: Span::new(idx_start as u32, (idx_start + idx_name.len()) as u32),
+                value: idx_name,
+            })
+        } else {
+            None
+        };
+
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection: JsExpression {
                 span: Span::new(start_collection_pos as u32, end_collection_pos as u32),
@@ -795,10 +816,54 @@ impl<'a> Scanner<'a> {
             },
             item,
             key: None,
-            index: None,
+            index,
         }));
 
         Ok(())
+    }
+
+    /// Collect item expression in each-block context.
+    /// Stops on `,` or `}` at depth 0. Tracks `{}` and `[]` nesting for destructuring.
+    fn collect_each_context(&mut self) -> Result<JsExpression<'a>, Diagnostic> {
+        let mut curly_depth: u32 = 0;
+        let mut bracket_depth: u32 = 0;
+        let start = self.current;
+
+        while !self.is_at_end() {
+            let char = self.advance();
+
+            if char == '\'' || char == '"' || char == '`' {
+                self.skip_js_string(char)?;
+                continue;
+            }
+
+            match char {
+                '{' => curly_depth += 1,
+                '}' if curly_depth > 0 => curly_depth -= 1,
+                '[' => bracket_depth += 1,
+                ']' if bracket_depth > 0 => bracket_depth -= 1,
+                // At depth 0: `,` means index follows, `}` means end of block
+                ',' | '}' if curly_depth == 0 && bracket_depth == 0 => {
+                    let raw = self.slice_source(start, self.prev);
+                    let value = raw.trim();
+                    let trim_start = raw.len() - raw.trim_start().len();
+                    let trim_end = raw.len() - raw.trim_end().len();
+                    let span_start = start + trim_start;
+                    let span_end = self.prev - trim_end;
+
+                    return Ok(JsExpression {
+                        span: Span::new(span_start as u32, span_end as u32),
+                        value,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        Err(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )))
     }
 }
 
@@ -951,6 +1016,42 @@ mod tests {
 
         assert_eq!(tag.collection.value, expected_collection);
         assert_eq!(tag.item.value, expected_item);
+        assert!(tag.index.is_none(), "expected no index");
+    }
+
+    fn assert_start_each_tag_with_index(
+        token: &Token,
+        expected_collection: &str,
+        expected_item: &str,
+        expected_index: &str,
+    ) {
+        let tag = match &token.token_type {
+            TokenType::StartEachTag(t) => t,
+            _ => panic!("Expected token.type = StartEachTag"),
+        };
+
+        assert_eq!(tag.collection.value, expected_collection);
+        assert_eq!(tag.item.value, expected_item);
+        let index = tag.index.as_ref().expect("expected index");
+        assert_eq!(index.value, expected_index);
+    }
+
+    #[test]
+    fn each_block_with_index() {
+        let mut scanner = Scanner::new("{#each items as item, i}");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_each_tag_with_index(&tokens[0], "items", "item", "i");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn each_block_destructured_with_index() {
+        let mut scanner = Scanner::new("{#each items as { value, flag }, idx}");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_start_each_tag_with_index(&tokens[0], "items", "{ value, flag }", "idx");
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     fn assert_error_result<T: Debug>(res: Result<T, Diagnostic>, err_kind: DiagnosticKind) {

@@ -458,15 +458,11 @@ mod tests {
         );
     }
 
-    // Note: each-block index variable parsing is not yet implemented in the parser
-    // (scanner/mod.rs hardcodes `index: None`). Once it's implemented, this test
-    // should work because build_scoping already handles index_span.
-    //
-    // #[test]
-    // fn each_block_index_is_dynamic() {
-    //     let (c, data) = analyze_source(
-    //         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
-    //     );
-    //     assert_dynamic_tag(&data, &c, "i");
-    // }
+    #[test]
+    fn each_block_index_is_dynamic() {
+        let (c, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
+        );
+        assert_dynamic_tag(&data, &c, "i");
+    }
 }

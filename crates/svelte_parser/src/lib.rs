@@ -248,10 +248,17 @@ impl<'a> Parser<'a> {
                         ScriptLanguage::JavaScript
                     };
 
+                    let context = if script_tag.is_module() {
+                        ScriptContext::Module
+                    } else {
+                        ScriptContext::Default
+                    };
+
                     script_data = Some(ScriptData {
                         span: token.span,
                         content_span: Span::new(content_start as u32, content_end as u32),
                         language,
+                        context,
                     });
                 }
                 TokenType::EOF => break,
@@ -268,7 +275,7 @@ impl<'a> Parser<'a> {
             id: self.ids.next(),
             span: sd.span,
             content_span: sd.content_span,
-            context: ScriptContext::Default,
+            context: sd.context,
             language: sd.language,
         });
 
@@ -473,6 +480,7 @@ struct ScriptData {
     span: Span,
     content_span: Span,
     language: ScriptLanguage,
+    context: ScriptContext,
 }
 
 // ---------------------------------------------------------------------------
@@ -594,5 +602,26 @@ mod tests {
         assert_node(&c, 0, "<div>a</div>");
         assert_node(&c, 1, "<span>b</span>");
         assert_node(&c, 2, "text");
+    }
+
+    #[test]
+    fn script_context_default() {
+        let c = parse("<script>let x = 1;</script>");
+        let script = c.script.as_ref().expect("expected script");
+        assert_eq!(script.context, ScriptContext::Default);
+    }
+
+    #[test]
+    fn script_context_module_attribute() {
+        let c = parse("<script module>let x = 1;</script>");
+        let script = c.script.as_ref().expect("expected script");
+        assert_eq!(script.context, ScriptContext::Module);
+    }
+
+    #[test]
+    fn script_context_module_context_attribute() {
+        let c = parse(r#"<script context="module">let x = 1;</script>"#);
+        let script = c.script.as_ref().expect("expected script");
+        assert_eq!(script.context, ScriptContext::Module);
     }
 }
