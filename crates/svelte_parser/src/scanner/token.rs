@@ -18,6 +18,7 @@ pub enum TokenType<'a> {
     StartSnippetTag(StartSnippetTag<'a>),
     EndSnippetTag,
     RenderTag(RenderTagToken<'a>),
+    StyleTag(StyleTag<'a>),
     EOF,
 }
 
@@ -165,6 +166,12 @@ impl GetSpan for Token<'_> {
     fn span(&self) -> Span {
         self.span
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StyleTag<'a> {
+    pub source: &'a str,
+    pub attributes: Vec<Attribute<'a>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

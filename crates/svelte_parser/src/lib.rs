@@ -7,8 +7,8 @@ use svelte_span::Span;
 use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
-    ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, RenderTag, Script, ScriptContext,
-    ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
+    ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
+    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -83,6 +83,7 @@ impl<'a> Parser<'a> {
         let mut children_stack: Vec<Vec<Node>> = vec![vec![]];
         let mut entry_stack: Vec<StackEntry> = vec![];
         let mut script_data: Option<ScriptData> = None;
+        let mut css_data: Option<CssData> = None;
 
         for token in tokens {
             match token.token_type {
@@ -306,6 +307,19 @@ impl<'a> Parser<'a> {
                         context,
                     });
                 }
+                TokenType::StyleTag(style_tag) => {
+                    if css_data.is_some() {
+                        return Diagnostic::only_single_top_level_style(token.span).as_err();
+                    }
+
+                    let content_start = self.offset_of(style_tag.source);
+                    let content_end = content_start + style_tag.source.len();
+
+                    css_data = Some(CssData {
+                        span: token.span,
+                        content_span: Span::new(content_start as u32, content_end as u32),
+                    });
+                }
                 TokenType::EOF => break,
             }
         }
@@ -324,11 +338,16 @@ impl<'a> Parser<'a> {
             language: sd.language,
         });
 
+        let css = css_data.map(|cd| RawBlock {
+            span: cd.span,
+            content_span: cd.content_span,
+        });
+
         let mut component = Component::new(
             self.source.to_string(),
             Fragment::new(roots),
             script,
-            None,
+            css,
         );
         component.set_next_node_id(self.ids.current());
 
@@ -526,6 +545,11 @@ struct ScriptData {
     content_span: Span,
     language: ScriptLanguage,
     context: ScriptContext,
+}
+
+struct CssData {
+    span: Span,
+    content_span: Span,
 }
 
 // ---------------------------------------------------------------------------
@@ -730,5 +754,118 @@ mod tests {
         let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
         assert_snippet_block(&c, 0, "greet", Some("name"));
         assert_render_tag(&c, 1, "greet(x)");
+    }
+
+    // --- Escape sequence tests (Bug #1) ---
+
+    #[test]
+    fn interpolation_with_escaped_quotes() {
+        let c = parse(r#"{ name.replace("\"", "'") }"#);
+        assert_node(&c, 0, r#"{ name.replace("\"", "'") }"#);
+    }
+
+    // --- Style tag tests (Bug #2) ---
+
+    fn assert_css(c: &Component, expected_content: &str) {
+        let css = c.css.as_ref().expect("expected css");
+        assert_eq!(c.source_text(css.content_span), expected_content);
+    }
+
+    #[test]
+    fn style_tag() {
+        let c = parse("<style>.foo { color: red; }</style>");
+        assert_css(&c, ".foo { color: red; }");
+    }
+
+    #[test]
+    fn style_tag_with_selectors() {
+        let c = parse("<style>a > b { color: red; }</style>");
+        assert_css(&c, "a > b { color: red; }");
+    }
+
+    #[test]
+    fn style_tag_with_script() {
+        let c = parse("<script>let x = 1;</script><style>.foo { color: red; }</style>");
+        assert_script(&c, "let x = 1;");
+        assert_css(&c, ".foo { color: red; }");
+    }
+
+    #[test]
+    fn duplicate_style_tag_returns_error() {
+        let result = Parser::new("<style>a{}</style><style>b{}</style>").parse();
+        assert!(result.is_err());
+    }
+
+    // --- Each block key tests (Bug #3) ---
+
+    fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {
+        if let Node::EachBlock(ref eb) = c.fragment.nodes[index] {
+            assert_eq!(c.source_text(eb.expression_span), expected_expr);
+            let actual_key = eb.key_span.map(|s| c.source_text(s));
+            assert_eq!(actual_key, expected_key);
+        } else {
+            panic!("expected EachBlock at index {index}");
+        }
+    }
+
+    #[test]
+    fn each_block_with_key() {
+        let c = parse("{#each items as item (item.id)}content{/each}");
+        assert_each_block(&c, 0, "items", Some("item.id"));
+    }
+
+    #[test]
+    fn each_block_with_index_and_key() {
+        let c = parse("{#each items as item, i (item.id)}content{/each}");
+        assert_each_block(&c, 0, "items", Some("item.id"));
+    }
+
+    // --- Deep nesting tests ---
+
+    #[test]
+    fn deeply_nested_blocks() {
+        let c = parse("{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}");
+        assert_node(&c, 0, "{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}");
+    }
+
+    // --- Directive tests at parser level ---
+
+    #[test]
+    fn class_directive_on_element() {
+        let c = parse("<div class:active={isActive}>text</div>");
+        assert_node(&c, 0, "<div class:active={isActive}>text</div>");
+        if let Node::Element(ref el) = c.fragment.nodes[0] {
+            assert_eq!(el.attributes.len(), 1);
+            assert!(matches!(el.attributes[0], svelte_ast::Attribute::ClassDirective(_)));
+        } else {
+            panic!("expected Element");
+        }
+    }
+
+    #[test]
+    fn bind_directive_on_element() {
+        let c = parse("<input bind:value={name}/>");
+        assert_node(&c, 0, "<input bind:value={name}/>");
+        if let Node::Element(ref el) = c.fragment.nodes[0] {
+            assert_eq!(el.attributes.len(), 1);
+            assert!(matches!(el.attributes[0], svelte_ast::Attribute::BindDirective(_)));
+        } else {
+            panic!("expected Element");
+        }
+    }
+
+    #[test]
+    fn spread_attribute_on_element() {
+        let c = parse("<div {...props}>text</div>");
+        if let Node::Element(ref el) = c.fragment.nodes[0] {
+            assert_eq!(el.attributes.len(), 1);
+            if let svelte_ast::Attribute::ShorthandOrSpread(ref sos) = el.attributes[0] {
+                assert!(sos.is_spread);
+            } else {
+                panic!("expected ShorthandOrSpread");
+            }
+        } else {
+            panic!("expected Element");
+        }
     }
 }
