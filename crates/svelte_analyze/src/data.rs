@@ -33,7 +33,7 @@ pub struct AnalysisData {
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
-    pub scoping: ComponentScoping,
+    pub(crate) scoping: ComponentScoping,
     /// Element attributes that reference rune symbols: (element NodeId, attr index).
     pub dynamic_attrs: HashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.

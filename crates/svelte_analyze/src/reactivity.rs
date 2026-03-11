@@ -86,6 +86,9 @@ fn expr_is_dynamic(node_id: &NodeId, data: &AnalysisData, current_scope: ScopeId
     false
 }
 
+// Attributes are dynamic only for *mutated* runes — unlike expressions where
+// any rune makes the expression dynamic. This is because attributes generate
+// `$.attr_effect()` which requires a signal that can change.
 fn attr_is_dynamic(
     attr: &Attribute,
     attr_idx: usize,
@@ -110,7 +113,7 @@ fn attr_is_dynamic(
                     return true;
                 }
                 // Root-scope rune that is mutated
-                if data.scoping.is_rune(sym_id) && data.scoping.symbol_is_mutated(sym_id) {
+                if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
                     return true;
                 }
             }

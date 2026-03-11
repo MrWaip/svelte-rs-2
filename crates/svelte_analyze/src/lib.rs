@@ -7,7 +7,7 @@ mod mutations;
 mod parse_js;
 mod props;
 mod reactivity;
-pub mod scope;
+pub(crate) mod scope;
 mod validate;
 
 pub use data::{
@@ -443,6 +443,19 @@ mod tests {
         assert!(!data.scoping.is_rune(each_sym));
         // And it's a different symbol than the root one
         assert_ne!(root_sym, each_sym);
+    }
+
+    #[test]
+    fn each_block_shadowing_does_not_mutate_rune() {
+        // `count = 99` inside each targets the each-block variable, not the rune
+        let (_c, data) = analyze_source(
+            r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#,
+        );
+        assert_is_rune(&data, "count");
+        assert!(
+            !data.mutated_runes.contains("count"),
+            "rune 'count' should NOT be in mutated_runes — the assignment targets the each-block variable"
+        );
     }
 
     // Note: each-block index variable parsing is not yet implemented in the parser

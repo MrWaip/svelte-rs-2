@@ -1,3 +1,4 @@
+use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, Component, Fragment, Node};
 
 use crate::data::AnalysisData;
@@ -9,21 +10,13 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     // Script mutations are already tracked by OXC's SemanticBuilder
     // (symbol_is_mutated() returns true for symbols with write references).
 
-    let rune_names = data.scoping.rune_names();
-    if rune_names.is_empty() {
-        data.cache_rune_sets();
-        return;
-    }
+    let root_scope = data.scoping.root_scope_id();
 
     // Template expression assignments (e.g. `{title = 30}`)
-    // TODO: walk_template_mutations is not scope-aware — it matches rune names by string,
-    // so an each-block variable shadowing a rune would incorrectly mark the rune as mutated.
-    walk_template_mutations(&component.fragment, &rune_names, data);
+    walk_template_mutations(&component.fragment, data, root_scope);
 
     // Bind directives imply mutation
-    // TODO: walk_binds always resolves in root scope — bind: on each-block variables won't
-    // be detected (currently fine since bind: targets are always root-scope runes).
-    walk_binds(&component.fragment, component, data);
+    walk_binds(&component.fragment, component, data, root_scope);
 
     // Cache the computed rune name sets
     data.cache_rune_sets();
@@ -31,8 +24,8 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
 
 fn walk_template_mutations(
     fragment: &Fragment,
-    rune_names: &std::collections::HashSet<String>,
     data: &mut AnalysisData,
+    current_scope: ScopeId,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -42,10 +35,10 @@ fn walk_template_mutations(
                         if r.flags == svelte_js::ReferenceFlags::Write
                             || r.flags == svelte_js::ReferenceFlags::ReadWrite
                         {
-                            if rune_names.contains(&r.name) {
-                                let root = data.scoping.root_scope_id();
-                                if let Some(sym_id) = data.scoping.find_binding(root, &r.name) {
-                                    data.scoping.mark_symbol_mutated(sym_id);
+                            if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name)
+                            {
+                                if data.scoping.is_rune(sym_id) {
+                                    data.scoping.mark_template_mutated(sym_id);
                                 }
                             }
                         }
@@ -53,18 +46,22 @@ fn walk_template_mutations(
                 }
             }
             Node::Element(el) => {
-                walk_template_mutations(&el.fragment, rune_names, data);
+                walk_template_mutations(&el.fragment, data, current_scope);
             }
             Node::IfBlock(b) => {
-                walk_template_mutations(&b.consequent, rune_names, data);
+                walk_template_mutations(&b.consequent, data, current_scope);
                 if let Some(alt) = &b.alternate {
-                    walk_template_mutations(alt, rune_names, data);
+                    walk_template_mutations(alt, data, current_scope);
                 }
             }
             Node::EachBlock(b) => {
-                walk_template_mutations(&b.body, rune_names, data);
+                let body_scope = data
+                    .scoping
+                    .node_scope(b.id)
+                    .unwrap_or(current_scope);
+                walk_template_mutations(&b.body, data, body_scope);
                 if let Some(fb) = &b.fallback {
-                    walk_template_mutations(fb, rune_names, data);
+                    walk_template_mutations(fb, data, current_scope);
                 }
             }
             _ => {}
@@ -72,7 +69,12 @@ fn walk_template_mutations(
     }
 }
 
-fn walk_binds(fragment: &Fragment, component: &Component, data: &mut AnalysisData) {
+fn walk_binds(
+    fragment: &Fragment,
+    component: &Component,
+    data: &mut AnalysisData,
+    current_scope: ScopeId,
+) {
     for node in &fragment.nodes {
         match node {
             Node::Element(el) => {
@@ -85,27 +87,30 @@ fn walk_binds(fragment: &Fragment, component: &Component, data: &mut AnalysisDat
                         } else {
                             continue;
                         };
-                        let root = data.scoping.root_scope_id();
-                        if let Some(sym_id) = data.scoping.find_binding(root, &name) {
+                        if let Some(sym_id) = data.scoping.find_binding(current_scope, &name) {
                             if data.scoping.is_rune(sym_id) {
                                 data.scoping.mark_bind_mutated(sym_id);
-                                data.scoping.mark_symbol_mutated(sym_id);
+                                data.scoping.mark_template_mutated(sym_id);
                             }
                         }
                     }
                 }
-                walk_binds(&el.fragment, component, data);
+                walk_binds(&el.fragment, component, data, current_scope);
             }
             Node::IfBlock(b) => {
-                walk_binds(&b.consequent, component, data);
+                walk_binds(&b.consequent, component, data, current_scope);
                 if let Some(alt) = &b.alternate {
-                    walk_binds(alt, component, data);
+                    walk_binds(alt, component, data, current_scope);
                 }
             }
             Node::EachBlock(b) => {
-                walk_binds(&b.body, component, data);
+                let body_scope = data
+                    .scoping
+                    .node_scope(b.id)
+                    .unwrap_or(current_scope);
+                walk_binds(&b.body, component, data, body_scope);
                 if let Some(fb) = &b.fallback {
-                    walk_binds(fb, component, data);
+                    walk_binds(fb, component, data, current_scope);
                 }
             }
             _ => {}
