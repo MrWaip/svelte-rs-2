@@ -235,6 +235,10 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
+    pub fn return_stmt(&self, expr: Expression<'a>) -> Statement<'a> {
+        Statement::ReturnStatement(self.alloc(self.ast.return_statement(SPAN, Some(expr))))
+    }
+
     pub fn block_stmt(&self, body: Vec<Statement<'a>>) -> Statement<'a> {
         let block = self.ast.block_statement(SPAN, self.ast.vec_from_iter(body));
         Statement::BlockStatement(self.alloc(block))
