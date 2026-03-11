@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
-use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -22,10 +22,14 @@ pub struct Ctx<'a> {
     elements: HashMap<NodeId, &'a Element>,
     if_blocks: HashMap<NodeId, &'a IfBlock>,
     each_blocks: HashMap<NodeId, &'a EachBlock>,
+    snippet_blocks: HashMap<NodeId, &'a SnippetBlock>,
+    render_tags: HashMap<NodeId, &'a RenderTag>,
     expr_spans: HashMap<NodeId, Span>,
 
     // -- Bind group --
     pub needs_binding_group: bool,
+    /// Snippet param names for the currently generating snippet body.
+    pub snippet_param_names: Vec<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -37,12 +41,16 @@ impl<'a> Ctx<'a> {
         let mut elements = HashMap::new();
         let mut if_blocks = HashMap::new();
         let mut each_blocks = HashMap::new();
+        let mut snippet_blocks = HashMap::new();
+        let mut render_tags = HashMap::new();
         let mut expr_spans = HashMap::new();
         build_node_index(
             &component.fragment,
             &mut elements,
             &mut if_blocks,
             &mut each_blocks,
+            &mut snippet_blocks,
+            &mut render_tags,
             &mut expr_spans,
         );
 
@@ -55,8 +63,11 @@ impl<'a> Ctx<'a> {
             elements,
             if_blocks,
             each_blocks,
+            snippet_blocks,
+            render_tags,
             expr_spans,
             needs_binding_group: false,
+            snippet_param_names: Vec::new(),
         }
     }
 
@@ -72,6 +83,14 @@ impl<'a> Ctx<'a> {
 
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
         self.each_blocks.get(&id).copied().expect("each block not found")
+    }
+
+    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
+        self.snippet_blocks.get(&id).copied().expect("snippet block not found")
+    }
+
+    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
+        self.render_tags.get(&id).copied().expect("render tag not found")
     }
 
     pub fn expr_span(&self, id: NodeId) -> Span {
@@ -104,27 +123,36 @@ fn build_node_index<'a>(
     elements: &mut HashMap<NodeId, &'a Element>,
     if_blocks: &mut HashMap<NodeId, &'a IfBlock>,
     each_blocks: &mut HashMap<NodeId, &'a EachBlock>,
+    snippet_blocks: &mut HashMap<NodeId, &'a SnippetBlock>,
+    render_tags: &mut HashMap<NodeId, &'a RenderTag>,
     expr_spans: &mut HashMap<NodeId, Span>,
 ) {
     for node in &fragment.nodes {
         match node {
             Node::Element(el) => {
                 elements.insert(el.id, el);
-                build_node_index(&el.fragment, elements, if_blocks, each_blocks, expr_spans);
+                build_node_index(&el.fragment, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
             }
             Node::IfBlock(b) => {
                 if_blocks.insert(b.id, b);
-                build_node_index(&b.consequent, elements, if_blocks, each_blocks, expr_spans);
+                build_node_index(&b.consequent, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
                 if let Some(alt) = &b.alternate {
-                    build_node_index(alt, elements, if_blocks, each_blocks, expr_spans);
+                    build_node_index(alt, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
                 }
             }
             Node::EachBlock(b) => {
                 each_blocks.insert(b.id, b);
-                build_node_index(&b.body, elements, if_blocks, each_blocks, expr_spans);
+                build_node_index(&b.body, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
                 if let Some(fb) = &b.fallback {
-                    build_node_index(fb, elements, if_blocks, each_blocks, expr_spans);
+                    build_node_index(fb, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
                 }
+            }
+            Node::SnippetBlock(b) => {
+                snippet_blocks.insert(b.id, b);
+                build_node_index(&b.body, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
+            }
+            Node::RenderTag(t) => {
+                render_tags.insert(t.id, t);
             }
             Node::ExpressionTag(t) => {
                 expr_spans.insert(t.id, t.expression_span);

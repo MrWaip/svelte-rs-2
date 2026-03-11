@@ -76,6 +76,8 @@ pub enum Node {
     ExpressionTag(ExpressionTag),
     IfBlock(IfBlock),
     EachBlock(EachBlock),
+    SnippetBlock(SnippetBlock),
+    RenderTag(RenderTag),
 }
 
 impl Node {
@@ -87,6 +89,8 @@ impl Node {
             Node::ExpressionTag(n) => n.id,
             Node::IfBlock(n) => n.id,
             Node::EachBlock(n) => n.id,
+            Node::SnippetBlock(n) => n.id,
+            Node::RenderTag(n) => n.id,
         }
     }
 
@@ -98,6 +102,8 @@ impl Node {
             Node::ExpressionTag(n) => n.span,
             Node::IfBlock(n) => n.span,
             Node::EachBlock(n) => n.span,
+            Node::SnippetBlock(n) => n.span,
+            Node::RenderTag(n) => n.span,
         }
     }
 
@@ -119,6 +125,14 @@ impl Node {
 
     pub fn is_comment(&self) -> bool {
         matches!(self, Node::Comment(_))
+    }
+
+    pub fn is_snippet_block(&self) -> bool {
+        matches!(self, Node::SnippetBlock(_))
+    }
+
+    pub fn is_render_tag(&self) -> bool {
+        matches!(self, Node::RenderTag(_))
     }
 }
 
@@ -262,6 +276,31 @@ pub struct EachBlock {
     pub key_span: Option<Span>,
     pub body: Fragment,
     pub fallback: Option<Fragment>,
+}
+
+// ---------------------------------------------------------------------------
+// SnippetBlock — {#snippet name(params)}...{/snippet}
+// ---------------------------------------------------------------------------
+
+pub struct SnippetBlock {
+    pub id: NodeId,
+    pub span: Span,
+    pub name: String,
+    /// Span of the parameter list inside parentheses.
+    /// None if no params.
+    pub params_span: Option<Span>,
+    pub body: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// RenderTag — {@render snippet(args)}
+// ---------------------------------------------------------------------------
+
+pub struct RenderTag {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the full call expression: "greeting(message)" in `{@render greeting(message)}`.
+    pub expression_span: Span,
 }
 
 // ---------------------------------------------------------------------------

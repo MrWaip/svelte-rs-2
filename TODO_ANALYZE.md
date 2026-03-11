@@ -25,16 +25,16 @@
 - [x] Ref: `reference/compiler/phases/3-transform/client/visitors/Program.js` (append_exports)
 - [x] Test: `tasks/compiler_tests/cases2/exports/`
 
-### 1c. Snippet & RenderTag
-- [ ] `svelte_ast/src/lib.rs` — `Node::SnippetBlock`, `Node::RenderTag`
-- [ ] `svelte_parser/src/` — парсинг `{#snippet name(params)}...{/snippet}`, `{@render snippet()}`
-- [ ] `svelte_analyze/src/snippets.rs` — регистрация сниппетов (имя → span)
-- [ ] `svelte_analyze/src/data.rs` — `snippets: HashMap<String, SnippetInfo>`
-- [ ] `svelte_codegen_client/src/template/snippet.rs` — codegen
-- [ ] Ref: `reference/compiler/phases/1-parse/state/tag.js` (snippet/render секции)
-- [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/SnippetBlock.js`
-- [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/RenderTag.js`
-- [ ] Test: `tasks/compiler_tests/cases2/snippet_basic/`
+### 1c. Snippet & RenderTag ✅
+- [x] `svelte_ast/src/lib.rs` — `Node::SnippetBlock`, `Node::RenderTag`
+- [x] `svelte_parser/src/` — парсинг `{#snippet name(params)}...{/snippet}`, `{@render snippet()}`
+- [x] `svelte_analyze/src/snippets.rs` — регистрация сниппетов (имя → span)
+- [x] `svelte_analyze/src/data.rs` — `snippets: HashMap<String, SnippetInfo>`
+- [x] `svelte_codegen_client/src/template/snippet.rs` — codegen
+- [x] Ref: `reference/compiler/phases/1-parse/state/tag.js` (snippet/render секции)
+- [x] Ref: `reference/compiler/phases/3-transform/client/visitors/SnippetBlock.js`
+- [x] Ref: `reference/compiler/phases/3-transform/client/visitors/RenderTag.js`
+- [x] Test: `tasks/compiler_tests/cases2/snippet_basic/`
 
 ### 1d. Component instantiation
 - [ ] `svelte_ast/src/lib.rs` — `Node::Component` (отличается от `RegularElement`)

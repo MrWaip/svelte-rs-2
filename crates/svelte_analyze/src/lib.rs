@@ -35,6 +35,23 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
     parse_js::parse_js(component, &mut data, &mut diags);
+
+    // Register snippet parameter names
+    for node in &component.fragment.nodes {
+        if let svelte_ast::Node::SnippetBlock(block) = node {
+            let params = if let Some(span) = block.params_span {
+                component.source_text(span)
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            data.snippet_params.insert(block.id, params);
+        }
+    }
+
     scope::build_scoping(component, &mut data);
     known_values::collect_known_values(component, &mut data);
     mutations::detect_mutations(component, &mut data);

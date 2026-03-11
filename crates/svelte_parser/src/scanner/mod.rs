@@ -65,6 +65,7 @@ impl<'a> Scanner<'a> {
                 Some('#') => self.start_template(),
                 Some(':') => self.middle_template(),
                 Some('/') => self.end_template(),
+                Some('@') => self.at_template(),
                 _ => self.interpolation(),
             };
         }
@@ -557,6 +558,7 @@ impl<'a> Scanner<'a> {
                 Ok(())
             }
             "each" => self.start_each_tag(),
+            "snippet" => self.start_snippet_tag(),
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -599,6 +601,17 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndEachTag);
+
+                Ok(())
+            }
+            "snippet" => {
+                self.skip_whitespace();
+
+                if !self.match_char('}') {
+                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                }
+
+                self.add_token(TokenType::EndSnippetTag);
 
                 Ok(())
             }
@@ -740,6 +753,109 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         self.add_token(TokenType::Comment);
+
+        Ok(())
+    }
+
+    fn at_template(&mut self) -> Result<(), Diagnostic> {
+        debug_assert_eq!(self.peek(), Some('@'));
+
+        self.advance();
+
+        let start = self.current;
+        let keyword = self.identifier();
+
+        if keyword.is_empty() {
+            return Err(Diagnostic::unexpected_keyword(Span::new(
+                self.start as u32,
+                self.current as u32,
+            )));
+        }
+
+        match keyword {
+            "render" => {
+                self.skip_whitespace();
+                let expression = self.collect_js_expression()?;
+
+                self.add_token(TokenType::RenderTag(token::RenderTagToken {
+                    expression,
+                }));
+
+                Ok(())
+            }
+            _ => Err(Diagnostic::unexpected_keyword(Span::new(
+                start as u32,
+                self.current as u32,
+            ))),
+        }
+    }
+
+    fn start_snippet_tag(&mut self) -> Result<(), Diagnostic> {
+        self.skip_whitespace();
+
+        let name = self.identifier();
+
+        if name.is_empty() {
+            return Err(Diagnostic::unexpected_token(Span::new(
+                self.start as u32,
+                self.current as u32,
+            )));
+        }
+
+        let params = if self.peek() == Some('(') {
+            self.advance(); // consume '('
+            let params_start = self.current;
+            let mut depth: u32 = 1;
+
+            while !self.is_at_end() && depth > 0 {
+                let ch = self.advance();
+                match ch {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    _ => {}
+                }
+            }
+
+            if depth != 0 {
+                return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                    params_start as u32,
+                    self.current as u32,
+                )));
+            }
+
+            let params_end = self.prev; // position of ')'
+            let raw = self.slice_source(params_start, params_end);
+            let value = raw.trim();
+            let trim_start = raw.len() - raw.trim_start().len();
+            let trim_end = raw.len() - raw.trim_end().len();
+            let span_start = params_start + trim_start;
+            let span_end = params_end - trim_end;
+
+            if value.is_empty() {
+                None
+            } else {
+                Some(JsExpression {
+                    span: Span::new(span_start as u32, span_end as u32),
+                    value,
+                })
+            }
+        } else {
+            None
+        };
+
+        self.skip_whitespace();
+
+        if !self.match_char('}') {
+            return Err(Diagnostic::unexpected_token(Span::new(
+                self.start as u32,
+                self.current as u32,
+            )));
+        }
+
+        self.add_token(TokenType::StartSnippetTag(token::StartSnippetTag {
+            name,
+            params,
+        }));
 
         Ok(())
     }

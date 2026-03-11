@@ -17,6 +17,7 @@ pub enum FragmentKey {
     IfAlternate(NodeId),
     EachBody(NodeId),
     EachFallback(NodeId),
+    SnippetBody(NodeId),
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,8 @@ pub struct AnalysisData {
     pub props: Option<PropsAnalysis>,
     /// Exported names from `export const/function/class` or `export { ... }`.
     pub exports: Vec<svelte_js::ExportInfo>,
+    /// Snippet parameter names, keyed by snippet NodeId.
+    pub snippet_params: HashMap<NodeId, Vec<String>>,
 
     // -- Cached sets for codegen (populated after mutations pass) --
     /// All rune symbol names (precomputed).
@@ -76,6 +79,7 @@ impl AnalysisData {
             alt_is_elseif: HashSet::new(),
             props: None,
             exports: Vec::new(),
+            snippet_params: HashMap::new(),
             rune_names: HashSet::new(),
             mutated_runes: HashSet::new(),
             bind_mutated_runes: HashSet::new(),
@@ -123,6 +127,8 @@ pub enum FragmentItem {
     IfBlock(NodeId),
     /// An EachBlock (has its own sub-fragments in lowered_fragments).
     EachBlock(NodeId),
+    /// A RenderTag ({@render snippet(args)}).
+    RenderTag(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<ConcatPart> },
 }
