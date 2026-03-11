@@ -15,6 +15,9 @@ pub enum TokenType<'a> {
     EndIfTag,
     StartEachTag(StartEachTag<'a>),
     EndEachTag,
+    StartSnippetTag(StartSnippetTag<'a>),
+    EndSnippetTag,
+    RenderTag(RenderTagToken<'a>),
     EOF,
 }
 
@@ -162,6 +165,17 @@ impl GetSpan for Token<'_> {
     fn span(&self) -> Span {
         self.span
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartSnippetTag<'a> {
+    pub name: &'a str,
+    pub params: Option<JsExpression<'a>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct RenderTagToken<'a> {
+    pub expression: JsExpression<'a>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

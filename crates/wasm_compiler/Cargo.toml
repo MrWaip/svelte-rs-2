@@ -9,5 +9,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 svelte_compiler = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_span = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 wasm-bindgen = { workspace = true }

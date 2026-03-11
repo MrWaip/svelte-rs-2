@@ -6,6 +6,8 @@ pub(crate) mod element;
 pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod if_block;
+pub(crate) mod render_tag;
+pub(crate) mod snippet;
 pub(crate) mod traverse;
 
 use oxc_ast::ast::Statement;
@@ -20,6 +22,7 @@ use expression::{emit_template_effect, emit_text_update, emit_trailing_next, sta
 use html::{element_html, fragment_html};
 use if_block::gen_if_block;
 use each_block::gen_each_block;
+use render_tag::gen_render_tag;
 use traverse::traverse_items;
 
 // ---------------------------------------------------------------------------
@@ -152,6 +155,13 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
             .unwrap();
         lf.items[0].clone()
     };
+
+    // RenderTag at root: call directly with $$anchor, no wrapping
+    if let FragmentItem::RenderTag(id) = item {
+        gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), body);
+        return;
+    }
+
     let frag = ctx.gen_ident("fragment");
     let node = ctx.gen_ident("node");
     body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
@@ -335,27 +345,33 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
                 lf.items[0].clone()
             };
-            let frag = ctx.gen_ident("fragment");
-            let node = ctx.gen_ident("node");
-            body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
-            body.push(ctx.b.var_stmt(
-                &node,
-                ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
-            ));
-            match item {
-                FragmentItem::IfBlock(id) => {
-                    let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
-                    body.push(ctx.b.block_stmt(stmts));
+
+            // RenderTag: call directly with $$anchor
+            if let FragmentItem::RenderTag(id) = item {
+                gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
+            } else {
+                let frag = ctx.gen_ident("fragment");
+                let node = ctx.gen_ident("node");
+                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                body.push(ctx.b.var_stmt(
+                    &node,
+                    ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
+                ));
+                match item {
+                    FragmentItem::IfBlock(id) => {
+                        let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
+                        body.push(ctx.b.block_stmt(stmts));
+                    }
+                    FragmentItem::EachBlock(id) => {
+                        gen_each_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                    }
+                    _ => unreachable!(),
                 }
-                FragmentItem::EachBlock(id) => {
-                    gen_each_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
-                }
-                _ => unreachable!(),
+                body.push(ctx.b.call_stmt(
+                    "$.append",
+                    [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
+                ));
             }
-            body.push(ctx.b.call_stmt(
-                "$.append",
-                [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-            ));
         }
         ContentType::Mixed => {
             let items: Vec<_> = {

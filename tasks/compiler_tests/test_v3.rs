@@ -34,6 +34,11 @@ fn empty() {
 }
 
 #[rstest]
+fn simple() {
+    assert_compiler("hello_state");
+}
+
+#[rstest]
 fn single_text_node() {
     assert_compiler("single_text_node");
 }
@@ -191,4 +196,9 @@ fn props_mixed() {
 #[rstest]
 fn exports() {
     assert_compiler("exports");
+}
+
+#[rstest]
+fn snippet_basic() {
+    assert_compiler("snippet_basic");
 }

@@ -7,8 +7,8 @@ use svelte_span::Span;
 use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
-    ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, Script, ScriptContext,
-    ScriptLanguage, ShorthandOrSpread, StringAttribute, Text,
+    ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, RenderTag, Script, ScriptContext,
+    ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -23,6 +23,7 @@ enum StackEntry {
     Element(ElementEntry),
     IfBlock(IfBlockEntry),
     EachBlock(EachBlockEntry),
+    SnippetBlock(SnippetBlockEntry),
 }
 
 struct ElementEntry {
@@ -48,6 +49,12 @@ struct EachBlockEntry {
     context_span: Span,
     index_span: Option<Span>,
     key_span: Option<Span>,
+}
+
+struct SnippetBlockEntry {
+    span_start: Span,
+    name: String,
+    params_span: Option<Span>,
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +239,44 @@ impl<'a> Parser<'a> {
                         fallback: None,
                     });
 
+                    children_stack.last_mut().unwrap().push(node);
+                }
+                TokenType::StartSnippetTag(snippet_tag) => {
+                    entry_stack.push(StackEntry::SnippetBlock(SnippetBlockEntry {
+                        span_start: token.span,
+                        name: snippet_tag.name.to_string(),
+                        params_span: snippet_tag.params.map(|p| p.span),
+                    }));
+                    children_stack.push(vec![]);
+                }
+                TokenType::EndSnippetTag => {
+                    let entry = entry_stack
+                        .pop()
+                        .ok_or_else(|| Diagnostic::unexpected_token(token.span))?;
+
+                    let StackEntry::SnippetBlock(sb) = entry else {
+                        return Err(Diagnostic::unexpected_token(token.span));
+                    };
+
+                    let body_children = children_stack.pop().unwrap();
+                    let merged_span = sb.span_start.merge(&token.span);
+
+                    let node = Node::SnippetBlock(SnippetBlock {
+                        id: self.ids.next(),
+                        span: merged_span,
+                        name: sb.name,
+                        params_span: sb.params_span,
+                        body: Fragment::new(body_children),
+                    });
+
+                    children_stack.last_mut().unwrap().push(node);
+                }
+                TokenType::RenderTag(render_tag) => {
+                    let node = Node::RenderTag(RenderTag {
+                        id: self.ids.next(),
+                        span: token.span,
+                        expression_span: render_tag.expression.span,
+                    });
                     children_stack.last_mut().unwrap().push(node);
                 }
                 TokenType::ScriptTag(script_tag) => {
@@ -623,5 +668,67 @@ mod tests {
         let c = parse(r#"<script context="module">let x = 1;</script>"#);
         let script = c.script.as_ref().expect("expected script");
         assert_eq!(script.context, ScriptContext::Module);
+    }
+
+    fn assert_snippet_block(c: &Component, index: usize, expected_name: &str, expected_params: Option<&str>) {
+        if let Node::SnippetBlock(ref sb) = c.fragment.nodes[index] {
+            assert_eq!(sb.name, expected_name);
+            let actual_params = sb.params_span.map(|s| c.source_text(s));
+            assert_eq!(actual_params, expected_params);
+        } else {
+            panic!("expected SnippetBlock at index {index}");
+        }
+    }
+
+    fn assert_render_tag(c: &Component, index: usize, expected_expr: &str) {
+        if let Node::RenderTag(ref rt) = c.fragment.nodes[index] {
+            assert_eq!(c.source_text(rt.expression_span), expected_expr);
+        } else {
+            panic!("expected RenderTag at index {index}");
+        }
+    }
+
+    #[test]
+    fn snippet_block_basic() {
+        let c = parse("{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}");
+        assert_node(&c, 0, "{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}");
+        assert_snippet_block(&c, 0, "greeting", Some("name"));
+    }
+
+    #[test]
+    fn snippet_block_no_params() {
+        let c = parse("{#snippet footer()}<p>footer</p>{/snippet}");
+        assert_snippet_block(&c, 0, "footer", None);
+    }
+
+    #[test]
+    fn snippet_block_multiple_params() {
+        let c = parse("{#snippet card(title, body)}<div>{title} {body}</div>{/snippet}");
+        assert_snippet_block(&c, 0, "card", Some("title, body"));
+    }
+
+    #[test]
+    fn render_tag_basic() {
+        let c = parse("{@render greeting(message)}");
+        assert_render_tag(&c, 0, "greeting(message)");
+    }
+
+    #[test]
+    fn render_tag_no_args() {
+        let c = parse("{@render footer()}");
+        assert_render_tag(&c, 0, "footer()");
+    }
+
+    #[test]
+    fn render_tag_multiple_args() {
+        let c = parse("{@render card(title, body)}");
+        assert_render_tag(&c, 0, "card(title, body)");
+    }
+
+    #[test]
+    fn snippet_and_render_together() {
+        let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
+        assert_snippet_block(&c, 0, "greet", Some("name"));
+        assert_render_tag(&c, 1, "greet(x)");
     }
 }

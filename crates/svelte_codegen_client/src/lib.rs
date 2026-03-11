@@ -25,12 +25,25 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     let (script_imports, script_body) = script::gen_script(&mut ctx);
 
     // -----------------------------------------------------------------------
-    // 2. Template generation
+    // 2. Template generation (consumes "root" ident first)
     // -----------------------------------------------------------------------
     let (hoisted, template_body) = template::gen_root_fragment(&mut ctx);
 
-    // Nested fragment templates go before root template
-    let mut all_hoisted: Vec<Statement<'_>> = ctx.module_hoisted.drain(..).collect();
+    // -----------------------------------------------------------------------
+    // 3. Snippet declarations (module-level, after root consumes "root")
+    // -----------------------------------------------------------------------
+    let mut snippet_stmts: Vec<Statement<'_>> = Vec::new();
+    for node in &component.fragment.nodes {
+        if let svelte_ast::Node::SnippetBlock(block) = node {
+            let stmt = template::snippet::gen_snippet_block(&mut ctx, block.id);
+            snippet_stmts.push(stmt);
+        }
+    }
+
+    // Layout: snippets → inner hoisted → root hoisted
+    let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
+    all_hoisted.extend(snippet_stmts);
+    all_hoisted.extend(ctx.module_hoisted.drain(..));
     all_hoisted.extend(hoisted);
 
     // -----------------------------------------------------------------------
