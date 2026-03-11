@@ -1058,6 +1058,10 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "svelte_analyze"
 version = "0.1.0"
 dependencies = [
+ "oxc_allocator",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
  "pretty_assertions",
  "svelte_ast",
  "svelte_diagnostics",
