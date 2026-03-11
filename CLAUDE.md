@@ -36,8 +36,14 @@ Reference Svelte compiler source is in `reference/compiler/`. Use it to understa
 ### Design principle
 
 Match the JS output exactly. Design the internals for Rust: direct recursion over side tables,
-no visitor/walker patterns, no mutable AST metadata. Don't replicate JS workarounds,
+no mutable AST metadata. Don't replicate JS workarounds,
 intermediate abstractions, or patterns that exist only because of zimmerframe/estree-walker.
+
+**Exception — `svelte_analyze` uses a single-pass composite visitor** (`walker.rs`).
+Each analysis pass implements `TemplateVisitor` for only the nodes it cares about.
+Independent passes are combined into a single tree traversal via tuple composite visitors
+(e.g., `(ReactivityVisitor, ElseifVisitor)` = one walk instead of two).
+Codegen (`svelte_codegen_client`) uses direct recursion — no visitor pattern there.
 
 ### Quick navigation
 
