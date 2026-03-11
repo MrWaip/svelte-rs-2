@@ -385,26 +385,44 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        // Strip `export` keyword: ExportNamedDeclaration → inner declaration
+        let mut i = 0;
+        while i < stmts.len() {
+            if let Statement::ExportNamedDeclaration(_) = &stmts[i] {
+                let stmt = stmts.remove(i);
+                if let Statement::ExportNamedDeclaration(export) = stmt {
+                    if let Some(decl) = export.unbox().declaration {
+                        stmts.insert(i, Statement::from(decl));
+                        i += 1;
+                    }
+                    // else: `export { x }` form — just remove
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        // Replace $props() destructuring
         if self.props_gen.is_none() {
             return;
         }
 
         let mut idx = None;
-        for (i, stmt) in stmts.iter().enumerate() {
+        for (j, stmt) in stmts.iter().enumerate() {
             if let Statement::VariableDeclaration(decl) = stmt {
                 if Self::is_props_declaration(decl) {
-                    idx = Some(i);
+                    idx = Some(j);
                     break;
                 }
             }
         }
 
-        let Some(i) = idx else { return };
+        let Some(j) = idx else { return };
 
         let replacement = self.gen_props_statements();
-        stmts.remove(i);
-        for (j, stmt) in replacement.into_iter().enumerate() {
-            stmts.insert(i + j, stmt);
+        stmts.remove(j);
+        for (k, stmt) in replacement.into_iter().enumerate() {
+            stmts.insert(j + k, stmt);
         }
     }
 

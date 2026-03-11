@@ -11,7 +11,7 @@ use oxc_codegen::Codegen;
 use svelte_analyze::AnalysisData;
 use svelte_ast::Component;
 
-use builder::Arg;
+use builder::{Arg, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -48,27 +48,50 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // (already in `hoisted`)
 
     // export default function App($$anchor, $$props?) { ... }
-    let fn_params = if ctx.analysis.props.is_some() {
+    let has_exports = !ctx.analysis.exports.is_empty();
+    let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
+    let needs_push = has_bindable || has_exports;
+
+    let fn_params = if ctx.analysis.props.is_some() || needs_push {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
     };
-    let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
     if ctx.needs_binding_group {
         fn_body.push(b.const_stmt("binding_group", b.empty_array_expr()));
     }
-    if has_bindable {
+    if needs_push {
         fn_body.push(b.expr_stmt(b.call_expr("$.push", [
             Arg::Ident("$$props"),
             Arg::Expr(b.bool_expr(true)),
         ])));
     }
     fn_body.extend(script_body);
+
+    // var $$exports = { PI, greet, ... }
+    if has_exports {
+        let props: Vec<ObjProp<'_>> = ctx.analysis.exports.iter().map(|e| {
+            let name: &str = b.ast.allocator.alloc_str(&e.name);
+            if let Some(alias) = &e.alias {
+                let alias: &str = b.ast.allocator.alloc_str(alias);
+                ObjProp::KeyValue(alias, b.rid_expr(name))
+            } else {
+                ObjProp::Shorthand(name)
+            }
+        }).collect();
+        fn_body.push(b.var_stmt("$$exports", b.object_expr(props)));
+    }
+
     fn_body.extend(template_body);
-    if has_bindable {
-        fn_body.push(b.expr_stmt(b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
+
+    if needs_push {
+        if has_exports {
+            fn_body.push(b.return_stmt(b.call_expr("$.pop", [Arg::Ident("$$exports")])));
+        } else {
+            fn_body.push(b.expr_stmt(b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
+        }
     }
 
     let fn_decl = b.function_decl(b.bid("App"), fn_body, fn_params);

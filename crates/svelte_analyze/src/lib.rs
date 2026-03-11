@@ -11,8 +11,8 @@ pub(crate) mod scope;
 mod validate;
 
 pub use data::{
-    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
-    PropAnalysis, PropsAnalysis,
+    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, PropAnalysis,
+    PropsAnalysis,
 };
 
 use svelte_ast::Component;
