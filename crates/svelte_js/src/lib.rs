@@ -48,8 +48,25 @@ pub enum ExpressionKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct PropInfo {
+    pub local_name: String,
+    pub prop_name: String,
+    pub default_span: Option<Span>,
+    /// The raw text of the default expression (for codegen to parse).
+    pub default_text: Option<String>,
+    pub is_bindable: bool,
+    pub is_rest: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PropsDeclaration {
+    pub props: Vec<PropInfo>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ScriptInfo {
     pub declarations: Vec<DeclarationInfo>,
+    pub props_declaration: Option<PropsDeclaration>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,10 +143,10 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
 
     let program = &result.program;
     let mut declarations = Vec::new();
+    let mut props_declaration = None;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
-
 
         match stmt {
             Statement::VariableDeclaration(decl) => {
@@ -141,31 +158,103 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
                 };
 
                 for declarator in &decl.declarations {
-                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
-                        let name = ident.name.to_string();
-                        let decl_span = Span::new(
-                            ident.span.start + offset,
-                            ident.span.end + offset,
-                        );
-
-                        let (init_span, is_rune) = if let Some(init) = &declarator.init {
-                            let init_sp = Span::new(
-                                init.span().start + offset,
-                                init.span().end + offset,
+                    match &declarator.id {
+                        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
+                            let name = ident.name.to_string();
+                            let decl_span = Span::new(
+                                ident.span.start + offset,
+                                ident.span.end + offset,
                             );
-                            let rune = detect_rune(init);
-                            (Some(init_sp), rune)
-                        } else {
-                            (None, None)
-                        };
 
-                        declarations.push(DeclarationInfo {
-                            name,
-                            span: decl_span,
-                            kind,
-                            init_span,
-                            is_rune,
-                        });
+                            let (init_span, is_rune) = if let Some(init) = &declarator.init {
+                                let init_sp = Span::new(
+                                    init.span().start + offset,
+                                    init.span().end + offset,
+                                );
+                                let rune = detect_rune(init);
+                                (Some(init_sp), rune)
+                            } else {
+                                (None, None)
+                            };
+
+                            declarations.push(DeclarationInfo {
+                                name,
+                                span: decl_span,
+                                kind,
+                                init_span,
+                                is_rune,
+                            });
+                        }
+                        oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
+                            let is_props = declarator.init.as_ref()
+                                .and_then(|init| detect_rune(init))
+                                .map(|r| r == RuneKind::Props)
+                                .unwrap_or(false);
+
+                            if is_props {
+                                let mut props = Vec::new();
+
+                                for prop in &obj_pat.properties {
+                                    let key_name = extract_property_key_name(&prop.key);
+                                    let Some(key_name) = key_name else { continue };
+
+                                    let local_name = extract_binding_name(&prop.value);
+                                    let local_name = local_name.unwrap_or_else(|| key_name.clone());
+
+                                    let (default_span, default_text, is_bindable) = extract_prop_default(&prop.value, offset, source);
+
+                                    let decl_span = Span::new(
+                                        prop.span.start + offset,
+                                        prop.span.end + offset,
+                                    );
+
+                                    declarations.push(DeclarationInfo {
+                                        name: local_name.clone(),
+                                        span: decl_span,
+                                        kind,
+                                        init_span: None,
+                                        is_rune: Some(RuneKind::Props),
+                                    });
+
+                                    props.push(PropInfo {
+                                        local_name,
+                                        prop_name: key_name,
+                                        default_span,
+                                        default_text,
+                                        is_bindable,
+                                        is_rest: false,
+                                    });
+                                }
+
+                                if let Some(rest) = &obj_pat.rest {
+                                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &rest.argument {
+                                        let rest_name = ident.name.to_string();
+                                        let decl_span = Span::new(
+                                            ident.span.start + offset,
+                                            ident.span.end + offset,
+                                        );
+                                        declarations.push(DeclarationInfo {
+                                            name: rest_name.clone(),
+                                            span: decl_span,
+                                            kind,
+                                            init_span: None,
+                                            is_rune: Some(RuneKind::Props),
+                                        });
+                                        props.push(PropInfo {
+                                            local_name: rest_name.clone(),
+                                            prop_name: rest_name,
+                                            default_span: None,
+                                            default_text: None,
+                                            is_bindable: false,
+                                            is_rest: true,
+                                        });
+                                    }
+                                }
+
+                                props_declaration = Some(PropsDeclaration { props });
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -187,7 +276,7 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
         }
     }
 
-    Ok(ScriptInfo { declarations })
+    Ok(ScriptInfo { declarations, props_declaration })
 }
 
 /// Find mutated identifiers in script source using OXC semantic analysis.
@@ -362,6 +451,51 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
             }
         }
         _ => {}
+    }
+}
+
+fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<String> {
+    match key {
+        oxc_ast::ast::PropertyKey::StaticIdentifier(ident) => Some(ident.name.to_string()),
+        oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(s.value.to_string()),
+        _ => None,
+    }
+}
+
+fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<String> {
+    match pattern {
+        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
+        oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+            extract_binding_name(&assign.left)
+        }
+        _ => None,
+    }
+}
+
+/// Extract default span, default text, and bindable flag from a prop's binding pattern.
+fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32, source: &str) -> (Option<Span>, Option<String>, bool) {
+    if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
+        let right = &assign.right;
+        // Check if default is $bindable(expr) or $bindable()
+        if let Expression::CallExpression(call) = right {
+            if let Expression::Identifier(ident) = &call.callee {
+                if ident.name.as_str() == "$bindable" {
+                    let (default_span, default_text) = if let Some(arg) = call.arguments.first() {
+                        let sp = arg.span();
+                        let text = &source[sp.start as usize..sp.end as usize];
+                        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()))
+                    } else {
+                        (None, None)
+                    };
+                    return (default_span, default_text, true);
+                }
+            }
+        }
+        let sp = right.span();
+        let text = &source[sp.start as usize..sp.end as usize];
+        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), false)
+    } else {
+        (None, None, false)
     }
 }
 

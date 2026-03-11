@@ -11,6 +11,7 @@ use oxc_codegen::Codegen;
 use svelte_analyze::AnalysisData;
 use svelte_ast::Component;
 
+use builder::Arg;
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -46,14 +47,29 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // var root = $.template(...) — hoisted template declarations
     // (already in `hoisted`)
 
-    // export default function App($$anchor) { ... }
-    let fn_params = b.params(["$$anchor"]);
+    // export default function App($$anchor, $$props?) { ... }
+    let fn_params = if ctx.analysis.props.is_some() {
+        b.params(["$$anchor", "$$props"])
+    } else {
+        b.params(["$$anchor"])
+    };
+    let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
+
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
     if ctx.needs_binding_group {
         fn_body.push(b.const_stmt("binding_group", b.empty_array_expr()));
     }
+    if has_bindable {
+        fn_body.push(b.expr_stmt(b.call_expr("$.push", [
+            Arg::Ident("$$props"),
+            Arg::Expr(b.bool_expr(true)),
+        ])));
+    }
     fn_body.extend(script_body);
     fn_body.extend(template_body);
+    if has_bindable {
+        fn_body.push(b.expr_stmt(b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
+    }
 
     let fn_decl = b.function_decl(b.bid("App"), fn_body, fn_params);
     let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(

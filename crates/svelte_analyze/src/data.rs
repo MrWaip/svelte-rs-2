@@ -64,6 +64,8 @@ pub struct AnalysisData {
     pub mutable_runes: HashSet<String>,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
     pub alt_is_elseif: HashSet<NodeId>,
+    /// Props analysis (from $props() destructuring).
+    pub props: Option<PropsAnalysis>,
 }
 
 impl AnalysisData {
@@ -86,6 +88,7 @@ impl AnalysisData {
             rune_names: HashSet::new(),
             mutable_runes: HashSet::new(),
             alt_is_elseif: HashSet::new(),
+            props: None,
         }
     }
 }
@@ -143,6 +146,26 @@ pub struct SymbolInfo {
     pub span: Span,
     pub kind: DeclarationKind,
     pub init_span: Option<Span>,
+}
+
+// ---------------------------------------------------------------------------
+// PropsAnalysis — analysis of $props() destructuring
+// ---------------------------------------------------------------------------
+
+pub struct PropsAnalysis {
+    pub props: Vec<PropAnalysis>,
+    pub has_bindable: bool,
+}
+
+pub struct PropAnalysis {
+    pub local_name: String,
+    pub prop_name: String,
+    pub default_span: Option<Span>,
+    pub default_text: Option<String>,
+    pub is_bindable: bool,
+    pub is_rest: bool,
+    /// Needs `$.prop()` signal wrapper (vs direct `$$props.name` access).
+    pub is_prop_source: bool,
 }
 
 // ---------------------------------------------------------------------------

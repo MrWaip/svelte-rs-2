@@ -157,3 +157,33 @@ fn mutated_state_rune() {
 fn static_interpolation() {
     assert_compiler("static_interpolation");
 }
+
+#[rstest]
+fn props_basic() {
+    assert_compiler("props_basic");
+}
+
+#[rstest]
+fn props_rest() {
+    assert_compiler("props_rest");
+}
+
+#[rstest]
+fn props_bindable() {
+    assert_compiler("props_bindable");
+}
+
+#[rstest]
+fn props_lazy_default() {
+    assert_compiler("props_lazy_default");
+}
+
+#[rstest]
+fn props_mutated() {
+    assert_compiler("props_mutated");
+}
+
+#[rstest]
+fn props_mixed() {
+    assert_compiler("props_mixed");
+}
