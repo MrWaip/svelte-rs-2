@@ -16,14 +16,14 @@
 - [x] Test: `props_mutated` — `$.update_prop()`, PROPS_IS_UPDATED
 - [x] Test: `props_mixed` — все типы в одном компоненте
 
-### 1b. Export analysis
-- [ ] `svelte_js/src/lib.rs` — экстракция `export const/function` деклараций
-- [ ] `svelte_analyze/src/data.rs` — `exports: Vec<ExportDef>` в AnalysisData
-- [ ] `svelte_analyze/src/exports.rs` — новый проход
-- [ ] `svelte_codegen_client/src/script.rs` — `$$.exports` codegen
-- [ ] Ref: `reference/compiler/phases/2-analyze/visitors/ExportNamedDeclaration.js`
-- [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/Program.js` (append_exports)
-- [ ] Test: `tasks/compiler_tests/cases2/exports/`
+### 1b. Export analysis ✅
+- [x] `svelte_js/src/lib.rs` — экстракция `export const/function` деклараций
+- [x] `svelte_analyze/src/data.rs` — `exports: Vec<ExportDef>` в AnalysisData
+- [x] `svelte_analyze/src/exports.rs` — новый проход
+- [x] `svelte_codegen_client/src/script.rs` — `$$.exports` codegen
+- [x] Ref: `reference/compiler/phases/2-analyze/visitors/ExportNamedDeclaration.js`
+- [x] Ref: `reference/compiler/phases/3-transform/client/visitors/Program.js` (append_exports)
+- [x] Test: `tasks/compiler_tests/cases2/exports/`
 
 ### 1c. Snippet & RenderTag
 - [ ] `svelte_ast/src/lib.rs` — `Node::SnippetBlock`, `Node::RenderTag`
