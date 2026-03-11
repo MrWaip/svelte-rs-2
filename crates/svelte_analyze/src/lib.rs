@@ -7,13 +7,12 @@ mod mutations;
 mod parse_js;
 mod props;
 mod reactivity;
-mod runes;
-mod symbols;
+pub(crate) mod scope;
 mod validate;
 
 pub use data::{
     AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
-    PropAnalysis, PropsAnalysis, SymbolId, SymbolInfo,
+    PropAnalysis, PropsAnalysis,
 };
 
 use svelte_ast::Component;
@@ -22,21 +21,21 @@ use svelte_diagnostics::Diagnostic;
 /// Run all analysis passes over a parsed component.
 ///
 /// Pass order:
-/// 1. parse_js    — parse JS expressions + script block
-/// 2. symbols     — extract symbol declarations
-/// 3. runes       — detect rune symbols
-/// 4. mutations   — detect mutated runes (script assignments + bind directives)
-/// 5. lower       — trim whitespace, group text+expressions
-/// 6. reactivity  — mark dynamic nodes and attributes
-/// 7. content_types — classify fragment content
-/// 8. validate    — semantic checks
+/// 1. parse_js      — parse JS expressions + script block
+/// 2. build_scoping — build unified scope tree (script + template)
+/// 3. known_values  — evaluate const declarations with literal initializers
+/// 4. mutations     — detect mutated runes (script assignments + bind directives)
+/// 5. props         — analyze $props() destructuring
+/// 6. lower         — trim whitespace, group text+expressions
+/// 7. reactivity    — mark dynamic nodes and attributes
+/// 8. content_types — classify fragment content
+/// 9. validate      — semantic checks
 pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
     parse_js::parse_js(component, &mut data, &mut diags);
-    symbols::collect_symbols(&mut data);
-    runes::detect_runes(&mut data);
+    scope::build_scoping(component, &mut data);
     known_values::collect_known_values(component, &mut data);
     mutations::detect_mutations(component, &mut data);
     props::analyze_props(&mut data);
@@ -176,20 +175,21 @@ mod tests {
     }
 
     fn assert_symbol(data: &AnalysisData, name: &str) {
+        let root = data.scoping.root_scope_id();
         assert!(
-            data.symbol_by_name.contains_key(name),
-            "expected symbol '{name}' — got {:?}",
-            data.symbols.iter().map(|s| &s.name).collect::<Vec<_>>(),
+            data.scoping.find_binding(root, name).is_some(),
+            "expected symbol '{name}'",
         );
     }
 
     fn assert_is_rune(data: &AnalysisData, name: &str) {
-        let id = data
-            .symbol_by_name
-            .get(name)
+        let root = data.scoping.root_scope_id();
+        let sym_id = data
+            .scoping
+            .find_binding(root, name)
             .unwrap_or_else(|| panic!("no symbol '{name}'"));
         assert!(
-            data.runes.contains_key(id),
+            data.scoping.is_rune(sym_id),
             "expected '{name}' to be a rune"
         );
     }
@@ -407,4 +407,66 @@ mod tests {
         assert_consequent_content_type(&data, &c, "x", ContentType::StaticText);
         assert_alternate_content_type(&data, &c, "x", ContentType::SingleElement);
     }
+
+    #[test]
+    fn each_block_context_is_dynamic() {
+        // {item} inside each block should be dynamic (it's a block-scoped variable)
+        let (c, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item}<p>{item}</p>{/each}"#,
+        );
+        assert_dynamic_tag(&data, &c, "item");
+    }
+
+    #[test]
+    fn each_block_shadowing() {
+        // `item` in script is a rune; `item` inside {#each} should shadow it
+        // (resolved as each-block variable, not as script rune)
+        let (c, data) = analyze_source(
+            r#"<script>let item = $state(0); let items = $state([]);</script>{#each items as item}<p>{item}</p>{/each}"#,
+        );
+        assert_is_rune(&data, "item");
+        // The {item} inside each is still dynamic (each-block var), but it
+        // resolves to the each-block binding, not the script rune.
+        assert_dynamic_tag(&data, &c, "item");
+
+        // Verify the scope tree correctly models the shadowing:
+        // root scope has `item` as a rune, each-block scope has `item` as a block var
+        let root = data.scoping.root_scope_id();
+        let root_sym = data.scoping.find_binding(root, "item").unwrap();
+        assert!(data.scoping.is_rune(root_sym));
+
+        // Find the each block's scope
+        let each_block = find_each_block(&c.fragment, &c, "items").unwrap();
+        let each_scope = data.scoping.node_scope(each_block.id).unwrap();
+        let each_sym = data.scoping.find_binding(each_scope, "item").unwrap();
+        // The each-block's `item` is NOT a rune (it's a block variable)
+        assert!(!data.scoping.is_rune(each_sym));
+        // And it's a different symbol than the root one
+        assert_ne!(root_sym, each_sym);
+    }
+
+    #[test]
+    fn each_block_shadowing_does_not_mutate_rune() {
+        // `count = 99` inside each targets the each-block variable, not the rune
+        let (_c, data) = analyze_source(
+            r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#,
+        );
+        assert_is_rune(&data, "count");
+        assert!(
+            !data.mutated_runes.contains("count"),
+            "rune 'count' should NOT be in mutated_runes — the assignment targets the each-block variable"
+        );
+    }
+
+    // Note: each-block index variable parsing is not yet implemented in the parser
+    // (scanner/mod.rs hardcodes `index: None`). Once it's implemented, this test
+    // should work because build_scoping already handles index_span.
+    //
+    // #[test]
+    // fn each_block_index_is_dynamic() {
+    //     let (c, data) = analyze_source(
+    //         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
+    //     );
+    //     assert_dynamic_tag(&data, &c, "i");
+    // }
 }

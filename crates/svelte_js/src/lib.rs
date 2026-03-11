@@ -120,28 +120,7 @@ pub fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, D
     Ok(info)
 }
 
-/// Parse a `<script>` block and return owned analysis info.
-///
-/// `source` is the content between `<script>` tags.
-/// `offset` is the byte offset of the content start in the .svelte file.
-pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<ScriptInfo, Vec<Diagnostic>> {
-    let allocator = Allocator::default();
-    let source_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-
-    let parser = OxcParser::new(&allocator, source, source_type);
-    let result = parser.parse();
-
-    if !result.errors.is_empty() {
-        return Err(result.errors.iter().map(|_| {
-            Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-        }).collect());
-    }
-
-    let program = &result.program;
+fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
 
@@ -276,31 +255,48 @@ pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<Scr
         }
     }
 
-    Ok(ScriptInfo { declarations, props_declaration })
+    ScriptInfo { declarations, props_declaration }
 }
 
-/// Find mutated identifiers in script source using OXC semantic analysis.
-/// Returns names of top-level symbols that have write references anywhere in the script
-/// (including nested functions, arrow functions, callbacks, etc.).
-pub fn find_script_mutations(source: &str, typescript: bool) -> std::collections::HashSet<String> {
+/// Parse a `<script>` block once and return both owned analysis info and OXC Scoping.
+///
+/// This avoids double-parsing: the single OXC parse produces both the `ScriptInfo`
+/// (declarations, props) and the `Scoping` (symbol table + scope tree for semantic analysis).
+pub fn analyze_script_with_scoping(
+    source: &str,
+    offset: u32,
+    typescript: bool,
+) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>> {
     let allocator = Allocator::default();
     let source_type = if typescript {
         SourceType::default().with_typescript(true)
     } else {
         SourceType::default()
     };
-    let result = OxcParser::new(&allocator, source, source_type).parse();
 
-    let sem = oxc_semantic::SemanticBuilder::new().build(&result.program);
+    let parser = OxcParser::new(&allocator, source, source_type);
+    let result = parser.parse();
+
+    if !result.errors.is_empty() {
+        return Err(result
+            .errors
+            .iter()
+            .map(|_| {
+                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+            })
+            .collect());
+    }
+
+    let program = &result.program;
+
+    // Extract ScriptInfo by walking the AST
+    let script_info = extract_script_info(program, offset, source);
+
+    // Build semantic analysis and extract Scoping
+    let sem = oxc_semantic::SemanticBuilder::new().build(program);
     let scoping = sem.semantic.into_scoping();
 
-    let mut mutated = std::collections::HashSet::new();
-    for sym_id in scoping.symbol_ids() {
-        if scoping.symbol_is_mutated(sym_id) {
-            mutated.insert(scoping.symbol_name(sym_id).to_string());
-        }
-    }
-    mutated
+    Ok((script_info, scoping))
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +553,7 @@ mod tests {
 
     #[test]
     fn analyze_script_basic() {
-        let info = analyze_script("let count = $state(0); const name = 'test';", 0, false).unwrap();
+        let (info, _scoping) = analyze_script_with_scoping("let count = $state(0); const name = 'test';", 0, false).unwrap();
         assert_eq!(info.declarations.len(), 2);
         assert_eq!(info.declarations[0].name, "count");
         assert_eq!(info.declarations[0].is_rune, Some(RuneKind::State));
