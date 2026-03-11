@@ -3,13 +3,18 @@ use svelte_diagnostics::Diagnostic;
 use svelte_js::{ExpressionInfo, ExpressionKind};
 
 use crate::data::AnalysisData;
+use crate::scope::ComponentScoping;
 
 pub fn parse_js(component: &Component, data: &mut AnalysisData, diags: &mut Vec<Diagnostic>) {
     if let Some(script) = &component.script {
         let source = component.source_text(script.content_span);
         let typescript = matches!(script.language, ScriptLanguage::TypeScript);
-        match svelte_js::analyze_script(source, script.content_span.start, typescript) {
-            Ok(info) => data.script = Some(info),
+        match svelte_js::analyze_script_with_scoping(source, script.content_span.start, typescript)
+        {
+            Ok((info, scoping)) => {
+                data.script = Some(info);
+                data.scoping = ComponentScoping::from_scoping(scoping);
+            }
             Err(errs) => diags.extend(errs),
         }
     }

@@ -49,6 +49,16 @@ impl ComponentScoping {
         }
     }
 
+    /// Create from a pre-built OXC Scoping (avoids double parsing).
+    pub fn from_scoping(scoping: Scoping) -> Self {
+        Self {
+            scoping,
+            runes: HashMap::new(),
+            bind_mutated: HashSet::new(),
+            node_scopes: HashMap::new(),
+        }
+    }
+
     /// Create an empty scoping (no script block).
     /// Parses an empty source to get a valid root scope from OXC.
     pub fn empty() -> Self {
@@ -212,35 +222,25 @@ impl ComponentScoping {
 // ---------------------------------------------------------------------------
 
 /// Build the unified ComponentScoping from script + template.
-/// Replaces the old `collect_symbols` + `detect_runes` passes.
+///
+/// The `Scoping` is already initialized by `parse_js` (via `analyze_script_with_scoping`),
+/// so this pass only marks runes and walks the template to add each-block scopes.
 pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
-    let mut scoping = if let Some(script) = &component.script {
-        let source = component.source_text(script.content_span);
-        let is_ts = script.language == svelte_ast::ScriptLanguage::TypeScript;
-        ComponentScoping::from_script(source, is_ts)
-    } else {
-        ComponentScoping::empty()
-    };
-
     // Mark runes from script declarations
     if let Some(script_info) = &data.script {
         for decl in &script_info.declarations {
             if let Some(rune_kind) = decl.is_rune {
-                // Find the symbol by name in the root scope
-                if let Some(sym_id) =
-                    scoping.find_binding(scoping.root_scope_id(), &decl.name)
-                {
-                    scoping.mark_rune(sym_id, rune_kind);
+                let root = data.scoping.root_scope_id();
+                if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
+                    data.scoping.mark_rune(sym_id, rune_kind);
                 }
             }
         }
     }
 
     // Walk template to add each-block scopes
-    let root = scoping.root_scope_id();
-    walk_template_scopes(&component.fragment, component, &mut scoping, root);
-
-    data.scoping = scoping;
+    let root = data.scoping.root_scope_id();
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root);
 }
 
 fn walk_template_scopes(
