@@ -206,7 +206,7 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
                 .any(|p| matches!(p, svelte_analyze::ConcatPart::Expr(_)))
         }
         svelte_analyze::FragmentItem::Element(id) => element_needs_var(ctx, *id),
-        svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) => {
+        svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) => {
             true
         }
     }

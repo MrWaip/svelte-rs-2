@@ -192,3 +192,8 @@ fn props_mixed() {
 fn exports() {
     assert_compiler("exports");
 }
+
+#[rstest]
+fn snippet_basic() {
+    assert_compiler("snippet_basic");
+}

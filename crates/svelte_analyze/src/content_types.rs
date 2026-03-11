@@ -4,6 +4,13 @@ use crate::data::{ContentType, FragmentItem, FragmentKey, AnalysisData};
 
 pub fn classify_content(component: &Component, data: &mut AnalysisData) {
     classify_by_key(FragmentKey::Root, data);
+    // Classify snippet bodies
+    for node in &component.fragment.nodes {
+        if let Node::SnippetBlock(block) = node {
+            classify_by_key(FragmentKey::SnippetBody(block.id), data);
+            descend_fragment(&block.body, data);
+        }
+    }
     descend_fragment(&component.fragment, data);
 }
 
@@ -32,7 +39,10 @@ fn descend_fragment(fragment: &Fragment, data: &mut AnalysisData) {
                     descend_fragment(fb, data);
                 }
             }
-            Node::Text(_) | Node::ExpressionTag(_) | Node::Comment(_) => {}
+            Node::SnippetBlock(block) => {
+                descend_fragment(&block.body, data);
+            }
+            Node::Text(_) | Node::ExpressionTag(_) | Node::Comment(_) | Node::RenderTag(_) => {}
         }
     }
 }
@@ -53,7 +63,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
     if items.len() == 1 {
         match &items[0] {
             FragmentItem::Element(_) => return ContentType::SingleElement,
-            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) => return ContentType::SingleBlock,
+            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => return ContentType::SingleBlock,
             FragmentItem::TextConcat { .. } => {}
         }
     }
@@ -66,7 +76,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
     for item in items {
         match item {
             FragmentItem::Element(_) => has_element = true,
-            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) => has_block = true,
+            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => has_block = true,
             FragmentItem::TextConcat { parts } => {
                 let has_expr = parts.iter().any(|p| matches!(p, crate::data::ConcatPart::Expr(_)));
                 if has_expr {

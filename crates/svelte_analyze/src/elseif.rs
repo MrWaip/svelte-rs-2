@@ -33,6 +33,7 @@ fn walk_fragment(fragment: &Fragment, data: &mut AnalysisData) {
                     walk_fragment(fb, data);
                 }
             }
+            Node::SnippetBlock(b) => walk_fragment(&b.body, data),
             _ => {}
         }
     }

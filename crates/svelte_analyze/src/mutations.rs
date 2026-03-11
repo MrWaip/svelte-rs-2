@@ -64,6 +64,9 @@ fn walk_template_mutations(
                     walk_template_mutations(fb, data, current_scope);
                 }
             }
+            Node::SnippetBlock(b) => {
+                walk_template_mutations(&b.body, data, current_scope);
+            }
             _ => {}
         }
     }
@@ -112,6 +115,9 @@ fn walk_binds(
                 if let Some(fb) = &b.fallback {
                     walk_binds(fb, component, data, current_scope);
                 }
+            }
+            Node::SnippetBlock(b) => {
+                walk_binds(&b.body, component, data, current_scope);
             }
             _ => {}
         }

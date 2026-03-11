@@ -83,6 +83,19 @@ fn walk_node(
                 walk_fragment(fb, component, data, diags);
             }
         }
+        Node::SnippetBlock(block) => {
+            walk_fragment(&block.body, component, data, diags);
+        }
+        Node::RenderTag(tag) => {
+            let source = component.source_text(tag.expression_span);
+            let offset = tag.expression_span.start;
+            match svelte_js::analyze_expression(source, offset) {
+                Ok(info) => {
+                    data.expressions.insert(tag.id, info);
+                }
+                Err(diag) => diags.push(diag),
+            }
+        }
         Node::Text(_) | Node::Comment(_) => {}
     }
 }

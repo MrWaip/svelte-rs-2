@@ -32,7 +32,10 @@ fn lower_fragment(
                     lower_fragment(fb, FragmentKey::EachFallback(block.id), component, data);
                 }
             }
-            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) => {}
+            Node::SnippetBlock(block) => {
+                lower_fragment(&block.body, FragmentKey::SnippetBody(block.id), component, data);
+            }
+            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) => {}
         }
     }
 }
@@ -101,6 +104,13 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                 flush(&mut concat, &mut items);
                 items.push(FragmentItem::EachBlock(block.id));
             }
+            Node::SnippetBlock(_) => {
+                // Snippets don't produce DOM at declaration site
+            }
+            Node::RenderTag(tag) => {
+                flush(&mut concat, &mut items);
+                items.push(FragmentItem::RenderTag(tag.id));
+            }
             Node::Comment(_) => {
                 // Drop comments
             }
@@ -112,10 +122,11 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
 }
 
 fn is_removable_text(node: &Node, component: &Component) -> bool {
-    if let Node::Text(text) = node {
-        text.value(&component.source).trim().is_empty()
-    } else {
-        false
+    match node {
+        Node::Text(text) => text.value(&component.source).trim().is_empty(),
+        // SnippetBlock produces no DOM at declaration site
+        Node::SnippetBlock(_) => true,
+        _ => false,
     }
 }
 
@@ -157,10 +168,14 @@ fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -
     s
 }
 
+fn is_insignificant(n: &Node) -> bool {
+    n.is_comment() || n.is_snippet_block()
+}
+
 fn prev_significant(idx: usize, siblings: &[Node]) -> Option<&Node> {
-    siblings[..idx].iter().rev().find(|n| !n.is_comment())
+    siblings[..idx].iter().rev().find(|n| !is_insignificant(n))
 }
 
 fn next_significant(idx: usize, siblings: &[Node]) -> Option<&Node> {
-    siblings[idx + 1..].iter().find(|n| !n.is_comment())
+    siblings[idx + 1..].iter().find(|n| !is_insignificant(n))
 }

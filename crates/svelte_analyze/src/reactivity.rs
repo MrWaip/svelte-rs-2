@@ -5,7 +5,7 @@ use crate::data::AnalysisData;
 
 pub fn mark_reactivity(component: &Component, data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
-    walk_fragment(&component.fragment, component, data, root);
+    walk_fragment(&component.fragment, component, data, root, &[]);
 }
 
 fn walk_fragment(
@@ -13,9 +13,10 @@ fn walk_fragment(
     component: &Component,
     data: &mut AnalysisData,
     current_scope: ScopeId,
+    snippet_params: &[String],
 ) {
     for node in &fragment.nodes {
-        walk_node(node, component, data, current_scope);
+        walk_node(node, component, data, current_scope, snippet_params);
     }
 }
 
@@ -24,10 +25,11 @@ fn walk_node(
     component: &Component,
     data: &mut AnalysisData,
     current_scope: ScopeId,
+    snippet_params: &[String],
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            if expr_is_dynamic(&tag.id, data, current_scope) {
+            if expr_is_dynamic(&tag.id, data, current_scope, snippet_params) {
                 data.dynamic_nodes.insert(tag.id);
             }
         }
@@ -46,19 +48,19 @@ fn walk_node(
             if needs_ref {
                 data.node_needs_ref.insert(el.id);
             }
-            walk_fragment(&el.fragment, component, data, current_scope);
+            walk_fragment(&el.fragment, component, data, current_scope, snippet_params);
         }
         Node::IfBlock(block) => {
-            if expr_is_dynamic(&block.id, data, current_scope) {
+            if expr_is_dynamic(&block.id, data, current_scope, snippet_params) {
                 data.dynamic_nodes.insert(block.id);
             }
-            walk_fragment(&block.consequent, component, data, current_scope);
+            walk_fragment(&block.consequent, component, data, current_scope, snippet_params);
             if let Some(alt) = &block.alternate {
-                walk_fragment(alt, component, data, current_scope);
+                walk_fragment(alt, component, data, current_scope, snippet_params);
             }
         }
         Node::EachBlock(block) => {
-            if expr_is_dynamic(&block.id, data, current_scope) {
+            if expr_is_dynamic(&block.id, data, current_scope, snippet_params) {
                 data.dynamic_nodes.insert(block.id);
             }
             // Each block body uses the child scope (with context/index bindings)
@@ -66,22 +68,43 @@ fn walk_node(
                 .scoping
                 .node_scope(block.id)
                 .unwrap_or(current_scope);
-            walk_fragment(&block.body, component, data, body_scope);
+            walk_fragment(&block.body, component, data, body_scope, snippet_params);
             // Fallback uses parent scope
             if let Some(fb) = &block.fallback {
-                walk_fragment(fb, component, data, current_scope);
+                walk_fragment(fb, component, data, current_scope, snippet_params);
+            }
+        }
+        Node::SnippetBlock(block) => {
+            let params = data
+                .snippet_params
+                .get(&block.id)
+                .cloned()
+                .unwrap_or_default();
+            walk_fragment(&block.body, component, data, current_scope, &params);
+        }
+        Node::RenderTag(tag) => {
+            if expr_is_dynamic(&tag.id, data, current_scope, snippet_params) {
+                data.dynamic_nodes.insert(tag.id);
             }
         }
         Node::Text(_) | Node::Comment(_) => {}
     }
 }
 
-fn expr_is_dynamic(node_id: &NodeId, data: &AnalysisData, current_scope: ScopeId) -> bool {
+fn expr_is_dynamic(
+    node_id: &NodeId,
+    data: &AnalysisData,
+    current_scope: ScopeId,
+    snippet_params: &[String],
+) -> bool {
     if let Some(info) = data.expressions.get(node_id) {
-        return info
-            .references
-            .iter()
-            .any(|r| data.scoping.is_dynamic_ref(current_scope, &r.name));
+        return info.references.iter().any(|r| {
+            // Snippet params are always dynamic (they're thunks)
+            if snippet_params.iter().any(|p| p == &r.name) {
+                return true;
+            }
+            data.scoping.is_dynamic_ref(current_scope, &r.name)
+        });
     }
     false
 }

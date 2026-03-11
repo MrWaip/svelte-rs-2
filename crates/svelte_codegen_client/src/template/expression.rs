@@ -25,11 +25,12 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     let source = ctx.component.source_text(span);
     let mutated = &ctx.analysis.mutated_runes;
     let rune_names = &ctx.analysis.rune_names;
+    let snippet_params = &ctx.snippet_param_names;
 
     // Build prop info sets
     let (prop_sources, prop_non_sources) = build_prop_sets(ctx);
 
-    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, &prop_sources, &prop_non_sources)
+    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, &prop_sources, &prop_non_sources, snippet_params)
 }
 
 fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) {
@@ -49,13 +50,14 @@ fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) 
     (prop_sources, prop_non_sources)
 }
 
-fn parse_and_transform<'a>(
+pub(crate) fn parse_and_transform<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     mutated: &HashSet<String>,
     rune_names: &HashSet<String>,
     prop_sources: &HashSet<String>,
     prop_non_sources: &HashMap<String, String>,
+    snippet_params: &[String],
 ) -> Expression<'a> {
     let b = Builder::new(alloc);
     let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
@@ -70,6 +72,7 @@ fn parse_and_transform<'a>(
         rune_names,
         prop_sources,
         prop_non_sources,
+        snippet_params,
     };
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
@@ -82,12 +85,13 @@ fn parse_and_transform<'a>(
     }
 }
 
-struct RuneRefTransformer<'b, 'a> {
-    b: &'b Builder<'a>,
-    mutated: &'b HashSet<String>,
-    rune_names: &'b HashSet<String>,
-    prop_sources: &'b HashSet<String>,
-    prop_non_sources: &'b HashMap<String, String>,
+pub(crate) struct RuneRefTransformer<'b, 'a> {
+    pub(crate) b: &'b Builder<'a>,
+    pub(crate) mutated: &'b HashSet<String>,
+    pub(crate) rune_names: &'b HashSet<String>,
+    pub(crate) prop_sources: &'b HashSet<String>,
+    pub(crate) prop_non_sources: &'b HashMap<String, String>,
+    pub(crate) snippet_params: &'b [String],
 }
 
 impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
@@ -98,6 +102,12 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                     return;
                 }
                 let name = id.name.as_str().to_string();
+
+                // Snippet params → name() (thunk call)
+                if self.snippet_params.iter().any(|p| p == &name) {
+                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
+                    return;
+                }
 
                 // Props: source → name(), non-source → $$props.name
                 if self.prop_sources.contains(&name) {
@@ -328,7 +338,7 @@ pub(crate) fn emit_trailing_next<'a>(
 pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts } => parts_are_dynamic(parts, ctx),
-        FragmentItem::Element(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) => {
+        FragmentItem::Element(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) => {
             ctx.analysis.dynamic_nodes.contains(id)
         }
     }
