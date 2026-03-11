@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use oxc_semantic::{
-    NodeId as OxcNodeId, Reference, ReferenceFlags as OxcRefFlags, ReferenceId, ScopeFlags,
-    ScopeId, Scoping, SymbolFlags, SymbolId,
+    NodeId as OxcNodeId, Reference, ReferenceFlags as OxcRefFlags, ScopeFlags, ScopeId, Scoping,
+    SymbolFlags, SymbolId,
 };
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
@@ -123,24 +123,7 @@ impl ComponentScoping {
         self.scoping.add_resolved_reference(sym_id, ref_id);
     }
 
-    /// Create a reference (low-level, for direct oxc semantic manipulation).
-    pub fn create_reference(&mut self, reference: Reference) -> ReferenceId {
-        self.scoping.create_reference(reference)
-    }
-
-    /// Add a resolved reference to a symbol (low-level).
-    pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
-        self.scoping.add_resolved_reference(sym_id, ref_id);
-    }
-
     // -- Convenience: scope-aware resolution --
-
-    /// Resolve a name in scope and return its rune kind if it's a rune.
-    pub fn resolve_rune(&self, scope: ScopeId, name: &str) -> Option<(SymbolId, RuneKind)> {
-        let sym_id = self.find_binding(scope, name)?;
-        let kind = self.runes.get(&sym_id)?;
-        Some((sym_id, *kind))
-    }
 
     /// Check if a reference is dynamic in the given scope.
     /// A reference is dynamic if it resolves to a rune or a non-root-scope binding
@@ -184,15 +167,6 @@ impl ComponentScoping {
             .collect()
     }
 
-    /// Rune names that are mutated (intersection of runes and mutated).
-    pub fn mutable_rune_names(&self) -> HashSet<String> {
-        self.mutated_rune_names()
-    }
-
-    /// Iterate all symbol IDs.
-    pub fn symbol_ids(&self) -> impl Iterator<Item = SymbolId> + '_ {
-        self.scoping.symbol_ids()
-    }
 }
 
 // ---------------------------------------------------------------------------

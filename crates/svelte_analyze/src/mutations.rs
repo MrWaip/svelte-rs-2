@@ -16,9 +16,13 @@ pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
     }
 
     // Template expression assignments (e.g. `{title = 30}`)
+    // TODO: walk_template_mutations is not scope-aware — it matches rune names by string,
+    // so an each-block variable shadowing a rune would incorrectly mark the rune as mutated.
     walk_template_mutations(&component.fragment, &rune_names, data);
 
     // Bind directives imply mutation
+    // TODO: walk_binds always resolves in root scope — bind: on each-block variables won't
+    // be detected (currently fine since bind: targets are always root-scope runes).
     walk_binds(&component.fragment, component, data);
 
     // Cache the computed rune name sets
