@@ -1319,6 +1319,10 @@ dependencies = [
 name = "wasm_compiler"
 version = "0.1.0"
 dependencies = [
+ "oxc_allocator",
+ "oxc_codegen",
+ "oxc_parser",
+ "oxc_span",
  "serde-wasm-bindgen",
  "svelte_compiler",
  "wasm-bindgen",
