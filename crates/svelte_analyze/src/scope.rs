@@ -132,7 +132,11 @@ impl ComponentScoping {
         let Some(sym_id) = self.find_binding(scope, name) else {
             return false;
         };
-        if self.runes.contains_key(&sym_id) {
+        if let Some(&kind) = self.runes.get(&sym_id) {
+            // Unmutated $state is effectively constant
+            if kind == RuneKind::State && !self.is_mutated(sym_id) {
+                return false;
+            }
             return true;
         }
         // Non-root-scope binding (each block context/index) is always dynamic

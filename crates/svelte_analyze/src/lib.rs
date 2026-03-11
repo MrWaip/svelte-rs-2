@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn rune_detection() {
-        let (c, data) = analyze_source(r#"<script>let count = $state(0);</script><p>{count}</p>"#);
+        let (c, data) = analyze_source(r#"<script>let count = $state(0); count = 1;</script><p>{count}</p>"#);
         assert_symbol(&data, "count");
         assert_is_rune(&data, "count");
         assert_dynamic_tag(&data, &c, "count");
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn dynamic_text_content() {
-        let (_c, data) = analyze_source(r#"<script>let count = $state(0);</script>{count}"#);
+        let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
         assert_root_content_type(&data, ContentType::DynamicText);
     }
 
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn if_block_test_is_dynamic() {
         let (c, data) =
-            analyze_source(r#"<script>let show = $state(true);</script>{#if show}<p>hi</p>{/if}"#);
+            analyze_source(r#"<script>let show = $state(true); show = false;</script>{#if show}<p>hi</p>{/if}"#);
         assert_symbol(&data, "show");
         assert_is_rune(&data, "show");
         assert_dynamic_if_block(&data, &c, "show");
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn nested_dynamic_tag_in_element() {
         let (c, data) =
-            analyze_source(r#"<script>let count = $state(0);</script><div>{count}</div>"#);
+            analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
         assert_dynamic_tag(&data, &c, "count");
         assert_element_content_type(&data, &c, "div", ContentType::DynamicText);
     }
@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn each_block_dynamic() {
         let (c, data) = analyze_source(
-            r#"<script>let items = $state([]);</script>{#each items as item}<p>{item}</p>{/each}"#,
+            r#"<script>let items = $state([]); items = [1];</script>{#each items as item}<p>{item}</p>{/each}"#,
         );
         assert_symbol(&data, "items");
         assert_is_rune(&data, "items");

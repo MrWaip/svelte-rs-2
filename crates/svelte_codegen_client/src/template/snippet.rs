@@ -21,13 +21,13 @@ pub(crate) fn gen_snippet_block<'a>(ctx: &mut Ctx<'a>, id: NodeId) -> Statement<
         .cloned()
         .unwrap_or_default();
 
-    // Set snippet params so expression codegen wraps them as thunk calls
-    ctx.snippet_param_names = param_names.clone();
+    // Set snippet params so expression codegen wraps them as thunk calls.
+    // Save and restore to handle nested snippets correctly.
+    let saved_params = std::mem::replace(&mut ctx.snippet_param_names, param_names.clone());
 
     let body_stmts = gen_fragment(ctx, FragmentKey::SnippetBody(id));
 
-    // Clear snippet params
-    ctx.snippet_param_names.clear();
+    ctx.snippet_param_names = saved_params;
 
     let params = build_snippet_params(ctx, &param_names);
     let arrow = ctx.b.arrow(params, body_stmts);
