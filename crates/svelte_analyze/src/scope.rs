@@ -233,7 +233,10 @@ fn walk_template_scopes(
                     walk_template_scopes(alt, component, scoping, current_scope);
                 }
             }
-            Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) => {}
+            Node::SnippetBlock(block) => {
+                walk_template_scopes(&block.body, component, scoping, current_scope);
+            }
+            Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) => {}
         }
     }
 }

@@ -9,6 +9,7 @@ fn main() {
     let mut out = String::with_capacity(n * 3000);
 
     write_script(&mut out);
+    write_snippets(&mut out);
 
     for i in 0..n {
         write_chunk(&mut out, i);
@@ -47,7 +48,33 @@ fn write_script(out: &mut String) {
     $effect(() => {
         console.log("Title:", title, "Count:", count);
     });
+
+    export const APP_VERSION = "1.0.0";
+
+    export function formatTitle(prefix) {
+        return prefix + ": " + title;
+    }
 </script>
+
+"#,
+    );
+}
+
+fn write_snippets(out: &mut String) {
+    out.push_str(
+        r#"{#snippet badge(text, variant)}
+    <span class="badge" class:primary={variant === "primary"} class:secondary={variant === "secondary"}>
+        {text}
+    </span>
+{/snippet}
+
+{#snippet card(heading, body)}
+    <div class="card">
+        <h3>{heading}</h3>
+        <p>{body}</p>
+        {@render badge("new", "primary")}
+    </div>
+{/snippet}
 
 "#,
     );
@@ -101,6 +128,9 @@ fn write_chunk(out: &mut String, i: usize) {
     {{/each}}
 
     <input bind:value={{state}} />
+
+    {{@render badge("chunk-{i}", "secondary")}}
+    {{@render card(title, "Content for chunk {i}")}}
 </div>
 
 "#,

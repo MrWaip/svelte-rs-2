@@ -20,7 +20,27 @@
     $effect(() => {
         console.log("Title:", title, "Count:", count);
     });
+
+    export const APP_VERSION = "1.0.0";
+
+    export function formatTitle(prefix) {
+        return prefix + ": " + title;
+    }
 </script>
+
+{#snippet badge(text, variant)}
+    <span class="badge" class:primary={variant === "primary"} class:secondary={variant === "secondary"}>
+        {text}
+    </span>
+{/snippet}
+
+{#snippet card(heading, body)}
+    <div class="card">
+        <h3>{heading}</h3>
+        <p>{body}</p>
+        {@render badge("new", "primary")}
+    </div>
+{/snippet}
 
 <div>
     Chunk 0: Lorem {state} + {state} = Ipsum;
@@ -67,6 +87,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-0", "secondary")}
+    {@render card(title, "Content for chunk 0")}
 </div>
 
 <div>
@@ -114,6 +137,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-1", "secondary")}
+    {@render card(title, "Content for chunk 1")}
 </div>
 
 <div>
@@ -161,6 +187,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-2", "secondary")}
+    {@render card(title, "Content for chunk 2")}
 </div>
 
 <div>
@@ -208,6 +237,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-3", "secondary")}
+    {@render card(title, "Content for chunk 3")}
 </div>
 
 <div>
@@ -255,6 +287,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-4", "secondary")}
+    {@render card(title, "Content for chunk 4")}
 </div>
 
 <div>
@@ -302,6 +337,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-5", "secondary")}
+    {@render card(title, "Content for chunk 5")}
 </div>
 
 <div>
@@ -349,6 +387,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-6", "secondary")}
+    {@render card(title, "Content for chunk 6")}
 </div>
 
 <div>
@@ -396,6 +437,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-7", "secondary")}
+    {@render card(title, "Content for chunk 7")}
 </div>
 
 <div>
@@ -443,6 +487,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-8", "secondary")}
+    {@render card(title, "Content for chunk 8")}
 </div>
 
 <div>
@@ -490,6 +537,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-9", "secondary")}
+    {@render card(title, "Content for chunk 9")}
 </div>
 
 <div>
@@ -537,6 +587,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-10", "secondary")}
+    {@render card(title, "Content for chunk 10")}
 </div>
 
 <div>
@@ -584,6 +637,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-11", "secondary")}
+    {@render card(title, "Content for chunk 11")}
 </div>
 
 <div>
@@ -631,6 +687,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-12", "secondary")}
+    {@render card(title, "Content for chunk 12")}
 </div>
 
 <div>
@@ -678,6 +737,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-13", "secondary")}
+    {@render card(title, "Content for chunk 13")}
 </div>
 
 <div>
@@ -725,6 +787,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-14", "secondary")}
+    {@render card(title, "Content for chunk 14")}
 </div>
 
 <div>
@@ -772,6 +837,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-15", "secondary")}
+    {@render card(title, "Content for chunk 15")}
 </div>
 
 <div>
@@ -819,6 +887,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-16", "secondary")}
+    {@render card(title, "Content for chunk 16")}
 </div>
 
 <div>
@@ -866,6 +937,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-17", "secondary")}
+    {@render card(title, "Content for chunk 17")}
 </div>
 
 <div>
@@ -913,6 +987,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-18", "secondary")}
+    {@render card(title, "Content for chunk 18")}
 </div>
 
 <div>
@@ -960,6 +1037,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-19", "secondary")}
+    {@render card(title, "Content for chunk 19")}
 </div>
 
 <div>
@@ -1007,6 +1087,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-20", "secondary")}
+    {@render card(title, "Content for chunk 20")}
 </div>
 
 <div>
@@ -1054,6 +1137,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-21", "secondary")}
+    {@render card(title, "Content for chunk 21")}
 </div>
 
 <div>
@@ -1101,6 +1187,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-22", "secondary")}
+    {@render card(title, "Content for chunk 22")}
 </div>
 
 <div>
@@ -1148,6 +1237,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-23", "secondary")}
+    {@render card(title, "Content for chunk 23")}
 </div>
 
 <div>
@@ -1195,6 +1287,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-24", "secondary")}
+    {@render card(title, "Content for chunk 24")}
 </div>
 
 <div>
@@ -1242,6 +1337,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-25", "secondary")}
+    {@render card(title, "Content for chunk 25")}
 </div>
 
 <div>
@@ -1289,6 +1387,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-26", "secondary")}
+    {@render card(title, "Content for chunk 26")}
 </div>
 
 <div>
@@ -1336,6 +1437,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-27", "secondary")}
+    {@render card(title, "Content for chunk 27")}
 </div>
 
 <div>
@@ -1383,6 +1487,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-28", "secondary")}
+    {@render card(title, "Content for chunk 28")}
 </div>
 
 <div>
@@ -1430,6 +1537,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-29", "secondary")}
+    {@render card(title, "Content for chunk 29")}
 </div>
 
 <div>
@@ -1477,6 +1587,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-30", "secondary")}
+    {@render card(title, "Content for chunk 30")}
 </div>
 
 <div>
@@ -1524,6 +1637,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-31", "secondary")}
+    {@render card(title, "Content for chunk 31")}
 </div>
 
 <div>
@@ -1571,6 +1687,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-32", "secondary")}
+    {@render card(title, "Content for chunk 32")}
 </div>
 
 <div>
@@ -1618,6 +1737,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-33", "secondary")}
+    {@render card(title, "Content for chunk 33")}
 </div>
 
 <div>
@@ -1665,6 +1787,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-34", "secondary")}
+    {@render card(title, "Content for chunk 34")}
 </div>
 
 <div>
@@ -1712,6 +1837,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-35", "secondary")}
+    {@render card(title, "Content for chunk 35")}
 </div>
 
 <div>
@@ -1759,6 +1887,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-36", "secondary")}
+    {@render card(title, "Content for chunk 36")}
 </div>
 
 <div>
@@ -1806,6 +1937,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-37", "secondary")}
+    {@render card(title, "Content for chunk 37")}
 </div>
 
 <div>
@@ -1853,6 +1987,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-38", "secondary")}
+    {@render card(title, "Content for chunk 38")}
 </div>
 
 <div>
@@ -1900,6 +2037,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-39", "secondary")}
+    {@render card(title, "Content for chunk 39")}
 </div>
 
 <div>
@@ -1947,6 +2087,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-40", "secondary")}
+    {@render card(title, "Content for chunk 40")}
 </div>
 
 <div>
@@ -1994,6 +2137,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-41", "secondary")}
+    {@render card(title, "Content for chunk 41")}
 </div>
 
 <div>
@@ -2041,6 +2187,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-42", "secondary")}
+    {@render card(title, "Content for chunk 42")}
 </div>
 
 <div>
@@ -2088,6 +2237,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-43", "secondary")}
+    {@render card(title, "Content for chunk 43")}
 </div>
 
 <div>
@@ -2135,6 +2287,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-44", "secondary")}
+    {@render card(title, "Content for chunk 44")}
 </div>
 
 <div>
@@ -2182,6 +2337,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-45", "secondary")}
+    {@render card(title, "Content for chunk 45")}
 </div>
 
 <div>
@@ -2229,6 +2387,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-46", "secondary")}
+    {@render card(title, "Content for chunk 46")}
 </div>
 
 <div>
@@ -2276,6 +2437,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-47", "secondary")}
+    {@render card(title, "Content for chunk 47")}
 </div>
 
 <div>
@@ -2323,6 +2487,9 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-48", "secondary")}
+    {@render card(title, "Content for chunk 48")}
 </div>
 
 <div>
@@ -2370,5 +2537,8 @@
     {/each}
 
     <input bind:value={state} />
+
+    {@render badge("chunk-49", "secondary")}
+    {@render card(title, "Content for chunk 49")}
 </div>
 
