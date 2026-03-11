@@ -1,13 +1,33 @@
 <script>
     import { onMount } from "svelte";
+
+    // Props with various defaults
+    let {
+        title = "Default Title",
+        count = 0,
+        items = [],
+        config = $bindable({}),
+        multiplier = 2,
+        ...rest
+    } = $props();
+
     let state = $state("");
     let counter = $state(0);
 
     counter = 10;
+
+    // Derived from prop
+    let doubled = $derived(count * multiplier);
+
+    // Effect using props
+    $effect(() => {
+        console.log("Title:", title, "Count:", count);
+    });
 </script>
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -17,12 +37,12 @@
         sequence
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 text
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -38,6 +58,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -53,7 +74,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -64,7 +85,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -95,6 +116,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -110,7 +132,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -121,7 +143,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -152,6 +174,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -167,7 +190,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -178,7 +201,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -209,6 +232,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -224,7 +248,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -235,7 +259,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -266,6 +290,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -281,7 +306,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -292,7 +317,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -323,6 +348,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -338,7 +364,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -349,7 +375,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -380,6 +406,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -395,7 +422,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -406,7 +433,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -437,6 +464,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -452,7 +480,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -463,7 +491,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -494,6 +522,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -509,7 +538,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -520,7 +549,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -551,6 +580,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -566,7 +596,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -577,7 +607,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -608,6 +638,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -623,7 +654,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -634,7 +665,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -665,6 +696,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -680,7 +712,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -691,7 +723,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -722,6 +754,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -737,7 +770,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -748,7 +781,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -779,6 +812,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -794,7 +828,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -805,7 +839,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -836,6 +870,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -851,7 +886,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -862,7 +897,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -893,6 +928,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -908,7 +944,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -919,7 +955,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -950,6 +986,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -965,7 +1002,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -976,7 +1013,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1007,6 +1044,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1022,7 +1060,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1033,7 +1071,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1064,6 +1102,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1079,7 +1118,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1090,7 +1129,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1121,6 +1160,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1136,7 +1176,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1147,7 +1187,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1178,6 +1218,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1193,7 +1234,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1204,7 +1245,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1235,6 +1276,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1250,7 +1292,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1261,7 +1303,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1292,6 +1334,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1307,7 +1350,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1318,7 +1361,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1349,6 +1392,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1364,7 +1408,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1375,7 +1419,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1406,6 +1450,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1421,7 +1466,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1432,7 +1477,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1463,6 +1508,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1478,7 +1524,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1489,7 +1535,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1520,6 +1566,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1535,7 +1582,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1546,7 +1593,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1577,6 +1624,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1592,7 +1640,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1603,7 +1651,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1634,6 +1682,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1649,7 +1698,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1660,7 +1709,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1691,6 +1740,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1706,7 +1756,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1717,7 +1767,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1748,6 +1798,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1763,7 +1814,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1774,7 +1825,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1805,6 +1856,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1820,7 +1872,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1831,7 +1883,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1862,6 +1914,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1877,7 +1930,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1888,7 +1941,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1919,6 +1972,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1934,7 +1988,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -1945,7 +1999,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -1976,6 +2030,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -1991,7 +2046,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2002,7 +2057,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2033,6 +2088,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2048,7 +2104,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2059,7 +2115,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2090,6 +2146,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2105,7 +2162,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2116,7 +2173,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2147,6 +2204,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2162,7 +2220,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2173,7 +2231,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2204,6 +2262,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2219,7 +2278,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2230,7 +2289,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2261,6 +2320,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2276,7 +2336,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2287,7 +2347,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2318,6 +2378,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2333,7 +2394,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2344,7 +2405,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2375,6 +2436,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2390,7 +2452,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2401,7 +2463,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2432,6 +2494,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2447,7 +2510,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2458,7 +2521,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2489,6 +2552,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2504,7 +2568,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2515,7 +2579,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2546,6 +2610,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2561,7 +2626,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2572,7 +2637,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2603,6 +2668,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2618,7 +2684,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2629,7 +2695,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2660,6 +2726,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2675,7 +2742,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2686,7 +2753,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2717,6 +2784,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2732,7 +2800,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2743,7 +2811,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2774,6 +2842,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2789,7 +2858,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2800,7 +2869,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2831,6 +2900,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2846,7 +2916,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2857,7 +2927,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
@@ -2888,6 +2958,7 @@
 
 <div>
     Lorem {state} + {state} = Ipsum;
+    <p>Props: title={title}, count={count}, doubled={doubled}</p>
     <div
         class:state
         class:staticly={true}
@@ -2903,7 +2974,7 @@
         mollit anim id est laborum.
 
         {#if state}
-            <span title="{state}__________{state}" empty {state} {counter}>
+            <span title="{title}: {doubled}" empty {state} {counter} count={count}>
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
                 eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
                 enim ad minim veniam, quis nostrud exercitation ullamco laboris
@@ -2914,7 +2985,7 @@
             </span>
         {:else}
             <div>
-                <input {title} {state} />
+                <input {title} {state} value={count} />
             </div>
 
             {#if counter > 30}
