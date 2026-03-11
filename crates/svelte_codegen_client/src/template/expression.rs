@@ -6,7 +6,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use svelte_analyze::{ConcatPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
@@ -25,7 +25,28 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     let source = ctx.component.source_text(span);
     let mutated = &ctx.analysis.mutated_runes;
     let rune_names = &ctx.analysis.rune_names;
-    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names)
+
+    // Build prop info sets
+    let (prop_sources, prop_non_sources) = build_prop_sets(ctx);
+
+    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, &prop_sources, &prop_non_sources)
+}
+
+fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) {
+    let mut prop_sources = HashSet::new();
+    let mut prop_non_sources = HashMap::new();
+
+    if let Some(pa) = &ctx.analysis.props {
+        for p in &pa.props {
+            if p.is_rest || p.is_prop_source {
+                prop_sources.insert(p.local_name.clone());
+            } else {
+                prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
+            }
+        }
+    }
+
+    (prop_sources, prop_non_sources)
 }
 
 fn parse_and_transform<'a>(
@@ -33,6 +54,8 @@ fn parse_and_transform<'a>(
     source: &'a str,
     mutated: &HashSet<String>,
     rune_names: &HashSet<String>,
+    prop_sources: &HashSet<String>,
+    prop_non_sources: &HashMap<String, String>,
 ) -> Expression<'a> {
     let b = Builder::new(alloc);
     let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
@@ -41,7 +64,13 @@ fn parse_and_transform<'a>(
     let stmt = b.expr_stmt(expr);
     let mut program = b.program(vec![stmt]);
 
-    let mut tr = RuneRefTransformer { b: &b, mutated, rune_names };
+    let mut tr = RuneRefTransformer {
+        b: &b,
+        mutated,
+        rune_names,
+        prop_sources,
+        prop_non_sources,
+    };
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
     traverse_mut(&mut tr, alloc, &mut program, scoping, ());
@@ -57,6 +86,8 @@ struct RuneRefTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     mutated: &'b HashSet<String>,
     rune_names: &'b HashSet<String>,
+    prop_sources: &'b HashSet<String>,
+    prop_non_sources: &'b HashMap<String, String>,
 }
 
 impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
@@ -67,6 +98,21 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                     return;
                 }
                 let name = id.name.as_str().to_string();
+
+                // Props: source → name(), non-source → $$props.name
+                if self.prop_sources.contains(&name) {
+                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
+                    return;
+                }
+                if let Some(prop_name) = self.prop_non_sources.get(&name) {
+                    *node = self.b.static_member_expr(
+                        self.b.rid_expr("$$props"),
+                        prop_name,
+                    );
+                    return;
+                }
+
+                // Regular rune
                 if self.rune_names.contains(&name) && self.mutated.contains(&name) {
                     *node = crate::rune_transform::transform_rune_get(self.b, &name);
                 }

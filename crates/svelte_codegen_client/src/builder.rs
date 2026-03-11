@@ -2,9 +2,9 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget,
-        BindingIdentifier, BindingPattern, CallExpression, ExportDefaultDeclarationKind,
+        BindingIdentifier, CallExpression, ExportDefaultDeclarationKind,
         Expression, FormalParameters, Function, FunctionType, IdentifierReference,
-        ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration, ModuleExportName,
+        ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
         NumericLiteral, Program, Statement,
         StaticMemberExpression, StringLiteral, TemplateElementValue,
         TemplateLiteral, VariableDeclarationKind,
@@ -102,6 +102,24 @@ impl<'a> Builder<'a> {
         ))
     }
 
+    pub fn array_from_args<'short>(&self, args: impl IntoIterator<Item = Arg<'a, 'short>>) -> Expression<'a> {
+        let elements = args.into_iter().map(|a| {
+            let expr = match a {
+                Arg::Str(v) => self.str_expr(&v),
+                Arg::Num(v) => self.num_expr(v),
+                Arg::Ident(v) => self.rid_expr(v),
+                Arg::IdentRef(r) => Expression::Identifier(self.alloc(r)),
+                Arg::Expr(e) => e,
+                Arg::Arrow(a) => Expression::ArrowFunctionExpression(self.alloc(a)),
+                Arg::Bool(v) => self.bool_expr(v),
+            };
+            ast::ArrayExpressionElement::from(expr)
+        });
+        Expression::ArrayExpression(self.alloc(
+            self.ast.array_expression(SPAN, self.ast.vec_from_iter(elements)),
+        ))
+    }
+
     // -----------------------------------------------------------------------
     // Call expressions
     // -----------------------------------------------------------------------
@@ -183,6 +201,21 @@ impl<'a> Builder<'a> {
 
     pub fn const_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Const)
+    }
+
+    /// `let a = init_a, b = init_b, ...;` — multi-declarator let statement.
+    pub fn let_multi_stmt(&self, declarators: Vec<(&str, Expression<'a>)>) -> Statement<'a> {
+        let decls: Vec<_> = declarators.into_iter().map(|(name, init)| {
+            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+            self.ast.variable_declarator(SPAN, VariableDeclarationKind::Let, pattern, NONE, Some(init), false)
+        }).collect();
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Let,
+            self.ast.vec_from_iter(decls),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
     }
 
     fn var_decl_stmt(

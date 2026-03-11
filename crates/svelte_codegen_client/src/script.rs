@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
@@ -7,10 +7,22 @@ use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
+use svelte_analyze::PropsAnalysis;
 use svelte_ast::ScriptLanguage;
 
 use crate::builder::{Arg, Builder};
 use crate::context::Ctx;
+
+// ---------------------------------------------------------------------------
+// Props flag constants (must match svelte/src/constants.js)
+// ---------------------------------------------------------------------------
+
+const PROPS_IS_IMMUTABLE: u32 = 1;
+const PROPS_IS_RUNES: u32 = 1 << 1;
+const PROPS_IS_UPDATED: u32 = 1 << 2;
+#[allow(dead_code)]
+const PROPS_IS_BINDABLE: u32 = 1 << 3;
+const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 
 /// Parse and transform the script block.
 ///
@@ -27,8 +39,9 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
 
     let rune_names = &ctx.analysis.rune_names;
     let mutated_runes = &ctx.analysis.mutated_runes;
+    let props = ctx.analysis.props.as_ref();
 
-    transform_script_text(allocator, script_text, is_ts, rune_names, mutated_runes)
+    transform_script_text(allocator, script_text, is_ts, rune_names, mutated_runes, props)
 }
 
 /// Parse the script source and apply rune transformations, returning (imports, body).
@@ -36,8 +49,9 @@ fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    rune_names: &std::collections::HashSet<String>,
-    mutated_runes: &std::collections::HashSet<String>,
+    rune_names: &HashSet<String>,
+    mutated_runes: &HashSet<String>,
+    props: Option<&PropsAnalysis>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -49,28 +63,62 @@ fn transform_script_text<'a>(
     let b = Builder::new(allocator);
     let mut program = result.program;
 
-    // Run semantic analysis — annotates AST nodes with symbol_id / reference_id
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    // Build rune_table: OXC SymbolId → RuneInfo
+    // Build rune_table and prop_table from OXC symbols
     let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
+    let mut prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo> = HashMap::new();
+
+    let mut prop_source_names: HashSet<String> = HashSet::new();
+    let mut prop_non_source_names: HashSet<String> = HashSet::new();
+
+    if let Some(pa) = props {
+        for p in &pa.props {
+            if p.is_rest || p.is_prop_source {
+                prop_source_names.insert(p.local_name.clone());
+            } else {
+                prop_non_source_names.insert(p.local_name.clone());
+            }
+        }
+    }
 
     for sym_id in scoping.symbol_ids() {
         let name = scoping.symbol_name(sym_id);
-        if rune_names.contains(name) {
+        if prop_source_names.contains(name) {
+            prop_table.insert(sym_id, PropSymInfo { kind: PropKind::Source });
+        } else if prop_non_source_names.contains(name) {
+            prop_table.insert(sym_id, PropSymInfo {
+                kind: PropKind::NonSource(name.to_string()),
+            });
+        } else if rune_names.contains(name) {
             let mutated = mutated_runes.contains(name);
             rune_table.insert(sym_id, RuneInfo { mutated });
         }
     }
 
+    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
+        PropsGenInfo {
+            props: pa.props.iter().map(|p| PropGenItem {
+                local_name: p.local_name.clone(),
+                prop_name: p.prop_name.clone(),
+                is_prop_source: p.is_prop_source,
+                is_bindable: p.is_bindable,
+                is_rest: p.is_rest,
+                is_mutated: mutated_runes.contains(&p.local_name),
+                default_text: p.default_text.clone(),
+            }).collect(),
+        }
+    });
+
     let mut transformer = ScriptTransformer {
         b: &b,
         rune_table,
+        prop_table,
         scoping,
+        props_gen,
     };
 
-    // Pass empty scoping to traverse_mut — real IDs are already on AST nodes
     let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
@@ -100,15 +148,39 @@ struct RuneInfo {
     mutated: bool,
 }
 
+#[derive(Clone)]
+enum PropKind {
+    Source,
+    NonSource(String),
+}
+
+struct PropSymInfo {
+    kind: PropKind,
+}
+
+struct PropsGenInfo {
+    props: Vec<PropGenItem>,
+}
+
+struct PropGenItem {
+    local_name: String,
+    prop_name: String,
+    is_prop_source: bool,
+    is_bindable: bool,
+    is_rest: bool,
+    is_mutated: bool,
+    default_text: Option<String>,
+}
+
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo>,
-    /// Kept for reference_id → symbol_id resolution
+    prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo>,
     scoping: Scoping,
+    props_gen: Option<PropsGenInfo>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
-    /// Look up rune info via OXC SymbolId on a BindingIdentifier.
     fn rune_info_for_binding(
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
@@ -117,7 +189,6 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         self.rune_table.get(&sym_id)
     }
 
-    /// Look up rune info via reference_id on an IdentifierReference.
     fn rune_info_for_ref(
         &self,
         id: &oxc_ast::ast::IdentifierReference<'a>,
@@ -125,6 +196,15 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let ref_id = id.reference_id.get()?;
         let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
         self.rune_table.get(&sym_id)
+    }
+
+    fn prop_info_for_ref(
+        &self,
+        id: &oxc_ast::ast::IdentifierReference<'a>,
+    ) -> Option<&PropSymInfo> {
+        let ref_id = id.reference_id.get()?;
+        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
+        self.prop_table.get(&sym_id)
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -148,9 +228,186 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
         true
     }
+
+    fn is_props_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
+        decl.declarations.iter().any(|d| {
+            if let oxc_ast::ast::BindingPattern::ObjectPattern(_) = &d.id {
+                if let Some(init) = &d.init {
+                    if let Expression::CallExpression(call) = init {
+                        if let Expression::Identifier(ident) = &call.callee {
+                            return ident.name.as_str() == "$props";
+                        }
+                    }
+                }
+            }
+            false
+        })
+    }
+
+    fn gen_props_statements(&self) -> Vec<Statement<'a>> {
+        let Some(props_gen) = &self.props_gen else {
+            return vec![];
+        };
+
+        let mut declarators: Vec<(&str, Expression<'a>)> = Vec::new();
+        let mut seen_names: Vec<String> = vec![
+            "$$slots".to_string(),
+            "$$events".to_string(),
+            "$$legacy".to_string(),
+        ];
+
+        for prop in &props_gen.props {
+            seen_names.push(prop.prop_name.clone());
+
+            if prop.is_rest {
+                let excluded: Vec<Arg<'a, '_>> = seen_names.iter()
+                    .filter(|n| *n != &prop.local_name)
+                    .map(|n| Arg::Str(n.clone()))
+                    .collect();
+                let arr_expr = self.b.array_from_args(excluded);
+                let init = self.b.call_expr("$.rest_props", [
+                    Arg::Ident("$$props"),
+                    Arg::Expr(arr_expr),
+                ]);
+                declarators.push((self.b.ast.allocator.alloc_str(&prop.local_name), init));
+                continue;
+            }
+
+            if !prop.is_prop_source {
+                continue;
+            }
+
+            let mut flags: u32 = PROPS_IS_IMMUTABLE | PROPS_IS_RUNES;
+            if prop.is_bindable {
+                flags |= PROPS_IS_BINDABLE;
+            }
+            if prop.is_mutated {
+                flags |= PROPS_IS_UPDATED;
+            }
+
+            let mut args: Vec<Arg<'a, '_>> = vec![
+                Arg::Ident("$$props"),
+                Arg::Str(prop.prop_name.clone()),
+            ];
+
+            if let Some(default_text) = &prop.default_text {
+                let is_simple = is_simple_expression(default_text);
+                if !is_simple {
+                    flags |= PROPS_IS_LAZY_INITIAL;
+                }
+
+                args.push(Arg::Num(flags as f64));
+
+                // Parse default expression
+                let default_expr = parse_expression(self.b, default_text);
+                if is_simple {
+                    args.push(Arg::Expr(default_expr));
+                } else {
+                    args.push(Arg::Expr(wrap_lazy(self.b, default_expr)));
+                }
+            } else {
+                if flags != 0 {
+                    args.push(Arg::Num(flags as f64));
+                }
+            }
+
+            let name: &'a str = self.b.ast.allocator.alloc_str(&prop.local_name);
+            declarators.push((name, self.b.call_expr("$.prop", args)));
+        }
+
+        if declarators.is_empty() {
+            return vec![];
+        }
+
+        vec![self.b.let_multi_stmt(declarators)]
+    }
+}
+
+fn parse_expression<'a>(b: &Builder<'a>, text: &str) -> Expression<'a> {
+    let alloc = b.ast.allocator;
+    // Allocate text in the arena so it lives long enough for OXC parsing
+    let arena_text: &'a str = alloc.alloc_str(text);
+    match OxcParser::new(alloc, arena_text, SourceType::default()).parse_expression() {
+        Ok(expr) => expr,
+        Err(_) => b.str_expr(text),
+    }
+}
+
+/// Check if an expression text represents a "simple" expression (no side effects,
+/// can be eagerly evaluated). Matches Svelte's is_simple_expression().
+fn is_simple_expression(text: &str) -> bool {
+    let alloc = Allocator::default();
+    let Ok(expr) = OxcParser::new(&alloc, text, SourceType::default()).parse_expression() else {
+        return false;
+    };
+    is_simple_expr(&expr)
+}
+
+fn is_simple_expr(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::Identifier(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ConditionalExpression(c) => {
+            is_simple_expr(&c.test) && is_simple_expr(&c.consequent) && is_simple_expr(&c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            is_simple_expr(&b.left) && is_simple_expr(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            is_simple_expr(&l.left) && is_simple_expr(&l.right)
+        }
+        _ => false,
+    }
+}
+
+/// Wrap a non-simple default expression for lazy evaluation.
+fn wrap_lazy<'a>(b: &Builder<'a>, expr: Expression<'a>) -> Expression<'a> {
+    // Zero-arg call foo() → use callee directly (already lazy)
+    if let Expression::CallExpression(call) = &expr {
+        if call.arguments.is_empty() {
+            if let Expression::Identifier(_) = &call.callee {
+                return b.clone_expr(&call.callee);
+            }
+        }
+    }
+    // Otherwise wrap: () => expr
+    b.arrow_expr(b.no_params(), [b.expr_stmt(expr)])
 }
 
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
+    fn exit_statements(
+        &mut self,
+        stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.props_gen.is_none() {
+            return;
+        }
+
+        let mut idx = None;
+        for (i, stmt) in stmts.iter().enumerate() {
+            if let Statement::VariableDeclaration(decl) = stmt {
+                if Self::is_props_declaration(decl) {
+                    idx = Some(i);
+                    break;
+                }
+            }
+        }
+
+        let Some(i) = idx else { return };
+
+        let replacement = self.gen_props_statements();
+        stmts.remove(i);
+        for (j, stmt) in replacement.into_iter().enumerate() {
+            stmts.insert(i + j, stmt);
+        }
+    }
+
     fn enter_variable_declarator(
         &mut self,
         node: &mut VariableDeclarator<'a>,
@@ -218,6 +475,24 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 self.transform_update(node, ctx);
             }
             Expression::Identifier(id) => {
+                // Check props first
+                if let Some(prop_info) = self.prop_info_for_ref(id) {
+                    match &prop_info.kind {
+                        PropKind::Source => {
+                            let name = id.name.as_str().to_string();
+                            *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
+                        }
+                        PropKind::NonSource(prop_name) => {
+                            let prop_name = prop_name.clone();
+                            *node = self.b.static_member_expr(
+                                self.b.rid_expr("$$props"),
+                                &prop_name,
+                            );
+                        }
+                    }
+                    return;
+                }
+                // Regular rune check
                 let Some(info) = self.rune_info_for_ref(id) else {
                     return;
                 };
@@ -237,25 +512,24 @@ impl<'a> ScriptTransformer<'_, 'a> {
             return;
         };
 
-        let ident_name =
-            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
-                if let Some(info) = self.rune_info_for_ref(id) {
-                    if info.mutated {
-                        Some(id.name.as_str().to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+        if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
+            if let Some(prop_info) = self.prop_info_for_ref(id) {
+                if matches!(prop_info.kind, PropKind::Source) {
+                    let name = id.name.as_str().to_string();
+                    let right = self.b.move_expr(&mut assign.right);
+                    *node = self.b.call_expr(&name, [Arg::Expr(right)]);
+                    return;
                 }
-            } else {
-                None
-            };
-
-        if let Some(name) = ident_name {
-            let right = self.b.move_expr(&mut assign.right);
-            let needs_proxy = Self::should_proxy(&right);
-            *node = crate::rune_transform::transform_rune_set(self.b, &name, right, needs_proxy);
+            }
+            if let Some(info) = self.rune_info_for_ref(id) {
+                if info.mutated {
+                    let name = id.name.as_str().to_string();
+                    let right = self.b.move_expr(&mut assign.right);
+                    let needs_proxy = Self::should_proxy(&right);
+                    *node = crate::rune_transform::transform_rune_set(self.b, &name, right, needs_proxy);
+                    return;
+                }
+            }
         }
     }
 
@@ -264,28 +538,29 @@ impl<'a> ScriptTransformer<'_, 'a> {
             return;
         };
 
-        let ident_name = if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(
-            id,
-        ) = &upd.argument
-        {
+        if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
+            if let Some(prop_info) = self.prop_info_for_ref(id) {
+                if matches!(prop_info.kind, PropKind::Source) {
+                    let name = id.name.as_str().to_string();
+                    let fn_name = if upd.prefix { "$.update_pre_prop" } else { "$.update_prop" };
+                    let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
+                    if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+                        args.push(Arg::Num(-1.0));
+                    }
+                    *node = self.b.call_expr(fn_name, args);
+                    return;
+                }
+            }
             if let Some(info) = self.rune_info_for_ref(id) {
                 if info.mutated {
-                    Some(id.name.as_str().to_string())
-                } else {
-                    None
+                    let name = id.name.as_str().to_string();
+                    let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
+                    *node = crate::rune_transform::transform_rune_update(
+                        self.b, &name, upd.prefix, is_increment,
+                    );
+                    return;
                 }
-            } else {
-                None
             }
-        } else {
-            None
-        };
-
-        if let Some(name) = ident_name {
-            let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-            *node = crate::rune_transform::transform_rune_update(
-                self.b, &name, upd.prefix, is_increment,
-            );
         }
     }
 }

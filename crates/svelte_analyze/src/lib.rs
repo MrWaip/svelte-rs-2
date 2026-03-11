@@ -5,14 +5,15 @@ mod known_values;
 mod lower;
 mod mutations;
 mod parse_js;
+mod props;
 mod reactivity;
 mod runes;
 mod symbols;
 mod validate;
 
 pub use data::{
-    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, SymbolId,
-    SymbolInfo,
+    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
+    PropAnalysis, PropsAnalysis, SymbolId, SymbolInfo,
 };
 
 use svelte_ast::Component;
@@ -38,6 +39,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     runes::detect_runes(&mut data);
     known_values::collect_known_values(component, &mut data);
     mutations::detect_mutations(component, &mut data);
+    props::analyze_props(&mut data);
     lower::lower(component, &mut data);
     reactivity::mark_reactivity(component, &mut data);
     content_types::classify_content(component, &mut data);
