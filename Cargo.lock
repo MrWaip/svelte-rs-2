@@ -288,6 +288,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "generate_benchmark"
+version = "0.1.0"
+
+[[package]]
 name = "generate_test_cases"
 version = "0.1.0"
 dependencies = [
