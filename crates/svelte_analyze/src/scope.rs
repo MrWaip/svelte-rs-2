@@ -1,9 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use oxc_semantic::{
-    NodeId as OxcNodeId, Reference, ReferenceFlags as OxcRefFlags, ScopeFlags, ScopeId, Scoping,
-    SymbolFlags, SymbolId,
-};
+use oxc_semantic::{NodeId as OxcNodeId, ScopeFlags, ScopeId, Scoping, SymbolFlags, SymbolId};
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
@@ -20,6 +17,8 @@ pub struct ComponentScoping {
     runes: HashMap<SymbolId, RuneKind>,
     /// Which symbols are mutated via bind directives.
     bind_mutated: HashSet<SymbolId>,
+    /// Symbols mutated in template expressions (e.g. `{count = 99}`).
+    template_mutated: HashSet<SymbolId>,
     /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
     node_scopes: HashMap<NodeId, ScopeId>,
 }
@@ -31,6 +30,7 @@ impl ComponentScoping {
             scoping,
             runes: HashMap::new(),
             bind_mutated: HashSet::new(),
+            template_mutated: HashSet::new(),
             node_scopes: HashMap::new(),
         }
     }
@@ -87,8 +87,12 @@ impl ComponentScoping {
         self.scoping.symbol_name(id)
     }
 
-    pub fn symbol_is_mutated(&self, id: SymbolId) -> bool {
+    /// Check if a symbol has any mutation (script assignments via OXC, template assignments,
+    /// or bind directives).
+    pub fn is_mutated(&self, id: SymbolId) -> bool {
         self.scoping.symbol_is_mutated(id)
+            || self.template_mutated.contains(&id)
+            || self.bind_mutated.contains(&id)
     }
 
     /// Get the scope a symbol was declared in.
@@ -114,13 +118,9 @@ impl ComponentScoping {
         self.bind_mutated.insert(id);
     }
 
-    /// Add a write reference to a symbol so `symbol_is_mutated()` returns true.
-    pub fn mark_symbol_mutated(&mut self, sym_id: SymbolId) {
-        let scope = self.scoping.symbol_scope_id(sym_id);
-        let mut reference = Reference::new(OxcNodeId::DUMMY, scope, OxcRefFlags::Write);
-        reference.set_symbol_id(sym_id);
-        let ref_id = self.scoping.create_reference(reference);
-        self.scoping.add_resolved_reference(sym_id, ref_id);
+    /// Mark a symbol as mutated from a template expression.
+    pub fn mark_template_mutated(&mut self, sym_id: SymbolId) {
+        self.template_mutated.insert(sym_id);
     }
 
     // -- Convenience: scope-aware resolution --
@@ -142,24 +142,24 @@ impl ComponentScoping {
     // -- Bulk queries for codegen compatibility --
 
     /// All rune symbol names.
-    pub fn rune_names(&self) -> HashSet<String> {
+    pub(crate) fn rune_names(&self) -> HashSet<String> {
         self.runes
             .keys()
             .map(|&id| self.scoping.symbol_name(id).to_string())
             .collect()
     }
 
-    /// Names of all mutated runes (script assignments via OXC semantic + bind mutations).
-    pub fn mutated_rune_names(&self) -> HashSet<String> {
+    /// Names of all mutated runes (script assignments + template assignments + bind directives).
+    pub(crate) fn mutated_rune_names(&self) -> HashSet<String> {
         self.runes
             .keys()
-            .filter(|&&id| self.scoping.symbol_is_mutated(id) || self.bind_mutated.contains(&id))
+            .filter(|&&id| self.is_mutated(id))
             .map(|&id| self.scoping.symbol_name(id).to_string())
             .collect()
     }
 
     /// Names of runes mutated only via bind directives.
-    pub fn bind_mutated_rune_names(&self) -> HashSet<String> {
+    pub(crate) fn bind_mutated_rune_names(&self) -> HashSet<String> {
         self.bind_mutated
             .iter()
             .filter(|id| self.runes.contains_key(id))
