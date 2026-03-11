@@ -2,15 +2,19 @@
 
 ## Tier 1 — Разблокирует новый codegen
 
-### 1a. Props ($props, $bindable)
-- [ ] `svelte_js/src/lib.rs` — экстракция $props() destructuring: имена, дефолты, $bindable() флаги
-- [ ] `svelte_analyze/src/data.rs` — `PropsInfo { props: Vec<PropDef> }` в AnalysisData
-- [ ] `svelte_analyze/src/props.rs` — новый проход: парсинг `let { x, y = default } = $props()`
-- [ ] `svelte_analyze/src/lib.rs` — подключить props pass
-- [ ] `svelte_codegen_client/src/script.rs` — `$.prop($$props, "x", ...)` codegen
-- [ ] Ref: `reference/compiler/phases/2-analyze/visitors/VariableDeclaration.js` (секция $props)
-- [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
-- [ ] Test: `tasks/compiler_tests/cases2/props_basic/`
+### 1a. Props ($props, $bindable) ✅
+- [x] `svelte_js/src/lib.rs` — экстракция $props() destructuring: имена, дефолты, $bindable() флаги
+- [x] `svelte_analyze/src/data.rs` — `PropsAnalysis { props: Vec<PropAnalysis>, has_bindable }` в AnalysisData
+- [x] `svelte_analyze/src/props.rs` — новый проход: парсинг `let { x, y = default } = $props()`
+- [x] `svelte_analyze/src/lib.rs` — подключить props pass
+- [x] `svelte_codegen_client/src/script.rs` — `$.prop($$props, "x", ...)` codegen
+- [x] `svelte_codegen_client/src/lib.rs` — `$.push/$.pop` для bindable props
+- [x] Test: `props_basic` — non-source, source с default
+- [x] Test: `props_rest` — rest props, `$.rest_props()`, excluded names
+- [x] Test: `props_bindable` — `$bindable()` без/с default, push/pop
+- [x] Test: `props_lazy_default` — thunk wrapping, zero-arg optimization
+- [x] Test: `props_mutated` — `$.update_prop()`, PROPS_IS_UPDATED
+- [x] Test: `props_mixed` — все типы в одном компоненте
 
 ### 1b. Export analysis
 - [ ] `svelte_js/src/lib.rs` — экстракция `export const/function` деклараций
