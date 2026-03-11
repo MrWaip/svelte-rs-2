@@ -48,6 +48,8 @@ pub struct AnalysisData {
     pub alt_is_elseif: HashSet<NodeId>,
     /// Props analysis (from $props() destructuring).
     pub props: Option<PropsAnalysis>,
+    /// Exported names from `export const/function/class` or `export { ... }`.
+    pub exports: Vec<svelte_js::ExportInfo>,
 
     // -- Cached sets for codegen (populated after mutations pass) --
     /// All rune symbol names (precomputed).
@@ -73,6 +75,7 @@ impl AnalysisData {
             known_values: HashMap::new(),
             alt_is_elseif: HashSet::new(),
             props: None,
+            exports: Vec::new(),
             rune_names: HashSet::new(),
             mutated_runes: HashSet::new(),
             bind_mutated_runes: HashSet::new(),
