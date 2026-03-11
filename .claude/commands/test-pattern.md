@@ -58,17 +58,19 @@ fn analyze_source(source: &str) -> (Component, AnalysisData) {
 }
 
 fn assert_root_content_type(data: &AnalysisData, expected: ContentType) {
-    let actual = data.content_types.get(&ROOT_FRAGMENT_ID).expect("no root content type");
+    let actual = data.content_types.get(&FragmentKey::Root).expect("no root content type");
     assert_eq!(*actual, expected);
 }
 
 fn assert_symbol(data: &AnalysisData, name: &str) {
-    assert!(data.symbol_by_name.contains_key(name), "expected symbol '{name}'");
+    let root = data.scoping.root_scope_id();
+    assert!(data.scoping.find_binding(root, name).is_some(), "expected symbol '{name}'");
 }
 
 fn assert_is_rune(data: &AnalysisData, name: &str) {
-    let idx = data.symbol_by_name.get(name).unwrap_or_else(|| panic!("no symbol '{name}'"));
-    assert!(data.runes.contains_key(idx), "expected '{name}' to be a rune");
+    let root = data.scoping.root_scope_id();
+    let sym_id = data.scoping.find_binding(root, name).unwrap_or_else(|| panic!("no symbol '{name}'"));
+    assert!(data.scoping.is_rune(sym_id), "expected '{name}' to be a rune");
 }
 
 fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -77,8 +79,8 @@ fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &st
     assert!(data.dynamic_nodes.contains(&id), "expected ExpressionTag '{expr_text}' to be dynamic");
 }
 
-fn assert_lowered_item_count(data: &AnalysisData, owner_id: NodeId, expected_count: usize) {
-    let lf = data.lowered_fragments.get(&owner_id).expect("no lowered fragment");
+fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
+    let lf = data.lowered_fragments.get(&key).expect("no lowered fragment");
     assert_eq!(lf.items.len(), expected_count);
 }
 
@@ -130,7 +132,7 @@ fn rune_detection() {
 #[test]
 fn lowered_fragment_groups_text_and_expr() {
     let (_c, data) = analyze_source(r#"<script>let x = $state(1);</script>Hello {x} world"#);
-    assert_lowered_item_count(&data, ROOT_FRAGMENT_ID, 1);
+    assert_lowered_item_count(&data, FragmentKey::Root, 1);
 }
 ```
 
