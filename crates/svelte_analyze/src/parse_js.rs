@@ -11,8 +11,8 @@ pub fn parse_js(component: &Component, data: &mut AnalysisData, diags: &mut Vec<
         let typescript = matches!(script.language, ScriptLanguage::TypeScript);
         match svelte_js::analyze_script_with_scoping(source, script.content_span.start, typescript)
         {
-            Ok((info, scoping)) => {
-                data.exports = info.exports.clone();
+            Ok((mut info, scoping)) => {
+                data.exports = std::mem::take(&mut info.exports);
                 data.script = Some(info);
                 data.scoping = ComponentScoping::from_scoping(scoping);
             }

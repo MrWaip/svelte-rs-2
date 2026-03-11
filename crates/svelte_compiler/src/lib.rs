@@ -61,7 +61,7 @@ export default function App($$anchor) {
 
     #[test]
     fn single_interpolation_rune() {
-        // Unmutated $state — no $.state(), no $.get()
+        // Unmutated $state — treated as static (no template_effect)
         check(
             r#"<script>
     let name = $state();
@@ -71,7 +71,7 @@ export default function App($$anchor) {
 	let name = void 0;
 	$.next();
 	var text = $.text();
-	$.template_effect(() => $.set_text(text, name));
+	text.nodeValue = name;
 	$.append($$anchor, text);
 }
 "#,
