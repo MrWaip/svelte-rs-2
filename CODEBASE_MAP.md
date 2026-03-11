@@ -97,7 +97,6 @@ OXC facade — все OXC lifetime'ы замкнуты внутри функци
 ```rust
 // Публичный API
 fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic>
-fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<ScriptInfo, Vec<Diagnostic>>
 fn analyze_script_with_scoping(source, offset, typescript) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>>
 
 struct ExpressionInfo {
