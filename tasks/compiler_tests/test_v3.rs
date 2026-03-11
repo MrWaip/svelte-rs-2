@@ -34,6 +34,11 @@ fn empty() {
 }
 
 #[rstest]
+fn simple() {
+    assert_compiler("hello_state");
+}
+
+#[rstest]
 fn single_text_node() {
     assert_compiler("single_text_node");
 }
