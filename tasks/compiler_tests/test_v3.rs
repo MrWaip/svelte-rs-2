@@ -187,3 +187,8 @@ fn props_mutated() {
 fn props_mixed() {
     assert_compiler("props_mixed");
 }
+
+#[rstest]
+fn exports() {
+    assert_compiler("exports");
+}

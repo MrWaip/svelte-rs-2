@@ -64,9 +64,16 @@ pub struct PropsDeclaration {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExportInfo {
+    pub name: String,
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ScriptInfo {
     pub declarations: Vec<DeclarationInfo>,
     pub props_declaration: Option<PropsDeclaration>,
+    pub exports: Vec<ExportInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,139 +130,213 @@ pub fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, D
 fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
+    let mut exports = Vec::new();
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
 
         match stmt {
-            Statement::VariableDeclaration(decl) => {
-                let kind = match decl.kind {
-                    oxc_ast::ast::VariableDeclarationKind::Let => DeclarationKind::Let,
-                    oxc_ast::ast::VariableDeclarationKind::Const => DeclarationKind::Const,
-                    oxc_ast::ast::VariableDeclarationKind::Var => DeclarationKind::Var,
-                    _ => DeclarationKind::Var,
-                };
-
-                for declarator in &decl.declarations {
-                    match &declarator.id {
-                        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
-                            let name = ident.name.to_string();
-                            let decl_span = Span::new(
-                                ident.span.start + offset,
-                                ident.span.end + offset,
-                            );
-
-                            let (init_span, is_rune) = if let Some(init) = &declarator.init {
-                                let init_sp = Span::new(
-                                    init.span().start + offset,
-                                    init.span().end + offset,
-                                );
-                                let rune = detect_rune(init);
-                                (Some(init_sp), rune)
-                            } else {
-                                (None, None)
-                            };
-
-                            declarations.push(DeclarationInfo {
-                                name,
-                                span: decl_span,
-                                kind,
-                                init_span,
-                                is_rune,
-                            });
-                        }
-                        oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
-                            let is_props = declarator.init.as_ref()
-                                .and_then(|init| detect_rune(init))
-                                .map(|r| r == RuneKind::Props)
-                                .unwrap_or(false);
-
-                            if is_props {
-                                let mut props = Vec::new();
-
-                                for prop in &obj_pat.properties {
-                                    let key_name = extract_property_key_name(&prop.key);
-                                    let Some(key_name) = key_name else { continue };
-
-                                    let local_name = extract_binding_name(&prop.value);
-                                    let local_name = local_name.unwrap_or_else(|| key_name.clone());
-
-                                    let (default_span, default_text, is_bindable) = extract_prop_default(&prop.value, offset, source);
-
-                                    let decl_span = Span::new(
-                                        prop.span.start + offset,
-                                        prop.span.end + offset,
-                                    );
-
-                                    declarations.push(DeclarationInfo {
-                                        name: local_name.clone(),
-                                        span: decl_span,
-                                        kind,
-                                        init_span: None,
-                                        is_rune: Some(RuneKind::Props),
-                                    });
-
-                                    props.push(PropInfo {
-                                        local_name,
-                                        prop_name: key_name,
-                                        default_span,
-                                        default_text,
-                                        is_bindable,
-                                        is_rest: false,
-                                    });
-                                }
-
-                                if let Some(rest) = &obj_pat.rest {
-                                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &rest.argument {
-                                        let rest_name = ident.name.to_string();
-                                        let decl_span = Span::new(
-                                            ident.span.start + offset,
-                                            ident.span.end + offset,
-                                        );
-                                        declarations.push(DeclarationInfo {
-                                            name: rest_name.clone(),
-                                            span: decl_span,
-                                            kind,
-                                            init_span: None,
-                                            is_rune: Some(RuneKind::Props),
-                                        });
-                                        props.push(PropInfo {
-                                            local_name: rest_name.clone(),
-                                            prop_name: rest_name,
-                                            default_span: None,
-                                            default_text: None,
-                                            is_bindable: false,
-                                            is_rest: true,
-                                        });
-                                    }
-                                }
-
-                                props_declaration = Some(PropsDeclaration { props });
-                            }
-                        }
-                        _ => {}
-                    }
+            Statement::ExportNamedDeclaration(export) => {
+                // `export { x, y as z }` form
+                for spec in &export.specifiers {
+                    let local = spec.local.name().to_string();
+                    let exported = spec.exported.name().to_string();
+                    let alias = if local != exported { Some(exported) } else { None };
+                    exports.push(ExportInfo { name: local, alias });
+                }
+                // `export const/function/class ...` form
+                if let Some(decl) = &export.declaration {
+                    collect_export_names_from_declaration(decl, &mut exports);
+                    collect_declarations_from_declaration(decl, offset, source, &mut declarations, &mut props_declaration);
                 }
             }
+            Statement::VariableDeclaration(decl) => {
+                collect_var_declarations(decl, offset, source, &mut declarations, &mut props_declaration);
+            }
             Statement::FunctionDeclaration(func) => {
-                if let Some(ident) = &func.id {
-                    declarations.push(DeclarationInfo {
-                        name: ident.name.to_string(),
-                        span: Span::new(
-                            ident.span.start + offset,
-                            ident.span.end + offset,
-                        ),
-                        kind: DeclarationKind::Function,
-                        init_span: None,
-                        is_rune: None,
-                    });
-                }
+                collect_func_declaration(func, offset, &mut declarations);
             }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration }
+    ScriptInfo { declarations, props_declaration, exports }
+}
+
+fn collect_export_names_from_declaration(
+    decl: &oxc_ast::ast::Declaration<'_>,
+    exports: &mut Vec<ExportInfo>,
+) {
+    match decl {
+        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
+            for declarator in &var_decl.declarations {
+                if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
+                    exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+                }
+            }
+        }
+        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
+            if let Some(ident) = &func.id {
+                exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+            }
+        }
+        oxc_ast::ast::Declaration::ClassDeclaration(cls) => {
+            if let Some(ident) = &cls.id {
+                exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_declarations_from_declaration(
+    decl: &oxc_ast::ast::Declaration<'_>,
+    offset: u32,
+    source: &str,
+    declarations: &mut Vec<DeclarationInfo>,
+    props_declaration: &mut Option<PropsDeclaration>,
+) {
+    match decl {
+        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
+            collect_var_declarations(var_decl, offset, source, declarations, props_declaration);
+        }
+        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
+            collect_func_declaration(func, offset, declarations);
+        }
+        _ => {}
+    }
+}
+
+fn collect_func_declaration(
+    func: &oxc_ast::ast::Function<'_>,
+    offset: u32,
+    declarations: &mut Vec<DeclarationInfo>,
+) {
+    if let Some(ident) = &func.id {
+        declarations.push(DeclarationInfo {
+            name: ident.name.to_string(),
+            span: Span::new(ident.span.start + offset, ident.span.end + offset),
+            kind: DeclarationKind::Function,
+            init_span: None,
+            is_rune: None,
+        });
+    }
+}
+
+fn collect_var_declarations(
+    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    offset: u32,
+    source: &str,
+    declarations: &mut Vec<DeclarationInfo>,
+    props_declaration: &mut Option<PropsDeclaration>,
+) {
+    let kind = match decl.kind {
+        oxc_ast::ast::VariableDeclarationKind::Let => DeclarationKind::Let,
+        oxc_ast::ast::VariableDeclarationKind::Const => DeclarationKind::Const,
+        oxc_ast::ast::VariableDeclarationKind::Var => DeclarationKind::Var,
+        _ => DeclarationKind::Var,
+    };
+
+    for declarator in &decl.declarations {
+        match &declarator.id {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
+                let name = ident.name.to_string();
+                let decl_span = Span::new(
+                    ident.span.start + offset,
+                    ident.span.end + offset,
+                );
+
+                let (init_span, is_rune) = if let Some(init) = &declarator.init {
+                    let init_sp = Span::new(
+                        init.span().start + offset,
+                        init.span().end + offset,
+                    );
+                    let rune = detect_rune(init);
+                    (Some(init_sp), rune)
+                } else {
+                    (None, None)
+                };
+
+                declarations.push(DeclarationInfo {
+                    name,
+                    span: decl_span,
+                    kind,
+                    init_span,
+                    is_rune,
+                });
+            }
+            oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
+                let is_props = declarator.init.as_ref()
+                    .and_then(|init| detect_rune(init))
+                    .map(|r| r == RuneKind::Props)
+                    .unwrap_or(false);
+
+                if is_props {
+                    let mut props = Vec::new();
+
+                    for prop in &obj_pat.properties {
+                        let key_name = extract_property_key_name(&prop.key);
+                        let Some(key_name) = key_name else { continue };
+
+                        let local_name = extract_binding_name(&prop.value);
+                        let local_name = local_name.unwrap_or_else(|| key_name.clone());
+
+                        let (default_span, default_text, is_bindable) = extract_prop_default(&prop.value, offset, source);
+
+                        let decl_span = Span::new(
+                            prop.span.start + offset,
+                            prop.span.end + offset,
+                        );
+
+                        declarations.push(DeclarationInfo {
+                            name: local_name.clone(),
+                            span: decl_span,
+                            kind,
+                            init_span: None,
+                            is_rune: Some(RuneKind::Props),
+                        });
+
+                        props.push(PropInfo {
+                            local_name,
+                            prop_name: key_name,
+                            default_span,
+                            default_text,
+                            is_bindable,
+                            is_rest: false,
+                        });
+                    }
+
+                    if let Some(rest) = &obj_pat.rest {
+                        if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &rest.argument {
+                            let rest_name = ident.name.to_string();
+                            let decl_span = Span::new(
+                                ident.span.start + offset,
+                                ident.span.end + offset,
+                            );
+                            declarations.push(DeclarationInfo {
+                                name: rest_name.clone(),
+                                span: decl_span,
+                                kind,
+                                init_span: None,
+                                is_rune: Some(RuneKind::Props),
+                            });
+                            props.push(PropInfo {
+                                local_name: rest_name.clone(),
+                                prop_name: rest_name,
+                                default_span: None,
+                                default_text: None,
+                                is_bindable: false,
+                                is_rest: true,
+                            });
+                        }
+                    }
+
+                    *props_declaration = Some(PropsDeclaration { props });
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Parse a `<script>` block once and return both owned analysis info and OXC Scoping.
@@ -566,5 +647,19 @@ mod tests {
         let info = analyze_expression("x", 100).unwrap();
         assert_eq!(info.references[0].span.start, 100);
         assert_eq!(info.references[0].span.end, 101);
+    }
+
+    #[test]
+    fn analyze_script_exports() {
+        let (info, _) = analyze_script_with_scoping(
+            "export const PI = 3.14; export function greet(name) { return name; }",
+            0, false
+        ).unwrap();
+        assert_eq!(info.exports.len(), 2);
+        assert_eq!(info.exports[0].name, "PI");
+        assert_eq!(info.exports[1].name, "greet");
+        // Declarations are also extracted from exported statements
+        assert!(info.declarations.iter().any(|d| d.name == "PI"));
+        assert!(info.declarations.iter().any(|d| d.name == "greet"));
     }
 }

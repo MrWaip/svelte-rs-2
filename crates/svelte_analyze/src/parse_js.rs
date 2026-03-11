@@ -12,6 +12,7 @@ pub fn parse_js(component: &Component, data: &mut AnalysisData, diags: &mut Vec<
         match svelte_js::analyze_script_with_scoping(source, script.content_span.start, typescript)
         {
             Ok((info, scoping)) => {
+                data.exports = info.exports.clone();
                 data.script = Some(info);
                 data.scoping = ComponentScoping::from_scoping(scoping);
             }
