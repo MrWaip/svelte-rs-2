@@ -23,6 +23,7 @@ pub enum DiagnosticKind {
     NoIfBlockToClose,
     NoIfBlockForElse,
     OnlyOneTopLevelScript,
+    OnlyOneTopLevelStyle,
     UnknownDirective,
     NoEachBlockToClose,
     // Analysis errors (future)
@@ -97,6 +98,10 @@ impl Diagnostic {
 
     pub fn only_single_top_level_script(span: Span) -> Self {
         Self::error(DiagnosticKind::OnlyOneTopLevelScript, span)
+    }
+
+    pub fn only_single_top_level_style(span: Span) -> Self {
+        Self::error(DiagnosticKind::OnlyOneTopLevelStyle, span)
     }
 
     pub fn unknown_directive(span: Span) -> Self {

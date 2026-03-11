@@ -233,6 +233,10 @@ impl<'a> Scanner<'a> {
             return self.script_tag(attributes);
         }
 
+        if name == "style" {
+            return self.style_tag(attributes);
+        }
+
         self.add_token(TokenType::StartTag(StartTag {
             attributes,
             name,
@@ -519,6 +523,13 @@ impl<'a> Scanner<'a> {
     fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
         let start = self.current;
         while self.peek() != Some(quote) && !self.is_at_end() {
+            if self.peek() == Some('\\') {
+                self.advance(); // skip backslash
+                if !self.is_at_end() {
+                    self.advance(); // skip escaped char
+                }
+                continue;
+            }
             self.advance();
         }
 
@@ -723,6 +734,51 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
+    fn style_tag(&mut self, attributes: Vec<Attribute<'a>>) -> Result<(), Diagnostic> {
+        let start = self.current;
+        let mut end = start;
+
+        while !self.is_at_end() {
+            let char = self.advance();
+
+            if char != '<' {
+                continue;
+            }
+
+            end = self.prev;
+
+            if !self.match_char('/') {
+                continue;
+            }
+
+            let identifier = self.identifier();
+
+            if identifier == "style" {
+                break;
+            }
+        }
+
+        if self.is_at_end() {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
+        }
+
+        self.skip_whitespace();
+
+        if !self.match_char('>') {
+            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+        }
+
+        self.add_token(TokenType::StyleTag(token::StyleTag {
+            source: self.slice_source(start, end),
+            attributes,
+        }));
+
+        Ok(())
+    }
+
     fn comment(&mut self) -> Result<(), Diagnostic> {
         let start = self.current;
         self.advance();
@@ -904,26 +960,44 @@ impl<'a> Scanner<'a> {
             return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
         };
 
+        let last_char = self.slice_source(self.prev, self.prev + 1);
+
         // Parse optional index: `, i`
-        let index = if self.slice_source(self.prev, self.prev + 1) == "," {
+        let mut index = None;
+        let mut key = None;
+
+        if last_char == "," {
             self.skip_whitespace();
             let idx_start = self.current;
             let idx_name = self.identifier();
             if idx_name.is_empty() {
                 return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
             }
+            index = Some(JsExpression {
+                span: Span::new(idx_start as u32, (idx_start + idx_name.len()) as u32),
+                value: idx_name,
+            });
             self.skip_whitespace();
-            // Consume closing `}`
+
+            // After index, check for key `(expr)` or closing `}`
+            if self.peek() == Some('(') {
+                key = Some(self.collect_key_expression(false)?);
+                self.skip_whitespace();
+            }
+
             if !self.match_char('}') {
                 return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
             }
-            Some(JsExpression {
-                span: Span::new(idx_start as u32, (idx_start + idx_name.len()) as u32),
-                value: idx_name,
-            })
-        } else {
-            None
-        };
+        } else if last_char == "(" {
+            // Key expression directly after item (no index), `(` already consumed
+            key = Some(self.collect_key_expression(true)?);
+            self.skip_whitespace();
+
+            if !self.match_char('}') {
+                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+            }
+        }
+        // else: `}` — no index, no key
 
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection: JsExpression {
@@ -931,11 +1005,54 @@ impl<'a> Scanner<'a> {
                 value: collection,
             },
             item,
-            key: None,
+            key,
             index,
         }));
 
         Ok(())
+    }
+
+    /// Collect key expression in `{#each ... (key)}`.
+    /// If `open_consumed` is true, `(` was already consumed by the caller.
+    /// If false, `(` is expected at the current peek position and will be consumed.
+    fn collect_key_expression(&mut self, open_consumed: bool) -> Result<JsExpression<'a>, Diagnostic> {
+        if !open_consumed {
+            debug_assert_eq!(self.peek(), Some('('));
+            self.advance(); // consume '('
+        }
+
+        let start = self.current;
+        let mut depth: u32 = 1;
+
+        while !self.is_at_end() && depth > 0 {
+            let ch = self.advance();
+            match ch {
+                '\'' | '"' | '`' => self.skip_js_string(ch)?,
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                _ => {}
+            }
+        }
+
+        if depth != 0 {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
+        }
+
+        let end = self.prev; // position of ')'
+        let raw = self.slice_source(start, end);
+        let value = raw.trim();
+        let trim_start = raw.len() - raw.trim_start().len();
+        let trim_end = raw.len() - raw.trim_end().len();
+        let span_start = start + trim_start;
+        let span_end = end - trim_end;
+
+        Ok(JsExpression {
+            span: Span::new(span_start as u32, span_end as u32),
+            value,
+        })
     }
 
     /// Collect item expression in each-block context.
@@ -958,8 +1075,8 @@ impl<'a> Scanner<'a> {
                 '}' if curly_depth > 0 => curly_depth -= 1,
                 '[' => bracket_depth += 1,
                 ']' if bracket_depth > 0 => bracket_depth -= 1,
-                // At depth 0: `,` means index follows, `}` means end of block
-                ',' | '}' if curly_depth == 0 && bracket_depth == 0 => {
+                // At depth 0: `,` means index follows, `(` means key follows, `}` means end of block
+                ',' | '}' | '(' if curly_depth == 0 && bracket_depth == 0 => {
                     let raw = self.slice_source(start, self.prev);
                     let value = raw.trim();
                     let trim_start = raw.len() - raw.trim_start().len();
@@ -1180,5 +1297,237 @@ mod tests {
         let mut scanner = Scanner::new("<div disabled");
         let result = scanner.scan_tokens();
         assert_error_result(result, DiagnosticKind::UnterminatedStartTag);
+    }
+
+    // --- Escape sequence tests (Bug #1) ---
+
+    #[test]
+    fn interpolation_escaped_double_quote() {
+        let mut scanner = Scanner::new(r#"{ name.replace("\"", "'") }"#);
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_escaped_single_quote() {
+        let mut scanner = Scanner::new(r"{ 'it\'s a test' }");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_escaped_backtick() {
+        let mut scanner = Scanner::new(r"{ `hello \` world` }");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_escaped_backslash() {
+        let mut scanner = Scanner::new(r#"{ "path\\to\\file" }"#);
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    // --- Style tag tests (Bug #2) ---
+
+    #[test]
+    fn style_tag_basic() {
+        let mut scanner = Scanner::new("<style>.foo { color: red; }</style>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StyleTag(_)));
+        if let TokenType::StyleTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.source, ".foo { color: red; }");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn style_tag_with_angle_brackets() {
+        let mut scanner = Scanner::new("<style>a > b { color: red; }</style>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StyleTag(_)));
+        if let TokenType::StyleTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.source, "a > b { color: red; }");
+        }
+    }
+
+    // --- Each block key tests (Bug #3) ---
+
+    fn assert_start_each_tag_with_key(
+        token: &Token,
+        expected_collection: &str,
+        expected_item: &str,
+        expected_key: &str,
+    ) {
+        let tag = match &token.token_type {
+            TokenType::StartEachTag(t) => t,
+            _ => panic!("Expected token.type = StartEachTag"),
+        };
+
+        assert_eq!(tag.collection.value, expected_collection);
+        assert_eq!(tag.item.value, expected_item);
+        let key = tag.key.as_ref().expect("expected key");
+        assert_eq!(key.value, expected_key);
+    }
+
+    #[test]
+    fn each_block_with_key() {
+        let mut scanner = Scanner::new("{#each items as item (item.id)}");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_each_tag_with_key(&tokens[0], "items", "item", "item.id");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn each_block_with_index_and_key() {
+        let mut scanner = Scanner::new("{#each items as item, i (item.id)}");
+        let tokens = scanner.scan_tokens().unwrap();
+
+        let tag = match &tokens[0].token_type {
+            TokenType::StartEachTag(t) => t,
+            _ => panic!("Expected StartEachTag"),
+        };
+        assert_eq!(tag.collection.value, "items");
+        assert_eq!(tag.item.value, "item");
+        assert_eq!(tag.index.as_ref().unwrap().value, "i");
+        assert_eq!(tag.key.as_ref().unwrap().value, "item.id");
+    }
+
+    #[test]
+    fn each_block_destructured_with_key() {
+        let mut scanner = Scanner::new("{#each items as {name} (name)}");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_each_tag_with_key(&tokens[0], "items", "{name}", "name");
+    }
+
+    // --- Directive tests ---
+
+    #[test]
+    fn class_directive_with_expression() {
+        let mut scanner = Scanner::new("<div class:active={isActive}>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_tag(
+            &tokens[0],
+            "div",
+            vec![("$classDirective", "isActive")],
+            false,
+        );
+    }
+
+    #[test]
+    fn class_directive_shorthand() {
+        let mut scanner = Scanner::new("<div class:active>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_tag(
+            &tokens[0],
+            "div",
+            vec![("$classDirective", "active")],
+            false,
+        );
+    }
+
+    #[test]
+    fn bind_directive_with_expression() {
+        let mut scanner = Scanner::new("<input bind:value={name}>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![("$bindDirective", "name")],
+            false,
+        );
+    }
+
+    #[test]
+    fn bind_directive_shorthand() {
+        let mut scanner = Scanner::new("<input bind:value>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert_start_tag(
+            &tokens[0],
+            "input",
+            vec![("$bindDirective", "value")],
+            false,
+        );
+    }
+
+    // --- Attribute concatenation tests ---
+
+    #[test]
+    fn attribute_concatenation() {
+        let mut scanner = Scanner::new(r#"<div title="hello {name} world">"#);
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        if let TokenType::StartTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.name, "div");
+            assert_eq!(st.attributes.len(), 1);
+            if let Attribute::HTMLAttribute(ref attr) = st.attributes[0] {
+                assert_eq!(attr.name, "title");
+                assert!(matches!(attr.value, AttributeValue::Concatenation(_)));
+            } else {
+                panic!("Expected HTMLAttribute");
+            }
+        }
+    }
+
+    // --- Spread/shorthand attribute tests ---
+
+    #[test]
+    fn spread_attribute() {
+        let mut scanner = Scanner::new("<div {...props}>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        if let TokenType::StartTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.attributes.len(), 1);
+            if let Attribute::ExpressionTag(ref et) = st.attributes[0] {
+                assert_eq!(et.expression.value, "...props");
+            } else {
+                panic!("Expected ExpressionTag for spread");
+            }
+        }
+    }
+
+    #[test]
+    fn shorthand_attribute() {
+        let mut scanner = Scanner::new("<div {value}>");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        if let TokenType::StartTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.attributes.len(), 1);
+            if let Attribute::ExpressionTag(ref et) = st.attributes[0] {
+                assert_eq!(et.expression.value, "value");
+            } else {
+                panic!("Expected ExpressionTag for shorthand");
+            }
+        }
+    }
+
+    // --- Snippet/render token tests ---
+
+    #[test]
+    fn snippet_tag_tokens() {
+        let mut scanner = Scanner::new("{#snippet foo(a, b)}content{/snippet}");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
+        if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.name, "foo");
+            assert_eq!(st.params.as_ref().unwrap().value, "a, b");
+        }
+        assert!(tokens[1].token_type == TokenType::Text);
+        assert!(tokens[2].token_type == TokenType::EndSnippetTag);
+    }
+
+    #[test]
+    fn render_tag_tokens() {
+        let mut scanner = Scanner::new("{@render foo(x, y)}");
+        let tokens = scanner.scan_tokens().unwrap();
+        assert!(matches!(tokens[0].token_type, TokenType::RenderTag(_)));
+        if let TokenType::RenderTag(ref rt) = tokens[0].token_type {
+            assert_eq!(rt.expression.value, "foo(x, y)");
+        }
     }
 }
