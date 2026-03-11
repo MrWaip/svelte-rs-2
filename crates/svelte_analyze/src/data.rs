@@ -1,15 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use svelte_span::Span;
 use svelte_ast::NodeId;
-use svelte_js::{DeclarationKind, ExpressionInfo, RuneKind, ScriptInfo};
+use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
 
-// ---------------------------------------------------------------------------
-// SymbolId — typed index into symbols Vec
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SymbolId(pub u32);
+use crate::scope::ComponentScoping;
 
 // ---------------------------------------------------------------------------
 // FragmentKey — typed key for lowered_fragments and content_types
@@ -38,12 +32,8 @@ pub struct AnalysisData {
     pub attr_expressions: HashMap<(NodeId, usize), ExpressionInfo>,
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
-    /// All top-level symbols declared in the script block.
-    pub symbols: Vec<SymbolInfo>,
-    /// Index into `symbols` by name.
-    pub symbol_by_name: HashMap<String, SymbolId>,
-    /// Which symbols are Svelte runes.
-    pub runes: HashMap<SymbolId, RuneKind>,
+    /// Unified scope tree for script + template (oxc-based).
+    pub(crate) scoping: ComponentScoping,
     /// Element attributes that reference rune symbols: (element NodeId, attr index).
     pub dynamic_attrs: HashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
@@ -52,20 +42,20 @@ pub struct AnalysisData {
     pub node_needs_ref: HashSet<NodeId>,
     /// Content classification for each fragment.
     pub content_types: HashMap<FragmentKey, ContentType>,
-    /// Rune symbol names mutated via bind directives only (used by codegen for bind getter/setter).
-    pub bind_mutated_runes: HashSet<String>,
-    /// All rune symbol names that are mutated (script assignments via OXC semantic + bind directives).
-    pub mutated_runes: HashSet<String>,
     /// Compile-time known values for const declarations with literal initializers.
     pub known_values: HashMap<String, String>,
-    /// All rune symbol names (precomputed from runes + symbol_by_name).
-    pub rune_names: HashSet<String>,
-    /// Rune names that are mutated (intersection of mutated_runes and rune_names).
-    pub mutable_runes: HashSet<String>,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
     pub alt_is_elseif: HashSet<NodeId>,
     /// Props analysis (from $props() destructuring).
     pub props: Option<PropsAnalysis>,
+
+    // -- Cached sets for codegen (populated after mutations pass) --
+    /// All rune symbol names (precomputed).
+    pub rune_names: HashSet<String>,
+    /// All mutated rune names (script assignments + bind directives).
+    pub mutated_runes: HashSet<String>,
+    /// Rune names mutated only via bind directives.
+    pub bind_mutated_runes: HashSet<String>,
 }
 
 impl AnalysisData {
@@ -75,21 +65,26 @@ impl AnalysisData {
             expressions: HashMap::new(),
             attr_expressions: HashMap::new(),
             script: None,
-            symbols: Vec::new(),
-            symbol_by_name: HashMap::new(),
-            runes: HashMap::new(),
+            scoping: ComponentScoping::empty(),
             dynamic_attrs: HashSet::new(),
             dynamic_nodes: HashSet::new(),
             node_needs_ref: HashSet::new(),
             content_types: HashMap::new(),
-            bind_mutated_runes: HashSet::new(),
-            mutated_runes: HashSet::new(),
             known_values: HashMap::new(),
-            rune_names: HashSet::new(),
-            mutable_runes: HashSet::new(),
             alt_is_elseif: HashSet::new(),
             props: None,
+            rune_names: HashSet::new(),
+            mutated_runes: HashSet::new(),
+            bind_mutated_runes: HashSet::new(),
         }
+    }
+
+    /// Populate cached rune name sets from ComponentScoping.
+    /// Call after build_scoping + detect_mutations.
+    pub fn cache_rune_sets(&mut self) {
+        self.rune_names = self.scoping.rune_names();
+        self.mutated_runes = self.scoping.mutated_rune_names();
+        self.bind_mutated_runes = self.scoping.bind_mutated_rune_names();
     }
 }
 
@@ -99,13 +94,13 @@ impl AnalysisData {
     }
 
     pub fn is_mutable_rune(&self, name: &str) -> bool {
-        self.mutable_runes.contains(name)
+        self.mutated_runes.contains(name)
     }
 
     pub fn rune_kind(&self, name: &str) -> Option<RuneKind> {
-        self.symbol_by_name
-            .get(name)
-            .and_then(|sid| self.runes.get(sid).copied())
+        let root = self.scoping.root_scope_id();
+        let sym_id = self.scoping.find_binding(root, name)?;
+        self.scoping.rune_kind(sym_id)
     }
 }
 
@@ -138,17 +133,6 @@ pub enum ConcatPart {
 }
 
 // ---------------------------------------------------------------------------
-// SymbolInfo — a declared symbol from the script block
-// ---------------------------------------------------------------------------
-
-pub struct SymbolInfo {
-    pub name: String,
-    pub span: Span,
-    pub kind: DeclarationKind,
-    pub init_span: Option<Span>,
-}
-
-// ---------------------------------------------------------------------------
 // PropsAnalysis — analysis of $props() destructuring
 // ---------------------------------------------------------------------------
 
@@ -160,7 +144,7 @@ pub struct PropsAnalysis {
 pub struct PropAnalysis {
     pub local_name: String,
     pub prop_name: String,
-    pub default_span: Option<Span>,
+    pub default_span: Option<svelte_span::Span>,
     pub default_text: Option<String>,
     pub is_bindable: bool,
     pub is_rest: bool,

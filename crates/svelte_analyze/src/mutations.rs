@@ -1,54 +1,31 @@
-use std::collections::HashSet;
-
-use svelte_ast::{Attribute, Component, Fragment, Node, ScriptLanguage};
+use oxc_semantic::ScopeId;
+use svelte_ast::{Attribute, Component, Fragment, Node};
 
 use crate::data::AnalysisData;
 
-/// Detect which rune symbols are mutated: assigned in script (via OXC semantic) or bound via bind directives.
+/// Detect which rune symbols are mutated: assigned in script (already tracked by OXC semantic),
+/// template expression assignments, or bound via bind directives.
+/// After detection, caches the rune name sets on AnalysisData.
 pub fn detect_mutations(component: &Component, data: &mut AnalysisData) {
-    if data.rune_names.is_empty() {
-        return;
-    }
+    // Script mutations are already tracked by OXC's SemanticBuilder
+    // (symbol_is_mutated() returns true for symbols with write references).
 
-    let rune_names = &data.rune_names;
-    let mut mutated = HashSet::new();
-
-    // Script assignments (via OXC semantic — handles nested functions, arrow functions, etc.)
-    if let Some(script) = &component.script {
-        let is_ts = script.language == ScriptLanguage::TypeScript;
-        let script_text = component.source_text(script.content_span);
-        let assigned = svelte_js::find_script_mutations(script_text, is_ts);
-        for name in assigned {
-            if rune_names.contains(&name) {
-                mutated.insert(name);
-            }
-        }
-    }
+    let root_scope = data.scoping.root_scope_id();
 
     // Template expression assignments (e.g. `{title = 30}`)
-    walk_template_mutations(&component.fragment, rune_names, data, &mut mutated);
+    walk_template_mutations(&component.fragment, data, root_scope);
 
     // Bind directives imply mutation
-    walk_binds(&component.fragment, component, rune_names, &mut data.bind_mutated_runes);
+    walk_binds(&component.fragment, component, data, root_scope);
 
-    // Merge bind mutations into the full set
-    mutated.extend(data.bind_mutated_runes.iter().cloned());
-
-    data.mutated_runes = mutated;
-
-    data.mutable_runes = data
-        .mutated_runes
-        .iter()
-        .filter(|name| data.rune_names.contains(name.as_str()))
-        .cloned()
-        .collect();
+    // Cache the computed rune name sets
+    data.cache_rune_sets();
 }
 
 fn walk_template_mutations(
     fragment: &Fragment,
-    rune_names: &HashSet<String>,
-    data: &AnalysisData,
-    out: &mut HashSet<String>,
+    data: &mut AnalysisData,
+    current_scope: ScopeId,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -58,26 +35,33 @@ fn walk_template_mutations(
                         if r.flags == svelte_js::ReferenceFlags::Write
                             || r.flags == svelte_js::ReferenceFlags::ReadWrite
                         {
-                            if rune_names.contains(&r.name) {
-                                out.insert(r.name.clone());
+                            if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name)
+                            {
+                                if data.scoping.is_rune(sym_id) {
+                                    data.scoping.mark_template_mutated(sym_id);
+                                }
                             }
                         }
                     }
                 }
             }
             Node::Element(el) => {
-                walk_template_mutations(&el.fragment, rune_names, data, out);
+                walk_template_mutations(&el.fragment, data, current_scope);
             }
             Node::IfBlock(b) => {
-                walk_template_mutations(&b.consequent, rune_names, data, out);
+                walk_template_mutations(&b.consequent, data, current_scope);
                 if let Some(alt) = &b.alternate {
-                    walk_template_mutations(alt, rune_names, data, out);
+                    walk_template_mutations(alt, data, current_scope);
                 }
             }
             Node::EachBlock(b) => {
-                walk_template_mutations(&b.body, rune_names, data, out);
+                let body_scope = data
+                    .scoping
+                    .node_scope(b.id)
+                    .unwrap_or(current_scope);
+                walk_template_mutations(&b.body, data, body_scope);
                 if let Some(fb) = &b.fallback {
-                    walk_template_mutations(fb, rune_names, data, out);
+                    walk_template_mutations(fb, data, current_scope);
                 }
             }
             _ => {}
@@ -88,8 +72,8 @@ fn walk_template_mutations(
 fn walk_binds(
     fragment: &Fragment,
     component: &Component,
-    rune_names: &HashSet<String>,
-    out: &mut HashSet<String>,
+    data: &mut AnalysisData,
+    current_scope: ScopeId,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -103,23 +87,30 @@ fn walk_binds(
                         } else {
                             continue;
                         };
-                        if rune_names.contains(&name) {
-                            out.insert(name);
+                        if let Some(sym_id) = data.scoping.find_binding(current_scope, &name) {
+                            if data.scoping.is_rune(sym_id) {
+                                data.scoping.mark_bind_mutated(sym_id);
+                                data.scoping.mark_template_mutated(sym_id);
+                            }
                         }
                     }
                 }
-                walk_binds(&el.fragment, component, rune_names, out);
+                walk_binds(&el.fragment, component, data, current_scope);
             }
             Node::IfBlock(b) => {
-                walk_binds(&b.consequent, component, rune_names, out);
+                walk_binds(&b.consequent, component, data, current_scope);
                 if let Some(alt) = &b.alternate {
-                    walk_binds(alt, component, rune_names, out);
+                    walk_binds(alt, component, data, current_scope);
                 }
             }
             Node::EachBlock(b) => {
-                walk_binds(&b.body, component, rune_names, out);
+                let body_scope = data
+                    .scoping
+                    .node_scope(b.id)
+                    .unwrap_or(current_scope);
+                walk_binds(&b.body, component, data, body_scope);
                 if let Some(fb) = &b.fallback {
-                    walk_binds(fb, component, rune_names, out);
+                    walk_binds(fb, component, data, current_scope);
                 }
             }
             _ => {}
