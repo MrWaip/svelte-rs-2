@@ -145,7 +145,7 @@ pub use data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey,
 1. `parse_js` — парсит JS-выражения → `expressions`, `attr_expressions`, `script`; builds `ComponentScoping` via single OXC parse
 2. `build_scoping` — marks runes in scoping, walks template to add each-block child scopes
 3. `known_values` — const-декларации с литеральным init → `known_values`
-4. `mutations` — template assignments + bind directives → `mutated_runes`, `bind_mutated_runes`, `mutable_runes`
+4. `mutations` — template assignments + bind directives → `mutated_runes`, `bind_mutated_runes`
 5. `lower` — trim whitespace, группирует Text+ExprTag → `lowered_fragments`
 6. `reactivity` — scope-aware binding resolution → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
 7. `content_types` — классификация по lowered items → `content_types`
@@ -160,7 +160,7 @@ struct ComponentScoping {
     bind_mutated: HashSet<SymbolId>,      // symbols mutated via bind:
     node_scopes: HashMap<NodeId, ScopeId>, // each-block NodeId → child ScopeId
 }
-// from_scoping(Scoping) / from_script(source, typescript) / empty()
+// from_scoping(Scoping) / empty()
 // add_child_scope(parent) -> ScopeId
 // add_binding(scope, name) -> SymbolId
 // find_binding(scope, name) -> Option<SymbolId>  — walks parent chain
@@ -168,7 +168,7 @@ struct ComponentScoping {
 // mark_symbol_mutated(id) / symbol_is_mutated(id)
 // is_dynamic_ref(scope, name) -> bool  — true if rune or non-root binding
 // node_scope(NodeId) -> Option<ScopeId>
-// rune_names() / mutated_rune_names() / mutable_rune_names() / bind_mutated_rune_names()
+// rune_names() / mutated_rune_names() / bind_mutated_rune_names()
 ```
 
 **Ключевые типы** (`data.rs`):
@@ -201,7 +201,6 @@ struct AnalysisData {
     // Cached sets for codegen (populated by cache_rune_sets()):
     rune_names: HashSet<String>,
     mutated_runes: HashSet<String>,
-    mutable_runes: HashSet<String>,
     bind_mutated_runes: HashSet<String>,
 }
 
