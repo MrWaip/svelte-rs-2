@@ -1,12 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use oxc_allocator::Allocator;
-use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{
     NodeId as OxcNodeId, Reference, ReferenceFlags as OxcRefFlags, ReferenceId, ScopeFlags,
-    ScopeId, Scoping, SemanticBuilder, SymbolFlags, SymbolId,
+    ScopeId, Scoping, SymbolFlags, SymbolId,
 };
-use oxc_span::SourceType;
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
@@ -28,28 +25,7 @@ pub struct ComponentScoping {
 }
 
 impl ComponentScoping {
-    /// Build from script source: parse with OXC, run SemanticBuilder, extract Scoping.
-    /// The OXC Allocator and AST are dropped — Scoping is fully owned.
-    pub fn from_script(source: &str, typescript: bool) -> Self {
-        let allocator = Allocator::default();
-        let source_type = if typescript {
-            SourceType::default().with_typescript(true)
-        } else {
-            SourceType::default()
-        };
-        let result = OxcParser::new(&allocator, source, source_type).parse();
-        let sem = SemanticBuilder::new().build(&result.program);
-        let scoping = sem.semantic.into_scoping();
-
-        Self {
-            scoping,
-            runes: HashMap::new(),
-            bind_mutated: HashSet::new(),
-            node_scopes: HashMap::new(),
-        }
-    }
-
-    /// Create from a pre-built OXC Scoping (avoids double parsing).
+    /// Create from a pre-built OXC Scoping (produced by `analyze_script_with_scoping`).
     pub fn from_scoping(scoping: Scoping) -> Self {
         Self {
             scoping,
@@ -60,9 +36,11 @@ impl ComponentScoping {
     }
 
     /// Create an empty scoping (no script block).
-    /// Parses an empty source to get a valid root scope from OXC.
+    /// Parses an empty source via `svelte_js` to get a valid root scope from OXC.
     pub fn empty() -> Self {
-        Self::from_script("", false)
+        let (_info, scoping) = svelte_js::analyze_script_with_scoping("", 0, false)
+            .expect("empty script should parse");
+        Self::from_scoping(scoping)
     }
 
     // -- Scope management --

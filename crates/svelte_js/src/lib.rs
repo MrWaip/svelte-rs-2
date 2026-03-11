@@ -120,33 +120,6 @@ pub fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, D
     Ok(info)
 }
 
-/// Parse a `<script>` block and return owned analysis info.
-///
-/// `source` is the content between `<script>` tags.
-/// `offset` is the byte offset of the content start in the .svelte file.
-///
-/// If you also need `oxc_semantic::Scoping`, use `analyze_script_with_scoping()`
-/// to avoid a second parse.
-pub fn analyze_script(source: &str, offset: u32, typescript: bool) -> Result<ScriptInfo, Vec<Diagnostic>> {
-    let allocator = Allocator::default();
-    let source_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-
-    let parser = OxcParser::new(&allocator, source, source_type);
-    let result = parser.parse();
-
-    if !result.errors.is_empty() {
-        return Err(result.errors.iter().map(|_| {
-            Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-        }).collect());
-    }
-
-    Ok(extract_script_info(&result.program, offset, source))
-}
-
 fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
@@ -580,7 +553,7 @@ mod tests {
 
     #[test]
     fn analyze_script_basic() {
-        let info = analyze_script("let count = $state(0); const name = 'test';", 0, false).unwrap();
+        let (info, _scoping) = analyze_script_with_scoping("let count = $state(0); const name = 'test';", 0, false).unwrap();
         assert_eq!(info.declarations.len(), 2);
         assert_eq!(info.declarations[0].name, "count");
         assert_eq!(info.declarations[0].is_rune, Some(RuneKind::State));
