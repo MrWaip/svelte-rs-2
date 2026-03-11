@@ -34,6 +34,17 @@ impl ScriptTag<'_> {
             _ => false,
         })
     }
+
+    pub fn is_module(&self) -> bool {
+        self.attributes.iter().any(|item| match item {
+            Attribute::HTMLAttribute(attr) => {
+                (attr.name == "module" && attr.value == AttributeValue::Empty)
+                    || (attr.name == "context"
+                        && matches!(attr.value, AttributeValue::String(v) if v == "module"))
+            }
+            _ => false,
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
