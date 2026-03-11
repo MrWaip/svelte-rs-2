@@ -66,7 +66,6 @@
 
 ### 2c. Event handlers
 - [ ] Codegen для `onclick={handler}` как атрибут (уже парсится?)
-- [ ] Codegen для `on:click` legacy директива
 - [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
 - [ ] Test: `tasks/compiler_tests/cases2/event_handler/`
 
