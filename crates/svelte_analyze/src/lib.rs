@@ -106,20 +106,30 @@ fn snippet_refs_script(
     for node in &fragment.nodes {
         match node {
             svelte_ast::Node::ExpressionTag(tag) => {
-                if let Some(info) = data.expressions.get(&tag.id) {
-                    for r in &info.references {
-                        if script_names.contains(r.name.as_str()) {
-                            return true;
-                        }
-                    }
+                if expr_refs_script(data.expressions.get(&tag.id), script_names) {
+                    return true;
                 }
             }
             svelte_ast::Node::Element(el) => {
+                if attrs_ref_script(&el.attributes, el.id, data, script_names) {
+                    return true;
+                }
                 if snippet_refs_script(&el.fragment, data, script_names) {
                     return true;
                 }
             }
+            svelte_ast::Node::ComponentNode(cn) => {
+                if attrs_ref_script(&cn.attributes, cn.id, data, script_names) {
+                    return true;
+                }
+                if snippet_refs_script(&cn.fragment, data, script_names) {
+                    return true;
+                }
+            }
             svelte_ast::Node::IfBlock(b) => {
+                if expr_refs_script(data.expressions.get(&b.id), script_names) {
+                    return true;
+                }
                 if snippet_refs_script(&b.consequent, data, script_names) {
                     return true;
                 }
@@ -130,11 +140,47 @@ fn snippet_refs_script(
                 }
             }
             svelte_ast::Node::EachBlock(b) => {
+                if expr_refs_script(data.expressions.get(&b.id), script_names) {
+                    return true;
+                }
                 if snippet_refs_script(&b.body, data, script_names) {
                     return true;
                 }
             }
+            svelte_ast::Node::RenderTag(t) => {
+                if expr_refs_script(data.expressions.get(&t.id), script_names) {
+                    return true;
+                }
+            }
+            svelte_ast::Node::SnippetBlock(sb) => {
+                if snippet_refs_script(&sb.body, data, script_names) {
+                    return true;
+                }
+            }
             _ => {}
+        }
+    }
+    false
+}
+
+/// Check if an expression info references any script-declared name.
+fn expr_refs_script(
+    info: Option<&svelte_js::ExpressionInfo>,
+    script_names: &rustc_hash::FxHashSet<String>,
+) -> bool {
+    info.is_some_and(|i| i.references.iter().any(|r| script_names.contains(r.name.as_str())))
+}
+
+/// Check if any attribute expressions on a node reference script-declared names.
+fn attrs_ref_script(
+    attributes: &[svelte_ast::Attribute],
+    owner_id: svelte_ast::NodeId,
+    data: &AnalysisData,
+    script_names: &rustc_hash::FxHashSet<String>,
+) -> bool {
+    for (idx, _) in attributes.iter().enumerate() {
+        if expr_refs_script(data.attr_expressions.get(&(owner_id, idx)), script_names) {
+            return true;
         }
     }
     false
