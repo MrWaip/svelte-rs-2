@@ -274,8 +274,7 @@ pub(crate) fn emit_text_update<'a>(
 
     if is_dyn {
         let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
-        let eff = ctx.b.arrow(ctx.b.no_params(), [set]);
-        body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
+        emit_template_effect(ctx, vec![set], body);
     } else {
         body.push(ctx.b.assign_stmt(
             AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
