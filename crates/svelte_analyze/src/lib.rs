@@ -25,8 +25,8 @@ use svelte_diagnostics::Diagnostic;
 /// Pass order:
 /// 1. parse_js      — parse JS expressions + script block
 /// 2. build_scoping — build unified scope tree (script + template)
-/// 3. known_values  — evaluate const declarations with literal initializers
-/// 4. mutations     — detect mutated runes (single composite walk: template + binds)
+/// 3. mutations     — detect mutated runes (single composite walk: template + binds)
+/// 4. known_values  — evaluate const declarations with literal initializers
 /// 5. props         — analyze $props() destructuring
 /// 6. lower         — trim whitespace, group text+expressions
 /// 7. reactivity + elseif — single composite walk: mark dynamic nodes + detect elseif
@@ -55,8 +55,8 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     }
 
     scope::build_scoping(component, &mut data);
-    known_values::collect_known_values(component, &mut data);
     mutations::detect_mutations(component, &mut data);
+    known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);
 
@@ -70,11 +70,74 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
 
+    // Determine which top-level snippets can be hoisted to module scope
+    compute_hoistable_snippets(component, &mut data);
+
     content_types::classify_content(component, &mut data);
     needs_var::compute_elements_needing_var(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
+}
+
+/// A snippet can be hoisted to module scope if its body doesn't reference
+/// any script-declared variables (runes, lets, consts from the script block).
+fn compute_hoistable_snippets(component: &Component, data: &mut AnalysisData) {
+    let script_names: rustc_hash::FxHashSet<String> = if let Some(script) = &data.script {
+        script.declarations.iter().map(|d| d.name.to_string()).collect()
+    } else {
+        rustc_hash::FxHashSet::default()
+    };
+
+    for node in &component.fragment.nodes {
+        if let svelte_ast::Node::SnippetBlock(block) = node {
+            if !snippet_refs_script(&block.body, data, &script_names) {
+                data.hoistable_snippets.insert(block.id);
+            }
+        }
+    }
+}
+
+fn snippet_refs_script(
+    fragment: &svelte_ast::Fragment,
+    data: &AnalysisData,
+    script_names: &rustc_hash::FxHashSet<String>,
+) -> bool {
+    for node in &fragment.nodes {
+        match node {
+            svelte_ast::Node::ExpressionTag(tag) => {
+                if let Some(info) = data.expressions.get(&tag.id) {
+                    for r in &info.references {
+                        if script_names.contains(r.name.as_str()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            svelte_ast::Node::Element(el) => {
+                if snippet_refs_script(&el.fragment, data, script_names) {
+                    return true;
+                }
+            }
+            svelte_ast::Node::IfBlock(b) => {
+                if snippet_refs_script(&b.consequent, data, script_names) {
+                    return true;
+                }
+                if let Some(alt) = &b.alternate {
+                    if snippet_refs_script(alt, data, script_names) {
+                        return true;
+                    }
+                }
+            }
+            svelte_ast::Node::EachBlock(b) => {
+                if snippet_refs_script(&b.body, data, script_names) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------

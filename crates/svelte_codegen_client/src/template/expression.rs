@@ -28,8 +28,9 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     let snippet_params = &ctx.snippet_param_names;
     let prop_sources = &ctx.prop_sources;
     let prop_non_sources = &ctx.prop_non_sources;
+    let each_vars = &ctx.each_vars;
 
-    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, prop_sources, prop_non_sources, snippet_params)
+    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, prop_sources, prop_non_sources, snippet_params, each_vars)
 }
 
 pub(crate) fn parse_and_transform<'a>(
@@ -40,6 +41,7 @@ pub(crate) fn parse_and_transform<'a>(
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
     snippet_params: &[String],
+    each_vars: &FxHashSet<String>,
 ) -> Expression<'a> {
     let b = Builder::new(alloc);
     let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
@@ -55,6 +57,7 @@ pub(crate) fn parse_and_transform<'a>(
         prop_sources,
         prop_non_sources,
         snippet_params,
+        each_vars,
     };
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
@@ -74,6 +77,7 @@ struct RuneRefTransformer<'b, 'a> {
     prop_sources: &'b FxHashSet<String>,
     prop_non_sources: &'b FxHashMap<String, String>,
     snippet_params: &'b [String],
+    each_vars: &'b FxHashSet<String>,
 }
 
 impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
@@ -101,6 +105,12 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                         self.b.rid_expr("$$props"),
                         prop_name,
                     );
+                    return;
+                }
+
+                // Each-block context variable → $.get(name)
+                if self.each_vars.contains(&name) {
+                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
                     return;
                 }
 

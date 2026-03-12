@@ -31,8 +31,9 @@ use traverse::traverse_items;
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Returns `(hoisted, body)` for the root fragment.
-pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+/// Returns `(hoisted, body, snippet_stmts)` for the root fragment.
+/// `snippet_stmts` are instance-level snippets that go inside the function body.
+pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let key = FragmentKey::Root;
     let ct = ctx
         .analysis
@@ -43,6 +44,19 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
 
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
+
+    // Generate instance-level snippets NOW (after root ident consumed, before inner fragments)
+    // so their templates get the correct root_N numbering
+    let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
+    let component = ctx.component;
+    for node in &component.fragment.nodes {
+        if let svelte_ast::Node::SnippetBlock(block) = node {
+            if !ctx.analysis.hoistable_snippets.contains(&block.id) {
+                let stmt = snippet::gen_snippet_block(ctx, block.id);
+                snippet_stmts.push(stmt);
+            }
+        }
+    }
 
     let mut hoisted = Vec::new();
     let mut body = Vec::new();
@@ -56,7 +70,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         ContentType::Mixed => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
-    (hoisted, body)
+    (hoisted, body, snippet_stmts)
 }
 
 // ---------------------------------------------------------------------------
@@ -356,11 +370,14 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             };
 
             // RenderTag / ComponentNode: call directly with $$anchor
+            // Still consume a "fragment" ident for consistent numbering
             match item {
                 FragmentItem::RenderTag(id) => {
+                    ctx.gen_ident("fragment");
                     gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
                 FragmentItem::ComponentNode(id) => {
+                    ctx.gen_ident("fragment");
                     gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
                 _ => {
@@ -400,13 +417,13 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             }
 
             let html = fragment_html(ctx, key);
-            ctx.module_hoisted.push(ctx.b.var_stmt(
+            let tpl_stmt = ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b.call_expr(
                     "$.from_html",
                     [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
                 ),
-            ));
+            );
 
             let frag = ctx.gen_ident("fragment");
             body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(&tpl_name, [])));
@@ -426,6 +443,8 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 &mut after_update,
             );
             ctx.module_hoisted.extend(sub_hoisted);
+            // Push own template AFTER inner templates (bottom-up order)
+            ctx.module_hoisted.push(tpl_stmt);
             emit_trailing_next(ctx, trailing, &mut init);
             body.extend(init);
             emit_template_effect(ctx, update, &mut body);

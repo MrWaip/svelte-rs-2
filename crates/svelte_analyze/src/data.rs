@@ -54,6 +54,8 @@ pub struct AnalysisData {
     pub exports: Vec<svelte_js::ExportInfo>,
     /// Snippet parameter names, keyed by snippet NodeId.
     pub snippet_params: FxHashMap<NodeId, Vec<String>>,
+    /// Top-level snippets whose bodies don't reference component-scoped variables.
+    pub hoistable_snippets: FxHashSet<NodeId>,
 
     // -- Cached sets for codegen (populated after mutations pass) --
     /// All rune symbol names (precomputed).
@@ -83,6 +85,7 @@ impl AnalysisData {
             props: None,
             exports: Vec::new(),
             snippet_params: FxHashMap::default(),
+            hoistable_snippets: FxHashSet::default(),
             rune_names: FxHashSet::default(),
             mutated_runes: FxHashSet::default(),
             bind_mutated_runes: FxHashSet::default(),

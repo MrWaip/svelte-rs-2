@@ -123,14 +123,12 @@ pub(crate) fn gen_component<'a>(
     if children_ct != ContentType::Empty {
         let frag_key = FragmentKey::ComponentNode(id);
 
-        // is_text_first: skip over inserted anchor comment when first child is text
-        let is_text_first = ctx.analysis.lowered_fragments
-            .get(&frag_key)
-            .and_then(|lf| lf.items.first())
-            .is_some_and(|item| matches!(item, FragmentItem::TextConcat { .. }));
+        // For text-first content (StaticText/DynamicText), gen_fragment doesn't emit $.next(),
+        // so the component handler must. For Mixed, gen_fragment handles it.
+        let needs_next = matches!(children_ct, ContentType::StaticText | ContentType::DynamicText);
 
         let mut body_stmts = Vec::new();
-        if is_text_first {
+        if needs_next {
             body_stmts.push(ctx.b.call_stmt("$.next", []));
         }
         body_stmts.extend(gen_fragment(ctx, frag_key));

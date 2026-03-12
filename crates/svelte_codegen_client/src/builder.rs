@@ -315,6 +315,28 @@ impl<'a> Builder<'a> {
         self.ast.arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body)
     }
 
+    /// Arrow function that always uses block body (never expression body).
+    pub fn arrow_block(
+        &self,
+        params: FormalParameters<'a>,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+    ) -> ArrowFunctionExpression<'a> {
+        let body = self.ast.function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(statements),
+        );
+        self.ast.arrow_function_expression(SPAN, false, false, NONE, params, NONE, body)
+    }
+
+    pub fn arrow_block_expr(
+        &self,
+        params: FormalParameters<'a>,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+    ) -> Expression<'a> {
+        Expression::ArrowFunctionExpression(self.alloc(self.arrow_block(params, statements)))
+    }
+
     pub fn arrow_expr(
         &self,
         params: FormalParameters<'a>,
@@ -540,10 +562,16 @@ impl<'a> Builder<'a> {
     fn obj_prop_to_ast(&self, prop: ObjProp<'a>) -> ast::ObjectPropertyKind<'a> {
         match prop {
             ObjProp::KeyValue(key, value) => {
-                let key_atom = self.ast.atom(key);
-                let key_node = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, key_atom)),
-                );
+                let key_node = if key.contains('-') {
+                    ast::PropertyKey::StringLiteral(
+                        self.alloc(self.str_lit(key)),
+                    )
+                } else {
+                    let key_atom = self.ast.atom(key);
+                    ast::PropertyKey::StaticIdentifier(
+                        self.alloc(self.ast.identifier_name(SPAN, key_atom)),
+                    )
+                };
                 let obj_prop = self.ast.object_property(
                     SPAN,
                     ast::PropertyKind::Init,

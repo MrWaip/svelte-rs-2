@@ -70,7 +70,7 @@ pub(crate) fn gen_if_block<'a>(
     for branch in branches.iter() {
         let body = gen_fragment(ctx, branch.consequent_key);
         let name = ctx.gen_ident("consequent");
-        let arrow = ctx.b.arrow_expr(ctx.b.params(["$$anchor"]), body);
+        let arrow = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
         stmts.push(ctx.b.var_stmt(&name, arrow));
         branch_names.push(name);
     }
@@ -78,7 +78,7 @@ pub(crate) fn gen_if_block<'a>(
     let alt_name = if let Some(alt_key) = final_alternate {
         let body = gen_fragment(ctx, alt_key);
         let name = ctx.gen_ident("alternate");
-        let arrow = ctx.b.arrow_expr(ctx.b.params(["$$anchor"]), body);
+        let arrow = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
         stmts.push(ctx.b.var_stmt(&name, arrow));
         Some(name)
     } else {

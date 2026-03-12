@@ -30,6 +30,23 @@ pub(crate) fn process_attr<'a>(
             // Static — already in template HTML
         }
         Attribute::ExpressionAttribute(a) => {
+            if let Some(event_name) = a.name.strip_prefix("on") {
+                if is_delegatable_event(event_name) {
+                    let val = parse_expr(ctx, a.expression_span);
+                    after_update.push(ctx.b.call_stmt(
+                        "$.delegated",
+                        [
+                            Arg::Str(event_name.to_string()),
+                            Arg::Ident(el_name),
+                            Arg::Expr(val),
+                        ],
+                    ));
+                    if !ctx.delegated_events.contains(&event_name.to_string()) {
+                        ctx.delegated_events.push(event_name.to_string());
+                    }
+                    return;
+                }
+            }
             let val = parse_expr(ctx, a.expression_span);
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
@@ -210,6 +227,40 @@ fn gen_bind_directive<'a>(
     };
 
     Some(stmt)
+}
+
+/// Events that Svelte delegates to the document root.
+fn is_delegatable_event(name: &str) -> bool {
+    matches!(
+        name,
+        "click"
+            | "input"
+            | "change"
+            | "submit"
+            | "focus"
+            | "blur"
+            | "keydown"
+            | "keyup"
+            | "keypress"
+            | "mousedown"
+            | "mouseup"
+            | "mousemove"
+            | "mouseenter"
+            | "mouseleave"
+            | "mouseover"
+            | "mouseout"
+            | "touchstart"
+            | "touchend"
+            | "touchmove"
+            | "pointerdown"
+            | "pointerup"
+            | "pointermove"
+            | "focusin"
+            | "focusout"
+            | "dblclick"
+            | "contextmenu"
+            | "auxclick"
+    )
 }
 
 /// Check if an element has any spread attribute.
