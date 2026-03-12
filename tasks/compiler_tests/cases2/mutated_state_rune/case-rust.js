@@ -4,6 +4,7 @@ export default function App($$anchor) {
 	let title = $.state(10);
 	let flag = void 0;
 	let flag2 = $.state(void 0);
+	let value = $.state("text");
 	onMount(() => {
 		$.set(title, 20);
 		window.id = $.get(title);
@@ -11,8 +12,11 @@ export default function App($$anchor) {
 		map($.get(title));
 	});
 	function map(value, off = $.get(title)) {
-		return value;
+		return $.get(value);
 	}
+	$.set(value, 1234);
+	$.set(value, 4e3);
+	$.set(value, "");
 	const obj = {
 		title: $.get(title),
 		title: $.get(title)

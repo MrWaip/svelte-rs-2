@@ -2,6 +2,7 @@
     let title = $state(10);
     let flag = $state();
     let flag2 = $state();
+    let value = $state("text");
 
     onMount(() => {
         title = 20;
@@ -14,8 +15,13 @@
         return value;
     }
 
+    value += 1234;
+    value -= 4000;
+    value = "";
+
     const obj = { title: title, title };
 </script>
+
 <div>{title}</div>
 
 <div {flag}>
