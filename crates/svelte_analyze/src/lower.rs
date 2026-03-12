@@ -20,6 +20,9 @@ fn lower_fragment(
             Node::Element(el) => {
                 lower_fragment(&el.fragment, FragmentKey::Element(el.id), component, data);
             }
+            Node::ComponentNode(cn) => {
+                lower_fragment(&cn.fragment, FragmentKey::ComponentNode(cn.id), component, data);
+            }
             Node::IfBlock(block) => {
                 lower_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), component, data);
                 if let Some(alt) = &block.alternate {
@@ -95,6 +98,10 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
             Node::Element(el) => {
                 flush(&mut concat, &mut items);
                 items.push(FragmentItem::Element(el.id));
+            }
+            Node::ComponentNode(cn) => {
+                flush(&mut concat, &mut items);
+                items.push(FragmentItem::ComponentNode(cn.id));
             }
             Node::IfBlock(block) => {
                 flush(&mut concat, &mut items);

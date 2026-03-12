@@ -202,3 +202,23 @@ fn exports() {
 fn snippet_basic() {
     assert_compiler("snippet_basic");
 }
+
+#[rstest]
+fn component_basic() {
+    assert_compiler("component_basic");
+}
+
+#[rstest]
+fn component_non_self_closing() {
+    assert_compiler("component_non_self_closing");
+}
+
+#[rstest]
+fn component_in_element() {
+    assert_compiler("component_in_element");
+}
+
+#[rstest]
+fn component_mixed() {
+    assert_compiler("component_mixed");
+}

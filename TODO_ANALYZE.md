@@ -36,15 +36,29 @@
 - [x] Ref: `reference/compiler/phases/3-transform/client/visitors/RenderTag.js`
 - [x] Test: `tasks/compiler_tests/cases2/snippet_basic/`
 
-### 1d. Component instantiation
-- [ ] `svelte_ast/src/lib.rs` — `Node::Component` (отличается от `RegularElement`)
-- [ ] `svelte_parser/src/` — различение Component vs Element (заглавная буква / точка / svelte:)
-- [ ] `svelte_analyze/src/` — propagation metadata для компонентов
-- [ ] `svelte_codegen_client/src/template/component.rs` — `$.component()` codegen
+### 1d. Component instantiation (частично ✅)
+- [x] `svelte_ast/src/lib.rs` — `Node::ComponentNode` (отличается от `Element`)
+- [x] `svelte_parser/src/` — различение Component vs Element (`is_component_name`: заглавная буква / точка)
+- [x] `svelte_analyze/src/` — `FragmentItem::ComponentNode`, `FragmentKey::ComponentNode`, все проходы обновлены
+- [x] `svelte_codegen_client/src/template/component.rs` — `Name($$anchor, {})` codegen
+- [x] Test: `component_basic` — `<Button />`
+- [x] Test: `component_non_self_closing` — `<Modal></Modal>`
+- [x] Test: `component_in_element` — `<div><Button /></div>`
+- [x] Test: `component_mixed` — `<h1>Title</h1><Button /><Icon />`
+
+Не реализовано (подзадачи):
+- [ ] **1d-props** — передача props в компонент: `<Button onclick={handler} label="text" />`
+  - Сборка атрибутов в объект `{ label: "text", onclick: handler }`
+  - Reactive props: getter-обёртка `{ get onclick() { return handler } }`
+  - Spread props: `$.spread_props()`
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js` (build_component_props)
+- [ ] **1d-children** — children как snippet: `<Button>content</Button>`
+  - Генерация `children: ($$anchor, $$slotProps) => { ... }` из `ComponentNode.fragment`
+  - `$$slots: { default: true }` маркер
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js` (children секция)
+- [ ] **1d-events** — event forwarding на компонентах
 - [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js`
 - [ ] Ref: `reference/compiler/phases/1-parse/state/element.js` (component detection)
-- [ ] Test: `tasks/compiler_tests/cases2/component_basic/`
-- [ ] Зависит от: 1a (props), 1c (snippets как children)
 
 ---
 
@@ -119,7 +133,7 @@
 - [ ] 4c. Legacy mode ($:, stores, export let) — требует scope system
 - [ ] 4d. Full scope system — `svelte_analyze/src/scope.rs` (~1300 строк в reference)
 - [ ] 4e. AwaitBlock — `svelte_ast`, парсер, codegen
-- [ ] 4f. Slot analysis ($$slots) — legacy, заменён сниппетами
+- ~~4f. Slot analysis ($$slots) — legacy, заменён сниппетами~~ — не нужен, используем snippets
 - [ ] 4g. Function/closure warnings — DX only
 
 ---

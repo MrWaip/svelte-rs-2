@@ -7,6 +7,7 @@ use svelte_analyze::FragmentItem;
 use crate::builder::{Arg, AssignLeft, AssignRight};
 use crate::context::Ctx;
 
+use super::component::gen_component;
 use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
 use super::expression::parts_are_dynamic;
@@ -82,6 +83,14 @@ pub(crate) fn traverse_items<'a>(
                     prev_ident = Some(el_name.clone());
                     sibling_offset = 1;
                     process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update);
+                }
+
+                FragmentItem::ComponentNode(id) => {
+                    let node_name = ctx.gen_ident("node");
+                    init.push(ctx.b.var_stmt(&node_name, node_expr));
+                    prev_ident = Some(node_name.clone());
+                    sibling_offset = 1;
+                    gen_component(ctx, *id, ctx.b.rid_expr(&node_name), init);
                 }
 
                 FragmentItem::IfBlock(id) => {

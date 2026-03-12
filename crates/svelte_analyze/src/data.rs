@@ -13,6 +13,7 @@ use crate::scope::ComponentScoping;
 pub enum FragmentKey {
     Root,
     Element(NodeId),
+    ComponentNode(NodeId),
     IfConsequent(NodeId),
     IfAlternate(NodeId),
     EachBody(NodeId),
@@ -126,6 +127,8 @@ pub struct LoweredFragment {
 pub enum FragmentItem {
     /// A standalone element node.
     Element(NodeId),
+    /// A component instantiation.
+    ComponentNode(NodeId),
     /// An IfBlock (has its own sub-fragments in lowered_fragments).
     IfBlock(NodeId),
     /// An EachBlock (has its own sub-fragments in lowered_fragments).
