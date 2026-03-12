@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, EachBlock, Element, ExpressionTag, Fragment, IfBlock, Node,
-    RenderTag, SnippetBlock,
+    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, Fragment, IfBlock,
+    Node, RenderTag, SnippetBlock,
 };
 
 use crate::data::AnalysisData;
@@ -26,6 +26,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after snippet block body has been walked. Use with `visit_snippet_block` for stack-based context.
     fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
 }
@@ -77,6 +78,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 visitor.leave_snippet_block(block, scope, data);
             }
             Node::ComponentNode(cn) => {
+                for (idx, attr) in cn.attributes.iter().enumerate() {
+                    visitor.visit_component_attribute(attr, idx, cn, scope, data);
+                }
                 walk_template(&cn.fragment, data, scope, visitor);
             }
             Node::RenderTag(tag) => {
@@ -117,6 +121,9 @@ macro_rules! impl_composite_visitor {
             }
             fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.visit_bind_directive(dir, el, scope, data);)+
+            }
+            fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+                $(self.$idx.visit_component_attribute(attr, idx, cn, scope, data);)+
             }
             fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.leave_snippet_block(block, scope, data);)+

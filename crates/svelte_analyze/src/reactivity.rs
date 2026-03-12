@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, EachBlock, Element, ExpressionTag, IfBlock, NodeId, RenderTag,
-    SnippetBlock,
+    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, IfBlock, NodeId,
+    RenderTag, SnippetBlock,
 };
 
 use crate::data::AnalysisData;
@@ -85,6 +85,12 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
+    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+        if component_attr_is_dynamic(attr, idx, cn.id, data, scope) {
+            data.dynamic_attrs.insert((cn.id, idx));
+        }
+    }
+
     fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
         self.snippet_id_stack.push(block.id);
     }
@@ -92,6 +98,40 @@ impl TemplateVisitor for ReactivityVisitor {
     fn leave_snippet_block(&mut self, _block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
         self.snippet_id_stack.pop();
     }
+}
+
+// Component props are dynamic for *any* rune reference (mutated or not).
+// This matches Svelte's `has_state` semantics — component props use getters
+// so the child component can re-read the value reactively.
+fn component_attr_is_dynamic(
+    attr: &Attribute,
+    attr_idx: usize,
+    owner_id: NodeId,
+    data: &AnalysisData,
+    current_scope: ScopeId,
+) -> bool {
+    if matches!(
+        attr,
+        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+    ) {
+        return false;
+    }
+    if let Some(info) = data.attr_expressions.get(&(owner_id, attr_idx)) {
+        return info.references.iter().any(|r| {
+            // Any rune (even unmutated $state) or non-root binding makes it dynamic
+            if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name) {
+                let root = data.scoping.root_scope_id();
+                if data.scoping.symbol_scope_id(sym_id) != root {
+                    return true;
+                }
+                if data.scoping.is_rune(sym_id) {
+                    return true;
+                }
+            }
+            false
+        });
+    }
+    false
 }
 
 // Attributes are dynamic only for *mutated* runes — unlike expressions where

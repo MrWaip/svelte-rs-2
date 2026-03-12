@@ -222,3 +222,8 @@ fn component_in_element() {
 fn component_mixed() {
     assert_compiler("component_mixed");
 }
+
+#[rstest]
+fn component_props() {
+    assert_compiler("component_props");
+}

@@ -1,4 +1,4 @@
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, ScriptLanguage};
+use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, NodeId, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 use svelte_js::{ExpressionInfo, ExpressionKind};
 
@@ -52,10 +52,11 @@ fn walk_node(
             }
         }
         Node::Element(el) => {
-            walk_attr_expressions(el, component, data, diags);
+            walk_attrs(el.id, &el.attributes, component, data, diags);
             walk_fragment(&el.fragment, component, data, diags);
         }
         Node::ComponentNode(cn) => {
+            walk_attrs(cn.id, &cn.attributes, component, data, diags);
             walk_fragment(&cn.fragment, component, data, diags);
         }
         Node::IfBlock(block) => {
@@ -103,20 +104,21 @@ fn walk_node(
     }
 }
 
-/// Parse and store attribute expressions, keyed by (element_id, attr_index).
-fn walk_attr_expressions(
-    el: &svelte_ast::Element,
+/// Parse and store attribute expressions, keyed by (owner_id, attr_index).
+fn walk_attrs(
+    owner_id: NodeId,
+    attrs: &[Attribute],
     component: &Component,
     data: &mut AnalysisData,
     diags: &mut Vec<Diagnostic>,
 ) {
-    for (attr_idx, attr) in el.attributes.iter().enumerate() {
+    for (attr_idx, attr) in attrs.iter().enumerate() {
         match attr {
             Attribute::ExpressionAttribute(a) => {
                 let source = component.source_text(a.expression_span);
                 let offset = a.expression_span.start;
                 match svelte_js::analyze_expression(source, offset) {
-                    Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
+                    Ok(info) => { data.attr_expressions.insert((owner_id, attr_idx), info); }
                     Err(diag) => diags.push(diag),
                 }
             }
@@ -137,14 +139,14 @@ fn walk_attr_expressions(
                     references: all_refs,
                     has_side_effects: false,
                 };
-                data.attr_expressions.insert((el.id, attr_idx), merged);
+                data.attr_expressions.insert((owner_id, attr_idx), merged);
             }
             Attribute::ClassDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
                     let offset = span.start;
                     match svelte_js::analyze_expression(source, offset) {
-                        Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
+                        Ok(info) => { data.attr_expressions.insert((owner_id, attr_idx), info); }
                         Err(diag) => diags.push(diag),
                     }
                 }
@@ -154,7 +156,7 @@ fn walk_attr_expressions(
                     let source = component.source_text(span);
                     let offset = span.start;
                     match svelte_js::analyze_expression(source, offset) {
-                        Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
+                        Ok(info) => { data.attr_expressions.insert((owner_id, attr_idx), info); }
                         Err(diag) => diags.push(diag),
                     }
                 }
@@ -169,7 +171,7 @@ fn walk_attr_expressions(
                 let source = component.source_text(span);
                 let offset = span.start;
                 match svelte_js::analyze_expression(source, offset) {
-                    Ok(info) => { data.attr_expressions.insert((el.id, attr_idx), info); }
+                    Ok(info) => { data.attr_expressions.insert((owner_id, attr_idx), info); }
                     Err(diag) => diags.push(diag),
                 }
             }

@@ -47,11 +47,15 @@
 - [x] Test: `component_mixed` — `<h1>Title</h1><Button /><Icon />`
 
 Не реализовано (подзадачи):
-- [ ] **1d-props** — передача props в компонент: `<Button onclick={handler} label="text" />`
-  - Сборка атрибутов в объект `{ label: "text", onclick: handler }`
-  - Reactive props: getter-обёртка `{ get onclick() { return handler } }`
-  - Spread props: `$.spread_props()`
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js` (build_component_props)
+- [x] **1d-props** — передача props в компонент: `<Button onclick={handler} label="text" />` ✅
+  - [x] `parse_js.rs` — рефакторинг `walk_attr_expressions` → `walk_attrs(owner_id, attrs)`, парсит атрибуты и для Element, и для ComponentNode
+  - [x] `walker.rs` — `visit_component_attribute` в TemplateVisitor + dispatch + composite macro
+  - [x] `reactivity.rs` — `component_attr_is_dynamic` (любой rune делает prop динамическим, не только mutated)
+  - [x] `builder.rs` — `ObjProp::Getter` → `get name() { return expr }`
+  - [x] `component.rs` — сборка props объекта (string, boolean, expression, concatenation, shorthand)
+  - [x] Test: `component_props` — `label="Click me"`, `onclick={handler}`, `count={count}` (getter)
+  - Не включено: spread props (`$.spread_props()`), bind directives на компонентах
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
 - [ ] **1d-children** — children как snippet: `<Button>content</Button>`
   - Генерация `children: ($$anchor, $$slotProps) => { ... }` из `ComponentNode.fragment`
   - `$$slots: { default: true }` маркер

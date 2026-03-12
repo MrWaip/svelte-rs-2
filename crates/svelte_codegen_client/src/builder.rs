@@ -576,6 +576,41 @@ impl<'a> Builder<'a> {
                 let spread = self.ast.spread_element(SPAN, expr);
                 ast::ObjectPropertyKind::SpreadProperty(self.alloc(spread))
             }
+            ObjProp::Getter(name, expr) => {
+                let name_atom = self.ast.atom(name);
+                let key_node = ast::PropertyKey::StaticIdentifier(
+                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                );
+                let body = self.ast.alloc_function_body(
+                    SPAN,
+                    self.ast.vec(),
+                    self.ast.vec_from_array([self.return_stmt(expr)]),
+                );
+                let getter = self.ast.function(
+                    SPAN,
+                    FunctionType::FunctionExpression,
+                    None,
+                    false,
+                    false,
+                    false,
+                    NONE,
+                    NONE,
+                    self.no_params(),
+                    NONE,
+                    Some(body),
+                );
+                let value = Expression::FunctionExpression(self.alloc(getter));
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Get,
+                    key_node,
+                    value,
+                    false,  // method
+                    false,  // shorthand
+                    false,  // computed
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
         }
     }
 }
@@ -588,4 +623,6 @@ pub enum ObjProp<'a> {
     Shorthand(&'a str),
     /// `...expr`
     Spread(Expression<'a>),
+    /// `get name() { return expr }`
+    Getter(&'a str, Expression<'a>),
 }
