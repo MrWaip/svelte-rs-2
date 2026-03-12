@@ -380,6 +380,41 @@ pub fn analyze_script_with_scoping(
     Ok((script_info, scoping))
 }
 
+/// Check if an expression text represents a "simple" expression that can be
+/// eagerly evaluated (no side effects). Matches Svelte's `is_simple_expression()`.
+///
+/// Simple expressions: literals, identifiers, functions, and combinations of
+/// binary/logical/conditional expressions composed of simples.
+pub fn is_simple_expression(text: &str) -> bool {
+    let alloc = Allocator::default();
+    let Ok(expr) = OxcParser::new(&alloc, text, SourceType::default()).parse_expression() else {
+        return false;
+    };
+    is_simple_expr(&expr)
+}
+
+fn is_simple_expr(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::Identifier(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ConditionalExpression(c) => {
+            is_simple_expr(&c.test) && is_simple_expr(&c.consequent) && is_simple_expr(&c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            is_simple_expr(&b.left) && is_simple_expr(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            is_simple_expr(&l.left) && is_simple_expr(&l.right)
+        }
+        _ => false,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------

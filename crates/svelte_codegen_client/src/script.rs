@@ -107,6 +107,7 @@ fn transform_script_text<'a>(
                 is_rest: p.is_rest,
                 is_mutated: mutated_runes.contains(&p.local_name),
                 default_text: p.default_text.clone(),
+                is_lazy_default: p.is_lazy_default,
             }).collect(),
         }
     });
@@ -170,6 +171,7 @@ struct PropGenItem {
     is_rest: bool,
     is_mutated: bool,
     default_text: Option<String>,
+    is_lazy_default: bool,
 }
 
 struct ScriptTransformer<'b, 'a> {
@@ -291,8 +293,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             ];
 
             if let Some(default_text) = &prop.default_text {
-                let is_simple = is_simple_expression(default_text);
-                if !is_simple {
+                if prop.is_lazy_default {
                     flags |= PROPS_IS_LAZY_INITIAL;
                 }
 
@@ -300,7 +301,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
                 // Parse default expression
                 let default_expr = parse_expression(self.b, default_text);
-                if is_simple {
+                if !prop.is_lazy_default {
                     args.push(Arg::Expr(default_expr));
                 } else {
                     args.push(Arg::Expr(wrap_lazy(self.b, default_expr)));
@@ -330,38 +331,6 @@ fn parse_expression<'a>(b: &Builder<'a>, text: &str) -> Expression<'a> {
     match OxcParser::new(alloc, arena_text, SourceType::default()).parse_expression() {
         Ok(expr) => expr,
         Err(_) => b.str_expr(text),
-    }
-}
-
-/// Check if an expression text represents a "simple" expression (no side effects,
-/// can be eagerly evaluated). Matches Svelte's is_simple_expression().
-fn is_simple_expression(text: &str) -> bool {
-    let alloc = Allocator::default();
-    let Ok(expr) = OxcParser::new(&alloc, text, SourceType::default()).parse_expression() else {
-        return false;
-    };
-    is_simple_expr(&expr)
-}
-
-fn is_simple_expr(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NullLiteral(_)
-        | Expression::Identifier(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        Expression::ConditionalExpression(c) => {
-            is_simple_expr(&c.test) && is_simple_expr(&c.consequent) && is_simple_expr(&c.alternate)
-        }
-        Expression::BinaryExpression(b) => {
-            is_simple_expr(&b.left) && is_simple_expr(&b.right)
-        }
-        Expression::LogicalExpression(l) => {
-            is_simple_expr(&l.left) && is_simple_expr(&l.right)
-        }
-        _ => false,
     }
 }
 

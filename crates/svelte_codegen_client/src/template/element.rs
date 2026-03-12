@@ -97,11 +97,7 @@ pub(crate) fn process_element<'a>(
                 .items
                 .clone();
             // is_text only for standalone {expression} (single Expr part, no surrounding text)
-            let is_text = matches!(
-                items.first(),
-                Some(svelte_analyze::FragmentItem::TextConcat { parts })
-                if parts.len() == 1 && matches!(parts[0], svelte_analyze::ConcatPart::Expr(_))
-            );
+            let is_text = items.first().is_some_and(|item| item.is_standalone_expr());
             let child_call = if is_text {
                 ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
             } else {
@@ -126,9 +122,7 @@ pub(crate) fn process_element<'a>(
                 .items
                 .clone();
 
-            let first_is_text = child_items.first().is_some_and(|item| {
-                matches!(item, svelte_analyze::FragmentItem::TextConcat { parts } if parts.len() == 1)
-            });
+            let first_is_text = child_items.first().is_some_and(|item| item.is_standalone_expr());
             let first_child = if first_is_text {
                 ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
             } else {
@@ -165,39 +159,8 @@ fn has_dynamic_children(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
     lf.items.iter().any(|item| item_is_dynamic(item, ctx))
 }
 
-/// Check if an element needs a DOM variable during traversal.
-pub(crate) fn element_needs_var(ctx: &Ctx<'_>, id: NodeId) -> bool {
-    if ctx.analysis.node_needs_ref.contains(&id) {
-        return true;
-    }
-    let el = ctx.element(id);
-    let has_runtime_attrs = el
-        .attributes
-        .iter()
-        .any(|a| !matches!(a, Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)));
-    if has_runtime_attrs {
-        return true;
-    }
-    let key = FragmentKey::Element(id);
-    let ct = ctx
-        .analysis
-        .content_types
-        .get(&key)
-        .copied()
-        .unwrap_or(ContentType::Empty);
-    match ct {
-        ContentType::Empty | ContentType::StaticText => false,
-        ContentType::DynamicText | ContentType::SingleBlock => true,
-        ContentType::SingleElement | ContentType::Mixed => {
-            let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
-                return false;
-            };
-            lf.items.iter().any(|item| item_needs_var(item, ctx))
-        }
-    }
-}
-
 /// Check if a fragment item needs a DOM variable.
+/// Elements use precomputed `elements_needing_var` from the analysis phase.
 pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         svelte_analyze::FragmentItem::TextConcat { parts } => {
@@ -205,7 +168,7 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
                 .iter()
                 .any(|p| matches!(p, svelte_analyze::ConcatPart::Expr(_)))
         }
-        svelte_analyze::FragmentItem::Element(id) => element_needs_var(ctx, *id),
+        svelte_analyze::FragmentItem::Element(id) => ctx.analysis.elements_needing_var.contains(id),
         svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) => {
             true
         }
