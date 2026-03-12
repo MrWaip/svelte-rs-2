@@ -7,6 +7,67 @@ use svelte_span::Span;
 
 use crate::builder::Builder;
 
+/// Pre-built index for O(1) node lookup by NodeId.
+struct NodeIndex<'a> {
+    elements: HashMap<NodeId, &'a Element>,
+    if_blocks: HashMap<NodeId, &'a IfBlock>,
+    each_blocks: HashMap<NodeId, &'a EachBlock>,
+    snippet_blocks: HashMap<NodeId, &'a SnippetBlock>,
+    render_tags: HashMap<NodeId, &'a RenderTag>,
+    expr_spans: HashMap<NodeId, Span>,
+}
+
+impl<'a> NodeIndex<'a> {
+    fn build(fragment: &'a Fragment) -> Self {
+        let mut index = Self {
+            elements: HashMap::new(),
+            if_blocks: HashMap::new(),
+            each_blocks: HashMap::new(),
+            snippet_blocks: HashMap::new(),
+            render_tags: HashMap::new(),
+            expr_spans: HashMap::new(),
+        };
+        index.walk(fragment);
+        index
+    }
+
+    fn walk(&mut self, fragment: &'a Fragment) {
+        for node in &fragment.nodes {
+            match node {
+                Node::Element(el) => {
+                    self.elements.insert(el.id, el);
+                    self.walk(&el.fragment);
+                }
+                Node::IfBlock(b) => {
+                    self.if_blocks.insert(b.id, b);
+                    self.walk(&b.consequent);
+                    if let Some(alt) = &b.alternate {
+                        self.walk(alt);
+                    }
+                }
+                Node::EachBlock(b) => {
+                    self.each_blocks.insert(b.id, b);
+                    self.walk(&b.body);
+                    if let Some(fb) = &b.fallback {
+                        self.walk(fb);
+                    }
+                }
+                Node::SnippetBlock(b) => {
+                    self.snippet_blocks.insert(b.id, b);
+                    self.walk(&b.body);
+                }
+                Node::RenderTag(t) => {
+                    self.render_tags.insert(t.id, t);
+                }
+                Node::ExpressionTag(t) => {
+                    self.expr_spans.insert(t.id, t.expression_span);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Central codegen context. Holds refs to allocator, builder, component, analysis,
 /// and mutable state (ident counter, node index).
 pub struct Ctx<'a> {
@@ -19,12 +80,7 @@ pub struct Ctx<'a> {
     pub module_hoisted: Vec<Statement<'a>>,
 
     // -- Node index (O(1) lookup by NodeId) --
-    elements: HashMap<NodeId, &'a Element>,
-    if_blocks: HashMap<NodeId, &'a IfBlock>,
-    each_blocks: HashMap<NodeId, &'a EachBlock>,
-    snippet_blocks: HashMap<NodeId, &'a SnippetBlock>,
-    render_tags: HashMap<NodeId, &'a RenderTag>,
-    expr_spans: HashMap<NodeId, Span>,
+    index: NodeIndex<'a>,
 
     // -- Bind group --
     pub needs_binding_group: bool,
@@ -44,21 +100,7 @@ impl<'a> Ctx<'a> {
         component: &'a Component,
         analysis: &'a AnalysisData,
     ) -> Self {
-        let mut elements = HashMap::new();
-        let mut if_blocks = HashMap::new();
-        let mut each_blocks = HashMap::new();
-        let mut snippet_blocks = HashMap::new();
-        let mut render_tags = HashMap::new();
-        let mut expr_spans = HashMap::new();
-        build_node_index(
-            &component.fragment,
-            &mut elements,
-            &mut if_blocks,
-            &mut each_blocks,
-            &mut snippet_blocks,
-            &mut render_tags,
-            &mut expr_spans,
-        );
+        let index = NodeIndex::build(&component.fragment);
 
         let mut prop_sources = HashSet::new();
         let mut prop_non_sources = HashMap::new();
@@ -78,12 +120,7 @@ impl<'a> Ctx<'a> {
             analysis,
             ident_counters: HashMap::new(),
             module_hoisted: Vec::new(),
-            elements,
-            if_blocks,
-            each_blocks,
-            snippet_blocks,
-            render_tags,
-            expr_spans,
+            index,
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
             prop_sources,
@@ -94,27 +131,27 @@ impl<'a> Ctx<'a> {
     // -- Node lookups (O(1)) --
 
     pub fn element(&self, id: NodeId) -> &'a Element {
-        self.elements.get(&id).copied().expect("element not found")
+        self.index.elements.get(&id).copied().expect("element not found")
     }
 
     pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
-        self.if_blocks.get(&id).copied().expect("if block not found")
+        self.index.if_blocks.get(&id).copied().expect("if block not found")
     }
 
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
-        self.each_blocks.get(&id).copied().expect("each block not found")
+        self.index.each_blocks.get(&id).copied().expect("each block not found")
     }
 
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.snippet_blocks.get(&id).copied().expect("snippet block not found")
+        self.index.snippet_blocks.get(&id).copied().expect("snippet block not found")
     }
 
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
-        self.render_tags.get(&id).copied().expect("render tag not found")
+        self.index.render_tags.get(&id).copied().expect("render tag not found")
     }
 
     pub fn expr_span(&self, id: NodeId) -> Span {
-        self.expr_spans.get(&id).copied().expect("expr tag not found")
+        self.index.expr_spans.get(&id).copied().expect("expr tag not found")
     }
 
     // -- Identifiers --
@@ -131,53 +168,4 @@ impl<'a> Ctx<'a> {
         name
     }
 
-}
-
-
-// ---------------------------------------------------------------------------
-// Index builder — walks AST once, populates HashMaps
-// ---------------------------------------------------------------------------
-
-fn build_node_index<'a>(
-    fragment: &'a Fragment,
-    elements: &mut HashMap<NodeId, &'a Element>,
-    if_blocks: &mut HashMap<NodeId, &'a IfBlock>,
-    each_blocks: &mut HashMap<NodeId, &'a EachBlock>,
-    snippet_blocks: &mut HashMap<NodeId, &'a SnippetBlock>,
-    render_tags: &mut HashMap<NodeId, &'a RenderTag>,
-    expr_spans: &mut HashMap<NodeId, Span>,
-) {
-    for node in &fragment.nodes {
-        match node {
-            Node::Element(el) => {
-                elements.insert(el.id, el);
-                build_node_index(&el.fragment, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-            }
-            Node::IfBlock(b) => {
-                if_blocks.insert(b.id, b);
-                build_node_index(&b.consequent, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-                if let Some(alt) = &b.alternate {
-                    build_node_index(alt, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-                }
-            }
-            Node::EachBlock(b) => {
-                each_blocks.insert(b.id, b);
-                build_node_index(&b.body, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-                if let Some(fb) = &b.fallback {
-                    build_node_index(fb, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-                }
-            }
-            Node::SnippetBlock(b) => {
-                snippet_blocks.insert(b.id, b);
-                build_node_index(&b.body, elements, if_blocks, each_blocks, snippet_blocks, render_tags, expr_spans);
-            }
-            Node::RenderTag(t) => {
-                render_tags.insert(t.id, t);
-            }
-            Node::ExpressionTag(t) => {
-                expr_spans.insert(t.id, t.expression_span);
-            }
-            _ => {}
-        }
-    }
 }
