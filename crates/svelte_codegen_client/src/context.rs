@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
@@ -9,25 +9,25 @@ use crate::builder::Builder;
 
 /// Pre-built index for O(1) node lookup by NodeId.
 struct NodeIndex<'a> {
-    elements: HashMap<NodeId, &'a Element>,
-    component_nodes: HashMap<NodeId, &'a ComponentNode>,
-    if_blocks: HashMap<NodeId, &'a IfBlock>,
-    each_blocks: HashMap<NodeId, &'a EachBlock>,
-    snippet_blocks: HashMap<NodeId, &'a SnippetBlock>,
-    render_tags: HashMap<NodeId, &'a RenderTag>,
-    expr_spans: HashMap<NodeId, Span>,
+    elements: FxHashMap<NodeId, &'a Element>,
+    component_nodes: FxHashMap<NodeId, &'a ComponentNode>,
+    if_blocks: FxHashMap<NodeId, &'a IfBlock>,
+    each_blocks: FxHashMap<NodeId, &'a EachBlock>,
+    snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
+    render_tags: FxHashMap<NodeId, &'a RenderTag>,
+    expr_spans: FxHashMap<NodeId, Span>,
 }
 
 impl<'a> NodeIndex<'a> {
     fn build(fragment: &'a Fragment) -> Self {
         let mut index = Self {
-            elements: HashMap::new(),
-            component_nodes: HashMap::new(),
-            if_blocks: HashMap::new(),
-            each_blocks: HashMap::new(),
-            snippet_blocks: HashMap::new(),
-            render_tags: HashMap::new(),
-            expr_spans: HashMap::new(),
+            elements: FxHashMap::default(),
+            component_nodes: FxHashMap::default(),
+            if_blocks: FxHashMap::default(),
+            each_blocks: FxHashMap::default(),
+            snippet_blocks: FxHashMap::default(),
+            render_tags: FxHashMap::default(),
+            expr_spans: FxHashMap::default(),
         };
         index.walk(fragment);
         index
@@ -81,7 +81,7 @@ pub struct Ctx<'a> {
     pub component: &'a Component,
     pub analysis: &'a AnalysisData,
     /// Monotonically incrementing counter per name prefix.
-    ident_counters: HashMap<String, u32>,
+    ident_counters: FxHashMap<String, u32>,
     /// Template declarations from nested fragments, hoisted to module scope.
     pub module_hoisted: Vec<Statement<'a>>,
 
@@ -95,9 +95,9 @@ pub struct Ctx<'a> {
 
     // -- Cached prop info (computed once from analysis) --
     /// Prop names that need `$.prop()` source wrappers (called as thunks).
-    pub prop_sources: HashSet<String>,
+    pub prop_sources: FxHashSet<String>,
     /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
-    pub prop_non_sources: HashMap<String, String>,
+    pub prop_non_sources: FxHashMap<String, String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -108,8 +108,8 @@ impl<'a> Ctx<'a> {
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
-        let mut prop_sources = HashSet::new();
-        let mut prop_non_sources = HashMap::new();
+        let mut prop_sources = FxHashSet::default();
+        let mut prop_non_sources = FxHashMap::default();
         if let Some(pa) = &analysis.props {
             for p in &pa.props {
                 if p.is_rest || p.is_prop_source {
@@ -124,7 +124,7 @@ impl<'a> Ctx<'a> {
             b: Builder::new(allocator),
             component,
             analysis,
-            ident_counters: HashMap::new(),
+            ident_counters: FxHashMap::default(),
             module_hoisted: Vec::new(),
             index,
             needs_binding_group: false,

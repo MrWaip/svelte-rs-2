@@ -10,6 +10,8 @@ svelte_diagnostics = { path = "../svelte_diagnostics" }
 svelte_span = { path = "../svelte_span" }
 oxc_semantic = { workspace = true }
 oxc_span = { workspace = true }
+rustc-hash = { workspace = true }
+
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

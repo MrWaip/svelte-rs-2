@@ -8,8 +8,15 @@ use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan as _, SourceType};
 
+use compact_str::CompactString;
 use svelte_span::Span;
 use svelte_diagnostics::Diagnostic;
+
+/// Convert OXC Atom to CompactString without intermediate String allocation.
+#[inline]
+fn compact(s: &str) -> CompactString {
+    CompactString::from(s)
+}
 
 // ---------------------------------------------------------------------------
 // Public types (owned, no lifetime)
@@ -24,7 +31,7 @@ pub struct ExpressionInfo {
 
 #[derive(Debug, Clone)]
 pub struct Reference {
-    pub name: String,
+    pub name: CompactString,
     pub span: Span,
     pub flags: ReferenceFlags,
 }
@@ -38,9 +45,9 @@ pub enum ReferenceFlags {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpressionKind {
-    Identifier(String),
+    Identifier(CompactString),
     Literal,
-    CallExpression { callee: String },
+    CallExpression { callee: CompactString },
     MemberExpression,
     ArrowFunction,
     Assignment,
@@ -49,8 +56,8 @@ pub enum ExpressionKind {
 
 #[derive(Debug, Clone)]
 pub struct PropInfo {
-    pub local_name: String,
-    pub prop_name: String,
+    pub local_name: CompactString,
+    pub prop_name: CompactString,
     pub default_span: Option<Span>,
     /// The raw text of the default expression (for codegen to parse).
     pub default_text: Option<String>,
@@ -65,8 +72,8 @@ pub struct PropsDeclaration {
 
 #[derive(Debug, Clone)]
 pub struct ExportInfo {
-    pub name: String,
-    pub alias: Option<String>,
+    pub name: CompactString,
+    pub alias: Option<CompactString>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +85,7 @@ pub struct ScriptInfo {
 
 #[derive(Debug, Clone)]
 pub struct DeclarationInfo {
-    pub name: String,
+    pub name: CompactString,
     pub span: Span,
     pub kind: DeclarationKind,
     pub init_span: Option<Span>,
@@ -139,8 +146,8 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
             Statement::ExportNamedDeclaration(export) => {
                 // `export { x, y as z }` form
                 for spec in &export.specifiers {
-                    let local = spec.local.name().to_string();
-                    let exported = spec.exported.name().to_string();
+                    let local = compact(&spec.local.name());
+                    let exported = compact(&spec.exported.name());
                     let alias = if local != exported { Some(exported) } else { None };
                     exports.push(ExportInfo { name: local, alias });
                 }
@@ -171,18 +178,18 @@ fn collect_export_names_from_declaration(
         oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
             for declarator in &var_decl.declarations {
                 if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
-                    exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+                    exports.push(ExportInfo { name: compact(&ident.name), alias: None });
                 }
             }
         }
         oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
             if let Some(ident) = &func.id {
-                exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+                exports.push(ExportInfo { name: compact(&ident.name), alias: None });
             }
         }
         oxc_ast::ast::Declaration::ClassDeclaration(cls) => {
             if let Some(ident) = &cls.id {
-                exports.push(ExportInfo { name: ident.name.to_string(), alias: None });
+                exports.push(ExportInfo { name: compact(&ident.name), alias: None });
             }
         }
         _ => {}
@@ -214,7 +221,7 @@ fn collect_func_declaration(
 ) {
     if let Some(ident) = &func.id {
         declarations.push(DeclarationInfo {
-            name: ident.name.to_string(),
+            name: compact(&ident.name),
             span: Span::new(ident.span.start + offset, ident.span.end + offset),
             kind: DeclarationKind::Function,
             init_span: None,
@@ -240,7 +247,7 @@ fn collect_var_declarations(
     for declarator in &decl.declarations {
         match &declarator.id {
             oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
-                let name = ident.name.to_string();
+                let name = compact(&ident.name);
                 let decl_span = Span::new(
                     ident.span.start + offset,
                     ident.span.end + offset,
@@ -308,7 +315,7 @@ fn collect_var_declarations(
 
                     if let Some(rest) = &obj_pat.rest {
                         if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &rest.argument {
-                            let rest_name = ident.name.to_string();
+                            let rest_name = compact(&ident.name);
                             let decl_span = Span::new(
                                 ident.span.start + offset,
                                 ident.span.end + offset,
@@ -421,15 +428,15 @@ fn is_simple_expr(expr: &Expression<'_>) -> bool {
 
 fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
     let kind = match expr {
-        Expression::Identifier(ident) => ExpressionKind::Identifier(ident.name.to_string()),
+        Expression::Identifier(ident) => ExpressionKind::Identifier(compact(&ident.name)),
         Expression::NumericLiteral(_)
         | Expression::StringLiteral(_)
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_) => ExpressionKind::Literal,
         Expression::CallExpression(call) => {
             let callee = match &call.callee {
-                Expression::Identifier(ident) => ident.name.to_string(),
-                _ => String::new(),
+                Expression::Identifier(ident) => compact(&ident.name),
+                _ => CompactString::default(),
             };
             ExpressionKind::CallExpression { callee }
         }
@@ -462,7 +469,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
     match expr {
         Expression::Identifier(ident) => {
             refs.push(Reference {
-                name: ident.name.to_string(),
+                name: compact(&ident.name),
                 span: Span::new(
                     ident.span.start + offset,
                     ident.span.end + offset,
@@ -474,7 +481,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
             // LHS is write, RHS is read
             if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(ident) = &assign.left {
                 refs.push(Reference {
-                    name: ident.name.to_string(),
+                    name: compact(&ident.name),
                     span: Span::new(
                         ident.span.start + offset,
                         ident.span.end + offset,
@@ -500,7 +507,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                 &upd.argument
             {
                 refs.push(Reference {
-                    name: ident.name.to_string(),
+                    name: compact(&ident.name),
                     span: Span::new(ident.span.start + offset, ident.span.end + offset),
                     flags: ReferenceFlags::Write,
                 });
@@ -566,17 +573,17 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
     }
 }
 
-fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<String> {
+fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<CompactString> {
     match key {
-        oxc_ast::ast::PropertyKey::StaticIdentifier(ident) => Some(ident.name.to_string()),
-        oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(s.value.to_string()),
+        oxc_ast::ast::PropertyKey::StaticIdentifier(ident) => Some(compact(&ident.name)),
+        oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(compact(&s.value)),
         _ => None,
     }
 }
 
-fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<String> {
+fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<CompactString> {
     match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
+        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => Some(compact(&ident.name)),
         oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
             extract_binding_name(&assign.left)
         }
@@ -640,7 +647,7 @@ mod tests {
     #[test]
     fn analyze_simple_identifier() {
         let info = analyze_expression("count", 0).unwrap();
-        assert_eq!(info.kind, ExpressionKind::Identifier("count".to_string()));
+        assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
         assert_eq!(info.references.len(), 1);
         assert_eq!(info.references[0].name, "count");
     }

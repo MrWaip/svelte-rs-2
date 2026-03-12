@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
@@ -27,66 +27,66 @@ pub enum FragmentKey {
 
 pub struct AnalysisData {
     /// Lowered + trimmed representation of each fragment.
-    pub lowered_fragments: HashMap<FragmentKey, LoweredFragment>,
+    pub lowered_fragments: FxHashMap<FragmentKey, LoweredFragment>,
     /// Parsed JS metadata for ExpressionTag nodes (and IfBlock/EachBlock test expressions).
-    pub expressions: HashMap<NodeId, ExpressionInfo>,
+    pub expressions: FxHashMap<NodeId, ExpressionInfo>,
     /// Parsed JS metadata for element attribute expressions: (element_id, attr_index).
-    pub attr_expressions: HashMap<(NodeId, usize), ExpressionInfo>,
+    pub attr_expressions: FxHashMap<(NodeId, usize), ExpressionInfo>,
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
     pub(crate) scoping: ComponentScoping,
     /// Element attributes that reference rune symbols: (element NodeId, attr index).
-    pub dynamic_attrs: HashSet<(NodeId, usize)>,
+    pub dynamic_attrs: FxHashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
-    pub dynamic_nodes: HashSet<NodeId>,
+    pub dynamic_nodes: FxHashSet<NodeId>,
     /// Elements that need a JS variable reference for reactive updates.
-    pub node_needs_ref: HashSet<NodeId>,
+    pub node_needs_ref: FxHashSet<NodeId>,
     /// Content classification for each fragment.
-    pub content_types: HashMap<FragmentKey, ContentType>,
+    pub content_types: FxHashMap<FragmentKey, ContentType>,
     /// Compile-time known values for const declarations with literal initializers.
-    pub known_values: HashMap<String, String>,
+    pub known_values: FxHashMap<String, String>,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
-    pub alt_is_elseif: HashSet<NodeId>,
+    pub alt_is_elseif: FxHashSet<NodeId>,
     /// Props analysis (from $props() destructuring).
     pub props: Option<PropsAnalysis>,
     /// Exported names from `export const/function/class` or `export { ... }`.
     pub exports: Vec<svelte_js::ExportInfo>,
     /// Snippet parameter names, keyed by snippet NodeId.
-    pub snippet_params: HashMap<NodeId, Vec<String>>,
+    pub snippet_params: FxHashMap<NodeId, Vec<String>>,
 
     // -- Cached sets for codegen (populated after mutations pass) --
     /// All rune symbol names (precomputed).
-    pub rune_names: HashSet<String>,
+    pub rune_names: FxHashSet<String>,
     /// All mutated rune names (script assignments + bind directives).
-    pub mutated_runes: HashSet<String>,
+    pub mutated_runes: FxHashSet<String>,
     /// Rune names mutated only via bind directives.
-    pub bind_mutated_runes: HashSet<String>,
+    pub bind_mutated_runes: FxHashSet<String>,
     /// Elements that need a DOM variable during traversal (precomputed for codegen).
-    pub elements_needing_var: HashSet<NodeId>,
+    pub elements_needing_var: FxHashSet<NodeId>,
 }
 
 impl AnalysisData {
     pub fn new() -> Self {
         Self {
-            lowered_fragments: HashMap::new(),
-            expressions: HashMap::new(),
-            attr_expressions: HashMap::new(),
+            lowered_fragments: FxHashMap::default(),
+            expressions: FxHashMap::default(),
+            attr_expressions: FxHashMap::default(),
             script: None,
             scoping: ComponentScoping::empty(),
-            dynamic_attrs: HashSet::new(),
-            dynamic_nodes: HashSet::new(),
-            node_needs_ref: HashSet::new(),
-            content_types: HashMap::new(),
-            known_values: HashMap::new(),
-            alt_is_elseif: HashSet::new(),
+            dynamic_attrs: FxHashSet::default(),
+            dynamic_nodes: FxHashSet::default(),
+            node_needs_ref: FxHashSet::default(),
+            content_types: FxHashMap::default(),
+            known_values: FxHashMap::default(),
+            alt_is_elseif: FxHashSet::default(),
             props: None,
             exports: Vec::new(),
-            snippet_params: HashMap::new(),
-            rune_names: HashSet::new(),
-            mutated_runes: HashSet::new(),
-            bind_mutated_runes: HashSet::new(),
-            elements_needing_var: HashSet::new(),
+            snippet_params: FxHashMap::default(),
+            rune_names: FxHashSet::default(),
+            mutated_runes: FxHashSet::default(),
+            bind_mutated_runes: FxHashSet::default(),
+            elements_needing_var: FxHashSet::default(),
         }
     }
 
