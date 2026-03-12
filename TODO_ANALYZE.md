@@ -56,9 +56,11 @@
   - [x] Test: `component_props` — `label="Click me"`, `onclick={handler}`, `count={count}` (getter)
   - Не включено: spread props (`$.spread_props()`), bind directives на компонентах
   - Ref: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
-- [ ] **1d-children** — children как snippet: `<Button>content</Button>`
+- [x] **1d-children** — children как snippet: `<Button>content</Button>`
   - Генерация `children: ($$anchor, $$slotProps) => { ... }` из `ComponentNode.fragment`
   - `$$slots: { default: true }` маркер
+  - `is_text_first` → `$.next()` для текстовых children
+  - Tests: `component_children`, `component_element_children`
   - Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js` (children секция)
 - [ ] **1d-events** — event forwarding на компонентах
 - [ ] Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js`

@@ -2,6 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
+use svelte_analyze::{ContentType, FragmentItem, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
@@ -9,6 +10,7 @@ use crate::builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, parse_expr};
+use super::gen_fragment;
 
 /// Collected attribute info from the immutable Component borrow.
 enum AttrKind {
@@ -110,6 +112,37 @@ pub(crate) fn gen_component<'a>(
             }
             AttrKind::Spread | AttrKind::Skip => {}
         }
+    }
+
+    // Add children snippet if component has non-empty fragment
+    let children_ct = ctx.analysis.content_types
+        .get(&FragmentKey::ComponentNode(id))
+        .copied()
+        .unwrap_or(ContentType::Empty);
+
+    if children_ct != ContentType::Empty {
+        let frag_key = FragmentKey::ComponentNode(id);
+
+        // is_text_first: skip over inserted anchor comment when first child is text
+        let is_text_first = ctx.analysis.lowered_fragments
+            .get(&frag_key)
+            .and_then(|lf| lf.items.first())
+            .is_some_and(|item| matches!(item, FragmentItem::TextConcat { .. }));
+
+        let mut body_stmts = Vec::new();
+        if is_text_first {
+            body_stmts.push(ctx.b.call_stmt("$.next", []));
+        }
+        body_stmts.extend(gen_fragment(ctx, frag_key));
+
+        let params = ctx.b.params(["$$anchor", "$$slotProps"]);
+        let arrow = ctx.b.arrow_expr(params, body_stmts);
+        props.push(ObjProp::KeyValue("children", arrow));
+
+        let slots_obj = ctx.b.object_expr([
+            ObjProp::KeyValue("default", ctx.b.bool_expr(true))
+        ]);
+        props.push(ObjProp::KeyValue("$$slots", slots_obj));
     }
 
     let props_expr = ctx.b.object_expr(props);
