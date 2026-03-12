@@ -1,22 +1,22 @@
 import * as $ from "svelte/internal/client";
 import Panel from "./Panel.svelte";
 import { formatDate } from "./utils.js";
-const row = ($$anchor, item = $.noop) => {
-	var li = root_7();
-	var text_5 = $.child(li);
-	$.reset(li);
-	$.template_effect(() => $.set_text(text_5, `${item() ?? ""} — ${$.get(count) ?? ""}`));
-	$.append($$anchor, li);
-};
-var root_2 = $.from_html(`<!> <div class="entry"> </div>`, 1);
-var root_1 = $.from_html(`<section><p> </p> <!></section>`);
-var root_4 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
-var root_5 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
-var root_6 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
-var root_7 = $.from_html(`<li> </li>`);
+var root_1 = $.from_html(`<li> </li>`);
+var root_3 = $.from_html(`<!> <div class="entry"> </div>`, 1);
+var root_2 = $.from_html(`<section><p> </p> <!></section>`);
+var root_6 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
+var root_5 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
+var root_7 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
 var root = $.from_html(`<header><h1> </h1> <input/> <button> </button></header> <!> <!>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
+	const row = ($$anchor, item = $.noop) => {
+		var li = root_1();
+		var text = $.child(li);
+		$.reset(li);
+		$.template_effect(() => $.set_text(text, `${item() ?? ""} — ${$.get(count) ?? ""}`));
+		$.append($$anchor, li);
+	};
 	let theme = $.prop($$props, "theme", 3, "light"), extras = $.rest_props($$props, [
 		"$$slots",
 		"$$events",
@@ -48,78 +48,78 @@ export default function App($$anchor, $$props) {
 	var header = $.first_child(fragment);
 	$.attribute_effect(header, () => ({
 		id: "top",
-		data-theme: theme(),
+		"data-theme": theme(),
 		title: `Dashboard: ${$$props.title ?? ""}`,
-		...extras()
+		...extras
 	}));
 	var h1 = $.child(header);
-	var text = $.child(h1);
+	var text_1 = $.child(h1);
 	$.reset(h1);
 	var input = $.sibling(h1, 2);
 	$.remove_input_defaults(input);
 	var button = $.sibling(input, 2);
-	$.set_attribute(button, "onclick", increment);
-	var text_1 = $.child(button, true);
+	var text_2 = $.child(button, true);
 	$.reset(button);
 	$.reset(header);
 	var node = $.sibling(header, 2);
 	{
 		var consequent = ($$anchor) => {
-			var section = root_1();
+			var section = root_2();
 			var p = $.child(section);
-			var text_2 = $.child(p);
+			var text_3 = $.child(p);
 			$.reset(p);
 			var node_1 = $.sibling(p, 2);
-			$.each(node_1, 16, () => items, $.index, ($$anchor, item) => {
-				var fragment_1 = root_2();
+			$.each(node_1, 17, () => items, $.index, ($$anchor, item) => {
+				var fragment_1 = root_3();
 				var node_2 = $.first_child(fragment_1);
-				row(node_2, () => item);
+				row(node_2, () => $.get(item));
 				var div = $.sibling(node_2, 2);
-				var text_3 = $.child(div, true);
+				var text_4 = $.child(div, true);
 				$.reset(div);
 				$.template_effect(() => {
 					$.set_attribute(div, "data-q", `q: ${$.get(query) ?? ""}`);
-					$.set_text(text_3, item);
+					$.set_text(text_4, $.get(item));
 				});
 				$.append($$anchor, fragment_1);
 			});
 			$.reset(section);
-			$.template_effect(() => $.set_text(text_2, `Результат: ${$.get(count) ?? ""} for `));
+			$.template_effect(() => $.set_text(text_3, `Результат: ${$.get(count) ?? ""} for ${$.get(query) ?? ""}`));
 			$.append($$anchor, section);
 		};
-		var consequent_1 = ($$anchor) => Panel($$anchor, {
-			label: "empty",
-			get count() {
-				return $.get(count);
-			},
-			children: ($$anchor, $$slotProps) => {
-				var fragment_2 = root_4();
-				var node_3 = $.sibling($.first_child(fragment_2), 2);
-				Panel(node_3, {
-					label: "empty",
-					get count() {
-						return $.get(count);
-					},
-					children: ($$anchor, $$slotProps) => {
-						$.next();
-						$.next();
-						var fragment_3 = root_5();
-						$.next();
-						$.append($$anchor, fragment_3);
-					},
-					$$slots: { default: true }
-				});
-				$.append($$anchor, fragment_2);
-			},
-			$$slots: { default: true }
-		});
+		var consequent_1 = ($$anchor) => {
+			Panel($$anchor, {
+				label: "empty",
+				get count() {
+					return $.get(count);
+				},
+				children: ($$anchor, $$slotProps) => {
+					var fragment_3 = root_5();
+					var node_3 = $.sibling($.first_child(fragment_3), 2);
+					Panel(node_3, {
+						label: "empty",
+						get count() {
+							return $.get(count);
+						},
+						children: ($$anchor, $$slotProps) => {
+							$.next();
+							var fragment_4 = root_6();
+							$.next();
+							$.append($$anchor, fragment_4);
+						},
+						$$slots: { default: true }
+					});
+					$.append($$anchor, fragment_3);
+				},
+				$$slots: { default: true }
+			});
+		};
 		var alternate = ($$anchor) => {
-			var fragment_4 = root_6();
-			var p_1 = $.sibling($.first_child(fragment_4), 2);
-			var text_4 = $.child(p_1, true);
+			var fragment_5 = root_7();
+			var p_1 = $.sibling($.first_child(fragment_5), 2);
+			var text_5 = $.child(p_1, true);
 			$.reset(p_1);
-			$.template_effect(() => $.set_text(text_4, $.set(count, 0)));
-			$.append($$anchor, fragment_4);
+			$.template_effect(() => $.set_text(text_5, $.set(count, 0)));
+			$.append($$anchor, fragment_5);
 		};
 		$.if(node, ($$render) => {
 			if ($.get(count) > 0) $$render(consequent);
@@ -137,10 +137,12 @@ export default function App($$anchor, $$props) {
 		}
 	});
 	$.template_effect(() => {
-		$.set_text(text, `${$$props.title ?? ""} 🚀`);
-		$.set_text(text_1, $.get(count));
+		$.set_text(text_1, `${$$props.title ?? ""} 🚀`);
+		$.set_text(text_2, $.get(count));
 	});
 	$.bind_value(input, () => $.get(query), ($$value) => $.set(query, $$value));
+	$.delegated("click", button, increment);
 	$.append($$anchor, fragment);
 	return $.pop($$exports);
 }
+$.delegate(["click"]);

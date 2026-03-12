@@ -76,6 +76,7 @@ fn build_thunked_arg<'a>(
     let mutated = &ctx.analysis.mutated_runes;
     let rune_names = &ctx.analysis.rune_names;
 
+    let each_vars = &ctx.each_vars;
     let expr = super::expression::parse_and_transform(
         alloc,
         arena_source,
@@ -84,6 +85,7 @@ fn build_thunked_arg<'a>(
         prop_sources,
         prop_non_sources,
         &[],
+        each_vars,
     );
 
     let params = ctx.b.no_params();

@@ -98,6 +98,10 @@ pub struct Ctx<'a> {
     pub prop_sources: FxHashSet<String>,
     /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
     pub prop_non_sources: FxHashMap<String, String>,
+    /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
+    pub delegated_events: Vec<String>,
+    /// Names of each-block context variables in scope (for `$.get()` wrapping).
+    pub each_vars: FxHashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -112,7 +116,11 @@ impl<'a> Ctx<'a> {
         let mut prop_non_sources = FxHashMap::default();
         if let Some(pa) = &analysis.props {
             for p in &pa.props {
-                if p.is_rest || p.is_prop_source {
+                if p.is_rest {
+                    // Rest props are accessed directly (from $.rest_props result)
+                    continue;
+                }
+                if p.is_prop_source {
                     prop_sources.insert(p.local_name.clone());
                 } else {
                     prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
@@ -131,6 +139,8 @@ impl<'a> Ctx<'a> {
             snippet_param_names: Vec::new(),
             prop_sources,
             prop_non_sources,
+            delegated_events: Vec::new(),
+            each_vars: FxHashSet::default(),
         }
     }
 
