@@ -91,4 +91,8 @@ Update `TODO_ANALYZE.md`:
 - If new tests were added — record their names
 - If new subtasks were discovered — add them as `- [ ]`
 
-This is critical: without an up-to-date `TODO_ANALYZE.md`, the next session won't know what's done and what's not.
+Update `PROGRESS.md`:
+- If the feature corresponds to a high-level item in the checklist, mark it `[x]`
+- If it's a new capability not yet listed — add it under the relevant section
+
+Both files must be kept in sync. Without an up-to-date `TODO_ANALYZE.md`, the next session won't know what's done and what's not. Without an up-to-date `PROGRESS.md`, the overall picture stays stale.
