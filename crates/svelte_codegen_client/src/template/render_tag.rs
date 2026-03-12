@@ -2,7 +2,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement};
+use oxc_parser::Parser as OxcParser;
+use oxc_span::{GetSpan as _, SourceType};
 
 use svelte_ast::NodeId;
 
@@ -19,63 +22,45 @@ pub(crate) fn gen_render_tag<'a>(
     let tag = ctx.render_tag(id);
     let source = ctx.component.source_text(tag.expression_span);
 
-    let (callee_name, arg_sources) = extract_call_parts(source);
+    let (callee_text, arg_texts) = extract_call_parts(source);
 
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
 
-    // Build prop sets once for all arguments
-    let (prop_sources, prop_non_sources) = super::expression::build_prop_sets(ctx);
+    let prop_sources = ctx.prop_sources.clone();
+    let prop_non_sources = ctx.prop_non_sources.clone();
 
-    for arg_src in &arg_sources {
+    for arg_src in &arg_texts {
         let thunk = build_thunked_arg(ctx, arg_src, &prop_sources, &prop_non_sources);
         call_args.push(Arg::Expr(thunk));
     }
 
-    stmts.push(ctx.b.call_stmt(callee_name, call_args));
+    stmts.push(ctx.b.call_stmt(callee_text, call_args));
 }
 
+/// Parse the render tag expression with OXC and extract callee name + argument source texts.
 fn extract_call_parts(source: &str) -> (&str, Vec<&str>) {
-    let paren_pos = match source.find('(') {
-        Some(pos) => pos,
-        None => return (source.trim(), vec![]),
+    let alloc = Allocator::default();
+    let Ok(expr) = OxcParser::new(&alloc, source, SourceType::default()).parse_expression() else {
+        return (source.trim(), vec![]);
     };
 
-    let callee = source[..paren_pos].trim();
-    let inner = &source[paren_pos + 1..source.len() - 1];
-    if inner.trim().is_empty() {
-        return (callee, vec![]);
-    }
+    let Expression::CallExpression(call) = &expr else {
+        return (source.trim(), vec![]);
+    };
 
-    let args = split_args(inner);
-    (callee, args)
-}
+    let callee_span = call.callee.span();
+    let callee_text = &source[callee_span.start as usize..callee_span.end as usize];
 
-fn split_args(s: &str) -> Vec<&str> {
-    let mut args = Vec::new();
-    let mut depth = 0u32;
-    let mut start = 0;
+    let arg_texts: Vec<&str> = call
+        .arguments
+        .iter()
+        .map(|arg| {
+            let sp = arg.span();
+            &source[sp.start as usize..sp.end as usize]
+        })
+        .collect();
 
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                let arg = s[start..i].trim();
-                if !arg.is_empty() {
-                    args.push(arg);
-                }
-                start = i + 1;
-            }
-            _ => {}
-        }
-    }
-
-    let last = s[start..].trim();
-    if !last.is_empty() {
-        args.push(last);
-    }
-
-    args
+    (callee_text, arg_texts)
 }
 
 /// Build `() => expr` where expr has rune transforms applied.

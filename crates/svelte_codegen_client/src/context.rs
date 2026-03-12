@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
@@ -30,6 +30,12 @@ pub struct Ctx<'a> {
     pub needs_binding_group: bool,
     /// Snippet param names for the currently generating snippet body.
     pub snippet_param_names: Vec<String>,
+
+    // -- Cached prop info (computed once from analysis) --
+    /// Prop names that need `$.prop()` source wrappers (called as thunks).
+    pub prop_sources: HashSet<String>,
+    /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
+    pub prop_non_sources: HashMap<String, String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -54,6 +60,18 @@ impl<'a> Ctx<'a> {
             &mut expr_spans,
         );
 
+        let mut prop_sources = HashSet::new();
+        let mut prop_non_sources = HashMap::new();
+        if let Some(pa) = &analysis.props {
+            for p in &pa.props {
+                if p.is_rest || p.is_prop_source {
+                    prop_sources.insert(p.local_name.clone());
+                } else {
+                    prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
+                }
+            }
+        }
+
         Self {
             b: Builder::new(allocator),
             component,
@@ -68,6 +86,8 @@ impl<'a> Ctx<'a> {
             expr_spans,
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
+            prop_sources,
+            prop_non_sources,
         }
     }
 

@@ -26,28 +26,10 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
     let mutated = &ctx.analysis.mutated_runes;
     let rune_names = &ctx.analysis.rune_names;
     let snippet_params = &ctx.snippet_param_names;
+    let prop_sources = &ctx.prop_sources;
+    let prop_non_sources = &ctx.prop_non_sources;
 
-    // Build prop info sets
-    let (prop_sources, prop_non_sources) = build_prop_sets(ctx);
-
-    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, &prop_sources, &prop_non_sources, snippet_params)
-}
-
-pub(crate) fn build_prop_sets(ctx: &Ctx<'_>) -> (HashSet<String>, HashMap<String, String>) {
-    let mut prop_sources = HashSet::new();
-    let mut prop_non_sources = HashMap::new();
-
-    if let Some(pa) = &ctx.analysis.props {
-        for p in &pa.props {
-            if p.is_rest || p.is_prop_source {
-                prop_sources.insert(p.local_name.clone());
-            } else {
-                prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
-            }
-        }
-    }
-
-    (prop_sources, prop_non_sources)
+    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, prop_sources, prop_non_sources, snippet_params)
 }
 
 pub(crate) fn parse_and_transform<'a>(

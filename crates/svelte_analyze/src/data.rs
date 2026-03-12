@@ -61,6 +61,8 @@ pub struct AnalysisData {
     pub mutated_runes: HashSet<String>,
     /// Rune names mutated only via bind directives.
     pub bind_mutated_runes: HashSet<String>,
+    /// Elements that need a DOM variable during traversal (precomputed for codegen).
+    pub elements_needing_var: HashSet<NodeId>,
 }
 
 impl AnalysisData {
@@ -83,6 +85,7 @@ impl AnalysisData {
             rune_names: HashSet::new(),
             mutated_runes: HashSet::new(),
             bind_mutated_runes: HashSet::new(),
+            elements_needing_var: HashSet::new(),
         }
     }
 
@@ -133,6 +136,15 @@ pub enum FragmentItem {
     TextConcat { parts: Vec<ConcatPart> },
 }
 
+impl FragmentItem {
+    /// Returns `true` if this is a standalone `{expression}` with no surrounding text.
+    /// Used by codegen to pass `is_text: true` to `$.child()` / `$.sibling()`.
+    pub fn is_standalone_expr(&self) -> bool {
+        matches!(self, FragmentItem::TextConcat { parts }
+            if parts.len() == 1 && matches!(parts[0], ConcatPart::Expr(_)))
+    }
+}
+
 #[derive(Clone)]
 pub enum ConcatPart {
     /// Static text content (possibly trimmed).
@@ -159,6 +171,9 @@ pub struct PropAnalysis {
     pub is_rest: bool,
     /// Needs `$.prop()` signal wrapper (vs direct `$$props.name` access).
     pub is_prop_source: bool,
+    /// Default value requires lazy evaluation (`() => expr`).
+    /// True when `default_text` is present and is not a simple expression.
+    pub is_lazy_default: bool,
 }
 
 // ---------------------------------------------------------------------------

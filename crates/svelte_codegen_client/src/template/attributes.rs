@@ -60,63 +60,9 @@ pub(crate) fn process_attr<'a>(
             ));
         }
         Attribute::BindDirective(bind) => {
-            let var_name = if bind.shorthand {
-                bind.name.clone()
-            } else if let Some(span) = bind.expression_span {
-                ctx.component.source_text(span).trim().to_string()
-            } else {
-                return;
-            };
-
-            let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
-
-            let getter_body = if is_mutated_rune {
-                ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
-            } else {
-                ctx.b.rid_expr(&var_name)
-            };
-            let getter = ctx
-                .b
-                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
-
-            let setter_body = if is_mutated_rune {
-                ctx.b
-                    .call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
-            } else {
-                ctx.b.assign_expr(
-                    AssignLeft::Ident(var_name),
-                    AssignRight::Expr(ctx.b.rid_expr("$$value")),
-                )
-            };
-            let setter = ctx.b.arrow_expr(
-                ctx.b.params(["$$value"]),
-                [ctx.b.expr_stmt(setter_body)],
-            );
-
-            let stmt = match bind.name.as_str() {
-                "checked" => ctx.b.call_stmt(
-                    "$.bind_checked",
-                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-                ),
-                "group" => {
-                    ctx.needs_binding_group = true;
-                    ctx.b.call_stmt(
-                        "$.bind_group",
-                        [
-                            Arg::Ident("binding_group"),
-                            Arg::Expr(ctx.b.empty_array_expr()),
-                            Arg::Ident(el_name),
-                            Arg::Expr(getter),
-                            Arg::Expr(setter),
-                        ],
-                    )
-                }
-                _ => ctx.b.call_stmt(
-                    "$.bind_value",
-                    [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-                ),
-            };
-            after_update.push(stmt);
+            if let Some(stmt) = gen_bind_directive(ctx, bind, el_name) {
+                after_update.push(stmt);
+            }
         }
         Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) => {
             // Spread handled by process_attrs_spread; class directives by process_class_directives
@@ -205,6 +151,72 @@ pub(crate) fn process_class_directives<'a>(
     init.push(effect_stmt);
 }
 
+/// Generate a bind directive statement (getter/setter + runtime call).
+fn gen_bind_directive<'a>(
+    ctx: &mut Ctx<'a>,
+    bind: &svelte_ast::BindDirective,
+    el_name: &str,
+) -> Option<Statement<'a>> {
+    let var_name = if bind.shorthand {
+        bind.name.clone()
+    } else if let Some(span) = bind.expression_span {
+        ctx.component.source_text(span).trim().to_string()
+    } else {
+        return None;
+    };
+
+    let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
+
+    let getter_body = if is_mutated_rune {
+        ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+    } else {
+        ctx.b.rid_expr(&var_name)
+    };
+    let getter = ctx
+        .b
+        .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
+
+    let setter_body = if is_mutated_rune {
+        ctx.b
+            .call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
+    } else {
+        ctx.b.assign_expr(
+            AssignLeft::Ident(var_name),
+            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+        )
+    };
+    let setter = ctx.b.arrow_expr(
+        ctx.b.params(["$$value"]),
+        [ctx.b.expr_stmt(setter_body)],
+    );
+
+    let stmt = match bind.name.as_str() {
+        "checked" => ctx.b.call_stmt(
+            "$.bind_checked",
+            [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+        ),
+        "group" => {
+            ctx.needs_binding_group = true;
+            ctx.b.call_stmt(
+                "$.bind_group",
+                [
+                    Arg::Ident("binding_group"),
+                    Arg::Expr(ctx.b.empty_array_expr()),
+                    Arg::Ident(el_name),
+                    Arg::Expr(getter),
+                    Arg::Expr(setter),
+                ],
+            )
+        }
+        _ => ctx.b.call_stmt(
+            "$.bind_value",
+            [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
+        ),
+    };
+
+    Some(stmt)
+}
+
 /// Check if an element has any spread attribute.
 pub(crate) fn has_spread(el: &Element) -> bool {
     el.attributes
@@ -266,64 +278,9 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::Shorthand(name_alloc));
             }
             Attribute::BindDirective(bind) => {
-                // Bind directives are handled separately
-                let var_name = if bind.shorthand {
-                    bind.name.clone()
-                } else if let Some(span) = bind.expression_span {
-                    ctx.component.source_text(span).trim().to_string()
-                } else {
-                    continue;
-                };
-
-                let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
-
-                let getter_body = if is_mutated_rune {
-                    ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
-                } else {
-                    ctx.b.rid_expr(&var_name)
-                };
-                let getter = ctx
-                    .b
-                    .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_body)]);
-
-                let setter_body = if is_mutated_rune {
-                    ctx.b
-                        .call_expr("$.set", [Arg::Ident(&var_name), Arg::Ident("$$value")])
-                } else {
-                    ctx.b.assign_expr(
-                        AssignLeft::Ident(var_name),
-                        AssignRight::Expr(ctx.b.rid_expr("$$value")),
-                    )
-                };
-                let setter = ctx.b.arrow_expr(
-                    ctx.b.params(["$$value"]),
-                    [ctx.b.expr_stmt(setter_body)],
-                );
-
-                let stmt = match bind.name.as_str() {
-                    "checked" => ctx.b.call_stmt(
-                        "$.bind_checked",
-                        [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-                    ),
-                    "group" => {
-                        ctx.needs_binding_group = true;
-                        ctx.b.call_stmt(
-                            "$.bind_group",
-                            [
-                                Arg::Ident("binding_group"),
-                                Arg::Expr(ctx.b.empty_array_expr()),
-                                Arg::Ident(el_name),
-                                Arg::Expr(getter),
-                                Arg::Expr(setter),
-                            ],
-                        )
-                    }
-                    _ => ctx.b.call_stmt(
-                        "$.bind_value",
-                        [Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter)],
-                    ),
-                };
-                after_update.push(stmt);
+                if let Some(stmt) = gen_bind_directive(ctx, bind, el_name) {
+                    after_update.push(stmt);
+                }
                 continue;
             }
             Attribute::ClassDirective(_) => continue,
