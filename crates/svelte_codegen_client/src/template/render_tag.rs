@@ -1,6 +1,6 @@
 //! RenderTag codegen — `{@render snippet(args)}`
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement};
@@ -67,8 +67,8 @@ fn extract_call_parts(source: &str) -> (&str, Vec<&str>) {
 fn build_thunked_arg<'a>(
     ctx: &mut Ctx<'a>,
     source: &str,
-    prop_sources: &HashSet<String>,
-    prop_non_sources: &HashMap<String, String>,
+    prop_sources: &FxHashSet<String>,
+    prop_non_sources: &FxHashMap<String, String>,
 ) -> Expression<'a> {
     let alloc = ctx.b.ast.allocator;
     let arena_source: &'a str = alloc.alloc_str(source);

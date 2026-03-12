@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
@@ -57,11 +57,11 @@ fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    rune_names: &HashSet<String>,
-    mutated_runes: &HashSet<String>,
+    rune_names: &FxHashSet<String>,
+    mutated_runes: &FxHashSet<String>,
     props: Option<&PropsAnalysis>,
-    prop_sources: &HashSet<String>,
-    prop_non_sources: &HashMap<String, String>,
+    prop_sources: &FxHashSet<String>,
+    prop_non_sources: &FxHashMap<String, String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -77,8 +77,8 @@ fn transform_script_text<'a>(
     let scoping = sem.semantic.into_scoping();
 
     // Build rune_table and prop_table from OXC symbols
-    let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
-    let mut prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo> = HashMap::new();
+    let mut rune_table: FxHashMap<oxc_semantic::SymbolId, RuneInfo> = FxHashMap::default();
+    let mut prop_table: FxHashMap<oxc_semantic::SymbolId, PropSymInfo> = FxHashMap::default();
 
     let root_scope = scoping.root_scope_id();
     for sym_id in scoping.symbol_ids() {
@@ -178,8 +178,8 @@ struct PropGenItem {
 
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
-    rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo>,
-    prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo>,
+    rune_table: FxHashMap<oxc_semantic::SymbolId, RuneInfo>,
+    prop_table: FxHashMap<oxc_semantic::SymbolId, PropSymInfo>,
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
 }

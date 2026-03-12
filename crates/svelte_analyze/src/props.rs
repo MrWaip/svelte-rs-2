@@ -12,7 +12,7 @@ pub fn analyze_props(data: &mut AnalysisData) {
         .map(|p| {
             // In runes mode, a prop needs $.prop() source when it has a default,
             // is reassigned, is mutated, or is bindable.
-            let is_mutated = data.mutated_runes.contains(&p.local_name);
+            let is_mutated = data.mutated_runes.contains(p.local_name.as_str());
             let is_prop_source =
                 p.default_span.is_some() || is_mutated;
 
@@ -20,8 +20,8 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 .is_some_and(|text| !svelte_js::is_simple_expression(text));
 
             PropAnalysis {
-                local_name: p.local_name.clone(),
-                prop_name: p.prop_name.clone(),
+                local_name: p.local_name.to_string(),
+                prop_name: p.prop_name.to_string(),
                 default_span: p.default_span,
                 default_text: p.default_text.clone(),
                 is_bindable: p.is_bindable,

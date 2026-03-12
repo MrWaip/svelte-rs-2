@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_semantic::{NodeId as OxcNodeId, ScopeFlags, ScopeId, Scoping, SymbolFlags, SymbolId};
 
@@ -14,13 +14,13 @@ use crate::data::AnalysisData;
 pub struct ComponentScoping {
     scoping: Scoping,
     /// Which symbols are runes.
-    runes: HashMap<SymbolId, RuneKind>,
+    runes: FxHashMap<SymbolId, RuneKind>,
     /// Which symbols are mutated via bind directives.
-    bind_mutated: HashSet<SymbolId>,
+    bind_mutated: FxHashSet<SymbolId>,
     /// Symbols mutated in template expressions (e.g. `{count = 99}`).
-    template_mutated: HashSet<SymbolId>,
+    template_mutated: FxHashSet<SymbolId>,
     /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
-    node_scopes: HashMap<NodeId, ScopeId>,
+    node_scopes: FxHashMap<NodeId, ScopeId>,
 }
 
 impl ComponentScoping {
@@ -28,10 +28,10 @@ impl ComponentScoping {
     pub fn from_scoping(scoping: Scoping) -> Self {
         Self {
             scoping,
-            runes: HashMap::new(),
-            bind_mutated: HashSet::new(),
-            template_mutated: HashSet::new(),
-            node_scopes: HashMap::new(),
+            runes: FxHashMap::default(),
+            bind_mutated: FxHashSet::default(),
+            template_mutated: FxHashSet::default(),
+            node_scopes: FxHashMap::default(),
         }
     }
 
@@ -146,7 +146,7 @@ impl ComponentScoping {
     // -- Bulk queries for codegen compatibility --
 
     /// All rune symbol names.
-    pub(crate) fn rune_names(&self) -> HashSet<String> {
+    pub(crate) fn rune_names(&self) -> FxHashSet<String> {
         self.runes
             .keys()
             .map(|&id| self.scoping.symbol_name(id).to_string())
@@ -154,7 +154,7 @@ impl ComponentScoping {
     }
 
     /// Names of all mutated runes (script assignments + template assignments + bind directives).
-    pub(crate) fn mutated_rune_names(&self) -> HashSet<String> {
+    pub(crate) fn mutated_rune_names(&self) -> FxHashSet<String> {
         self.runes
             .keys()
             .filter(|&&id| self.is_mutated(id))
@@ -163,7 +163,7 @@ impl ComponentScoping {
     }
 
     /// Names of runes mutated only via bind directives.
-    pub(crate) fn bind_mutated_rune_names(&self) -> HashSet<String> {
+    pub(crate) fn bind_mutated_rune_names(&self) -> FxHashSet<String> {
         self.bind_mutated
             .iter()
             .filter(|id| self.runes.contains_key(id))

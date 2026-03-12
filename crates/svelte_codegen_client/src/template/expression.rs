@@ -6,7 +6,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{ConcatPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
@@ -35,10 +35,10 @@ pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
 pub(crate) fn parse_and_transform<'a>(
     alloc: &'a Allocator,
     source: &'a str,
-    mutated: &HashSet<String>,
-    rune_names: &HashSet<String>,
-    prop_sources: &HashSet<String>,
-    prop_non_sources: &HashMap<String, String>,
+    mutated: &FxHashSet<String>,
+    rune_names: &FxHashSet<String>,
+    prop_sources: &FxHashSet<String>,
+    prop_non_sources: &FxHashMap<String, String>,
     snippet_params: &[String],
 ) -> Expression<'a> {
     let b = Builder::new(alloc);
@@ -69,10 +69,10 @@ pub(crate) fn parse_and_transform<'a>(
 
 struct RuneRefTransformer<'b, 'a> {
     b: &'b Builder<'a>,
-    mutated: &'b HashSet<String>,
-    rune_names: &'b HashSet<String>,
-    prop_sources: &'b HashSet<String>,
-    prop_non_sources: &'b HashMap<String, String>,
+    mutated: &'b FxHashSet<String>,
+    rune_names: &'b FxHashSet<String>,
+    prop_sources: &'b FxHashSet<String>,
+    prop_non_sources: &'b FxHashMap<String, String>,
     snippet_params: &'b [String],
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expres
 fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
     let info = ctx.analysis.expressions.get(&nid)?;
     if let ExpressionKind::Identifier(name) = &info.kind {
-        ctx.analysis.known_values.get(name).cloned()
+        ctx.analysis.known_values.get(name.as_str()).cloned()
     } else {
         None
     }
