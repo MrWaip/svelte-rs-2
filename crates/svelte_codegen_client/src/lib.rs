@@ -86,9 +86,9 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // var $$exports = { PI, greet, ... }
     if has_exports {
         let props: Vec<ObjProp<'_>> = ctx.analysis.exports.iter().map(|e| {
-            let name: &str = b.ast.allocator.alloc_str(&e.name);
+            let name: &str = b.alloc_str(&e.name);
             if let Some(alias) = &e.alias {
-                let alias: &str = b.ast.allocator.alloc_str(alias);
+                let alias: &str = b.alloc_str(alias);
                 ObjProp::KeyValue(alias, b.rid_expr(name))
             } else {
                 ObjProp::Shorthand(name)

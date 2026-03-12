@@ -52,6 +52,10 @@ impl<'a> Builder<'a> {
         self.ast.alloc(value)
     }
 
+    pub fn alloc_str(&self, s: &str) -> &'a str {
+        self.ast.allocator.alloc_str(s)
+    }
+
     // -----------------------------------------------------------------------
     // Identifiers
     // -----------------------------------------------------------------------
@@ -173,10 +177,6 @@ impl<'a> Builder<'a> {
 
     pub fn var_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Var)
-    }
-
-    pub fn let_stmt_init(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
-        self.var_decl_stmt(name, init, VariableDeclarationKind::Let)
     }
 
     /// `let name;` — uninitialized variable declaration.
