@@ -1,112 +1,97 @@
 use oxc_semantic::ScopeId;
-use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
+use svelte_ast::{
+    Attribute, BindDirective, EachBlock, Element, ExpressionTag, IfBlock, NodeId, RenderTag,
+    SnippetBlock,
+};
 
 use crate::data::AnalysisData;
+use crate::walker::TemplateVisitor;
 
-pub fn mark_reactivity(component: &Component, data: &mut AnalysisData) {
-    let root = data.scoping.root_scope_id();
-    walk_fragment(&component.fragment, component, data, root, &[]);
+pub(crate) struct ReactivityVisitor {
+    /// Stack of snippet NodeIds for nested snippets (avoids cloning param vecs).
+    snippet_id_stack: Vec<NodeId>,
 }
 
-fn walk_fragment(
-    fragment: &Fragment,
-    component: &Component,
-    data: &mut AnalysisData,
-    current_scope: ScopeId,
-    snippet_params: &[String],
-) {
-    for node in &fragment.nodes {
-        walk_node(node, component, data, current_scope, snippet_params);
-    }
-}
-
-fn walk_node(
-    node: &Node,
-    component: &Component,
-    data: &mut AnalysisData,
-    current_scope: ScopeId,
-    snippet_params: &[String],
-) {
-    match node {
-        Node::ExpressionTag(tag) => {
-            if expr_is_dynamic(&tag.id, data, current_scope, snippet_params) {
-                data.dynamic_nodes.insert(tag.id);
-            }
+impl ReactivityVisitor {
+    pub(crate) fn new() -> Self {
+        Self {
+            snippet_id_stack: Vec::new(),
         }
-        Node::Element(el) => {
-            let mut needs_ref = false;
-            for (attr_idx, attr) in el.attributes.iter().enumerate() {
-                if attr_is_dynamic(attr, attr_idx, el.id, data, current_scope) {
-                    data.dynamic_attrs.insert((el.id, attr_idx));
-                    needs_ref = true;
+    }
+
+    fn current_snippet_params<'a>(&self, data: &'a AnalysisData) -> &'a [String] {
+        self.snippet_id_stack
+            .last()
+            .and_then(|id| data.snippet_params.get(id))
+            .map_or(&[], |v| v.as_slice())
+    }
+
+    fn expr_is_dynamic(
+        &self,
+        node_id: &NodeId,
+        data: &AnalysisData,
+        scope: ScopeId,
+    ) -> bool {
+        if let Some(info) = data.expressions.get(node_id) {
+            let params = self.current_snippet_params(data);
+            return info.references.iter().any(|r| {
+                // Snippet params are always dynamic (they're thunks)
+                if params.iter().any(|p| p == &r.name) {
+                    return true;
                 }
-                // Bind directives always need a DOM ref
-                if matches!(attr, Attribute::BindDirective(_)) {
-                    needs_ref = true;
-                }
-            }
-            if needs_ref {
-                data.node_needs_ref.insert(el.id);
-            }
-            walk_fragment(&el.fragment, component, data, current_scope, snippet_params);
+                data.scoping.is_dynamic_ref(scope, &r.name)
+            });
         }
-        Node::IfBlock(block) => {
-            if expr_is_dynamic(&block.id, data, current_scope, snippet_params) {
-                data.dynamic_nodes.insert(block.id);
-            }
-            walk_fragment(&block.consequent, component, data, current_scope, snippet_params);
-            if let Some(alt) = &block.alternate {
-                walk_fragment(alt, component, data, current_scope, snippet_params);
-            }
-        }
-        Node::EachBlock(block) => {
-            if expr_is_dynamic(&block.id, data, current_scope, snippet_params) {
-                data.dynamic_nodes.insert(block.id);
-            }
-            // Each block body uses the child scope (with context/index bindings)
-            let body_scope = data
-                .scoping
-                .node_scope(block.id)
-                .unwrap_or(current_scope);
-            walk_fragment(&block.body, component, data, body_scope, snippet_params);
-            // Fallback uses parent scope
-            if let Some(fb) = &block.fallback {
-                walk_fragment(fb, component, data, current_scope, snippet_params);
-            }
-        }
-        Node::SnippetBlock(block) => {
-            let params = data
-                .snippet_params
-                .get(&block.id)
-                .cloned()
-                .unwrap_or_default();
-            walk_fragment(&block.body, component, data, current_scope, &params);
-        }
-        Node::RenderTag(tag) => {
-            if expr_is_dynamic(&tag.id, data, current_scope, snippet_params) {
-                data.dynamic_nodes.insert(tag.id);
-            }
-        }
-        Node::Text(_) | Node::Comment(_) => {}
+        false
     }
 }
 
-fn expr_is_dynamic(
-    node_id: &NodeId,
-    data: &AnalysisData,
-    current_scope: ScopeId,
-    snippet_params: &[String],
-) -> bool {
-    if let Some(info) = data.expressions.get(node_id) {
-        return info.references.iter().any(|r| {
-            // Snippet params are always dynamic (they're thunks)
-            if snippet_params.iter().any(|p| p == &r.name) {
-                return true;
-            }
-            data.scoping.is_dynamic_ref(current_scope, &r.name)
-        });
+impl TemplateVisitor for ReactivityVisitor {
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data, scope) {
+            data.dynamic_nodes.insert(tag.id);
+        }
     }
-    false
+
+    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data, scope) {
+            data.dynamic_nodes.insert(tag.id);
+        }
+    }
+
+    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+        if attr_is_dynamic(attr, idx, el.id, data, scope) {
+            data.dynamic_attrs.insert((el.id, idx));
+            data.node_needs_ref.insert(el.id);
+        }
+    }
+
+    fn visit_bind_directive(&mut self, _dir: &BindDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        // Bind directives always need a DOM ref
+        data.node_needs_ref.insert(el.id);
+    }
+
+    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&block.id, data, scope) {
+            data.dynamic_nodes.insert(block.id);
+        }
+    }
+
+    fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {
+        // body_scope is fine for the expression check — find_binding walks up parent scopes,
+        // so `items` in `{#each items as item}` resolves correctly from the child scope.
+        if self.expr_is_dynamic(&block.id, data, body_scope) {
+            data.dynamic_nodes.insert(block.id);
+        }
+    }
+
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
+        self.snippet_id_stack.push(block.id);
+    }
+
+    fn leave_snippet_block(&mut self, _block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
+        self.snippet_id_stack.pop();
+    }
 }
 
 // Attributes are dynamic only for *mutated* runes — unlike expressions where
@@ -126,10 +111,8 @@ fn attr_is_dynamic(
         return false;
     }
     if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
+        let root = data.scoping.root_scope_id();
         return info.references.iter().any(|r| {
-            // For attributes, we check if the reference is a mutated rune
-            // (same logic as before, but scope-aware)
-            let root = data.scoping.root_scope_id();
             if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name) {
                 // Non-root scope binding (each-block var) is always dynamic
                 if data.scoping.symbol_scope_id(sym_id) != root {

@@ -9,6 +9,7 @@ mod props;
 mod reactivity;
 pub(crate) mod scope;
 mod validate;
+pub(crate) mod walker;
 
 pub use data::{
     AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, PropAnalysis,
@@ -24,10 +25,10 @@ use svelte_diagnostics::Diagnostic;
 /// 1. parse_js      — parse JS expressions + script block
 /// 2. build_scoping — build unified scope tree (script + template)
 /// 3. known_values  — evaluate const declarations with literal initializers
-/// 4. mutations     — detect mutated runes (script assignments + bind directives)
+/// 4. mutations     — detect mutated runes (single composite walk: template + binds)
 /// 5. props         — analyze $props() destructuring
 /// 6. lower         — trim whitespace, group text+expressions
-/// 7. reactivity    — mark dynamic nodes and attributes
+/// 7. reactivity + elseif — single composite walk: mark dynamic nodes + detect elseif
 /// 8. content_types — classify fragment content
 /// 9. validate      — semantic checks
 pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
@@ -57,9 +58,18 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     mutations::detect_mutations(component, &mut data);
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);
-    reactivity::mark_reactivity(component, &mut data);
+
+    // Single composite walk: reactivity + elseif
+    {
+        let root = data.scoping.root_scope_id();
+        let mut visitor = (
+            reactivity::ReactivityVisitor::new(),
+            elseif::ElseifVisitor,
+        );
+        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
+    }
+
     content_types::classify_content(component, &mut data);
-    elseif::detect_elseif(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
