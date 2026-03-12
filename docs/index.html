@@ -21,27 +21,22 @@
                     <h2>
                         Svelte source
                         <br />
-                        <span class="perf"> </span>
+                        <span class="perf">&nbsp;</span>
                     </h2>
-
                     <div id="editor" class="editor"></div>
                 </div>
                 <div class="editor-box">
                     <h2>
-                        Rust JS output <span id="status"></span>
-
+                        Output diff
+                        <span id="status"></span>
                         <br />
-                        <span class="perf" id="rust-perf"></span>
+                        <span class="perf">
+                            Rust: <span id="rust-perf"></span>
+                            &middot;
+                            Svelte: <span id="svelte-perf"></span>
+                        </span>
                     </h2>
-                    <div id="preview" class="editor"></div>
-                </div>
-
-                <div class="editor-box">
-                    <h2>
-                        Svelte JS output <br />
-                        <span class="perf" id="svelte-perf"></span>
-                    </h2>
-                    <div id="svelte-preview" class="editor"></div>
+                    <div id="diff-editor" class="editor"></div>
                 </div>
             </div>
         </div>
@@ -60,7 +55,6 @@
 
             .container {
                 padding: 1rem;
-
                 width: 100vw;
                 height: 80vh;
                 box-sizing: border-box;
@@ -68,7 +62,7 @@
 
             .grid {
                 display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
+                grid-template-columns: 1fr 1fr;
                 gap: 1rem;
                 height: 100%;
                 margin-top: 1rem;
@@ -85,6 +79,34 @@
 
             .perf {
                 font-size: 18px;
+            }
+
+            @media (max-width: 768px) {
+                .container {
+                    height: auto;
+                    min-height: 100vh;
+                    padding: 0.5rem;
+                }
+
+                h1 {
+                    font-size: 1.2rem;
+                }
+
+                h2 {
+                    font-size: 0.9rem;
+                }
+
+                .grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .editor {
+                    height: 50vh;
+                }
+
+                .perf {
+                    font-size: 14px;
+                }
             }
         </style>
 
@@ -107,13 +129,20 @@
             await init();
 
             const compiler = new WasmCompiler();
-            let editorInstance;
-            let rustPreviewInstance;
-            let sveltePreviewInstance;
 
-            const preview = document.getElementById("preview");
+            // Warm up WASM JIT so first user-visible compile timing is accurate
+            try {
+                compiler.compile("<div></div>");
+            } catch (_) {}
+
+            let editorInstance;
+            let diffEditorInstance;
+            let originalModel;
+            let modifiedModel;
+
             const rustPerf = document.getElementById("rust-perf");
             const sveltePerf = document.getElementById("svelte-perf");
+
             let scriptElement = document.createElement("script");
             scriptElement.setAttribute(
                 "src",
@@ -143,35 +172,34 @@
                         },
                     );
 
-                    rustPreviewInstance = monaco.editor.create(
-                        document.getElementById("preview"),
+                    originalModel = monaco.editor.createModel("", "javascript");
+                    modifiedModel = monaco.editor.createModel("", "javascript");
+
+                    const isNarrow = window.innerWidth < 768;
+
+                    diffEditorInstance = monaco.editor.createDiffEditor(
+                        document.getElementById("diff-editor"),
                         {
-                            value: "",
-                            language: "javascript",
                             automaticLayout: true,
-                            padding: { top: 5, right: 5, bottom: 5, left: 5 },
-                            overviewRulerLanes: 0,
-                            overviewRulerBorder: false,
                             readOnly: true,
+                            renderSideBySide: !isNarrow,
                             minimap: { enabled: false },
+                            overviewRulerLanes: 0,
                             theme: "vs-dark",
+                            originalEditable: false,
                         },
                     );
 
-                    sveltePreviewInstance = monaco.editor.create(
-                        document.getElementById("svelte-preview"),
-                        {
-                            value: "",
-                            language: "javascript",
-                            automaticLayout: true,
-                            padding: { top: 5, right: 5, bottom: 5, left: 5 },
-                            overviewRulerLanes: 0,
-                            overviewRulerBorder: false,
-                            readOnly: true,
-                            minimap: { enabled: false },
-                            theme: "vs-dark",
-                        },
-                    );
+                    diffEditorInstance.setModel({
+                        original: originalModel,
+                        modified: modifiedModel,
+                    });
+
+                    window.addEventListener("resize", () => {
+                        diffEditorInstance.updateOptions({
+                            renderSideBySide: window.innerWidth >= 768,
+                        });
+                    });
 
                     editorInstance.onDidChangeModelContent(() => {
                         setTimeout(compileRust);
@@ -188,13 +216,10 @@
             function compare() {
                 const status = document.getElementById("status");
 
-                if (
-                    sveltePreviewInstance.getValue() ===
-                    rustPreviewInstance.getValue()
-                ) {
-                    status.textContent = "✅";
+                if (originalModel.getValue() === modifiedModel.getValue()) {
+                    status.textContent = "\u2705";
                 } else {
-                    status.textContent = "⚠️ different output";
+                    status.textContent = "\u26A0\uFE0F";
                 }
             }
 
@@ -207,10 +232,10 @@
                         "rust",
                     );
 
-                    rustPreviewInstance.setValue(result);
+                    modifiedModel.setValue(result);
                 } catch (e) {
                     console.error(e);
-                    rustPreviewInstance.setValue("Compiler error");
+                    modifiedModel.setValue("Compiler error");
                 }
             }
 
@@ -231,10 +256,10 @@
                     );
 
                     const code = compiler.format(result.js.code);
-                    sveltePreviewInstance.setValue(code);
+                    originalModel.setValue(code);
                 } catch (e) {
                     console.error(e);
-                    sveltePreviewInstance.setValue("Compiler error");
+                    originalModel.setValue("Compiler error");
                 }
             }
 
@@ -248,9 +273,9 @@
 
                 console.log(label, { start, end, span });
 
-                element.textContent = `(took ${prettyMs(span, {
+                element.textContent = `${prettyMs(span, {
                     formatSubMilliseconds: true,
-                })})`;
+                })}`;
 
                 return result;
             }
