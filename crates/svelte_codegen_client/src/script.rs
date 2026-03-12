@@ -20,7 +20,6 @@ use crate::context::Ctx;
 const PROPS_IS_IMMUTABLE: u32 = 1;
 const PROPS_IS_RUNES: u32 = 1 << 1;
 const PROPS_IS_UPDATED: u32 = 1 << 2;
-#[allow(dead_code)]
 const PROPS_IS_BINDABLE: u32 = 1 << 3;
 const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 
@@ -41,7 +40,16 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let mutated_runes = &ctx.analysis.mutated_runes;
     let props = ctx.analysis.props.as_ref();
 
-    transform_script_text(allocator, script_text, is_ts, rune_names, mutated_runes, props)
+    transform_script_text(
+        allocator,
+        script_text,
+        is_ts,
+        rune_names,
+        mutated_runes,
+        props,
+        &ctx.prop_sources,
+        &ctx.prop_non_sources,
+    )
 }
 
 /// Parse the script source and apply rune transformations, returning (imports, body).
@@ -52,6 +60,8 @@ fn transform_script_text<'a>(
     rune_names: &HashSet<String>,
     mutated_runes: &HashSet<String>,
     props: Option<&PropsAnalysis>,
+    prop_sources: &HashSet<String>,
+    prop_non_sources: &HashMap<String, String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -70,24 +80,11 @@ fn transform_script_text<'a>(
     let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
     let mut prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo> = HashMap::new();
 
-    let mut prop_source_names: HashSet<String> = HashSet::new();
-    let mut prop_non_source_names: HashSet<String> = HashSet::new();
-
-    if let Some(pa) = props {
-        for p in &pa.props {
-            if p.is_rest || p.is_prop_source {
-                prop_source_names.insert(p.local_name.clone());
-            } else {
-                prop_non_source_names.insert(p.local_name.clone());
-            }
-        }
-    }
-
     for sym_id in scoping.symbol_ids() {
         let name = scoping.symbol_name(sym_id);
-        if prop_source_names.contains(name) {
+        if prop_sources.contains(name) {
             prop_table.insert(sym_id, PropSymInfo { kind: PropKind::Source });
-        } else if prop_non_source_names.contains(name) {
+        } else if prop_non_sources.contains_key(name) {
             prop_table.insert(sym_id, PropSymInfo {
                 kind: PropKind::NonSource(name.to_string()),
             });
@@ -271,7 +268,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     Arg::Ident("$$props"),
                     Arg::Expr(arr_expr),
                 ]);
-                declarators.push((self.b.ast.allocator.alloc_str(&prop.local_name), init));
+                declarators.push((self.b.alloc_str(&prop.local_name), init));
                 continue;
             }
 
@@ -312,7 +309,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 }
             }
 
-            let name: &'a str = self.b.ast.allocator.alloc_str(&prop.local_name);
+            let name: &'a str = self.b.alloc_str(&prop.local_name);
             declarators.push((name, self.b.call_expr("$.prop", args)));
         }
 

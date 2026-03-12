@@ -107,7 +107,7 @@ pub(crate) fn process_class_directives<'a>(
 
         let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
 
-        let name_alloc = ctx.b.ast.allocator.alloc_str(name);
+        let name_alloc = ctx.b.alloc_str(name);
 
         if is_mutated_rune {
             let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
@@ -140,15 +140,10 @@ pub(crate) fn process_class_directives<'a>(
         AssignRight::Expr(set_class_call),
     );
 
-    // () => classes = $.set_class(...)
-    let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(assign)]);
-
-    // $.template_effect(() => ...)
-    let effect_stmt = ctx.b.call_stmt("$.template_effect", [Arg::Expr(arrow)]);
-
     // let classes;
+    // $.template_effect(() => { classes = $.set_class(...) })
     init.push(ctx.b.let_stmt("classes"));
-    init.push(effect_stmt);
+    super::expression::emit_template_effect(ctx, vec![ctx.b.expr_stmt(assign)], init);
 }
 
 /// Generate a bind directive statement (getter/setter + runtime call).
@@ -238,12 +233,12 @@ pub(crate) fn process_attrs_spread<'a>(
     for attr in &el.attributes {
         match attr {
             Attribute::BooleanAttribute(a) => {
-                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.bool_expr(true)));
             }
             Attribute::StringAttribute(a) => {
                 let val = ctx.component.source_text(a.value_span).to_string();
-                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(&val)));
             }
             Attribute::ExpressionAttribute(a) => {
@@ -251,16 +246,16 @@ pub(crate) fn process_attrs_spread<'a>(
                 let expr_text = ctx.component.source_text(a.expression_span).trim();
                 if a.name == expr_text {
                     // Property shorthand: name matches expression
-                    let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                    let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::Shorthand(name_alloc));
                 } else {
-                    let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                    let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(name_alloc, expr));
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
                 let val = build_attr_concat(ctx, &a.parts);
-                let name_alloc = ctx.b.ast.allocator.alloc_str(&a.name);
+                let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }
             Attribute::ShorthandOrSpread(a) if a.is_spread => {
@@ -274,7 +269,7 @@ pub(crate) fn process_attrs_spread<'a>(
             }
             Attribute::ShorthandOrSpread(a) => {
                 let name = ctx.component.source_text(a.expression_span).trim();
-                let name_alloc = ctx.b.ast.allocator.alloc_str(name);
+                let name_alloc = ctx.b.alloc_str(name);
                 props.push(ObjProp::Shorthand(name_alloc));
             }
             Attribute::BindDirective(bind) => {
