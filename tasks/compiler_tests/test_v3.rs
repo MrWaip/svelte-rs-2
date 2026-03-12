@@ -227,3 +227,13 @@ fn component_mixed() {
 fn component_props() {
     assert_compiler("component_props");
 }
+
+#[rstest]
+fn component_children() {
+    assert_compiler("component_children");
+}
+
+#[rstest]
+fn component_element_children() {
+    assert_compiler("component_element_children");
+}
