@@ -17,6 +17,8 @@
 
     value += 1234;
     value -= 4000;
+    value *= 2;
+    value &&= fallback;
     value = "";
 
     const obj = { title: title, title };

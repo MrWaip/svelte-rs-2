@@ -16,6 +16,8 @@ export default function App($$anchor) {
 	}
 	$.set(value, $.get(value) + 1234);
 	$.set(value, $.get(value) - 4e3);
+	$.set(value, $.get(value) * 2);
+	$.set(value, $.get(value) && fallback, true);
 	$.set(value, "");
 	const obj = {
 		title: $.get(title),

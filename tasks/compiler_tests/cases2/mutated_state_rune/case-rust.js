@@ -12,10 +12,12 @@ export default function App($$anchor) {
 		map($.get(title));
 	});
 	function map(value, off = $.get(title)) {
-		return $.get(value);
+		return value;
 	}
-	$.set(value, 1234);
-	$.set(value, 4e3);
+	$.set(value, $.get(value) + 1234);
+	$.set(value, $.get(value) - 4e3);
+	$.set(value, $.get(value) * 2);
+	$.set(value, $.get(value) && fallback, true);
 	$.set(value, "");
 	const obj = {
 		title: $.get(title),
