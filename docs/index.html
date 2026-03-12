@@ -14,7 +14,16 @@
     </head>
     <body>
         <div class="container">
-            <h1>Rust Svelte Compiler Demo</h1>
+            <div class="toolbar">
+                <h1>Rust Svelte Compiler Demo</h1>
+                <div class="toolbar-actions">
+                    <button id="load-benchmark" class="btn" title="Load benchmark code">
+                        Load benchmark
+                    </button>
+                    <button id="theme-toggle" class="btn btn-icon" title="Toggle theme">
+                    </button>
+                </div>
+            </div>
 
             <div class="grid">
                 <div class="editor-box">
@@ -42,6 +51,24 @@
         </div>
 
         <style>
+            :root {
+                --bg: #ffffff;
+                --text: #1a1a1a;
+                --toolbar-bg: #f0f0f0;
+                --btn-bg: #e0e0e0;
+                --btn-text: #1a1a1a;
+                --btn-hover: #d0d0d0;
+            }
+
+            :root.dark {
+                --bg: #1e1e1e;
+                --text: #d4d4d4;
+                --toolbar-bg: #2d2d2d;
+                --btn-bg: #3c3c3c;
+                --btn-text: #d4d4d4;
+                --btn-hover: #505050;
+            }
+
             * {
                 margin: 0;
                 padding: 0;
@@ -51,6 +78,9 @@
                 font-family: "Space Mono", serif;
                 font-weight: 400;
                 font-style: normal;
+                background: var(--bg);
+                color: var(--text);
+                transition: background 0.2s, color 0.2s;
             }
 
             .container {
@@ -58,6 +88,41 @@
                 width: 100vw;
                 height: 80vh;
                 box-sizing: border-box;
+            }
+
+            .toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 1rem;
+            }
+
+            .toolbar-actions {
+                display: flex;
+                gap: 0.5rem;
+                align-items: center;
+            }
+
+            .btn {
+                font-family: "Space Mono", serif;
+                font-size: 14px;
+                padding: 6px 14px;
+                border: none;
+                border-radius: 6px;
+                background: var(--btn-bg);
+                color: var(--btn-text);
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+
+            .btn:hover {
+                background: var(--btn-hover);
+            }
+
+            .btn-icon {
+                font-size: 18px;
+                padding: 6px 10px;
+                line-height: 1;
             }
 
             .grid {
@@ -96,6 +161,11 @@
                     font-size: 0.9rem;
                 }
 
+                .toolbar {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+
                 .grid {
                     grid-template-columns: 1fr;
                 }
@@ -124,7 +194,7 @@
             import prettyMs from "prettyMs";
             import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.53.9/compiler/index.js/+esm";
 
-            import { example } from "./example.js";
+            import { example, benchmarkExample } from "./example.js";
 
             await init();
 
@@ -143,6 +213,35 @@
             const rustPerf = document.getElementById("rust-perf");
             const sveltePerf = document.getElementById("svelte-perf");
 
+            // --- Theme ---
+            const themeToggleBtn = document.getElementById("theme-toggle");
+            let isDark = localStorage.getItem("theme") === "dark" ||
+                (!localStorage.getItem("theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+            function applyTheme() {
+                document.documentElement.classList.toggle("dark", isDark);
+                themeToggleBtn.textContent = isDark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+                if (typeof monaco !== "undefined") {
+                    monaco.editor.setTheme(isDark ? "vs-dark" : "vs");
+                }
+            }
+
+            applyTheme();
+
+            themeToggleBtn.addEventListener("click", () => {
+                isDark = !isDark;
+                localStorage.setItem("theme", isDark ? "dark" : "light");
+                applyTheme();
+            });
+
+            // --- Benchmark button ---
+            document.getElementById("load-benchmark").addEventListener("click", () => {
+                if (editorInstance) {
+                    editorInstance.setValue(benchmarkExample);
+                }
+            });
+
+            // --- Monaco ---
             let scriptElement = document.createElement("script");
             scriptElement.setAttribute(
                 "src",
@@ -158,6 +257,8 @@
                 });
 
                 require(["vs/editor/editor.main"], () => {
+                    const monacoTheme = isDark ? "vs-dark" : "vs";
+
                     editorInstance = monaco.editor.create(
                         document.getElementById("editor"),
                         {
@@ -168,7 +269,7 @@
                             overviewRulerLanes: 0,
                             overviewRulerBorder: false,
                             minimap: { enabled: false },
-                            theme: "vs-dark",
+                            theme: monacoTheme,
                         },
                     );
 
@@ -185,7 +286,7 @@
                             renderSideBySide: !isNarrow,
                             minimap: { enabled: false },
                             overviewRulerLanes: 0,
-                            theme: "vs-dark",
+                            theme: monacoTheme,
                             originalEditable: false,
                         },
                     );
