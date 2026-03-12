@@ -55,6 +55,9 @@ fn walk_node(
             walk_attr_expressions(el, component, data, diags);
             walk_fragment(&el.fragment, component, data, diags);
         }
+        Node::ComponentNode(cn) => {
+            walk_fragment(&cn.fragment, component, data, diags);
+        }
         Node::IfBlock(block) => {
             let source = component.source_text(block.test_span);
             let offset = block.test_span.start;

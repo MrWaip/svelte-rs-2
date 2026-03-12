@@ -1,6 +1,7 @@
 //! Template and DOM traversal code generation.
 
 pub(crate) mod attributes;
+pub(crate) mod component;
 pub(crate) mod each_block;
 pub(crate) mod element;
 pub(crate) mod expression;
@@ -20,6 +21,7 @@ use crate::context::Ctx;
 use element::process_element;
 use expression::{emit_template_effect, emit_text_update, emit_trailing_next, static_text_of};
 use html::{element_html, fragment_html};
+use component::gen_component;
 use if_block::gen_if_block;
 use each_block::gen_each_block;
 use render_tag::gen_render_tag;
@@ -156,10 +158,17 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
         lf.items[0].clone()
     };
 
-    // RenderTag at root: call directly with $$anchor, no wrapping
-    if let FragmentItem::RenderTag(id) = item {
-        gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), body);
-        return;
+    // RenderTag / ComponentNode at root: call directly with $$anchor, no wrapping
+    match item {
+        FragmentItem::RenderTag(id) => {
+            gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), body);
+            return;
+        }
+        FragmentItem::ComponentNode(id) => {
+            gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), body);
+            return;
+        }
+        _ => {}
     }
 
     let frag = ctx.gen_ident("fragment");
@@ -346,31 +355,37 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 lf.items[0].clone()
             };
 
-            // RenderTag: call directly with $$anchor
-            if let FragmentItem::RenderTag(id) = item {
-                gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
-            } else {
-                let frag = ctx.gen_ident("fragment");
-                let node = ctx.gen_ident("node");
-                body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
-                body.push(ctx.b.var_stmt(
-                    &node,
-                    ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
-                ));
-                match item {
-                    FragmentItem::IfBlock(id) => {
-                        let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
-                        body.push(ctx.b.block_stmt(stmts));
-                    }
-                    FragmentItem::EachBlock(id) => {
-                        gen_each_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
-                    }
-                    _ => unreachable!(),
+            // RenderTag / ComponentNode: call directly with $$anchor
+            match item {
+                FragmentItem::RenderTag(id) => {
+                    gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
-                body.push(ctx.b.call_stmt(
-                    "$.append",
-                    [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-                ));
+                FragmentItem::ComponentNode(id) => {
+                    gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
+                }
+                _ => {
+                    let frag = ctx.gen_ident("fragment");
+                    let node = ctx.gen_ident("node");
+                    body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
+                    body.push(ctx.b.var_stmt(
+                        &node,
+                        ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
+                    ));
+                    match item {
+                        FragmentItem::IfBlock(id) => {
+                            let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
+                            body.push(ctx.b.block_stmt(stmts));
+                        }
+                        FragmentItem::EachBlock(id) => {
+                            gen_each_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                        }
+                        _ => unreachable!(),
+                    }
+                    body.push(ctx.b.call_stmt(
+                        "$.append",
+                        [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
+                    ));
+                }
             }
         }
         ContentType::Mixed => {

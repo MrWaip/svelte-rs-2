@@ -231,6 +231,9 @@ fn walk_template_scopes(
             Node::Element(el) => {
                 walk_template_scopes(&el.fragment, component, scoping, current_scope);
             }
+            Node::ComponentNode(cn) => {
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope);
+            }
             Node::IfBlock(block) => {
                 walk_template_scopes(&block.consequent, component, scoping, current_scope);
                 if let Some(alt) = &block.alternate {

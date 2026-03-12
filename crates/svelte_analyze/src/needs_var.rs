@@ -21,6 +21,9 @@ fn walk_fragment(fragment: &Fragment, data: &mut AnalysisData) {
                     data.elements_needing_var.insert(el.id);
                 }
             }
+            Node::ComponentNode(cn) => {
+                walk_fragment(&cn.fragment, data);
+            }
             Node::IfBlock(b) => {
                 walk_fragment(&b.consequent, data);
                 if let Some(alt) = &b.alternate {
@@ -83,6 +86,6 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
             // Already computed: children are walked before parents
             data.elements_needing_var.contains(id)
         }
-        FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => true,
+        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => true,
     }
 }

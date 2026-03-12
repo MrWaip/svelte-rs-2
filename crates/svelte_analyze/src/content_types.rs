@@ -21,6 +21,10 @@ fn descend_fragment(fragment: &Fragment, data: &mut AnalysisData) {
                 classify_by_key(FragmentKey::Element(el.id), data);
                 descend_fragment(&el.fragment, data);
             }
+            Node::ComponentNode(cn) => {
+                classify_by_key(FragmentKey::ComponentNode(cn.id), data);
+                descend_fragment(&cn.fragment, data);
+            }
             Node::IfBlock(block) => {
                 classify_by_key(FragmentKey::IfConsequent(block.id), data);
                 classify_by_key(FragmentKey::IfAlternate(block.id), data);
@@ -63,7 +67,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
     if items.len() == 1 {
         match &items[0] {
             FragmentItem::Element(_) => return ContentType::SingleElement,
-            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => return ContentType::SingleBlock,
+            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => return ContentType::SingleBlock,
             FragmentItem::TextConcat { .. } => {}
         }
     }
@@ -76,7 +80,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
     for item in items {
         match item {
             FragmentItem::Element(_) => has_element = true,
-            FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => has_block = true,
+            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => has_block = true,
             FragmentItem::TextConcat { parts } => {
                 let has_expr = parts.iter().any(|p| matches!(p, crate::data::ConcatPart::Expr(_)));
                 if has_expr {

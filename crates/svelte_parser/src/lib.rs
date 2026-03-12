@@ -5,7 +5,7 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
     ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
@@ -102,14 +102,26 @@ impl<'a> Parser<'a> {
                 TokenType::StartTag(tag) => {
                     let attrs = self.convert_attributes(&tag.attributes)?;
                     if tag.self_closing {
-                        let node = Node::Element(Element {
-                            id: self.ids.next(),
-                            span: token.span,
-                            name: tag.name.to_string(),
-                            self_closing: true,
-                            attributes: attrs,
-                            fragment: Fragment::empty(),
-                        });
+                        let name = tag.name.to_string();
+                        let node = if is_component_name(&name) {
+                            Node::ComponentNode(ComponentNode {
+                                id: self.ids.next(),
+                                span: token.span,
+                                name,
+                                self_closing: true,
+                                attributes: attrs,
+                                fragment: Fragment::empty(),
+                            })
+                        } else {
+                            Node::Element(Element {
+                                id: self.ids.next(),
+                                span: token.span,
+                                name,
+                                self_closing: true,
+                                attributes: attrs,
+                                fragment: Fragment::empty(),
+                            })
+                        };
                         children_stack.last_mut().unwrap().push(node);
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
@@ -136,14 +148,25 @@ impl<'a> Parser<'a> {
                     let children = children_stack.pop().unwrap();
                     let merged_span = el.span_start.merge(&token.span);
 
-                    let node = Node::Element(Element {
-                        id: self.ids.next(),
-                        span: merged_span,
-                        name: el.name,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment: Fragment::new(children),
-                    });
+                    let node = if is_component_name(&el.name) {
+                        Node::ComponentNode(ComponentNode {
+                            id: self.ids.next(),
+                            span: merged_span,
+                            name: el.name,
+                            self_closing: false,
+                            attributes: el.attributes,
+                            fragment: Fragment::new(children),
+                        })
+                    } else {
+                        Node::Element(Element {
+                            id: self.ids.next(),
+                            span: merged_span,
+                            name: el.name,
+                            self_closing: false,
+                            attributes: el.attributes,
+                            fragment: Fragment::new(children),
+                        })
+                    };
 
                     children_stack.last_mut().unwrap().push(node);
                 }
@@ -538,6 +561,10 @@ impl<'a> Parser<'a> {
         );
         s_ptr - source_ptr
     }
+}
+
+fn is_component_name(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_uppercase()) || name.contains('.')
 }
 
 struct ScriptData {

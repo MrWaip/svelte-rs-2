@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
-use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
+use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -10,6 +10,7 @@ use crate::builder::Builder;
 /// Pre-built index for O(1) node lookup by NodeId.
 struct NodeIndex<'a> {
     elements: HashMap<NodeId, &'a Element>,
+    component_nodes: HashMap<NodeId, &'a ComponentNode>,
     if_blocks: HashMap<NodeId, &'a IfBlock>,
     each_blocks: HashMap<NodeId, &'a EachBlock>,
     snippet_blocks: HashMap<NodeId, &'a SnippetBlock>,
@@ -21,6 +22,7 @@ impl<'a> NodeIndex<'a> {
     fn build(fragment: &'a Fragment) -> Self {
         let mut index = Self {
             elements: HashMap::new(),
+            component_nodes: HashMap::new(),
             if_blocks: HashMap::new(),
             each_blocks: HashMap::new(),
             snippet_blocks: HashMap::new(),
@@ -37,6 +39,10 @@ impl<'a> NodeIndex<'a> {
                 Node::Element(el) => {
                     self.elements.insert(el.id, el);
                     self.walk(&el.fragment);
+                }
+                Node::ComponentNode(cn) => {
+                    self.component_nodes.insert(cn.id, cn);
+                    self.walk(&cn.fragment);
                 }
                 Node::IfBlock(b) => {
                     self.if_blocks.insert(b.id, b);
@@ -132,6 +138,10 @@ impl<'a> Ctx<'a> {
 
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.index.elements.get(&id).copied().expect("element not found")
+    }
+
+    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
+        self.index.component_nodes.get(&id).copied().expect("component node not found")
     }
 
     pub fn if_block(&self, id: NodeId) -> &'a IfBlock {

@@ -72,6 +72,7 @@ impl Fragment {
 pub enum Node {
     Text(Text),
     Element(Element),
+    ComponentNode(ComponentNode),
     Comment(Comment),
     ExpressionTag(ExpressionTag),
     IfBlock(IfBlock),
@@ -85,6 +86,7 @@ impl Node {
         match self {
             Node::Text(n) => n.id,
             Node::Element(n) => n.id,
+            Node::ComponentNode(n) => n.id,
             Node::Comment(n) => n.id,
             Node::ExpressionTag(n) => n.id,
             Node::IfBlock(n) => n.id,
@@ -98,6 +100,7 @@ impl Node {
         match self {
             Node::Text(n) => n.span,
             Node::Element(n) => n.span,
+            Node::ComponentNode(n) => n.span,
             Node::Comment(n) => n.span,
             Node::ExpressionTag(n) => n.span,
             Node::IfBlock(n) => n.span,
@@ -133,6 +136,10 @@ impl Node {
 
     pub fn is_render_tag(&self) -> bool {
         matches!(self, Node::RenderTag(_))
+    }
+
+    pub fn is_component_node(&self) -> bool {
+        matches!(self, Node::ComponentNode(_))
     }
 }
 
@@ -216,6 +223,19 @@ impl Element {
             fragment: Fragment::empty(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// ComponentNode
+// ---------------------------------------------------------------------------
+
+pub struct ComponentNode {
+    pub id: NodeId,
+    pub span: Span,
+    pub name: String,
+    pub self_closing: bool,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
 }
 
 // ---------------------------------------------------------------------------

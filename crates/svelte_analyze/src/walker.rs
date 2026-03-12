@@ -76,6 +76,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 walk_template(&block.body, data, scope, visitor);
                 visitor.leave_snippet_block(block, scope, data);
             }
+            Node::ComponentNode(cn) => {
+                walk_template(&cn.fragment, data, scope, visitor);
+            }
             Node::RenderTag(tag) => {
                 visitor.visit_render_tag(tag, scope, data);
             }
