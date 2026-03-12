@@ -80,6 +80,7 @@ fn transform_script_text<'a>(
     let mut rune_table: HashMap<oxc_semantic::SymbolId, RuneInfo> = HashMap::new();
     let mut prop_table: HashMap<oxc_semantic::SymbolId, PropSymInfo> = HashMap::new();
 
+    let root_scope = scoping.root_scope_id();
     for sym_id in scoping.symbol_ids() {
         let name = scoping.symbol_name(sym_id);
         if prop_sources.contains(name) {
@@ -89,8 +90,12 @@ fn transform_script_text<'a>(
                 kind: PropKind::NonSource(name.to_string()),
             });
         } else if rune_names.contains(name) {
-            let mutated = mutated_runes.contains(name);
-            rune_table.insert(sym_id, RuneInfo { mutated });
+            // Only treat symbols from root scope as runes — skip parameters
+            // that shadow a rune variable
+            if scoping.symbol_scope_id(sym_id) == root_scope {
+                let mutated = mutated_runes.contains(name);
+                rune_table.insert(sym_id, RuneInfo { mutated });
+            }
         }
     }
 
@@ -509,8 +514,23 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 if info.mutated {
                     let name = id.name.as_str().to_string();
                     let right = self.b.move_expr(&mut assign.right);
-                    let needs_proxy = Self::should_proxy(&right);
-                    *node = crate::rune_transform::transform_rune_set(self.b, &name, right, needs_proxy);
+
+                    // Expand compound assignments: value += x → $.set(value, $.get(value) + x)
+                    let value = if assign.operator.is_assign() {
+                        right
+                    } else {
+                        let left_get = crate::rune_transform::transform_rune_get(self.b, &name);
+                        if let Some(bin_op) = assign.operator.to_binary_operator() {
+                            self.b.ast.expression_binary(oxc_span::SPAN, left_get, bin_op, right)
+                        } else if let Some(log_op) = assign.operator.to_logical_operator() {
+                            self.b.ast.expression_logical(oxc_span::SPAN, left_get, log_op, right)
+                        } else {
+                            unreachable!("all compound assignment operators are either binary or logical")
+                        }
+                    };
+
+                    let needs_proxy = Self::should_proxy(&value);
+                    *node = crate::rune_transform::transform_rune_set(self.b, &name, value, needs_proxy);
                     return;
                 }
             }
