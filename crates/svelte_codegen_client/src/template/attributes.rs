@@ -32,17 +32,18 @@ pub(crate) fn process_attr<'a>(
         Attribute::ExpressionAttribute(a) => {
             if let Some(event_name) = a.name.strip_prefix("on") {
                 if is_delegatable_event(event_name) {
+                    let event_str = event_name.to_string();
                     let val = parse_expr(ctx, a.expression_span);
                     after_update.push(ctx.b.call_stmt(
                         "$.delegated",
                         [
-                            Arg::Str(event_name.to_string()),
+                            Arg::Str(event_str.clone()),
                             Arg::Ident(el_name),
                             Arg::Expr(val),
                         ],
                     ));
-                    if !ctx.delegated_events.contains(&event_name.to_string()) {
-                        ctx.delegated_events.push(event_name.to_string());
+                    if !ctx.delegated_events.contains(&event_str) {
+                        ctx.delegated_events.push(event_str);
                     }
                     return;
                 }
