@@ -1,25 +1,29 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, EachBlock, Element, ExpressionTag, IfBlock, NodeId, RenderTag, SnippetBlock,
+    Attribute, BindDirective, EachBlock, Element, ExpressionTag, IfBlock, NodeId, RenderTag,
+    SnippetBlock,
 };
 
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ReactivityVisitor {
-    /// Stack of snippet parameter names for nested snippets.
-    snippet_params_stack: Vec<Vec<String>>,
+    /// Stack of snippet NodeIds for nested snippets (avoids cloning param vecs).
+    snippet_id_stack: Vec<NodeId>,
 }
 
 impl ReactivityVisitor {
     pub(crate) fn new() -> Self {
         Self {
-            snippet_params_stack: Vec::new(),
+            snippet_id_stack: Vec::new(),
         }
     }
 
-    fn current_snippet_params(&self) -> &[String] {
-        self.snippet_params_stack.last().map_or(&[], |v| v.as_slice())
+    fn current_snippet_params<'a>(&self, data: &'a AnalysisData) -> &'a [String] {
+        self.snippet_id_stack
+            .last()
+            .and_then(|id| data.snippet_params.get(id))
+            .map_or(&[], |v| v.as_slice())
     }
 
     fn expr_is_dynamic(
@@ -29,7 +33,7 @@ impl ReactivityVisitor {
         scope: ScopeId,
     ) -> bool {
         if let Some(info) = data.expressions.get(node_id) {
-            let params = self.current_snippet_params();
+            let params = self.current_snippet_params(data);
             return info.references.iter().any(|r| {
                 // Snippet params are always dynamic (they're thunks)
                 if params.iter().any(|p| p == &r.name) {
@@ -55,20 +59,16 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-        let mut needs_ref = false;
-        for (attr_idx, attr) in el.attributes.iter().enumerate() {
-            if attr_is_dynamic(attr, attr_idx, el.id, data, scope) {
-                data.dynamic_attrs.insert((el.id, attr_idx));
-                needs_ref = true;
-            }
-            if matches!(attr, Attribute::BindDirective(_)) {
-                needs_ref = true;
-            }
-        }
-        if needs_ref {
+    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+        if attr_is_dynamic(attr, idx, el.id, data, scope) {
+            data.dynamic_attrs.insert((el.id, idx));
             data.node_needs_ref.insert(el.id);
         }
+    }
+
+    fn visit_bind_directive(&mut self, _dir: &BindDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        // Bind directives always need a DOM ref
+        data.node_needs_ref.insert(el.id);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
@@ -85,17 +85,12 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, data: &mut AnalysisData) {
-        let params = data
-            .snippet_params
-            .get(&block.id)
-            .cloned()
-            .unwrap_or_default();
-        self.snippet_params_stack.push(params);
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
+        self.snippet_id_stack.push(block.id);
     }
 
     fn leave_snippet_block(&mut self, _block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
-        self.snippet_params_stack.pop();
+        self.snippet_id_stack.pop();
     }
 }
 
@@ -116,8 +111,8 @@ fn attr_is_dynamic(
         return false;
     }
     if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
+        let root = data.scoping.root_scope_id();
         return info.references.iter().any(|r| {
-            let root = data.scoping.root_scope_id();
             if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name) {
                 // Non-root scope binding (each-block var) is always dynamic
                 if data.scoping.symbol_scope_id(sym_id) != root {

@@ -1,5 +1,5 @@
-use svelte_ast::{Attribute, BindDirective, Component, Element, ExpressionTag};
 use oxc_semantic::ScopeId;
+use svelte_ast::{BindDirective, Component, Element, ExpressionTag};
 
 use crate::data::AnalysisData;
 use crate::walker::{self, TemplateVisitor};
@@ -53,13 +53,13 @@ struct BindMutationVisitor<'a> {
 impl TemplateVisitor for BindMutationVisitor<'_> {
     fn visit_bind_directive(&mut self, dir: &BindDirective, _el: &Element, scope: ScopeId, data: &mut AnalysisData) {
         let name = if dir.shorthand {
-            dir.name.clone()
+            dir.name.as_str()
         } else if let Some(span) = dir.expression_span {
-            self.component.source_text(span).trim().to_string()
+            self.component.source_text(span).trim()
         } else {
             return;
         };
-        if let Some(sym_id) = data.scoping.find_binding(scope, &name) {
+        if let Some(sym_id) = data.scoping.find_binding(scope, name) {
             if data.scoping.is_rune(sym_id) {
                 data.scoping.mark_bind_mutated(sym_id);
                 data.scoping.mark_template_mutated(sym_id);
