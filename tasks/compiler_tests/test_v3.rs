@@ -237,3 +237,8 @@ fn component_children() {
 fn component_element_children() {
     assert_compiler("component_element_children");
 }
+
+#[rstest]
+fn smoke_all() {
+    assert_compiler("smoke_all");
+}
