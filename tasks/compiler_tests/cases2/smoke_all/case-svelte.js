@@ -4,8 +4,9 @@ import { formatDate } from "./utils.js";
 var root_1 = $.from_html(`<li> </li>`);
 var root_3 = $.from_html(`<!> <div class="entry"> </div>`, 1);
 var root_2 = $.from_html(`<section><p> </p> <!></section>`);
-var root_5 = $.from_html(`<p>Nothing here yet</p>`);
-var root_6 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
+var root_6 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
+var root_5 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
+var root_7 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
 var root = $.from_html(`<header><h1> </h1> <input/> <button> </button></header> <!> <!>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
@@ -92,19 +93,33 @@ export default function App($$anchor, $$props) {
 					return $.get(count);
 				},
 				children: ($$anchor, $$slotProps) => {
-					var p_1 = root_5();
-					$.append($$anchor, p_1);
+					var fragment_3 = root_5();
+					var node_3 = $.sibling($.first_child(fragment_3), 2);
+					Panel(node_3, {
+						label: "empty",
+						get count() {
+							return $.get(count);
+						},
+						children: ($$anchor, $$slotProps) => {
+							$.next();
+							var fragment_4 = root_6();
+							$.next();
+							$.append($$anchor, fragment_4);
+						},
+						$$slots: { default: true }
+					});
+					$.append($$anchor, fragment_3);
 				},
 				$$slots: { default: true }
 			});
 		};
 		var alternate = ($$anchor) => {
-			var fragment_3 = root_6();
-			var p_2 = $.sibling($.first_child(fragment_3), 2);
-			var text_5 = $.child(p_2, true);
-			$.reset(p_2);
+			var fragment_5 = root_7();
+			var p_1 = $.sibling($.first_child(fragment_5), 2);
+			var text_5 = $.child(p_1, true);
+			$.reset(p_1);
 			$.template_effect(() => $.set_text(text_5, $.set(count, 0)));
-			$.append($$anchor, fragment_3);
+			$.append($$anchor, fragment_5);
 		};
 		$.if(node, ($$render) => {
 			if ($.get(count) > 0) $$render(consequent);
@@ -112,8 +127,8 @@ export default function App($$anchor, $$props) {
 			else $$render(alternate, -1);
 		});
 	}
-	var node_3 = $.sibling(node, 2);
-	Panel(node_3, {
+	var node_4 = $.sibling(node, 2);
+	Panel(node_4, {
 		get count() {
 			return $.get(count);
 		},

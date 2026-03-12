@@ -2,7 +2,7 @@ import * as $ from "svelte/internal/client";
 import Panel from "./Panel.svelte";
 import { formatDate } from "./utils.js";
 const row = ($$anchor, item = $.noop) => {
-	var li = root_6();
+	var li = root_7();
 	var text_5 = $.child(li);
 	$.reset(li);
 	$.template_effect(() => $.set_text(text_5, `${item() ?? ""} — ${$.get(count) ?? ""}`));
@@ -10,9 +10,10 @@ const row = ($$anchor, item = $.noop) => {
 };
 var root_2 = $.from_html(`<!> <div class="entry"> </div>`, 1);
 var root_1 = $.from_html(`<section><p> </p> <!></section>`);
-var root_4 = $.from_html(`<p>Nothing here yet</p>`);
-var root_5 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
-var root_6 = $.from_html(`<li> </li>`);
+var root_4 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
+var root_5 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
+var root_6 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
+var root_7 = $.from_html(`<li> </li>`);
 var root = $.from_html(`<header><h1> </h1> <input/> <button> </button></header> <!> <!>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
@@ -92,18 +93,33 @@ export default function App($$anchor, $$props) {
 				return $.get(count);
 			},
 			children: ($$anchor, $$slotProps) => {
-				var p_1 = root_4();
-				$.append($$anchor, p_1);
+				var fragment_2 = root_4();
+				var node_3 = $.sibling($.first_child(fragment_2), 2);
+				Panel(node_3, {
+					label: "empty",
+					get count() {
+						return $.get(count);
+					},
+					children: ($$anchor, $$slotProps) => {
+						$.next();
+						$.next();
+						var fragment_3 = root_5();
+						$.next();
+						$.append($$anchor, fragment_3);
+					},
+					$$slots: { default: true }
+				});
+				$.append($$anchor, fragment_2);
 			},
 			$$slots: { default: true }
 		});
 		var alternate = ($$anchor) => {
-			var fragment_2 = root_5();
-			var p_2 = $.sibling($.first_child(fragment_2), 2);
-			var text_4 = $.child(p_2, true);
-			$.reset(p_2);
+			var fragment_4 = root_6();
+			var p_1 = $.sibling($.first_child(fragment_4), 2);
+			var text_4 = $.child(p_1, true);
+			$.reset(p_1);
 			$.template_effect(() => $.set_text(text_4, $.set(count, 0)));
-			$.append($$anchor, fragment_2);
+			$.append($$anchor, fragment_4);
 		};
 		$.if(node, ($$render) => {
 			if ($.get(count) > 0) $$render(consequent);
@@ -111,8 +127,8 @@ export default function App($$anchor, $$props) {
 			else $$render(alternate, -1);
 		});
 	}
-	var node_3 = $.sibling(node, 2);
-	Panel(node_3, {
+	var node_4 = $.sibling(node, 2);
+	Panel(node_4, {
 		get count() {
 			return $.get(count);
 		},
