@@ -2,19 +2,8 @@
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
-## Roadmap & Progress Tracking
-
-`TODO_ANALYZE.md` — единственный источник правды о статусе портирования. Аргумент этой команды — пункт из плана (например `1a`, `2b`, `3e`).
-
-**Перед началом:** прочитай `TODO_ANALYZE.md`, найди пункт, используй указанные файлы и reference-ссылки.
-
-**По завершении** обязательно обнови `TODO_ANALYZE.md`:
-- Отметь `[x]` для выполненных чекбоксов
-- Если фича реализована частично — пометь заголовок как `(частично ✅)` и добавь подсекцию "Не реализовано" с конкретными подзадачами `- [ ]`
-- Если добавлены новые тесты — зафиксируй их названия
-- Если обнаружены новые подзадачи в процессе — добавь их как `- [ ]`
-
-Это критично: без актуального `TODO_ANALYZE.md` в следующей сессии будет непонятно, что сделано, а что нет.
+The command argument is a roadmap item from `TODO_ANALYZE.md` (e.g. `1a`, `2b`, `3e`).
+Before starting, read `TODO_ANALYZE.md`, find the item, and use the listed files and reference links.
 
 ## Approach
 
@@ -31,7 +20,7 @@ DO:
 - Simplify control flow when Rust makes it natural (match, iterators, Option)
 - Keep functions short and focused — if a Svelte visitor does 5 things, split into clear helpers
 
-## Step 0: Branch
+## Step 1: Branch
 
 Create a feature branch from the latest master:
 ```
@@ -39,14 +28,14 @@ git checkout master && git pull && git checkout -b port/<item>-<short-name>
 ```
 where `<item>` is the roadmap item (e.g. `1a`) and `<short-name>` is a brief kebab-case description of the feature. All work must be done on this branch.
 
-## Step 1: Test case
+## Step 2: Test case
 
 - Check `reference/compiler/tests/` for existing test examples of this feature
 - Create `tasks/compiler_tests/cases2/<test_name>/case.svelte` with a minimal example of the feature
 - Run `cargo run -p generate_test_cases` to generate `case-svelte.js` (expected output from Svelte v5). If this fails, stop and report the error.
 - Add test function in `tasks/compiler_tests/test_v3.rs`: `fn <test_name>() { assert_compiler("<test_name>"); }`
 
-## Step 2: Parser & AST
+## Step 3: Parser & AST
 
 Check if `case.svelte` uses syntax not yet supported by our parser.
 
@@ -56,7 +45,7 @@ Check if `case.svelte` uses syntax not yet supported by our parser.
   2. Add parsing to `crates/svelte_parser/src/lib.rs` (and scanner if new tokens needed)
   3. Add parser tests following `/test-pattern`
 
-## Step 3: Analysis
+## Step 4: Analysis
 
 Read the Svelte analysis visitors in `reference/compiler/phases/2-analyze/visitors/` to understand what metadata the feature needs.
 
@@ -65,7 +54,7 @@ Read the Svelte analysis visitors in `reference/compiler/phases/2-analyze/visito
 - If not, add or extend a pass in `crates/svelte_analyze/src/`
 - Add analyze tests following `/test-pattern`
 
-## Step 4: Codegen
+## Step 5: Codegen
 
 Read the Svelte transform visitor in `reference/compiler/phases/3-transform/client/visitors/`.
 
@@ -79,7 +68,7 @@ Key differences from Svelte:
 - We store `Span` and re-parse in codegen via `svelte_js`, not stored expressions
 - Our `$.template()` builds equivalent calls to Svelte's `html` tagged template
 
-## Step 5: Verify
+## Step 6: Verify
 
 Run the test:
 ```
@@ -92,3 +81,13 @@ cargo test -p compiler_tests --test compiler_tests_v3
 ```
 
 If the test still fails after 3 attempts, stop and report what you've tried.
+
+## Step 7: Update tracking
+
+Update `TODO_ANALYZE.md`:
+- Mark `[x]` for completed checkboxes
+- If partially implemented — mark the heading as `(partial)` and add a "Not implemented" subsection with specific `- [ ]` items
+- If new tests were added — record their names
+- If new subtasks were discovered — add them as `- [ ]`
+
+This is critical: without an up-to-date `TODO_ANALYZE.md`, the next session won't know what's done and what's not.
