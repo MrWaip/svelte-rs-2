@@ -2,38 +2,39 @@
 
 ## Script / JavaScript
 
-- [ ] `$state` rune
-  - [ ] Update (`count++`, `--count`)
-  - [ ] Assign (`count = 12`)
-  - [ ] Read (`{ name }`)
-- [ ] `$props` rune
-  - [ ] Update prop (`count++`)
-  - [ ] Assign prop (`name = 'world'`)
-  - [ ] Read prop (`{ name }`)
-  - [ ] Destructure (`let { name } = $props()`)
-- [ ] Hoist imports
-- [ ] Strip TypeScript
+- [x] `$state` rune
+  - [x] Update (`count++`, `--count`)
+  - [x] Assign (`count = 12`)
+  - [x] Read (`{ name }`)
+- [x] `$props` rune
+  - [x] Update prop (`count++`)
+  - [x] Assign prop (`name = 'world'`)
+  - [x] Read prop (`{ name }`)
+  - [x] Destructure (`let { name } = $props()`)
+- [x] Hoist imports
+- [x] Strip TypeScript
 
 ## Template
 
-- [ ] HTML Element
+- [x] HTML Element
   - [ ] Self-closed tags (`<input />`)
   - [x] Simple attribute (`attr="name"`)
   - [x] Interpolation attribute (`attr={expression}`)
   - [x] Shorthand attribute (`{ name }`)
   - [x] Concatenation attribute (`attr="{1 + 1} = 2"`)
-  - [ ] Class directive (`class:toggle`)
-  - [ ] Bind directive (`bind:value`)
+  - [x] Class directive (`class:toggle`)
+  - [x] Bind directive (`bind:value`)
   - [ ] Use directive (`use:action`)
   - [ ] Event listeners (`onclick={handler}`)
   - [ ] Style directive (`style:color`)
-  - [ ] Spread attributes (`{...attrs}`)
+  - [x] Spread attributes (`{...attrs}`)
 - [x] Text node
 - [x] Interpolation (`{name}`)
 - [x] IfBlock (`{#if expr} … {:else} … {/if}`)
-- [ ] EachBlock
-- [ ] Component
-- [ ] Script tag
+- [x] EachBlock
+- [x] Component (with props and children)
+- [x] Snippet (`{#snippet}` / `{@render}`)
+- [ ] Script tag (inline `<script>` codegen)
 
 ## Optimizations
 
