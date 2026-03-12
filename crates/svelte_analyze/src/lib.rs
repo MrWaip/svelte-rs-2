@@ -4,6 +4,7 @@ mod elseif;
 mod known_values;
 mod lower;
 mod mutations;
+mod needs_var;
 mod parse_js;
 mod props;
 mod reactivity;
@@ -70,6 +71,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     }
 
     content_types::classify_content(component, &mut data);
+    needs_var::compute_elements_needing_var(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)

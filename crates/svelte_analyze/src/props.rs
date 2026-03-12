@@ -16,6 +16,9 @@ pub fn analyze_props(data: &mut AnalysisData) {
             let is_prop_source =
                 p.default_span.is_some() || is_mutated;
 
+            let is_lazy_default = p.default_text.as_ref()
+                .is_some_and(|text| !svelte_js::is_simple_expression(text));
+
             PropAnalysis {
                 local_name: p.local_name.clone(),
                 prop_name: p.prop_name.clone(),
@@ -24,6 +27,7 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
                 is_prop_source,
+                is_lazy_default,
             }
         })
         .collect();

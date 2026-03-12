@@ -33,7 +33,7 @@ pub(crate) fn traverse_items<'a>(
         let needs_var = item_needs_var(item, ctx);
         // is_text matches Svelte's `sequence.length === 1`: a standalone {expression}
         // with no surrounding text nodes in the same sequence
-        let is_text = matches!(item, FragmentItem::TextConcat { parts } if parts.len() == 1);
+        let is_text = item.is_standalone_expr();
 
         if needs_var {
             // Build the expression to get this node's DOM reference
