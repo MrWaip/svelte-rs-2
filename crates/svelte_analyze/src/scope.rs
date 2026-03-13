@@ -21,6 +21,8 @@ pub struct ComponentScoping {
     template_mutated: FxHashSet<SymbolId>,
     /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
     node_scopes: FxHashMap<NodeId, ScopeId>,
+    /// For $derived/$derived.by: names referenced in the init expression.
+    derived_deps: FxHashMap<SymbolId, Vec<String>>,
 }
 
 impl ComponentScoping {
@@ -32,6 +34,7 @@ impl ComponentScoping {
             bind_mutated: FxHashSet::default(),
             template_mutated: FxHashSet::default(),
             node_scopes: FxHashMap::default(),
+            derived_deps: FxHashMap::default(),
         }
     }
 
@@ -106,6 +109,10 @@ impl ComponentScoping {
         self.runes.insert(id, kind);
     }
 
+    pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<String>) {
+        self.derived_deps.insert(id, deps);
+    }
+
     pub fn rune_kind(&self, id: SymbolId) -> Option<RuneKind> {
         self.runes.get(&id).copied()
     }
@@ -129,12 +136,27 @@ impl ComponentScoping {
     /// A reference is dynamic if it resolves to a rune or a non-root-scope binding
     /// (e.g., each-block variable).
     pub fn is_dynamic_ref(&self, scope: ScopeId, name: &str) -> bool {
+        self.is_dynamic_ref_inner(scope, name, 0)
+    }
+
+    fn is_dynamic_ref_inner(&self, scope: ScopeId, name: &str, depth: u8) -> bool {
+        if depth > 16 {
+            return false; // circular dependency fallback
+        }
         let Some(sym_id) = self.find_binding(scope, name) else {
             return false;
         };
         if let Some(&kind) = self.runes.get(&sym_id) {
             // Unmutated $state is effectively constant
             if kind == RuneKind::State && !self.is_mutated(sym_id) {
+                return false;
+            }
+            // $derived is dynamic only if any of its dependencies are dynamic
+            if matches!(kind, RuneKind::Derived | RuneKind::DerivedBy) {
+                if let Some(deps) = self.derived_deps.get(&sym_id) {
+                    let root = self.root_scope_id();
+                    return deps.iter().any(|dep| self.is_dynamic_ref_inner(root, dep, depth + 1));
+                }
                 return false;
             }
             return true;
@@ -145,11 +167,11 @@ impl ComponentScoping {
 
     // -- Bulk queries for codegen compatibility --
 
-    /// All rune symbol names.
-    pub(crate) fn rune_names(&self) -> FxHashSet<String> {
+    /// All rune symbol names with their kinds.
+    pub(crate) fn rune_names(&self) -> FxHashMap<String, RuneKind> {
         self.runes
-            .keys()
-            .map(|&id| self.scoping.symbol_name(id).to_string())
+            .iter()
+            .map(|(&id, &kind)| (self.scoping.symbol_name(id).to_string(), kind))
             .collect()
     }
 
@@ -189,6 +211,12 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
                 let root = data.scoping.root_scope_id();
                 if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
                     data.scoping.mark_rune(sym_id, rune_kind);
+                    if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy)
+                        && !decl.rune_init_refs.is_empty()
+                    {
+                        let deps: Vec<String> = decl.rune_init_refs.iter().map(|r| r.to_string()).collect();
+                        data.scoping.set_derived_deps(sym_id, deps);
+                    }
                 }
             }
         }

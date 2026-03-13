@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::{ConcatPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
-use svelte_js::ExpressionKind;
+use svelte_js::{ExpressionKind, RuneKind};
 use svelte_span::Span;
 
 use crate::builder::{Arg, AssignLeft, AssignRight, Builder, TemplatePart};
@@ -37,7 +37,7 @@ pub(crate) fn parse_and_transform<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     mutated: &FxHashSet<String>,
-    rune_names: &FxHashSet<String>,
+    rune_names: &FxHashMap<String, RuneKind>,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
     snippet_params: &[String],
@@ -73,7 +73,7 @@ pub(crate) fn parse_and_transform<'a>(
 struct RuneRefTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     mutated: &'b FxHashSet<String>,
-    rune_names: &'b FxHashSet<String>,
+    rune_names: &'b FxHashMap<String, RuneKind>,
     prop_sources: &'b FxHashSet<String>,
     prop_non_sources: &'b FxHashMap<String, String>,
     snippet_params: &'b [String],
@@ -114,9 +114,13 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                     return;
                 }
 
-                // Regular rune
-                if self.rune_names.contains(&name) && self.mutated.contains(&name) {
-                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
+                // Regular rune: derived always needs $.get(), state only if mutated
+                if let Some(&kind) = self.rune_names.get(&name) {
+                    let needs_get = self.mutated.contains(&name)
+                        || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
+                    if needs_get {
+                        *node = crate::rune_transform::transform_rune_get(self.b, &name);
+                    }
                 }
             }
             Expression::AssignmentExpression(assign) => {
@@ -125,7 +129,7 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                 ) = &assign.left
                 {
                     let name = id.name.as_str().to_string();
-                    (self.rune_names.contains(&name) && self.mutated.contains(&name))
+                    (self.rune_names.contains_key(&name) && self.mutated.contains(&name))
                         .then_some(name)
                 } else {
                     None
@@ -142,7 +146,7 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
                         &upd.argument
                     {
                         let name = id.name.as_str().to_string();
-                        (self.rune_names.contains(&name) && self.mutated.contains(&name))
+                        (self.rune_names.contains_key(&name) && self.mutated.contains(&name))
                             .then_some(name)
                     } else {
                         None

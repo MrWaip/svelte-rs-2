@@ -58,8 +58,8 @@ pub struct AnalysisData {
     pub hoistable_snippets: FxHashSet<NodeId>,
 
     // -- Cached sets for codegen (populated after mutations pass) --
-    /// All rune symbol names (precomputed).
-    pub rune_names: FxHashSet<String>,
+    /// All rune symbol names with their kinds (precomputed).
+    pub rune_names: FxHashMap<String, RuneKind>,
     /// All mutated rune names (script assignments + bind directives).
     pub mutated_runes: FxHashSet<String>,
     /// Rune names mutated only via bind directives.
@@ -86,7 +86,7 @@ impl AnalysisData {
             exports: Vec::new(),
             snippet_params: FxHashMap::default(),
             hoistable_snippets: FxHashSet::default(),
-            rune_names: FxHashSet::default(),
+            rune_names: FxHashMap::default(),
             mutated_runes: FxHashSet::default(),
             bind_mutated_runes: FxHashSet::default(),
             elements_needing_var: FxHashSet::default(),
@@ -104,7 +104,7 @@ impl AnalysisData {
 
 impl AnalysisData {
     pub fn is_rune(&self, name: &str) -> bool {
-        self.rune_names.contains(name)
+        self.rune_names.contains_key(name)
     }
 
     pub fn is_mutable_rune(&self, name: &str) -> bool {

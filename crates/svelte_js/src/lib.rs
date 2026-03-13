@@ -90,6 +90,8 @@ pub struct DeclarationInfo {
     pub kind: DeclarationKind,
     pub init_span: Option<Span>,
     pub is_rune: Option<RuneKind>,
+    /// For $derived/$derived.by: names referenced in the init expression.
+    pub rune_init_refs: Vec<CompactString>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +106,7 @@ pub enum DeclarationKind {
 pub enum RuneKind {
     State,
     Derived,
+    DerivedBy,
     Effect,
     Props,
     Bindable,
@@ -226,6 +229,7 @@ fn collect_func_declaration(
             kind: DeclarationKind::Function,
             init_span: None,
             is_rune: None,
+            rune_init_refs: vec![],
         });
     }
 }
@@ -253,15 +257,20 @@ fn collect_var_declarations(
                     ident.span.end + offset,
                 );
 
-                let (init_span, is_rune) = if let Some(init) = &declarator.init {
+                let (init_span, is_rune, rune_init_refs) = if let Some(init) = &declarator.init {
                     let init_sp = Span::new(
                         init.span().start + offset,
                         init.span().end + offset,
                     );
                     let rune = detect_rune(init);
-                    (Some(init_sp), rune)
+                    let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
+                        collect_derived_refs(init)
+                    } else {
+                        vec![]
+                    };
+                    (Some(init_sp), rune, refs)
                 } else {
-                    (None, None)
+                    (None, None, vec![])
                 };
 
                 declarations.push(DeclarationInfo {
@@ -270,6 +279,7 @@ fn collect_var_declarations(
                     kind,
                     init_span,
                     is_rune,
+                    rune_init_refs,
                 });
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
@@ -301,6 +311,7 @@ fn collect_var_declarations(
                             kind,
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
+                            rune_init_refs: vec![],
                         });
 
                         props.push(PropInfo {
@@ -326,6 +337,7 @@ fn collect_var_declarations(
                                 kind,
                                 init_span: None,
                                 is_rune: Some(RuneKind::Props),
+                                rune_init_refs: vec![],
                             });
                             props.push(PropInfo {
                                 local_name: rest_name.clone(),
@@ -620,20 +632,111 @@ fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32,
 
 fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr {
-        if let Expression::Identifier(ident) = &call.callee {
-            return match ident.name.as_str() {
-                "$state" => Some(RuneKind::State),
-                "$derived" => Some(RuneKind::Derived),
-                "$effect" => Some(RuneKind::Effect),
-                "$props" => Some(RuneKind::Props),
-                "$bindable" => Some(RuneKind::Bindable),
-                "$inspect" => Some(RuneKind::Inspect),
-                "$host" => Some(RuneKind::Host),
-                _ => None,
-            };
+        match &call.callee {
+            Expression::Identifier(ident) => {
+                return match ident.name.as_str() {
+                    "$state" => Some(RuneKind::State),
+                    "$derived" => Some(RuneKind::Derived),
+                    "$effect" => Some(RuneKind::Effect),
+                    "$props" => Some(RuneKind::Props),
+                    "$bindable" => Some(RuneKind::Bindable),
+                    "$inspect" => Some(RuneKind::Inspect),
+                    "$host" => Some(RuneKind::Host),
+                    _ => None,
+                };
+            }
+            Expression::StaticMemberExpression(member) => {
+                if let Expression::Identifier(obj) = &member.object {
+                    let prop = member.property.name.as_str();
+                    return match (obj.name.as_str(), prop) {
+                        ("$derived", "by") => Some(RuneKind::DerivedBy),
+                        _ => None,
+                    };
+                }
+            }
+            _ => {}
         }
     }
     None
+}
+
+/// Collect identifier references from a $derived/$derived.by call's argument.
+/// Returns deduplicated list — avoids redundant `is_dynamic_ref` lookups.
+fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
+    let Expression::CallExpression(call) = expr else {
+        return vec![];
+    };
+    if call.arguments.is_empty() {
+        return vec![];
+    }
+    let Some(arg_expr) = call.arguments[0].as_expression() else {
+        return vec![];
+    };
+    let mut refs = Vec::new();
+    collect_idents_recursive(arg_expr, &mut refs);
+    let mut seen = std::collections::HashSet::new();
+    refs.retain(|r| seen.insert(r.clone()));
+    refs
+}
+
+fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {
+    use oxc_ast::ast::Expression::*;
+    match expr {
+        Identifier(id) => {
+            let name = id.name.as_str();
+            if !name.starts_with('$') {
+                refs.push(compact(name));
+            }
+        }
+        BinaryExpression(bin) => {
+            collect_idents_recursive(&bin.left, refs);
+            collect_idents_recursive(&bin.right, refs);
+        }
+        CallExpression(call) => {
+            collect_idents_recursive(&call.callee, refs);
+            for arg in &call.arguments {
+                if let Some(e) = arg.as_expression() {
+                    collect_idents_recursive(e, refs);
+                }
+            }
+        }
+        ArrowFunctionExpression(arrow) => {
+            // Collect refs from arrow body — skip params
+            for stmt in &arrow.body.statements {
+                match stmt {
+                    oxc_ast::ast::Statement::ExpressionStatement(es) => {
+                        collect_idents_recursive(&es.expression, refs);
+                    }
+                    oxc_ast::ast::Statement::ReturnStatement(ret) => {
+                        if let Some(arg) = &ret.argument {
+                            collect_idents_recursive(arg, refs);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        UnaryExpression(unary) => {
+            collect_idents_recursive(&unary.argument, refs);
+        }
+        ConditionalExpression(cond) => {
+            collect_idents_recursive(&cond.test, refs);
+            collect_idents_recursive(&cond.consequent, refs);
+            collect_idents_recursive(&cond.alternate, refs);
+        }
+        LogicalExpression(log) => {
+            collect_idents_recursive(&log.left, refs);
+            collect_idents_recursive(&log.right, refs);
+        }
+        StaticMemberExpression(m) => {
+            collect_idents_recursive(&m.object, refs);
+        }
+        ComputedMemberExpression(m) => {
+            collect_idents_recursive(&m.object, refs);
+            collect_idents_recursive(&m.expression, refs);
+        }
+        _ => {}
+    }
 }
 
 // ---------------------------------------------------------------------------
