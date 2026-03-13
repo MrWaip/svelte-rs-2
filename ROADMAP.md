@@ -1,16 +1,18 @@
-# Roadmap: Svelte 5 Compiler in Rust
+# Roadmap: Svelte 5 Client Compiler in Rust
 
-Full feature catalog for porting. Current work items: see `TODO.md`.
+Scope: client-side compilation only (no SSR, no legacy mode).
+Current work items: see `TODO.md`.
 
 ---
 
-## Tier 1 — Core (Done)
+## Done ✅
 
 ### AST & Parser
 - [x] `Text`, `Element`, `ComponentNode`, `Comment`
 - [x] `ExpressionTag` — `{expr}`
 - [x] `IfBlock`, `EachBlock`, `SnippetBlock`, `RenderTag`
 - [x] Attributes: string, expression, boolean, concatenation, shorthand/spread, `class:`, `bind:`
+- [x] Script/Style blocks, TypeScript support
 
 ### Analyze (9 passes, composite visitor)
 - [x] `parse_js` — JS expression parsing, rune detection
@@ -24,9 +26,9 @@ Full feature catalog for porting. Current work items: see `TODO.md`.
 - [x] `needs_var` — elements needing JS variables
 
 ### Script codegen
-- [x] `$state` rune (read, assign, update)
-- [x] `$props` rune (destructure, defaults, $bindable, rest, mutated)
-- [x] Hoist imports
+- [x] `$state` rune (read, assign, update, `$.proxy()`)
+- [x] `$props` rune (destructure, defaults, `$bindable`, rest, mutated)
+- [x] Import hoisting
 - [x] Strip TypeScript
 - [x] Exports (`$$.exports`)
 
@@ -50,85 +52,158 @@ Full feature catalog for porting. Current work items: see `TODO.md`.
 
 ---
 
-## Tier 2 — Needed for Real Apps
+## Priority 1 — Rune codegen
 
-### 2a. {@html expr}
-- [ ] AST: `Node::HtmlTag { expression: Span }`
-- [ ] Parser: `{@html ...}`
-- [ ] Codegen: `$.html()`
-- Ref: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js`
+Essential runes beyond `$state` and `$props`. Purely script codegen changes.
 
-### 2b. {#key expr}
-- [ ] AST: `Node::KeyBlock { expression: Span, fragment: Fragment }`
-- [ ] Parser: `{#key ...}...{/key}`
-- [ ] Codegen: `$.key()`
-- Ref: `reference/compiler/phases/3-transform/client/visitors/KeyBlock.js`
+- [ ] **`$derived` / `$derived.by`** — `$.derived(() => expr)` / `$.derived_by(fn)`
+  - Need: `detect_rune()` member expression support, `enter_variable_declarator` State/Derived distinction
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
+  - Runtime: `$.derived()`, `$.derived_by()`
 
-### 2c. Event handlers (`onclick={handler}`)
-- [ ] Codegen for event attributes (already parsed as expression attributes)
-- Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
+- [ ] **`$effect` / `$effect.pre`** — `$.user_effect(fn)` / `$.user_pre_effect(fn)`
+  - Need: `detect_rune()` member expressions, new handler for `$effect()` expression statements
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`, `ExpressionStatement.js`
+  - Runtime: `$.user_effect()`, `$.user_pre_effect()`
 
-### 2d. Style directive (`style:color={value}`)
-- [ ] AST: `StyleDirective` (like ClassDirective)
-- [ ] Parser: `style:prop={value}`
-- [ ] Codegen: `$.style()`
-- Ref: `reference/compiler/phases/3-transform/client/visitors/StyleDirective.js`
+- [ ] **`$inspect`** — `$.inspect(fn)` (dev mode only)
+  - Need: expression statement handler, dev-mode conditional
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
+  - Runtime: `$.inspect()`
 
-### 2e. Transitions / Animations
-- [ ] AST: `TransitionDirective`, `AnimateDirective`
-- [ ] Parser: `transition:fade`, `in:`, `out:`, `animate:`
-- [ ] Codegen: `$.transition()`, `$.animate()`
-- Ref: `reference/compiler/phases/3-transform/client/visitors/TransitionDirective.js`
-
-### 2f. Component events & spread
-- [ ] Event forwarding on components
-- [ ] Spread props (`$.spread_props()`)
-- Ref: `reference/compiler/phases/3-transform/client/visitors/Component.js`
-
-### 2g. use:action directive
-- [ ] AST: `UseDirective`
-- [ ] Parser: `use:action={params}`
-- [ ] Codegen: `$.action()`
-- Ref: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js`
+- [ ] **`$state.raw`** — non-proxied state (skip `$.proxy()`)
+  - Need: `detect_rune()` member expression for `$state.raw`
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
+  - Runtime: `$.state()` (no proxy wrapping)
 
 ---
 
-## Tier 3 — Validation & Correctness
+## Priority 2 — Essential template features
 
-### 3a. Bind directive validation
-- [ ] Error on bind:value on incompatible elements
-- Ref: `reference/compiler/phases/2-analyze/visitors/BindDirective.js`
+Most-used template features after the core set.
 
-### 3b. Assignment validation
-- [ ] Error on mutation of const/import
-- Ref: `reference/compiler/phases/2-analyze/visitors/AssignmentExpression.js`
+- [ ] **`{@html expr}`** — raw HTML insertion
+  - Need: AST (`Node::HtmlTag`), parser (`{@html ...}`), template codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js`
+  - Runtime: `$.html()`
 
-### 3c. Directive placement validation
-- [ ] Error on transition: on component
-- Ref: `reference/compiler/phases/2-analyze/visitors/Component.js`
+- [ ] **`{#key expr}`** — keyed re-render block
+  - Need: AST (`Node::KeyBlock`), parser (`{#key ...}{/key}`), analyze, template codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/KeyBlock.js`
+  - Runtime: `$.key()`
 
-### 3d. Rune argument validation
-- [ ] Error on `$state(a, b)` etc.
-- Ref: `reference/compiler/phases/2-analyze/visitors/CallExpression.js`
+- [ ] **`style:prop={value}`** — style directive
+  - Need: AST (`StyleDirective`), parser, attributes codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
+  - Runtime: `$.set_style()`
 
-### 3e. {@const}
-- [ ] AST: `Node::ConstTag`
-- [ ] Parser: `{@const x = expr}`
-- [ ] Scope-like handling in analyze
-- Ref: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js`
+- [ ] **`use:action={params}`** — action directive
+  - Need: AST (`UseDirective`), parser, template codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js`
+  - Runtime: `$.action()`
+
+- [ ] **`transition:` / `in:` / `out:`** — transitions
+  - Need: AST (`TransitionDirective`), parser, template codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/TransitionDirective.js`
+  - Runtime: `$.transition()`
+
+- [ ] **`animate:`** — FLIP animations
+  - Need: AST (`AnimateDirective`), parser, template codegen (EachBlock integration)
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/AnimateDirective.js`
+  - Runtime: `$.animation()`
 
 ---
 
-## Tier 4 — Edge Cases, Legacy, DX
+## Priority 3 — Special elements
 
-- [ ] 4a. CSS analysis (pruning, :global, unused) — `svelte_analyze/src/css.rs`
-- [ ] 4b. A11y warnings — `svelte_analyze/src/a11y.rs`
-- [ ] 4c. Legacy mode (`$:`, stores, `export let`) — requires scope system
-- [ ] 4d. Full scope system — ~1300 lines in reference
-- [ ] 4e. AwaitBlock — AST, parser, codegen
-- [ ] 4f. Function/closure warnings — DX only
-- [ ] 4g. SSR codegen
-- [ ] 4h. Skip wrapping runes that are never mutated
+Svelte special elements for dynamic rendering.
+
+- [ ] **`<svelte:component this={X}>`** — dynamic component
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteComponent.js`
+  - Runtime: `$.component()`
+
+- [ ] **`<svelte:element this={tag}>`** — dynamic element
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteElement.js`
+  - Runtime: `$.element()`
+
+- [ ] **`<svelte:head>`** — document head management
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteHead.js`
+  - Runtime: `$.head()`
+
+- [ ] **`<svelte:window>`** / **`<svelte:body>`** / **`<svelte:document>`** — global event binding
+  - Ref: `SvelteWindow.js`, `SvelteBody.js`, `SvelteDocument.js`
+
+---
+
+## Priority 4 — Less common features
+
+Features used less frequently or in advanced scenarios.
+
+- [ ] **`{@const x = expr}`** — block-scoped constant
+  - Need: AST, parser, scope handling, codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js`
+  - Runtime: `$.derived()`
+
+- [ ] **`{#await promise}`** — async block
+  - Need: AST (`AwaitBlock`), parser, analyze, template codegen
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/AwaitBlock.js`
+  - Runtime: `$.await()`
+
+- [ ] **`<slot>`** + `let:` — slot content with variables
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SlotElement.js`, `LetDirective.js`
+  - Runtime: `$.slot()`
+
+- [ ] **`on:event`** (legacy) — legacy event handler syntax
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/OnDirective.js`
+  - Runtime: `$.event()`
+
+- [ ] **`<svelte:self>`** — recursive component
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteSelf.js`
+
+- [ ] **`<svelte:fragment>`** — fragment wrapper
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteFragment.js`
+
+- [ ] **`<svelte:boundary>`** — error boundary
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js`
+
+- [ ] **`<svelte:options>`** — compiler options tag
+  - Parser only, no codegen needed
+
+- [ ] **`{@debug vars}`** — dev-mode debugger
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/DebugTag.js`
+
+- [ ] **`{@attach fn}`** — element attachment (new in Svelte 5)
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/AttachTag.js`
+
+- [ ] **`<title>`** — special handling in `<svelte:head>`
+  - Ref: `reference/compiler/phases/3-transform/client/visitors/TitleElement.js`
+
+---
+
+## Priority 5 — Validation & DX
+
+Compile-time checks and developer experience.
+
+- [ ] Bind directive validation (incompatible elements)
+  - Ref: `reference/compiler/phases/2-analyze/visitors/BindDirective.js`
+- [ ] Assignment validation (const/import mutation)
+  - Ref: `reference/compiler/phases/2-analyze/visitors/AssignmentExpression.js`
+- [ ] Directive placement validation (e.g., transition on component)
+  - Ref: `reference/compiler/phases/2-analyze/visitors/Component.js`
+- [ ] Rune argument validation (e.g., `$state(a, b)`)
+  - Ref: `reference/compiler/phases/2-analyze/visitors/CallExpression.js`
+- [ ] A11y warnings
+- [ ] CSS scoping / pruning / `:global`
+
+---
+
+## Priority 6 — Optimization
+
+Performance improvements for generated code.
+
+- [ ] Skip wrapping unmutated runes (no `$.state()` when never assigned)
+- [ ] Event delegation analysis
+- [ ] CSS hash injection
 
 ---
 
@@ -138,6 +213,5 @@ Full feature catalog for porting. Current work items: see `TODO.md`.
 - **Side tables** (`AnalysisData`) — no AST mutations
 - **Analyze**: composite visitor (tuple `TemplateVisitor`) — single tree walk for all passes
 - **Codegen**: direct recursion, no visitor pattern
-- **Scope system NOT needed** for Tiers 1-3 (runes mode). Current approach (OXC + side tables) is sufficient.
-- Critical path was: Props → Exports → Snippets → Components
+- **Scope system NOT needed** for Priorities 1-4 (runes mode). Current approach (OXC + side tables) is sufficient.
 - Each feature: test case → expected output via reference compiler → `cargo test`

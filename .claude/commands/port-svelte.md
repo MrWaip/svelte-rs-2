@@ -2,9 +2,9 @@
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
-The command argument is a roadmap item from `TODO.md` (e.g. `2a`, `2b`, `3e`).
-Before starting, read `TODO.md`, find the item, and use the listed files and reference links.
-Full feature catalog with details: `ROADMAP.md`.
+The command argument is a feature description (e.g. `$derived`, `{@html}`, `style:prop`).
+Before starting, read `TODO.md`, find the matching item, and use the listed files and reference links.
+If the argument doesn't match any TODO item, check `ROADMAP.md` for the full catalog.
 
 ## Approach
 
@@ -27,7 +27,7 @@ Create a feature branch from the latest master:
 ```
 git checkout master && git pull && git checkout -b port/<item>-<short-name>
 ```
-where `<item>` is the roadmap item (e.g. `1a`) and `<short-name>` is a brief kebab-case description of the feature. All work must be done on this branch.
+where `<short-name>` is a brief kebab-case description of the feature (e.g. `derived-rune`, `html-tag`). All work must be done on this branch.
 
 ## Step 2: Test case
 
@@ -86,14 +86,14 @@ If the test still fails after 3 attempts, stop and report what you've tried.
 
 ## Step 7: Update tracking
 
-Update `TODO.md`:
-- Remove completed items from the Active table
-- Add any newly discovered tasks
-- Move items to Blocked/Deferred if they have unresolved dependencies
-
 Update `ROADMAP.md`:
 - Mark `[x]` for completed checkboxes
 - If partially implemented — note what's missing
 - If new subtasks were discovered — add them as `- [ ]`
 
-Both files must be kept in sync. `TODO.md` is the current sprint; `ROADMAP.md` is the full catalog.
+Update `TODO.md`:
+- Remove the completed item
+- Pull the next unchecked item from `ROADMAP.md` (by priority order) so TODO always has 5 items
+- If new blockers were discovered — note them
+
+Both files must be kept in sync. `TODO.md` is a sliding window of 5 items from `ROADMAP.md`.
