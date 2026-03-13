@@ -14,7 +14,7 @@ https://excalidraw.com/#json=tPR4IJ3ZQmfRfF0xW1fif,Qw3c1g41YuyCLz1XmRcujw
 
 ## Feature checklist
 
-See [PROGRESS.md](./PROGRESS.md) for the full feature checklist.
+See [ROADMAP.md](./ROADMAP.md) for the full feature checklist.
 
 ---
 

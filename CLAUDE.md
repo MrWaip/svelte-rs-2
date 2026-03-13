@@ -64,3 +64,5 @@ Codegen (`svelte_codegen_client`) uses direct recursion — no visitor pattern t
 | JS builders | `reference/compiler/utils/builders.js` | `svelte_codegen_client/src/builder.rs` |
 
 To port a new feature, use `/port-svelte <feature description>`.
+
+Read `TODO.md` for current work items. Full feature catalog in `ROADMAP.md`.
