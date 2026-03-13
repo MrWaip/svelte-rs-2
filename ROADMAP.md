@@ -3,6 +3,8 @@
 Scope: client-side compilation only (no SSR, no legacy mode).
 Current work items: see `TODO.md`.
 
+**Phase notation**: **P** = Parser/AST, **A** = Analyze, **S** = Script codegen, **T** = Template codegen, **V** = Validation
+
 ---
 
 ## Done ✅
@@ -27,6 +29,7 @@ Current work items: see `TODO.md`.
 
 ### Script codegen
 - [x] `$state` rune (read, assign, update, `$.proxy()`)
+- [x] `$derived` / `$derived.by` — `$.derived(() => expr)` / `$.derived(fn)`
 - [x] `$props` rune (destructure, defaults, `$bindable`, rest, mutated)
 - [x] Import hoisting
 - [x] Strip TypeScript
@@ -52,158 +55,349 @@ Current work items: see `TODO.md`.
 
 ---
 
-## Priority 1 — Rune codegen
+## Tier 1 — Complete Rune Coverage
 
-Essential runes beyond `$state` and `$props`. Purely script codegen changes.
+Theme: finish all rune transformations. Purely script codegen (**S**), patterns already exist in `script.rs`.
 
-- [x] **`$derived` / `$derived.by`** — `$.derived(() => expr)` / `$.derived(fn)`
-  - Need: `detect_rune()` member expression support, `enter_variable_declarator` State/Derived distinction
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
-  - Runtime: `$.derived()`
+Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`, `ExpressionStatement.js`, `VariableDeclaration.js`
+Key file: `crates/svelte_codegen_client/src/script.rs`
 
-- [ ] **`$effect` / `$effect.pre`** — `$.user_effect(fn)` / `$.user_pre_effect(fn)`
-  - Need: `detect_rune()` member expressions, new handler for `$effect()` expression statements
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`, `ExpressionStatement.js`
-  - Runtime: `$.user_effect()`, `$.user_pre_effect()`
-
-- [ ] **`$inspect`** — `$.inspect(fn)` (dev mode only)
-  - Need: expression statement handler, dev-mode conditional
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
-  - Runtime: `$.inspect()`
-
-- [ ] **`$state.raw`** — non-proxied state (skip `$.proxy()`)
-  - Need: `detect_rune()` member expression for `$state.raw`
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
-  - Runtime: `$.state()` (no proxy wrapping)
+| # | Feature | Transform | Phases | Notes |
+|---|---------|-----------|--------|-------|
+| 1 | `$effect(fn)` | `$.user_effect(fn)` | S | ExpressionStatement handler, member expr detection ready from `$derived.by` |
+| 2 | `$effect.pre(fn)` | `$.user_pre_effect(fn)` | S | Same pattern as `$effect` |
+| 3 | `$state.raw(val)` | `$.state(val)` (no `$.proxy()`) | S | Add `RuneKind::StateRaw`, skip proxy wrapping |
+| 4 | `$state.snapshot(val)` | `$.snapshot(val)` | S | Inline call rewrite, not a declarator |
+| 5 | `$effect.tracking()` | `$.effect_tracking()` | S | Trivial call rewrite, no args |
+| 6 | `$effect.root(fn)` | `$.effect_root(fn)` | S | Simple callee rewrite, pass through args |
+| 7 | `$inspect(vals)` | `$.inspect(...)` | S | Dev-mode only — strip in prod. Needs `dev` compiler option |
+| 8 | `$inspect.trace()` | dev-only trace | S | Same `dev` flag dependency |
+| 9 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
 
 ---
 
-## Priority 2 — Essential template features
+## Tier 2 — Essential Template Blocks
 
-Most-used template features after the core set.
+Theme: most commonly needed template features. Requires parser + AST + analyze + codegen.
 
-- [ ] **`{@html expr}`** — raw HTML insertion
-  - Need: AST (`Node::HtmlTag`), parser (`{@html ...}`), template codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js`
-  - Runtime: `$.html()`
+Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_client/src/template/`
 
-- [ ] **`{#key expr}`** — keyed re-render block
-  - Need: AST (`Node::KeyBlock`), parser (`{#key ...}{/key}`), analyze, template codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/KeyBlock.js`
-  - Runtime: `$.key()`
+### `{@html expr}` — Raw HTML insertion
+- **Phases**: P, A, T
+- **AST**: `Node::HtmlTag { id, span, expression_span }`
+- **Parser**: Handle `{@html ...}` in tag scanner (similar to `{@render}`)
+- **Analyze**: Register expression in `parse_js`. Mark dynamic in `reactivity`. Handle in `content_types`
+- **Codegen**: `$.html(anchor, () => expr)`
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js` (~60 lines)
 
-- [ ] **`style:prop={value}`** — style directive
-  - Need: AST (`StyleDirective`), parser, attributes codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
-  - Runtime: `$.set_style()`
+### `{#key expr}` — Keyed re-render block
+- **Phases**: P, A, T
+- **AST**: `Node::KeyBlock { id, span, expression_span, fragment }`
+- **Parser**: Parse `{#key expr}...{/key}`
+- **Analyze**: Add `FragmentKey::KeyBody(NodeId)`. Process in `lower`, `reactivity`, `content_types`
+- **Codegen**: `$.key(anchor, () => expr, ($$anchor) => { ... })`
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/KeyBlock.js` (~45 lines)
 
-- [ ] **`use:action={params}`** — action directive
-  - Need: AST (`UseDirective`), parser, template codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js`
-  - Runtime: `$.action()`
+### `{@const x = expr}` — Block-scoped constant
+- **Phases**: P, A, T
+- **AST**: `Node::ConstTag { id, span, declaration_span }`
+- **Parser**: Parse `{@const ...}` extracting variable declaration
+- **Analyze**: Scope integration — const binding visible in subsequent template nodes within same block
+- **Codegen**: `const x = expr` (non-reactive) or `$.derived(() => expr)` (reactive)
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines, destructuring support)
 
-- [ ] **`transition:` / `in:` / `out:`** — transitions
-  - Need: AST (`TransitionDirective`), parser, template codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/TransitionDirective.js`
-  - Runtime: `$.transition()`
+### `style:prop={value}` — Style directive
+- **Phases**: P, A, T
+- **AST**: `Attribute::StyleDirective { name, value_span: Option<Span>, important: bool }`
+- **Parser**: Parse `style:color={expr}`, `style:color="red"`, `style:color` (shorthand), `|important` modifier
+- **Codegen**: `$.set_style(el, "color", value)` or `$.set_style(el, "color", value, 1)` for `|important`
+- **Pattern**: Follows exact same pattern as `ClassDirective` in parser and `process_class_directives` in codegen
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
 
-- [ ] **`animate:`** — FLIP animations
-  - Need: AST (`AnimateDirective`), parser, template codegen (EachBlock integration)
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/AnimateDirective.js`
-  - Runtime: `$.animation()`
-
----
-
-## Priority 3 — Special elements
-
-Svelte special elements for dynamic rendering.
-
-- [ ] **`<svelte:component this={X}>`** — dynamic component
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteComponent.js`
-  - Runtime: `$.component()`
-
-- [ ] **`<svelte:element this={tag}>`** — dynamic element
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteElement.js`
-  - Runtime: `$.element()`
-
-- [ ] **`<svelte:head>`** — document head management
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteHead.js`
-  - Runtime: `$.head()`
-
-- [ ] **`<svelte:window>`** / **`<svelte:body>`** / **`<svelte:document>`** — global event binding
-  - Ref: `SvelteWindow.js`, `SvelteBody.js`, `SvelteDocument.js`
+### `{@debug vars}` — Dev-mode debugger
+- **Phases**: P, T
+- **AST**: `Node::DebugTag { id, span, identifiers: Vec<Span> }`
+- **Parser**: Parse `{@debug x, y}`
+- **Codegen**: `debugger` statement + `console.log` of variables (dev only). In prod: emit nothing
+- **Dependency**: Same `dev` flag as `$inspect` (Tier 1)
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/DebugTag.js`
 
 ---
 
-## Priority 4 — Less common features
+## Tier 3 — Bind Directive Completeness
 
-Features used less frequently or in advanced scenarios.
+Theme: parser/AST already supports `bind:name={expr}`. Need element-aware codegen dispatch per binding type.
 
-- [ ] **`{@const x = expr}`** — block-scoped constant
-  - Need: AST, parser, scope handling, codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js`
-  - Runtime: `$.derived()`
+Key file: `crates/svelte_codegen_client/src/template/attributes.rs`
+Ref: `reference/compiler/phases/3-transform/client/visitors/BindDirective.js`
 
-- [ ] **`{#await promise}`** — async block
-  - Need: AST (`AwaitBlock`), parser, analyze, template codegen
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/AwaitBlock.js`
-  - Runtime: `$.await()`
+### Element reference
 
-- [ ] **`<slot>`** + `let:` — slot content with variables
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SlotElement.js`, `LetDirective.js`
-  - Runtime: `$.slot()`
+| Binding | Elements | Runtime | Phases |
+|---------|----------|---------|--------|
+| `bind:this` | any element or component | `$.bind_this(el, ($$value) => ref = $$value, () => ref)` | T, A |
 
-- [ ] **`on:event`** (legacy) — legacy event handler syntax
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/OnDirective.js`
-  - Runtime: `$.event()`
+Note: `bind:this` uses a different pattern — NOT getter/setter, uses `build_bind_this` utility.
 
-- [ ] **`<svelte:self>`** — recursive component
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteSelf.js`
+### Input/Form bindings
 
-- [ ] **`<svelte:fragment>`** — fragment wrapper
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteFragment.js`
+| Binding | Elements | Runtime | Phases |
+|---------|----------|---------|--------|
+| `bind:value` | `<input>`, `<textarea>` | `$.bind_value(el, get, set)` | T |
+| `bind:value` | `<select>` | `$.bind_select_value(el, get, set)` | T |
+| `bind:value` | `<select multiple>` | `$.bind_select_value(el, get, set)` (array) | T |
+| `bind:checked` | `<input type="checkbox">` | `$.bind_checked(el, get, set)` | T |
+| `bind:checked` | `<input type="radio">` | `$.bind_checked(el, get, set)` | T |
+| `bind:indeterminate` | `<input type="checkbox">` | `$.bind_property(el, "indeterminate", "change", get, set)` | T |
+| `bind:group` | `<input type="checkbox">` | `$.bind_group(group_arr, el, get, set)` | T |
+| `bind:group` | `<input type="radio">` | `$.bind_group(group_arr, el, get, set)` | T |
+| `bind:files` | `<input type="file">` | `$.bind_files(el, get, set)` | T |
 
-- [ ] **`<svelte:boundary>`** — error boundary
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js`
+### Details element
 
-- [ ] **`<svelte:options>`** — compiler options tag
-  - Parser only, no codegen needed
+| Binding | Elements | Runtime | Phases |
+|---------|----------|---------|--------|
+| `bind:open` | `<details>` | `$.bind_property(el, "open", "toggle", get, set)` | T |
 
-- [ ] **`{@debug vars}`** — dev-mode debugger
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/DebugTag.js`
+### Contenteditable bindings
 
-- [ ] **`{@attach fn}`** — element attachment (new in Svelte 5)
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/AttachTag.js`
+| Binding | Elements | Runtime | Phases |
+|---------|----------|---------|--------|
+| `bind:innerHTML` | `[contenteditable]` | `$.bind_content_editable(el, get, set, "innerHTML")` | T |
+| `bind:innerText` | `[contenteditable]` | `$.bind_content_editable(el, get, set, "innerText")` | T |
+| `bind:textContent` | `[contenteditable]` | `$.bind_content_editable(el, get, set, "textContent")` | T |
 
-- [ ] **`<title>`** — special handling in `<svelte:head>`
-  - Ref: `reference/compiler/phases/3-transform/client/visitors/TitleElement.js`
+### Dimension bindings (all readonly, all visible elements)
+
+| Binding | Runtime | Phases |
+|---------|---------|--------|
+| `bind:clientWidth` | `$.bind_resize_observer(el, "client", set)` | T |
+| `bind:clientHeight` | `$.bind_resize_observer(el, "client", set)` | T |
+| `bind:offsetWidth` | `$.bind_element_size(el, "offset", set)` | T |
+| `bind:offsetHeight` | `$.bind_element_size(el, "offset", set)` | T |
+| `bind:contentRect` | `$.bind_resize_observer(el, "contentRect", set)` | T |
+| `bind:contentBoxSize` | `$.bind_resize_observer(el, "contentBoxSize", set)` | T |
+| `bind:borderBoxSize` | `$.bind_resize_observer(el, "borderBoxSize", set)` | T |
+| `bind:devicePixelContentBoxSize` | `$.bind_resize_observer(el, "devicePixelContentBoxSize", set)` | T |
+
+### Media bindings (`<audio>`, `<video>`)
+
+| Binding | R/W | Runtime | Phases |
+|---------|-----|---------|--------|
+| `bind:currentTime` | R/W | `$.bind_current_time(el, get, set)` | T |
+| `bind:playbackRate` | R/W | `$.bind_playback_rate(el, get, set)` | T |
+| `bind:paused` | R/W | `$.bind_paused(el, get, set)` | T |
+| `bind:volume` | R/W | `$.bind_volume(el, get, set)` | T |
+| `bind:muted` | R/W | `$.bind_muted(el, get, set)` | T |
+| `bind:duration` | RO | `$.bind_property(el, "duration", "durationchange", set)` | T |
+| `bind:buffered` | RO | `$.bind_buffered(el, set)` | T |
+| `bind:seekable` | RO | `$.bind_seekable(el, set)` | T |
+| `bind:seeking` | RO | `$.bind_seeking(el, set)` | T |
+| `bind:ended` | RO | `$.bind_ended(el, set)` | T |
+| `bind:readyState` | RO | `$.bind_ready_state(el, set)` | T |
+| `bind:played` | RO | `$.bind_played(el, set)` | T |
+| `bind:videoWidth` | RO | `$.bind_property(el, "videoWidth", "resize", set)` | T |
+| `bind:videoHeight` | RO | `$.bind_property(el, "videoHeight", "resize", set)` | T |
+
+### Image bindings (readonly)
+
+| Binding | Elements | Runtime | Phases |
+|---------|----------|---------|--------|
+| `bind:naturalWidth` | `<img>` | `$.bind_property(el, "naturalWidth", "load", set)` | T |
+| `bind:naturalHeight` | `<img>` | `$.bind_property(el, "naturalHeight", "load", set)` | T |
 
 ---
 
-## Priority 5 — Validation & DX
+## Tier 4 — Directives & Interactivity
 
-Compile-time checks and developer experience.
+Theme: action, transition, animation directives. New AST attribute variants + parser + codegen.
 
-- [ ] Bind directive validation (incompatible elements)
-  - Ref: `reference/compiler/phases/2-analyze/visitors/BindDirective.js`
-- [ ] Assignment validation (const/import mutation)
-  - Ref: `reference/compiler/phases/2-analyze/visitors/AssignmentExpression.js`
-- [ ] Directive placement validation (e.g., transition on component)
-  - Ref: `reference/compiler/phases/2-analyze/visitors/Component.js`
-- [ ] Rune argument validation (e.g., `$state(a, b)`)
-  - Ref: `reference/compiler/phases/2-analyze/visitors/CallExpression.js`
-- [ ] A11y warnings
-- [ ] CSS scoping / pruning / `:global`
+### `use:action={params}` — Action directive
+- **Phases**: P, A, T
+- **AST**: `Attribute::UseDirective { name, expression_span: Option<Span> }`
+- **Codegen**: `$.action(el, () => actionFn, () => params)`
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js` (~30 lines)
+
+### `transition:name={params}` / `in:` / `out:` — Transitions
+- **Phases**: P, A, T
+- **AST**: `Attribute::TransitionDirective { name, expression_span: Option<Span>, modifiers: Vec<String>, direction: TransitionDirection }`
+  - `TransitionDirection`: `Both` | `In` | `Out`
+- **Modifiers**: `|local` (scoped to block), `|global` (default)
+- **Codegen**:
+  - `transition:fade` → `$.transition(el, flags, fade, () => params)`
+  - `in:fly` → `$.transition(el, TRANSITION_IN, fly, () => params)`
+  - `out:slide` → `$.transition(el, TRANSITION_OUT, slide, () => params)`
+- **Events**: Elements get `introstart`, `introend`, `outrostart`, `outroend` events
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/TransitionDirective.js`
+
+### `animate:name={params}` — FLIP animations
+- **Phases**: P, A, T
+- **AST**: `Attribute::AnimateDirective { name, expression_span: Option<Span> }`
+- **Constraint**: Only valid inside keyed `{#each}` blocks (validation needed)
+- **Codegen**: `$.animation(el, animateFn, () => params)`
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/AnimateDirective.js`
+
+### `{@attach fn}` — Element attachment (Svelte 5.29+)
+- **Phases**: P, A, T
+- **AST**: `Node::AttachTag { id, span, expression_span }` (within element children)
+- **Codegen**: `$.attach(el, fn)`
+- **Notes**: Modern alternative to `use:action`. Re-runs on reactive dependency changes. Conditional with falsy values.
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/AttachTag.js`
 
 ---
 
-## Priority 6 — Optimization
+## Tier 5 — Special Elements
 
-Performance improvements for generated code.
+Theme: `<svelte:*>` elements for global bindings, dynamic elements, head management, error boundaries.
 
-- [ ] Skip wrapping unmutated runes (no `$.state()` when never assigned)
-- [ ] Event delegation analysis
-- [ ] CSS hash injection
+### `<svelte:options>` — Compiler options tag
+- **Phases**: P only (no codegen)
+- **Attributes**: `runes={true|false}`, `namespace="html"|"svg"|"mathml"`, `customElement="tag-name"`, `css="injected"`
+- **Notes**: Parse early, store on component metadata
+
+### `<svelte:head>` — Document head
+- **Phases**: P, A, T
+- **AST**: `Node::SvelteHead { id, span, fragment }`
+- **Codegen**: `$.head(($$anchor) => { ... })`
+- **Constraint**: Top-level only
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteHead.js`
+
+### `<svelte:element this={tag}>` — Dynamic element
+- **Phases**: P, A, T
+- **AST**: `Node::SvelteElement { id, span, tag_span, attributes, fragment }`
+- **Codegen**: `$.element(anchor, () => tag, ($$anchor, element) => { ... })`
+- **Notes**: Namespace inference with explicit `xmlns` control, void element validation
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteElement.js` (~161 lines)
+
+### `<svelte:window>` — Window events & bindings
+- **Phases**: P, A, T
+- **Codegen**: Events → `$.event($.window, ...)`. Bindings → see table below
+- **Constraint**: Top-level only, no children
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteWindow.js`
+
+| Binding | Runtime |
+|---------|---------|
+| `bind:scrollX` | `$.bind_window_scroll("x", get, set)` |
+| `bind:scrollY` | `$.bind_window_scroll("y", get, set)` |
+| `bind:innerWidth` | `$.bind_window_size("innerWidth", set)` |
+| `bind:innerHeight` | `$.bind_window_size("innerHeight", set)` |
+| `bind:outerWidth` | `$.bind_window_size("outerWidth", set)` |
+| `bind:outerHeight` | `$.bind_window_size("outerHeight", set)` |
+| `bind:online` | `$.bind_online(set)` |
+| `bind:devicePixelRatio` | `$.bind_window_size("devicePixelRatio", set)` |
+
+### `<svelte:document>` — Document events & bindings
+- **Phases**: P, A, T
+- **Constraint**: Top-level only, no children
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteDocument.js`
+
+| Binding | Runtime |
+|---------|---------|
+| `bind:activeElement` | `$.bind_active_element(set)` |
+| `bind:fullscreenElement` | `$.bind_property(document, ...)` |
+| `bind:visibilityState` | `$.bind_property(document, ...)` |
+
+### `<svelte:body>` — Body events & actions
+- **Phases**: P, A, T
+- **Codegen**: Events → `$.event($.body, ...)`. Supports `use:action`.
+- **Constraint**: Top-level only, no children
+- **Deps**: `use:action` (Tier 4)
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteBody.js`
+
+### `<svelte:boundary>` — Error boundary (Svelte 5.3+)
+- **Phases**: P, A, T
+- **AST**: `Node::SvelteBoundary { id, span, attributes, fragment }`
+- **Snippets**: `failed` (receives error + reset), `pending` (initial loading)
+- **Codegen**: `$.boundary(anchor, props, ($$anchor) => { ... })`
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js` (~126 lines)
+
+### `<title>` — Special handling in `<svelte:head>`
+- **Phases**: T
+- **Codegen**: Special text update handling for `<title>` element content
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/TitleElement.js`
+
+---
+
+## Tier 6 — CSS Scoping
+
+Theme: scoped CSS compilation — largest standalone workstream, new `svelte_css` subsystem.
+
+| # | Feature | Phases | Description |
+|---|---------|--------|-------------|
+| 1 | Component CSS hash | A | Deterministic hash from source/filename, stored on `AnalysisData` |
+| 2 | Scoped selector transformation | New module | Parse CSS, transform selectors to add `.svelte-HASH` suffix |
+| 3 | `:global()` modifier | New module | Skip scoping for `:global(selector)` and `:global { ... }` blocks |
+| 4 | CSS hash injection | T | Add `class="svelte-HASH"` to template elements that match scoped selectors |
+| 5 | `--css-var={expr}` custom properties | P, T | Static: `$.set_style(el, "--var", value)`. Dynamic: `$.css_props(el, { "--var": value })` |
+| 6 | Keyframe scoping | New module | Mangle `@keyframes name` → `@keyframes name-HASH` |
+| 7 | CSS pruning/tree-shaking | New module | Remove rules whose selectors don't match any template element |
+| 8 | Nested `<style>` elements | P | No scoping, emit as global rules |
+
+---
+
+## Tier 7 — Async, Validation & Optimization
+
+Theme: less-used features, developer experience, performance improvements.
+
+### Template features
+
+| Feature | Phases | Description |
+|---------|--------|-------------|
+| `{#await promise}` | P, A, T | `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`. AST: `Node::AwaitBlock`. Needs child scopes for `then`/`catch` bindings. Ref: `AwaitBlock.js` (~124 lines) |
+| Await expressions (experimental) | P, A, T | `{await expr}` in templates. Svelte 5.36+, requires `experimental.async: true`. Ref: `AwaitExpression.js` |
+
+### Validation (**V**)
+
+| Feature | Description | Ref |
+|---------|-------------|-----|
+| Bind directive validation | Validate binding vs element compatibility (e.g., `bind:checked` only on checkbox/radio) | `2-analyze/visitors/BindDirective.js` |
+| Assignment validation | Error on assignments to `const`, imports, `$derived` runes | `2-analyze/visitors/AssignmentExpression.js` |
+| Rune argument validation | Validate rune call signatures (e.g., `$state()` takes 0-1 args) | `2-analyze/visitors/CallExpression.js` |
+| Directive placement validation | `transition:` not on components, `animate:` only in keyed each | `2-analyze/visitors/Component.js` |
+| A11y warnings | Missing `alt`, ARIA errors, form label association, etc. | `2-analyze/a11y.js` |
+
+### Optimization
+
+| Feature | Phases | Description |
+|---------|--------|-------------|
+| Event delegation refinement | A, T | Refine `is_delegatable_event` analysis, track `$.delegate()` calls at component level |
+| Unmutated rune optimization | S | Don't wrap `$state` that's never assigned — inline initial value |
+| CSS hash injection | T | Add scoped class to elements (requires Tier 6) |
+
+---
+
+## Tier 8 — Legacy Svelte 4 (Lowest Priority)
+
+Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrating codebases.
+
+| Feature | Svelte 5 replacement | Transform | Phases |
+|---------|----------------------|-----------|--------|
+| `on:event={handler}` + modifiers | `onclick={handler}` (already works) | `$.event(el, "click", handler, modifiers)` | P, A, T |
+| `<slot>` + `let:` | `{#snippet}` + `{@render}` | `$.slot(...)` | P, A, T |
+| `<svelte:component this={X}>` | `<X />` with capitalized variable | `$.component(...)` | P, A, T |
+| `<svelte:self>` | Import component directly | Recursive ref | P, T |
+| `<svelte:fragment>` | `{#snippet}` | Fragment wrapper | P, T |
+| `export let` (props) | `$props()` | Different script transform | S |
+| `$:` reactive assignments | `$derived` / `$effect` | Labeled statement → `$.derived`/`$.effect` | S |
+| `$$props` / `$$restProps` / `$$slots` | `$props()` with rest | Runtime vars | S, T |
+| `$store` auto-subscription | Use stores via `.subscribe()` or runes | `$.store_get`/`$.store_set` with scope analysis | S |
+| `beforeUpdate` / `afterUpdate` | `$effect.pre` / `$effect` | `$.legacy_pre_effect` / `$.user_effect` | S |
+| `createEventDispatcher` | Callback props | Runtime only, no compiler changes | — |
+
+---
+
+## Just Runtime (No Compiler Changes Needed)
+
+These are imported from `svelte` and used as regular function calls. The compiler passes them through unchanged:
+
+- **Lifecycle**: `onMount()`, `onDestroy()`
+- **Scheduling**: `tick()`, `flushSync()`
+- **Context**: `setContext()`, `getContext()`, `hasContext()`, `getAllContexts()`, `createContext()`
+- **Mounting**: `mount()`, `unmount()`, `hydrate()`
+- **Stores**: `writable()`, `readable()`, `derived()`, `readonly()`, `get()` — from `svelte/store`
+- **Motion**: `tweened()`, `spring()` — from `svelte/motion`
+- **Easing**: `linear`, `cubicInOut`, `elasticOut`, etc. — from `svelte/easing`
+- **Transitions**: `fade`, `fly`, `slide`, `scale`, `draw` — from `svelte/transition` (runtime; compiler only needs directive support)
 
 ---
 
@@ -213,5 +407,5 @@ Performance improvements for generated code.
 - **Side tables** (`AnalysisData`) — no AST mutations
 - **Analyze**: composite visitor (tuple `TemplateVisitor`) — single tree walk for all passes
 - **Codegen**: direct recursion, no visitor pattern
-- **Scope system NOT needed** for Priorities 1-4 (runes mode). Current approach (OXC + side tables) is sufficient.
+- **Scope system NOT needed** for Tiers 1-5 (runes mode). Current approach (OXC + side tables) is sufficient
 - Each feature: test case → expected output via reference compiler → `cargo test`
