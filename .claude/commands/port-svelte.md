@@ -2,8 +2,9 @@
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
-The command argument is a roadmap item from `TODO_ANALYZE.md` (e.g. `1a`, `2b`, `3e`).
-Before starting, read `TODO_ANALYZE.md`, find the item, and use the listed files and reference links.
+The command argument is a roadmap item from `TODO.md` (e.g. `2a`, `2b`, `3e`).
+Before starting, read `TODO.md`, find the item, and use the listed files and reference links.
+Full feature catalog with details: `ROADMAP.md`.
 
 ## Approach
 
@@ -85,14 +86,14 @@ If the test still fails after 3 attempts, stop and report what you've tried.
 
 ## Step 7: Update tracking
 
-Update `TODO_ANALYZE.md`:
+Update `TODO.md`:
+- Remove completed items from the Active table
+- Add any newly discovered tasks
+- Move items to Blocked/Deferred if they have unresolved dependencies
+
+Update `ROADMAP.md`:
 - Mark `[x]` for completed checkboxes
-- If partially implemented — mark the heading as `(partial)` and add a "Not implemented" subsection with specific `- [ ]` items
-- If new tests were added — record their names
+- If partially implemented — note what's missing
 - If new subtasks were discovered — add them as `- [ ]`
 
-Update `PROGRESS.md`:
-- If the feature corresponds to a high-level item in the checklist, mark it `[x]`
-- If it's a new capability not yet listed — add it under the relevant section
-
-Both files must be kept in sync. Without an up-to-date `TODO_ANALYZE.md`, the next session won't know what's done and what's not. Without an up-to-date `PROGRESS.md`, the overall picture stays stale.
+Both files must be kept in sync. `TODO.md` is the current sprint; `ROADMAP.md` is the full catalog.
