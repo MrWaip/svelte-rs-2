@@ -56,10 +56,10 @@ Current work items: see `TODO.md`.
 
 Essential runes beyond `$state` and `$props`. Purely script codegen changes.
 
-- [ ] **`$derived` / `$derived.by`** — `$.derived(() => expr)` / `$.derived_by(fn)`
+- [x] **`$derived` / `$derived.by`** — `$.derived(() => expr)` / `$.derived(fn)`
   - Need: `detect_rune()` member expression support, `enter_variable_declarator` State/Derived distinction
   - Ref: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
-  - Runtime: `$.derived()`, `$.derived_by()`
+  - Runtime: `$.derived()`
 
 - [ ] **`$effect` / `$effect.pre`** — `$.user_effect(fn)` / `$.user_pre_effect(fn)`
   - Need: `detect_rune()` member expressions, new handler for `$effect()` expression statements

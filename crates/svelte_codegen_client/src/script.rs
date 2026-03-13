@@ -9,6 +9,7 @@ use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
 use svelte_analyze::PropsAnalysis;
 use svelte_ast::ScriptLanguage;
+use svelte_js::RuneKind;
 
 use crate::builder::{Arg, Builder};
 use crate::context::Ctx;
@@ -57,7 +58,7 @@ fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    rune_names: &FxHashSet<String>,
+    rune_names: &FxHashMap<String, RuneKind>,
     mutated_runes: &FxHashSet<String>,
     props: Option<&PropsAnalysis>,
     prop_sources: &FxHashSet<String>,
@@ -89,12 +90,12 @@ fn transform_script_text<'a>(
             prop_table.insert(sym_id, PropSymInfo {
                 kind: PropKind::NonSource(name.to_string()),
             });
-        } else if rune_names.contains(name) {
+        } else if let Some(&kind) = rune_names.get(name) {
             // Only treat symbols from root scope as runes — skip parameters
             // that shadow a rune variable
             if scoping.symbol_scope_id(sym_id) == root_scope {
                 let mutated = mutated_runes.contains(name);
-                rune_table.insert(sym_id, RuneInfo { mutated });
+                rune_table.insert(sym_id, RuneInfo { mutated, kind });
             }
         }
     }
@@ -120,10 +121,16 @@ fn transform_script_text<'a>(
         prop_table,
         scoping,
         props_gen,
+        derived_pending: FxHashSet::default(),
     };
 
     let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
+
+    // Post-traverse: wrap $derived arguments in thunks
+    if !transformer.derived_pending.is_empty() {
+        wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
+    }
 
     let mut imports = vec![];
     let mut body = vec![];
@@ -149,6 +156,7 @@ fn transform_script_text<'a>(
 
 struct RuneInfo {
     mutated: bool,
+    kind: RuneKind,
 }
 
 #[derive(Clone)]
@@ -182,6 +190,8 @@ struct ScriptTransformer<'b, 'a> {
     prop_table: FxHashMap<oxc_semantic::SymbolId, PropSymInfo>,
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
+    /// Names of $derived/$derived.by runes whose init needs post-traverse wrapping.
+    derived_pending: FxHashSet<String>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -326,6 +336,37 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     }
 }
 
+/// Post-traverse: wrap `$.derived(expr)` → `$.derived(() => expr)` for $derived runes.
+fn wrap_derived_thunks<'a>(
+    b: &Builder<'a>,
+    program: &mut oxc_ast::ast::Program<'a>,
+    names: &FxHashSet<String>,
+) {
+    use oxc_ast::ast::Statement;
+    for stmt in program.body.iter_mut() {
+        if let Statement::VariableDeclaration(decl) = stmt {
+            for declarator in decl.declarations.iter_mut() {
+                let name = match &declarator.id {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
+                    _ => continue,
+                };
+                if !names.contains(name) {
+                    continue;
+                }
+                if let Some(Expression::CallExpression(call)) = &mut declarator.init {
+                    if !call.arguments.is_empty() {
+                        let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
+                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        let arg_expr = dummy.into_expression();
+                        let thunk = b.thunk(arg_expr);
+                        call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn parse_expression<'a>(b: &Builder<'a>, text: &str) -> Expression<'a> {
     let alloc = b.ast.allocator;
     // Allocate text in the arena so it lives long enough for OXC parsing
@@ -413,6 +454,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             return;
         };
         let mutated = info.mutated;
+        let kind = info.kind;
 
         let Some(init) = node.init.as_mut() else {
             return;
@@ -420,37 +462,60 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         let init_expr = self.b.move_expr(init);
 
         if let Expression::CallExpression(mut call) = init_expr {
-            if mutated {
-                call.callee = self.b.rid_expr("$.state");
-
-                if call.arguments.is_empty() {
-                    let void_zero = self.b.ast.expression_unary(
-                        oxc_span::SPAN,
-                        oxc_ast::ast::UnaryOperator::Void,
-                        self.b.num_expr(0.0),
-                    );
-                    call.arguments.push(void_zero.into());
+            match kind {
+                RuneKind::Derived => {
+                    // $derived(expr) → $.derived(() => expr)
+                    // Just rewrite callee here; thunk wrapping happens post-traverse
+                    // to avoid OXC scope_id issues with new arrow nodes.
+                    call.callee = self.b.rid_expr("$.derived");
+                    if let oxc_ast::ast::BindingPattern::BindingIdentifier(bid) = &node.id {
+                        self.derived_pending.insert(bid.name.as_str().to_string());
+                    }
+                    node.init = Some(Expression::CallExpression(call));
                 }
+                RuneKind::DerivedBy => {
+                    // $derived.by(fn) → $.derived(fn)
+                    call.callee = self.b.rid_expr("$.derived");
+                    node.init = Some(Expression::CallExpression(call));
+                }
+                RuneKind::State => {
+                    if mutated {
+                        call.callee = self.b.rid_expr("$.state");
 
-                node.init = Some(Expression::CallExpression(call));
-            } else {
-                let value = if call.arguments.is_empty() {
-                    self.b.ast.expression_unary(
-                        oxc_span::SPAN,
-                        oxc_ast::ast::UnaryOperator::Void,
-                        self.b.num_expr(0.0),
-                    )
-                } else {
-                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                    std::mem::swap(&mut call.arguments[0], &mut dummy);
-                    dummy.into_expression()
-                };
-                let value = if Self::should_proxy(&value) {
-                    self.b.call_expr("$.proxy", [Arg::Expr(value)])
-                } else {
-                    value
-                };
-                node.init = Some(value);
+                        if call.arguments.is_empty() {
+                            let void_zero = self.b.ast.expression_unary(
+                                oxc_span::SPAN,
+                                oxc_ast::ast::UnaryOperator::Void,
+                                self.b.num_expr(0.0),
+                            );
+                            call.arguments.push(void_zero.into());
+                        }
+
+                        node.init = Some(Expression::CallExpression(call));
+                    } else {
+                        let value = if call.arguments.is_empty() {
+                            self.b.ast.expression_unary(
+                                oxc_span::SPAN,
+                                oxc_ast::ast::UnaryOperator::Void,
+                                self.b.num_expr(0.0),
+                            )
+                        } else {
+                            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                            std::mem::swap(&mut call.arguments[0], &mut dummy);
+                            dummy.into_expression()
+                        };
+                        let value = if Self::should_proxy(&value) {
+                            self.b.call_expr("$.proxy", [Arg::Expr(value)])
+                        } else {
+                            value
+                        };
+                        node.init = Some(value);
+                    }
+                }
+                _ => {
+                    // Other rune kinds — put back the call unchanged
+                    node.init = Some(Expression::CallExpression(call));
+                }
             }
         }
     }
@@ -485,7 +550,9 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 let Some(info) = self.rune_info_for_ref(id) else {
                     return;
                 };
-                if info.mutated {
+                let needs_get = info.mutated
+                    || matches!(info.kind, RuneKind::Derived | RuneKind::DerivedBy);
+                if needs_get {
                     let name = id.name.as_str().to_string();
                     *node = crate::rune_transform::transform_rune_get(self.b, &name);
                 }

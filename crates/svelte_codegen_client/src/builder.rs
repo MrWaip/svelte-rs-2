@@ -345,6 +345,11 @@ impl<'a> Builder<'a> {
         Expression::ArrowFunctionExpression(self.alloc(self.arrow(params, statements)))
     }
 
+    /// `() => expr` — zero-arg arrow wrapping a single expression.
+    pub fn thunk(&self, expr: Expression<'a>) -> Expression<'a> {
+        self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
+    }
+
     pub fn function_decl(
         &self,
         id: BindingIdentifier<'a>,

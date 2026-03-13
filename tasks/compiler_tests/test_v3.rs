@@ -242,3 +242,18 @@ fn component_element_children() {
 fn smoke_all() {
     assert_compiler("smoke_all");
 }
+
+#[rstest]
+fn derived_basic() {
+    assert_compiler("derived_basic");
+}
+
+#[rstest]
+fn derived_by() {
+    assert_compiler("derived_by");
+}
+
+#[rstest]
+fn derived_dynamic() {
+    assert_compiler("derived_dynamic");
+}

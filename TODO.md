@@ -4,28 +4,12 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `$derived` / `$derived.by`
+## 1. `$effect` / `$effect.pre`
 
-**Why first**: третий по частоте рун после `$state`/`$props`, чисто script codegen — без изменений AST/parser.
-
-**What to change**:
-- `svelte_js/src/lib.rs` → `detect_rune()`: добавить обработку member expressions (`$derived.by`, `$state.raw`, `$effect.pre`)
-- `svelte_codegen_client/src/script.rs` → `enter_variable_declarator`: различать `RuneKind::State` vs `RuneKind::Derived`
-  - `$derived(expr)` → `$.derived(() => expr)` (wrap в arrow function)
-  - `$derived.by(fn)` → `$.derived_by(fn)` (rename, pass through)
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js` (lines handling `$derived`)
-
-**Runtime**: `$.derived()`, `$.derived_by()`
-
----
-
-## 2. `$effect` / `$effect.pre`
-
-**Why second**: необходим для side effects, чисто script codegen.
+**Why first**: необходим для side effects, чисто script codegen.
 
 **What to change**:
-- `detect_rune()`: member expression support (уже нужно для п.1, тут переиспользуем)
+- `detect_rune()`: member expression support (уже готово — `$derived.by` паттерн)
 - `svelte_codegen_client/src/script.rs`: новый обработчик для expression statements вида `$effect(() => ...)` / `$effect.pre(() => ...)`
   - `$effect(fn)` → `$.user_effect(fn)`
   - `$effect.pre(fn)` → `$.user_pre_effect(fn)`
@@ -36,9 +20,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `{@html expr}` (HtmlTag)
+## 2. `{@html expr}` (HtmlTag)
 
-**Why third**: очень частая фича (markdown, CMS контент), первая фича требующая parser+AST+codegen.
+**Why second**: очень частая фича (markdown, CMS контент), первая фича требующая parser+AST+codegen.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::HtmlTag { expression: Span }`
@@ -52,9 +36,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `{#key expr}` (KeyBlock)
+## 3. `{#key expr}` (KeyBlock)
 
-**Why fourth**: нужен для роутеров (ремаунт при смене route) и анимаций.
+**Why third**: нужен для роутеров (ремаунт при смене route) и анимаций.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::KeyBlock { expression: Span, fragment: Fragment }`
@@ -68,9 +52,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `style:prop` directive
+## 4. `style:prop` directive
 
-**Why fifth**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
+**Why fourth**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Attribute::StyleDirective { name, value, modifiers }`
@@ -80,3 +64,16 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js` (style directive section)
 
 **Runtime**: `$.set_style()`
+
+---
+
+## 5. Event handlers (`on:event` → `onevent`)
+
+**Why fifth**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
+
+**What to change**:
+- `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
+- `svelte_ast/src/lib.rs`: добавить `Attribute::OnDirective { name, expression, modifiers }`
+- `svelte_codegen_client/src/template/attributes.rs`: генерация event listener
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
