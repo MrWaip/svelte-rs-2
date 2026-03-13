@@ -190,20 +190,20 @@
         </script>
 
         <script type="module">
-            import init, { WasmCompiler } from "./compiler/wasm_compiler.js";
             import prettyMs from "prettyMs";
             import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.53.9/compiler/index.js/+esm";
 
             import { example, benchmarkExample } from "./example.js";
 
-            await init();
-
-            const compiler = new WasmCompiler();
-
-            // Warm up WASM JIT so first user-visible compile timing is accurate
+            let compiler = null;
             try {
-                compiler.compile("<div></div>");
-            } catch (_) {}
+                const wasm = await import("./compiler/wasm_compiler.js");
+                await wasm.default();
+                compiler = new wasm.WasmCompiler();
+                try { compiler.compile("<div></div>"); } catch (_) {}
+            } catch (e) {
+                console.warn("WASM compiler not available:", e);
+            }
 
             let editorInstance;
             let diffEditorInstance;
@@ -325,6 +325,14 @@
             }
 
             function compileRust() {
+                if (!compiler) {
+                    modifiedModel.setValue(
+                        "WASM compiler not available.\n" +
+                        "Run: wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler"
+                    );
+                    rustPerf.textContent = "n/a";
+                    return;
+                }
                 try {
                     const source = editorInstance.getValue();
                     const result = checkPerformance(
@@ -356,7 +364,7 @@
                         "svelte",
                     );
 
-                    const code = compiler.format(result.js.code);
+                    const code = compiler ? compiler.format(result.js.code) : result.js.code;
                     originalModel.setValue(code);
                 } catch (e) {
                     console.error(e);
