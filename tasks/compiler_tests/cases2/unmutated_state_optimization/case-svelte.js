@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 var root_1 = $.from_html(`<li> </li>`);
-var root = $.from_html(`<button> </button> <p></p> <ul><!></ul>`, 1);
+var root = $.from_html(`<button> </button> <p></p> <ul></ul>`, 1);
 export default function App($$anchor) {
 	let count = $.state(0);
 	let label = "hello";
@@ -19,8 +19,7 @@ export default function App($$anchor) {
 	var p = $.sibling(button, 2);
 	p.textContent = "hello";
 	var ul = $.sibling(p, 2);
-	var node = $.child(ul);
-	$.each(node, 17, () => items, $.index, ($$anchor, item) => {
+	$.each(ul, 21, () => items, $.index, ($$anchor, item) => {
 		var li = root_1();
 		var text_1 = $.child(li, true);
 		$.reset(li);
