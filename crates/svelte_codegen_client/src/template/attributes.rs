@@ -34,7 +34,7 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) => {
             if let Some(event_name) = a.name.strip_prefix("on") {
-                if is_delegatable_event(event_name) {
+                if svelte_js::is_delegatable_event(event_name) {
                     let event_str = event_name.to_string();
                     let val = get_attr_expr(ctx, owner_id, attr_idx);
                     after_update.push(ctx.b.call_stmt(
@@ -254,39 +254,6 @@ fn gen_bind_directive<'a>(
     Some(stmt)
 }
 
-/// Events that Svelte delegates to the document root.
-fn is_delegatable_event(name: &str) -> bool {
-    matches!(
-        name,
-        "click"
-            | "input"
-            | "change"
-            | "submit"
-            | "focus"
-            | "blur"
-            | "keydown"
-            | "keyup"
-            | "keypress"
-            | "mousedown"
-            | "mouseup"
-            | "mousemove"
-            | "mouseenter"
-            | "mouseleave"
-            | "mouseover"
-            | "mouseout"
-            | "touchstart"
-            | "touchend"
-            | "touchmove"
-            | "pointerdown"
-            | "pointerup"
-            | "pointermove"
-            | "focusin"
-            | "focusout"
-            | "dblclick"
-            | "contextmenu"
-            | "auxclick"
-    )
-}
 
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
 pub(crate) fn process_attrs_spread<'a>(

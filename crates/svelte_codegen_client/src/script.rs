@@ -74,31 +74,10 @@ fn transform_script_text<'a>(
     let b = Builder::new(allocator);
     let mut program = result.program;
 
+    // SemanticBuilder populates symbol_id/reference_id on AST nodes,
+    // enabling reference resolution during traverse.
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
-
-    // Build rune_table and prop_table from OXC symbols
-    let mut rune_table: FxHashMap<oxc_semantic::SymbolId, RuneInfo> = FxHashMap::default();
-    let mut prop_table: FxHashMap<oxc_semantic::SymbolId, PropSymInfo> = FxHashMap::default();
-
-    let root_scope = scoping.root_scope_id();
-    for sym_id in scoping.symbol_ids() {
-        let name = scoping.symbol_name(sym_id);
-        if prop_sources.contains(name) {
-            prop_table.insert(sym_id, PropSymInfo { kind: PropKind::Source });
-        } else if prop_non_sources.contains_key(name) {
-            prop_table.insert(sym_id, PropSymInfo {
-                kind: PropKind::NonSource(name.to_string()),
-            });
-        } else if let Some(&kind) = rune_names.get(name) {
-            // Only treat symbols from root scope as runes — skip parameters
-            // that shadow a rune variable
-            if scoping.symbol_scope_id(sym_id) == root_scope {
-                let mutated = mutated_runes.contains(name);
-                rune_table.insert(sym_id, RuneInfo { mutated, kind });
-            }
-        }
-    }
 
     let props_gen: Option<PropsGenInfo> = props.map(|pa| {
         PropsGenInfo {
@@ -117,8 +96,10 @@ fn transform_script_text<'a>(
 
     let mut transformer = ScriptTransformer {
         b: &b,
-        rune_table,
-        prop_table,
+        rune_names,
+        mutated_runes,
+        prop_sources,
+        prop_non_sources,
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
@@ -154,19 +135,9 @@ fn transform_script_text<'a>(
     (imports, body)
 }
 
-struct RuneInfo {
-    mutated: bool,
-    kind: RuneKind,
-}
-
-#[derive(Clone)]
 enum PropKind {
     Source,
     NonSource(String),
-}
-
-struct PropSymInfo {
-    kind: PropKind,
 }
 
 struct PropsGenInfo {
@@ -186,8 +157,12 @@ struct PropGenItem {
 
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
-    rune_table: FxHashMap<oxc_semantic::SymbolId, RuneInfo>,
-    prop_table: FxHashMap<oxc_semantic::SymbolId, PropSymInfo>,
+    /// Analysis data: name-based lookups instead of SymbolId-based tables.
+    rune_names: &'b FxHashMap<String, RuneKind>,
+    mutated_runes: &'b FxHashSet<String>,
+    prop_sources: &'b FxHashSet<String>,
+    prop_non_sources: &'b FxHashMap<String, String>,
+    /// OXC scoping from SemanticBuilder — used to resolve references to symbols.
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
     /// Names of $derived/$derived.by runes whose init needs post-traverse wrapping.
@@ -195,30 +170,54 @@ struct ScriptTransformer<'b, 'a> {
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
-    fn rune_info_for_binding(
+    /// Resolve a binding identifier to its rune kind and mutated status.
+    /// Only root-scope symbols are considered runes (skips shadowing parameters).
+    fn rune_for_binding(
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
-    ) -> Option<&RuneInfo> {
+    ) -> Option<(RuneKind, bool)> {
         let sym_id = id.symbol_id.get()?;
-        self.rune_table.get(&sym_id)
+        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
+            return None;
+        }
+        let name = id.name.as_str();
+        let &kind = self.rune_names.get(name)?;
+        Some((kind, self.mutated_runes.contains(name)))
     }
 
-    fn rune_info_for_ref(
+    /// Resolve a reference identifier to its rune kind and mutated status.
+    fn rune_for_ref(
         &self,
         id: &oxc_ast::ast::IdentifierReference<'a>,
-    ) -> Option<&RuneInfo> {
+    ) -> Option<(RuneKind, bool)> {
         let ref_id = id.reference_id.get()?;
         let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        self.rune_table.get(&sym_id)
+        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
+            return None;
+        }
+        let name = id.name.as_str();
+        let &kind = self.rune_names.get(name)?;
+        Some((kind, self.mutated_runes.contains(name)))
     }
 
-    fn prop_info_for_ref(
+    /// Resolve a reference identifier to its prop kind (source or non-source).
+    fn prop_kind_for_ref(
         &self,
         id: &oxc_ast::ast::IdentifierReference<'a>,
-    ) -> Option<&PropSymInfo> {
+    ) -> Option<PropKind> {
         let ref_id = id.reference_id.get()?;
         let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        self.prop_table.get(&sym_id)
+        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
+            return None;
+        }
+        let name = id.name.as_str();
+        if self.prop_sources.contains(name) {
+            Some(PropKind::Source)
+        } else if let Some(prop_name) = self.prop_non_sources.get(name) {
+            Some(PropKind::NonSource(prop_name.clone()))
+        } else {
+            None
+        }
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -455,16 +454,14 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     ) {
         let rune_info = match &node.id {
             oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                self.rune_info_for_binding(id)
+                self.rune_for_binding(id)
             }
             _ => return,
         };
 
-        let Some(info) = rune_info else {
+        let Some((kind, mutated)) = rune_info else {
             return;
         };
-        let mutated = info.mutated;
-        let kind = info.kind;
 
         let Some(init) = node.init.as_mut() else {
             return;
@@ -562,14 +559,13 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             }
             Expression::Identifier(id) => {
                 // Check props first
-                if let Some(prop_info) = self.prop_info_for_ref(id) {
-                    match &prop_info.kind {
+                if let Some(prop_kind) = self.prop_kind_for_ref(id) {
+                    match prop_kind {
                         PropKind::Source => {
                             let name = id.name.as_str().to_string();
                             *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                         }
                         PropKind::NonSource(prop_name) => {
-                            let prop_name = prop_name.clone();
                             *node = self.b.static_member_expr(
                                 self.b.rid_expr("$$props"),
                                 &prop_name,
@@ -579,11 +575,11 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     return;
                 }
                 // Regular rune check
-                let Some(info) = self.rune_info_for_ref(id) else {
+                let Some((kind, mutated)) = self.rune_for_ref(id) else {
                     return;
                 };
-                let needs_get = info.mutated
-                    || matches!(info.kind, RuneKind::Derived | RuneKind::DerivedBy);
+                let needs_get = mutated
+                    || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
                 if needs_get {
                     let name = id.name.as_str().to_string();
                     *node = crate::rune_transform::transform_rune_get(self.b, &name);
@@ -601,16 +597,16 @@ impl<'a> ScriptTransformer<'_, 'a> {
         };
 
         if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
-            if let Some(prop_info) = self.prop_info_for_ref(id) {
-                if matches!(prop_info.kind, PropKind::Source) {
+            if let Some(prop_kind) = self.prop_kind_for_ref(id) {
+                if matches!(prop_kind, PropKind::Source) {
                     let name = id.name.as_str().to_string();
                     let right = self.b.move_expr(&mut assign.right);
                     *node = self.b.call_expr(&name, [Arg::Expr(right)]);
                     return;
                 }
             }
-            if let Some(info) = self.rune_info_for_ref(id) {
-                if info.mutated {
+            if let Some((_, mutated)) = self.rune_for_ref(id) {
+                if mutated {
                     let name = id.name.as_str().to_string();
                     let right = self.b.move_expr(&mut assign.right);
 
@@ -642,8 +638,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
         };
 
         if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
-            if let Some(prop_info) = self.prop_info_for_ref(id) {
-                if matches!(prop_info.kind, PropKind::Source) {
+            if let Some(prop_kind) = self.prop_kind_for_ref(id) {
+                if matches!(prop_kind, PropKind::Source) {
                     let name = id.name.as_str().to_string();
                     let fn_name = if upd.prefix { "$.update_pre_prop" } else { "$.update_prop" };
                     let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(&name)];
@@ -654,8 +650,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     return;
                 }
             }
-            if let Some(info) = self.rune_info_for_ref(id) {
-                if info.mutated {
+            if let Some((_, mutated)) = self.rune_for_ref(id) {
+                if mutated {
                     let name = id.name.as_str().to_string();
                     let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
                     *node = crate::rune_transform::transform_rune_update(
