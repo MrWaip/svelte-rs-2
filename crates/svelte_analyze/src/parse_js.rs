@@ -101,6 +101,16 @@ fn walk_node(
                 Err(diag) => diags.push(diag),
             }
         }
+        Node::HtmlTag(tag) => {
+            let source = component.source_text(tag.expression_span);
+            let offset = tag.expression_span.start;
+            match svelte_js::analyze_expression(source, offset) {
+                Ok(info) => {
+                    data.expressions.insert(tag.id, info);
+                }
+                Err(diag) => diags.push(diag),
+            }
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

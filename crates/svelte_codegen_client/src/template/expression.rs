@@ -335,7 +335,7 @@ pub(crate) fn emit_trailing_next<'a>(
 pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
-        FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) => {
+        FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) => {
             ctx.analysis.dynamic_nodes.contains(id)
         }
     }

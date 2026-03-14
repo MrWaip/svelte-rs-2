@@ -34,7 +34,8 @@ fn item_is_dynamic(
         | FragmentItem::ComponentNode(id)
         | FragmentItem::IfBlock(id)
         | FragmentItem::EachBlock(id)
-        | FragmentItem::RenderTag(id) => dynamic_nodes.contains(id),
+        | FragmentItem::RenderTag(id)
+        | FragmentItem::HtmlTag(id) => dynamic_nodes.contains(id),
     }
 }
 
@@ -49,7 +50,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
             FragmentItem::ComponentNode(_)
             | FragmentItem::IfBlock(_)
             | FragmentItem::EachBlock(_)
-            | FragmentItem::RenderTag(_) => return ContentType::SingleBlock,
+            | FragmentItem::RenderTag(_)
+            | FragmentItem::HtmlTag(_) => return ContentType::SingleBlock,
             FragmentItem::TextConcat { .. } => {}
         }
     }
@@ -65,7 +67,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
             FragmentItem::ComponentNode(_)
             | FragmentItem::IfBlock(_)
             | FragmentItem::EachBlock(_)
-            | FragmentItem::RenderTag(_) => has_block = true,
+            | FragmentItem::RenderTag(_)
+            | FragmentItem::HtmlTag(_) => has_block = true,
             FragmentItem::TextConcat { has_expr, .. } => {
                 if *has_expr {
                     has_dynamic_text = true;

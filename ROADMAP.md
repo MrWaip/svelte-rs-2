@@ -147,13 +147,14 @@ Theme: most commonly needed template features. Requires parser + AST + analyze +
 
 Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_client/src/template/`
 
-### `{@html expr}` — Raw HTML insertion
+### ~~`{@html expr}`~~ — Raw HTML insertion ✅
 - **Phases**: P, A, T
 - **AST**: `Node::HtmlTag { id, span, expression_span }`
 - **Parser**: Handle `{@html ...}` in tag scanner (similar to `{@render}`)
 - **Analyze**: Register expression in `parse_js`. Mark dynamic in `reactivity`. Handle in `content_types`
 - **Codegen**: `$.html(anchor, () => expr)`
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js` (~60 lines)
+- **Not yet**: `is_controlled` optimization (single child → innerHTML), `is_svg`/`is_mathml` namespace flags
 
 ### `{#key expr}` — Keyed re-render block
 - **Phases**: P, A, T

@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::AnalysisData;
-use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
+use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -15,6 +15,7 @@ struct NodeIndex<'a> {
     each_blocks: FxHashMap<NodeId, &'a EachBlock>,
     snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
+    html_tags: FxHashMap<NodeId, &'a HtmlTag>,
     expr_spans: FxHashMap<NodeId, Span>,
 }
 
@@ -27,6 +28,7 @@ impl<'a> NodeIndex<'a> {
             each_blocks: FxHashMap::default(),
             snippet_blocks: FxHashMap::default(),
             render_tags: FxHashMap::default(),
+            html_tags: FxHashMap::default(),
             expr_spans: FxHashMap::default(),
         };
         index.walk(fragment);
@@ -64,6 +66,9 @@ impl<'a> NodeIndex<'a> {
                 }
                 Node::RenderTag(t) => {
                     self.render_tags.insert(t.id, t);
+                }
+                Node::HtmlTag(t) => {
+                    self.html_tags.insert(t.id, t);
                 }
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
@@ -168,6 +173,10 @@ impl<'a> Ctx<'a> {
 
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.index.render_tags.get(&id).copied().expect("render tag not found")
+    }
+
+    pub fn html_tag(&self, id: NodeId) -> &'a HtmlTag {
+        self.index.html_tags.get(&id).copied().expect("html tag not found")
     }
 
     pub fn expr_span(&self, id: NodeId) -> Span {

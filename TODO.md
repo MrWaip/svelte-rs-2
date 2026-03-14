@@ -4,25 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `{@html expr}` (HtmlTag)
+## 1. `{#key expr}` (KeyBlock)
 
-**Why first**: очень частая фича (markdown, CMS контент), первая фича требующая parser+AST+codegen.
-
-**What to change**:
-- `svelte_ast/src/lib.rs`: добавить `Node::HtmlTag { expression: Span }`
-- `svelte_parser/src/lib.rs`: обработка `{@html ...}` в scanner
-- `svelte_codegen_client/src/template/`: генерация `$.html(anchor, () => expr)`
-- Analyze: отметить как dynamic expression
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js`
-
-**Runtime**: `$.html()`
-
----
-
-## 2. `{#key expr}` (KeyBlock)
-
-**Why second**: нужен для роутеров (ремаунт при смене route) и анимаций.
+**Why first**: нужен для роутеров (ремаунт при смене route) и анимаций.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::KeyBlock { expression: Span, fragment: Fragment }`
@@ -36,9 +20,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `style:prop` directive
+## 2. `style:prop` directive
 
-**Why third**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
+**Why second**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Attribute::StyleDirective { name, value, modifiers }`
@@ -51,9 +35,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. Event handlers (`on:event` → `onevent`)
+## 3. Event handlers (`on:event` → `onevent`)
 
-**Why fourth**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
+**Why third**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
@@ -64,9 +48,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. Void HTML elements
+## 4. Void HTML elements
 
-**Why fifth**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
+**Why fourth**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
 
 **What to change**:
 - Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
@@ -74,3 +58,17 @@ Next 5 features to implement, in priority order.
 - Validation: ошибка на `</input>` и child-контент внутри void elements
 
 **Reference**: `reference/compiler/phases/1-parse/state/element.js` line 371, `reference/compiler/utils.js`
+
+---
+
+## 5. `{@const x = expr}` (ConstTag)
+
+**Why fifth**: нужен для вычислений внутри {#each} и {#if} блоков.
+
+**What to change**:
+- `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
+- `svelte_parser/src/lib.rs`: парсинг `{@const ...}` с извлечением variable declaration
+- `svelte_analyze/`: scope integration — const binding visible in same block
+- `svelte_codegen_client/src/template/`: `const x = expr` (non-reactive) or `$.derived(() => expr)` (reactive)
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines)

@@ -12,6 +12,7 @@ use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
 use super::expression::parts_are_dynamic;
 use super::if_block::gen_if_block;
+use super::html_tag::gen_html_tag;
 use super::render_tag::gen_render_tag;
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
@@ -117,6 +118,14 @@ pub(crate) fn traverse_items<'a>(
                     prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
                     gen_render_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                }
+
+                FragmentItem::HtmlTag(id) => {
+                    let node_name = ctx.gen_ident("node");
+                    init.push(ctx.b.var_stmt(&node_name, node_expr));
+                    prev_ident = Some(node_name.clone());
+                    sibling_offset = 1;
+                    gen_html_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
                 }
             }
         } else {

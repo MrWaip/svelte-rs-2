@@ -921,6 +921,16 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "html" => {
+                self.skip_whitespace();
+                let expression = self.collect_js_expression()?;
+
+                self.add_token(TokenType::HtmlTag(token::HtmlTagToken {
+                    expression,
+                }));
+
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -1610,6 +1620,16 @@ mod tests {
         assert!(matches!(tokens[0].token_type, TokenType::RenderTag(_)));
         if let TokenType::RenderTag(ref rt) = tokens[0].token_type {
             assert_eq!(rt.expression.value, "foo(x, y)");
+        }
+    }
+
+    #[test]
+    fn html_tag_tokens() {
+        let mut scanner = Scanner::new("{@html content}");
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::HtmlTag(_)));
+        if let TokenType::HtmlTag(ref ht) = tokens[0].token_type {
+            assert_eq!(ht.expression.value, "content");
         }
     }
 
