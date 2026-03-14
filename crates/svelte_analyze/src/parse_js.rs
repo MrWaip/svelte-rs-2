@@ -165,6 +165,10 @@ fn walk_attrs(
             Attribute::ShorthandOrSpread(a) => {
                 // For spread attrs, skip the "..." prefix
                 let span = if a.is_spread {
+                    debug_assert!(
+                        a.expression_span.end >= a.expression_span.start + 3,
+                        "spread expression span too short to contain '...'"
+                    );
                     svelte_span::Span::new(a.expression_span.start + 3, a.expression_span.end)
                 } else {
                     a.expression_span
