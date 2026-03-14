@@ -49,6 +49,7 @@ Current work items: see `TODO.md`.
 - [x] Single-element optimization
 - [x] Text-and-interpolation-only optimization
 - [x] Non-reactive attribute optimization
+- [x] Unmutated rune optimization — skip `$.state()` wrapper for `$state` that's never assigned
 
 ### WASM
 - [x] Compiler compiled to WASM for browser use
@@ -381,7 +382,7 @@ Theme: less-used features, developer experience, performance improvements.
 | Feature | Phases | Description |
 |---------|--------|-------------|
 | Event delegation refinement | A, T | Refine `is_delegatable_event` analysis, track `$.delegate()` calls at component level |
-| Unmutated rune optimization | S | Don't wrap `$state` that's never assigned — inline initial value |
+| ~~Unmutated rune optimization~~ | ~~S~~ | ~~Done — moved to Done section~~ |
 | CSS hash injection | T | Add scoped class to elements (requires Tier 6) |
 
 ---
