@@ -1059,6 +1059,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "svelte_analyze"
 version = "0.1.0"
 dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
  "oxc_semantic",
  "oxc_span",
  "pretty_assertions",
@@ -1100,11 +1102,13 @@ dependencies = [
 name = "svelte_compiler"
 version = "0.1.0"
 dependencies = [
+ "oxc_allocator",
  "serde",
  "svelte_analyze",
  "svelte_codegen_client",
  "svelte_diagnostics",
  "svelte_parser",
+ "svelte_transform",
 ]
 
 [[package]]
@@ -1146,6 +1150,21 @@ name = "svelte_span"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "svelte_transform"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_span",
+ "oxc_syntax",
+ "rustc-hash",
+ "svelte_analyze",
+ "svelte_ast",
+ "svelte_js",
+ "svelte_span",
 ]
 
 [[package]]

@@ -1,7 +1,6 @@
 //! IfBlock code generation — flattened elseif chains.
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_span::Span;
 
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
@@ -9,12 +8,12 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::expression::parse_expr;
+use super::expression::get_node_expr;
 use super::gen_fragment;
 
 /// Collected branch info before code generation.
 struct Branch {
-    test_span: Span,
+    block_id: NodeId,
     consequent_key: FragmentKey,
 }
 
@@ -33,10 +32,9 @@ pub(crate) fn gen_if_block<'a>(
     loop {
         let block = ctx.if_block(current);
         let has_alternate = block.alternate.is_some();
-        let test_span = block.test_span;
 
         branches.push(Branch {
-            test_span,
+            block_id: current,
             consequent_key: FragmentKey::IfConsequent(current),
         });
 
@@ -95,7 +93,7 @@ pub(crate) fn gen_if_block<'a>(
 
     // Build from last branch to first
     for i in (0..num_branches).rev() {
-        let test = parse_expr(ctx, branches[i].test_span);
+        let test = get_node_expr(ctx, branches[i].block_id);
         let render_args: Vec<Arg<'a, '_>> = if i == 0 {
             // First branch: no second argument
             vec![Arg::Ident(&branch_names[i])]

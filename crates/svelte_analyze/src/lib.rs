@@ -10,22 +10,26 @@ mod needs_var;
 mod parse_js;
 mod props;
 mod reactivity;
-pub(crate) mod scope;
+pub mod scope;
 mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, PropAnalysis,
-    PropsAnalysis,
+    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
+    ParsedExprs, PropAnalysis, PropsAnalysis,
 };
 
+use oxc_allocator::Allocator;
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
 /// Run all analysis passes over a parsed component.
 ///
+/// `alloc` is a shared OXC allocator for storing parsed Expression ASTs.
+/// The caller owns the allocator; the returned `ParsedExprs<'a>` borrows from it.
+///
 /// Pass order:
-/// 1. parse_js      — parse JS expressions + script block
+/// 1. parse_js      — parse JS expressions + script block (stores ASTs in ParsedExprs)
 /// 2. build_scoping — build unified scope tree (script + template)
 /// 3. mutations     — detect mutated runes (composite walk: template + binds)
 /// 4. known_values  — evaluate const declarations with literal initializers
@@ -35,11 +39,15 @@ use svelte_diagnostics::Diagnostic;
 /// 8. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
 /// 9. needs_var     — compute elements needing DOM variable
 /// 10. validate     — semantic checks
-pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
+pub fn analyze<'a>(
+    alloc: &'a Allocator,
+    component: &Component,
+) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
+    let mut parsed = ParsedExprs::new();
     let mut diags = Vec::new();
 
-    parse_js::parse_js(component, &mut data, &mut diags);
+    parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
 
     // Register snippet parameter names (recursive — handles nested snippets)
     register_snippet_params(&component.fragment, component, &mut data);
@@ -89,7 +97,7 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     }
     validate::validate(component, &data, &mut diags);
 
-    (data, diags)
+    (data, parsed, diags)
 }
 
 /// Recursively register snippet parameter names for all snippets in the tree.
@@ -249,8 +257,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn analyze_source(source: &str) -> (Component, AnalysisData) {
+        let alloc = oxc_allocator::Allocator::default();
         let (component, _) = Parser::new(source).parse();
-        let (data, diags) = analyze(&component);
+        let (data, _parsed, diags) = analyze(&alloc, &component);
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         (component, data)
     }

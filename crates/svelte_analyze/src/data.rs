@@ -1,3 +1,4 @@
+use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
@@ -5,6 +6,34 @@ use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
 use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
+
+// ---------------------------------------------------------------------------
+// ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
+// ---------------------------------------------------------------------------
+
+/// Parsed JS expression ASTs, stored in a shared OXC allocator.
+/// Separate from AnalysisData to avoid lifetime propagation.
+pub struct ParsedExprs<'a> {
+    /// Template expressions: ExpressionTag, IfBlock test, EachBlock expr, RenderTag, HtmlTag.
+    pub exprs: FxHashMap<NodeId, Expression<'a>>,
+    /// Attribute expressions: (owner_element_id, attr_index).
+    pub attr_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
+    /// ConcatenationAttribute dynamic parts: (owner_id, attr_index, part_index).
+    pub concat_part_exprs: FxHashMap<(NodeId, usize, usize), Expression<'a>>,
+    /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
+    pub script_program: Option<oxc_ast::ast::Program<'a>>,
+}
+
+impl<'a> ParsedExprs<'a> {
+    pub fn new() -> Self {
+        Self {
+            exprs: FxHashMap::default(),
+            attr_exprs: FxHashMap::default(),
+            concat_part_exprs: FxHashMap::default(),
+            script_program: None,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // FragmentKey — typed key for lowered_fragments and content_types
@@ -36,7 +65,7 @@ pub struct AnalysisData {
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
-    pub(crate) scoping: ComponentScoping,
+    pub scoping: ComponentScoping,
     /// Element attributes that reference rune symbols: (element NodeId, attr index).
     pub dynamic_attrs: FxHashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.

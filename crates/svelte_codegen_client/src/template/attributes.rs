@@ -2,17 +2,19 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_ast::{Attribute, Element};
+use svelte_ast::{Attribute, Element, NodeId};
 
 use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
 use crate::context::Ctx;
 
-use super::expression::{build_attr_concat, parse_expr};
+use super::expression::{build_attr_concat, get_attr_expr};
 
 /// Process a single attribute (non-spread path).
 pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr: &Attribute,
+    owner_id: NodeId,
+    attr_idx: usize,
     el_name: &str,
     tag_name: &str,
     is_dyn: bool,
@@ -32,9 +34,9 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) => {
             if let Some(event_name) = a.name.strip_prefix("on") {
-                if is_delegatable_event(event_name) {
+                if svelte_js::is_delegatable_event(event_name) {
                     let event_str = event_name.to_string();
-                    let val = parse_expr(ctx, a.expression_span);
+                    let val = get_attr_expr(ctx, owner_id, attr_idx);
                     after_update.push(ctx.b.call_stmt(
                         "$.delegated",
                         [
@@ -49,7 +51,7 @@ pub(crate) fn process_attr<'a>(
                     return;
                 }
             }
-            let val = parse_expr(ctx, a.expression_span);
+            let val = get_attr_expr(ctx, owner_id, attr_idx);
             if a.name == "value" && tag_name == "input" {
                 target.push(ctx.b.call_stmt(
                     "$.set_value",
@@ -67,7 +69,7 @@ pub(crate) fn process_attr<'a>(
             }
         }
         Attribute::ConcatenationAttribute(a) => {
-            let val = build_attr_concat(ctx, &a.parts);
+            let val = build_attr_concat(ctx, owner_id, attr_idx, &a.parts);
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
                 [
@@ -78,7 +80,7 @@ pub(crate) fn process_attr<'a>(
             ));
         }
         Attribute::ShorthandOrSpread(a) if !a.is_spread => {
-            let val = parse_expr(ctx, a.expression_span);
+            let val = get_attr_expr(ctx, owner_id, attr_idx);
             let name = ctx.component.source_text(a.expression_span).to_string();
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
@@ -112,8 +114,9 @@ pub(crate) fn process_class_directives<'a>(
     let class_dirs: Vec<_> = el
         .attributes
         .iter()
-        .filter_map(|a| match a {
-            Attribute::ClassDirective(cd) => Some(cd),
+        .enumerate()
+        .filter_map(|(idx, a)| match a {
+            Attribute::ClassDirective(cd) => Some((idx, cd)),
             _ => None,
         })
         .collect();
@@ -128,13 +131,15 @@ pub(crate) fn process_class_directives<'a>(
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-    for cd in &class_dirs {
+    for (attr_idx, cd) in &class_dirs {
         let name = &cd.name;
 
-        let (expr, is_simple_ident_same_name) = if let Some(span) = cd.expression_span {
-            let expr_text = ctx.component.source_text(span).trim().to_string();
-            let parsed = parse_expr(ctx, span);
-            let same_name = expr_text == *name;
+        let (expr, is_simple_ident_same_name) = if cd.expression_span.is_some() {
+            let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+            // Check if expression text matches the class name (for shorthand output)
+            let same_name = cd.expression_span
+                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
+                .unwrap_or(false);
             (parsed, same_name)
         } else {
             // shorthand: class:name → identifier `name`
@@ -249,39 +254,6 @@ fn gen_bind_directive<'a>(
     Some(stmt)
 }
 
-/// Events that Svelte delegates to the document root.
-fn is_delegatable_event(name: &str) -> bool {
-    matches!(
-        name,
-        "click"
-            | "input"
-            | "change"
-            | "submit"
-            | "focus"
-            | "blur"
-            | "keydown"
-            | "keyup"
-            | "keypress"
-            | "mousedown"
-            | "mouseup"
-            | "mousemove"
-            | "mouseenter"
-            | "mouseleave"
-            | "mouseover"
-            | "mouseout"
-            | "touchstart"
-            | "touchend"
-            | "touchmove"
-            | "pointerdown"
-            | "pointerup"
-            | "pointermove"
-            | "focusin"
-            | "focusout"
-            | "dblclick"
-            | "contextmenu"
-            | "auxclick"
-    )
-}
 
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
 pub(crate) fn process_attrs_spread<'a>(
@@ -294,7 +266,7 @@ pub(crate) fn process_attrs_spread<'a>(
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-    for attr in &el.attributes {
+    for (attr_idx, attr) in el.attributes.iter().enumerate() {
         match attr {
             Attribute::BooleanAttribute(a) => {
                 let name_alloc = ctx.b.alloc_str(&a.name);
@@ -306,33 +278,24 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(&val)));
             }
             Attribute::ExpressionAttribute(a) => {
-                let expr = parse_expr(ctx, a.expression_span);
                 let expr_text = ctx.component.source_text(a.expression_span).trim();
                 if a.name == expr_text {
                     // Property shorthand: name matches expression
                     let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::Shorthand(name_alloc));
                 } else {
+                    let expr = get_attr_expr(ctx, el.id, attr_idx);
                     let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(name_alloc, expr));
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
-                let val = build_attr_concat(ctx, &a.parts);
+                let val = build_attr_concat(ctx, el.id, attr_idx, &a.parts);
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }
             Attribute::ShorthandOrSpread(a) if a.is_spread => {
-                // expression_span includes "..." prefix — skip it
-                debug_assert!(
-                    a.expression_span.end >= a.expression_span.start + 3,
-                    "spread expression span too short to contain '...'"
-                );
-                let span = svelte_span::Span::new(
-                    a.expression_span.start + 3,
-                    a.expression_span.end,
-                );
-                let expr = parse_expr(ctx, span);
+                let expr = get_attr_expr(ctx, el.id, attr_idx);
                 props.push(ObjProp::Spread(expr));
             }
             Attribute::ShorthandOrSpread(a) => {

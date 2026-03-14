@@ -120,6 +120,23 @@ pub enum RuneKind {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Parse a JS expression into a provided allocator, returning both metadata and AST.
+///
+/// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
+/// Use this when you need to keep the parsed AST for later transformation/codegen.
+pub fn analyze_expression_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+) -> Result<(ExpressionInfo, Expression<'a>), Diagnostic> {
+    let parser = OxcParser::new(alloc, source, SourceType::default());
+    let expr = parser
+        .parse_expression()
+        .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+    let info = extract_expression_info(&expr, offset);
+    Ok((info, expr))
+}
+
 /// Parse a JS expression and return owned analysis info.
 ///
 /// `source` is the raw expression text (e.g., "count + 1").
@@ -425,6 +442,42 @@ pub fn analyze_script_with_scoping(
     Ok((script_info, scoping))
 }
 
+/// Parse a `<script>` block once in a caller-provided allocator and return
+/// analysis info, scoping, and the live `Program` AST.
+///
+/// The returned `Program<'a>` is reused by codegen, eliminating double-parsing.
+pub fn analyze_script_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+    typescript: bool,
+) -> Result<(ScriptInfo, oxc_semantic::Scoping, oxc_ast::ast::Program<'a>), Vec<Diagnostic>> {
+    let source_type = if typescript {
+        SourceType::mjs().with_typescript(true)
+    } else {
+        SourceType::mjs()
+    };
+
+    let result = OxcParser::new(alloc, source, source_type).parse();
+
+    if !result.errors.is_empty() {
+        return Err(result
+            .errors
+            .iter()
+            .map(|_| {
+                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+            })
+            .collect());
+    }
+
+    let program = result.program;
+    let script_info = extract_script_info(&program, offset, source);
+    let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+    let scoping = sem.semantic.into_scoping();
+
+    Ok((script_info, scoping, program))
+}
+
 /// Check if an expression text represents a "simple" expression that can be
 /// eagerly evaluated (no side effects). Matches Svelte's `is_simple_expression()`.
 ///
@@ -458,6 +511,40 @@ fn is_simple_expr(expr: &Expression<'_>) -> bool {
         }
         _ => false,
     }
+}
+
+/// Events that Svelte delegates to the document root.
+pub fn is_delegatable_event(name: &str) -> bool {
+    matches!(
+        name,
+        "click"
+            | "input"
+            | "change"
+            | "submit"
+            | "focus"
+            | "blur"
+            | "keydown"
+            | "keyup"
+            | "keypress"
+            | "mousedown"
+            | "mouseup"
+            | "mousemove"
+            | "mouseenter"
+            | "mouseleave"
+            | "mouseover"
+            | "mouseout"
+            | "touchstart"
+            | "touchend"
+            | "touchmove"
+            | "pointerdown"
+            | "pointerup"
+            | "pointermove"
+            | "focusin"
+            | "focusout"
+            | "dblclick"
+            | "contextmenu"
+            | "auxclick"
+    )
 }
 
 // ---------------------------------------------------------------------------

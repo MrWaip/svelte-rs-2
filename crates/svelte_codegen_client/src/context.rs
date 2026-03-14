@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::AnalysisData;
+use svelte_analyze::{AnalysisData, ParsedExprs};
 use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
@@ -85,6 +85,8 @@ pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
     pub analysis: &'a AnalysisData,
+    /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
+    pub parsed: &'a mut ParsedExprs<'a>,
     /// Monotonically incrementing counter per name prefix.
     ident_counters: FxHashMap<String, u32>,
     /// Template declarations from nested fragments, hoisted to module scope.
@@ -105,8 +107,6 @@ pub struct Ctx<'a> {
     pub prop_non_sources: FxHashMap<String, String>,
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
-    /// Names of each-block context variables in scope (for `$.get()` wrapping).
-    pub each_vars: FxHashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -114,6 +114,7 @@ impl<'a> Ctx<'a> {
         allocator: &'a oxc_allocator::Allocator,
         component: &'a Component,
         analysis: &'a AnalysisData,
+        parsed: &'a mut ParsedExprs<'a>,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
@@ -137,6 +138,7 @@ impl<'a> Ctx<'a> {
             b: Builder::new(allocator),
             component,
             analysis,
+            parsed,
             ident_counters: FxHashMap::default(),
             module_hoisted: Vec::new(),
             index,
@@ -145,7 +147,6 @@ impl<'a> Ctx<'a> {
             prop_sources,
             prop_non_sources,
             delegated_events: Vec::new(),
-            each_vars: FxHashSet::default(),
         }
     }
 
@@ -173,14 +174,6 @@ impl<'a> Ctx<'a> {
 
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.index.render_tags.get(&id).copied().expect("render tag not found")
-    }
-
-    pub fn html_tag(&self, id: NodeId) -> &'a HtmlTag {
-        self.index.html_tags.get(&id).copied().expect("html tag not found")
-    }
-
-    pub fn expr_span(&self, id: NodeId) -> Span {
-        self.index.expr_spans.get(&id).copied().expect("expr tag not found")
     }
 
     // -- Identifiers --
