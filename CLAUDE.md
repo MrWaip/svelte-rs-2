@@ -20,10 +20,21 @@ Tests live in `crates/svelte_analyze/tests/`. Each test parses a `.svelte` snipp
 
 ### svelte_codegen_client tests
 
-Compiler tests live in `tasks/compiler_tests/cases2/`. Each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual). Run with:
-```
-cargo test -p compiler_tests --test compiler_tests_v3 <test_name>
-```
+Compiler tests live in `tasks/compiler_tests/cases2/`. Each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual).
+
+## Just commands
+
+All common operations are in the `justfile`. Use `just` instead of raw cargo commands:
+
+| Command | What it does |
+|---|---|
+| `just generate` | Generate `case-svelte.js` for all compiler test cases (runs node + oxc) |
+| `just test-compiler` | Run all compiler integration tests |
+| `just test-case <name>` | Run a single compiler test case |
+| `just test-case-verbose <name>` | Run a single compiler test case with output |
+| `just test-all` | Run all tests across all crates |
+| `just test-parser` | Run parser tests |
+| `just test-analyzer` | Run analyzer tests |
 
 ## General rules for commands
 
