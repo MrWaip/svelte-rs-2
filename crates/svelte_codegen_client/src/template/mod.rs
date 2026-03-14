@@ -7,6 +7,7 @@ pub(crate) mod element;
 pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod if_block;
+pub(crate) mod html_tag;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
 pub(crate) mod traverse;
@@ -24,6 +25,7 @@ use html::{element_html, fragment_html};
 use component::gen_component;
 use if_block::gen_if_block;
 use each_block::gen_each_block;
+use html_tag::gen_html_tag;
 use render_tag::gen_render_tag;
 use traverse::traverse_items;
 
@@ -217,6 +219,9 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
         }
         FragmentItem::EachBlock(id) => {
             gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, body);
+        }
+        FragmentItem::HtmlTag(id) => {
+            gen_html_tag(ctx, id, ctx.b.rid_expr(&node), body);
         }
         _ => unreachable!(),
     }
@@ -412,6 +417,9 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         }
                         FragmentItem::EachBlock(id) => {
                             gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, &mut body);
+                        }
+                        FragmentItem::HtmlTag(id) => {
+                            gen_html_tag(ctx, id, ctx.b.rid_expr(&node), &mut body);
                         }
                         _ => unreachable!(),
                     }

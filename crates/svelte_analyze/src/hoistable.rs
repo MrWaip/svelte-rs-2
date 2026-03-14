@@ -5,8 +5,8 @@
 use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use svelte_ast::{
-    Attribute, ComponentNode, EachBlock, Element, ExpressionTag, IfBlock, NodeId, RenderTag,
-    SnippetBlock,
+    Attribute, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock, NodeId,
+    RenderTag, SnippetBlock,
 };
 
 use crate::data::AnalysisData;
@@ -96,6 +96,10 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     }
 
     fn visit_render_tag(&mut self, tag: &RenderTag, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_expr(&tag.id, data);
+    }
+
+    fn visit_html_tag(&mut self, tag: &HtmlTag, _scope: ScopeId, data: &mut AnalysisData) {
         self.check_expr(&tag.id, data);
     }
 
