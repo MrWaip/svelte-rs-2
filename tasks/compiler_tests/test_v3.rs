@@ -257,3 +257,8 @@ fn derived_by() {
 fn derived_dynamic() {
     assert_compiler("derived_dynamic");
 }
+
+#[rstest]
+fn unmutated_state_optimization() {
+    assert_compiler("unmutated_state_optimization");
+}
