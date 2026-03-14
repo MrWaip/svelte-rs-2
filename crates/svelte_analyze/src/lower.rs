@@ -64,21 +64,28 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
         }
     }
 
-    // Step 2: strip leading whitespace-only Text nodes
-    while let Some(Node::Text(t)) = regular.first() {
+    // Step 2: strip leading whitespace-only Text nodes (index-based to avoid O(n) shifts)
+    let mut start = 0;
+    while let Some(Node::Text(t)) = regular.get(start) {
         if !is_ws_only(t.value(&component.source)) {
             break;
         }
-        regular.remove(0);
+        start += 1;
     }
 
     // Step 3: strip trailing whitespace-only Text nodes
-    while let Some(Node::Text(t)) = regular.last() {
-        if !is_ws_only(t.value(&component.source)) {
-            break;
+    let mut end = regular.len();
+    while end > start {
+        if let Some(Node::Text(t)) = regular.get(end - 1) {
+            if is_ws_only(t.value(&component.source)) {
+                end -= 1;
+                continue;
+            }
         }
-        regular.pop();
+        break;
     }
+
+    let regular = &regular[start..end];
 
     if regular.is_empty() {
         return vec![];
