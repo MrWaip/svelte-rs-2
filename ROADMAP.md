@@ -73,6 +73,9 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | 7 | `$inspect(vals)` | `$.inspect(...)` | S | Dev-mode only — strip in prod. Needs `dev` compiler option |
 | 8 | `$inspect.trace()` | dev-only trace | S | Same `dev` flag dependency |
 | 9 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
+| 10 | `$state.eager(val)` | `$.state($.eager(val))` | S | Experimental async — forces immediate UI updates during `await`. Requires `experimental.async` flag |
+| 11 | `$effect.pending()` | `$.effect_pending()` | S | Returns number of pending promises in current boundary. Used with `<svelte:boundary pending>` |
+| 12 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
 
 ---
 
@@ -114,6 +117,14 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **Pattern**: Follows exact same pattern as `ClassDirective` in parser and `process_class_directives` in codegen
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
 
+### `class` attribute — Object/array syntax (Svelte 5)
+- **Phases**: P, A, T
+- **Syntax**: `class={{ active: isActive, bold }}`, `class={[base, isActive && "active", variant]}`
+- **Parser**: Detect object/array expression in `class` attribute value
+- **Codegen**: `$.set_class(el, ...)` — merges object keys where value is truthy, filters falsy array items
+- **Notes**: Preferred over `class:name` directive in Svelte 5. Coexists with static `class="..."` and `class:` directives
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
+
 ### `{@debug vars}` — Dev-mode debugger
 - **Phases**: P, T
 - **AST**: `Node::DebugTag { id, span, identifiers: Vec<Span> }`
@@ -138,6 +149,13 @@ Ref: `reference/compiler/phases/3-transform/client/visitors/BindDirective.js`
 | `bind:this` | any element or component | `$.bind_this(el, ($$value) => ref = $$value, () => ref)` | T, A |
 
 Note: `bind:this` uses a different pattern — NOT getter/setter, uses `build_bind_this` utility.
+
+### Function bindings (Svelte 5)
+
+`bind:property={get, set}` — accepts a getter/setter pair for custom validation/transformation during binding updates.
+- **Syntax**: `bind:value={getValue, setValue}`
+- **Codegen**: Same runtime calls, but getter/setter are user-provided functions instead of generated ones
+- **Notes**: Works with any bindable property. Enables custom logic (clamping, formatting) on binding updates
 
 ### Input/Form bindings
 
@@ -295,6 +313,7 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, head managem
 |---------|---------|
 | `bind:activeElement` | `$.bind_active_element(set)` |
 | `bind:fullscreenElement` | `$.bind_property(document, ...)` |
+| `bind:pointerLockElement` | `$.bind_property(document, ...)` |
 | `bind:visibilityState` | `$.bind_property(document, ...)` |
 
 ### `<svelte:body>` — Body events & actions
@@ -329,7 +348,7 @@ Theme: scoped CSS compilation — largest standalone workstream, new `svelte_css
 | 3 | `:global()` modifier | New module | Skip scoping for `:global(selector)` and `:global { ... }` blocks |
 | 4 | CSS hash injection | T | Add `class="svelte-HASH"` to template elements that match scoped selectors |
 | 5 | `--css-var={expr}` custom properties | P, T | Static: `$.set_style(el, "--var", value)`. Dynamic: `$.css_props(el, { "--var": value })` |
-| 6 | Keyframe scoping | New module | Mangle `@keyframes name` → `@keyframes name-HASH` |
+| 6 | Keyframe scoping | New module | Mangle `@keyframes name` → `@keyframes name-HASH`. `-global-` prefix skips scoping (e.g., `@keyframes -global-fade` → `@keyframes fade`) |
 | 7 | CSS pruning/tree-shaking | New module | Remove rules whose selectors don't match any template element |
 | 8 | Nested `<style>` elements | P | No scoping, emit as global rules |
 
@@ -355,6 +374,7 @@ Theme: less-used features, developer experience, performance improvements.
 | Rune argument validation | Validate rune call signatures (e.g., `$state()` takes 0-1 args) | `2-analyze/visitors/CallExpression.js` |
 | Directive placement validation | `transition:` not on components, `animate:` only in keyed each | `2-analyze/visitors/Component.js` |
 | A11y warnings | Missing `alt`, ARIA errors, form label association, etc. | `2-analyze/a11y.js` |
+| `<!-- svelte-ignore -->` comments | Suppress specific compiler warnings for the next sibling node | `1-parse/` + `2-analyze/` |
 
 ### Optimization
 
@@ -391,13 +411,19 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 These are imported from `svelte` and used as regular function calls. The compiler passes them through unchanged:
 
 - **Lifecycle**: `onMount()`, `onDestroy()`
-- **Scheduling**: `tick()`, `flushSync()`
+- **Scheduling**: `tick()`, `flushSync()`, `settled()`
 - **Context**: `setContext()`, `getContext()`, `hasContext()`, `getAllContexts()`, `createContext()`
 - **Mounting**: `mount()`, `unmount()`, `hydrate()`
+- **Utilities**: `untrack()`, `createRawSnippet()`, `getAbortSignal()`, `fork()` (experimental async)
 - **Stores**: `writable()`, `readable()`, `derived()`, `readonly()`, `get()` — from `svelte/store`
-- **Motion**: `tweened()`, `spring()` — from `svelte/motion`
+- **Motion**: `Spring`, `Tween` (v5.8+ class-based), `tweened()`, `spring()` (deprecated) — from `svelte/motion`
 - **Easing**: `linear`, `cubicInOut`, `elasticOut`, etc. — from `svelte/easing`
-- **Transitions**: `fade`, `fly`, `slide`, `scale`, `draw` — from `svelte/transition` (runtime; compiler only needs directive support)
+- **Transitions**: `fade`, `fly`, `slide`, `scale`, `blur`, `draw`, `crossfade` — from `svelte/transition` (runtime; compiler only needs directive support)
+- **Animation**: `flip` — from `svelte/animate`
+- **Events**: `on()` — from `svelte/events` (programmatic event attachment)
+- **Attachments**: `createAttachmentKey()`, `fromAction()` — from `svelte/attachments`
+- **Reactive collections**: `SvelteMap`, `SvelteSet`, `SvelteDate`, `SvelteURL`, `SvelteURLSearchParams`, `MediaQuery`, `createSubscriber` — from `svelte/reactivity`
+- **Reactive window**: `innerWidth`, `innerHeight`, `scrollX`, `scrollY`, `online`, `devicePixelRatio` — from `svelte/reactivity/window` (reactive window property accessors)
 
 ---
 
