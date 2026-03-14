@@ -41,6 +41,8 @@ pub(crate) fn gen_render_tag<'a>(
 fn extract_call_parts(source: &str) -> (&str, Vec<&str>) {
     let alloc = Allocator::default();
     let Ok(expr) = OxcParser::new(&alloc, source, SourceType::default()).parse_expression() else {
+        debug_assert!(false, "codegen: failed to parse render tag expression: {source}");
+        eprintln!("[svelte-rs] warning: failed to parse render tag expression: {source}");
         return (source.trim(), vec![]);
     };
 

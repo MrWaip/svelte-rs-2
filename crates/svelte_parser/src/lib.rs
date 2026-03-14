@@ -754,7 +754,7 @@ impl<'a> Parser<'a> {
     fn offset_of(&self, s: &str) -> usize {
         let source_ptr = self.source.as_ptr() as usize;
         let s_ptr = s.as_ptr() as usize;
-        debug_assert!(
+        assert!(
             s_ptr >= source_ptr && s_ptr <= source_ptr + self.source.len(),
             "slice is not within source"
         );

@@ -45,6 +45,8 @@ pub(crate) fn parse_and_transform<'a>(
 ) -> Expression<'a> {
     let b = Builder::new(alloc);
     let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
+        debug_assert!(false, "codegen: failed to parse expression: {source}");
+        eprintln!("[svelte-rs] warning: failed to parse expression in codegen: {source}");
         return b.str_expr(source);
     };
     let stmt = b.expr_stmt(expr);

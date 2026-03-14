@@ -137,7 +137,7 @@ impl ComponentScoping {
 
     fn is_dynamic_ref_inner(&self, scope: ScopeId, name: &str, depth: u8) -> bool {
         if depth > 16 {
-            return false; // circular dependency fallback
+            return true; // conservative: treat unknown-depth chains as dynamic
         }
         let Some(sym_id) = self.find_binding(scope, name) else {
             return false;
