@@ -8,3 +8,4 @@ svelte_parser = { workspace = true }
 svelte_analyze = { workspace = true }
 svelte_diagnostics = { workspace = true }
 svelte_codegen_client = { path = "../svelte_codegen_client" }
+serde = { version = "1", features = ["derive"] }

@@ -1,6 +1,6 @@
 pub const SPAN: Span = Span::new(0, 0);
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 pub struct Span {
     pub start: u32,
     pub end: u32,

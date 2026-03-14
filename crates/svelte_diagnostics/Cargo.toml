@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 svelte_span = { path = "../svelte_span" }
+serde = { version = "1", features = ["derive"] }

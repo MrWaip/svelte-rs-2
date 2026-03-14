@@ -1099,6 +1099,7 @@ dependencies = [
 name = "svelte_compiler"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "svelte_analyze",
  "svelte_codegen_client",
  "svelte_diagnostics",
@@ -1109,6 +1110,7 @@ dependencies = [
 name = "svelte_diagnostics"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "svelte_span",
 ]
 
@@ -1141,6 +1143,9 @@ dependencies = [
 [[package]]
 name = "svelte_span"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "syn"
@@ -1326,8 +1331,10 @@ dependencies = [
  "oxc_codegen",
  "oxc_parser",
  "oxc_span",
+ "serde",
  "serde-wasm-bindgen",
  "svelte_compiler",
+ "svelte_diagnostics",
  "wasm-bindgen",
 ]
 

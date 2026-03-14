@@ -1,28 +1,35 @@
-use svelte_diagnostics::{Diagnostic, Severity};
+use svelte_diagnostics::Diagnostic;
 
+#[derive(serde::Serialize)]
 pub struct CompileResult {
-    pub js: String,
+    pub js: Option<String>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// Compile a Svelte source file to client-side JavaScript.
-pub fn compile(source: &str) -> Result<CompileResult, Diagnostic> {
-    let (component, parse_diagnostics) = svelte_parser::Parser::new(source).parse();
+/// Always returns a result — never panics. If codegen fails, `js` is `None`.
+pub fn compile(source: &str) -> CompileResult {
+    let (component, mut diagnostics) = svelte_parser::Parser::new(source).parse();
 
-    // Treat parse errors as fatal.
-    if let Some(diag) = parse_diagnostics.into_iter().find(|d| d.severity == Severity::Error) {
-        return Err(diag);
+    let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let (analysis, analyze_diags) = svelte_analyze::analyze(&component);
+        let js = svelte_codegen_client::generate(&component, &analysis);
+        (js, analyze_diags)
+    }));
+
+    match codegen_result {
+        Ok((js, analyze_diags)) => {
+            diagnostics.extend(analyze_diags);
+            CompileResult {
+                js: Some(js),
+                diagnostics,
+            }
+        }
+        Err(_) => CompileResult {
+            js: None,
+            diagnostics,
+        },
     }
-
-    let (analysis, diags) = svelte_analyze::analyze(&component);
-
-    // Treat analysis errors as fatal.
-    if let Some(diag) = diags.into_iter().find(|d| d.severity == Severity::Error) {
-        return Err(diag);
-    }
-
-    let js = svelte_codegen_client::generate(&component, &analysis);
-
-    Ok(CompileResult { js })
 }
 
 // ---------------------------------------------------------------------------
@@ -34,8 +41,9 @@ mod tests {
     use super::*;
 
     fn check(source: &str, expected: &str) {
-        let result = compile(source).unwrap_or_else(|e| panic!("compile failed: {e:?}"));
-        assert_eq!(result.js, expected);
+        let result = compile(source);
+        let js = result.js.unwrap_or_else(|| panic!("compile produced no JS"));
+        assert_eq!(js, expected);
     }
 
     #[test]
@@ -81,5 +89,12 @@ export default function App($$anchor) {
 }
 "#,
         );
+    }
+
+    #[test]
+    fn error_recovery_returns_diagnostics() {
+        let result = compile("<div>");
+        assert!(!result.diagnostics.is_empty());
+        // Even with parse errors, best-effort codegen may produce output
     }
 }
