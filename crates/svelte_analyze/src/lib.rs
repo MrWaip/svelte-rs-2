@@ -94,7 +94,12 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
 
     // Classify fragments + mark which have dynamic children (single pass over lowered_fragments)
     content_types::classify_and_mark_dynamic(&mut data);
-    needs_var::compute_elements_needing_var(component, &mut data);
+    // Separate walker pass: needs_var depends on content_types (computed above)
+    {
+        let root = data.scoping.root_scope_id();
+        let mut visitor = needs_var::NeedsVarVisitor;
+        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
+    }
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
