@@ -535,11 +535,25 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 self.transform_update(node, ctx);
             }
             Expression::CallExpression(call) => {
-                if let Expression::Identifier(id) = &call.callee {
-                    if id.name.as_str() == "$effect" {
-                        let Expression::CallExpression(call) = node else { unreachable!() };
-                        call.callee = self.b.rid_expr("$.user_effect");
+                let new_callee = match &call.callee {
+                    Expression::Identifier(id) if id.name.as_str() == "$effect" => {
+                        Some("$.user_effect")
                     }
+                    Expression::StaticMemberExpression(member) => {
+                        if let Expression::Identifier(obj) = &member.object {
+                            match (obj.name.as_str(), member.property.name.as_str()) {
+                                ("$effect", "pre") => Some("$.user_pre_effect"),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(callee_name) = new_callee {
+                    let Expression::CallExpression(call) = node else { unreachable!() };
+                    call.callee = self.b.rid_expr(callee_name);
                 }
             }
             Expression::Identifier(id) => {

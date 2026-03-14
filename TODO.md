@@ -4,25 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `$effect` / `$effect.pre`
+## 1. `{@html expr}` (HtmlTag)
 
-**Why first**: необходим для side effects, чисто script codegen.
-
-**What to change**:
-- `detect_rune()`: member expression support (уже готово — `$derived.by` паттерн)
-- `svelte_codegen_client/src/script.rs`: новый обработчик для expression statements вида `$effect(() => ...)` / `$effect.pre(() => ...)`
-  - `$effect(fn)` → `$.user_effect(fn)`
-  - `$effect.pre(fn)` → `$.user_pre_effect(fn)`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`, `ExpressionStatement.js`
-
-**Runtime**: `$.user_effect()`, `$.user_pre_effect()`
-
----
-
-## 2. `{@html expr}` (HtmlTag)
-
-**Why second**: очень частая фича (markdown, CMS контент), первая фича требующая parser+AST+codegen.
+**Why first**: очень частая фича (markdown, CMS контент), первая фича требующая parser+AST+codegen.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::HtmlTag { expression: Span }`
@@ -36,9 +20,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `{#key expr}` (KeyBlock)
+## 2. `{#key expr}` (KeyBlock)
 
-**Why third**: нужен для роутеров (ремаунт при смене route) и анимаций.
+**Why second**: нужен для роутеров (ремаунт при смене route) и анимаций.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::KeyBlock { expression: Span, fragment: Fragment }`
@@ -52,9 +36,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `style:prop` directive
+## 3. `style:prop` directive
 
-**Why fourth**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
+**Why third**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Attribute::StyleDirective { name, value, modifiers }`
@@ -67,9 +51,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. Event handlers (`on:event` → `onevent`)
+## 4. Event handlers (`on:event` → `onevent`)
 
-**Why fifth**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
+**Why fourth**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
@@ -77,3 +61,16 @@ Next 5 features to implement, in priority order.
 - `svelte_codegen_client/src/template/attributes.rs`: генерация event listener
 
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
+
+---
+
+## 5. Void HTML elements
+
+**Why fifth**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
+
+**What to change**:
+- Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
+- В scanner/parser: auto-set `self_closing: true` для void elements
+- Validation: ошибка на `</input>` и child-контент внутри void elements
+
+**Reference**: `reference/compiler/phases/1-parse/state/element.js` line 371, `reference/compiler/utils.js`
