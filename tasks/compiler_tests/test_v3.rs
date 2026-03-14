@@ -270,3 +270,8 @@ fn unmutated_state_optimization() {
 fn effect_runes() {
     assert_compiler("effect_runes");
 }
+
+#[rstest]
+fn html_tag() {
+    assert_compiler("html_tag");
+}

@@ -160,6 +160,8 @@ pub enum FragmentItem {
     EachBlock(NodeId),
     /// A RenderTag ({@render snippet(args)}).
     RenderTag(NodeId),
+    /// An HtmlTag ({@html expr}).
+    HtmlTag(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
 }
