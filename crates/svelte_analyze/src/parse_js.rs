@@ -16,13 +16,19 @@ pub fn parse_js<'a>(
     if let Some(script) = &component.script {
         let source = component.source_text(script.content_span);
         let typescript = matches!(script.language, ScriptLanguage::TypeScript);
-        match svelte_js::analyze_script_with_scoping(source, script.content_span.start, typescript)
-        {
-            Ok((mut info, scoping)) => {
+        let arena_source: &'a str = alloc.alloc_str(source);
+        match svelte_js::analyze_script_with_alloc(
+            alloc,
+            arena_source,
+            script.content_span.start,
+            typescript,
+        ) {
+            Ok((mut info, scoping, program)) => {
                 data.exports = std::mem::take(&mut info.exports);
                 data.needs_context = info.has_effects;
                 data.script = Some(info);
                 data.scoping = ComponentScoping::from_scoping(scoping);
+                parsed.script_program = Some(program);
             }
             Err(errs) => diags.extend(errs),
         }

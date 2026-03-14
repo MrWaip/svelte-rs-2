@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, Statement, VariableDeclarator};
+use oxc_ast::ast::{Expression, Program, Statement, VariableDeclarator};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
@@ -29,18 +29,32 @@ const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 /// Returns `(imports, body)` — imports are extracted separately so they can
 /// be hoisted to the top of the generated module.
 pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
-    let Some(script) = &ctx.component.script else {
+    if ctx.component.script.is_none() {
         return (vec![], vec![]);
     };
 
-    let is_ts = script.language == ScriptLanguage::TypeScript;
     let allocator = ctx.b.ast.allocator;
-    let script_text = ctx.component.source_text(script.content_span);
-
     let rune_names = &ctx.analysis.rune_names;
     let mutated_runes = &ctx.analysis.mutated_runes;
     let props = ctx.analysis.props.as_ref();
 
+    // Take pre-parsed Program from analysis (avoids double-parsing)
+    if let Some(program) = ctx.parsed.script_program.take() {
+        return transform_program(
+            allocator,
+            program,
+            rune_names,
+            mutated_runes,
+            props,
+            &ctx.prop_sources,
+            &ctx.prop_non_sources,
+        );
+    }
+
+    // Fallback: no pre-parsed program (e.g. tests calling codegen without analysis)
+    let script = ctx.component.script.as_ref().unwrap();
+    let is_ts = script.language == ScriptLanguage::TypeScript;
+    let script_text = ctx.component.source_text(script.content_span);
     transform_script_text(
         allocator,
         script_text,
@@ -109,6 +123,79 @@ fn transform_script_text<'a>(
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     // Post-traverse: wrap $derived arguments in thunks
+    if !transformer.derived_pending.is_empty() {
+        wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
+    }
+
+    let mut imports = vec![];
+    let mut body = vec![];
+
+    for stmt in program.body {
+        if matches!(
+            stmt,
+            Statement::TSTypeAliasDeclaration(_)
+                | Statement::TSInterfaceDeclaration(_)
+                | Statement::TSEnumDeclaration(_)
+        ) {
+            continue;
+        }
+        if matches!(stmt, Statement::ImportDeclaration(_)) {
+            imports.push(stmt);
+        } else {
+            body.push(stmt);
+        }
+    }
+
+    (imports, body)
+}
+
+/// Transform a pre-parsed Program AST (from analysis), applying rune transformations.
+fn transform_program<'a>(
+    allocator: &'a Allocator,
+    mut program: Program<'a>,
+    rune_names: &FxHashMap<String, RuneKind>,
+    mutated_runes: &FxHashSet<String>,
+    props: Option<&PropsAnalysis>,
+    prop_sources: &FxHashSet<String>,
+    prop_non_sources: &FxHashMap<String, String>,
+) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+    let b = Builder::new(allocator);
+
+    // Re-run SemanticBuilder to get fresh scoping matching current AST state
+    let sem = SemanticBuilder::new().build(&program);
+    let scoping = sem.semantic.into_scoping();
+
+    let props_gen: Option<PropsGenInfo> = props.map(|pa| PropsGenInfo {
+        props: pa
+            .props
+            .iter()
+            .map(|p| PropGenItem {
+                local_name: p.local_name.clone(),
+                prop_name: p.prop_name.clone(),
+                is_prop_source: p.is_prop_source,
+                is_bindable: p.is_bindable,
+                is_rest: p.is_rest,
+                is_mutated: mutated_runes.contains(&p.local_name),
+                default_text: p.default_text.clone(),
+                is_lazy_default: p.is_lazy_default,
+            })
+            .collect(),
+    });
+
+    let mut transformer = ScriptTransformer {
+        b: &b,
+        rune_names,
+        mutated_runes,
+        prop_sources,
+        prop_non_sources,
+        scoping,
+        props_gen,
+        derived_pending: FxHashSet::default(),
+    };
+
+    let empty_scoping = Scoping::default();
+    traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
+
     if !transformer.derived_pending.is_empty() {
         wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
     }
