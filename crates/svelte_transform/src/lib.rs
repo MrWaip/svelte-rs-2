@@ -29,7 +29,7 @@ use svelte_js::RuneKind;
 pub fn transform_component<'a>(
     alloc: &'a Allocator,
     component: &Component,
-    analysis: &'a AnalysisData,
+    analysis: &AnalysisData,
     parsed: &mut ParsedExprs<'a>,
 ) {
     // Precompute prop info
@@ -59,9 +59,9 @@ pub fn transform_component<'a>(
     walk_fragment(&ctx, &component.fragment, component, parsed, root_scope, &[]);
 }
 
-struct TransformCtx<'a> {
+struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
-    analysis: &'a AnalysisData,
+    analysis: &'b AnalysisData,
     prop_sources: FxHashSet<String>,
     prop_non_sources: FxHashMap<String, String>,
 }
@@ -71,7 +71,7 @@ struct TransformCtx<'a> {
 // ---------------------------------------------------------------------------
 
 fn walk_fragment<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     fragment: &Fragment,
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
@@ -84,7 +84,7 @@ fn walk_fragment<'a>(
 }
 
 fn walk_node<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     node: &Node,
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
@@ -144,7 +144,7 @@ fn walk_node<'a>(
 
 /// Transform a single expression stored in `parsed.exprs` at the given node ID.
 fn transform_node_expr<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     node_id: NodeId,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
@@ -157,7 +157,7 @@ fn transform_node_expr<'a>(
 
 /// Transform attribute expressions.
 fn transform_attrs<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     owner_id: NodeId,
     attrs: &[Attribute],
     parsed: &mut ParsedExprs<'a>,
@@ -191,7 +191,7 @@ fn transform_attrs<'a>(
 ///
 /// `shadow` is a stack of sets of names shadowed by arrow function parameters.
 fn transform_expr<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
     snippet_params: &[String],
@@ -318,7 +318,7 @@ fn transform_expr<'a>(
 
 /// Walk into an expression's children and transform them.
 fn walk_expr_children<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
     snippet_params: &[String],
@@ -407,7 +407,7 @@ fn walk_expr_children<'a>(
 
 /// Transform statements inside arrow function bodies.
 fn transform_stmt<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &TransformCtx<'a, '_>,
     stmt: &mut Statement<'a>,
     scope: ScopeId,
     snippet_params: &[String],
