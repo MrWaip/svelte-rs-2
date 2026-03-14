@@ -1,5 +1,7 @@
 //! HTML template string builders.
 
+use std::fmt::Write;
+
 use svelte_analyze::{ConcatPart, ContentType, FragmentItem, FragmentKey};
 use svelte_ast::{Attribute, Element};
 
@@ -42,7 +44,8 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     let has_spread = ctx.analysis.element_has_spread.contains(&el.id);
     let has_class_directives = ctx.analysis.element_has_class_directives.contains(&el.id);
 
-    let mut html = format!("<{}", el.name);
+    let mut html = String::new();
+    write!(html, "<{}", el.name).unwrap();
 
     // When spread attrs are present, skip all attributes from HTML template
     if !has_spread {
@@ -53,14 +56,16 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
                     if a.name == "class" && has_class_directives {
                         continue;
                     }
-                    html.push_str(&format!(
+                    write!(
+                        html,
                         " {}=\"{}\"",
                         a.name,
                         ctx.component.source_text(a.value_span)
-                    ));
+                    )
+                    .unwrap();
                 }
                 Attribute::BooleanAttribute(a) => {
-                    html.push_str(&format!(" {}=\"\"", a.name));
+                    write!(html, " {}=\"\"", a.name).unwrap();
                 }
                 _ => {}
             }
@@ -75,7 +80,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
 
     // noscript content is stripped in the template
     if el.name == "noscript" {
-        html.push_str(&format!("</{}>", el.name));
+        write!(html, "</{}>", el.name).unwrap();
         return html;
     }
 
@@ -112,7 +117,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
         }
     }
 
-    html.push_str(&format!("</{}>", el.name));
+    write!(html, "</{}>", el.name).unwrap();
     html
 }
 
