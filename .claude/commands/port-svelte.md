@@ -21,13 +21,16 @@ DO:
 - Simplify control flow when Rust makes it natural (match, iterators, Option)
 - Keep functions short and focused — if a Svelte visitor does 5 things, split into clear helpers
 
-## Step 1: Branch
+## Step 1: Branch (MANDATORY — do this FIRST)
 
-Create a feature branch from the latest master:
+**You MUST create a feature branch before doing anything else. Do NOT skip this step. Do NOT work on master.**
+
 ```
 git checkout master && git pull && git checkout -b port/<item>-<short-name>
 ```
-where `<short-name>` is a brief kebab-case description of the feature (e.g. `derived-rune`, `html-tag`). All work must be done on this branch.
+where `<short-name>` is a brief kebab-case description of the feature (e.g. `derived-rune`, `html-tag`).
+
+After running the command, verify you are on the new branch with `git branch --show-current`. If you are still on master, stop and fix this before proceeding.
 
 ## Step 2: Test case
 
