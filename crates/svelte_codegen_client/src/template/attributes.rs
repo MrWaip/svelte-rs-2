@@ -324,6 +324,10 @@ pub(crate) fn process_attrs_spread<'a>(
             }
             Attribute::ShorthandOrSpread(a) if a.is_spread => {
                 // expression_span includes "..." prefix — skip it
+                debug_assert!(
+                    a.expression_span.end >= a.expression_span.start + 3,
+                    "spread expression span too short to contain '...'"
+                );
                 let span = svelte_span::Span::new(
                     a.expression_span.start + 3,
                     a.expression_span.end,

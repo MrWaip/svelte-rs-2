@@ -26,8 +26,8 @@ pub enum DiagnosticKind {
     OnlyOneTopLevelStyle,
     UnknownDirective,
     NoEachBlockToClose,
-    // Analysis errors (future)
-    // Semantic warnings (future)
+    // Internal compiler errors
+    InternalError(String),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -110,6 +110,14 @@ impl Diagnostic {
 
     pub fn no_each_block_to_close(span: Span) -> Self {
         Self::error(DiagnosticKind::NoEachBlockToClose, span)
+    }
+
+    pub fn internal_error(message: String) -> Self {
+        Diagnostic {
+            kind: DiagnosticKind::InternalError(message),
+            span: Span::new(0, 0),
+            severity: Severity::Error,
+        }
     }
 
     pub fn as_err<T>(self) -> Result<T, Diagnostic> {
