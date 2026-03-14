@@ -86,10 +86,6 @@ impl ComponentScoping {
         self.scoping.find_binding(scope, name.into())
     }
 
-    pub fn symbol_name(&self, id: SymbolId) -> &str {
-        self.scoping.symbol_name(id)
-    }
-
     /// Check if a symbol has any mutation (script assignments via OXC, template assignments,
     /// or bind directives).
     pub fn is_mutated(&self, id: SymbolId) -> bool {

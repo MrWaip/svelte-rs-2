@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ContentType, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentType, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
