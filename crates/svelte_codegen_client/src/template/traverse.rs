@@ -54,7 +54,6 @@ pub(crate) fn traverse_items<'a>(
                 FragmentItem::TextConcat { parts, .. } => {
                     let name = ctx.gen_ident("text");
                     init.push(ctx.b.var_stmt(&name, node_expr));
-                    prev_ident = Some(name.clone());
                     sibling_offset = 1;
 
                     let is_dyn = parts_are_dynamic(parts, ctx);
@@ -75,57 +74,58 @@ pub(crate) fn traverse_items<'a>(
                             AssignRight::Expr(expr),
                         ));
                     }
+                    prev_ident = Some(name);
                 }
 
                 FragmentItem::Element(el_id) => {
                     let el_name_str = ctx.element(*el_id).name.clone();
                     let el_name = ctx.gen_ident(&el_name_str);
                     init.push(ctx.b.var_stmt(&el_name, node_expr));
-                    prev_ident = Some(el_name.clone());
                     sibling_offset = 1;
                     process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update);
+                    prev_ident = Some(el_name);
                 }
 
                 FragmentItem::ComponentNode(id) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
                     gen_component(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    prev_ident = Some(node_name);
                 }
 
                 FragmentItem::IfBlock(id) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
 
                     let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node_name));
                     init.push(ctx.b.block_stmt(stmts));
+                    prev_ident = Some(node_name);
                 }
 
                 FragmentItem::EachBlock(id) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
                     gen_each_block(ctx, *id, ctx.b.rid_expr(&node_name), false, init);
+                    prev_ident = Some(node_name);
                 }
 
                 FragmentItem::RenderTag(id) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
                     gen_render_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    prev_ident = Some(node_name);
                 }
 
                 FragmentItem::HtmlTag(id) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
                     gen_html_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    prev_ident = Some(node_name);
                 }
             }
         } else {

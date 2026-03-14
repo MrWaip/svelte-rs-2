@@ -15,9 +15,19 @@ pub(crate) mod traverse;
 use oxc_ast::ast::Statement;
 
 use svelte_analyze::{ContentType, FragmentItem, FragmentKey};
+use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
+
+/// Lightweight discriminant for SingleBlock items — avoids cloning full FragmentItem.
+enum SingleBlockKind {
+    IfBlock(NodeId),
+    EachBlock(NodeId),
+    HtmlTag(NodeId),
+    RenderTag(NodeId),
+    ComponentNode(NodeId),
+}
 
 use element::process_element;
 use expression::{emit_template_effect, emit_text_update, emit_trailing_next, static_text_of};
@@ -97,11 +107,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
 // ---------------------------------------------------------------------------
 
 fn gen_root_static_text<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
-    let lf = ctx
-        .analysis
-        .lowered_fragments
-        .get(&FragmentKey::Root)
-        .unwrap();
+    let lf = ctx.lowered_fragment(&FragmentKey::Root);
     let text = static_text_of(&lf.items[0]);
     let name = ctx.gen_ident("text");
     body.push(ctx.b.call_stmt("$.next", []));
@@ -118,14 +124,8 @@ fn gen_root_static_text<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
 }
 
 fn gen_root_dynamic_text<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
-    let item = {
-        let lf = ctx
-            .analysis
-            .lowered_fragments
-            .get(&FragmentKey::Root)
-            .unwrap();
-        lf.items[0].clone()
-    };
+    // Clone needed: emit_text_update borrows ctx mutably, so we can't hold a ref into analysis
+    let item = ctx.lowered_fragment(&FragmentKey::Root).items[0].clone();
     let name = ctx.gen_ident("text");
     body.push(ctx.b.call_stmt("$.next", []));
     body.push(ctx.b.var_stmt(&name, ctx.b.call_expr("$.text", [])));
@@ -144,16 +144,9 @@ fn gen_root_single_element<'a>(
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
-    let el_id = {
-        let lf = ctx
-            .analysis
-            .lowered_fragments
-            .get(&FragmentKey::Root)
-            .unwrap();
-        match lf.items[0] {
-            FragmentItem::Element(id) => id,
-            _ => unreachable!(),
-        }
+    let el_id = match ctx.lowered_fragment(&FragmentKey::Root).items[0] {
+        FragmentItem::Element(id) => id,
+        _ => unreachable!(),
     };
 
     let el = ctx.element(el_id);
@@ -182,22 +175,15 @@ fn gen_root_single_element<'a>(
 }
 
 fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
-    let item = {
-        let lf = ctx
-            .analysis
-            .lowered_fragments
-            .get(&FragmentKey::Root)
-            .unwrap();
-        lf.items[0].clone()
-    };
+    let kind = single_block_kind(&ctx.lowered_fragment(&FragmentKey::Root).items[0]);
 
     // RenderTag / ComponentNode at root: call directly with $$anchor, no wrapping
-    match item {
-        FragmentItem::RenderTag(id) => {
+    match kind {
+        SingleBlockKind::RenderTag(id) => {
             gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
-        FragmentItem::ComponentNode(id) => {
+        SingleBlockKind::ComponentNode(id) => {
             gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
@@ -212,18 +198,18 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
         ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
     ));
 
-    match item {
-        FragmentItem::IfBlock(id) => {
+    match kind {
+        SingleBlockKind::IfBlock(id) => {
             let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
             body.push(ctx.b.block_stmt(stmts));
         }
-        FragmentItem::EachBlock(id) => {
+        SingleBlockKind::EachBlock(id) => {
             gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, body);
         }
-        FragmentItem::HtmlTag(id) => {
+        SingleBlockKind::HtmlTag(id) => {
             gen_html_tag(ctx, id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!(),
+        _ => unreachable!("SingleBlock should be if/each/html at this point"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -238,14 +224,8 @@ fn gen_root_mixed<'a>(
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
-    let items: Vec<_> = {
-        let lf = ctx
-            .analysis
-            .lowered_fragments
-            .get(&FragmentKey::Root)
-            .unwrap();
-        lf.items.clone()
-    };
+    // Clone needed: traverse_items borrows ctx mutably
+    let items: Vec<_> = ctx.lowered_fragment(&FragmentKey::Root).items.clone();
 
     let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
     if starts_text {
@@ -308,10 +288,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     match ct {
         ContentType::Empty => {}
         ContentType::StaticText => {
-            let text = {
-                let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
-                static_text_of(&lf.items[0])
-            };
+            let text = static_text_of(&ctx.lowered_fragment(&key).items[0]);
             let name = ctx.gen_ident("text");
             let call = if text.is_empty() {
                 ctx.b.call_expr("$.text", [])
@@ -325,10 +302,8 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
         }
         ContentType::DynamicText => {
-            let item = {
-                let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
-                lf.items[0].clone()
-            };
+            // Clone needed: emit_text_update borrows ctx mutably
+            let item = ctx.lowered_fragment(&key).items[0].clone();
             let name = ctx.gen_ident("text");
             body.push(ctx.b.var_stmt(&name, ctx.b.call_expr("$.text", [])));
             emit_text_update(ctx, &item, &name, &mut body);
@@ -338,12 +313,9 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
         }
         ContentType::SingleElement => {
-            let el_id = {
-                let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
-                match lf.items[0] {
-                    FragmentItem::Element(id) => id,
-                    _ => unreachable!(),
-                }
+            let el_id = match ctx.lowered_fragment(&key).items[0] {
+                FragmentItem::Element(id) => id,
+                _ => unreachable!(),
             };
 
             let el = ctx.element(el_id);
@@ -386,19 +358,16 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             return result;
         }
         ContentType::SingleBlock => {
-            let item = {
-                let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
-                lf.items[0].clone()
-            };
+            let kind = single_block_kind(&ctx.lowered_fragment(&key).items[0]);
 
             // RenderTag / ComponentNode: call directly with $$anchor
             // Still consume a "fragment" ident for consistent numbering
-            match item {
-                FragmentItem::RenderTag(id) => {
+            match kind {
+                SingleBlockKind::RenderTag(id) => {
                     ctx.gen_ident("fragment");
                     gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
-                FragmentItem::ComponentNode(id) => {
+                SingleBlockKind::ComponentNode(id) => {
                     ctx.gen_ident("fragment");
                     gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
@@ -410,18 +379,18 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         &node,
                         ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
                     ));
-                    match item {
-                        FragmentItem::IfBlock(id) => {
+                    match kind {
+                        SingleBlockKind::IfBlock(id) => {
                             let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
                             body.push(ctx.b.block_stmt(stmts));
                         }
-                        FragmentItem::EachBlock(id) => {
+                        SingleBlockKind::EachBlock(id) => {
                             gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, &mut body);
                         }
-                        FragmentItem::HtmlTag(id) => {
+                        SingleBlockKind::HtmlTag(id) => {
                             gen_html_tag(ctx, id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!(),
+                        _ => unreachable!("SingleBlock should be if/each/html at this point"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",
@@ -431,10 +400,8 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             }
         }
         ContentType::Mixed => {
-            let items: Vec<_> = {
-                let lf = ctx.analysis.lowered_fragments.get(&key).unwrap();
-                lf.items.clone()
-            };
+            // Clone needed: traverse_items borrows ctx mutably
+            let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
 
             let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
             if starts_text {
@@ -483,4 +450,15 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     }
 
     body
+}
+
+fn single_block_kind(item: &FragmentItem) -> SingleBlockKind {
+    match *item {
+        FragmentItem::IfBlock(id) => SingleBlockKind::IfBlock(id),
+        FragmentItem::EachBlock(id) => SingleBlockKind::EachBlock(id),
+        FragmentItem::HtmlTag(id) => SingleBlockKind::HtmlTag(id),
+        FragmentItem::RenderTag(id) => SingleBlockKind::RenderTag(id),
+        FragmentItem::ComponentNode(id) => SingleBlockKind::ComponentNode(id),
+        _ => unreachable!("SingleBlock should contain a block-level item"),
+    }
 }
