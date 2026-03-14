@@ -38,14 +38,11 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let mutated_runes = &ctx.analysis.mutated_runes;
     let props = ctx.analysis.props.as_ref();
 
-    // Take pre-parsed Program + Scoping from analysis (avoids double-parsing and double-semantic)
+    // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
-        let scoping = ctx.parsed.script_scoping.take()
-            .expect("script_scoping must be set when script_program is present");
         return transform_program(
             allocator,
             program,
-            scoping,
             rune_names,
             mutated_runes,
             props,
@@ -153,11 +150,9 @@ fn transform_script_text<'a>(
 }
 
 /// Transform a pre-parsed Program AST (from analysis), applying rune transformations.
-/// Takes an already-built `Scoping` from analysis, avoiding a second `SemanticBuilder` pass.
 fn transform_program<'a>(
     allocator: &'a Allocator,
     mut program: Program<'a>,
-    scoping: Scoping,
     rune_names: &FxHashMap<String, RuneKind>,
     mutated_runes: &FxHashSet<String>,
     props: Option<&PropsAnalysis>,
@@ -165,6 +160,10 @@ fn transform_program<'a>(
     prop_non_sources: &FxHashMap<String, String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let b = Builder::new(allocator);
+
+    // Re-run SemanticBuilder to get fresh scoping matching current AST state
+    let sem = SemanticBuilder::new().build(&program);
+    let scoping = sem.semantic.into_scoping();
 
     let props_gen: Option<PropsGenInfo> = props.map(|pa| PropsGenInfo {
         props: pa
