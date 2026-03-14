@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use svelte_ast::{Component, Fragment, Node};
 
 use crate::data::{ConcatPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
@@ -43,29 +45,52 @@ fn lower_fragment(
     }
 }
 
-/// Build the lowered item list for a fragment:
-/// - Skip whitespace-only text at the leading and trailing boundaries
-/// - Group consecutive Text + ExpressionTag into TextConcat
-/// - Elements and blocks become standalone items
-/// - Comments are dropped
+/// Build the lowered item list for a fragment.
+///
+/// Follows the Svelte reference compiler's `clean_nodes` algorithm:
+/// 1. Filter out comments and hoisted nodes (SnippetBlock)
+/// 2. Strip leading whitespace-only Text nodes, then trim leading ws from first Text
+/// 3. Strip trailing whitespace-only Text nodes, then trim trailing ws from last Text
+/// 4. For internal Text nodes: collapse boundary whitespace to single space,
+///    but preserve whitespace adjacent to ExpressionTag
+/// 5. Group consecutive Text + ExpressionTag into TextConcat
 fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> {
-    let nodes = &fragment.nodes;
+    // Step 1: collect regular nodes (skip comments and snippets)
+    let mut regular: Vec<&Node> = Vec::new();
+    for node in &fragment.nodes {
+        match node {
+            Node::Comment(_) | Node::SnippetBlock(_) => continue,
+            _ => regular.push(node),
+        }
+    }
 
-    // Find the slice bounds: trim whitespace-only text at boundaries
-    let start = nodes.iter().position(|n| !is_removable_text(n, component)).unwrap_or(nodes.len());
-    let end = nodes
-        .iter()
-        .rposition(|n| !is_removable_text(n, component))
-        .map(|i| i + 1)
-        .unwrap_or(0);
+    // Step 2: strip leading whitespace-only Text nodes
+    while let Some(Node::Text(t)) = regular.first() {
+        if !is_ws_only(t.value(&component.source)) {
+            break;
+        }
+        regular.remove(0);
+    }
 
-    if start >= end {
+    // Step 3: strip trailing whitespace-only Text nodes
+    while let Some(Node::Text(t)) = regular.last() {
+        if !is_ws_only(t.value(&component.source)) {
+            break;
+        }
+        regular.pop();
+    }
+
+    if regular.is_empty() {
         return vec![];
     }
 
-    let significant = &nodes[start..end];
+    // Sequential trimming pass + grouping into FragmentItems.
+    // Process nodes in order, tracking whether the previous trimmed text
+    // ends with whitespace to avoid double spaces.
+    let len = regular.len();
     let mut items: Vec<FragmentItem> = Vec::new();
     let mut concat: Vec<ConcatPart> = Vec::new();
+    let mut prev_text_ends_ws = false;
 
     let flush = |concat: &mut Vec<ConcatPart>, items: &mut Vec<FragmentItem>| {
         if !concat.is_empty() {
@@ -74,52 +99,38 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
         }
     };
 
-    for (i, node) in significant.iter().enumerate() {
-        match node {
+    for i in 0..len {
+        match regular[i] {
             Node::Text(text) => {
                 let raw = text.value(&component.source);
-                let content = trim_text(raw, i, significant, component);
-                if !content.is_empty() {
-                    // Collapse consecutive whitespace-only text parts
-                    // (happens when comments between elements are dropped)
-                    if content.trim().is_empty() {
-                        if let Some(ConcatPart::Text(prev)) = concat.last() {
-                            if prev.trim().is_empty() {
-                                continue;
-                            }
-                        }
-                    }
-                    concat.push(ConcatPart::Text(content));
+                let is_first = i == 0;
+                let is_last = i == len - 1;
+                let prev = if i > 0 { Some(regular[i - 1]) } else { None };
+                let next = if i + 1 < len { Some(regular[i + 1]) } else { None };
+
+                let data = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
+
+                prev_text_ends_ws = ends_with_ws(&data);
+
+                if !data.is_empty() {
+                    concat.push(ConcatPart::Text(data.into_owned()));
                 }
             }
             Node::ExpressionTag(tag) => {
+                prev_text_ends_ws = false;
                 concat.push(ConcatPart::Expr(tag.id));
             }
-            Node::Element(el) => {
+            other => {
+                prev_text_ends_ws = false;
                 flush(&mut concat, &mut items);
-                items.push(FragmentItem::Element(el.id));
-            }
-            Node::ComponentNode(cn) => {
-                flush(&mut concat, &mut items);
-                items.push(FragmentItem::ComponentNode(cn.id));
-            }
-            Node::IfBlock(block) => {
-                flush(&mut concat, &mut items);
-                items.push(FragmentItem::IfBlock(block.id));
-            }
-            Node::EachBlock(block) => {
-                flush(&mut concat, &mut items);
-                items.push(FragmentItem::EachBlock(block.id));
-            }
-            Node::SnippetBlock(_) => {
-                // Snippets don't produce DOM at declaration site
-            }
-            Node::RenderTag(tag) => {
-                flush(&mut concat, &mut items);
-                items.push(FragmentItem::RenderTag(tag.id));
-            }
-            Node::Comment(_) => {
-                // Drop comments
+                match other {
+                    Node::Element(el) => items.push(FragmentItem::Element(el.id)),
+                    Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
+                    Node::IfBlock(block) => items.push(FragmentItem::IfBlock(block.id)),
+                    Node::EachBlock(block) => items.push(FragmentItem::EachBlock(block.id)),
+                    Node::RenderTag(tag) => items.push(FragmentItem::RenderTag(tag.id)),
+                    _ => {}
+                }
             }
         }
     }
@@ -128,61 +139,336 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
     items
 }
 
-fn is_removable_text(node: &Node, component: &Component) -> bool {
-    match node {
-        Node::Text(text) => text.value(&component.source).trim().is_empty(),
-        // SnippetBlock produces no DOM at declaration site
-        Node::SnippetBlock(_) => true,
-        _ => false,
-    }
-}
-
-/// Trim a text node's content based on its neighbours.
+/// Trim a text node's whitespace following the Svelte reference algorithm.
 ///
-/// Rules:
-/// - Collapse internal runs of whitespace to a single space.
-/// - For pure-whitespace content: keep a single " " if either neighbour is an
-///   ExpressionTag; drop it otherwise.
-/// - For mixed content (non-whitespace characters present): preserve a leading
-///   space when the original starts with whitespace, and a trailing space when
-///   the original ends with whitespace.
-fn trim_text(raw: &str, idx: usize, siblings: &[Node], _component: &Component) -> String {
-    let prev_exists = prev_significant(idx, siblings).is_some();
-    let next_exists = next_significant(idx, siblings).is_some();
+/// Returns `Cow::Borrowed` when no modification is needed (zero alloc),
+/// `Cow::Owned` only when whitespace actually changes.
+fn trim_text<'a>(
+    raw: &'a str,
+    is_first: bool,
+    is_last: bool,
+    prev: Option<&Node>,
+    next: Option<&Node>,
+    prev_text_ends_ws: bool,
+) -> Cow<'a, str> {
+    let mut data: Cow<'a, str> = Cow::Borrowed(raw);
 
-    let starts_ws = raw.starts_with(|c: char| c.is_ascii_whitespace());
-    let ends_ws = raw.ends_with(|c: char| c.is_ascii_whitespace());
+    // Leading whitespace
+    if is_first {
+        data = strip_leading_ws(data);
+    } else if !matches!(prev, Some(Node::ExpressionTag(_))) {
+        let replacement = if prev_text_ends_ws { "" } else { " " };
+        data = replace_leading_ws(data, replacement);
+    }
 
-    // Collapse internal whitespace sequences.
-    let inner: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Trailing whitespace
+    if is_last {
+        data = strip_trailing_ws(data);
+    } else if !matches!(next, Some(Node::ExpressionTag(_))) {
+        data = replace_trailing_ws(data, " ");
+    }
 
-    if inner.is_empty() {
-        // Pure-whitespace node: keep a separator space between two significant siblings.
-        if prev_exists && next_exists {
-            return " ".to_string();
+    data
+}
+
+// ---------------------------------------------------------------------------
+// Whitespace utilities — operate on [ \t\r\n] to match Svelte's patterns.
+// Return Cow to avoid allocation when the string is unchanged.
+// ---------------------------------------------------------------------------
+
+fn is_ws_char(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r' | '\n')
+}
+
+fn is_ws_only(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(is_ws_char)
+}
+
+fn ends_with_ws(s: &str) -> bool {
+    s.ends_with(is_ws_char)
+}
+
+/// Count leading `[ \t\r\n]` bytes.
+fn leading_ws_len(s: &str) -> usize {
+    s.len() - s.trim_start_matches(is_ws_char).len()
+}
+
+/// Count trailing `[ \t\r\n]` bytes.
+fn trailing_ws_len(s: &str) -> usize {
+    s.len() - s.trim_end_matches(is_ws_char).len()
+}
+
+/// Strip leading `[ \t\r\n]+`. Borrows when no leading ws.
+fn strip_leading_ws(s: Cow<str>) -> Cow<str> {
+    let ws = leading_ws_len(&s);
+    if ws == 0 {
+        return s;
+    }
+    match s {
+        Cow::Borrowed(b) => Cow::Borrowed(&b[ws..]),
+        Cow::Owned(o) => Cow::Owned(o[ws..].to_string()),
+    }
+}
+
+/// Strip trailing `[ \t\r\n]+`. Borrows when no trailing ws.
+fn strip_trailing_ws(s: Cow<str>) -> Cow<str> {
+    let ws = trailing_ws_len(&s);
+    if ws == 0 {
+        return s;
+    }
+    match s {
+        Cow::Borrowed(b) => Cow::Borrowed(&b[..b.len() - ws]),
+        Cow::Owned(mut o) => {
+            o.truncate(o.len() - ws);
+            Cow::Owned(o)
         }
-        return String::new();
     }
-
-    let mut s = String::new();
-    if starts_ws && prev_exists {
-        s.push(' ');
-    }
-    s.push_str(&inner);
-    if ends_ws && next_exists {
-        s.push(' ');
-    }
-    s
 }
 
-fn is_insignificant(n: &Node) -> bool {
-    n.is_comment() || n.is_snippet_block()
+/// Replace leading `[ \t\r\n]+` with `replacement`. Borrows when no leading ws.
+fn replace_leading_ws<'a>(s: Cow<'a, str>, replacement: &str) -> Cow<'a, str> {
+    let ws = leading_ws_len(&s);
+    if ws == 0 {
+        return s;
+    }
+    let rest = &s[ws..];
+    let mut out = String::with_capacity(replacement.len() + rest.len());
+    out.push_str(replacement);
+    out.push_str(rest);
+    Cow::Owned(out)
 }
 
-fn prev_significant(idx: usize, siblings: &[Node]) -> Option<&Node> {
-    siblings[..idx].iter().rev().find(|n| !is_insignificant(n))
+/// Replace trailing `[ \t\r\n]+` with `replacement`. Borrows when no trailing ws.
+fn replace_trailing_ws<'a>(s: Cow<'a, str>, replacement: &str) -> Cow<'a, str> {
+    let ws = trailing_ws_len(&s);
+    if ws == 0 {
+        return s;
+    }
+    let prefix = &s[..s.len() - ws];
+    let mut out = String::with_capacity(prefix.len() + replacement.len());
+    out.push_str(prefix);
+    out.push_str(replacement);
+    Cow::Owned(out)
 }
 
-fn next_significant(idx: usize, siblings: &[Node]) -> Option<&Node> {
-    siblings[idx + 1..].iter().find(|n| !is_insignificant(n))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use svelte_ast::{ExpressionTag, NodeId, Text};
+    use svelte_span::Span;
+
+    fn text_node(id: u32, start: u32, end: u32) -> Node {
+        Node::Text(Text {
+            id: NodeId(id),
+            span: Span { start, end },
+        })
+    }
+
+    fn expr_node(id: u32) -> Node {
+        Node::ExpressionTag(ExpressionTag {
+            id: NodeId(id),
+            span: Span { start: 0, end: 0 },
+            expression_span: Span { start: 0, end: 0 },
+        })
+    }
+
+    // -- Whitespace utility tests --
+
+    #[test]
+    fn test_is_ws_only() {
+        assert!(is_ws_only(" \t\r\n"));
+        assert!(is_ws_only("   "));
+        assert!(!is_ws_only("  hello  "));
+        assert!(!is_ws_only(""));
+    }
+
+    #[test]
+    fn test_strip_leading_ws() {
+        assert_eq!(&*strip_leading_ws(Cow::Borrowed("\n  hello")), "hello");
+        assert_eq!(&*strip_leading_ws(Cow::Borrowed("hello")), "hello");
+        assert_eq!(&*strip_leading_ws(Cow::Borrowed("\t\r\n  ")), "");
+    }
+
+    #[test]
+    fn test_strip_trailing_ws() {
+        assert_eq!(&*strip_trailing_ws(Cow::Borrowed("hello  \n")), "hello");
+        assert_eq!(&*strip_trailing_ws(Cow::Borrowed("hello")), "hello");
+        assert_eq!(&*strip_trailing_ws(Cow::Borrowed("  \t\r\n")), "");
+    }
+
+    #[test]
+    fn test_replace_leading_ws() {
+        assert_eq!(&*replace_leading_ws(Cow::Borrowed("\n  hello"), " "), " hello");
+        assert_eq!(&*replace_leading_ws(Cow::Borrowed("\n  hello"), ""), "hello");
+        assert_eq!(&*replace_leading_ws(Cow::Borrowed("hello"), " "), "hello");
+    }
+
+    #[test]
+    fn test_replace_trailing_ws() {
+        assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello  \n"), " "), "hello ");
+        assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello  \n"), ""), "hello");
+        assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello"), " "), "hello");
+    }
+
+    #[test]
+    fn strip_borrows_when_no_ws() {
+        let s = Cow::Borrowed("hello");
+        let result = strip_leading_ws(s);
+        assert!(matches!(result, Cow::Borrowed(_)));
+
+        let s = Cow::Borrowed("hello");
+        let result = strip_trailing_ws(s);
+        assert!(matches!(result, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn strip_leading_borrows_slice() {
+        let s = Cow::Borrowed("\n  hello");
+        let result = strip_leading_ws(s);
+        assert!(matches!(result, Cow::Borrowed("hello")));
+    }
+
+    #[test]
+    fn strip_trailing_borrows_slice() {
+        let s = Cow::Borrowed("hello  \n");
+        let result = strip_trailing_ws(s);
+        assert!(matches!(result, Cow::Borrowed("hello")));
+    }
+
+    // -- build_items integration tests --
+
+    fn make_component(source: &str, nodes: Vec<Node>) -> Component {
+        Component::new(
+            source.to_string(),
+            Fragment::new(nodes),
+            None,
+            None,
+        )
+    }
+
+    fn collect_text_parts(items: &[FragmentItem]) -> Vec<String> {
+        let mut out = Vec::new();
+        for item in items {
+            if let FragmentItem::TextConcat { parts } = item {
+                for part in parts {
+                    if let ConcatPart::Text(s) = part {
+                        out.push(s.clone());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn trim_leading_and_trailing() {
+        let src = "\n  hello  \n";
+        let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["hello"]);
+    }
+
+    #[test]
+    fn preserve_internal_newlines() {
+        let src = "hello\n  world";
+        let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["hello\n  world"]);
+    }
+
+    #[test]
+    fn tabs_and_crlf() {
+        let src = "\r\n\thello\r\n";
+        let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["hello"]);
+    }
+
+    #[test]
+    fn pure_whitespace_only_is_removed() {
+        let src = "  \n\t  ";
+        let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
+        let items = build_items(&comp.fragment, &comp);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn expr_neighbor_preserves_ws() {
+        let src = "{expr}\n  hello";
+        let comp = make_component(src, vec![
+            expr_node(1),
+            text_node(2, 6, src.len() as u32),
+        ]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["\n  hello"]);
+    }
+
+    #[test]
+    fn expr_next_preserves_trailing_ws() {
+        let src = "hello  \n{expr}";
+        let comp = make_component(src, vec![
+            text_node(1, 0, 8),
+            expr_node(2),
+        ]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["hello  \n"]);
+    }
+
+    #[test]
+    fn adjacent_text_nodes_no_double_space() {
+        let src = "\n\n";
+        let comp = make_component(src, vec![
+            text_node(1, 0, 1),
+            text_node(2, 1, 2),
+        ]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn ws_between_non_expr_nodes_collapses_to_space() {
+        let src = "hello\n\n  world";
+        let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["hello\n\n  world"]);
+    }
+
+    #[test]
+    fn text_between_expressions_preserves_all_ws() {
+        let src = "{a}\n  \n{b}";
+        let comp = make_component(src, vec![
+            expr_node(1),
+            text_node(2, 3, 7),
+            expr_node(3),
+        ]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["\n  \n"]);
+    }
+
+    #[test]
+    fn text_after_expr_before_non_expr() {
+        let src = "{expr}\n  hello\n  x";
+        let comp = make_component(src, vec![
+            expr_node(1),
+            text_node(2, 6, 16),
+            text_node(3, 16, 18),
+        ]);
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp));
+        assert_eq!(texts, vec!["\n  hello ", "x"]);
+    }
+
+    #[test]
+    fn no_alloc_when_text_unchanged() {
+        // Text without any boundary whitespace: should stay Cow::Borrowed
+        let raw = "hello";
+        let result = trim_text(raw, false, false, Some(&expr_node(1)), Some(&expr_node(2)), false);
+        assert!(matches!(result, Cow::Borrowed("hello")));
+    }
+
+    #[test]
+    fn no_alloc_for_first_without_leading_ws() {
+        let raw = "hello world";
+        let result = trim_text(raw, true, true, None, None, false);
+        assert!(matches!(result, Cow::Borrowed("hello world")));
+    }
 }
