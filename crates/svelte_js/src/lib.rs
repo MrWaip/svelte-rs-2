@@ -442,6 +442,42 @@ pub fn analyze_script_with_scoping(
     Ok((script_info, scoping))
 }
 
+/// Parse a `<script>` block once in a caller-provided allocator and return
+/// analysis info, scoping, and the live `Program` AST.
+///
+/// The returned `Program<'a>` is reused by codegen, eliminating double-parsing.
+pub fn analyze_script_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+    typescript: bool,
+) -> Result<(ScriptInfo, oxc_semantic::Scoping, oxc_ast::ast::Program<'a>), Vec<Diagnostic>> {
+    let source_type = if typescript {
+        SourceType::mjs().with_typescript(true)
+    } else {
+        SourceType::mjs()
+    };
+
+    let result = OxcParser::new(alloc, source, source_type).parse();
+
+    if !result.errors.is_empty() {
+        return Err(result
+            .errors
+            .iter()
+            .map(|_| {
+                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+            })
+            .collect());
+    }
+
+    let program = result.program;
+    let script_info = extract_script_info(&program, offset, source);
+    let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+    let scoping = sem.semantic.into_scoping();
+
+    Ok((script_info, scoping, program))
+}
+
 /// Check if an expression text represents a "simple" expression that can be
 /// eagerly evaluated (no side effects). Matches Svelte's `is_simple_expression()`.
 ///
