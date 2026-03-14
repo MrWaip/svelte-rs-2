@@ -25,10 +25,20 @@ pub fn compile(source: &str) -> CompileResult {
                 diagnostics,
             }
         }
-        Err(_) => CompileResult {
-            js: None,
-            diagnostics,
-        },
+        Err(panic_payload) => {
+            let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown internal error".to_string()
+            };
+            diagnostics.push(Diagnostic::internal_error(message));
+            CompileResult {
+                js: None,
+                diagnostics,
+            }
+        }
     }
 }
 

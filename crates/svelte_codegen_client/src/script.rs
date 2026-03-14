@@ -379,7 +379,11 @@ fn parse_expression<'a>(b: &Builder<'a>, text: &str) -> Expression<'a> {
     let arena_text: &'a str = alloc.alloc_str(text);
     match OxcParser::new(alloc, arena_text, SourceType::default()).parse_expression() {
         Ok(expr) => expr,
-        Err(_) => b.str_expr(text),
+        Err(_) => {
+            debug_assert!(false, "codegen: failed to parse expression: {text}");
+            eprintln!("[svelte-rs] warning: failed to parse expression in script codegen: {text}");
+            b.str_expr(text)
+        }
     }
 }
 

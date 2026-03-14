@@ -41,21 +41,8 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
 
     parse_js::parse_js(component, &mut data, &mut diags);
 
-    // Register snippet parameter names
-    for node in &component.fragment.nodes {
-        if let svelte_ast::Node::SnippetBlock(block) = node {
-            let params = if let Some(span) = block.params_span {
-                component.source_text(span)
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            data.snippet_params.insert(block.id, params);
-        }
-    }
+    // Register snippet parameter names (recursive — handles nested snippets)
+    register_snippet_params(&component.fragment, component, &mut data);
 
     scope::build_scoping(component, &mut data);
     mutations::detect_mutations(component, &mut data);
@@ -103,6 +90,51 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
+}
+
+/// Recursively register snippet parameter names for all snippets in the tree.
+fn register_snippet_params(
+    fragment: &svelte_ast::Fragment,
+    component: &Component,
+    data: &mut AnalysisData,
+) {
+    for node in &fragment.nodes {
+        match node {
+            svelte_ast::Node::SnippetBlock(block) => {
+                let params = if let Some(span) = block.params_span {
+                    component
+                        .source_text(span)
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                data.snippet_params.insert(block.id, params);
+                register_snippet_params(&block.body, component, data);
+            }
+            svelte_ast::Node::Element(el) => {
+                register_snippet_params(&el.fragment, component, data);
+            }
+            svelte_ast::Node::ComponentNode(cn) => {
+                register_snippet_params(&cn.fragment, component, data);
+            }
+            svelte_ast::Node::IfBlock(b) => {
+                register_snippet_params(&b.consequent, component, data);
+                if let Some(alt) = &b.alternate {
+                    register_snippet_params(alt, component, data);
+                }
+            }
+            svelte_ast::Node::EachBlock(b) => {
+                register_snippet_params(&b.body, component, data);
+                if let Some(fb) = &b.fallback {
+                    register_snippet_params(fb, component, data);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
