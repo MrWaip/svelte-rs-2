@@ -341,10 +341,35 @@
                         "rust",
                     );
 
-                    modifiedModel.setValue(result);
+                    if (result.js) {
+                        modifiedModel.setValue(result.js);
+                    } else {
+                        modifiedModel.setValue("// compilation failed");
+                    }
+
+                    // Show diagnostics as Monaco markers
+                    const model = editorInstance.getModel();
+                    if (result.diagnostics && result.diagnostics.length > 0) {
+                        const markers = result.diagnostics.map(d => ({
+                            severity: d.severity === "Error"
+                                ? monaco.MarkerSeverity.Error
+                                : monaco.MarkerSeverity.Warning,
+                            startLineNumber: d.start_line + 1,
+                            startColumn: d.start_col + 1,
+                            endLineNumber: d.end_line + 1,
+                            endColumn: d.end_col + 1,
+                            message: d.message,
+                        }));
+                        monaco.editor.setModelMarkers(model, "svelte-rust", markers);
+                    } else {
+                        monaco.editor.setModelMarkers(model, "svelte-rust", []);
+                    }
                 } catch (e) {
                     console.error(e);
-                    modifiedModel.setValue("Compiler error");
+                    modifiedModel.setValue("// compilation failed");
+                    if (editorInstance) {
+                        monaco.editor.setModelMarkers(editorInstance.getModel(), "svelte-rust", []);
+                    }
                 }
             }
 

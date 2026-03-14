@@ -15,17 +15,20 @@ fn assert_compiler(case: &str) {
         .join("case.svelte");
     let input = read_to_string(&path).unwrap();
 
-    let actual = compile(&input).unwrap_or_else(|e| panic!("[{case}] compile error: {e:?}"));
+    let result = compile(&input);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("[{case}] compile produced no JS"));
 
     let dir = path.parent().unwrap();
     let expected = read_to_string(dir.join("case-svelte.js")).unwrap();
 
     File::create(dir.join("case-rust.js"))
         .unwrap()
-        .write_all(actual.js.as_bytes())
+        .write_all(js.as_bytes())
         .unwrap();
 
-    assert_eq!(actual.js, expected);
+    assert_eq!(js, expected);
 }
 
 #[rstest]

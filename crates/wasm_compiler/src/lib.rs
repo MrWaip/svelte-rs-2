@@ -2,7 +2,25 @@ use oxc_allocator::Allocator;
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+use serde::Serialize;
+use svelte_diagnostics::LineIndex;
 use wasm_bindgen::prelude::*;
+
+#[derive(Serialize)]
+struct WasmDiagnostic {
+    message: String,
+    severity: String,
+    start_line: usize,
+    start_col: usize,
+    end_line: usize,
+    end_col: usize,
+}
+
+#[derive(Serialize)]
+struct WasmCompileResult {
+    js: Option<String>,
+    diagnostics: Vec<WasmDiagnostic>,
+}
 
 #[wasm_bindgen]
 pub struct WasmCompiler {}
@@ -15,11 +33,33 @@ impl WasmCompiler {
     }
 
     #[wasm_bindgen()]
-    pub fn compile(&self, source: &str) -> Result<String, serde_wasm_bindgen::Error> {
-        let result = svelte_compiler::compile(source)
-            .map_err(|diagnostic| serde_wasm_bindgen::Error::new(diagnostic))?;
+    pub fn compile(&self, source: &str) -> Result<JsValue, serde_wasm_bindgen::Error> {
+        let result = svelte_compiler::compile(source);
+        let line_index = LineIndex::new(source);
 
-        Ok(result.js)
+        let diagnostics: Vec<WasmDiagnostic> = result
+            .diagnostics
+            .iter()
+            .map(|d| {
+                let (start_line, start_col) = line_index.line_col(d.span.start as usize);
+                let (end_line, end_col) = line_index.line_col(d.span.end as usize);
+                WasmDiagnostic {
+                    message: format!("{:?}", d.kind),
+                    severity: format!("{:?}", d.severity),
+                    start_line,
+                    start_col,
+                    end_line,
+                    end_col,
+                }
+            })
+            .collect();
+
+        let wasm_result = WasmCompileResult {
+            js: result.js,
+            diagnostics,
+        };
+
+        serde_wasm_bindgen::to_value(&wasm_result)
     }
 
     #[wasm_bindgen()]

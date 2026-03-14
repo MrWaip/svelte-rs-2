@@ -2,13 +2,13 @@ use std::fmt;
 
 use svelte_span::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Severity {
     Error,
     Warning,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub enum DiagnosticKind {
     // Parser errors
     UnexpectedEndOfFile,
@@ -30,7 +30,7 @@ pub enum DiagnosticKind {
     // Semantic warnings (future)
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Diagnostic {
     pub kind: DiagnosticKind,
     pub span: Span,
