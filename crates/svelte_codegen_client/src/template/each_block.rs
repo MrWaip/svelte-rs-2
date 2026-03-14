@@ -8,7 +8,7 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::expression::parse_expr;
+use super::expression::get_node_expr;
 use super::gen_fragment;
 
 // Each block flags (from Svelte constants)
@@ -50,7 +50,7 @@ pub(crate) fn gen_each_block<'a>(
         // Prop getter is already a function — pass directly without thunk
         ctx.b.rid_expr(expr_source)
     } else {
-        let collection = parse_expr(ctx, expr_span);
+        let collection = get_node_expr(ctx, block_id);
         ctx.b
             .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)])
     };
