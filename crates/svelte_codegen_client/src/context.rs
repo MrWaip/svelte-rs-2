@@ -85,8 +85,8 @@ pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
     pub analysis: &'a AnalysisData,
-    /// Pre-parsed and pre-transformed expression ASTs.
-    pub parsed: &'a ParsedExprs<'a>,
+    /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
+    pub parsed: &'a mut ParsedExprs<'a>,
     /// Monotonically incrementing counter per name prefix.
     ident_counters: FxHashMap<String, u32>,
     /// Template declarations from nested fragments, hoisted to module scope.
@@ -107,8 +107,6 @@ pub struct Ctx<'a> {
     pub prop_non_sources: FxHashMap<String, String>,
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
-    /// Names of each-block context variables in scope (for `$.get()` wrapping).
-    pub each_vars: FxHashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -116,7 +114,7 @@ impl<'a> Ctx<'a> {
         allocator: &'a oxc_allocator::Allocator,
         component: &'a Component,
         analysis: &'a AnalysisData,
-        parsed: &'a ParsedExprs<'a>,
+        parsed: &'a mut ParsedExprs<'a>,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
@@ -149,7 +147,6 @@ impl<'a> Ctx<'a> {
             prop_sources,
             prop_non_sources,
             delegated_events: Vec::new(),
-            each_vars: FxHashSet::default(),
         }
     }
 

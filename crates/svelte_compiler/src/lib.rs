@@ -16,7 +16,7 @@ pub fn compile(source: &str) -> CompileResult {
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
         svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed);
-        let js = svelte_codegen_client::generate(&component, &analysis, &parsed);
+        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed);
         (js, analyze_diags)
     }));
 
