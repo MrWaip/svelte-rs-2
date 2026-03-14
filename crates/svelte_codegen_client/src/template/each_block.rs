@@ -41,10 +41,15 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_ITEM_REACTIVE;
     }
 
-    let collection = parse_expr(ctx, expr_span);
-    let collection_fn = ctx
-        .b
-        .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)]);
+    let expr_source = ctx.component.source_text(expr_span).trim();
+    let collection_fn = if ctx.prop_sources.contains(expr_source) {
+        // Prop getter is already a function — pass directly without thunk
+        ctx.b.rid_expr(expr_source)
+    } else {
+        let collection = parse_expr(ctx, expr_span);
+        ctx.b
+            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)])
+    };
 
     // Track each context variable for $.get() wrapping in body expressions
     let item_reactive = (flags & EACH_ITEM_REACTIVE) != 0;

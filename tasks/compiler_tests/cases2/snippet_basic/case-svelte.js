@@ -7,7 +7,14 @@ const greeting = ($$anchor, name = $.noop) => {
 	$.append($$anchor, p);
 };
 var root_1 = $.from_html(`<p> </p>`);
-export default function App($$anchor) {
+var root = $.from_html(`<!> <!>`, 1);
+export default function App($$anchor, $$props) {
+	let title = $.prop($$props, "title", 3, "world");
 	let message = "hello";
-	greeting($$anchor, () => message);
+	var fragment = root();
+	var node = $.first_child(fragment);
+	greeting(node, () => message);
+	var node_1 = $.sibling(node, 2);
+	greeting(node_1, title);
+	$.append($$anchor, fragment);
 }
