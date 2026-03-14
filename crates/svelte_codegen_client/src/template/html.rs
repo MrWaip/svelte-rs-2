@@ -96,7 +96,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     match ct {
         ContentType::Empty => {}
         ContentType::StaticText => {
-            let lf = ctx.analysis.lowered_fragments.get(&child_key).unwrap();
+            let lf = ctx.lowered_fragment(&child_key);
             html.push_str(&static_text_of(&lf.items[0]));
         }
         ContentType::DynamicText if !has_state => {
@@ -107,7 +107,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
             html.push(' ');
         }
         ContentType::SingleBlock if matches!(
-            ctx.analysis.lowered_fragments.get(&child_key).unwrap().items.first(),
+            ctx.lowered_fragment(&child_key).items.first(),
             Some(FragmentItem::EachBlock(_))
         ) => {
             // Controlled each block: no <!> anchor in template

@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::{AnalysisData, ParsedExprs};
+use svelte_analyze::{AnalysisData, FragmentKey, LoweredFragment, ParsedExprs};
 use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
@@ -153,27 +153,38 @@ impl<'a> Ctx<'a> {
     // -- Node lookups (O(1)) --
 
     pub fn element(&self, id: NodeId) -> &'a Element {
-        self.index.elements.get(&id).copied().expect("element not found")
+        self.index.elements.get(&id).copied()
+            .unwrap_or_else(|| panic!("element {:?} not found in index", id))
     }
 
     pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
-        self.index.component_nodes.get(&id).copied().expect("component node not found")
+        self.index.component_nodes.get(&id).copied()
+            .unwrap_or_else(|| panic!("component node {:?} not found in index", id))
     }
 
     pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
-        self.index.if_blocks.get(&id).copied().expect("if block not found")
+        self.index.if_blocks.get(&id).copied()
+            .unwrap_or_else(|| panic!("if block {:?} not found in index", id))
     }
 
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
-        self.index.each_blocks.get(&id).copied().expect("each block not found")
+        self.index.each_blocks.get(&id).copied()
+            .unwrap_or_else(|| panic!("each block {:?} not found in index", id))
     }
 
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.index.snippet_blocks.get(&id).copied().expect("snippet block not found")
+        self.index.snippet_blocks.get(&id).copied()
+            .unwrap_or_else(|| panic!("snippet block {:?} not found in index", id))
     }
 
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
-        self.index.render_tags.get(&id).copied().expect("render tag not found")
+        self.index.render_tags.get(&id).copied()
+            .unwrap_or_else(|| panic!("render tag {:?} not found in index", id))
+    }
+
+    pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
+        self.analysis.lowered_fragments.get(key)
+            .unwrap_or_else(|| panic!("lowered fragment {:?} not found", key))
     }
 
     // -- Identifiers --
