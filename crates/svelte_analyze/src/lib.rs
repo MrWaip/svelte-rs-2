@@ -2,6 +2,7 @@ mod content_types;
 mod data;
 mod element_flags;
 mod elseif;
+mod hoistable;
 mod known_values;
 mod lower;
 mod mutations;
@@ -26,13 +27,14 @@ use svelte_diagnostics::Diagnostic;
 /// Pass order:
 /// 1. parse_js      — parse JS expressions + script block
 /// 2. build_scoping — build unified scope tree (script + template)
-/// 3. mutations     — detect mutated runes (single composite walk: template + binds)
+/// 3. mutations     — detect mutated runes (composite walk: template + binds)
 /// 4. known_values  — evaluate const declarations with literal initializers
 /// 5. props         — analyze $props() destructuring
 /// 6. lower         — trim whitespace, group text+expressions
-/// 7. reactivity + elseif — single composite walk: mark dynamic nodes + detect elseif
-/// 8. content_types — classify fragment content
-/// 9. validate      — semantic checks
+/// 7. composite walk — reactivity + elseif + element flags + hoistable snippets
+/// 8. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
+/// 9. needs_var     — compute elements needing DOM variable
+/// 10. validate     — semantic checks
 pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
@@ -61,163 +63,41 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);
 
-    // Single composite walk: reactivity + elseif + element flags
+    // Single composite walk: reactivity + elseif + element flags + hoistable snippets
     {
         let root = data.scoping.root_scope_id();
+        let script_names: rustc_hash::FxHashSet<String> = data
+            .script
+            .as_ref()
+            .map(|s| s.declarations.iter().map(|d| d.name.to_string()).collect())
+            .unwrap_or_default();
+        let top_level_snippet_ids: rustc_hash::FxHashSet<svelte_ast::NodeId> = component
+            .fragment
+            .nodes
+            .iter()
+            .filter_map(|n| {
+                if let svelte_ast::Node::SnippetBlock(b) = n {
+                    Some(b.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
         let mut visitor = (
             reactivity::ReactivityVisitor::new(),
             elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor,
+            hoistable::HoistableSnippetsVisitor::new(script_names, top_level_snippet_ids),
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
 
-    // Determine which top-level snippets can be hoisted to module scope
-    compute_hoistable_snippets(component, &mut data);
-
-    // Precompute which fragments have dynamic children (needs dynamic_nodes from walker)
-    compute_fragment_has_dynamic_children(&mut data);
-
-    content_types::classify_content(component, &mut data);
+    // Classify fragments + mark which have dynamic children (single pass over lowered_fragments)
+    content_types::classify_and_mark_dynamic(&mut data);
     needs_var::compute_elements_needing_var(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
-}
-
-/// Precompute which fragments have at least one dynamic child.
-fn compute_fragment_has_dynamic_children(data: &mut AnalysisData) {
-    let keys: Vec<_> = data.lowered_fragments.keys().copied().collect();
-    for key in keys {
-        let lf = &data.lowered_fragments[&key];
-        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, data));
-        if has_dynamic {
-            data.fragment_has_dynamic_children.insert(key);
-        }
-    }
-}
-
-fn item_is_dynamic(item: &data::FragmentItem, data: &AnalysisData) -> bool {
-    match item {
-        data::FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {
-            if let data::ConcatPart::Expr(id) = p {
-                data.dynamic_nodes.contains(id)
-            } else {
-                false
-            }
-        }),
-        data::FragmentItem::Element(id)
-        | data::FragmentItem::ComponentNode(id)
-        | data::FragmentItem::IfBlock(id)
-        | data::FragmentItem::EachBlock(id)
-        | data::FragmentItem::RenderTag(id) => data.dynamic_nodes.contains(id),
-    }
-}
-
-/// A snippet can be hoisted to module scope if its body doesn't reference
-/// any script-declared variables (runes, lets, consts from the script block).
-fn compute_hoistable_snippets(component: &Component, data: &mut AnalysisData) {
-    let script_names: rustc_hash::FxHashSet<String> = if let Some(script) = &data.script {
-        script.declarations.iter().map(|d| d.name.to_string()).collect()
-    } else {
-        rustc_hash::FxHashSet::default()
-    };
-
-    for node in &component.fragment.nodes {
-        if let svelte_ast::Node::SnippetBlock(block) = node {
-            if !snippet_refs_script(&block.body, data, &script_names) {
-                data.hoistable_snippets.insert(block.id);
-            }
-        }
-    }
-}
-
-fn snippet_refs_script(
-    fragment: &svelte_ast::Fragment,
-    data: &AnalysisData,
-    script_names: &rustc_hash::FxHashSet<String>,
-) -> bool {
-    for node in &fragment.nodes {
-        match node {
-            svelte_ast::Node::ExpressionTag(tag) => {
-                if expr_refs_script(data.expressions.get(&tag.id), script_names) {
-                    return true;
-                }
-            }
-            svelte_ast::Node::Element(el) => {
-                if attrs_ref_script(&el.attributes, el.id, data, script_names) {
-                    return true;
-                }
-                if snippet_refs_script(&el.fragment, data, script_names) {
-                    return true;
-                }
-            }
-            svelte_ast::Node::ComponentNode(cn) => {
-                if attrs_ref_script(&cn.attributes, cn.id, data, script_names) {
-                    return true;
-                }
-                if snippet_refs_script(&cn.fragment, data, script_names) {
-                    return true;
-                }
-            }
-            svelte_ast::Node::IfBlock(b) => {
-                if expr_refs_script(data.expressions.get(&b.id), script_names) {
-                    return true;
-                }
-                if snippet_refs_script(&b.consequent, data, script_names) {
-                    return true;
-                }
-                if let Some(alt) = &b.alternate {
-                    if snippet_refs_script(alt, data, script_names) {
-                        return true;
-                    }
-                }
-            }
-            svelte_ast::Node::EachBlock(b) => {
-                if expr_refs_script(data.expressions.get(&b.id), script_names) {
-                    return true;
-                }
-                if snippet_refs_script(&b.body, data, script_names) {
-                    return true;
-                }
-            }
-            svelte_ast::Node::RenderTag(t) => {
-                if expr_refs_script(data.expressions.get(&t.id), script_names) {
-                    return true;
-                }
-            }
-            svelte_ast::Node::SnippetBlock(sb) => {
-                if snippet_refs_script(&sb.body, data, script_names) {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-/// Check if an expression info references any script-declared name.
-fn expr_refs_script(
-    info: Option<&svelte_js::ExpressionInfo>,
-    script_names: &rustc_hash::FxHashSet<String>,
-) -> bool {
-    info.is_some_and(|i| i.references.iter().any(|r| script_names.contains(r.name.as_str())))
-}
-
-/// Check if any attribute expressions on a node reference script-declared names.
-fn attrs_ref_script(
-    attributes: &[svelte_ast::Attribute],
-    owner_id: svelte_ast::NodeId,
-    data: &AnalysisData,
-    script_names: &rustc_hash::FxHashSet<String>,
-) -> bool {
-    for (idx, _) in attributes.iter().enumerate() {
-        if expr_refs_script(data.attr_expressions.get(&(owner_id, idx)), script_names) {
-            return true;
-        }
-    }
-    false
 }
 
 // ---------------------------------------------------------------------------
