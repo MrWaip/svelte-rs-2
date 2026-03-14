@@ -31,10 +31,15 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<Vec<Token<'a>>, Diagnostic> {
+    pub fn scan_tokens(&mut self) -> (Vec<Token<'a>>, Vec<Diagnostic>) {
+        let mut diagnostics = Vec::new();
+
         while !self.is_at_end() {
             self.start = self.current;
-            self.scan_token()?;
+            if let Err(diagnostic) = self.scan_token() {
+                diagnostics.push(diagnostic);
+                self.sync_to_next_token();
+            }
         }
 
         self.tokens.push(Token {
@@ -44,7 +49,17 @@ impl<'a> Scanner<'a> {
         });
 
         let tokens = std::mem::take(&mut self.tokens);
-        Ok(tokens)
+        (tokens, diagnostics)
+    }
+
+    /// Skip forward to the next synchronization point after a scan error.
+    fn sync_to_next_token(&mut self) {
+        while !self.is_at_end() {
+            match self.peek() {
+                Some('<') | Some('{') => break,
+                _ => { self.advance(); }
+            }
+        }
     }
 
     fn scan_token(&mut self) -> Result<(), Diagnostic> {
@@ -1102,8 +1117,6 @@ impl<'a> Scanner<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
-
     use svelte_diagnostics::DiagnosticKind;
 
     use super::*;
@@ -1112,7 +1125,7 @@ mod tests {
     fn smoke() {
         let mut scanner = Scanner::new("<div>kek {name} hello</div>");
 
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
         assert!(tokens[1].token_type == TokenType::Text);
@@ -1126,7 +1139,7 @@ mod tests {
     fn interpolation_with_js_strings() {
         let mut scanner = Scanner::new("{ name + '}' + \"{}\" + `{\n}` }");
 
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
@@ -1136,7 +1149,7 @@ mod tests {
     fn interpolation_js_curly_braces_balance() {
         let mut scanner = Scanner::new("{ { field: 1} + (function(){return {}}) }");
 
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
@@ -1146,7 +1159,7 @@ mod tests {
     fn self_closed_start_tag() {
         let mut scanner = Scanner::new("<input/>");
 
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert_start_tag(&tokens[0], "input", vec![], true);
         assert!(tokens[1].token_type == TokenType::EOF);
@@ -1158,7 +1171,7 @@ mod tests {
             "<div valid id=123 touched some=true disabled value=\"333\" class='never' >",
         );
 
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert_start_tag(
             &tokens[0],
@@ -1181,7 +1194,7 @@ mod tests {
     #[test]
     fn comment() {
         let mut scanner = Scanner::new("<!-- \nsome comment\n -->");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert!(tokens[0].token_type == TokenType::Comment);
         assert_eq!(tokens[0].lexeme, "<!-- \nsome comment\n -->");
@@ -1191,7 +1204,7 @@ mod tests {
     #[test]
     fn each_block() {
         let mut scanner = Scanner::new("{#each [1,2,3] as { value, flag }}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert_start_each_tag(&tokens[0], "[1,2,3]", "{ value, flag }");
         assert!(tokens[1].token_type == TokenType::EOF);
@@ -1272,7 +1285,7 @@ mod tests {
     #[test]
     fn each_block_with_index() {
         let mut scanner = Scanner::new("{#each items as item, i}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert_start_each_tag_with_index(&tokens[0], "items", "item", "i");
         assert!(tokens[1].token_type == TokenType::EOF);
@@ -1281,22 +1294,24 @@ mod tests {
     #[test]
     fn each_block_destructured_with_index() {
         let mut scanner = Scanner::new("{#each items as { value, flag }, idx}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         assert_start_each_tag_with_index(&tokens[0], "items", "{ value, flag }", "idx");
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
-    fn assert_error_result<T: Debug>(res: Result<T, Diagnostic>, err_kind: DiagnosticKind) {
-        assert!(res.is_err());
-        assert_eq!(res.unwrap_err().kind, err_kind);
+    fn assert_has_diagnostic(diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
+        assert!(
+            diagnostics.iter().any(|d| d.kind == err_kind),
+            "expected diagnostic {err_kind:?}, got: {diagnostics:?}"
+        );
     }
 
     #[test]
     fn unterminated_start_tag() {
         let mut scanner = Scanner::new("<div disabled");
-        let result = scanner.scan_tokens();
-        assert_error_result(result, DiagnosticKind::UnterminatedStartTag);
+        let (_, diagnostics) = scanner.scan_tokens();
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
     }
 
     // --- Escape sequence tests (Bug #1) ---
@@ -1304,7 +1319,7 @@ mod tests {
     #[test]
     fn interpolation_escaped_double_quote() {
         let mut scanner = Scanner::new(r#"{ name.replace("\"", "'") }"#);
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
     }
@@ -1312,7 +1327,7 @@ mod tests {
     #[test]
     fn interpolation_escaped_single_quote() {
         let mut scanner = Scanner::new(r"{ 'it\'s a test' }");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
     }
@@ -1320,7 +1335,7 @@ mod tests {
     #[test]
     fn interpolation_escaped_backtick() {
         let mut scanner = Scanner::new(r"{ `hello \` world` }");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
     }
@@ -1328,7 +1343,7 @@ mod tests {
     #[test]
     fn interpolation_escaped_backslash() {
         let mut scanner = Scanner::new(r#"{ "path\\to\\file" }"#);
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
         assert!(tokens[1].token_type == TokenType::EOF);
     }
@@ -1338,7 +1353,7 @@ mod tests {
     #[test]
     fn style_tag_basic() {
         let mut scanner = Scanner::new("<style>.foo { color: red; }</style>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StyleTag(_)));
         if let TokenType::StyleTag(ref st) = tokens[0].token_type {
             assert_eq!(st.source, ".foo { color: red; }");
@@ -1349,7 +1364,7 @@ mod tests {
     #[test]
     fn style_tag_with_angle_brackets() {
         let mut scanner = Scanner::new("<style>a > b { color: red; }</style>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StyleTag(_)));
         if let TokenType::StyleTag(ref st) = tokens[0].token_type {
             assert_eq!(st.source, "a > b { color: red; }");
@@ -1378,7 +1393,7 @@ mod tests {
     #[test]
     fn each_block_with_key() {
         let mut scanner = Scanner::new("{#each items as item (item.id)}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_each_tag_with_key(&tokens[0], "items", "item", "item.id");
         assert!(tokens[1].token_type == TokenType::EOF);
     }
@@ -1386,7 +1401,7 @@ mod tests {
     #[test]
     fn each_block_with_index_and_key() {
         let mut scanner = Scanner::new("{#each items as item, i (item.id)}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
 
         let tag = match &tokens[0].token_type {
             TokenType::StartEachTag(t) => t,
@@ -1401,7 +1416,7 @@ mod tests {
     #[test]
     fn each_block_destructured_with_key() {
         let mut scanner = Scanner::new("{#each items as {name} (name)}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_each_tag_with_key(&tokens[0], "items", "{name}", "name");
     }
 
@@ -1410,7 +1425,7 @@ mod tests {
     #[test]
     fn class_directive_with_expression() {
         let mut scanner = Scanner::new("<div class:active={isActive}>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_tag(
             &tokens[0],
             "div",
@@ -1422,7 +1437,7 @@ mod tests {
     #[test]
     fn class_directive_shorthand() {
         let mut scanner = Scanner::new("<div class:active>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_tag(
             &tokens[0],
             "div",
@@ -1434,7 +1449,7 @@ mod tests {
     #[test]
     fn bind_directive_with_expression() {
         let mut scanner = Scanner::new("<input bind:value={name}>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_tag(
             &tokens[0],
             "input",
@@ -1446,7 +1461,7 @@ mod tests {
     #[test]
     fn bind_directive_shorthand() {
         let mut scanner = Scanner::new("<input bind:value>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert_start_tag(
             &tokens[0],
             "input",
@@ -1460,7 +1475,7 @@ mod tests {
     #[test]
     fn attribute_concatenation() {
         let mut scanner = Scanner::new(r#"<div title="hello {name} world">"#);
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
         if let TokenType::StartTag(ref st) = tokens[0].token_type {
             assert_eq!(st.name, "div");
@@ -1479,7 +1494,7 @@ mod tests {
     #[test]
     fn spread_attribute() {
         let mut scanner = Scanner::new("<div {...props}>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
         if let TokenType::StartTag(ref st) = tokens[0].token_type {
             assert_eq!(st.attributes.len(), 1);
@@ -1494,7 +1509,7 @@ mod tests {
     #[test]
     fn shorthand_attribute() {
         let mut scanner = Scanner::new("<div {value}>");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
         if let TokenType::StartTag(ref st) = tokens[0].token_type {
             assert_eq!(st.attributes.len(), 1);
@@ -1511,7 +1526,7 @@ mod tests {
     #[test]
     fn snippet_tag_tokens() {
         let mut scanner = Scanner::new("{#snippet foo(a, b)}content{/snippet}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
         if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
             assert_eq!(st.name, "foo");
@@ -1524,7 +1539,7 @@ mod tests {
     #[test]
     fn render_tag_tokens() {
         let mut scanner = Scanner::new("{@render foo(x, y)}");
-        let tokens = scanner.scan_tokens().unwrap();
+        let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::RenderTag(_)));
         if let TokenType::RenderTag(ref rt) = tokens[0].token_type {
             assert_eq!(rt.expression.value, "foo(x, y)");

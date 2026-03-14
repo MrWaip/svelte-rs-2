@@ -64,6 +64,7 @@ struct SnippetBlockEntry {
 pub struct Parser<'a> {
     source: &'a str,
     ids: NodeIdAllocator,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> Parser<'a> {
@@ -71,12 +72,18 @@ impl<'a> Parser<'a> {
         Parser {
             source,
             ids: NodeIdAllocator::new(),
+            diagnostics: Vec::new(),
         }
     }
 
-    pub fn parse(mut self) -> Result<Component, Diagnostic> {
+    fn recover(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
+    pub fn parse(mut self) -> (Component, Vec<Diagnostic>) {
         let mut scanner = Scanner::new(self.source);
-        let tokens = scanner.scan_tokens()?;
+        let (tokens, scan_diagnostics) = scanner.scan_tokens();
+        self.diagnostics.extend(scan_diagnostics);
 
         // children_stack[i] = children being collected for the i-th nesting level.
         // children_stack[0] = root level.
@@ -100,7 +107,7 @@ impl<'a> Parser<'a> {
                     children_stack.last_mut().unwrap().push(node);
                 }
                 TokenType::StartTag(tag) => {
-                    let attrs = self.convert_attributes(&tag.attributes)?;
+                    let attrs = self.convert_attributes(&tag.attributes);
                     if tag.self_closing {
                         let name = tag.name.to_string();
                         let node = if is_component_name(&name) {
@@ -133,42 +140,12 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenType::EndTag(tag) => {
-                    let entry = entry_stack
-                        .pop()
-                        .ok_or_else(|| Diagnostic::no_element_to_close(token.span))?;
-
-                    let StackEntry::Element(el) = entry else {
-                        return Err(Diagnostic::no_element_to_close(token.span));
-                    };
-
-                    if el.name != tag.name {
-                        return Err(Diagnostic::no_element_to_close(token.span));
-                    }
-
-                    let children = children_stack.pop().unwrap();
-                    let merged_span = el.span_start.merge(&token.span);
-
-                    let node = if is_component_name(&el.name) {
-                        Node::ComponentNode(ComponentNode {
-                            id: self.ids.next(),
-                            span: merged_span,
-                            name: el.name,
-                            self_closing: false,
-                            attributes: el.attributes,
-                            fragment: Fragment::new(children),
-                        })
-                    } else {
-                        Node::Element(Element {
-                            id: self.ids.next(),
-                            span: merged_span,
-                            name: el.name,
-                            self_closing: false,
-                            attributes: el.attributes,
-                            fragment: Fragment::new(children),
-                        })
-                    };
-
-                    children_stack.last_mut().unwrap().push(node);
+                    self.handle_end_tag(
+                        &tag,
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
                 }
                 TokenType::StartIfTag(start_if) => {
                     entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
@@ -181,54 +158,19 @@ impl<'a> Parser<'a> {
                     children_stack.push(vec![]); // consequent children
                 }
                 TokenType::ElseTag(else_tag) => {
-                    // Finalize consequent: take current children as consequent
-                    let consequent_children = children_stack.pop().unwrap();
-
-                    if else_tag.elseif {
-                        // {:else if expr}
-                        // Store consequent in the current IfBlock entry
-                        let entry = entry_stack.last_mut().ok_or_else(|| {
-                            Diagnostic::no_if_block_for_else(token.span)
-                        })?;
-                        let StackEntry::IfBlock(ref mut ib) = entry else {
-                            return Err(Diagnostic::no_if_block_for_else(token.span));
-                        };
-                        ib.consequent = Some(consequent_children);
-                        ib.in_alternate = true;
-
-                        // Push a children level for the parent's alternate
-                        children_stack.push(vec![]);
-
-                        // Push a new IfBlock for the else-if
-                        let expr = else_tag.expression.as_ref().unwrap();
-                        entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
-                            span: token.span,
-                            test_span: expr.span,
-                            elseif: true,
-                            consequent: None,
-                            in_alternate: false,
-                        }));
-                        children_stack.push(vec![]); // new consequent for else-if
-                    } else {
-                        // {:else}
-                        let entry = entry_stack.last_mut().ok_or_else(|| {
-                            Diagnostic::no_if_block_for_else(token.span)
-                        })?;
-                        let StackEntry::IfBlock(ref mut ib) = entry else {
-                            return Err(Diagnostic::no_if_block_for_else(token.span));
-                        };
-                        ib.consequent = Some(consequent_children);
-                        ib.in_alternate = true;
-                        ib.span = ib.span.merge(&token.span);
-                        children_stack.push(vec![]); // alternate children
-                    }
+                    self.handle_else_tag(
+                        &else_tag,
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
                 }
                 TokenType::EndIfTag => {
                     self.close_if_chain(
                         token.span,
                         &mut entry_stack,
                         &mut children_stack,
-                    )?;
+                    );
                 }
                 TokenType::StartEachTag(each) => {
                     entry_stack.push(StackEntry::EachBlock(EachBlockEntry {
@@ -241,29 +183,11 @@ impl<'a> Parser<'a> {
                     children_stack.push(vec![]); // body children
                 }
                 TokenType::EndEachTag => {
-                    let entry = entry_stack
-                        .pop()
-                        .ok_or_else(|| Diagnostic::no_each_block_to_close(token.span))?;
-
-                    let StackEntry::EachBlock(eb) = entry else {
-                        return Err(Diagnostic::no_each_block_to_close(token.span));
-                    };
-
-                    let body_children = children_stack.pop().unwrap();
-                    let merged_span = eb.span.merge(&token.span);
-
-                    let node = Node::EachBlock(EachBlock {
-                        id: self.ids.next(),
-                        span: merged_span,
-                        expression_span: eb.expression_span,
-                        context_span: eb.context_span,
-                        index_span: eb.index_span,
-                        key_span: eb.key_span,
-                        body: Fragment::new(body_children),
-                        fallback: None,
-                    });
-
-                    children_stack.last_mut().unwrap().push(node);
+                    self.handle_end_each_tag(
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
                 }
                 TokenType::StartSnippetTag(snippet_tag) => {
                     entry_stack.push(StackEntry::SnippetBlock(SnippetBlockEntry {
@@ -274,26 +198,11 @@ impl<'a> Parser<'a> {
                     children_stack.push(vec![]);
                 }
                 TokenType::EndSnippetTag => {
-                    let entry = entry_stack
-                        .pop()
-                        .ok_or_else(|| Diagnostic::unexpected_token(token.span))?;
-
-                    let StackEntry::SnippetBlock(sb) = entry else {
-                        return Err(Diagnostic::unexpected_token(token.span));
-                    };
-
-                    let body_children = children_stack.pop().unwrap();
-                    let merged_span = sb.span_start.merge(&token.span);
-
-                    let node = Node::SnippetBlock(SnippetBlock {
-                        id: self.ids.next(),
-                        span: merged_span,
-                        name: sb.name,
-                        params_span: sb.params_span,
-                        body: Fragment::new(body_children),
-                    });
-
-                    children_stack.last_mut().unwrap().push(node);
+                    self.handle_end_snippet_tag(
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
                 }
                 TokenType::RenderTag(render_tag) => {
                     let node = Node::RenderTag(RenderTag {
@@ -305,7 +214,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::ScriptTag(script_tag) => {
                     if script_data.is_some() {
-                        return Diagnostic::only_single_top_level_script(token.span).as_err();
+                        self.recover(Diagnostic::only_single_top_level_script(token.span));
+                        continue;
                     }
 
                     let content_start = self.offset_of(script_tag.source);
@@ -332,7 +242,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::StyleTag(style_tag) => {
                     if css_data.is_some() {
-                        return Diagnostic::only_single_top_level_style(token.span).as_err();
+                        self.recover(Diagnostic::only_single_top_level_style(token.span));
+                        continue;
                     }
 
                     let content_start = self.offset_of(style_tag.source);
@@ -347,9 +258,8 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if !entry_stack.is_empty() {
-            return Diagnostic::unclosed_node(Span::new(0, self.source.len() as u32)).as_err();
-        }
+        // Auto-close any remaining open entries
+        self.auto_close_entries(&mut entry_stack, &mut children_stack);
 
         let roots = children_stack.pop().unwrap();
 
@@ -374,7 +284,299 @@ impl<'a> Parser<'a> {
         );
         component.set_next_node_id(self.ids.current());
 
-        Ok(component)
+        (component, self.diagnostics)
+    }
+
+    fn handle_end_tag(
+        &mut self,
+        tag: &token::EndTag<'_>,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        // Try to find a matching element in the stack
+        let match_idx = entry_stack.iter().rposition(|e| {
+            matches!(e, StackEntry::Element(el) if el.name == tag.name)
+        });
+
+        match match_idx {
+            None => {
+                // No matching open tag — emit error node
+                self.recover(Diagnostic::no_element_to_close(span));
+                let node = Node::Error(svelte_ast::ErrorNode {
+                    id: self.ids.next(),
+                    span,
+                });
+                children_stack.last_mut().unwrap().push(node);
+            }
+            Some(idx) => {
+                // Auto-close any intervening entries
+                let entries_to_close = entry_stack.len() - 1 - idx;
+                for _ in 0..entries_to_close {
+                    let entry = entry_stack.pop().unwrap();
+                    self.auto_close_entry(entry, children_stack);
+                }
+
+                // Now close the matching element
+                let entry = entry_stack.pop().unwrap();
+                let StackEntry::Element(el) = entry else {
+                    unreachable!();
+                };
+
+                let children = children_stack.pop().unwrap();
+                let merged_span = el.span_start.merge(&span);
+
+                let node = if is_component_name(&el.name) {
+                    Node::ComponentNode(ComponentNode {
+                        id: self.ids.next(),
+                        span: merged_span,
+                        name: el.name,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment: Fragment::new(children),
+                    })
+                } else {
+                    Node::Element(Element {
+                        id: self.ids.next(),
+                        span: merged_span,
+                        name: el.name,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment: Fragment::new(children),
+                    })
+                };
+
+                children_stack.last_mut().unwrap().push(node);
+            }
+        }
+    }
+
+    fn handle_else_tag(
+        &mut self,
+        else_tag: &token::ElseTag<'_>,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let consequent_children = children_stack.pop().unwrap();
+
+        if else_tag.elseif {
+            // {:else if expr}
+            let valid = entry_stack.last().is_some_and(|e| matches!(e, StackEntry::IfBlock(_)));
+            if !valid {
+                self.recover(Diagnostic::no_if_block_for_else(span));
+                children_stack.push(consequent_children);
+                return;
+            }
+            let entry = entry_stack.last_mut().unwrap();
+            let StackEntry::IfBlock(ref mut ib) = entry else { unreachable!() };
+            ib.consequent = Some(consequent_children);
+            ib.in_alternate = true;
+
+            children_stack.push(vec![]);
+
+            let expr = else_tag.expression.as_ref().unwrap();
+            entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
+                span,
+                test_span: expr.span,
+                elseif: true,
+                consequent: None,
+                in_alternate: false,
+            }));
+            children_stack.push(vec![]);
+        } else {
+            // {:else}
+            let valid = entry_stack.last().is_some_and(|e| matches!(e, StackEntry::IfBlock(_)));
+            if !valid {
+                self.recover(Diagnostic::no_if_block_for_else(span));
+                children_stack.push(consequent_children);
+                return;
+            }
+            let entry = entry_stack.last_mut().unwrap();
+            let StackEntry::IfBlock(ref mut ib) = entry else { unreachable!() };
+            ib.consequent = Some(consequent_children);
+            ib.in_alternate = true;
+            ib.span = ib.span.merge(&span);
+            children_stack.push(vec![]);
+        }
+    }
+
+    fn handle_end_each_tag(
+        &mut self,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let entry = entry_stack.pop();
+
+        let Some(StackEntry::EachBlock(eb)) = entry else {
+            self.recover(Diagnostic::no_each_block_to_close(span));
+            if let Some(entry) = entry {
+                entry_stack.push(entry);
+            }
+            return;
+        };
+
+        let body_children = children_stack.pop().unwrap();
+        let merged_span = eb.span.merge(&span);
+
+        let node = Node::EachBlock(EachBlock {
+            id: self.ids.next(),
+            span: merged_span,
+            expression_span: eb.expression_span,
+            context_span: eb.context_span,
+            index_span: eb.index_span,
+            key_span: eb.key_span,
+            body: Fragment::new(body_children),
+            fallback: None,
+        });
+
+        children_stack.last_mut().unwrap().push(node);
+    }
+
+    fn handle_end_snippet_tag(
+        &mut self,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let entry = entry_stack.pop();
+
+        let Some(StackEntry::SnippetBlock(sb)) = entry else {
+            self.recover(Diagnostic::unexpected_token(span));
+            if let Some(entry) = entry {
+                entry_stack.push(entry);
+            }
+            return;
+        };
+
+        let body_children = children_stack.pop().unwrap();
+        let merged_span = sb.span_start.merge(&span);
+
+        let node = Node::SnippetBlock(SnippetBlock {
+            id: self.ids.next(),
+            span: merged_span,
+            name: sb.name,
+            params_span: sb.params_span,
+            body: Fragment::new(body_children),
+        });
+
+        children_stack.last_mut().unwrap().push(node);
+    }
+
+    /// Auto-close all remaining open entries at EOF.
+    fn auto_close_entries(
+        &mut self,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        while let Some(entry) = entry_stack.pop() {
+            self.auto_close_entry(entry, children_stack);
+        }
+    }
+
+    /// Auto-close a single entry, producing a node with span extended to end of source.
+    fn auto_close_entry(
+        &mut self,
+        entry: StackEntry,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let eof_pos = self.source.len() as u32;
+        let eof_span = Span::new(eof_pos, eof_pos);
+
+        match entry {
+            StackEntry::Element(el) => {
+                self.recover(Diagnostic::unclosed_node(el.span_start));
+                let children = children_stack.pop().unwrap();
+                let merged_span = el.span_start.merge(&eof_span);
+
+                let node = if is_component_name(&el.name) {
+                    Node::ComponentNode(ComponentNode {
+                        id: self.ids.next(),
+                        span: merged_span,
+                        name: el.name,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment: Fragment::new(children),
+                    })
+                } else {
+                    Node::Element(Element {
+                        id: self.ids.next(),
+                        span: merged_span,
+                        name: el.name,
+                        self_closing: false,
+                        attributes: el.attributes,
+                        fragment: Fragment::new(children),
+                    })
+                };
+
+                children_stack.last_mut().unwrap().push(node);
+            }
+            StackEntry::IfBlock(ib) => {
+                self.recover(Diagnostic::unclosed_node(ib.span));
+                let last_children = children_stack.pop().unwrap();
+
+                let (consequent, alternate) = if let Some(cons) = ib.consequent {
+                    (cons, Some(Fragment::new(last_children)))
+                } else {
+                    (last_children, None)
+                };
+
+                let merged_span = ib.span.merge(&eof_span);
+
+                let node = Node::IfBlock(IfBlock {
+                    id: self.ids.next(),
+                    span: merged_span,
+                    test_span: ib.test_span,
+                    elseif: ib.elseif,
+                    consequent: Fragment::new(consequent),
+                    alternate,
+                });
+
+                if ib.elseif {
+                    children_stack.last_mut().unwrap().push(node);
+                    // Continue unwinding parent if-blocks
+                    if children_stack.len() > 1 {
+                        // Parent if-block will be auto-closed in the next iteration
+                    }
+                } else {
+                    children_stack.last_mut().unwrap().push(node);
+                }
+            }
+            StackEntry::EachBlock(eb) => {
+                self.recover(Diagnostic::unclosed_node(eb.span));
+                let body_children = children_stack.pop().unwrap();
+                let merged_span = eb.span.merge(&eof_span);
+
+                let node = Node::EachBlock(EachBlock {
+                    id: self.ids.next(),
+                    span: merged_span,
+                    expression_span: eb.expression_span,
+                    context_span: eb.context_span,
+                    index_span: eb.index_span,
+                    key_span: eb.key_span,
+                    body: Fragment::new(body_children),
+                    fallback: None,
+                });
+
+                children_stack.last_mut().unwrap().push(node);
+            }
+            StackEntry::SnippetBlock(sb) => {
+                self.recover(Diagnostic::unclosed_node(sb.span_start));
+                let body_children = children_stack.pop().unwrap();
+                let merged_span = sb.span_start.merge(&eof_span);
+
+                let node = Node::SnippetBlock(SnippetBlock {
+                    id: self.ids.next(),
+                    span: merged_span,
+                    name: sb.name,
+                    params_span: sb.params_span,
+                    body: Fragment::new(body_children),
+                });
+
+                children_stack.last_mut().unwrap().push(node);
+            }
+        }
     }
 
     /// Close the if-block chain. Handles nested else-if blocks.
@@ -383,15 +585,18 @@ impl<'a> Parser<'a> {
         end_span: Span,
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<Node>>,
-    ) -> Result<(), Diagnostic> {
+    ) {
         // Process from innermost to outermost if-block
         loop {
-            let entry = entry_stack
-                .pop()
-                .ok_or_else(|| Diagnostic::no_if_block_to_close(end_span))?;
+            let Some(entry) = entry_stack.pop() else {
+                self.recover(Diagnostic::no_if_block_to_close(end_span));
+                return;
+            };
 
             let StackEntry::IfBlock(ib) = entry else {
-                return Err(Diagnostic::no_if_block_to_close(end_span));
+                self.recover(Diagnostic::no_if_block_to_close(end_span));
+                entry_stack.push(entry);
+                return;
             };
 
             let last_children = children_stack.pop().unwrap();
@@ -417,11 +622,7 @@ impl<'a> Parser<'a> {
 
             if ib.elseif {
                 // This is an else-if: it becomes the alternate of the parent if-block.
-                // The parent is still on the stack and is in_alternate mode.
-                // Push this node as a child of the parent's alternate.
                 children_stack.last_mut().unwrap().push(node);
-                // Don't break — but actually the parent's {:else if} already pushed its
-                // consequent. We need to check if the parent is also an if-block.
 
                 // Check if parent entry is also an IfBlock — if so, continue the loop.
                 if entry_stack
@@ -438,8 +639,6 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-
-        Ok(())
     }
 
     fn make_text(&mut self, token: &Token<'a>) -> Node {
@@ -467,7 +666,7 @@ impl<'a> Parser<'a> {
     fn convert_attributes(
         &mut self,
         token_attrs: &[token::Attribute<'a>],
-    ) -> Result<Vec<Attribute>, Diagnostic> {
+    ) -> Vec<Attribute> {
         let mut attributes = Vec::new();
 
         for attr in token_attrs {
@@ -549,7 +748,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(attributes)
+        attributes
     }
 
     fn offset_of(&self, s: &str) -> usize {
@@ -588,7 +787,9 @@ mod tests {
     use super::*;
 
     fn parse(source: &str) -> Component {
-        Parser::new(source).parse().unwrap()
+        let (component, diagnostics) = Parser::new(source).parse();
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+        component
     }
 
     fn assert_node(c: &Component, index: usize, expected: &str) {
@@ -687,9 +888,12 @@ mod tests {
     }
 
     #[test]
-    fn unclosed_element_returns_error() {
-        let result = Parser::new("<div>").parse();
-        assert!(result.is_err());
+    fn unclosed_element_returns_diagnostic() {
+        let (component, diagnostics) = Parser::new("<div>").parse();
+        assert!(!diagnostics.is_empty(), "expected diagnostics for unclosed element");
+        // AST should still contain the auto-closed element
+        assert_eq!(component.fragment.nodes.len(), 1);
+        assert!(component.fragment.nodes[0].is_element());
     }
 
     #[test]
@@ -818,9 +1022,9 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_style_tag_returns_error() {
-        let result = Parser::new("<style>a{}</style><style>b{}</style>").parse();
-        assert!(result.is_err());
+    fn duplicate_style_tag_returns_diagnostic() {
+        let (_, diagnostics) = Parser::new("<style>a{}</style><style>b{}</style>").parse();
+        assert!(!diagnostics.is_empty(), "expected diagnostic for duplicate style");
     }
 
     // --- Each block key tests (Bug #3) ---
@@ -894,5 +1098,88 @@ mod tests {
         } else {
             panic!("expected Element");
         }
+    }
+
+    // --- Error recovery tests ---
+
+    fn parse_with_diagnostics(source: &str) -> (Component, Vec<Diagnostic>) {
+        Parser::new(source).parse()
+    }
+
+    #[test]
+    fn recovery_unclosed_element_with_text() {
+        let (c, diags) = parse_with_diagnostics("<div><span>text");
+        assert!(!diags.is_empty());
+        // Auto-closed: div contains span, span contains text
+        assert_eq!(c.fragment.nodes.len(), 1);
+        assert!(c.fragment.nodes[0].is_element());
+    }
+
+    #[test]
+    fn recovery_mismatched_close_tag() {
+        let (c, diags) = parse_with_diagnostics("<div></span></div>");
+        assert!(!diags.is_empty());
+        // div should still be properly closed
+        assert_eq!(c.fragment.nodes.len(), 1);
+    }
+
+    #[test]
+    fn recovery_unclosed_if_block() {
+        let (c, diags) = parse_with_diagnostics("{#if x}hello");
+        assert!(!diags.is_empty());
+        // Should produce an auto-closed IfBlock
+        assert_eq!(c.fragment.nodes.len(), 1);
+        assert!(c.fragment.nodes[0].is_if_block());
+    }
+
+    #[test]
+    fn recovery_multiple_errors() {
+        let (c, diags) = parse_with_diagnostics("<div><span>");
+        assert!(diags.len() >= 2, "expected multiple diagnostics, got {}", diags.len());
+        // Both unclosed elements should be auto-closed
+        assert_eq!(c.fragment.nodes.len(), 1);
+    }
+
+    #[test]
+    fn recovery_empty_input() {
+        let (c, diags) = parse_with_diagnostics("");
+        assert!(diags.is_empty());
+        assert!(c.fragment.nodes.is_empty());
+    }
+
+    #[test]
+    fn recovery_text_only() {
+        let (c, diags) = parse_with_diagnostics("just text");
+        assert!(diags.is_empty());
+        assert_eq!(c.fragment.nodes.len(), 1);
+        assert!(c.fragment.nodes[0].is_text());
+    }
+
+    #[test]
+    fn recovery_close_tag_no_matching_open() {
+        let (c, diags) = parse_with_diagnostics("</div>");
+        assert!(!diags.is_empty());
+        // Error node for the orphan close tag
+        assert_eq!(c.fragment.nodes.len(), 1);
+        assert!(matches!(c.fragment.nodes[0], Node::Error(_)));
+    }
+
+    #[test]
+    fn recovery_duplicate_script_continues() {
+        let (c, diags) = parse_with_diagnostics(
+            "<script>let a = 1;</script><script>let b = 2;</script><div>ok</div>"
+        );
+        assert!(!diags.is_empty());
+        // First script is kept, second is skipped, div is parsed
+        assert!(c.script.is_some());
+        assert_eq!(c.fragment.nodes.len(), 1);
+        assert!(c.fragment.nodes[0].is_element());
+    }
+
+    #[test]
+    fn recovery_unclosed_each_block() {
+        let (c, diags) = parse_with_diagnostics("{#each items as item}content");
+        assert!(!diags.is_empty());
+        assert_eq!(c.fragment.nodes.len(), 1);
     }
 }

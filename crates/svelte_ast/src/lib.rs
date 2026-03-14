@@ -79,6 +79,12 @@ pub enum Node {
     EachBlock(EachBlock),
     SnippetBlock(SnippetBlock),
     RenderTag(RenderTag),
+    Error(ErrorNode),
+}
+
+pub struct ErrorNode {
+    pub id: NodeId,
+    pub span: Span,
 }
 
 impl Node {
@@ -93,6 +99,7 @@ impl Node {
             Node::EachBlock(n) => n.id,
             Node::SnippetBlock(n) => n.id,
             Node::RenderTag(n) => n.id,
+            Node::Error(n) => n.id,
         }
     }
 
@@ -107,6 +114,7 @@ impl Node {
             Node::EachBlock(n) => n.span,
             Node::SnippetBlock(n) => n.span,
             Node::RenderTag(n) => n.span,
+            Node::Error(n) => n.span,
         }
     }
 

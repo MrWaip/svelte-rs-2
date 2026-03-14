@@ -89,7 +89,7 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             Node::RenderTag(tag) => {
                 visitor.visit_render_tag(tag, scope, data);
             }
-            Node::Text(_) | Node::Comment(_) => {}
+            Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }
 }

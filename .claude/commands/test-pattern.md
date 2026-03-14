@@ -51,7 +51,7 @@ fn if_block() {
 
 ```rust
 fn analyze_source(source: &str) -> (Component, AnalysisData) {
-    let component = Parser::new(source).parse().expect("parse failed");
+    let (component, _) = Parser::new(source).parse();
     let (data, diags) = analyze(&component);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)

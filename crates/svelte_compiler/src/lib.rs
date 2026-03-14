@@ -6,7 +6,12 @@ pub struct CompileResult {
 
 /// Compile a Svelte source file to client-side JavaScript.
 pub fn compile(source: &str) -> Result<CompileResult, Diagnostic> {
-    let component = svelte_parser::Parser::new(source).parse()?;
+    let (component, parse_diagnostics) = svelte_parser::Parser::new(source).parse();
+
+    // Treat parse errors as fatal.
+    if let Some(diag) = parse_diagnostics.into_iter().find(|d| d.severity == Severity::Error) {
+        return Err(diag);
+    }
 
     let (analysis, diags) = svelte_analyze::analyze(&component);
 
