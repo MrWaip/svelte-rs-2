@@ -61,6 +61,6 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
             // Already computed: leave_element processes children before parents
             data.elements_needing_var.contains(id)
         }
-        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => true,
+        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) => true,
     }
 }

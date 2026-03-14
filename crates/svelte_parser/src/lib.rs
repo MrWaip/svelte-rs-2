@@ -7,7 +7,7 @@ use svelte_span::Span;
 use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
-    ExpressionAttribute, Fragment, IfBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
+    ExpressionAttribute, Fragment, HtmlTag, IfBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
 
@@ -209,6 +209,14 @@ impl<'a> Parser<'a> {
                         id: self.ids.next(),
                         span: token.span,
                         expression_span: render_tag.expression.span,
+                    });
+                    children_stack.last_mut().unwrap().push(node);
+                }
+                TokenType::HtmlTag(html_tag) => {
+                    let node = Node::HtmlTag(HtmlTag {
+                        id: self.ids.next(),
+                        span: token.span,
+                        expression_span: html_tag.expression.span,
                     });
                     children_stack.last_mut().unwrap().push(node);
                 }
@@ -985,6 +993,28 @@ mod tests {
         let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
         assert_snippet_block(&c, 0, "greet", Some("name"));
         assert_render_tag(&c, 1, "greet(x)");
+    }
+
+    // --- HtmlTag tests ---
+
+    fn assert_html_tag(c: &Component, index: usize, expected_expr: &str) {
+        if let Node::HtmlTag(ref ht) = c.fragment.nodes[index] {
+            assert_eq!(c.source_text(ht.expression_span), expected_expr);
+        } else {
+            panic!("expected HtmlTag at index {index}");
+        }
+    }
+
+    #[test]
+    fn html_tag_basic() {
+        let c = parse("{@html content}");
+        assert_html_tag(&c, 0, "content");
+    }
+
+    #[test]
+    fn html_tag_complex_expression() {
+        let c = parse("{@html '<p>' + name + '</p>'}");
+        assert_html_tag(&c, 0, "'<p>' + name + '</p>'");
     }
 
     // --- Escape sequence tests (Bug #1) ---

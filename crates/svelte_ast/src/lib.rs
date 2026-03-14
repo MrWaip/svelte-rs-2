@@ -79,6 +79,7 @@ pub enum Node {
     EachBlock(EachBlock),
     SnippetBlock(SnippetBlock),
     RenderTag(RenderTag),
+    HtmlTag(HtmlTag),
     Error(ErrorNode),
 }
 
@@ -99,6 +100,7 @@ impl Node {
             Node::EachBlock(n) => n.id,
             Node::SnippetBlock(n) => n.id,
             Node::RenderTag(n) => n.id,
+            Node::HtmlTag(n) => n.id,
             Node::Error(n) => n.id,
         }
     }
@@ -114,6 +116,7 @@ impl Node {
             Node::EachBlock(n) => n.span,
             Node::SnippetBlock(n) => n.span,
             Node::RenderTag(n) => n.span,
+            Node::HtmlTag(n) => n.span,
             Node::Error(n) => n.span,
         }
     }
@@ -144,6 +147,10 @@ impl Node {
 
     pub fn is_render_tag(&self) -> bool {
         matches!(self, Node::RenderTag(_))
+    }
+
+    pub fn is_html_tag(&self) -> bool {
+        matches!(self, Node::HtmlTag(_))
     }
 
     pub fn is_component_node(&self) -> bool {
@@ -328,6 +335,17 @@ pub struct RenderTag {
     pub id: NodeId,
     pub span: Span,
     /// Span of the full call expression: "greeting(message)" in `{@render greeting(message)}`.
+    pub expression_span: Span,
+}
+
+// ---------------------------------------------------------------------------
+// HtmlTag — {@html expr}
+// ---------------------------------------------------------------------------
+
+pub struct HtmlTag {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the JS expression: "content" in `{@html content}`.
     pub expression_span: Span,
 }
 

@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, Fragment, IfBlock,
-    Node, RenderTag, SnippetBlock,
+    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, Fragment, HtmlTag,
+    IfBlock, Node, RenderTag, SnippetBlock,
 };
 
 use crate::data::AnalysisData;
@@ -20,6 +20,7 @@ use crate::data::AnalysisData;
 pub(crate) trait TemplateVisitor {
     fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {}
@@ -89,6 +90,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             Node::RenderTag(tag) => {
                 visitor.visit_render_tag(tag, scope, data);
             }
+            Node::HtmlTag(tag) => {
+                visitor.visit_html_tag(tag, scope, data);
+            }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }
@@ -106,6 +110,9 @@ macro_rules! impl_composite_visitor {
             }
             fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.visit_render_tag(tag, scope, data);)+
+            }
+            fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
+                $(self.$idx.visit_html_tag(tag, scope, data);)+
             }
             fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.visit_element(el, scope, data);)+
