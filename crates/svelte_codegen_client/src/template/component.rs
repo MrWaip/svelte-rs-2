@@ -13,11 +13,11 @@ use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
 
 /// Collected attribute info from the immutable Component borrow.
-enum AttrKind {
-    String { name: String, value_span: Span },
-    Boolean { name: String },
-    Expression { name: String, attr_idx: usize, shorthand: bool },
-    Concatenation { name: String, attr_idx: usize },
+enum AttrKind<'a> {
+    String { name: &'a str, value_span: Span },
+    Boolean { name: &'a str },
+    Expression { name: &'a str, attr_idx: usize, shorthand: bool },
+    Concatenation { name: &'a str, attr_idx: usize },
     Shorthand { attr_idx: usize },
     Spread,
     Skip,
@@ -31,27 +31,26 @@ pub(crate) fn gen_component<'a>(
     init: &mut Vec<Statement<'a>>,
 ) {
     let cn = ctx.component_node(id);
-    let name = cn.name.clone();
-    let name_str: &str = ctx.b.alloc_str(&name);
+    let name: &str = &cn.name;
 
     // Collect attribute info while borrowing ctx immutably
-    let attr_infos: Vec<(AttrKind, bool)> = cn.attributes.iter().enumerate().map(|(idx, attr)| {
+    let attr_infos: Vec<(AttrKind<'_>, bool)> = cn.attributes.iter().enumerate().map(|(idx, attr)| {
         let is_dynamic = ctx.analysis.dynamic_attrs.contains(&(id, idx));
         let kind = match attr {
             Attribute::StringAttribute(a) => AttrKind::String {
-                name: a.name.clone(),
+                name: &a.name,
                 value_span: a.value_span,
             },
             Attribute::BooleanAttribute(a) => AttrKind::Boolean {
-                name: a.name.clone(),
+                name: &a.name,
             },
             Attribute::ExpressionAttribute(a) => AttrKind::Expression {
-                name: a.name.clone(),
+                name: &a.name,
                 attr_idx: idx,
                 shorthand: a.shorthand,
             },
             Attribute::ConcatenationAttribute(a) => AttrKind::Concatenation {
-                name: a.name.clone(),
+                name: &a.name,
                 attr_idx: idx,
             },
             Attribute::ShorthandOrSpread(a) if a.is_spread => AttrKind::Spread,
@@ -69,15 +68,15 @@ pub(crate) fn gen_component<'a>(
         match kind {
             AttrKind::String { name, value_span } => {
                 let value_text = ctx.component.source_text(value_span);
-                let key = ctx.b.alloc_str(&name);
+                let key = ctx.b.alloc_str(name);
                 props.push(ObjProp::KeyValue(key, ctx.b.str_expr(value_text)));
             }
             AttrKind::Boolean { name } => {
-                let key = ctx.b.alloc_str(&name);
+                let key = ctx.b.alloc_str(name);
                 props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
             }
             AttrKind::Expression { name, attr_idx, shorthand } => {
-                let key = ctx.b.alloc_str(&name);
+                let key = ctx.b.alloc_str(name);
                 let expr = get_attr_expr(ctx, id, attr_idx);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
@@ -88,7 +87,7 @@ pub(crate) fn gen_component<'a>(
                 }
             }
             AttrKind::Concatenation { name, attr_idx } => {
-                let key = ctx.b.alloc_str(&name);
+                let key = ctx.b.alloc_str(name);
                 // Re-borrow to access ConcatPart slice
                 let cn = ctx.component_node(id);
                 if let Attribute::ConcatenationAttribute(a) = &cn.attributes[attr_idx] {
@@ -151,6 +150,6 @@ pub(crate) fn gen_component<'a>(
 
     let props_expr = ctx.b.object_expr(props);
     init.push(ctx.b.expr_stmt(
-        ctx.b.call_expr(name_str, [Arg::Expr(anchor), Arg::Expr(props_expr)]),
+        ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]),
     ));
 }

@@ -34,24 +34,31 @@ pub(crate) fn gen_render_tag<'a>(
 
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
 
-    let prop_sources = ctx.prop_sources.clone();
-
     // Wrap each argument in a thunk () => arg
     for arg in call.unbox().arguments.into_iter() {
         let arg_expr = arg.into_expression();
 
         // After transform, prop sources become `name()` (CallExpression with no args).
         // Detect this pattern and pass the getter identifier directly without a thunk.
-        if let Expression::CallExpression(ref inner_call) = arg_expr {
-            if inner_call.arguments.is_empty() {
-                if let Expression::Identifier(ref ident) = inner_call.callee {
+        let prop_getter_name = match &arg_expr {
+            Expression::CallExpression(inner_call) if inner_call.arguments.is_empty() => {
+                if let Expression::Identifier(ident) = &inner_call.callee {
                     let name = ident.name.as_str();
-                    if prop_sources.contains(name) {
-                        call_args.push(Arg::Expr(ctx.b.rid_expr(name)));
-                        continue;
+                    if ctx.prop_sources.contains(name) {
+                        Some(name.to_string())
+                    } else {
+                        None
                     }
+                } else {
+                    None
                 }
             }
+            _ => None,
+        };
+
+        if let Some(name) = &prop_getter_name {
+            call_args.push(Arg::Expr(ctx.b.rid_expr(name)));
+            continue;
         }
 
         let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(arg_expr)]);

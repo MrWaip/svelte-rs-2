@@ -477,6 +477,40 @@ fn is_simple_expr(expr: &Expression<'_>) -> bool {
     }
 }
 
+/// Events that Svelte delegates to the document root.
+pub fn is_delegatable_event(name: &str) -> bool {
+    matches!(
+        name,
+        "click"
+            | "input"
+            | "change"
+            | "submit"
+            | "focus"
+            | "blur"
+            | "keydown"
+            | "keyup"
+            | "keypress"
+            | "mousedown"
+            | "mouseup"
+            | "mousemove"
+            | "mouseenter"
+            | "mouseleave"
+            | "mouseover"
+            | "mouseout"
+            | "touchstart"
+            | "touchend"
+            | "touchmove"
+            | "pointerdown"
+            | "pointerup"
+            | "pointermove"
+            | "focusin"
+            | "focusout"
+            | "dblclick"
+            | "contextmenu"
+            | "auxclick"
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
