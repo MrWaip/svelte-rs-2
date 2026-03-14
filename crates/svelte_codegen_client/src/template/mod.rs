@@ -31,9 +31,10 @@ use traverse::traverse_items;
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Returns `(hoisted, body, snippet_stmts)` for the root fragment.
+/// Returns `(hoisted, body, snippet_stmts, hoistable_snippets)` for the root fragment.
 /// `snippet_stmts` are instance-level snippets that go inside the function body.
-pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>) {
+/// `hoistable_snippets` are module-level snippet declarations.
+pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let key = FragmentKey::Root;
     let ct = ctx
         .analysis
@@ -45,17 +46,33 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
 
-    // Generate instance-level snippets NOW (after root ident consumed, before inner fragments)
-    // so their templates get the correct root_N numbering
-    let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
-    let component = ctx.component;
-    for node in &component.fragment.nodes {
+    // Collect snippet IDs and pre-consume gen_ident slots for parameter names
+    // to avoid collisions (e.g., badge's `text` param reserves the "text" counter)
+    let mut instance_snippet_ids = Vec::new();
+    let mut hoistable_snippet_ids = Vec::new();
+    for node in &ctx.component.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            if !ctx.analysis.hoistable_snippets.contains(&block.id) {
-                let stmt = snippet::gen_snippet_block(ctx, block.id);
-                snippet_stmts.push(stmt);
+            if let Some(params) = ctx.analysis.snippet_params.get(&block.id) {
+                for param in params {
+                    ctx.gen_ident(param);
+                }
+            }
+            if ctx.analysis.hoistable_snippets.contains(&block.id) {
+                hoistable_snippet_ids.push(block.id);
+            } else {
+                instance_snippet_ids.push(block.id);
             }
         }
+    }
+
+    // Generate snippet bodies: instance first, then hoistable (ordering matters for ident numbering)
+    let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
+    for id in instance_snippet_ids {
+        snippet_stmts.push(snippet::gen_snippet_block(ctx, id));
+    }
+    let mut hoistable_snippets: Vec<Statement<'a>> = Vec::new();
+    for id in hoistable_snippet_ids {
+        hoistable_snippets.push(snippet::gen_snippet_block(ctx, id));
     }
 
     let mut hoisted = Vec::new();
@@ -70,7 +87,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         ContentType::Mixed => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
-    (hoisted, body, snippet_stmts)
+    (hoisted, body, snippet_stmts, hoistable_snippets)
 }
 
 // ---------------------------------------------------------------------------

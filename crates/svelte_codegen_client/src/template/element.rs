@@ -31,13 +31,13 @@ pub(crate) fn process_element<'a>(
         .copied()
         .unwrap_or(ContentType::Empty);
 
-    // $.remove_input_defaults for <input> elements with any bind directive
+    // $.remove_input_defaults for <input> elements with bind or dynamic value attribute
     let is_input = el.name == "input";
-    let has_bind = el
-        .attributes
-        .iter()
-        .any(|a| matches!(a, Attribute::BindDirective(_)));
-    if is_input && has_bind {
+    let needs_input_defaults = is_input && el.attributes.iter().any(|a| {
+        matches!(a, Attribute::BindDirective(_))
+            || matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
+    });
+    if needs_input_defaults {
         init.push(ctx.b.call_stmt(
             "$.remove_input_defaults",
             [Arg::Ident(el_name)],
@@ -55,14 +55,15 @@ pub(crate) fn process_element<'a>(
             attr_dynamic.push(ctx.analysis.dynamic_attrs.contains(&(el_id, idx)));
         }
         let el = ctx.element(el_id);
+        let tag = el.name.clone();
         for (idx, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_name, attr_dynamic[idx], init, update, after_update);
+            process_attr(ctx, attr, el_name, &tag, attr_dynamic[idx], init, update, after_update);
         }
     }
 
     // Class directives
     let el = ctx.element(el_id);
-    process_class_directives(ctx, &el.clone_without_fragment(), el_name, init);
+    process_class_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // Children
     let has_state = has_dynamic_children(ctx, el_id);

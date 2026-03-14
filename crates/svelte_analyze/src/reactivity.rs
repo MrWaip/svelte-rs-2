@@ -3,7 +3,6 @@ use svelte_ast::{
     Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, IfBlock, NodeId,
     RenderTag, SnippetBlock,
 };
-
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
@@ -134,9 +133,8 @@ fn component_attr_is_dynamic(
     false
 }
 
-// Attributes are dynamic only for *mutated* runes — unlike expressions where
-// any rune makes the expression dynamic. This is because attributes generate
-// `$.attr_effect()` which requires a signal that can change.
+// Attributes are dynamic for any rune reference or prop access — they can
+// change between renders and need a template_effect to stay up-to-date.
 fn attr_is_dynamic(
     attr: &Attribute,
     attr_idx: usize,
@@ -151,19 +149,15 @@ fn attr_is_dynamic(
         return false;
     }
     if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
-        let root = data.scoping.root_scope_id();
         return info.references.iter().any(|r| {
-            if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name) {
-                // Non-root scope binding (each-block var) is always dynamic
-                if data.scoping.symbol_scope_id(sym_id) != root {
-                    return true;
-                }
-                // Root-scope rune that is mutated
-                if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
+            // Non-source props are always dynamic (accessed as $$props.name)
+            if let Some(pa) = &data.props {
+                if pa.props.iter().any(|p| p.local_name == r.name && !p.is_prop_source) {
                     return true;
                 }
             }
-            false
+            // Delegate to is_dynamic_ref for rune/scope checks
+            data.scoping.is_dynamic_ref(current_scope, &r.name)
         });
     }
     false

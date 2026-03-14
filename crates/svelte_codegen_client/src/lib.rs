@@ -28,22 +28,11 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // 2. Template generation (consumes "root" ident first)
     //    instance_snippets are generated inside gen_root_fragment for correct numbering
     // -----------------------------------------------------------------------
-    let (hoisted, template_body, instance_snippets) = template::gen_root_fragment(&mut ctx);
-
-    // Module-level snippet declarations (hoistable — don't reference script vars)
-    let mut snippet_hoisted: Vec<Statement<'_>> = Vec::new();
-    for node in &component.fragment.nodes {
-        if let svelte_ast::Node::SnippetBlock(block) = node {
-            if ctx.analysis.hoistable_snippets.contains(&block.id) {
-                let stmt = template::snippet::gen_snippet_block(&mut ctx, block.id);
-                snippet_hoisted.push(stmt);
-            }
-        }
-    }
+    let (hoisted, template_body, instance_snippets, hoistable_snippets) = template::gen_root_fragment(&mut ctx);
 
     // Layout: hoistable snippets → inner hoisted → root hoisted
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
-    all_hoisted.extend(snippet_hoisted);
+    all_hoisted.extend(hoistable_snippets);
     all_hoisted.extend(ctx.module_hoisted.drain(..));
     all_hoisted.extend(hoisted);
 

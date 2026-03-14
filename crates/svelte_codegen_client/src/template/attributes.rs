@@ -14,6 +14,7 @@ pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr: &Attribute,
     el_name: &str,
+    tag_name: &str,
     is_dyn: bool,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
@@ -49,14 +50,21 @@ pub(crate) fn process_attr<'a>(
                 }
             }
             let val = parse_expr(ctx, a.expression_span);
-            target.push(ctx.b.call_stmt(
-                "$.set_attribute",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Str(a.name.clone()),
-                    Arg::Expr(val),
-                ],
-            ));
+            if a.name == "value" && tag_name == "input" {
+                target.push(ctx.b.call_stmt(
+                    "$.set_value",
+                    [Arg::Ident(el_name), Arg::Expr(val)],
+                ));
+            } else {
+                target.push(ctx.b.call_stmt(
+                    "$.set_attribute",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::Str(a.name.clone()),
+                        Arg::Expr(val),
+                    ],
+                ));
+            }
         }
         Attribute::ConcatenationAttribute(a) => {
             let val = build_attr_concat(ctx, &a.parts);
@@ -88,12 +96,14 @@ pub(crate) fn process_attr<'a>(
     }
 }
 
-/// Generate `$.set_class(el, 1, "", null, classes, { ... })` for class:name directives.
+/// Generate `$.set_class(el, 1, "static-class", null, classes_N, { ... })` for class:name directives.
+/// Pushes `let classes_N;` to `init` and the assignment to `update` for combined template_effect.
 pub(crate) fn process_class_directives<'a>(
     ctx: &mut Ctx<'a>,
     el: &Element,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
+    update: &mut Vec<Statement<'a>>,
 ) {
     let class_dirs: Vec<_> = el
         .attributes
@@ -107,6 +117,18 @@ pub(crate) fn process_class_directives<'a>(
     if class_dirs.is_empty() {
         return;
     }
+
+    // Find static class value from a StringAttribute named "class"
+    let static_class = el
+        .attributes
+        .iter()
+        .find_map(|a| match a {
+            Attribute::StringAttribute(sa) if sa.name == "class" => {
+                Some(ctx.component.source_text(sa.value_span).to_string())
+            }
+            _ => None,
+        })
+        .unwrap_or_default();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
@@ -138,30 +160,31 @@ pub(crate) fn process_class_directives<'a>(
     }
 
     let obj = ctx.b.object_expr(props);
+    let classes_name = ctx.gen_ident("classes");
 
-    // $.set_class(el, 1, "", null, classes, { ... })
+    // $.set_class(el, 1, "static-class", null, classes_N, { ... })
     let set_class_call = ctx.b.call_expr(
         "$.set_class",
         [
             Arg::Ident(el_name),
             Arg::Num(1.0),
-            Arg::Str(String::new()),
+            Arg::Str(static_class),
             Arg::Expr(ctx.b.null_expr()),
-            Arg::Ident("classes"),
+            Arg::Ident(&classes_name),
             Arg::Expr(obj),
         ],
     );
 
-    // classes = $.set_class(...)
+    // classes_N = $.set_class(...)
     let assign = ctx.b.assign_expr(
-        AssignLeft::Ident("classes".to_string()),
+        AssignLeft::Ident(classes_name.clone()),
         AssignRight::Expr(set_class_call),
     );
 
-    // let classes;
-    // $.template_effect(() => { classes = $.set_class(...) })
-    init.push(ctx.b.let_stmt("classes"));
-    super::expression::emit_template_effect(ctx, vec![ctx.b.expr_stmt(assign)], init);
+    // let classes_N;
+    init.push(ctx.b.let_stmt(&classes_name));
+    // Push assignment to update vector for combined template_effect
+    update.push(ctx.b.expr_stmt(assign));
 }
 
 /// Generate a bind directive statement (getter/setter + runtime call).
