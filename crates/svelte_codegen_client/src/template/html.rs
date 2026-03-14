@@ -101,6 +101,12 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
             // space placeholder for the text node
             html.push(' ');
         }
+        ContentType::SingleBlock if matches!(
+            ctx.analysis.lowered_fragments.get(&child_key).unwrap().items.first(),
+            Some(FragmentItem::EachBlock(_))
+        ) => {
+            // Controlled each block: no <!> anchor in template
+        }
         ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
             html.push_str(&fragment_html(ctx, child_key));
         }

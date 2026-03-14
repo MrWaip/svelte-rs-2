@@ -216,7 +216,7 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
             body.push(ctx.b.block_stmt(stmts));
         }
         FragmentItem::EachBlock(id) => {
-            gen_each_block(ctx, id, ctx.b.rid_expr(&node), body);
+            gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, body);
         }
         _ => unreachable!(),
     }
@@ -411,7 +411,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                             body.push(ctx.b.block_stmt(stmts));
                         }
                         FragmentItem::EachBlock(id) => {
-                            gen_each_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                            gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, &mut body);
                         }
                         _ => unreachable!(),
                     }

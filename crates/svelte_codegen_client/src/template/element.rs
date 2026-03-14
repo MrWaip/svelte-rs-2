@@ -9,6 +9,7 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 use super::attributes::{process_attr, process_attrs_spread, process_class_directives};
+use super::each_block::gen_each_block;
 use super::expression::{build_concat, emit_trailing_next};
 use super::traverse::traverse_items;
 
@@ -107,6 +108,19 @@ pub(crate) fn process_element<'a>(
                 "$.set_text",
                 [Arg::Ident(&text_name), Arg::Expr(expr)],
             ));
+        }
+
+        ContentType::SingleBlock if matches!(
+            ctx.analysis.lowered_fragments.get(&child_key).unwrap().items.first(),
+            Some(svelte_analyze::FragmentItem::EachBlock(_))
+        ) => {
+            // Controlled each block: element itself is the anchor, no $.child() traversal
+            let each_id = match ctx.analysis.lowered_fragments.get(&child_key).unwrap().items[0] {
+                svelte_analyze::FragmentItem::EachBlock(id) => id,
+                _ => unreachable!(),
+            };
+            gen_each_block(ctx, each_id, ctx.b.rid_expr(el_name), true, init);
+            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }
 
         ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
