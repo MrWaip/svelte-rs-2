@@ -81,6 +81,8 @@ pub struct ScriptInfo {
     pub declarations: Vec<DeclarationInfo>,
     pub props_declaration: Option<PropsDeclaration>,
     pub exports: Vec<ExportInfo>,
+    /// True when the script contains `$effect(...)` or `$effect.pre(...)` calls.
+    pub has_effects: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +143,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
+    let mut has_effects = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -166,11 +169,34 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
             Statement::FunctionDeclaration(func) => {
                 collect_func_declaration(func, offset, &mut declarations);
             }
+            Statement::ExpressionStatement(expr_stmt) => {
+                if is_effect_call(&expr_stmt.expression) {
+                    has_effects = true;
+                }
+            }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports }
+    ScriptInfo { declarations, props_declaration, exports, has_effects }
+}
+
+/// Check if an expression is a `$effect(...)` or `$effect.pre(...)` call.
+fn is_effect_call(expr: &Expression<'_>) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        match &call.callee {
+            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
+            Expression::StaticMemberExpression(member) => {
+                if let Expression::Identifier(obj) = &member.object {
+                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn collect_export_names_from_declaration(

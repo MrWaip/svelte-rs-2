@@ -79,6 +79,9 @@ pub struct AnalysisData {
     pub needs_input_defaults: FxHashSet<NodeId>,
     /// Fragments whose items contain at least one dynamic child.
     pub fragment_has_dynamic_children: FxHashSet<FragmentKey>,
+
+    /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
+    pub needs_context: bool,
 }
 
 impl AnalysisData {
@@ -108,6 +111,7 @@ impl AnalysisData {
             element_static_class: FxHashMap::default(),
             needs_input_defaults: FxHashSet::default(),
             fragment_has_dynamic_children: FxHashSet::default(),
+            needs_context: false,
         }
     }
 

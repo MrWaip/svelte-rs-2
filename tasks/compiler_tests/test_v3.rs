@@ -265,3 +265,8 @@ fn derived_dynamic() {
 fn unmutated_state_optimization() {
     assert_compiler("unmutated_state_optimization");
 }
+
+#[rstest]
+fn effect_runes() {
+    assert_compiler("effect_runes");
+}

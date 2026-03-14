@@ -34,6 +34,7 @@ Current work items: see `TODO.md`.
 - [x] Import hoisting
 - [x] Strip TypeScript
 - [x] Exports (`$$.exports`)
+- [x] `$effect(fn)` → `$.user_effect(fn)`, `$effect.pre(fn)` → `$.user_pre_effect(fn)`
 
 ### Template codegen
 - [x] Element (with all attribute types)
@@ -85,8 +86,8 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 
 | # | Feature | Transform | Phases | Notes |
 |---|---------|-----------|--------|-------|
-| 1 | `$effect(fn)` | `$.user_effect(fn)` | S | ExpressionStatement handler, member expr detection ready from `$derived.by` |
-| 2 | `$effect.pre(fn)` | `$.user_pre_effect(fn)` | S | Same pattern as `$effect` |
+| 1 | ~~`$effect(fn)`~~ | `$.user_effect(fn)` | S | ✅ Done |
+| 2 | ~~`$effect.pre(fn)`~~ | `$.user_pre_effect(fn)` | S | ✅ Done |
 | 3 | `$state.raw(val)` | `$.state(val)` (no `$.proxy()`) | S | Add `RuneKind::StateRaw`, skip proxy wrapping |
 | 4 | `$state.snapshot(val)` | `$.snapshot(val)` | S | Inline call rewrite, not a declarator |
 | 5 | `$effect.tracking()` | `$.effect_tracking()` | S | Trivial call rewrite, no args |
