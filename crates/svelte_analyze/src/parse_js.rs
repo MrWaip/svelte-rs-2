@@ -13,6 +13,7 @@ pub fn parse_js(component: &Component, data: &mut AnalysisData, diags: &mut Vec<
         {
             Ok((mut info, scoping)) => {
                 data.exports = std::mem::take(&mut info.exports);
+                data.needs_context = info.has_effects;
                 data.script = Some(info);
                 data.scoping = ComponentScoping::from_scoping(scoping);
             }

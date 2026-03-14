@@ -41,7 +41,7 @@ pub fn generate(component: &Component, analysis: &AnalysisData) -> String {
     // -----------------------------------------------------------------------
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
-    let needs_push = has_bindable || has_exports;
+    let needs_push = has_bindable || has_exports || ctx.analysis.needs_context;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
     if ctx.needs_binding_group {
