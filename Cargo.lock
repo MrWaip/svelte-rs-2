@@ -300,6 +300,7 @@ dependencies = [
  "oxc_codegen",
  "oxc_parser",
  "oxc_span",
+ "serde_json",
 ]
 
 [[package]]
