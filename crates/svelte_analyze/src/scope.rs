@@ -190,6 +190,12 @@ impl ComponentScoping {
             .collect()
     }
 
+    /// Extract the inner OXC `Scoping` for reuse in codegen.
+    /// Call only after `cache_rune_sets()` — `ComponentScoping` methods that
+    /// depend on `self.scoping` will panic after this.
+    pub fn take_scoping(&mut self) -> Scoping {
+        std::mem::take(&mut self.scoping)
+    }
 }
 
 // ---------------------------------------------------------------------------

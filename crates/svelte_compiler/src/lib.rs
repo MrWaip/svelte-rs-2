@@ -14,8 +14,12 @@ pub fn compile(source: &str) -> CompileResult {
     let js_alloc = oxc_allocator::Allocator::default();
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
+        let (mut analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
         svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed);
+        // Extract OXC Scoping after transform is done — ComponentScoping no longer needed.
+        if parsed.script_program.is_some() {
+            parsed.script_scoping = Some(analysis.scoping.take_scoping());
+        }
         let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed);
         (js, analyze_diags)
     }));
