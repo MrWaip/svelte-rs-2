@@ -18,6 +18,8 @@ pub struct ParsedExprs<'a> {
     pub exprs: FxHashMap<NodeId, Expression<'a>>,
     /// Attribute expressions: (owner_element_id, attr_index).
     pub attr_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
+    /// ConcatenationAttribute dynamic parts: (owner_id, attr_index, part_index).
+    pub concat_part_exprs: FxHashMap<(NodeId, usize, usize), Expression<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -25,6 +27,7 @@ impl<'a> ParsedExprs<'a> {
         Self {
             exprs: FxHashMap::default(),
             attr_exprs: FxHashMap::default(),
+            concat_part_exprs: FxHashMap::default(),
         }
     }
 }
