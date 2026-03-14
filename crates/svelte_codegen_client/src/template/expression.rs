@@ -167,6 +167,31 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
 }
 
 // ---------------------------------------------------------------------------
+// Thunk builder — `() => expr` with rune transforms
+// ---------------------------------------------------------------------------
+
+/// Build `() => expr` from raw source text, applying rune transforms.
+/// Used by HtmlTag and other nodes that need a thunked expression.
+pub(crate) fn build_expr_thunk<'a>(ctx: &mut Ctx<'a>, source: &str) -> Expression<'a> {
+    let alloc = ctx.b.ast.allocator;
+    let arena_source: &'a str = alloc.alloc_str(source);
+
+    let expr = parse_and_transform(
+        alloc,
+        arena_source,
+        &ctx.analysis.mutated_runes,
+        &ctx.analysis.rune_names,
+        &ctx.prop_sources,
+        &ctx.prop_non_sources,
+        &[],
+        &ctx.each_vars,
+    );
+
+    let params = ctx.b.no_params();
+    ctx.b.arrow_expr(params, [ctx.b.expr_stmt(expr)])
+}
+
+// ---------------------------------------------------------------------------
 // Concatenation builders
 // ---------------------------------------------------------------------------
 
