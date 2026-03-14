@@ -170,7 +170,7 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
 
 pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expression<'a> {
     match item {
-        FragmentItem::TextConcat { parts } => build_concat_from_parts(ctx, parts),
+        FragmentItem::TextConcat { parts, .. } => build_concat_from_parts(ctx, parts),
         _ => ctx.b.str_expr(""),
     }
 }
@@ -258,7 +258,7 @@ pub(crate) fn build_attr_concat<'a>(
 
 pub(crate) fn static_text_of(item: &FragmentItem) -> String {
     match item {
-        FragmentItem::TextConcat { parts } => parts
+        FragmentItem::TextConcat { parts, .. } => parts
             .iter()
             .filter_map(|p| {
                 if let ConcatPart::Text(s) = p {
@@ -332,7 +332,7 @@ pub(crate) fn emit_trailing_next<'a>(
 
 pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
-        FragmentItem::TextConcat { parts } => parts_are_dynamic(parts, ctx),
+        FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
         FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) => {
             ctx.analysis.dynamic_nodes.contains(id)
         }

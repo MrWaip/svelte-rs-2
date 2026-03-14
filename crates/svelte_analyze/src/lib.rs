@@ -1,5 +1,6 @@
 mod content_types;
 mod data;
+mod element_flags;
 mod elseif;
 mod known_values;
 mod lower;
@@ -60,12 +61,13 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);
 
-    // Single composite walk: reactivity + elseif
+    // Single composite walk: reactivity + elseif + element flags
     {
         let root = data.scoping.root_scope_id();
         let mut visitor = (
             reactivity::ReactivityVisitor::new(),
             elseif::ElseifVisitor,
+            element_flags::ElementFlagsVisitor,
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
@@ -73,11 +75,43 @@ pub fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>) {
     // Determine which top-level snippets can be hoisted to module scope
     compute_hoistable_snippets(component, &mut data);
 
+    // Precompute which fragments have dynamic children (needs dynamic_nodes from walker)
+    compute_fragment_has_dynamic_children(&mut data);
+
     content_types::classify_content(component, &mut data);
     needs_var::compute_elements_needing_var(component, &mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, diags)
+}
+
+/// Precompute which fragments have at least one dynamic child.
+fn compute_fragment_has_dynamic_children(data: &mut AnalysisData) {
+    let keys: Vec<_> = data.lowered_fragments.keys().copied().collect();
+    for key in keys {
+        let lf = &data.lowered_fragments[&key];
+        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, data));
+        if has_dynamic {
+            data.fragment_has_dynamic_children.insert(key);
+        }
+    }
+}
+
+fn item_is_dynamic(item: &data::FragmentItem, data: &AnalysisData) -> bool {
+    match item {
+        data::FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {
+            if let data::ConcatPart::Expr(id) = p {
+                data.dynamic_nodes.contains(id)
+            } else {
+                false
+            }
+        }),
+        data::FragmentItem::Element(id)
+        | data::FragmentItem::ComponentNode(id)
+        | data::FragmentItem::IfBlock(id)
+        | data::FragmentItem::EachBlock(id)
+        | data::FragmentItem::RenderTag(id) => data.dynamic_nodes.contains(id),
+    }
 }
 
 /// A snippet can be hoisted to module scope if its body doesn't reference

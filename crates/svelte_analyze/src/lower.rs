@@ -95,7 +95,8 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
     let flush = |concat: &mut Vec<ConcatPart>, items: &mut Vec<FragmentItem>| {
         if !concat.is_empty() {
             let parts = std::mem::take(concat);
-            items.push(FragmentItem::TextConcat { parts });
+            let has_expr = parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)));
+            items.push(FragmentItem::TextConcat { parts, has_expr });
         }
     };
 
@@ -349,7 +350,7 @@ mod tests {
     fn collect_text_parts(items: &[FragmentItem]) -> Vec<String> {
         let mut out = Vec::new();
         for item in items {
-            if let FragmentItem::TextConcat { parts } = item {
+            if let FragmentItem::TextConcat { parts, .. } = item {
                 for part in parts {
                     if let ConcatPart::Text(s) = part {
                         out.push(s.clone());

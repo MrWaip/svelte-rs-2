@@ -50,7 +50,7 @@ pub(crate) fn traverse_items<'a>(
             };
 
             match item {
-                FragmentItem::TextConcat { parts } => {
+                FragmentItem::TextConcat { parts, .. } => {
                     let name = ctx.gen_ident("text");
                     init.push(ctx.b.var_stmt(&name, node_expr));
                     prev_ident = Some(name.clone());
