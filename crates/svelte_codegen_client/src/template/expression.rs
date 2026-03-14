@@ -1,6 +1,5 @@
 //! Expression parsing, concatenation building, and emit helpers.
 
-use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ConcatPart, FragmentItem};
@@ -16,36 +15,34 @@ use crate::context::Ctx;
 // ---------------------------------------------------------------------------
 
 /// Get a pre-transformed expression from ParsedExprs by NodeId.
-/// Clones from the analyze allocator into the codegen allocator.
-pub(crate) fn get_node_expr<'a>(ctx: &Ctx<'a>, node_id: NodeId) -> Expression<'a> {
-    if let Some(expr) = ctx.parsed.exprs.get(&node_id) {
-        expr.clone_in(ctx.b.ast.allocator)
+/// Takes ownership via remove — each expression can only be consumed once.
+pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
+    if let Some(expr) = ctx.parsed.exprs.remove(&node_id) {
+        expr
     } else {
-        // Fallback: should not happen if parse_js populated all expressions
         debug_assert!(false, "missing pre-transformed expr for node {:?}", node_id);
         ctx.b.str_expr("")
     }
 }
 
 /// Get a pre-transformed attribute expression from ParsedExprs by (owner_id, attr_index).
-/// Clones from the analyze allocator into the codegen allocator.
-pub(crate) fn get_attr_expr<'a>(ctx: &Ctx<'a>, owner_id: NodeId, attr_idx: usize) -> Expression<'a> {
+/// Takes ownership via remove — each expression can only be consumed once.
+pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, owner_id: NodeId, attr_idx: usize) -> Expression<'a> {
     let key = (owner_id, attr_idx);
-    if let Some(expr) = ctx.parsed.attr_exprs.get(&key) {
-        expr.clone_in(ctx.b.ast.allocator)
+    if let Some(expr) = ctx.parsed.attr_exprs.remove(&key) {
+        expr
     } else {
-        // Fallback to old parse path for expressions not in ParsedExprs
-        // (e.g., concatenation attribute dynamic parts)
         debug_assert!(false, "missing pre-transformed attr expr for {:?}", key);
         ctx.b.str_expr("")
     }
 }
 
 /// Get a pre-transformed concat part expression from ParsedExprs.
-pub(crate) fn get_concat_part_expr<'a>(ctx: &Ctx<'a>, owner_id: NodeId, attr_idx: usize, part_idx: usize) -> Expression<'a> {
+/// Takes ownership via remove — each expression can only be consumed once.
+pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, owner_id: NodeId, attr_idx: usize, part_idx: usize) -> Expression<'a> {
     let key = (owner_id, attr_idx, part_idx);
-    if let Some(expr) = ctx.parsed.concat_part_exprs.get(&key) {
-        expr.clone_in(ctx.b.ast.allocator)
+    if let Some(expr) = ctx.parsed.concat_part_exprs.remove(&key) {
+        expr
     } else {
         debug_assert!(false, "missing pre-transformed concat part expr for {:?}", key);
         ctx.b.str_expr("")

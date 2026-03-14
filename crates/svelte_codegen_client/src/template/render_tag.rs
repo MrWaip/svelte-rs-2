@@ -1,6 +1,5 @@
 //! RenderTag codegen — `{@render snippet(args)}`
 
-use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_span::GetSpan;
 
@@ -16,18 +15,15 @@ pub(crate) fn gen_render_tag<'a>(
     anchor_expr: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    // Get the pre-parsed call expression from ParsedExprs
-    let call_expr = ctx.parsed.exprs.get(&id)
-        .expect("render tag expression should be pre-parsed");
-
     // Extract callee name from original source using the stored expression's callee span
     let tag = ctx.render_tag(id);
     let full_source = ctx.component.source_text(tag.expression_span);
 
-    // Clone into codegen allocator and decompose the CallExpression
-    let cloned = call_expr.clone_in(ctx.b.ast.allocator);
+    // Take ownership from ParsedExprs
+    let expr = ctx.parsed.exprs.remove(&id)
+        .expect("render tag expression should be pre-parsed");
 
-    let Expression::CallExpression(call) = cloned else {
+    let Expression::CallExpression(call) = expr else {
         debug_assert!(false, "render tag expression should be a CallExpression");
         return;
     };

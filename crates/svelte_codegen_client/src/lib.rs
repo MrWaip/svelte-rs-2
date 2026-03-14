@@ -15,9 +15,8 @@ use builder::{Arg, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate(component: &Component, analysis: &AnalysisData, parsed: &ParsedExprs<'_>) -> String {
-    let allocator = Allocator::default();
-    let mut ctx = Ctx::new(&allocator, component, analysis, parsed);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation

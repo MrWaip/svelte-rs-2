@@ -55,17 +55,7 @@ pub(crate) fn gen_each_block<'a>(
             .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)])
     };
 
-    // Track each context variable for $.get() wrapping in body expressions
-    let item_reactive = (flags & EACH_ITEM_REACTIVE) != 0;
-    if item_reactive {
-        ctx.each_vars.insert(context_name.clone());
-    }
-
     let frag_body = gen_fragment(ctx, body_key);
-
-    if item_reactive {
-        ctx.each_vars.remove(&context_name);
-    }
 
     let frag_fn = ctx
         .b
