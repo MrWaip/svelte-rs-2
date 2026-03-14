@@ -39,10 +39,12 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
 
 /// Build the HTML string for a single element (opening tag + attrs + children + closing tag).
 pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
-    let has_spread = el
-        .attributes
-        .iter()
-        .any(|a| matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread));
+    let (has_spread, has_class_directives) = el.attributes.iter().fold((false, false), |(sp, cd), a| {
+        (
+            sp || matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread),
+            cd || matches!(a, Attribute::ClassDirective(_)),
+        )
+    });
 
     let mut html = format!("<{}", el.name);
 
@@ -51,6 +53,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
         for attr in &el.attributes {
             match attr {
                 Attribute::StringAttribute(a) => {
+                    // Skip class attr when class directives are present — set_class handles it
+                    if a.name == "class" && has_class_directives {
+                        continue;
+                    }
                     html.push_str(&format!(
                         " {}=\"{}\"",
                         a.name,

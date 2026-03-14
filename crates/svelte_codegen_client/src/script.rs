@@ -313,6 +313,12 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
                 // Parse default expression
                 let default_expr = parse_expression(self.b, default_text);
+                // Wrap $bindable() defaults in $.proxy() when needed
+                let default_expr = if prop.is_bindable && Self::should_proxy(&default_expr) {
+                    self.b.call_expr("$.proxy", [Arg::Expr(default_expr)])
+                } else {
+                    default_expr
+                };
                 if !prop.is_lazy_default {
                     args.push(Arg::Expr(default_expr));
                 } else {
@@ -527,6 +533,14 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             }
             Expression::UpdateExpression(_) => {
                 self.transform_update(node, ctx);
+            }
+            Expression::CallExpression(call) => {
+                if let Expression::Identifier(id) = &call.callee {
+                    if id.name.as_str() == "$effect" {
+                        let Expression::CallExpression(call) = node else { unreachable!() };
+                        call.callee = self.b.rid_expr("$.user_effect");
+                    }
+                }
             }
             Expression::Identifier(id) => {
                 // Check props first
