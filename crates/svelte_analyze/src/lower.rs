@@ -40,7 +40,7 @@ fn lower_fragment(
             Node::SnippetBlock(block) => {
                 lower_fragment(&block.body, FragmentKey::SnippetBody(block.id), component, data);
             }
-            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) => {}
+            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::Error(_) => {}
         }
     }
 }
@@ -59,7 +59,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
-            Node::Comment(_) | Node::SnippetBlock(_) => continue,
+            Node::Comment(_) | Node::SnippetBlock(_) | Node::Error(_) => continue,
             _ => regular.push(node),
         }
     }

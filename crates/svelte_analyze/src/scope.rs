@@ -267,7 +267,7 @@ fn walk_template_scopes(
             Node::SnippetBlock(block) => {
                 walk_template_scopes(&block.body, component, scoping, current_scope);
             }
-            Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) => {}
+            Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) | Node::Error(_) => {}
         }
     }
 }

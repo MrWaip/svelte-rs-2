@@ -123,7 +123,7 @@ enum RuneKind { State, Derived, Effect, Props, Bindable, Inspect, Host }
 `crates/svelte_parser/src/lib.rs`
 
 ```rust
-Parser::new(source: &str).parse() -> Result<Component, Diagnostic>
+Parser::new(source: &str).parse() -> (Component, Vec<Diagnostic>)
 ```
 
 Внутри: `scanner/mod.rs` + `scanner/token.rs`.

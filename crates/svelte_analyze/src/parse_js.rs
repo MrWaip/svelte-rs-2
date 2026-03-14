@@ -100,7 +100,7 @@ fn walk_node(
                 Err(diag) => diags.push(diag),
             }
         }
-        Node::Text(_) | Node::Comment(_) => {}
+        Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
