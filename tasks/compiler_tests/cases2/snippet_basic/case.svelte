@@ -1,4 +1,5 @@
 <script>
+	let { title = "world" } = $props();
 	let message = $state("hello");
 </script>
 
@@ -7,3 +8,4 @@
 {/snippet}
 
 {@render greeting(message)}
+{@render greeting(title)}

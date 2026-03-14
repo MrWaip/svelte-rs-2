@@ -1,4 +1,8 @@
-{#each [1,2,3] as item}
+<script>
+	let { items = [] } = $props();
+</script>
+
+{#each items as item}
     {item}
 
     <div>

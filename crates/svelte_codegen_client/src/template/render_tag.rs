@@ -64,12 +64,19 @@ fn extract_call_parts(source: &str) -> (&str, Vec<&str>) {
 }
 
 /// Build `() => expr` where expr has rune transforms applied.
+/// For bare prop source identifiers, returns the getter directly (no thunk).
 fn build_thunked_arg<'a>(
     ctx: &mut Ctx<'a>,
     source: &str,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
 ) -> Expression<'a> {
+    let trimmed = source.trim();
+    if prop_sources.contains(trimmed) {
+        // Prop getter is already a function — pass directly without thunk
+        return ctx.b.rid_expr(trimmed);
+    }
+
     let alloc = ctx.b.ast.allocator;
     let arena_source: &'a str = alloc.alloc_str(source);
 
