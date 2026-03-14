@@ -1,6 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use oxc_semantic::{NodeId as OxcNodeId, ScopeFlags, ScopeId, Scoping, SymbolFlags, SymbolId};
+pub use oxc_semantic::{ScopeId, SymbolId};
+use oxc_semantic::{NodeId as OxcNodeId, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;

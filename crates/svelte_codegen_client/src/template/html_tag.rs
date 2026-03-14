@@ -13,10 +13,7 @@ pub(crate) fn gen_html_tag<'a>(
     anchor_expr: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let tag = ctx.html_tag(id);
-    let source = ctx.component.source_text(tag.expression_span);
-
-    let thunk = super::expression::build_expr_thunk(ctx, source);
+    let thunk = super::expression::build_node_thunk(ctx, id);
 
     stmts.push(ctx.b.call_stmt("$.html", [Arg::Expr(anchor_expr), Arg::Expr(thunk)]));
 }

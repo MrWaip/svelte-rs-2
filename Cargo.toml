@@ -11,6 +11,7 @@ svelte_js = { path = "crates/svelte_js" }
 svelte_diagnostics = { path = "crates/svelte_diagnostics" }
 svelte_analyze = { path = "crates/svelte_analyze" }
 svelte_codegen_client = { path = "crates/svelte_codegen_client" }
+svelte_transform = { path = "crates/svelte_transform" }
 svelte_compiler = { path = "crates/svelte_compiler" }
 
 compact_str = "0.9.0"
