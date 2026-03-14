@@ -80,6 +80,46 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 
 ---
 
+## Tier 1b — Module Compilation (`.svelte.js` / `.svelte.ts`)
+
+Theme: separate entry point for compiling rune-enabled JS/TS modules (no template, no CSS).
+
+In Svelte, the bundler plugin detects `.svelte.js`/`.svelte.ts` extensions and calls `compileModule()` instead of `compile()`. The compiler itself does not inspect filenames — it exposes two distinct functions.
+
+Ref: `reference/compiler/index.js` (`compileModule`), `reference/compiler/phases/2-analyze/index.js` (`analyze_module`), `reference/compiler/phases/3-transform/client/transform-client.js` (`client_module`)
+
+### Pipeline
+
+```
+source (JS/TS) → analyze_module() → client_module() → JS output
+```
+
+### Comparison with `compile()`
+
+| Aspect | `compile()` | `compileModule()` |
+|--------|-------------|-------------------|
+| Input | `.svelte` (HTML + Script + Style) | JS/TS only |
+| Runes mode | Inferred or forced | Always `runes: true` |
+| CSS output | Yes | `null` |
+| Template codegen | Yes | No |
+| Output shape | Component class (default export) | Plain JS module |
+
+### Work items
+
+| # | Item | Description |
+|---|------|-------------|
+| 1 | `compile_module()` entry point | New public function: takes JS/TS source + `ModuleCompileOptions`, returns `CompileResult` |
+| 2 | `analyze_module()` | Simplified analysis: OXC parse → scopes → rune detection. No template, no props, no content_types. Hardcode `runes: true` |
+| 3 | Script transforms reuse | Apply existing `script.rs` rune transformations ($state, $derived, $effect, etc.) to module AST |
+| 4 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
+| 5 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
+| 6 | WASM export | Expose `compileModule()` alongside existing `compile()` in WASM build |
+
+### Dependencies
+- Tier 1 rune transforms (reused, not duplicated)
+
+---
+
 ## Tier 2 — Essential Template Blocks
 
 Theme: most commonly needed template features. Requires parser + AST + analyze + codegen.
