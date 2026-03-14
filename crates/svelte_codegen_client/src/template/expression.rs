@@ -1,20 +1,14 @@
 //! Expression parsing, concatenation building, and emit helpers.
 
-use oxc_allocator::{Allocator, CloneIn};
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
-use oxc_parser::Parser as OxcParser;
-use oxc_semantic::SemanticBuilder;
-use oxc_span::SourceType;
-use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
-use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{ConcatPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
-use svelte_js::{ExpressionKind, RuneKind};
-use svelte_span::Span;
+use svelte_js::ExpressionKind;
 
-use crate::builder::{Arg, AssignLeft, AssignRight, Builder, TemplatePart};
+use crate::builder::{Arg, AssignLeft, AssignRight, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
@@ -47,154 +41,18 @@ pub(crate) fn get_attr_expr<'a>(ctx: &Ctx<'a>, owner_id: NodeId, attr_idx: usize
     }
 }
 
-// ---------------------------------------------------------------------------
-// Legacy expression parsing (kept for attribute spans not yet in ParsedExprs)
-// ---------------------------------------------------------------------------
-
-pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
-    let source = ctx.component.source_text(span);
-    let mutated = &ctx.analysis.mutated_runes;
-    let rune_names = &ctx.analysis.rune_names;
-    let snippet_params = &ctx.snippet_param_names;
-    let prop_sources = &ctx.prop_sources;
-    let prop_non_sources = &ctx.prop_non_sources;
-    let each_vars = &ctx.each_vars;
-
-    parse_and_transform(ctx.b.ast.allocator, source, mutated, rune_names, prop_sources, prop_non_sources, snippet_params, each_vars)
-}
-
-pub(crate) fn parse_and_transform<'a>(
-    alloc: &'a Allocator,
-    source: &'a str,
-    mutated: &FxHashSet<String>,
-    rune_names: &FxHashMap<String, RuneKind>,
-    prop_sources: &FxHashSet<String>,
-    prop_non_sources: &FxHashMap<String, String>,
-    snippet_params: &[String],
-    each_vars: &FxHashSet<String>,
-) -> Expression<'a> {
-    let b = Builder::new(alloc);
-    let Ok(expr) = OxcParser::new(alloc, source, SourceType::default()).parse_expression() else {
-        debug_assert!(false, "codegen: failed to parse expression: {source}");
-        eprintln!("[svelte-rs] warning: failed to parse expression in codegen: {source}");
-        return b.str_expr(source);
-    };
-    let stmt = b.expr_stmt(expr);
-    let mut program = b.program(vec![stmt]);
-
-    let mut tr = RuneRefTransformer {
-        b: &b,
-        mutated,
-        rune_names,
-        prop_sources,
-        prop_non_sources,
-        snippet_params,
-        each_vars,
-    };
-    let sem = SemanticBuilder::new().build(&program);
-    let scoping = sem.semantic.into_scoping();
-    traverse_mut(&mut tr, alloc, &mut program, scoping, ());
-
-    if let Some(Statement::ExpressionStatement(mut es)) = program.body.into_iter().next() {
-        b.move_expr(&mut es.expression)
+/// Get a pre-transformed concat part expression from ParsedExprs.
+pub(crate) fn get_concat_part_expr<'a>(ctx: &Ctx<'a>, owner_id: NodeId, attr_idx: usize, part_idx: usize) -> Expression<'a> {
+    let key = (owner_id, attr_idx, part_idx);
+    if let Some(expr) = ctx.parsed.concat_part_exprs.get(&key) {
+        expr.clone_in(ctx.b.ast.allocator)
     } else {
-        b.str_expr(source)
+        debug_assert!(false, "missing pre-transformed concat part expr for {:?}", key);
+        ctx.b.str_expr("")
     }
 }
 
-struct RuneRefTransformer<'b, 'a> {
-    b: &'b Builder<'a>,
-    mutated: &'b FxHashSet<String>,
-    rune_names: &'b FxHashMap<String, RuneKind>,
-    prop_sources: &'b FxHashSet<String>,
-    prop_non_sources: &'b FxHashMap<String, String>,
-    snippet_params: &'b [String],
-    each_vars: &'b FxHashSet<String>,
-}
 
-impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
-    fn enter_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        match node {
-            Expression::Identifier(id) => {
-                if id.reference_id.get().is_none() {
-                    return;
-                }
-                let name = id.name.as_str().to_string();
-
-                // Snippet params → name() (thunk call)
-                if self.snippet_params.iter().any(|p| p == &name) {
-                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
-                    return;
-                }
-
-                // Props: source → name(), non-source → $$props.name
-                if self.prop_sources.contains(&name) {
-                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
-                    return;
-                }
-                if let Some(prop_name) = self.prop_non_sources.get(&name) {
-                    *node = self.b.static_member_expr(
-                        self.b.rid_expr("$$props"),
-                        prop_name,
-                    );
-                    return;
-                }
-
-                // Each-block context variable → $.get(name)
-                if self.each_vars.contains(&name) {
-                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
-                    return;
-                }
-
-                // Regular rune: derived always needs $.get(), state only if mutated
-                if let Some(&kind) = self.rune_names.get(&name) {
-                    let needs_get = self.mutated.contains(&name)
-                        || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
-                    if needs_get {
-                        *node = crate::rune_transform::transform_rune_get(self.b, &name);
-                    }
-                }
-            }
-            Expression::AssignmentExpression(assign) => {
-                let ident_name = if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(
-                    id,
-                ) = &assign.left
-                {
-                    let name = id.name.as_str().to_string();
-                    (self.rune_names.contains_key(&name) && self.mutated.contains(&name))
-                        .then_some(name)
-                } else {
-                    None
-                };
-
-                if let Some(name) = ident_name {
-                    let right = self.b.move_expr(&mut assign.right);
-                    *node = crate::rune_transform::transform_rune_set(self.b, &name, right, false);
-                }
-            }
-            Expression::UpdateExpression(upd) => {
-                let ident_name =
-                    if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) =
-                        &upd.argument
-                    {
-                        let name = id.name.as_str().to_string();
-                        (self.rune_names.contains_key(&name) && self.mutated.contains(&name))
-                            .then_some(name)
-                    } else {
-                        None
-                    };
-
-                if let Some(name) = ident_name {
-                    let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-                    *node = crate::rune_transform::transform_rune_update(
-                        self.b, &name, upd.prefix, is_increment,
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Thunk builder — `() => expr` with rune transforms
@@ -282,15 +140,19 @@ pub(crate) fn build_concat_from_parts<'a>(
 
 pub(crate) fn build_attr_concat<'a>(
     ctx: &mut Ctx<'a>,
+    owner_id: NodeId,
+    attr_idx: usize,
     parts: &[AstConcatPart],
 ) -> Expression<'a> {
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
+    let mut dyn_idx = 0usize;
     for part in parts {
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
-            AstConcatPart::Dynamic(span) => {
-                let expr = parse_expr(ctx, *span);
+            AstConcatPart::Dynamic(_) => {
+                let expr = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
                 tpl_parts.push(TemplatePart::Expr(expr));
+                dyn_idx += 1;
             }
         }
     }

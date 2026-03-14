@@ -92,7 +92,7 @@ pub(crate) fn gen_component<'a>(
                 // Re-borrow to access ConcatPart slice
                 let cn = ctx.component_node(id);
                 if let Attribute::ConcatenationAttribute(a) = &cn.attributes[attr_idx] {
-                    let val = build_attr_concat(ctx, &a.parts);
+                    let val = build_attr_concat(ctx, id, attr_idx, &a.parts);
                     if is_dynamic {
                         props.push(ObjProp::Getter(key, val));
                     } else {

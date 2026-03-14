@@ -155,18 +155,21 @@ fn walk_attrs<'a>(
                 parse_attr_expr(alloc, source, a.expression_span.start, key, data, parsed, diags);
             }
             Attribute::ConcatenationAttribute(a) => {
-                // Concatenation attrs merge refs from multiple dynamic parts.
-                // We store ExpressionInfo for reactivity analysis but don't store individual
-                // Expression ASTs here (codegen parses each part separately for now).
+                // Parse each dynamic part and store both metadata (merged) and individual ASTs.
                 let mut all_refs = Vec::new();
+                let mut dyn_idx = 0usize;
                 for part in &a.parts {
                     if let ConcatPart::Dynamic(span) = part {
                         let source = component.source_text(*span);
-                        let offset = span.start;
-                        match svelte_js::analyze_expression(source, offset) {
-                            Ok(info) => all_refs.extend(info.references),
+                        let arena_source: &'a str = alloc.alloc_str(source);
+                        match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
+                            Ok((info, expr)) => {
+                                all_refs.extend(info.references);
+                                parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
+                            }
                             Err(diag) => diags.push(diag),
                         }
+                        dyn_idx += 1;
                     }
                 }
                 let merged = ExpressionInfo {

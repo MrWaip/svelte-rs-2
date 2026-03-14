@@ -69,7 +69,7 @@ pub(crate) fn process_attr<'a>(
             }
         }
         Attribute::ConcatenationAttribute(a) => {
-            let val = build_attr_concat(ctx, &a.parts);
+            let val = build_attr_concat(ctx, owner_id, attr_idx, &a.parts);
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
                 [
@@ -323,7 +323,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
-                let val = build_attr_concat(ctx, &a.parts);
+                let val = build_attr_concat(ctx, el.id, attr_idx, &a.parts);
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }

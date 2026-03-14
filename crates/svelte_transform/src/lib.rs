@@ -164,10 +164,21 @@ fn transform_attrs<'a>(
     scope: ScopeId,
     snippet_params: &[String],
 ) {
-    for (attr_idx, _attr) in attrs.iter().enumerate() {
+    for (attr_idx, attr) in attrs.iter().enumerate() {
         let key = (owner_id, attr_idx);
         if let Some(expr) = parsed.attr_exprs.get_mut(&key) {
             transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
+        }
+
+        // Transform ConcatenationAttribute dynamic parts
+        if let Attribute::ConcatenationAttribute(a) = attr {
+            let dyn_count = a.parts.iter().filter(|p| matches!(p, svelte_ast::ConcatPart::Dynamic(_))).count();
+            for dyn_idx in 0..dyn_count {
+                let part_key = (owner_id, attr_idx, dyn_idx);
+                if let Some(expr) = parsed.concat_part_exprs.get_mut(&part_key) {
+                    transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
+                }
+            }
         }
     }
 }
