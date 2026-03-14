@@ -187,14 +187,20 @@ impl<'a> Ctx<'a> {
 
     /// Generate a unique identifier like `root`, `root_1`, `root_2`, …
     pub fn gen_ident(&mut self, prefix: &str) -> String {
-        let count = self.ident_counters.entry(prefix.to_string()).or_insert(0);
-        let name = if *count == 0 {
+        // Avoid allocating a String key on every lookup (cache hit path is allocation-free)
+        let count = if let Some(c) = self.ident_counters.get_mut(prefix) {
+            let n = *c;
+            *c += 1;
+            n
+        } else {
+            self.ident_counters.insert(prefix.to_string(), 1);
+            0
+        };
+        if count == 0 {
             prefix.to_string()
         } else {
             format!("{}_{}", prefix, count)
-        };
-        *count += 1;
-        name
+        }
     }
 
 }
