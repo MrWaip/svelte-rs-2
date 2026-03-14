@@ -9,16 +9,16 @@ use svelte_span::Span;
 use crate::builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
-use super::expression::{build_attr_concat, parse_expr};
+use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
 
 /// Collected attribute info from the immutable Component borrow.
 enum AttrKind {
     String { name: String, value_span: Span },
     Boolean { name: String },
-    Expression { name: String, span: Span, shorthand: bool },
+    Expression { name: String, attr_idx: usize, shorthand: bool },
     Concatenation { name: String, attr_idx: usize },
-    Shorthand { span: Span },
+    Shorthand { attr_idx: usize },
     Spread,
     Skip,
 }
@@ -47,7 +47,7 @@ pub(crate) fn gen_component<'a>(
             },
             Attribute::ExpressionAttribute(a) => AttrKind::Expression {
                 name: a.name.clone(),
-                span: a.expression_span,
+                attr_idx: idx,
                 shorthand: a.shorthand,
             },
             Attribute::ConcatenationAttribute(a) => AttrKind::Concatenation {
@@ -55,8 +55,8 @@ pub(crate) fn gen_component<'a>(
                 attr_idx: idx,
             },
             Attribute::ShorthandOrSpread(a) if a.is_spread => AttrKind::Spread,
-            Attribute::ShorthandOrSpread(a) => AttrKind::Shorthand {
-                span: a.expression_span,
+            Attribute::ShorthandOrSpread(_) => AttrKind::Shorthand {
+                attr_idx: idx,
             },
             Attribute::BindDirective(_) | Attribute::ClassDirective(_) => AttrKind::Skip,
         };
@@ -76,9 +76,9 @@ pub(crate) fn gen_component<'a>(
                 let key = ctx.b.alloc_str(&name);
                 props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
             }
-            AttrKind::Expression { name, span, shorthand } => {
+            AttrKind::Expression { name, attr_idx, shorthand } => {
                 let key = ctx.b.alloc_str(&name);
-                let expr = parse_expr(ctx, span);
+                let expr = get_attr_expr(ctx, id, attr_idx);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
                 } else if shorthand {
@@ -100,10 +100,16 @@ pub(crate) fn gen_component<'a>(
                     }
                 }
             }
-            AttrKind::Shorthand { span } => {
-                let name_text = ctx.component.source_text(span).trim();
-                let key = ctx.b.alloc_str(name_text);
-                let expr = parse_expr(ctx, span);
+            AttrKind::Shorthand { attr_idx } => {
+                // Re-borrow to get the shorthand name
+                let cn = ctx.component_node(id);
+                let name_text = if let Attribute::ShorthandOrSpread(a) = &cn.attributes[attr_idx] {
+                    ctx.component.source_text(a.expression_span).trim().to_string()
+                } else {
+                    unreachable!()
+                };
+                let key = ctx.b.alloc_str(&name_text);
+                let expr = get_attr_expr(ctx, id, attr_idx);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
                 } else {

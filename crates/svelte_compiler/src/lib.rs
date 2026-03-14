@@ -11,9 +11,12 @@ pub struct CompileResult {
 pub fn compile(source: &str) -> CompileResult {
     let (component, mut diagnostics) = svelte_parser::Parser::new(source).parse();
 
+    let js_alloc = oxc_allocator::Allocator::default();
+
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, analyze_diags) = svelte_analyze::analyze(&component);
-        let js = svelte_codegen_client::generate(&component, &analysis);
+        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
+        svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed);
+        let js = svelte_codegen_client::generate(&component, &analysis, &parsed);
         (js, analyze_diags)
     }));
 

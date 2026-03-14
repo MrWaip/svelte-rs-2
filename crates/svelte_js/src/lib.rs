@@ -120,6 +120,23 @@ pub enum RuneKind {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Parse a JS expression into a provided allocator, returning both metadata and AST.
+///
+/// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
+/// Use this when you need to keep the parsed AST for later transformation/codegen.
+pub fn analyze_expression_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+) -> Result<(ExpressionInfo, Expression<'a>), Diagnostic> {
+    let parser = OxcParser::new(alloc, source, SourceType::default());
+    let expr = parser
+        .parse_expression()
+        .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+    let info = extract_expression_info(&expr, offset);
+    Ok((info, expr))
+}
+
 /// Parse a JS expression and return owned analysis info.
 ///
 /// `source` is the raw expression text (e.g., "count + 1").

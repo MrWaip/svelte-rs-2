@@ -1,6 +1,6 @@
 //! Expression parsing, concatenation building, and emit helpers.
 
-use oxc_allocator::Allocator;
+use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::SemanticBuilder;
@@ -18,7 +18,37 @@ use crate::builder::{Arg, AssignLeft, AssignRight, Builder, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
-// Expression parsing + rune transformation
+// Pre-transformed expression lookup (new path)
+// ---------------------------------------------------------------------------
+
+/// Get a pre-transformed expression from ParsedExprs by NodeId.
+/// Clones from the analyze allocator into the codegen allocator.
+pub(crate) fn get_node_expr<'a>(ctx: &Ctx<'a>, node_id: NodeId) -> Expression<'a> {
+    if let Some(expr) = ctx.parsed.exprs.get(&node_id) {
+        expr.clone_in(ctx.b.ast.allocator)
+    } else {
+        // Fallback: should not happen if parse_js populated all expressions
+        debug_assert!(false, "missing pre-transformed expr for node {:?}", node_id);
+        ctx.b.str_expr("")
+    }
+}
+
+/// Get a pre-transformed attribute expression from ParsedExprs by (owner_id, attr_index).
+/// Clones from the analyze allocator into the codegen allocator.
+pub(crate) fn get_attr_expr<'a>(ctx: &Ctx<'a>, owner_id: NodeId, attr_idx: usize) -> Expression<'a> {
+    let key = (owner_id, attr_idx);
+    if let Some(expr) = ctx.parsed.attr_exprs.get(&key) {
+        expr.clone_in(ctx.b.ast.allocator)
+    } else {
+        // Fallback to old parse path for expressions not in ParsedExprs
+        // (e.g., concatenation attribute dynamic parts)
+        debug_assert!(false, "missing pre-transformed attr expr for {:?}", key);
+        ctx.b.str_expr("")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy expression parsing (kept for attribute spans not yet in ParsedExprs)
 // ---------------------------------------------------------------------------
 
 pub(crate) fn parse_expr<'a>(ctx: &mut Ctx<'a>, span: Span) -> Expression<'a> {
@@ -170,23 +200,9 @@ impl<'a> Traverse<'a, ()> for RuneRefTransformer<'_, 'a> {
 // Thunk builder — `() => expr` with rune transforms
 // ---------------------------------------------------------------------------
 
-/// Build `() => expr` from raw source text, applying rune transforms.
-/// Used by HtmlTag and other nodes that need a thunked expression.
-pub(crate) fn build_expr_thunk<'a>(ctx: &mut Ctx<'a>, source: &str) -> Expression<'a> {
-    let alloc = ctx.b.ast.allocator;
-    let arena_source: &'a str = alloc.alloc_str(source);
-
-    let expr = parse_and_transform(
-        alloc,
-        arena_source,
-        &ctx.analysis.mutated_runes,
-        &ctx.analysis.rune_names,
-        &ctx.prop_sources,
-        &ctx.prop_non_sources,
-        &[],
-        &ctx.each_vars,
-    );
-
+/// Build `() => expr` from a pre-transformed expression (by NodeId).
+pub(crate) fn build_node_thunk<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
+    let expr = get_node_expr(ctx, node_id);
     let params = ctx.b.no_params();
     ctx.b.arrow_expr(params, [ctx.b.expr_stmt(expr)])
 }
@@ -222,8 +238,7 @@ pub(crate) fn build_concat_from_parts<'a>(
             if let Some(val) = try_resolve_known(ctx, nid) {
                 return ctx.b.str_expr(&val);
             }
-            let span = ctx.expr_span(nid);
-            return parse_expr(ctx, span);
+            return get_node_expr(ctx, nid);
         }
     }
 
@@ -248,8 +263,7 @@ pub(crate) fn build_concat_from_parts<'a>(
                         tpl_parts.push(TemplatePart::Str(val));
                     }
                 } else {
-                    let span = ctx.expr_span(*nid);
-                    let expr = parse_expr(ctx, span);
+                    let expr = get_node_expr(ctx, *nid);
                     tpl_parts.push(TemplatePart::Expr(expr));
                 }
             }

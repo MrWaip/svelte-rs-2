@@ -53,7 +53,7 @@ pub(crate) fn process_element<'a>(
         let el = ctx.element(el_id);
         let tag = el.name.clone();
         for (idx, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_name, &tag, attr_dynamic[idx], init, update, after_update);
+            process_attr(ctx, attr, el_id, idx, el_name, &tag, attr_dynamic[idx], init, update, after_update);
         }
     }
 
