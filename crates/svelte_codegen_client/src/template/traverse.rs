@@ -108,7 +108,7 @@ pub(crate) fn traverse_items<'a>(
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
                     prev_ident = Some(node_name.clone());
                     sibling_offset = 1;
-                    gen_each_block(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    gen_each_block(ctx, *id, ctx.b.rid_expr(&node_name), false, init);
                 }
 
                 FragmentItem::RenderTag(id) => {

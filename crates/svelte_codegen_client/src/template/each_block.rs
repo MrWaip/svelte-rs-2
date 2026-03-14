@@ -14,7 +14,7 @@ use super::gen_fragment;
 // Each block flags (from Svelte constants)
 const EACH_ITEM_REACTIVE: u32 = 1;
 // const EACH_INDEX_REACTIVE: u32 = 2;
-// const EACH_IS_CONTROLLED: u32 = 4;
+const EACH_IS_CONTROLLED: u32 = 4;
 // const EACH_IS_ANIMATED: u32 = 8;
 const EACH_ITEM_IMMUTABLE: u32 = 16;
 
@@ -23,6 +23,7 @@ pub(crate) fn gen_each_block<'a>(
     ctx: &mut Ctx<'a>,
     block_id: NodeId,
     anchor: Expression<'a>,
+    is_controlled: bool,
     body: &mut Vec<Statement<'a>>,
 ) {
     let block = ctx.each_block(block_id);
@@ -39,6 +40,9 @@ pub(crate) fn gen_each_block<'a>(
         .is_some_and(|info| !info.references.is_empty());
     if expr_has_refs {
         flags |= EACH_ITEM_REACTIVE;
+    }
+    if is_controlled {
+        flags |= EACH_IS_CONTROLLED;
     }
 
     let expr_source = ctx.component.source_text(expr_span).trim();
