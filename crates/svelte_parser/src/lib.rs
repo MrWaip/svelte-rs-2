@@ -58,6 +58,32 @@ struct SnippetBlockEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Stack helpers — safe wrappers around children_stack operations
+// ---------------------------------------------------------------------------
+
+/// Push a node onto the current children list.
+/// Debug-asserts the stack is non-empty; gracefully no-ops in release.
+fn push_child(children_stack: &mut Vec<Vec<Node>>, node: Node) {
+    debug_assert!(
+        !children_stack.is_empty(),
+        "children_stack empty when pushing child"
+    );
+    if let Some(children) = children_stack.last_mut() {
+        children.push(node);
+    }
+}
+
+/// Pop the current children list.
+/// Debug-asserts the stack is non-empty; returns empty vec in release.
+fn pop_children(children_stack: &mut Vec<Vec<Node>>) -> Vec<Node> {
+    debug_assert!(
+        !children_stack.is_empty(),
+        "children_stack empty when popping"
+    );
+    children_stack.pop().unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
 
@@ -96,15 +122,15 @@ impl<'a> Parser<'a> {
             match token.token_type {
                 TokenType::Text => {
                     let node = self.make_text(&token);
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(&mut children_stack, node);
                 }
                 TokenType::Comment => {
                     let node = self.make_comment(&token);
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(&mut children_stack, node);
                 }
                 TokenType::Interpolation(interpolation) => {
                     let node = self.make_expression_tag(&interpolation);
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(&mut children_stack, node);
                 }
                 TokenType::StartTag(tag) => {
                     let attrs = self.convert_attributes(&tag.attributes);
@@ -129,7 +155,7 @@ impl<'a> Parser<'a> {
                                 fragment: Fragment::empty(),
                             })
                         };
-                        children_stack.last_mut().unwrap().push(node);
+                        push_child(&mut children_stack, node);
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
                             name: tag.name.to_string(),
@@ -210,7 +236,7 @@ impl<'a> Parser<'a> {
                         span: token.span,
                         expression_span: render_tag.expression.span,
                     });
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(&mut children_stack, node);
                 }
                 TokenType::HtmlTag(html_tag) => {
                     let node = Node::HtmlTag(HtmlTag {
@@ -218,7 +244,7 @@ impl<'a> Parser<'a> {
                         span: token.span,
                         expression_span: html_tag.expression.span,
                     });
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(&mut children_stack, node);
                 }
                 TokenType::ScriptTag(script_tag) => {
                     if script_data.is_some() {
@@ -269,7 +295,7 @@ impl<'a> Parser<'a> {
         // Auto-close any remaining open entries
         self.auto_close_entries(&mut entry_stack, &mut children_stack);
 
-        let roots = children_stack.pop().unwrap();
+        let roots = pop_children(&mut children_stack);
 
         let script = script_data.map(|sd| Script {
             id: self.ids.next(),
@@ -315,7 +341,7 @@ impl<'a> Parser<'a> {
                     id: self.ids.next(),
                     span,
                 });
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
             }
             Some(idx) => {
                 // Auto-close any intervening entries
@@ -331,7 +357,7 @@ impl<'a> Parser<'a> {
                     unreachable!();
                 };
 
-                let children = children_stack.pop().unwrap();
+                let children = pop_children(children_stack);
                 let merged_span = el.span_start.merge(&span);
 
                 let node = if is_component_name(&el.name) {
@@ -354,7 +380,7 @@ impl<'a> Parser<'a> {
                     })
                 };
 
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
             }
         }
     }
@@ -366,7 +392,7 @@ impl<'a> Parser<'a> {
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<Node>>,
     ) {
-        let consequent_children = children_stack.pop().unwrap();
+        let consequent_children = pop_children(children_stack);
 
         if else_tag.elseif {
             // {:else if expr}
@@ -425,7 +451,7 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        let body_children = children_stack.pop().unwrap();
+        let body_children = pop_children(children_stack);
         let merged_span = eb.span.merge(&span);
 
         let node = Node::EachBlock(EachBlock {
@@ -439,7 +465,7 @@ impl<'a> Parser<'a> {
             fallback: None,
         });
 
-        children_stack.last_mut().unwrap().push(node);
+        push_child(children_stack, node);
     }
 
     fn handle_end_snippet_tag(
@@ -458,7 +484,7 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        let body_children = children_stack.pop().unwrap();
+        let body_children = pop_children(children_stack);
         let merged_span = sb.span_start.merge(&span);
 
         let node = Node::SnippetBlock(SnippetBlock {
@@ -469,7 +495,7 @@ impl<'a> Parser<'a> {
             body: Fragment::new(body_children),
         });
 
-        children_stack.last_mut().unwrap().push(node);
+        push_child(children_stack, node);
     }
 
     /// Auto-close all remaining open entries at EOF.
@@ -495,7 +521,7 @@ impl<'a> Parser<'a> {
         match entry {
             StackEntry::Element(el) => {
                 self.recover(Diagnostic::unclosed_node(el.span_start));
-                let children = children_stack.pop().unwrap();
+                let children = pop_children(children_stack);
                 let merged_span = el.span_start.merge(&eof_span);
 
                 let node = if is_component_name(&el.name) {
@@ -518,11 +544,11 @@ impl<'a> Parser<'a> {
                     })
                 };
 
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
             }
             StackEntry::IfBlock(ib) => {
                 self.recover(Diagnostic::unclosed_node(ib.span));
-                let last_children = children_stack.pop().unwrap();
+                let last_children = pop_children(children_stack);
 
                 let (consequent, alternate) = if let Some(cons) = ib.consequent {
                     (cons, Some(Fragment::new(last_children)))
@@ -542,18 +568,18 @@ impl<'a> Parser<'a> {
                 });
 
                 if ib.elseif {
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(children_stack, node);
                     // Continue unwinding parent if-blocks
                     if children_stack.len() > 1 {
                         // Parent if-block will be auto-closed in the next iteration
                     }
                 } else {
-                    children_stack.last_mut().unwrap().push(node);
+                    push_child(children_stack, node);
                 }
             }
             StackEntry::EachBlock(eb) => {
                 self.recover(Diagnostic::unclosed_node(eb.span));
-                let body_children = children_stack.pop().unwrap();
+                let body_children = pop_children(children_stack);
                 let merged_span = eb.span.merge(&eof_span);
 
                 let node = Node::EachBlock(EachBlock {
@@ -567,11 +593,11 @@ impl<'a> Parser<'a> {
                     fallback: None,
                 });
 
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
             }
             StackEntry::SnippetBlock(sb) => {
                 self.recover(Diagnostic::unclosed_node(sb.span_start));
-                let body_children = children_stack.pop().unwrap();
+                let body_children = pop_children(children_stack);
                 let merged_span = sb.span_start.merge(&eof_span);
 
                 let node = Node::SnippetBlock(SnippetBlock {
@@ -582,7 +608,7 @@ impl<'a> Parser<'a> {
                     body: Fragment::new(body_children),
                 });
 
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
             }
         }
     }
@@ -607,7 +633,7 @@ impl<'a> Parser<'a> {
                 return;
             };
 
-            let last_children = children_stack.pop().unwrap();
+            let last_children = pop_children(children_stack);
 
             let (consequent, alternate) = if let Some(cons) = ib.consequent {
                 // We had {:else} or {:else if}, so cons = consequent, last_children = alternate
@@ -630,7 +656,7 @@ impl<'a> Parser<'a> {
 
             if ib.elseif {
                 // This is an else-if: it becomes the alternate of the parent if-block.
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
 
                 // Check if parent entry is also an IfBlock — if so, continue the loop.
                 if entry_stack
@@ -643,7 +669,7 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 // This is the outermost {#if}
-                children_stack.last_mut().unwrap().push(node);
+                push_child(children_stack, node);
                 break;
             }
         }

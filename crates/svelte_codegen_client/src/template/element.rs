@@ -111,11 +111,11 @@ pub(crate) fn process_element<'a>(
         }
 
         ContentType::SingleBlock if matches!(
-            ctx.analysis.lowered_fragments.get(&child_key).unwrap().items.first(),
+            ctx.lowered_fragment(&child_key).items.first(),
             Some(svelte_analyze::FragmentItem::EachBlock(_))
         ) => {
             // Controlled each block: element itself is the anchor, no $.child() traversal
-            let each_id = match ctx.analysis.lowered_fragments.get(&child_key).unwrap().items[0] {
+            let each_id = match ctx.lowered_fragment(&child_key).items[0] {
                 svelte_analyze::FragmentItem::EachBlock(id) => id,
                 _ => unreachable!(),
             };
@@ -124,13 +124,8 @@ pub(crate) fn process_element<'a>(
         }
 
         ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
-            let child_items: Vec<_> = ctx
-                .analysis
-                .lowered_fragments
-                .get(&child_key)
-                .unwrap()
-                .items
-                .clone();
+            // Clone needed: traverse_items borrows ctx mutably
+            let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
 
             let first_is_text = child_items.first().is_some_and(|item| item.is_standalone_expr());
             let first_child = if first_is_text {
