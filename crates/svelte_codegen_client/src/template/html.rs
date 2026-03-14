@@ -15,8 +15,8 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
     let mut html = String::new();
     for item in &lf.items {
         match item {
-            FragmentItem::TextConcat { parts } => {
-                let has_expr = parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)));
+            FragmentItem::TextConcat { parts, has_expr } => {
+                let has_expr = *has_expr;
                 if has_expr {
                     html.push(' ');
                 } else {
@@ -39,12 +39,8 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
 
 /// Build the HTML string for a single element (opening tag + attrs + children + closing tag).
 pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
-    let (has_spread, has_class_directives) = el.attributes.iter().fold((false, false), |(sp, cd), a| {
-        (
-            sp || matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread),
-            cd || matches!(a, Attribute::ClassDirective(_)),
-        )
-    });
+    let has_spread = ctx.analysis.element_has_spread.contains(&el.id);
+    let has_class_directives = ctx.analysis.element_has_class_directives.contains(&el.id);
 
     let mut html = format!("<{}", el.name);
 
@@ -90,7 +86,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
         .get(&child_key)
         .copied()
         .unwrap_or(ContentType::Empty);
-    let has_state = has_dynamic_children(ctx, el.id);
+    let has_state = ctx.analysis.fragment_has_dynamic_children.contains(&child_key);
 
     match ct {
         ContentType::Empty => {}
@@ -114,12 +110,3 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     html
 }
 
-fn has_dynamic_children(ctx: &Ctx<'_>, el_id: svelte_ast::NodeId) -> bool {
-    let key = FragmentKey::Element(el_id);
-    let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
-        return false;
-    };
-    lf.items
-        .iter()
-        .any(|item| super::expression::item_is_dynamic(item, ctx))
-}

@@ -3,13 +3,13 @@
 use oxc_ast::ast::Statement;
 
 use svelte_analyze::{ContentType, FragmentKey};
-use svelte_ast::{Attribute, NodeId};
+use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::{has_spread, process_attr, process_attrs_spread, process_class_directives};
-use super::expression::{build_concat, emit_trailing_next, item_is_dynamic};
+use super::attributes::{process_attr, process_attrs_spread, process_class_directives};
+use super::expression::{build_concat, emit_trailing_next};
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -32,12 +32,7 @@ pub(crate) fn process_element<'a>(
         .unwrap_or(ContentType::Empty);
 
     // $.remove_input_defaults for <input> elements with bind or dynamic value attribute
-    let is_input = el.name == "input";
-    let needs_input_defaults = is_input && el.attributes.iter().any(|a| {
-        matches!(a, Attribute::BindDirective(_))
-            || matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
-    });
-    if needs_input_defaults {
+    if ctx.analysis.needs_input_defaults.contains(&el_id) {
         init.push(ctx.b.call_stmt(
             "$.remove_input_defaults",
             [Arg::Ident(el_name)],
@@ -45,7 +40,7 @@ pub(crate) fn process_element<'a>(
     }
 
     // Attributes — spread path or per-attribute path
-    if has_spread(el) {
+    if ctx.analysis.element_has_spread.contains(&el_id) {
         let el_clone = el.clone_without_fragment();
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
     } else {
@@ -66,7 +61,7 @@ pub(crate) fn process_element<'a>(
     process_class_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // Children
-    let has_state = has_dynamic_children(ctx, el_id);
+    let has_state = ctx.analysis.fragment_has_dynamic_children.contains(&child_key);
     match ct {
         ContentType::Empty | ContentType::StaticText => {}
 
@@ -152,23 +147,11 @@ pub(crate) fn process_element<'a>(
     }
 }
 
-fn has_dynamic_children(ctx: &Ctx<'_>, el_id: NodeId) -> bool {
-    let key = FragmentKey::Element(el_id);
-    let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
-        return false;
-    };
-    lf.items.iter().any(|item| item_is_dynamic(item, ctx))
-}
-
 /// Check if a fragment item needs a DOM variable.
 /// Elements use precomputed `elements_needing_var` from the analysis phase.
 pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
-        svelte_analyze::FragmentItem::TextConcat { parts } => {
-            parts
-                .iter()
-                .any(|p| matches!(p, svelte_analyze::ConcatPart::Expr(_)))
-        }
+        svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         svelte_analyze::FragmentItem::Element(id) => ctx.analysis.elements_needing_var.contains(id),
         svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) => {
             true

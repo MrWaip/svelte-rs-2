@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
+use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
 
@@ -66,6 +67,18 @@ pub struct AnalysisData {
     pub bind_mutated_runes: FxHashSet<String>,
     /// Elements that need a DOM variable during traversal (precomputed for codegen).
     pub elements_needing_var: FxHashSet<NodeId>,
+
+    // -- Element flags (populated by ElementFlagsVisitor) --
+    /// Elements that have at least one spread attribute.
+    pub element_has_spread: FxHashSet<NodeId>,
+    /// Elements that have at least one class directive.
+    pub element_has_class_directives: FxHashSet<NodeId>,
+    /// Static class attribute Span for elements (value_span of StringAttribute named "class").
+    pub element_static_class: FxHashMap<NodeId, Span>,
+    /// Input elements that need `$.remove_input_defaults` (have bind or value attr).
+    pub needs_input_defaults: FxHashSet<NodeId>,
+    /// Fragments whose items contain at least one dynamic child.
+    pub fragment_has_dynamic_children: FxHashSet<FragmentKey>,
 }
 
 impl AnalysisData {
@@ -90,6 +103,11 @@ impl AnalysisData {
             mutated_runes: FxHashSet::default(),
             bind_mutated_runes: FxHashSet::default(),
             elements_needing_var: FxHashSet::default(),
+            element_has_spread: FxHashSet::default(),
+            element_has_class_directives: FxHashSet::default(),
+            element_static_class: FxHashMap::default(),
+            needs_input_defaults: FxHashSet::default(),
+            fragment_has_dynamic_children: FxHashSet::default(),
         }
     }
 
@@ -139,14 +157,14 @@ pub enum FragmentItem {
     /// A RenderTag ({@render snippet(args)}).
     RenderTag(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
-    TextConcat { parts: Vec<ConcatPart> },
+    TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
 }
 
 impl FragmentItem {
     /// Returns `true` if this is a standalone `{expression}` with no surrounding text.
     /// Used by codegen to pass `is_text: true` to `$.child()` / `$.sibling()`.
     pub fn is_standalone_expr(&self) -> bool {
-        matches!(self, FragmentItem::TextConcat { parts }
+        matches!(self, FragmentItem::TextConcat { parts, .. }
             if parts.len() == 1 && matches!(parts[0], ConcatPart::Expr(_)))
     }
 }

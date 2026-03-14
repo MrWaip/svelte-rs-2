@@ -4,7 +4,7 @@
 
 use svelte_ast::{Attribute, Component, Element, Fragment, Node};
 
-use crate::data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey};
+use crate::data::{AnalysisData, ContentType, FragmentItem, FragmentKey};
 
 /// Populate `data.elements_needing_var` for all elements in the component.
 pub fn compute_elements_needing_var(component: &Component, data: &mut AnalysisData) {
@@ -79,9 +79,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
 
 fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
     match item {
-        FragmentItem::TextConcat { parts } => {
-            parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)))
-        }
+        FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         FragmentItem::Element(id) => {
             // Already computed: children are walked before parents
             data.elements_needing_var.contains(id)

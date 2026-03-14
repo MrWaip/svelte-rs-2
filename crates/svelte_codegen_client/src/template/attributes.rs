@@ -105,6 +105,10 @@ pub(crate) fn process_class_directives<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
+    if !ctx.analysis.element_has_class_directives.contains(&el.id) {
+        return;
+    }
+
     let class_dirs: Vec<_> = el
         .attributes
         .iter()
@@ -114,20 +118,12 @@ pub(crate) fn process_class_directives<'a>(
         })
         .collect();
 
-    if class_dirs.is_empty() {
-        return;
-    }
-
-    // Find static class value from a StringAttribute named "class"
-    let static_class = el
-        .attributes
-        .iter()
-        .find_map(|a| match a {
-            Attribute::StringAttribute(sa) if sa.name == "class" => {
-                Some(ctx.component.source_text(sa.value_span).to_string())
-            }
-            _ => None,
-        })
+    // Find static class value from precomputed span
+    let static_class = ctx
+        .analysis
+        .element_static_class
+        .get(&el.id)
+        .map(|span| ctx.component.source_text(*span).to_string())
         .unwrap_or_default();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
@@ -285,13 +281,6 @@ fn is_delegatable_event(name: &str) -> bool {
             | "contextmenu"
             | "auxclick"
     )
-}
-
-/// Check if an element has any spread attribute.
-pub(crate) fn has_spread(el: &Element) -> bool {
-    el.attributes
-        .iter()
-        .any(|a| matches!(a, Attribute::ShorthandOrSpread(s) if s.is_spread))
 }
 
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.

@@ -81,9 +81,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentType {
         match item {
             FragmentItem::Element(_) => has_element = true,
             FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => has_block = true,
-            FragmentItem::TextConcat { parts } => {
-                let has_expr = parts.iter().any(|p| matches!(p, crate::data::ConcatPart::Expr(_)));
-                if has_expr {
+            FragmentItem::TextConcat { has_expr, .. } => {
+                if *has_expr {
                     has_dynamic_text = true;
                 } else {
                     has_static_text = true;
