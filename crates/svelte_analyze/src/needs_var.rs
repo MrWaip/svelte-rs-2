@@ -1,45 +1,22 @@
 //! Compute which elements need a DOM variable during traversal.
 //!
+//! Uses `leave_element` for bottom-up order: children are processed before parents,
+//! so `elements_needing_var` for nested elements is ready when checking outer ones.
+//!
 //! Runs after: reactivity, content_types, lower.
 
-use svelte_ast::{Attribute, Component, Element, Fragment, Node};
+use oxc_semantic::ScopeId;
+use svelte_ast::{Attribute, Element};
 
 use crate::data::{AnalysisData, ContentType, FragmentItem, FragmentKey};
+use crate::walker::TemplateVisitor;
 
-/// Populate `data.elements_needing_var` for all elements in the component.
-pub fn compute_elements_needing_var(component: &Component, data: &mut AnalysisData) {
-    walk_fragment(&component.fragment, data);
-}
+pub(crate) struct NeedsVarVisitor;
 
-fn walk_fragment(fragment: &Fragment, data: &mut AnalysisData) {
-    for node in &fragment.nodes {
-        match node {
-            Node::Element(el) => {
-                // Walk children first so nested elements are already computed
-                walk_fragment(&el.fragment, data);
-                if element_needs_var(el, data) {
-                    data.elements_needing_var.insert(el.id);
-                }
-            }
-            Node::ComponentNode(cn) => {
-                walk_fragment(&cn.fragment, data);
-            }
-            Node::IfBlock(b) => {
-                walk_fragment(&b.consequent, data);
-                if let Some(alt) = &b.alternate {
-                    walk_fragment(alt, data);
-                }
-            }
-            Node::EachBlock(b) => {
-                walk_fragment(&b.body, data);
-                if let Some(fb) = &b.fallback {
-                    walk_fragment(fb, data);
-                }
-            }
-            Node::SnippetBlock(b) => {
-                walk_fragment(&b.body, data);
-            }
-            _ => {}
+impl TemplateVisitor for NeedsVarVisitor {
+    fn leave_element(&mut self, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        if element_needs_var(el, data) {
+            data.elements_needing_var.insert(el.id);
         }
     }
 }
@@ -81,7 +58,7 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
     match item {
         FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         FragmentItem::Element(id) => {
-            // Already computed: children are walked before parents
+            // Already computed: leave_element processes children before parents
             data.elements_needing_var.contains(id)
         }
         FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) => true,
