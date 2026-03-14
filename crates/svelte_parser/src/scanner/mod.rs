@@ -14,6 +14,7 @@ pub struct Scanner<'a> {
     source: &'a str,
     chars: Peekable<Chars<'a>>,
     tokens: Vec<Token<'a>>,
+    diagnostics: Vec<Diagnostic>,
     start: usize,
     prev: usize,
     current: usize,
@@ -24,6 +25,7 @@ impl<'a> Scanner<'a> {
         Scanner {
             source,
             tokens: vec![],
+            diagnostics: vec![],
             chars: source.chars().peekable(),
             prev: 0,
             current: 0,
@@ -32,12 +34,10 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn scan_tokens(&mut self) -> (Vec<Token<'a>>, Vec<Diagnostic>) {
-        let mut diagnostics = Vec::new();
-
         while !self.is_at_end() {
             self.start = self.current;
             if let Err(diagnostic) = self.scan_token() {
-                diagnostics.push(diagnostic);
+                self.diagnostics.push(diagnostic);
                 self.sync_to_next_token();
             }
         }
@@ -49,7 +49,12 @@ impl<'a> Scanner<'a> {
         });
 
         let tokens = std::mem::take(&mut self.tokens);
+        let diagnostics = std::mem::take(&mut self.diagnostics);
         (tokens, diagnostics)
+    }
+
+    fn recover(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
     }
 
     /// Skip forward to the next synchronization point after a scan error.
@@ -205,7 +210,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
@@ -238,10 +243,19 @@ impl<'a> Scanner<'a> {
         let self_closing = self.match_char('/');
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unterminated_start_tag(Span::new(
+            // Emit partial StartTag with recovery — parser-level will handle auto-close
+            self.recover(Diagnostic::unterminated_start_tag(Span::new(
                 start as u32,
                 self.current as u32,
             )));
+
+            self.add_token(TokenType::StartTag(StartTag {
+                attributes,
+                name,
+                self_closing,
+            }));
+
+            return Ok(());
         }
 
         if name == "script" {
@@ -281,23 +295,34 @@ impl<'a> Scanner<'a> {
 
             let peeked = self.peek();
 
-            let attr = if peeked == Some('{') {
-                let expression_tag = self.expression_tag()?;
-                Attribute::ExpressionTag(expression_tag)
+            let attr_result = if peeked == Some('{') {
+                self.expression_tag().map(Attribute::ExpressionTag)
             } else {
-                let name = self.attribute_identifier()?;
+                let name = match self.attribute_identifier() {
+                    Ok(name) => name,
+                    Err(d) => {
+                        self.recover(d);
+                        break;
+                    }
+                };
 
                 match name {
-                    AttributeIdentifierType::HTMLAttribute(name) => self.html_attribute(name)?,
+                    AttributeIdentifierType::HTMLAttribute(name) => self.html_attribute(name),
                     AttributeIdentifierType::ClassDirective(value) => {
-                        self.class_directive(value)?
+                        self.class_directive(value)
                     }
-                    AttributeIdentifierType::BindDirective(value) => self.bind_directive(value)?,
+                    AttributeIdentifierType::BindDirective(value) => self.bind_directive(value),
                     AttributeIdentifierType::None => break,
                 }
             };
 
-            attributes.push(attr);
+            match attr_result {
+                Ok(attr) => attributes.push(attr),
+                Err(d) => {
+                    self.recover(d);
+                    break;
+                }
+            }
 
             self.skip_whitespace();
         }
@@ -430,8 +455,15 @@ impl<'a> Scanner<'a> {
 
         let last_part = self.slice_source(current_pos, self.current);
 
-        // consume last quote
-        self.advance();
+        // consume last quote (or recover at EOF)
+        if !self.is_at_end() {
+            self.advance();
+        } else {
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
+        }
 
         if has_expression && !last_part.is_empty() {
             parts.push(ConcatenationPart::String(last_part));
@@ -461,7 +493,7 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+            self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name }));
@@ -529,10 +561,27 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        Err(Diagnostic::unexpected_end_of_file(Span::new(
+        // EOF — return partial expression with recovery
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
             start as u32,
             self.current as u32,
-        )))
+        )));
+
+        let raw = self.slice_source(start, self.current);
+        let value = raw.trim();
+        let trim_start = raw.len() - raw.trim_start().len();
+        let trim_end = raw.len() - raw.trim_end().len();
+        let span_start = start + trim_start;
+        let span_end = if trim_end <= self.current - start {
+            self.current - trim_end
+        } else {
+            start
+        };
+
+        Ok(JsExpression {
+            span: Span::new(span_start as u32, span_end as u32),
+            value,
+        })
     }
 
     fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
@@ -549,10 +598,11 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
+            return Ok(());
         }
 
         self.advance();
@@ -612,7 +662,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                 }
 
                 self.add_token(TokenType::EndIfTag);
@@ -623,7 +673,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                 }
 
                 self.add_token(TokenType::EndEachTag);
@@ -634,7 +684,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                 }
 
                 self.add_token(TokenType::EndSnippetTag);
@@ -686,7 +736,7 @@ impl<'a> Scanner<'a> {
                     }));
                 } else {
                     if !self.match_char('}') {
-                        return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                        self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
                     }
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
@@ -729,10 +779,17 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
+
+            self.add_token(TokenType::ScriptTag(ScriptTag {
+                source: self.slice_source(start, self.current),
+                attributes,
+            }));
+
+            return Ok(());
         }
 
         self.skip_whitespace();
@@ -774,10 +831,17 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
+
+            self.add_token(TokenType::StyleTag(token::StyleTag {
+                source: self.slice_source(start, self.current),
+                attributes,
+            }));
+
+            return Ok(());
         }
 
         self.skip_whitespace();
@@ -815,10 +879,13 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
+
+            self.add_token(TokenType::Comment);
+            return Ok(());
         }
 
         self.advance();
@@ -917,7 +984,7 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         if !self.match_char('}') {
-            return Err(Diagnostic::unexpected_token(Span::new(
+            self.recover(Diagnostic::unexpected_token(Span::new(
                 self.start as u32,
                 self.current as u32,
             )));
@@ -1544,5 +1611,111 @@ mod tests {
         if let TokenType::RenderTag(ref rt) = tokens[0].token_type {
             assert_eq!(rt.expression.value, "foo(x, y)");
         }
+    }
+
+    // --- Scanner error recovery tests ---
+
+    #[test]
+    fn recovery_unterminated_start_tag_bare() {
+        let mut scanner = Scanner::new("<div");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert_start_tag(&tokens[0], "div", vec![], false);
+        assert!(tokens[1].token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
+    }
+
+    #[test]
+    fn recovery_unterminated_start_tag_with_bool_attr() {
+        let mut scanner = Scanner::new("<div class");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert_start_tag(&tokens[0], "div", vec![("class", "")], false);
+        assert!(tokens[1].token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
+    }
+
+    #[test]
+    fn recovery_unterminated_start_tag_with_partial_attr() {
+        let mut scanner = Scanner::new("<div class=");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        // StartTag emitted with partial attrs, EOF diagnostic
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn recovery_unclosed_script_tag() {
+        let mut scanner = Scanner::new("<script>code");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(matches!(tokens[0].token_type, TokenType::ScriptTag(_)));
+        if let TokenType::ScriptTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.source, "code");
+        }
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    }
+
+    #[test]
+    fn recovery_unclosed_style_tag() {
+        let mut scanner = Scanner::new("<style>.foo{}");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(matches!(tokens[0].token_type, TokenType::StyleTag(_)));
+        if let TokenType::StyleTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.source, ".foo{}");
+        }
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    }
+
+    #[test]
+    fn recovery_unclosed_comment() {
+        let mut scanner = Scanner::new("<!-- text");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(tokens[0].token_type == TokenType::Comment);
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    }
+
+    #[test]
+    fn recovery_unclosed_interpolation() {
+        let mut scanner = Scanner::new("{name");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression.value, "name");
+        }
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    }
+
+    #[test]
+    fn recovery_unclosed_if_tag() {
+        let mut scanner = Scanner::new("{#if cond");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(matches!(tokens[0].token_type, TokenType::StartIfTag(_)));
+        if let TokenType::StartIfTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.expression.value, "cond");
+        }
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    }
+
+    #[test]
+    fn recovery_attribute_concatenation_eof() {
+        let mut scanner = Scanner::new(r#"<div class="foo"#);
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn recovery_start_tag_then_more_content() {
+        // Partial tag followed by valid content — scanner should recover
+        let mut scanner = Scanner::new("<div<p>hello</p>");
+        let (tokens, diagnostics) = scanner.scan_tokens();
+        // At least some tokens should be emitted
+        assert!(tokens.len() > 1);
+        assert!(tokens.last().unwrap().token_type == TokenType::EOF);
+        assert!(!diagnostics.is_empty());
     }
 }
