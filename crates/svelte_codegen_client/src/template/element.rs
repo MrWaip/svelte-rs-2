@@ -27,13 +27,14 @@ pub(crate) fn process_element<'a>(
     let child_key = FragmentKey::Element(el_id);
     let ct = ctx
         .analysis
+        .fragments
         .content_types
         .get(&child_key)
         .copied()
         .unwrap_or(ContentType::Empty);
 
     // $.remove_input_defaults for <input> elements with bind or dynamic value attribute
-    if ctx.analysis.needs_input_defaults.contains(&el_id) {
+    if ctx.analysis.element_flags.needs_input_defaults.contains(&el_id) {
         init.push(ctx.b.call_stmt(
             "$.remove_input_defaults",
             [Arg::Ident(el_name)],
@@ -41,14 +42,14 @@ pub(crate) fn process_element<'a>(
     }
 
     // Attributes — spread path or per-attribute path
-    if ctx.analysis.element_has_spread.contains(&el_id) {
+    if ctx.analysis.element_flags.has_spread.contains(&el_id) {
         let el_clone = el.clone_without_fragment();
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
     } else {
         let attr_count = el.attributes.len();
         let mut attr_dynamic = Vec::with_capacity(attr_count);
         for idx in 0..attr_count {
-            attr_dynamic.push(ctx.analysis.dynamic_attrs.contains(&(el_id, idx)));
+            attr_dynamic.push(ctx.analysis.element_flags.dynamic_attrs.contains(&(el_id, idx)));
         }
         let el = ctx.element(el_id);
         let tag = el.name.clone();
@@ -66,7 +67,7 @@ pub(crate) fn process_element<'a>(
     process_style_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // Children
-    let has_state = ctx.analysis.fragment_has_dynamic_children.contains(&child_key);
+    let has_state = ctx.analysis.fragments.has_dynamic_children.contains(&child_key);
     match ct {
         ContentType::Empty | ContentType::StaticText => {}
 
@@ -74,7 +75,8 @@ pub(crate) fn process_element<'a>(
             // textContent shortcut
             let items: Vec<_> = ctx
                 .analysis
-                .lowered_fragments
+                .fragments
+                .lowered
                 .get(&child_key)
                 .unwrap()
                 .items
@@ -92,7 +94,8 @@ pub(crate) fn process_element<'a>(
             let text_name = ctx.gen_ident("text");
             let items: Vec<_> = ctx
                 .analysis
-                .lowered_fragments
+                .fragments
+                .lowered
                 .get(&child_key)
                 .unwrap()
                 .items
@@ -158,11 +161,11 @@ pub(crate) fn process_element<'a>(
 }
 
 /// Check if a fragment item needs a DOM variable.
-/// Elements use precomputed `elements_needing_var` from the analysis phase.
+/// Elements use precomputed `element_flags.needs_var` from the analysis phase.
 pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
-        svelte_analyze::FragmentItem::Element(id) => ctx.analysis.elements_needing_var.contains(id),
+        svelte_analyze::FragmentItem::Element(id) => ctx.analysis.element_flags.needs_var.contains(id),
         svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) | svelte_analyze::FragmentItem::KeyBlock(_) => {
             true
         }

@@ -195,9 +195,9 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
     // Walk template to add each-block scopes and const bindings
     let root = data.scoping.root_scope_id();
     // Take const_tag_names temporarily to avoid split borrow on `data`
-    let const_tag_names = std::mem::take(&mut data.const_tag_names);
+    let const_tag_names = std::mem::take(&mut data.const_tags.names);
     walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names);
-    data.const_tag_names = const_tag_names;
+    data.const_tags.names = const_tag_names;
 }
 
 fn walk_template_scopes(

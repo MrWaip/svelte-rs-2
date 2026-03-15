@@ -55,6 +55,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let key = FragmentKey::Root;
     let ct = ctx
         .analysis
+        .fragments
         .content_types
         .get(&key)
         .copied()
@@ -69,12 +70,12 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut hoistable_snippet_ids = Vec::new();
     for node in &ctx.component.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            if let Some(params) = ctx.analysis.snippet_params.get(&block.id) {
+            if let Some(params) = ctx.analysis.snippets.params.get(&block.id) {
                 for param in params {
                     ctx.gen_ident(param);
                 }
             }
-            if ctx.analysis.hoistable_snippets.contains(&block.id) {
+            if ctx.analysis.snippets.hoistable.contains(&block.id) {
                 hoistable_snippet_ids.push(block.id);
             } else {
                 instance_snippet_ids.push(block.id);
@@ -282,6 +283,7 @@ fn gen_root_mixed<'a>(
 pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
     let ct = ctx
         .analysis
+        .fragments
         .content_types
         .get(&key)
         .copied()

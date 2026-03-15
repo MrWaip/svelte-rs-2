@@ -111,7 +111,7 @@ pub(crate) fn process_class_directives<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
-    if !ctx.analysis.element_has_class_directives.contains(&el.id) {
+    if !ctx.analysis.element_flags.has_class_directives.contains(&el.id) {
         return;
     }
 
@@ -128,7 +128,8 @@ pub(crate) fn process_class_directives<'a>(
     // Find static class value from precomputed span
     let static_class = ctx
         .analysis
-        .element_static_class
+        .element_flags
+        .static_class
         .get(&el.id)
         .map(|span| ctx.component.source_text(*span).to_string())
         .unwrap_or_default();
@@ -204,7 +205,7 @@ pub(crate) fn process_style_directives<'a>(
 ) {
     use svelte_ast::StyleDirectiveValue;
 
-    if !ctx.analysis.element_has_style_directives.contains(&el.id) {
+    if !ctx.analysis.element_flags.has_style_directives.contains(&el.id) {
         return;
     }
 
@@ -221,7 +222,8 @@ pub(crate) fn process_style_directives<'a>(
     // Find static style value from precomputed span
     let static_style = ctx
         .analysis
-        .element_static_style
+        .element_flags
+        .static_style
         .get(&el.id)
         .map(|span| ctx.component.source_text(*span).to_string())
         .unwrap_or_default();

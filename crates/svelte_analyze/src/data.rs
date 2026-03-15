@@ -56,9 +56,91 @@ pub enum FragmentKey {
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Grouped sub-structures
+// ---------------------------------------------------------------------------
+
+/// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
+pub struct ElementFlags {
+    pub has_spread: FxHashSet<NodeId>,
+    pub has_class_directives: FxHashSet<NodeId>,
+    pub static_class: FxHashMap<NodeId, Span>,
+    pub has_style_directives: FxHashSet<NodeId>,
+    pub static_style: FxHashMap<NodeId, Span>,
+    pub needs_input_defaults: FxHashSet<NodeId>,
+    pub needs_var: FxHashSet<NodeId>,
+    pub needs_ref: FxHashSet<NodeId>,
+    pub dynamic_attrs: FxHashSet<(NodeId, usize)>,
+}
+
+impl ElementFlags {
+    pub fn new() -> Self {
+        Self {
+            has_spread: FxHashSet::default(),
+            has_class_directives: FxHashSet::default(),
+            static_class: FxHashMap::default(),
+            has_style_directives: FxHashSet::default(),
+            static_style: FxHashMap::default(),
+            needs_input_defaults: FxHashSet::default(),
+            needs_var: FxHashSet::default(),
+            needs_ref: FxHashSet::default(),
+            dynamic_attrs: FxHashSet::default(),
+        }
+    }
+}
+
+/// Fragment lowering results and content classification.
+pub struct FragmentData {
+    pub lowered: FxHashMap<FragmentKey, LoweredFragment>,
+    pub content_types: FxHashMap<FragmentKey, ContentType>,
+    pub has_dynamic_children: FxHashSet<FragmentKey>,
+}
+
+impl FragmentData {
+    pub fn new() -> Self {
+        Self {
+            lowered: FxHashMap::default(),
+            content_types: FxHashMap::default(),
+            has_dynamic_children: FxHashSet::default(),
+        }
+    }
+}
+
+/// Snippet analysis: parameter names and hoistability.
+pub struct SnippetData {
+    pub params: FxHashMap<NodeId, Vec<String>>,
+    pub hoistable: FxHashSet<NodeId>,
+}
+
+impl SnippetData {
+    pub fn new() -> Self {
+        Self {
+            params: FxHashMap::default(),
+            hoistable: FxHashSet::default(),
+        }
+    }
+}
+
+/// ConstTag analysis: declared names and per-fragment grouping.
+pub struct ConstTagData {
+    pub names: FxHashMap<NodeId, Vec<String>>,
+    pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+}
+
+impl ConstTagData {
+    pub fn new() -> Self {
+        Self {
+            names: FxHashMap::default(),
+            by_fragment: FxHashMap::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AnalysisData — side tables populated by all passes
+// ---------------------------------------------------------------------------
+
 pub struct AnalysisData {
-    /// Lowered + trimmed representation of each fragment.
-    pub lowered_fragments: FxHashMap<FragmentKey, LoweredFragment>,
     /// Parsed JS metadata for ExpressionTag nodes (and IfBlock/EachBlock test expressions).
     pub expressions: FxHashMap<NodeId, ExpressionInfo>,
     /// Parsed JS metadata for element attribute expressions: (element_id, attr_index).
@@ -67,14 +149,8 @@ pub struct AnalysisData {
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
     pub scoping: ComponentScoping,
-    /// Element attributes that reference rune symbols: (element NodeId, attr index).
-    pub dynamic_attrs: FxHashSet<(NodeId, usize)>,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
     pub dynamic_nodes: FxHashSet<NodeId>,
-    /// Elements that need a JS variable reference for reactive updates.
-    pub node_needs_ref: FxHashSet<NodeId>,
-    /// Content classification for each fragment.
-    pub content_types: FxHashMap<FragmentKey, ContentType>,
     /// Compile-time known values for const declarations with literal initializers.
     pub known_values: FxHashMap<String, String>,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
@@ -83,75 +159,42 @@ pub struct AnalysisData {
     pub props: Option<PropsAnalysis>,
     /// Exported names from `export const/function/class` or `export { ... }`.
     pub exports: Vec<svelte_js::ExportInfo>,
-    /// Snippet parameter names, keyed by snippet NodeId.
-    pub snippet_params: FxHashMap<NodeId, Vec<String>>,
-    /// Top-level snippets whose bodies don't reference component-scoped variables.
-    pub hoistable_snippets: FxHashSet<NodeId>,
-
-    /// Elements that need a DOM variable during traversal (precomputed for codegen).
-    pub elements_needing_var: FxHashSet<NodeId>,
-
-    // -- Element flags (populated by ElementFlagsVisitor) --
-    /// Elements that have at least one spread attribute.
-    pub element_has_spread: FxHashSet<NodeId>,
-    /// Elements that have at least one class directive.
-    pub element_has_class_directives: FxHashSet<NodeId>,
-    /// Static class attribute Span for elements (value_span of StringAttribute named "class").
-    pub element_static_class: FxHashMap<NodeId, Span>,
-    /// Elements that have at least one style directive.
-    pub element_has_style_directives: FxHashSet<NodeId>,
-    /// Static style attribute Span for elements (value_span of StringAttribute named "style").
-    pub element_static_style: FxHashMap<NodeId, Span>,
-    /// Input elements that need `$.remove_input_defaults` (have bind or value attr).
-    pub needs_input_defaults: FxHashSet<NodeId>,
-    /// Fragments whose items contain at least one dynamic child.
-    pub fragment_has_dynamic_children: FxHashSet<FragmentKey>,
-
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
     /// Store subscriptions: base names (e.g. "count" for `$count`) of variables
     /// that have `$`-prefixed references and are root-scope non-rune bindings.
     pub store_subscriptions: FxHashSet<String>,
 
-    /// ConstTag declared identifier names, keyed by ConstTag NodeId.
-    pub const_tag_names: FxHashMap<NodeId, Vec<String>>,
-    /// ConstTag NodeIds grouped by the fragment they belong to.
-    pub const_tags: FxHashMap<FragmentKey, Vec<NodeId>>,
+    /// Per-element flags (spread, class/style directives, needs_var, etc.).
+    pub element_flags: ElementFlags,
+    /// Fragment lowering and content classification.
+    pub fragments: FragmentData,
+    /// Snippet parameters and hoistability.
+    pub snippets: SnippetData,
+    /// ConstTag declared names and per-fragment grouping.
+    pub const_tags: ConstTagData,
 }
 
 impl AnalysisData {
     pub fn new() -> Self {
         Self {
-            lowered_fragments: FxHashMap::default(),
             expressions: FxHashMap::default(),
             attr_expressions: FxHashMap::default(),
             script: None,
             scoping: ComponentScoping::empty(),
-            dynamic_attrs: FxHashSet::default(),
             dynamic_nodes: FxHashSet::default(),
-            node_needs_ref: FxHashSet::default(),
-            content_types: FxHashMap::default(),
             known_values: FxHashMap::default(),
             alt_is_elseif: FxHashSet::default(),
             props: None,
             exports: Vec::new(),
-            snippet_params: FxHashMap::default(),
-            hoistable_snippets: FxHashSet::default(),
-            elements_needing_var: FxHashSet::default(),
-            element_has_spread: FxHashSet::default(),
-            element_has_class_directives: FxHashSet::default(),
-            element_static_class: FxHashMap::default(),
-            element_has_style_directives: FxHashSet::default(),
-            element_static_style: FxHashMap::default(),
-            needs_input_defaults: FxHashSet::default(),
-            fragment_has_dynamic_children: FxHashSet::default(),
             needs_context: false,
             store_subscriptions: FxHashSet::default(),
-            const_tag_names: FxHashMap::default(),
-            const_tags: FxHashMap::default(),
+            element_flags: ElementFlags::new(),
+            fragments: FragmentData::new(),
+            snippets: SnippetData::new(),
+            const_tags: ConstTagData::new(),
         }
     }
-
 }
 
 impl AnalysisData {

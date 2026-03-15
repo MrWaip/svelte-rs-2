@@ -128,7 +128,8 @@ fn walk_node<'a>(
             // Get snippet params for this block
             let params = ctx
                 .analysis
-                .snippet_params
+                .snippets
+                .params
                 .get(&block.id)
                 .map(|v| v.as_slice())
                 .unwrap_or(&[]);

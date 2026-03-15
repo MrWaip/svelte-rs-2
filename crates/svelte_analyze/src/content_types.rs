@@ -5,7 +5,8 @@ use crate::data::{AnalysisData, ConcatPart, ContentType, FragmentItem};
 pub fn classify_and_mark_dynamic(data: &mut AnalysisData) {
     let dynamic_nodes = &data.dynamic_nodes;
     let results: Vec<_> = data
-        .lowered_fragments
+        .fragments
+        .lowered
         .iter()
         .map(|(&key, lf)| {
             let ct = classify_items(&lf.items);
@@ -15,9 +16,9 @@ pub fn classify_and_mark_dynamic(data: &mut AnalysisData) {
         .collect();
 
     for (key, ct, has_dynamic) in results {
-        data.content_types.insert(key, ct);
+        data.fragments.content_types.insert(key, ct);
         if has_dynamic {
-            data.fragment_has_dynamic_children.insert(key);
+            data.fragments.has_dynamic_children.insert(key);
         }
     }
 }

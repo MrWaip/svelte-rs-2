@@ -16,8 +16,8 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
-    ParsedExprs, PropAnalysis, PropsAnalysis,
+    AnalysisData, ConcatPart, ConstTagData, ContentType, ElementFlags, FragmentData, FragmentItem,
+    FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use scope::ComponentScoping;
 
@@ -93,13 +93,13 @@ pub fn analyze<'a>(
 
     // Classify fragments + mark which have dynamic children (single pass over lowered_fragments)
     debug_assert!(
-        !data.lowered_fragments.is_empty() || component.fragment.nodes.is_empty(),
+        !data.fragments.lowered.is_empty() || component.fragment.nodes.is_empty(),
         "classify_and_mark_dynamic requires lowered_fragments (from lower pass)"
     );
     content_types::classify_and_mark_dynamic(&mut data);
     // Separate walker pass: needs_var depends on content_types (computed above)
     debug_assert!(
-        !data.content_types.is_empty() || component.fragment.nodes.is_empty(),
+        !data.fragments.content_types.is_empty() || component.fragment.nodes.is_empty(),
         "needs_var requires content_types (from classify_and_mark_dynamic)"
     );
     {
@@ -132,7 +132,7 @@ fn register_snippet_params(
                 } else {
                     Vec::new()
                 };
-                data.snippet_params.insert(block.id, params);
+                data.snippets.params.insert(block.id, params);
                 register_snippet_params(&block.body, component, data);
             }
             svelte_ast::Node::Element(el) => {
@@ -279,6 +279,7 @@ mod tests {
 
     fn assert_root_content_type(data: &AnalysisData, expected: ContentType) {
         let actual = data
+            .fragments
             .content_types
             .get(&FragmentKey::Root)
             .expect("no root content type");
@@ -350,6 +351,7 @@ mod tests {
         let el = find_element(&component.fragment, tag_name)
             .unwrap_or_else(|| panic!("no element <{tag_name}>"));
         let actual = data
+            .fragments
             .content_types
             .get(&FragmentKey::Element(el.id))
             .unwrap_or_else(|| panic!("no content type for <{tag_name}>"));
@@ -365,6 +367,7 @@ mod tests {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
         let actual = data
+            .fragments
             .content_types
             .get(&FragmentKey::IfConsequent(block.id))
             .unwrap_or_else(|| panic!("no consequent content type for IfBlock '{test_text}'"));
@@ -380,6 +383,7 @@ mod tests {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
         let actual = data
+            .fragments
             .content_types
             .get(&FragmentKey::IfAlternate(block.id))
             .unwrap_or_else(|| panic!("no alternate content type for IfBlock '{test_text}'"));
@@ -388,7 +392,8 @@ mod tests {
 
     fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
         let lf = data
-            .lowered_fragments
+            .fragments
+            .lowered
             .get(&key)
             .unwrap_or_else(|| panic!("no lowered fragment for {:?}", key));
         assert_eq!(
@@ -400,7 +405,8 @@ mod tests {
 
     fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
         let lf = data
-            .lowered_fragments
+            .fragments
+            .lowered
             .get(&key)
             .expect("no lowered fragment");
         assert!(

@@ -16,7 +16,8 @@ pub(crate) fn gen_snippet_block<'a>(ctx: &mut Ctx<'a>, id: NodeId) -> Statement<
 
     let param_names: Vec<String> = ctx
         .analysis
-        .snippet_params
+        .snippets
+        .params
         .get(&id)
         .cloned()
         .unwrap_or_default();
