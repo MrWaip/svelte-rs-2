@@ -8,12 +8,14 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
 struct WasmDiagnostic {
+    code: String,
     message: String,
     severity: String,
     start_line: usize,
     start_col: usize,
     end_line: usize,
     end_col: usize,
+    frame: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -43,13 +45,20 @@ impl WasmCompiler {
             .map(|d| {
                 let (start_line, start_col) = line_index.line_col(d.span.start as usize);
                 let (end_line, end_col) = line_index.line_col(d.span.end as usize);
+                let mut message = d.kind.message();
+                if let Some(url) = d.kind.svelte_doc_url() {
+                    message.push('\n');
+                    message.push_str(&url);
+                }
                 WasmDiagnostic {
-                    message: format!("{:?}", d.kind),
+                    code: d.kind.code().to_string(),
+                    message,
                     severity: format!("{:?}", d.severity),
                     start_line,
                     start_col,
                     end_line,
                     end_col,
+                    frame: line_index.code_frame(source, d.span),
                 }
             })
             .collect();
