@@ -5,11 +5,11 @@ mod elseif;
 mod hoistable;
 mod known_values;
 mod lower;
-mod mutations;
 mod needs_var;
 mod parse_js;
 mod props;
 mod reactivity;
+mod resolve_references;
 pub mod scope;
 mod store_subscriptions;
 mod validate;
@@ -32,7 +32,7 @@ use svelte_diagnostics::Diagnostic;
 /// Pass order:
 /// 1. parse_js      — parse JS expressions + script block (stores ASTs in ParsedExprs)
 /// 2. build_scoping — build unified scope tree (script + template)
-/// 3. mutations     — detect mutated runes (composite walk: template + binds)
+/// 3. resolve_references — resolve template refs to SymbolId, register mutations in OXC
 /// 4. known_values  — evaluate const declarations with literal initializers
 /// 5. props         — analyze $props() destructuring
 /// 6. lower         — trim whitespace, group text+expressions
@@ -55,7 +55,7 @@ pub fn analyze<'a>(
 
     scope::build_scoping(component, &mut data);
     store_subscriptions::detect_store_subscriptions(&mut data);
-    mutations::detect_mutations(component, &mut data);
+    resolve_references::resolve_references(component, &mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);

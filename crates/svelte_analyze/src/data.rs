@@ -91,10 +91,8 @@ pub struct AnalysisData {
     // -- Cached sets for codegen (populated after mutations pass) --
     /// All rune symbol names with their kinds (precomputed).
     pub rune_names: FxHashMap<String, RuneKind>,
-    /// All mutated rune names (script assignments + bind directives).
+    /// All mutated rune names (script + template, all via OXC references).
     pub mutated_runes: FxHashSet<String>,
-    /// Rune names mutated only via bind directives.
-    pub bind_mutated_runes: FxHashSet<String>,
     /// Elements that need a DOM variable during traversal (precomputed for codegen).
     pub elements_needing_var: FxHashSet<NodeId>,
 
@@ -141,7 +139,6 @@ impl AnalysisData {
             hoistable_snippets: FxHashSet::default(),
             rune_names: FxHashMap::default(),
             mutated_runes: FxHashSet::default(),
-            bind_mutated_runes: FxHashSet::default(),
             elements_needing_var: FxHashSet::default(),
             element_has_spread: FxHashSet::default(),
             element_has_class_directives: FxHashSet::default(),
@@ -160,7 +157,6 @@ impl AnalysisData {
     pub fn cache_rune_sets(&mut self) {
         self.rune_names = self.scoping.rune_names();
         self.mutated_runes = self.scoping.mutated_rune_names();
-        self.bind_mutated_runes = self.scoping.bind_mutated_rune_names();
     }
 }
 

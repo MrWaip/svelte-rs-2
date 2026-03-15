@@ -9,6 +9,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan as _, SourceType};
 
 use compact_str::CompactString;
+use oxc_semantic::SymbolId;
 use svelte_span::Span;
 use svelte_diagnostics::Diagnostic;
 
@@ -34,6 +35,8 @@ pub struct Reference {
     pub name: CompactString,
     pub span: Span,
     pub flags: ReferenceFlags,
+    /// Resolved after `resolve_references` pass. `None` for globals/unresolved.
+    pub symbol_id: Option<SymbolId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -600,6 +603,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                     ident.span.end + offset,
                 ),
                 flags: ReferenceFlags::Read,
+                symbol_id: None,
             });
         }
         Expression::AssignmentExpression(assign) => {
@@ -612,6 +616,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                         ident.span.end + offset,
                     ),
                     flags: ReferenceFlags::Write,
+                    symbol_id: None,
                 });
             }
             collect_references(&assign.right, offset, refs);
@@ -635,6 +640,7 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                     name: compact(&ident.name),
                     span: Span::new(ident.span.start + offset, ident.span.end + offset),
                     flags: ReferenceFlags::Write,
+                    symbol_id: None,
                 });
             }
         }
@@ -774,7 +780,7 @@ fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
 }
 
 /// Collect identifier references from a $derived/$derived.by call's argument.
-/// Returns deduplicated list — avoids redundant `is_dynamic_ref` lookups.
+/// Returns deduplicated list — avoids redundant `is_dynamic_by_id` lookups.
 fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let Expression::CallExpression(call) = expr else {
         return vec![];
