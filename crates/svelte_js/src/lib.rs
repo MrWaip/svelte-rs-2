@@ -163,7 +163,6 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
-    let mut has_effects = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -189,34 +188,24 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
             Statement::FunctionDeclaration(func) => {
                 collect_func_declaration(func, offset, &mut declarations);
             }
-            Statement::ExpressionStatement(expr_stmt) => {
-                if is_effect_call(&expr_stmt.expression) {
-                    has_effects = true;
-                }
-            }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates: Vec::new() }
+    ScriptInfo { declarations, props_declaration, exports, has_effects: false, store_candidates: Vec::new() }
 }
 
-/// Check if an expression is a `$effect(...)` or `$effect.pre(...)` call.
-fn is_effect_call(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
+/// Enrich ScriptInfo from OXC's unresolved references in one pass.
+/// Detects both `has_effects` ($effect usage) and store candidates ($count etc).
+fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
+    for key in scoping.root_unresolved_references().keys() {
+        let name = key.as_str();
+        if name == "$effect" {
+            info.has_effects = true;
+        } else if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+            info.store_candidates.push(compact(&name[1..]));
         }
     }
-    false
 }
 
 fn collect_export_names_from_declaration(
@@ -441,16 +430,7 @@ pub fn analyze_script_with_scoping(
     // Build semantic analysis and extract Scoping
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
 
-    // Collect $-prefixed unresolved references as store candidates
-    let scoping = &sem.semantic.scoping();
-    for key in scoping.root_unresolved_references().keys() {
-        let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
-            if !is_rune_name(name) {
-                script_info.store_candidates.push(compact(&name[1..]));
-            }
-        }
-    }
+    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     let scoping = sem.semantic.into_scoping();
 
@@ -489,17 +469,9 @@ pub fn analyze_script_with_alloc<'a>(
     let mut script_info = extract_script_info(&program, offset, source);
     let sem = oxc_semantic::SemanticBuilder::new().build(&program);
 
-    // Collect $-prefixed unresolved references as store candidates
-    // before into_scoping() consumes the semantic data.
-    let scoping = &sem.semantic.scoping();
-    for key in scoping.root_unresolved_references().keys() {
-        let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
-            if !is_rune_name(name) {
-                script_info.store_candidates.push(compact(&name[1..]));
-            }
-        }
-    }
+    // Extract has_effects + store_candidates from unresolved references in one pass.
+    // $effect → has_effects; $count (non-rune) → store candidate.
+    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     let scoping = sem.semantic.into_scoping();
 
