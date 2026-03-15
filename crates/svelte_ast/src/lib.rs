@@ -225,6 +225,21 @@ impl Element {
                 expression_span: x.expression_span,
                 shorthand: x.shorthand,
             }),
+            Attribute::StyleDirective(x) => Attribute::StyleDirective(StyleDirective {
+                name: x.name.clone(),
+                value: match &x.value {
+                    StyleDirectiveValue::Shorthand => StyleDirectiveValue::Shorthand,
+                    StyleDirectiveValue::Expression(span) => StyleDirectiveValue::Expression(*span),
+                    StyleDirectiveValue::String(s) => StyleDirectiveValue::String(s.clone()),
+                    StyleDirectiveValue::Concatenation(parts) => StyleDirectiveValue::Concatenation(
+                        parts.iter().map(|p| match p {
+                            ConcatPart::Static(s) => ConcatPart::Static(s.clone()),
+                            ConcatPart::Dynamic(sp) => ConcatPart::Dynamic(*sp),
+                        }).collect(),
+                    ),
+                },
+                important: x.important,
+            }),
             Attribute::BindDirective(x) => Attribute::BindDirective(BindDirective {
                 name: x.name.clone(),
                 expression_span: x.expression_span,
@@ -381,6 +396,8 @@ pub enum Attribute {
     ShorthandOrSpread(ShorthandOrSpread),
     /// class:name or class:name={expr}
     ClassDirective(ClassDirective),
+    /// style:name or style:name={expr} or style:name|important
+    StyleDirective(StyleDirective),
     /// bind:name or bind:name={expr}
     BindDirective(BindDirective),
 }
@@ -424,6 +441,23 @@ pub struct ClassDirective {
     /// Span of the JS expression. None means shorthand (class:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
+}
+
+pub struct StyleDirective {
+    pub name: String,
+    pub value: StyleDirectiveValue,
+    pub important: bool,
+}
+
+pub enum StyleDirectiveValue {
+    /// style:name — shorthand, no explicit value
+    Shorthand,
+    /// style:name={expr} — expression in braces
+    Expression(Span),
+    /// style:name="string" — static string value
+    String(String),
+    /// style:name="text{expr}text" — concatenation of static and dynamic parts
+    Concatenation(Vec<ConcatPart>),
 }
 
 pub struct BindDirective {

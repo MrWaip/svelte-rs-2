@@ -172,12 +172,11 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **Codegen**: `const x = expr` (non-reactive) or `$.derived(() => expr)` (reactive)
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines, destructuring support)
 
-### `style:prop={value}` — Style directive
+### ~~`style:prop={value}` — Style directive~~ ✅
 - **Phases**: P, A, T
-- **AST**: `Attribute::StyleDirective { name, value_span: Option<Span>, important: bool }`
-- **Parser**: Parse `style:color={expr}`, `style:color="red"`, `style:color` (shorthand), `|important` modifier
-- **Codegen**: `$.set_style(el, "color", value)` or `$.set_style(el, "color", value, 1)` for `|important`
-- **Pattern**: Follows exact same pattern as `ClassDirective` in parser and `process_class_directives` in codegen
+- **AST**: `Attribute::StyleDirective { name, value: StyleDirectiveValue, important: bool }` with `StyleDirectiveValue` enum (Shorthand, Expression, String, Concatenation)
+- **Parser**: Parse `style:color={expr}`, `style:color` (shorthand), `style:color="red"` (string), `style:color="red-{x}"` (concat), `|important` modifier
+- **Codegen**: `$.set_style(el, staticStyle, prev, { directives })` — same pattern as `$.set_class()`. `|important` produces `[{ normal }, { important }]` array format.
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
 
 ### `class` attribute — Object/array syntax (Svelte 5)

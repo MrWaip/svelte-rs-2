@@ -4,24 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `style:prop` directive
+## 1. Event handlers (`on:event` → `onevent`)
 
-**Why first**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
-
-**What to change**:
-- `svelte_ast/src/lib.rs`: добавить `Attribute::StyleDirective { name, value, modifiers }`
-- `svelte_parser/src/lib.rs`: парсинг `style:color={value}` / `style:color="red"` / `style:color` (shorthand)
-- `svelte_codegen_client/src/template/attributes.rs`: генерация `$.set_style(element, "color", value)`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js` (style directive section)
-
-**Runtime**: `$.set_style()`
-
----
-
-## 2. Event handlers (`on:event` → `onevent`)
-
-**Why second**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
+**Why first**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
@@ -32,9 +17,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. Void HTML elements
+## 2. Void HTML elements
 
-**Why third**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
+**Why second**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
 
 **What to change**:
 - Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
@@ -45,9 +30,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `{@const x = expr}` (ConstTag)
+## 3. `{@const x = expr}` (ConstTag)
 
-**Why fourth**: нужен для вычислений внутри {#each} и {#if} блоков.
+**Why third**: нужен для вычислений внутри {#each} и {#if} блоков.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
@@ -59,9 +44,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `$state.raw(val)` rune
+## 4. `$state.raw(val)` rune
 
-**Why fifth**: простой рун, паттерн уже есть в script.rs.
+**Why fourth**: простой рун, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: добавить `RuneKind::StateRaw`
@@ -70,3 +55,15 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
 
 **Runtime**: `$.state()`
+
+---
+
+## 5. `class` attribute — Object/array syntax (Svelte 5)
+
+**Why fifth**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
+
+**What to change**:
+- `svelte_parser/src/lib.rs`: detect object/array expression in `class` attribute value
+- `svelte_codegen_client/src/template/attributes.rs`: генерация `$.set_class(el, ...)`
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
