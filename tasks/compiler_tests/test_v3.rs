@@ -317,8 +317,8 @@ fn void_elements() {
 }
 
 #[rstest]
-fn textarea_self_closing() {
-    assert_compiler("textarea_self_closing");
+fn non_void_self_closing() {
+    assert_compiler("non_void_self_closing");
 }
 
 #[rstest]
