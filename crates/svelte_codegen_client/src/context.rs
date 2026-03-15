@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, FragmentKey, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
+use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -16,6 +16,7 @@ struct NodeIndex<'a> {
     snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
     html_tags: FxHashMap<NodeId, &'a HtmlTag>,
+    key_blocks: FxHashMap<NodeId, &'a KeyBlock>,
     expr_spans: FxHashMap<NodeId, Span>,
 }
 
@@ -29,6 +30,7 @@ impl<'a> NodeIndex<'a> {
             snippet_blocks: FxHashMap::default(),
             render_tags: FxHashMap::default(),
             html_tags: FxHashMap::default(),
+            key_blocks: FxHashMap::default(),
             expr_spans: FxHashMap::default(),
         };
         index.walk(fragment);
@@ -69,6 +71,10 @@ impl<'a> NodeIndex<'a> {
                 }
                 Node::HtmlTag(t) => {
                     self.html_tags.insert(t.id, t);
+                }
+                Node::KeyBlock(b) => {
+                    self.key_blocks.insert(b.id, b);
+                    self.walk(&b.fragment);
                 }
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
@@ -180,6 +186,11 @@ impl<'a> Ctx<'a> {
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.index.render_tags.get(&id).copied()
             .unwrap_or_else(|| panic!("render tag {:?} not found in index", id))
+    }
+
+    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock {
+        self.index.key_blocks.get(&id).copied()
+            .unwrap_or_else(|| panic!("key block {:?} not found in index", id))
     }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {

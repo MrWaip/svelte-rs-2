@@ -26,6 +26,7 @@ pub enum DiagnosticKind {
     OnlyOneTopLevelStyle,
     UnknownDirective,
     NoEachBlockToClose,
+    NoKeyBlockToClose,
     // Internal compiler errors
     InternalError(String),
 }
@@ -110,6 +111,10 @@ impl Diagnostic {
 
     pub fn no_each_block_to_close(span: Span) -> Self {
         Self::error(DiagnosticKind::NoEachBlockToClose, span)
+    }
+
+    pub fn no_key_block_to_close(span: Span) -> Self {
+        Self::error(DiagnosticKind::NoKeyBlockToClose, span)
     }
 
     pub fn internal_error(message: String) -> Self {

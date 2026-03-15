@@ -268,6 +268,9 @@ fn walk_template_scopes(
             Node::SnippetBlock(block) => {
                 walk_template_scopes(&block.body, component, scoping, current_scope);
             }
+            Node::KeyBlock(block) => {
+                walk_template_scopes(&block.fragment, component, scoping, current_scope);
+            }
             Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::Error(_) => {}
         }
     }

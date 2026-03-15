@@ -80,6 +80,7 @@ pub enum Node {
     SnippetBlock(SnippetBlock),
     RenderTag(RenderTag),
     HtmlTag(HtmlTag),
+    KeyBlock(KeyBlock),
     Error(ErrorNode),
 }
 
@@ -101,6 +102,7 @@ impl Node {
             Node::SnippetBlock(n) => n.id,
             Node::RenderTag(n) => n.id,
             Node::HtmlTag(n) => n.id,
+            Node::KeyBlock(n) => n.id,
             Node::Error(n) => n.id,
         }
     }
@@ -117,6 +119,7 @@ impl Node {
             Node::SnippetBlock(n) => n.span,
             Node::RenderTag(n) => n.span,
             Node::HtmlTag(n) => n.span,
+            Node::KeyBlock(n) => n.span,
             Node::Error(n) => n.span,
         }
     }
@@ -347,6 +350,18 @@ pub struct HtmlTag {
     pub span: Span,
     /// Span of the JS expression: "content" in `{@html content}`.
     pub expression_span: Span,
+}
+
+// ---------------------------------------------------------------------------
+// KeyBlock — {#key expr}...{/key}
+// ---------------------------------------------------------------------------
+
+pub struct KeyBlock {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the JS expression: "count" in `{#key count}`.
+    pub expression_span: Span,
+    pub fragment: Fragment,
 }
 
 // ---------------------------------------------------------------------------

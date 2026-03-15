@@ -7,7 +7,7 @@ use svelte_span::Span;
 use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
-    ExpressionAttribute, Fragment, HtmlTag, IfBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
+    ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
 
@@ -24,6 +24,12 @@ enum StackEntry {
     IfBlock(IfBlockEntry),
     EachBlock(EachBlockEntry),
     SnippetBlock(SnippetBlockEntry),
+    KeyBlock(KeyBlockEntry),
+}
+
+struct KeyBlockEntry {
+    span: Span,
+    expression_span: Span,
 }
 
 struct ElementEntry {
@@ -225,6 +231,20 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::EndSnippetTag => {
                     self.handle_end_snippet_tag(
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
+                }
+                TokenType::StartKeyTag(key_tag) => {
+                    entry_stack.push(StackEntry::KeyBlock(KeyBlockEntry {
+                        span: token.span,
+                        expression_span: key_tag.expression.span,
+                    }));
+                    children_stack.push(vec![]);
+                }
+                TokenType::EndKeyTag => {
+                    self.handle_end_key_tag(
                         token.span,
                         &mut entry_stack,
                         &mut children_stack,
@@ -498,6 +518,35 @@ impl<'a> Parser<'a> {
         push_child(children_stack, node);
     }
 
+    fn handle_end_key_tag(
+        &mut self,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let entry = entry_stack.pop();
+
+        let Some(StackEntry::KeyBlock(kb)) = entry else {
+            self.recover(Diagnostic::no_key_block_to_close(span));
+            if let Some(entry) = entry {
+                entry_stack.push(entry);
+            }
+            return;
+        };
+
+        let body_children = pop_children(children_stack);
+        let merged_span = kb.span.merge(&span);
+
+        let node = Node::KeyBlock(KeyBlock {
+            id: self.ids.next(),
+            span: merged_span,
+            expression_span: kb.expression_span,
+            fragment: Fragment::new(body_children),
+        });
+
+        push_child(children_stack, node);
+    }
+
     /// Auto-close all remaining open entries at EOF.
     fn auto_close_entries(
         &mut self,
@@ -606,6 +655,20 @@ impl<'a> Parser<'a> {
                     name: sb.name,
                     params_span: sb.params_span,
                     body: Fragment::new(body_children),
+                });
+
+                push_child(children_stack, node);
+            }
+            StackEntry::KeyBlock(kb) => {
+                self.recover(Diagnostic::unclosed_node(kb.span));
+                let body_children = pop_children(children_stack);
+                let merged_span = kb.span.merge(&eof_span);
+
+                let node = Node::KeyBlock(KeyBlock {
+                    id: self.ids.next(),
+                    span: merged_span,
+                    expression_span: kb.expression_span,
+                    fragment: Fragment::new(body_children),
                 });
 
                 push_child(children_stack, node);
@@ -1041,6 +1104,29 @@ mod tests {
     fn html_tag_complex_expression() {
         let c = parse("{@html '<p>' + name + '</p>'}");
         assert_html_tag(&c, 0, "'<p>' + name + '</p>'");
+    }
+
+    // --- KeyBlock tests ---
+
+    fn assert_key_block(c: &Component, index: usize, expected_expr: &str) {
+        if let Node::KeyBlock(ref kb) = c.fragment.nodes[index] {
+            assert_eq!(c.source_text(kb.expression_span), expected_expr);
+        } else {
+            panic!("expected KeyBlock at index {index}");
+        }
+    }
+
+    #[test]
+    fn key_block_basic() {
+        let c = parse("{#key count}<div>{count}</div>{/key}");
+        assert_node(&c, 0, "{#key count}<div>{count}</div>{/key}");
+        assert_key_block(&c, 0, "count");
+    }
+
+    #[test]
+    fn key_block_complex_expr() {
+        let c = parse("{#key item.id}content{/key}");
+        assert_key_block(&c, 0, "item.id");
     }
 
     // --- Escape sequence tests (Bug #1) ---
