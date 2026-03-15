@@ -36,7 +36,7 @@ pub(crate) fn gen_each_block<'a>(
     let mut flags: u32 = EACH_ITEM_IMMUTABLE;
 
     // If the collection expression references any variable, items need reactive wrapping
-    let expr_has_refs = ctx.analysis.expressions.get(&block_id)
+    let expr_has_refs = ctx.expression(block_id)
         .is_some_and(|info| !info.references.is_empty());
     if expr_has_refs {
         flags |= EACH_ITEM_REACTIVE;
