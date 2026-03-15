@@ -87,53 +87,28 @@ pub(crate) fn traverse_items<'a>(
                     prev_ident = Some(el_name);
                 }
 
-                FragmentItem::ComponentNode(id) => {
+                FragmentItem::ComponentNode(_)
+                | FragmentItem::IfBlock(_)
+                | FragmentItem::EachBlock(_)
+                | FragmentItem::RenderTag(_)
+                | FragmentItem::HtmlTag(_)
+                | FragmentItem::KeyBlock(_) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
                     sibling_offset = 1;
-                    gen_component(ctx, *id, ctx.b.rid_expr(&node_name), init);
-                    prev_ident = Some(node_name);
-                }
-
-                FragmentItem::IfBlock(id) => {
-                    let node_name = ctx.gen_ident("node");
-                    init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    sibling_offset = 1;
-
-                    let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node_name));
-                    init.push(ctx.b.block_stmt(stmts));
-                    prev_ident = Some(node_name);
-                }
-
-                FragmentItem::EachBlock(id) => {
-                    let node_name = ctx.gen_ident("node");
-                    init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    sibling_offset = 1;
-                    gen_each_block(ctx, *id, ctx.b.rid_expr(&node_name), false, init);
-                    prev_ident = Some(node_name);
-                }
-
-                FragmentItem::RenderTag(id) => {
-                    let node_name = ctx.gen_ident("node");
-                    init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    sibling_offset = 1;
-                    gen_render_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
-                    prev_ident = Some(node_name);
-                }
-
-                FragmentItem::HtmlTag(id) => {
-                    let node_name = ctx.gen_ident("node");
-                    init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    sibling_offset = 1;
-                    gen_html_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
-                    prev_ident = Some(node_name);
-                }
-
-                FragmentItem::KeyBlock(id) => {
-                    let node_name = ctx.gen_ident("node");
-                    init.push(ctx.b.var_stmt(&node_name, node_expr));
-                    sibling_offset = 1;
-                    gen_key_block(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    let anchor = ctx.b.rid_expr(&node_name);
+                    match item {
+                        FragmentItem::ComponentNode(id) => gen_component(ctx, *id, anchor, init),
+                        FragmentItem::IfBlock(id) => {
+                            let stmts = gen_if_block(ctx, *id, anchor);
+                            init.push(ctx.b.block_stmt(stmts));
+                        }
+                        FragmentItem::EachBlock(id) => gen_each_block(ctx, *id, anchor, false, init),
+                        FragmentItem::RenderTag(id) => gen_render_tag(ctx, *id, anchor, init),
+                        FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, init),
+                        FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
+                        _ => unreachable!(),
+                    }
                     prev_ident = Some(node_name);
                 }
             }

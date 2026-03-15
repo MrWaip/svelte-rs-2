@@ -69,96 +69,54 @@ impl Fragment {
 // Nodes
 // ---------------------------------------------------------------------------
 
-pub enum Node {
-    Text(Text),
-    Element(Element),
-    ComponentNode(ComponentNode),
-    Comment(Comment),
-    ExpressionTag(ExpressionTag),
-    IfBlock(IfBlock),
-    EachBlock(EachBlock),
-    SnippetBlock(SnippetBlock),
-    RenderTag(RenderTag),
-    HtmlTag(HtmlTag),
-    KeyBlock(KeyBlock),
-    Error(ErrorNode),
+/// Generates the `Node` enum plus `node_id()`, `span()`, `is_*()`, and `as_*()` helpers.
+/// Every variant's inner type must have `pub id: NodeId` and `pub span: Span`.
+macro_rules! impl_node_enum {
+    ( $( $Variant:ident($Type:ident) => $is:ident / $as:ident ),+ $(,)? ) => {
+        pub enum Node {
+            $( $Variant($Type), )+
+        }
+
+        impl Node {
+            pub fn node_id(&self) -> NodeId {
+                match self { $( Node::$Variant(n) => n.id, )+ }
+            }
+
+            pub fn span(&self) -> Span {
+                match self { $( Node::$Variant(n) => n.span, )+ }
+            }
+
+            $(
+                pub fn $is(&self) -> bool {
+                    matches!(self, Node::$Variant(_))
+                }
+
+                pub fn $as(&self) -> Option<&$Type> {
+                    match self { Node::$Variant(n) => Some(n), _ => None }
+                }
+            )+
+        }
+    };
+}
+
+impl_node_enum! {
+    Text(Text)                   => is_text / as_text,
+    Element(Element)             => is_element / as_element,
+    ComponentNode(ComponentNode) => is_component_node / as_component_node,
+    Comment(Comment)             => is_comment / as_comment,
+    ExpressionTag(ExpressionTag) => is_expression_tag / as_expression_tag,
+    IfBlock(IfBlock)             => is_if_block / as_if_block,
+    EachBlock(EachBlock)         => is_each_block / as_each_block,
+    SnippetBlock(SnippetBlock)   => is_snippet_block / as_snippet_block,
+    RenderTag(RenderTag)         => is_render_tag / as_render_tag,
+    HtmlTag(HtmlTag)             => is_html_tag / as_html_tag,
+    KeyBlock(KeyBlock)           => is_key_block / as_key_block,
+    Error(ErrorNode)             => is_error / as_error,
 }
 
 pub struct ErrorNode {
     pub id: NodeId,
     pub span: Span,
-}
-
-impl Node {
-    pub fn node_id(&self) -> NodeId {
-        match self {
-            Node::Text(n) => n.id,
-            Node::Element(n) => n.id,
-            Node::ComponentNode(n) => n.id,
-            Node::Comment(n) => n.id,
-            Node::ExpressionTag(n) => n.id,
-            Node::IfBlock(n) => n.id,
-            Node::EachBlock(n) => n.id,
-            Node::SnippetBlock(n) => n.id,
-            Node::RenderTag(n) => n.id,
-            Node::HtmlTag(n) => n.id,
-            Node::KeyBlock(n) => n.id,
-            Node::Error(n) => n.id,
-        }
-    }
-
-    pub fn span(&self) -> Span {
-        match self {
-            Node::Text(n) => n.span,
-            Node::Element(n) => n.span,
-            Node::ComponentNode(n) => n.span,
-            Node::Comment(n) => n.span,
-            Node::ExpressionTag(n) => n.span,
-            Node::IfBlock(n) => n.span,
-            Node::EachBlock(n) => n.span,
-            Node::SnippetBlock(n) => n.span,
-            Node::RenderTag(n) => n.span,
-            Node::HtmlTag(n) => n.span,
-            Node::KeyBlock(n) => n.span,
-            Node::Error(n) => n.span,
-        }
-    }
-
-    pub fn is_text(&self) -> bool {
-        matches!(self, Node::Text(_))
-    }
-
-    pub fn is_element(&self) -> bool {
-        matches!(self, Node::Element(_))
-    }
-
-    pub fn is_if_block(&self) -> bool {
-        matches!(self, Node::IfBlock(_))
-    }
-
-    pub fn is_expression_tag(&self) -> bool {
-        matches!(self, Node::ExpressionTag(_))
-    }
-
-    pub fn is_comment(&self) -> bool {
-        matches!(self, Node::Comment(_))
-    }
-
-    pub fn is_snippet_block(&self) -> bool {
-        matches!(self, Node::SnippetBlock(_))
-    }
-
-    pub fn is_render_tag(&self) -> bool {
-        matches!(self, Node::RenderTag(_))
-    }
-
-    pub fn is_html_tag(&self) -> bool {
-        matches!(self, Node::HtmlTag(_))
-    }
-
-    pub fn is_component_node(&self) -> bool {
-        matches!(self, Node::ComponentNode(_))
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -194,71 +152,12 @@ impl Element {
     /// Clone element metadata without children (fragment set to empty).
     /// Used when we need owned attribute data while borrowing the AST elsewhere.
     pub fn clone_without_fragment(&self) -> Element {
-        let attrs = self.attributes.iter().map(|a| match a {
-            Attribute::StringAttribute(x) => Attribute::StringAttribute(StringAttribute {
-                name: x.name.clone(),
-                value_span: x.value_span,
-            }),
-            Attribute::BooleanAttribute(x) => {
-                Attribute::BooleanAttribute(BooleanAttribute { name: x.name.clone() })
-            }
-            Attribute::ExpressionAttribute(x) => Attribute::ExpressionAttribute(ExpressionAttribute {
-                name: x.name.clone(),
-                expression_span: x.expression_span,
-                shorthand: x.shorthand,
-            }),
-            Attribute::ConcatenationAttribute(x) => {
-                Attribute::ConcatenationAttribute(ConcatenationAttribute {
-                    name: x.name.clone(),
-                    parts: x.parts.iter().map(|p| match p {
-                        ConcatPart::Static(s) => ConcatPart::Static(s.clone()),
-                        ConcatPart::Dynamic(sp) => ConcatPart::Dynamic(*sp),
-                    }).collect(),
-                })
-            }
-            Attribute::ShorthandOrSpread(x) => Attribute::ShorthandOrSpread(ShorthandOrSpread {
-                expression_span: x.expression_span,
-                is_spread: x.is_spread,
-            }),
-            Attribute::ClassDirective(x) => Attribute::ClassDirective(ClassDirective {
-                name: x.name.clone(),
-                expression_span: x.expression_span,
-                shorthand: x.shorthand,
-            }),
-            Attribute::StyleDirective(x) => Attribute::StyleDirective(StyleDirective {
-                name: x.name.clone(),
-                value: match &x.value {
-                    StyleDirectiveValue::Shorthand => StyleDirectiveValue::Shorthand,
-                    StyleDirectiveValue::Expression(span) => StyleDirectiveValue::Expression(*span),
-                    StyleDirectiveValue::String(s) => StyleDirectiveValue::String(s.clone()),
-                    StyleDirectiveValue::Concatenation(parts) => StyleDirectiveValue::Concatenation(
-                        parts.iter().map(|p| match p {
-                            ConcatPart::Static(s) => ConcatPart::Static(s.clone()),
-                            ConcatPart::Dynamic(sp) => ConcatPart::Dynamic(*sp),
-                        }).collect(),
-                    ),
-                },
-                important: x.important,
-            }),
-            Attribute::BindDirective(x) => Attribute::BindDirective(BindDirective {
-                name: x.name.clone(),
-                expression_span: x.expression_span,
-                shorthand: x.shorthand,
-            }),
-            // LEGACY(svelte4): on:directive
-            Attribute::OnDirectiveLegacy(x) => Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
-                name: x.name.clone(),
-                expression_span: x.expression_span,
-                modifiers: x.modifiers.clone(),
-            }),
-        }).collect();
-
         Element {
             id: self.id,
             span: self.span,
             name: self.name.clone(),
             self_closing: self.self_closing,
-            attributes: attrs,
+            attributes: self.attributes.clone(),
             fragment: Fragment::empty(),
         }
     }
@@ -389,6 +288,7 @@ pub struct KeyBlock {
 // Attributes
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub enum Attribute {
     /// name="string"
     StringAttribute(StringAttribute),
@@ -411,11 +311,13 @@ pub enum Attribute {
     OnDirectiveLegacy(OnDirectiveLegacy),
 }
 
+#[derive(Clone)]
 pub struct StringAttribute {
     pub name: String,
     pub value_span: Span,
 }
 
+#[derive(Clone)]
 pub struct ExpressionAttribute {
     pub name: String,
     /// Span of just the JS expression.
@@ -423,15 +325,18 @@ pub struct ExpressionAttribute {
     pub shorthand: bool,
 }
 
+#[derive(Clone)]
 pub struct BooleanAttribute {
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ConcatenationAttribute {
     pub name: String,
     pub parts: Vec<ConcatPart>,
 }
 
+#[derive(Clone)]
 pub enum ConcatPart {
     /// Static text portion.
     Static(String),
@@ -439,12 +344,14 @@ pub enum ConcatPart {
     Dynamic(Span),
 }
 
+#[derive(Clone)]
 pub struct ShorthandOrSpread {
     /// Span of the expression (includes braces in the outer span).
     pub expression_span: Span,
     pub is_spread: bool,
 }
 
+#[derive(Clone)]
 pub struct ClassDirective {
     pub name: String,
     /// Span of the JS expression. None means shorthand (class:name).
@@ -452,12 +359,14 @@ pub struct ClassDirective {
     pub shorthand: bool,
 }
 
+#[derive(Clone)]
 pub struct StyleDirective {
     pub name: String,
     pub value: StyleDirectiveValue,
     pub important: bool,
 }
 
+#[derive(Clone)]
 pub enum StyleDirectiveValue {
     /// style:name — shorthand, no explicit value
     Shorthand,
@@ -469,6 +378,7 @@ pub enum StyleDirectiveValue {
     Concatenation(Vec<ConcatPart>),
 }
 
+#[derive(Clone)]
 pub struct BindDirective {
     pub name: String,
     /// Span of the JS expression. None means shorthand (bind:name).
@@ -477,6 +387,7 @@ pub struct BindDirective {
 }
 
 /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Clone)]
 pub struct OnDirectiveLegacy {
     /// Event name (e.g., "click" in `on:click`).
     pub name: String,
