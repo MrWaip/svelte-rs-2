@@ -680,7 +680,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     return;
                 };
                 let needs_get = mutated
-                    || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
+                    || kind.is_derived();
                 if needs_get {
                     let name = id.name.as_str().to_string();
                     *node = crate::rune_transform::transform_rune_get(self.b, &name);

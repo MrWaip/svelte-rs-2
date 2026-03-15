@@ -8,18 +8,21 @@ use svelte_js::RuneKind;
 
 use crate::data::AnalysisData;
 
+pub struct Rune {
+    pub kind: RuneKind,
+    /// Symbols referenced in the init expression. Only populated for Derived/DerivedBy.
+    pub derived_deps: Vec<SymbolId>,
+}
+
 /// Unified scope tree for script + template, wrapping `oxc_semantic::Scoping`.
 ///
 /// Script declarations come from OXC's `SemanticBuilder`. Template-introduced
 /// bindings (each-block context/index) are added via `add_scope` / `add_binding`.
 pub struct ComponentScoping {
     scoping: Scoping,
-    /// Which symbols are runes.
-    runes: FxHashMap<SymbolId, RuneKind>,
+    runes: FxHashMap<SymbolId, Rune>,
     /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
     node_scopes: FxHashMap<NodeId, ScopeId>,
-    /// For $derived/$derived.by: symbols referenced in the init expression.
-    derived_deps: FxHashMap<SymbolId, Vec<SymbolId>>,
 }
 
 impl ComponentScoping {
@@ -29,7 +32,6 @@ impl ComponentScoping {
             scoping,
             runes: FxHashMap::default(),
             node_scopes: FxHashMap::default(),
-            derived_deps: FxHashMap::default(),
         }
     }
 
@@ -94,15 +96,17 @@ impl ComponentScoping {
     // -- Rune tracking --
 
     pub fn mark_rune(&mut self, id: SymbolId, kind: RuneKind) {
-        self.runes.insert(id, kind);
+        self.runes.insert(id, Rune { kind, derived_deps: Vec::new() });
     }
 
     pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<SymbolId>) {
-        self.derived_deps.insert(id, deps);
+        if let Some(rune) = self.runes.get_mut(&id) {
+            rune.derived_deps = deps;
+        }
     }
 
     pub fn rune_kind(&self, id: SymbolId) -> Option<RuneKind> {
-        self.runes.get(&id).copied()
+        self.runes.get(&id).map(|r| r.kind)
     }
 
     pub fn is_rune(&self, id: SymbolId) -> bool {
@@ -129,13 +133,13 @@ impl ComponentScoping {
         if depth > 16 {
             return true;
         }
-        if let Some(&kind) = self.runes.get(&sym_id) {
-            if kind == RuneKind::State && !self.is_mutated(sym_id) {
+        if let Some(rune) = self.runes.get(&sym_id) {
+            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) {
                 return false;
             }
-            if matches!(kind, RuneKind::Derived | RuneKind::DerivedBy) {
-                if let Some(deps) = self.derived_deps.get(&sym_id) {
-                    return deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
+            if rune.kind.is_derived() {
+                if !rune.derived_deps.is_empty() {
+                    return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
                 }
                 return false;
             }
@@ -173,7 +177,7 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
                 let root = data.scoping.root_scope_id();
                 if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
                     data.scoping.mark_rune(sym_id, rune_kind);
-                    if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy)
+                    if rune_kind.is_derived()
                         && !decl.rune_init_refs.is_empty()
                     {
                         let deps: Vec<SymbolId> = decl.rune_init_refs.iter()
