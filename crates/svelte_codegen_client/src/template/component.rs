@@ -35,7 +35,7 @@ pub(crate) fn gen_component<'a>(
 
     // Collect attribute info while borrowing ctx immutably
     let attr_infos: Vec<(AttrKind<'_>, bool)> = cn.attributes.iter().enumerate().map(|(idx, attr)| {
-        let is_dynamic = ctx.analysis.element_flags.dynamic_attrs.contains(&(id, idx));
+        let is_dynamic = ctx.is_dynamic_attr(id, idx);
         let kind = match attr {
             Attribute::StringAttribute(a) => AttrKind::String {
                 name: &a.name,
@@ -121,10 +121,7 @@ pub(crate) fn gen_component<'a>(
     }
 
     // Add children snippet if component has non-empty fragment
-    let children_ct = ctx.analysis.fragments.content_types
-        .get(&FragmentKey::ComponentNode(id))
-        .copied()
-        .unwrap_or(ContentType::Empty);
+    let children_ct = ctx.content_type(&FragmentKey::ComponentNode(id));
 
     if children_ct != ContentType::Empty {
         let frag_key = FragmentKey::ComponentNode(id);

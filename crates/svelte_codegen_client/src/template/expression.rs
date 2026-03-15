@@ -75,9 +75,9 @@ pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expres
 
 /// Try to resolve an expression tag to a compile-time known value.
 fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
-    let info = ctx.analysis.expressions.get(&nid)?;
+    let info = ctx.expression(nid)?;
     if let ExpressionKind::Identifier(name) = &info.kind {
-        ctx.analysis.known_values.get(name.as_str()).cloned()
+        ctx.known_value(name.as_str()).cloned()
     } else {
         None
     }
@@ -234,7 +234,7 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
         FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) | FragmentItem::KeyBlock(id) => {
-            ctx.analysis.dynamic_nodes.contains(id)
+            ctx.is_dynamic(*id)
         }
     }
 }
@@ -242,7 +242,7 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
 pub(crate) fn parts_are_dynamic(parts: &[ConcatPart], ctx: &Ctx<'_>) -> bool {
     parts.iter().any(|p| {
         if let ConcatPart::Expr(id) = p {
-            ctx.analysis.dynamic_nodes.contains(id)
+            ctx.is_dynamic(*id)
         } else {
             false
         }

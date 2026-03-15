@@ -1,8 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::{AnalysisData, FragmentKey, LoweredFragment, ParsedExprs};
+use svelte_analyze::{AnalysisData, ContentType, FragmentKey, LoweredFragment, ParsedExprs};
 use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
+use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -198,4 +199,35 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    // -- Analysis shortcuts --
+
+    pub fn is_dynamic(&self, id: NodeId) -> bool { self.analysis.is_dynamic(id) }
+    pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.analysis.is_elseif_alt(id) }
+    pub fn is_mutable_rune(&self, name: &str) -> bool { self.analysis.is_mutable_rune(name) }
+    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
+    pub fn known_value(&self, name: &str) -> Option<&String> { self.analysis.known_value(name) }
+
+    // -- Fragment shortcuts --
+
+    pub fn content_type(&self, key: &FragmentKey) -> ContentType { self.analysis.fragments.content_type(key) }
+    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool { self.analysis.fragments.has_dynamic_children(key) }
+
+    // -- Element flag shortcuts --
+
+    pub fn has_spread(&self, id: NodeId) -> bool { self.analysis.element_flags.has_spread(id) }
+    pub fn has_class_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_directives(id) }
+    pub fn has_style_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_style_directives(id) }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_input_defaults(id) }
+    pub fn needs_var(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_var(id) }
+    pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.analysis.element_flags.is_dynamic_attr(id, idx) }
+
+    // -- Snippet shortcuts --
+
+    pub fn snippet_params(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.snippets.params(id) }
+    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.analysis.snippets.is_hoistable(id) }
+
+    // -- ConstTag shortcuts --
+
+    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.const_tags.names(id) }
+    pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.const_tags.by_fragment(key) }
 }
