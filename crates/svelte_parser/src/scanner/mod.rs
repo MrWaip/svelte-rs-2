@@ -1,6 +1,16 @@
 pub mod token;
 
 use std::{iter::Peekable, str::Chars, vec};
+
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link",
+    "meta", "param", "source", "track", "wbr",
+];
+
+pub fn is_void(name: &str) -> bool {
+    VOID_ELEMENTS.contains(&name)
+}
+
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, OnDirectiveLegacy,
@@ -245,7 +255,7 @@ impl<'a> Scanner<'a> {
         }
 
         let attributes = self.attributes()?;
-        let self_closing = self.match_char('/');
+        let self_closing = self.match_char('/') || is_void(name);
 
         if !self.match_char('>') {
             // Emit partial StartTag with recovery — parser-level will handle auto-close
@@ -1634,7 +1644,7 @@ mod tests {
             &tokens[0],
             "input",
             vec![("$bindDirective", "name")],
-            false,
+            true,
         );
     }
 
@@ -1646,7 +1656,7 @@ mod tests {
             &tokens[0],
             "input",
             vec![("$bindDirective", "value")],
-            false,
+            true,
         );
     }
 

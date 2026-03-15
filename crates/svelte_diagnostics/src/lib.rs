@@ -27,6 +27,7 @@ pub enum DiagnosticKind {
     UnknownDirective,
     NoEachBlockToClose,
     NoKeyBlockToClose,
+    VoidElementInvalidContent,
     // Internal compiler errors
     InternalError(String),
 }
@@ -115,6 +116,10 @@ impl Diagnostic {
 
     pub fn no_key_block_to_close(span: Span) -> Self {
         Self::error(DiagnosticKind::NoKeyBlockToClose, span)
+    }
+
+    pub fn void_element_invalid_content(span: Span) -> Self {
+        Self::error(DiagnosticKind::VoidElementInvalidContent, span)
     }
 
     pub fn internal_error(message: String) -> Self {

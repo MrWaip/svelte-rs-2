@@ -348,6 +348,17 @@ impl<'a> Parser<'a> {
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<Node>>,
     ) {
+        // Void elements cannot have closing tags
+        if scanner::is_void(tag.name) {
+            self.recover(Diagnostic::void_element_invalid_content(span));
+            let node = Node::Error(svelte_ast::ErrorNode {
+                id: self.ids.next(),
+                span,
+            });
+            push_child(children_stack, node);
+            return;
+        }
+
         // Try to find a matching element in the stack
         let match_idx = entry_stack.iter().rposition(|e| {
             matches!(e, StackEntry::Element(el) if el.name == tag.name)
@@ -1367,5 +1378,60 @@ mod tests {
         let (c, diags) = parse_with_diagnostics("{#each items as item}content");
         assert!(!diags.is_empty());
         assert_eq!(c.fragment.nodes.len(), 1);
+    }
+
+    fn assert_element(c: &Component, index: usize, name: &str, self_closing: bool) {
+        if let Node::Element(ref el) = c.fragment.nodes[index] {
+            assert_eq!(el.name, name, "expected element name '{name}'");
+            assert_eq!(el.self_closing, self_closing, "expected self_closing={self_closing} for <{name}>");
+        } else {
+            panic!("expected Element at index {index}");
+        }
+    }
+
+    #[test]
+    fn void_element_without_slash() {
+        let c = parse("<input>");
+        assert_element(&c, 0, "input", true);
+    }
+
+    #[test]
+    fn void_element_with_slash() {
+        let c = parse("<input />");
+        assert_element(&c, 0, "input", true);
+    }
+
+    #[test]
+    fn void_element_with_attributes() {
+        let c = parse(r#"<input type="text">"#);
+        assert_element(&c, 0, "input", true);
+    }
+
+    #[test]
+    fn void_element_br() {
+        let c = parse("<br>");
+        assert_element(&c, 0, "br", true);
+    }
+
+    #[test]
+    fn void_element_img() {
+        let c = parse(r#"<img src="x.png">"#);
+        assert_element(&c, 0, "img", true);
+    }
+
+    #[test]
+    fn void_element_closing_tag_error() {
+        let (_, diags) = parse_with_diagnostics("</input>");
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| d.kind == svelte_diagnostics::DiagnosticKind::VoidElementInvalidContent));
+    }
+
+    #[test]
+    fn void_element_multiple() {
+        let c = parse("<input><br><hr>");
+        assert_eq!(c.fragment.nodes.len(), 3);
+        assert_element(&c, 0, "input", true);
+        assert_element(&c, 1, "br", true);
+        assert_element(&c, 2, "hr", true);
     }
 }
