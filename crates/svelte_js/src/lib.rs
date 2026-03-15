@@ -198,16 +198,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
         }
     }
 
-    // Collect $-prefixed identifier references from the script body
-    let mut store_candidates = Vec::new();
-    for stmt in &program.body {
-        collect_dollar_refs_from_stmt(stmt, &mut store_candidates);
-    }
-    // Deduplicate
-    store_candidates.sort();
-    store_candidates.dedup();
-
-    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates }
+    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates: Vec::new() }
 }
 
 /// Check if an expression is a `$effect(...)` or `$effect.pre(...)` call.
@@ -445,10 +436,22 @@ pub fn analyze_script_with_scoping(
     let program = &result.program;
 
     // Extract ScriptInfo by walking the AST
-    let script_info = extract_script_info(program, offset, source);
+    let mut script_info = extract_script_info(program, offset, source);
 
     // Build semantic analysis and extract Scoping
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
+
+    // Collect $-prefixed unresolved references as store candidates
+    let scoping = &sem.semantic.scoping();
+    for key in scoping.root_unresolved_references().keys() {
+        let name = key.as_str();
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+            if !is_rune_name(name) {
+                script_info.store_candidates.push(compact(&name[1..]));
+            }
+        }
+    }
+
     let scoping = sem.semantic.into_scoping();
 
     Ok((script_info, scoping))
@@ -483,8 +486,21 @@ pub fn analyze_script_with_alloc<'a>(
     }
 
     let program = result.program;
-    let script_info = extract_script_info(&program, offset, source);
+    let mut script_info = extract_script_info(&program, offset, source);
     let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+
+    // Collect $-prefixed unresolved references as store candidates
+    // before into_scoping() consumes the semantic data.
+    let scoping = &sem.semantic.scoping();
+    for key in scoping.root_unresolved_references().keys() {
+        let name = key.as_str();
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+            if !is_rune_name(name) {
+                script_info.store_candidates.push(compact(&name[1..]));
+            }
+        }
+    }
+
     let scoping = sem.semantic.into_scoping();
 
     Ok((script_info, scoping, program))
@@ -804,92 +820,9 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     refs
 }
 
-/// Collect base names of `$`-prefixed identifiers from a statement.
-fn collect_dollar_refs_from_stmt(stmt: &oxc_ast::ast::Statement<'_>, out: &mut Vec<CompactString>) {
-    use oxc_ast::ast::Statement;
-    match stmt {
-        Statement::ExpressionStatement(es) => {
-            collect_dollar_refs_from_expr(&es.expression, out);
-        }
-        Statement::VariableDeclaration(decl) => {
-            for d in &decl.declarations {
-                if let Some(init) = &d.init {
-                    collect_dollar_refs_from_expr(init, out);
-                }
-            }
-        }
-        Statement::ReturnStatement(ret) => {
-            if let Some(arg) = &ret.argument {
-                collect_dollar_refs_from_expr(arg, out);
-            }
-        }
-        Statement::IfStatement(s) => {
-            collect_dollar_refs_from_expr(&s.test, out);
-            collect_dollar_refs_from_stmt(&s.consequent, out);
-            if let Some(alt) = &s.alternate {
-                collect_dollar_refs_from_stmt(alt, out);
-            }
-        }
-        Statement::BlockStatement(block) => {
-            for s in &block.body {
-                collect_dollar_refs_from_stmt(s, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_dollar_refs_from_expr(expr: &Expression<'_>, out: &mut Vec<CompactString>) {
-    match expr {
-        Expression::Identifier(id) => {
-            let name = id.name.as_str();
-            if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
-                // Skip known rune names
-                if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
-                    out.push(compact(&name[1..]));
-                }
-            }
-        }
-        Expression::AssignmentExpression(assign) => {
-            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
-                let name = id.name.as_str();
-                if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
-                    if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
-                        out.push(compact(&name[1..]));
-                    }
-                }
-            }
-            collect_dollar_refs_from_expr(&assign.right, out);
-        }
-        Expression::UpdateExpression(upd) => {
-            if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
-                let name = id.name.as_str();
-                if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
-                    if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
-                        out.push(compact(&name[1..]));
-                    }
-                }
-            }
-        }
-        Expression::BinaryExpression(bin) => {
-            collect_dollar_refs_from_expr(&bin.left, out);
-            collect_dollar_refs_from_expr(&bin.right, out);
-        }
-        Expression::CallExpression(call) => {
-            collect_dollar_refs_from_expr(&call.callee, out);
-            for arg in &call.arguments {
-                if let Some(e) = arg.as_expression() {
-                    collect_dollar_refs_from_expr(e, out);
-                }
-            }
-        }
-        Expression::ConditionalExpression(cond) => {
-            collect_dollar_refs_from_expr(&cond.test, out);
-            collect_dollar_refs_from_expr(&cond.consequent, out);
-            collect_dollar_refs_from_expr(&cond.alternate, out);
-        }
-        _ => {}
-    }
+/// Check if a `$`-prefixed name is a known rune (not a store candidate).
+fn is_rune_name(name: &str) -> bool {
+    matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host")
 }
 
 fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {
