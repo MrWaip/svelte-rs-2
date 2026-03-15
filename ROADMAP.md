@@ -156,7 +156,7 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/HtmlTag.js` (~60 lines)
 - **Not yet**: `is_controlled` optimization (single child → innerHTML), `is_svg`/`is_mathml` namespace flags
 
-### `{#key expr}` — Keyed re-render block
+### ~~`{#key expr}` — Keyed re-render block~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Node::KeyBlock { id, span, expression_span, fragment }`
 - **Parser**: Parse `{#key expr}...{/key}`

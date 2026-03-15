@@ -139,6 +139,11 @@ fn walk_node<'a>(
             let source = component.source_text(tag.expression_span);
             parse_expr(alloc, source, tag.expression_span.start, tag.id, data, parsed, diags);
         }
+        Node::KeyBlock(block) => {
+            let source = component.source_text(block.expression_span);
+            parse_expr(alloc, source, block.expression_span.start, block.id, data, parsed, diags);
+            walk_fragment(alloc, &block.fragment, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
