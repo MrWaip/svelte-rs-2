@@ -245,6 +245,12 @@ impl Element {
                 expression_span: x.expression_span,
                 shorthand: x.shorthand,
             }),
+            // LEGACY(svelte4): on:directive
+            Attribute::OnDirectiveLegacy(x) => Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+                name: x.name.clone(),
+                expression_span: x.expression_span,
+                modifiers: x.modifiers.clone(),
+            }),
         }).collect();
 
         Element {
@@ -400,6 +406,9 @@ pub enum Attribute {
     StyleDirective(StyleDirective),
     /// bind:name or bind:name={expr}
     BindDirective(BindDirective),
+    /// LEGACY(svelte4): on:event or on:event={handler} or on:event|modifier={handler}
+    /// Deprecated in Svelte 5, remove in Svelte 6.
+    OnDirectiveLegacy(OnDirectiveLegacy),
 }
 
 pub struct StringAttribute {
@@ -465,6 +474,16 @@ pub struct BindDirective {
     /// Span of the JS expression. None means shorthand (bind:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
+}
+
+/// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
+pub struct OnDirectiveLegacy {
+    /// Event name (e.g., "click" in `on:click`).
+    pub name: String,
+    /// Span of the JS expression. None if no expression (bubble event).
+    pub expression_span: Option<Span>,
+    /// Modifiers like "preventDefault", "stopPropagation", "capture", etc.
+    pub modifiers: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

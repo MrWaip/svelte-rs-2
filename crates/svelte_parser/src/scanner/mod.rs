@@ -3,8 +3,8 @@ pub mod token;
 use std::{iter::Peekable, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
-    Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
-    StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
+    Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, OnDirectiveLegacy,
+    ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -165,6 +165,9 @@ impl<'a> Scanner<'a> {
                 AttributeIdentifierType::StyleDirective(value).as_ok()
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 AttributeIdentifierType::BindDirective(value).as_ok()
+            // LEGACY(svelte4): on:directive
+            } else if AttributeIdentifierType::is_on_directive(name) {
+                AttributeIdentifierType::OnDirectiveLegacy(value).as_ok()
             } else {
                 Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32)).as_err()
             }
@@ -317,6 +320,8 @@ impl<'a> Scanner<'a> {
                         self.style_directive(value)
                     }
                     AttributeIdentifierType::BindDirective(value) => self.bind_directive(value),
+                    // LEGACY(svelte4): on:directive
+                    AttributeIdentifierType::OnDirectiveLegacy(value) => self.on_directive_legacy(value),
                     AttributeIdentifierType::None => break,
                 }
             };
@@ -424,6 +429,39 @@ impl<'a> Scanner<'a> {
                 value: name,
             },
             shorthand: true,
+        }))
+    }
+
+    /// LEGACY(svelte4): Parse `on:event|modifier1|modifier2={handler}` or `on:event` (bubble).
+    fn on_directive_legacy(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
+        let mut modifiers = Vec::new();
+        while self.match_char('|') {
+            let start = self.current;
+            while self.peek().is_some_and(|c| c.is_alphabetic() || c == '_') {
+                self.advance();
+            }
+            modifiers.push(self.slice_source(start, self.current));
+        }
+
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+            return Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+                name,
+                expression: res.expression,
+                modifiers,
+                has_expression: true,
+            }));
+        }
+
+        // No expression — bubble event
+        Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+            name,
+            expression: JsExpression {
+                span: SPAN,
+                value: "",
+            },
+            modifiers,
+            has_expression: false,
         }))
     }
 
@@ -1379,6 +1417,7 @@ mod tests {
                 Attribute::ClassDirective(_) => "$classDirective",
                 Attribute::StyleDirective(sd) => sd.name,
                 Attribute::BindDirective(_) => "$bindDirective",
+                Attribute::OnDirectiveLegacy(od) => od.name,
             };
 
             let value: AttributeValue = match attribute {
@@ -1387,6 +1426,7 @@ mod tests {
                 Attribute::ClassDirective(cd) => AttributeValue::String(cd.expression.value),
                 Attribute::StyleDirective(sd) => sd.value.clone(),
                 Attribute::BindDirective(bd) => AttributeValue::String(bd.expression.value),
+                Attribute::OnDirectiveLegacy(od) => AttributeValue::String(od.expression.value),
             };
 
             assert_eq!(name, *expected_name);

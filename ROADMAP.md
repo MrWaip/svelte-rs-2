@@ -454,7 +454,7 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 
 | Feature | Svelte 5 replacement | Transform | Phases |
 |---------|----------------------|-----------|--------|
-| `on:event={handler}` + modifiers | `onclick={handler}` (already works) | `$.event(el, "click", handler, modifiers)` | P, A, T |
+| ~~`on:event={handler}` + modifiers~~ | ~~`onclick={handler}` (already works)~~ | ~~`$.event(el, "click", handler, modifiers)`~~ | ~~P, A, T~~ | ✅ Done |
 | `<slot>` + `let:` | `{#snippet}` + `{@render}` | `$.slot(...)` | P, A, T |
 | `<svelte:component this={X}>` | `<X />` with capitalized variable | `$.component(...)` | P, A, T |
 | `<svelte:self>` | Import component directly | Recursive ref | P, T |
@@ -497,3 +497,14 @@ These are imported from `svelte` and used as regular function calls. The compile
 - **Codegen**: direct recursion, no visitor pattern
 - **Scope system NOT needed** for Tiers 1-5 (runes mode). Current approach (OXC + side tables) is sufficient
 - Each feature: test case → expected output via reference compiler → `cargo test`
+
+---
+
+## Edge Cases / Tech Debt
+
+Deferred items from completed features. Each links back to the originating tier.
+
+### on:directive (Tier 8)
+- [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis. Rare in Svelte 4 code.
+- [ ] SvelteDocument/SvelteWindow/SvelteBody routing: events on these special elements should go to `init` not `after_update`. Blocked on Tier 5 (special elements).
+- [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers. Blocked on `dev` compiler option.

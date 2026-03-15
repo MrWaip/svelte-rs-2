@@ -87,6 +87,8 @@ pub enum Attribute<'a> {
     ClassDirective(ClassDirective<'a>),
     StyleDirective(StyleDirective<'a>),
     BindDirective(BindDirective<'a>),
+    /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
+    OnDirectiveLegacy(OnDirectiveLegacy<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -109,6 +111,19 @@ pub struct BindDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
     pub expression: JsExpression<'a>,
+}
+
+/// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OnDirectiveLegacy<'a> {
+    /// Event name after "on:" (e.g., "click" in `on:click`).
+    pub name: &'a str,
+    /// Handler expression. Empty if bubble event (no `={...}`).
+    pub expression: JsExpression<'a>,
+    /// Modifiers from pipe-separated list (e.g., ["preventDefault", "once"]).
+    pub modifiers: Vec<&'a str>,
+    /// Whether an expression was provided (`on:click={handler}` vs `on:click`).
+    pub has_expression: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -224,6 +239,8 @@ pub enum AttributeIdentifierType<'a> {
     ClassDirective(&'a str),
     StyleDirective(&'a str),
     BindDirective(&'a str),
+    /// LEGACY(svelte4): on:directive
+    OnDirectiveLegacy(&'a str),
     None,
 }
 
@@ -238,6 +255,11 @@ impl<'a> AttributeIdentifierType<'a> {
 
     pub fn is_bind_directive(name: &str) -> bool {
         name == "bind"
+    }
+
+    /// LEGACY(svelte4): on:directive
+    pub fn is_on_directive(name: &str) -> bool {
+        name == "on"
     }
 
     pub fn is_empty(&self) -> bool {

@@ -15,18 +15,21 @@ fn main() {
 
     let input_json = serde_json::to_string(&files).unwrap();
 
+    // Write input to temp file since /dev/stdin may not be available
+    let tmp_input = std::env::temp_dir().join("svelte_gen_input.json");
+    std::fs::write(&tmp_input, &input_json).expect("Failed to write temp input file");
+
     let output = Command::new("node")
         .arg("./tasks/generate_test_cases/generate.mjs")
-        .stdin(std::process::Stdio::piped())
+        .env("INPUT_FILE", &tmp_input)
+        .env("NODE_PATH", "./tasks/generate_test_cases/node_modules")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .and_then(|mut child| {
-            use std::io::Write as _;
-            child.stdin.take().unwrap().write_all(input_json.as_bytes())?;
-            child.wait_with_output()
-        })
+        .and_then(|child| child.wait_with_output())
         .expect("Failed to run node generate.mjs");
+
+    let _ = std::fs::remove_file(&tmp_input);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
