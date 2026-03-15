@@ -21,7 +21,7 @@ impl ReactivityVisitor {
     fn current_snippet_params<'a>(&self, data: &'a AnalysisData) -> &'a [String] {
         self.snippet_id_stack
             .last()
-            .and_then(|id| data.snippet_params.get(id))
+            .and_then(|id| data.snippets.params.get(id))
             .map_or(&[], |v| v.as_slice())
     }
 
@@ -79,13 +79,13 @@ impl TemplateVisitor for ReactivityVisitor {
 
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
         if attr_is_dynamic(attr, idx, el.id, data) {
-            data.dynamic_attrs.insert((el.id, idx));
-            data.node_needs_ref.insert(el.id);
+            data.element_flags.dynamic_attrs.insert((el.id, idx));
+            data.element_flags.needs_ref.insert(el.id);
         }
     }
 
     fn visit_bind_directive(&mut self, _dir: &BindDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.node_needs_ref.insert(el.id);
+        data.element_flags.needs_ref.insert(el.id);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, _scope: ScopeId, data: &mut AnalysisData) {
@@ -108,7 +108,7 @@ impl TemplateVisitor for ReactivityVisitor {
 
     fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
         if component_attr_is_dynamic(attr, idx, cn.id, data) {
-            data.dynamic_attrs.insert((cn.id, idx));
+            data.element_flags.dynamic_attrs.insert((cn.id, idx));
         }
     }
 

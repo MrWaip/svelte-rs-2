@@ -19,25 +19,25 @@ impl TemplateVisitor for ElementFlagsVisitor {
     ) {
         match attr {
             Attribute::ShorthandOrSpread(s) if s.is_spread => {
-                data.element_has_spread.insert(el.id);
+                data.element_flags.has_spread.insert(el.id);
             }
             Attribute::ClassDirective(_) => {
-                data.element_has_class_directives.insert(el.id);
+                data.element_flags.has_class_directives.insert(el.id);
             }
             Attribute::StyleDirective(_) => {
-                data.element_has_style_directives.insert(el.id);
+                data.element_flags.has_style_directives.insert(el.id);
             }
             Attribute::StringAttribute(sa) if sa.name == "class" => {
-                data.element_static_class.insert(el.id, sa.value_span);
+                data.element_flags.static_class.insert(el.id, sa.value_span);
             }
             Attribute::StringAttribute(sa) if sa.name == "style" => {
-                data.element_static_style.insert(el.id, sa.value_span);
+                data.element_flags.static_style.insert(el.id, sa.value_span);
             }
             Attribute::BindDirective(_) if el.name == "input" => {
-                data.needs_input_defaults.insert(el.id);
+                data.element_flags.needs_input_defaults.insert(el.id);
             }
             Attribute::ExpressionAttribute(ea) if ea.name == "value" && el.name == "input" => {
-                data.needs_input_defaults.insert(el.id);
+                data.element_flags.needs_input_defaults.insert(el.id);
             }
             _ => {}
         }

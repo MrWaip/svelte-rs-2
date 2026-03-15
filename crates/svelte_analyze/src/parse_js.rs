@@ -187,7 +187,7 @@ fn walk_node<'a>(
                 let init_text = decl_text[eq_pos + 1..].trim();
                 let init_offset = tag.declaration_span.start + (decl_text.len() - decl_text[eq_pos + 1..].trim_start().len()) as u32;
                 parse_expr(alloc, init_text, init_offset, tag.id, data, parsed, diags);
-                data.const_tag_names.insert(tag.id, vec![name]);
+                data.const_tags.names.insert(tag.id, vec![name]);
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}

@@ -19,11 +19,11 @@ fn lower_fragment(
         .filter_map(|n| n.as_const_tag().map(|ct| ct.id))
         .collect();
     if !const_ids.is_empty() {
-        data.const_tags.insert(key, const_ids);
+        data.const_tags.by_fragment.insert(key, const_ids);
     }
 
     let items = build_items(fragment, component);
-    data.lowered_fragments.insert(key, LoweredFragment { items });
+    data.fragments.lowered.insert(key, LoweredFragment { items });
 
     for node in &fragment.nodes {
         match node {

@@ -174,7 +174,7 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
-        self.analysis.lowered_fragments.get(key)
+        self.analysis.fragments.lowered.get(key)
             .unwrap_or_else(|| panic!("lowered fragment {:?} not found", key))
     }
 

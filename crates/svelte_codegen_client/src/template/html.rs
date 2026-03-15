@@ -11,7 +11,7 @@ use super::expression::static_text_of;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
-    let Some(lf) = ctx.analysis.lowered_fragments.get(&key) else {
+    let Some(lf) = ctx.analysis.fragments.lowered.get(&key) else {
         return String::new();
     };
     let mut html = String::new();
@@ -41,8 +41,8 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
 
 /// Build the HTML string for a single element (opening tag + attrs + children + closing tag).
 pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
-    let has_spread = ctx.analysis.element_has_spread.contains(&el.id);
-    let has_class_directives = ctx.analysis.element_has_class_directives.contains(&el.id);
+    let has_spread = ctx.analysis.element_flags.has_spread.contains(&el.id);
+    let has_class_directives = ctx.analysis.element_flags.has_class_directives.contains(&el.id);
 
     let mut html = String::new();
     write!(html, "<{}", el.name).unwrap();
@@ -87,11 +87,12 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     let child_key = FragmentKey::Element(el.id);
     let ct = ctx
         .analysis
+        .fragments
         .content_types
         .get(&child_key)
         .copied()
         .unwrap_or(ContentType::Empty);
-    let has_state = ctx.analysis.fragment_has_dynamic_children.contains(&child_key);
+    let has_state = ctx.analysis.fragments.has_dynamic_children.contains(&child_key);
 
     match ct {
         ContentType::Empty => {}

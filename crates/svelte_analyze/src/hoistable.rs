@@ -80,7 +80,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     ) {
         if self.top_level_ids.contains(&block.id) {
             if !self.tainted.contains(&block.id) {
-                data.hoistable_snippets.insert(block.id);
+                data.snippets.hoistable.insert(block.id);
             }
             self.current_root = None;
         }
