@@ -116,8 +116,8 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                 let raw = text.value(&component.source);
                 let is_first = i == 0;
                 let is_last = i == len - 1;
-                let prev = if i > 0 { Some(regular[i - 1]) } else { None };
-                let next = if i + 1 < len { Some(regular[i + 1]) } else { None };
+                let prev = i.checked_sub(1).map(|j| regular[j]);
+                let next = regular.get(i + 1).copied();
 
                 let data = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
 

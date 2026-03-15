@@ -520,13 +520,11 @@ fn gen_on_directive_legacy<'a>(
 
     // --- Build $.event() call ---
     let capture = od.modifiers.iter().any(|m| m == "capture");
-    let passive = if od.modifiers.iter().any(|m| m == "passive") {
-        Some(true)
-    } else if od.modifiers.iter().any(|m| m == "nonpassive") {
-        Some(false)
-    } else {
-        None
-    };
+    let passive = od.modifiers.iter().find_map(|m| match m.as_str() {
+        "passive" => Some(true),
+        "nonpassive" => Some(false),
+        _ => None,
+    });
 
     let mut args: Vec<Arg<'a, '_>> = vec![
         Arg::Str(od.name.clone()),
