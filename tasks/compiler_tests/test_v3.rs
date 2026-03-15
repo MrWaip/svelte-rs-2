@@ -285,3 +285,18 @@ fn key_block() {
 fn style_directive() {
     assert_compiler("style_directive");
 }
+
+#[rstest]
+fn style_directive_important() {
+    assert_compiler("style_directive_important");
+}
+
+#[rstest]
+fn style_directive_string() {
+    assert_compiler("style_directive_string");
+}
+
+#[rstest]
+fn style_directive_concat() {
+    assert_compiler("style_directive_concat");
+}

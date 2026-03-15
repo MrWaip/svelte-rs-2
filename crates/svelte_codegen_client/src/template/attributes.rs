@@ -1,6 +1,6 @@
 //! Attribute processing (per-attribute and spread).
 
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::{Attribute, Element, NodeId};
 
@@ -189,6 +189,7 @@ pub(crate) fn process_class_directives<'a>(
 }
 
 /// Generate `$.set_style(el, "static-style", styles_N, { ... })` for style:name directives.
+/// When `|important` is used, generates `[{ normal }, { important }]` array format.
 /// Pushes `let styles_N;` to `init` and the assignment to `update` for combined template_effect.
 pub(crate) fn process_style_directives<'a>(
     ctx: &mut Ctx<'a>,
@@ -197,6 +198,8 @@ pub(crate) fn process_style_directives<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
+    use svelte_ast::StyleDirectiveValue;
+
     if !ctx.analysis.element_has_style_directives.contains(&el.id) {
         return;
     }
@@ -219,60 +222,114 @@ pub(crate) fn process_style_directives<'a>(
         .map(|span| ctx.component.source_text(*span).to_string())
         .unwrap_or_default();
 
-    let mut props: Vec<ObjProp<'a>> = Vec::new();
+    let mut normal_props: Vec<ObjProp<'a>> = Vec::new();
+    let mut important_props: Vec<ObjProp<'a>> = Vec::new();
 
     for (attr_idx, sd) in &style_dirs {
         let name = &sd.name;
-
-        let (expr, is_simple_ident_same_name) = if sd.expression_span.is_some() {
-            let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-            let same_name = sd.expression_span
-                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
-                .unwrap_or(false);
-            (parsed, same_name)
-        } else {
-            // shorthand: style:color → identifier `color`
-            (ctx.b.rid_expr(name), true)
-        };
-
-        let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
-
         let name_alloc = ctx.b.alloc_str(name);
+        let target = if sd.important { &mut important_props } else { &mut normal_props };
 
-        if is_mutated_rune {
-            let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-            props.push(ObjProp::KeyValue(name_alloc, get_call));
-        } else if is_simple_ident_same_name {
-            props.push(ObjProp::Shorthand(name_alloc));
-        } else {
-            props.push(ObjProp::KeyValue(name_alloc, expr));
+        match &sd.value {
+            StyleDirectiveValue::Shorthand => {
+                let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+                if is_mutated_rune {
+                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+                    target.push(ObjProp::KeyValue(name_alloc, get_call));
+                } else {
+                    target.push(ObjProp::Shorthand(name_alloc));
+                }
+            }
+            StyleDirectiveValue::Expression(span) => {
+                let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+                let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+                let expr_text = ctx.component.source_text(*span).trim();
+                let same_name = expr_text == name.as_str();
+
+                if is_mutated_rune {
+                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+                    target.push(ObjProp::KeyValue(name_alloc, get_call));
+                } else if same_name {
+                    target.push(ObjProp::Shorthand(name_alloc));
+                } else {
+                    target.push(ObjProp::KeyValue(name_alloc, parsed));
+                }
+            }
+            StyleDirectiveValue::String(s) => {
+                target.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(s)));
+            }
+            StyleDirectiveValue::Concatenation(parts) => {
+                let expr = build_style_concat(ctx, el.id, *attr_idx, parts);
+                target.push(ObjProp::KeyValue(name_alloc, expr));
+            }
         }
     }
 
-    let obj = ctx.b.object_expr(props);
+    // Build the directives argument: single object or [normal, important] array
+    let directives_expr = if important_props.is_empty() {
+        ctx.b.object_expr(normal_props)
+    } else {
+        let normal_obj = ctx.b.object_expr(normal_props);
+        let important_obj = ctx.b.object_expr(important_props);
+        ctx.b.array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
+    };
+
     let styles_name = ctx.gen_ident("styles");
 
-    // $.set_style(el, "static-style", styles_N, { ... })
     let set_style_call = ctx.b.call_expr(
         "$.set_style",
         [
             Arg::Ident(el_name),
             Arg::Str(static_style),
             Arg::Ident(&styles_name),
-            Arg::Expr(obj),
+            Arg::Expr(directives_expr),
         ],
     );
 
-    // styles_N = $.set_style(...)
     let assign = ctx.b.assign_expr(
         AssignLeft::Ident(styles_name.clone()),
         AssignRight::Expr(set_style_call),
     );
 
-    // let styles_N;
     init.push(ctx.b.let_stmt(&styles_name));
-    // Push assignment to update vector for combined template_effect
     update.push(ctx.b.expr_stmt(assign));
+}
+
+/// Build a template literal for style directive concatenation values.
+/// Applies `$.get()` wrapping for mutated rune references.
+fn build_style_concat<'a>(
+    ctx: &mut Ctx<'a>,
+    owner_id: NodeId,
+    attr_idx: usize,
+    parts: &[svelte_ast::ConcatPart],
+) -> Expression<'a> {
+    use crate::builder::TemplatePart;
+    use super::expression::get_concat_part_expr;
+
+    let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
+    let mut dyn_idx = 0usize;
+    for part in parts {
+        match part {
+            svelte_ast::ConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
+            svelte_ast::ConcatPart::Dynamic(span) => {
+                // Check if the dynamic expression is a simple mutated rune reference
+                let expr_text = ctx.component.source_text(*span).trim();
+                let is_mutated_rune = ctx.analysis.is_mutable_rune(expr_text);
+
+                if is_mutated_rune {
+                    // Replace with $.get(name) — don't consume the parsed expr
+                    let _ = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
+                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(expr_text)]);
+                    tpl_parts.push(TemplatePart::Expr(get_call));
+                } else {
+                    let expr = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
+                    tpl_parts.push(TemplatePart::Expr(expr));
+                }
+                dyn_idx += 1;
+            }
+        }
+    }
+    ctx.b.template_parts_expr(tpl_parts)
 }
 
 /// Generate a bind directive statement (getter/setter + runtime call).
