@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use svelte_analyze::{ConcatPart, ContentType, FragmentItem, FragmentKey};
-use svelte_ast::{Attribute, Element};
+use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
 
@@ -72,7 +72,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
         }
     }
 
-    if el.self_closing {
+    if is_void(&el.name) {
         html.push_str("/>");
         return html;
     }
