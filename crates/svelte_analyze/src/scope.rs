@@ -145,23 +145,14 @@ impl ComponentScoping {
         self.symbol_scope_id(sym_id) != self.root_scope_id()
     }
 
-    // -- Bulk queries for codegen compatibility --
+    // -- Name-based lookup for codegen (works with names, not SymbolIds) --
 
-    /// All rune symbol names with their kinds.
-    pub(crate) fn rune_names(&self) -> FxHashMap<String, RuneKind> {
-        self.runes
-            .iter()
-            .map(|(&id, &kind)| (self.scoping.symbol_name(id).to_string(), kind))
-            .collect()
-    }
-
-    /// Names of all mutated runes (script + template, all via OXC references).
-    pub(crate) fn mutated_rune_names(&self) -> rustc_hash::FxHashSet<String> {
-        self.runes
-            .keys()
-            .filter(|&&id| self.is_mutated(id))
-            .map(|&id| self.scoping.symbol_name(id).to_string())
-            .collect()
+    /// Lookup rune kind + mutated status by variable name (root scope).
+    pub fn rune_info_by_name(&self, name: &str) -> Option<(RuneKind, bool)> {
+        let root = self.root_scope_id();
+        let sym_id = self.find_binding(root, name)?;
+        let kind = self.rune_kind(sym_id)?;
+        Some((kind, self.is_mutated(sym_id)))
     }
 
 }

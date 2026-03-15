@@ -19,6 +19,7 @@ pub use data::{
     AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment,
     ParsedExprs, PropAnalysis, PropsAnalysis,
 };
+pub use scope::ComponentScoping;
 
 use oxc_allocator::Allocator;
 use svelte_ast::Component;
@@ -553,8 +554,8 @@ mod tests {
         );
         assert_is_rune(&data, "count");
         assert!(
-            !data.mutated_runes.contains("count"),
-            "rune 'count' should NOT be in mutated_runes — the assignment targets the each-block variable"
+            !data.is_mutable_rune("count"),
+            "rune 'count' should NOT be mutated — the assignment targets the each-block variable"
         );
     }
 

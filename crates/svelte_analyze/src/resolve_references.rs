@@ -15,57 +15,52 @@ pub fn resolve_references(component: &Component, data: &mut AnalysisData) {
     let root_scope = data.scoping.root_scope_id();
     let mut visitor = ResolveReferencesVisitor { component };
     walker::walk_template(&component.fragment, data, root_scope, &mut visitor);
-    data.cache_rune_sets();
 }
 
 struct ResolveReferencesVisitor<'a> {
     component: &'a Component,
 }
 
-impl ResolveReferencesVisitor<'_> {
-    /// Resolve references in an expression (by NodeId in `data.expressions`).
-    fn resolve_expr_refs(&self, node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
-        let Some(mut info) = data.expressions.remove(&node_id) else {
-            return;
-        };
-        for r in &mut info.references {
-            if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
-                r.symbol_id = Some(sym_id);
-                if r.flags == svelte_js::ReferenceFlags::Write
-                    || r.flags == svelte_js::ReferenceFlags::ReadWrite
-                {
-                    data.scoping
-                        .register_template_reference(sym_id, OxcReferenceFlags::Write);
-                }
+/// Resolve references in an expression (by NodeId in `data.expressions`).
+/// NLL allows split borrows: `data.expressions` and `data.scoping` are separate fields.
+fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
+    let Some(info) = data.expressions.get_mut(&node_id) else {
+        return;
+    };
+    for r in &mut info.references {
+        if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
+            r.symbol_id = Some(sym_id);
+            if r.flags == svelte_js::ReferenceFlags::Write
+                || r.flags == svelte_js::ReferenceFlags::ReadWrite
+            {
+                data.scoping
+                    .register_template_reference(sym_id, OxcReferenceFlags::Write);
             }
         }
-        data.expressions.insert(node_id, info);
     }
+}
 
-    /// Resolve references in an attribute expression.
-    fn resolve_attr_refs(
-        &self,
-        owner_id: NodeId,
-        attr_idx: usize,
-        scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        let key = (owner_id, attr_idx);
-        let Some(mut info) = data.attr_expressions.remove(&key) else {
-            return;
-        };
-        for r in &mut info.references {
-            if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
-                r.symbol_id = Some(sym_id);
-                if r.flags == svelte_js::ReferenceFlags::Write
-                    || r.flags == svelte_js::ReferenceFlags::ReadWrite
-                {
-                    data.scoping
-                        .register_template_reference(sym_id, OxcReferenceFlags::Write);
-                }
+/// Resolve references in an attribute expression.
+fn resolve_attr_refs(
+    owner_id: NodeId,
+    attr_idx: usize,
+    scope: ScopeId,
+    data: &mut AnalysisData,
+) {
+    let key = (owner_id, attr_idx);
+    let Some(info) = data.attr_expressions.get_mut(&key) else {
+        return;
+    };
+    for r in &mut info.references {
+        if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
+            r.symbol_id = Some(sym_id);
+            if r.flags == svelte_js::ReferenceFlags::Write
+                || r.flags == svelte_js::ReferenceFlags::ReadWrite
+            {
+                data.scoping
+                    .register_template_reference(sym_id, OxcReferenceFlags::Write);
             }
         }
-        data.attr_expressions.insert(key, info);
     }
 }
 
@@ -76,11 +71,11 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        self.resolve_expr_refs(tag.id, scope, data);
+        resolve_expr_refs(tag.id, scope, data);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
-        self.resolve_expr_refs(block.id, scope, data);
+        resolve_expr_refs(block.id, scope, data);
     }
 
     fn visit_each_block(
@@ -91,19 +86,19 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         data: &mut AnalysisData,
     ) {
         // Collection expression belongs to parent scope, not the each-block's child scope.
-        self.resolve_expr_refs(block.id, parent_scope, data);
+        resolve_expr_refs(block.id, parent_scope, data);
     }
 
     fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
-        self.resolve_expr_refs(block.id, scope, data);
+        resolve_expr_refs(block.id, scope, data);
     }
 
     fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
-        self.resolve_expr_refs(tag.id, scope, data);
+        resolve_expr_refs(tag.id, scope, data);
     }
 
     fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
-        self.resolve_expr_refs(tag.id, scope, data);
+        resolve_expr_refs(tag.id, scope, data);
     }
 
     fn visit_attribute(
@@ -114,7 +109,7 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        self.resolve_attr_refs(el.id, idx, scope, data);
+        resolve_attr_refs(el.id, idx, scope, data);
     }
 
     fn visit_component_attribute(
@@ -125,7 +120,7 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        self.resolve_attr_refs(cn.id, idx, scope, data);
+        resolve_attr_refs(cn.id, idx, scope, data);
     }
 
     fn visit_bind_directive(
