@@ -374,7 +374,15 @@ impl<'a> Scanner<'a> {
                 self.advance();
             }
             let modifier = self.slice_source(start, self.current);
-            modifier == "important"
+            if modifier != "important" {
+                self.recover(Diagnostic::unknown_directive(Span::new(
+                    start as u32 - 1, // include the '|'
+                    self.current as u32,
+                )));
+                false
+            } else {
+                true
+            }
         } else {
             false
         };

@@ -78,6 +78,41 @@ fn parse_attr_expr<'a>(
     }
 }
 
+/// Parse concatenation parts (shared by ConcatenationAttribute and StyleDirective::Concatenation).
+fn parse_concat_parts<'a>(
+    alloc: &'a Allocator,
+    parts: &[ConcatPart],
+    owner_id: NodeId,
+    attr_idx: usize,
+    component: &Component,
+    data: &mut AnalysisData,
+    parsed: &mut ParsedExprs<'a>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut all_refs = Vec::new();
+    let mut dyn_idx = 0usize;
+    for part in parts {
+        if let ConcatPart::Dynamic(span) = part {
+            let source = component.source_text(*span);
+            let arena_source: &'a str = alloc.alloc_str(source);
+            match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
+                Ok((info, expr)) => {
+                    all_refs.extend(info.references);
+                    parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
+                }
+                Err(diag) => diags.push(diag),
+            }
+            dyn_idx += 1;
+        }
+    }
+    let merged = ExpressionInfo {
+        kind: ExpressionKind::Other,
+        references: all_refs,
+        has_side_effects: false,
+    };
+    data.attr_expressions.insert((owner_id, attr_idx), merged);
+}
+
 fn walk_fragment<'a>(
     alloc: &'a Allocator,
     fragment: &Fragment,
@@ -166,29 +201,7 @@ fn walk_attrs<'a>(
                 parse_attr_expr(alloc, source, a.expression_span.start, key, data, parsed, diags);
             }
             Attribute::ConcatenationAttribute(a) => {
-                // Parse each dynamic part and store both metadata (merged) and individual ASTs.
-                let mut all_refs = Vec::new();
-                let mut dyn_idx = 0usize;
-                for part in &a.parts {
-                    if let ConcatPart::Dynamic(span) = part {
-                        let source = component.source_text(*span);
-                        let arena_source: &'a str = alloc.alloc_str(source);
-                        match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
-                            Ok((info, expr)) => {
-                                all_refs.extend(info.references);
-                                parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
-                            }
-                            Err(diag) => diags.push(diag),
-                        }
-                        dyn_idx += 1;
-                    }
-                }
-                let merged = ExpressionInfo {
-                    kind: ExpressionKind::Other,
-                    references: all_refs,
-                    has_side_effects: false,
-                };
-                data.attr_expressions.insert(key, merged);
+                parse_concat_parts(alloc, &a.parts, owner_id, attr_idx, component, data, parsed, diags);
             }
             Attribute::ClassDirective(a) => {
                 if let Some(span) = a.expression_span {
@@ -204,28 +217,7 @@ fn walk_attrs<'a>(
                         parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
-                        let mut all_refs = Vec::new();
-                        let mut dyn_idx = 0usize;
-                        for part in parts {
-                            if let svelte_ast::ConcatPart::Dynamic(span) = part {
-                                let source = component.source_text(*span);
-                                let arena_source: &'a str = alloc.alloc_str(source);
-                                match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
-                                    Ok((info, expr)) => {
-                                        all_refs.extend(info.references);
-                                        parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
-                                    }
-                                    Err(diag) => diags.push(diag),
-                                }
-                                dyn_idx += 1;
-                            }
-                        }
-                        let merged = ExpressionInfo {
-                            kind: ExpressionKind::Other,
-                            references: all_refs,
-                            has_side_effects: false,
-                        };
-                        data.attr_expressions.insert(key, merged);
+                        parse_concat_parts(alloc, parts, owner_id, attr_idx, component, data, parsed, diags);
                     }
                     StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
                 }

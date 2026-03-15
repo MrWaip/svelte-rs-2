@@ -317,7 +317,8 @@ fn build_style_concat<'a>(
                 let is_mutated_rune = ctx.analysis.is_mutable_rune(expr_text);
 
                 if is_mutated_rune {
-                    // Replace with $.get(name) — don't consume the parsed expr
+                    // Drain the pre-parsed expression (it's just `shade` as an identifier)
+                    // and replace with `$.get(shade)` — the rune getter call.
                     let _ = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
                     let get_call = ctx.b.call_expr("$.get", [Arg::Ident(expr_text)]);
                     tpl_parts.push(TemplatePart::Expr(get_call));

@@ -849,7 +849,10 @@ impl<'a> Parser<'a> {
                                     }).collect(),
                                 )
                             }
-                            token::AttributeValue::Empty => StyleDirectiveValue::Shorthand,
+                            token::AttributeValue::Empty => {
+                                debug_assert!(sd.shorthand, "Empty value on non-shorthand style directive");
+                                StyleDirectiveValue::Shorthand
+                            }
                         }
                     };
                     attributes.push(Attribute::StyleDirective(StyleDirective {

@@ -75,10 +75,12 @@ enum Attribute {
     ConcatenationAttribute(ConcatenationAttribute), // name, parts: Vec<ConcatPart>
     ShorthandOrSpread(ShorthandOrSpread),         // expression_span, is_spread
     ClassDirective(ClassDirective),               // name, expression_span?, shorthand
+    StyleDirective(StyleDirective),               // name, value: StyleDirectiveValue, important
     BindDirective(BindDirective),                 // name, expression_span?, shorthand
 }
 
 enum ConcatPart { Static(String), Dynamic(Span) }
+enum StyleDirectiveValue { Shorthand, Expression(Span), String(String), Concatenation(Vec<ConcatPart>) }
 enum ElementKind { Unknown, Input }
 enum ScriptContext { Default, Module }
 enum ScriptLanguage { JavaScript, TypeScript }
