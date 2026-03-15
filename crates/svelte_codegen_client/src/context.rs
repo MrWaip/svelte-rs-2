@@ -70,6 +70,9 @@ impl<'a> NodeIndex<'a> {
                 Node::HtmlTag(t) => {
                     self.html_tags.insert(t.id, t);
                 }
+                Node::KeyBlock(b) => {
+                    self.walk(&b.fragment);
+                }
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
                 }

@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock,
-    NodeId, RenderTag, SnippetBlock,
+    KeyBlock, NodeId, RenderTag, SnippetBlock,
 };
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
@@ -86,6 +86,12 @@ impl TemplateVisitor for ReactivityVisitor {
         // body_scope is fine for the expression check — find_binding walks up parent scopes,
         // so `items` in `{#each items as item}` resolves correctly from the child scope.
         if self.expr_is_dynamic(&block.id, data, body_scope) {
+            data.dynamic_nodes.insert(block.id);
+        }
+    }
+
+    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&block.id, data, scope) {
             data.dynamic_nodes.insert(block.id);
         }
     }

@@ -49,6 +49,7 @@ pub enum FragmentKey {
     EachBody(NodeId),
     EachFallback(NodeId),
     SnippetBody(NodeId),
+    KeyBlockBody(NodeId),
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +192,8 @@ pub enum FragmentItem {
     RenderTag(NodeId),
     /// An HtmlTag ({@html expr}).
     HtmlTag(NodeId),
+    /// A KeyBlock ({#key expr}...{/key}).
+    KeyBlock(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
 }

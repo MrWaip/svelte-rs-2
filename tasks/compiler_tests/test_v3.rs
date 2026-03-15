@@ -275,3 +275,8 @@ fn effect_runes() {
 fn html_tag() {
     assert_compiler("html_tag");
 }
+
+#[rstest]
+fn key_block() {
+    assert_compiler("key_block");
+}

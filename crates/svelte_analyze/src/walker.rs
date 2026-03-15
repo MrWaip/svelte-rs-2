@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, Fragment, HtmlTag,
-    IfBlock, Node, RenderTag, SnippetBlock,
+    IfBlock, KeyBlock, Node, RenderTag, SnippetBlock,
 };
 
 use crate::data::AnalysisData;
@@ -25,6 +25,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
@@ -93,6 +94,10 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             Node::HtmlTag(tag) => {
                 visitor.visit_html_tag(tag, scope, data);
             }
+            Node::KeyBlock(block) => {
+                visitor.visit_key_block(block, scope, data);
+                walk_template(&block.fragment, data, scope, visitor);
+            }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }
@@ -125,6 +130,9 @@ macro_rules! impl_composite_visitor {
             }
             fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.visit_snippet_block(block, scope, data);)+
+            }
+            fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
+                $(self.$idx.visit_key_block(block, scope, data);)+
             }
             fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
                 $(self.$idx.visit_attribute(attr, idx, el, scope, data);)+
