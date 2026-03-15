@@ -5,8 +5,8 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, StyleDirective,
-    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
+    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, StyleDirective, StyleDirectiveValue,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
@@ -831,15 +831,30 @@ impl<'a> Parser<'a> {
                     }));
                 }
                 token::Attribute::StyleDirective(sd) => {
-                    let expression_span = if sd.shorthand {
-                        None
+                    let value = if sd.shorthand {
+                        StyleDirectiveValue::Shorthand
                     } else {
-                        Some(sd.expression.span)
+                        match &sd.value {
+                            token::AttributeValue::ExpressionTag(et) => {
+                                StyleDirectiveValue::Expression(et.expression.span)
+                            }
+                            token::AttributeValue::String(s) => {
+                                StyleDirectiveValue::String(s.to_string())
+                            }
+                            token::AttributeValue::Concatenation(c) => {
+                                StyleDirectiveValue::Concatenation(
+                                    c.parts.iter().map(|p| match p {
+                                        token::ConcatenationPart::String(s) => ConcatPart::Static(s.to_string()),
+                                        token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic(et.expression.span),
+                                    }).collect(),
+                                )
+                            }
+                            token::AttributeValue::Empty => StyleDirectiveValue::Shorthand,
+                        }
                     };
                     attributes.push(Attribute::StyleDirective(StyleDirective {
                         name: sd.name.to_string(),
-                        expression_span,
-                        shorthand: sd.shorthand,
+                        value,
                         important: sd.important,
                     }));
                 }

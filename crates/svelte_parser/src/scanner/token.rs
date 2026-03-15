@@ -100,7 +100,7 @@ pub struct ClassDirective<'a> {
 pub struct StyleDirective<'a> {
     pub shorthand: bool,
     pub name: &'a str,
-    pub expression: JsExpression<'a>,
+    pub value: AttributeValue<'a>,
     pub important: bool,
 }
 

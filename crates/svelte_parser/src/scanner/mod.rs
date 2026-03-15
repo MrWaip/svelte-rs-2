@@ -369,7 +369,6 @@ impl<'a> Scanner<'a> {
     fn style_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
         // Check for |important modifier
         let important = if self.match_char('|') {
-            // Consume "important"
             let start = self.current;
             while self.peek().is_some_and(|c| c.is_alphabetic()) {
                 self.advance();
@@ -381,10 +380,10 @@ impl<'a> Scanner<'a> {
         };
 
         if self.match_char('=') {
-            let res = self.expression_tag()?;
+            let value = self.attribute_value()?;
 
             return Ok(Attribute::StyleDirective(StyleDirective {
-                expression: res.expression,
+                value,
                 name,
                 shorthand: false,
                 important,
@@ -393,10 +392,7 @@ impl<'a> Scanner<'a> {
 
         Ok(Attribute::StyleDirective(StyleDirective {
             name,
-            expression: JsExpression {
-                span: SPAN,
-                value: name,
-            },
+            value: AttributeValue::Empty,
             shorthand: true,
             important,
         }))
@@ -1373,7 +1369,7 @@ mod tests {
                 Attribute::HTMLAttribute(value) => value.name,
                 Attribute::ExpressionTag(_) => "$expression",
                 Attribute::ClassDirective(_) => "$classDirective",
-                Attribute::StyleDirective(_) => "$styleDirective",
+                Attribute::StyleDirective(sd) => sd.name,
                 Attribute::BindDirective(_) => "$bindDirective",
             };
 
@@ -1381,7 +1377,7 @@ mod tests {
                 Attribute::HTMLAttribute(value) => value.value.clone(),
                 Attribute::ExpressionTag(value) => AttributeValue::String(value.expression.value),
                 Attribute::ClassDirective(cd) => AttributeValue::String(cd.expression.value),
-                Attribute::StyleDirective(sd) => AttributeValue::String(sd.expression.value),
+                Attribute::StyleDirective(sd) => sd.value.clone(),
                 Attribute::BindDirective(bd) => AttributeValue::String(bd.expression.value),
             };
 

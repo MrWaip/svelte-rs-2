@@ -197,9 +197,37 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::StyleDirective(a) => {
-                if let Some(span) = a.expression_span {
-                    let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                use svelte_ast::StyleDirectiveValue;
+                match &a.value {
+                    StyleDirectiveValue::Expression(span) => {
+                        let source = component.source_text(*span);
+                        parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    }
+                    StyleDirectiveValue::Concatenation(parts) => {
+                        let mut all_refs = Vec::new();
+                        let mut dyn_idx = 0usize;
+                        for part in parts {
+                            if let svelte_ast::ConcatPart::Dynamic(span) = part {
+                                let source = component.source_text(*span);
+                                let arena_source: &'a str = alloc.alloc_str(source);
+                                match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
+                                    Ok((info, expr)) => {
+                                        all_refs.extend(info.references);
+                                        parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
+                                    }
+                                    Err(diag) => diags.push(diag),
+                                }
+                                dyn_idx += 1;
+                            }
+                        }
+                        let merged = ExpressionInfo {
+                            kind: ExpressionKind::Other,
+                            references: all_refs,
+                            has_side_effects: false,
+                        };
+                        data.attr_expressions.insert(key, merged);
+                    }
+                    StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
                 }
             }
             Attribute::BindDirective(a) => {
