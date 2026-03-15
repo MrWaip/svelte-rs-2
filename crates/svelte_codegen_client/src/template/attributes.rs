@@ -95,6 +95,10 @@ pub(crate) fn process_attr<'a>(
         Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
+        // LEGACY(svelte4): on:directive
+        Attribute::OnDirectiveLegacy(od) => {
+            gen_on_directive_legacy(ctx, od, owner_id, attr_idx, el_name, after_update);
+        }
     }
 }
 
@@ -455,6 +459,8 @@ pub(crate) fn process_attrs_spread<'a>(
                 continue;
             }
             Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => continue,
+            // LEGACY(svelte4): on:directive handled separately
+            Attribute::OnDirectiveLegacy(_) => continue,
         }
     }
 
@@ -462,4 +468,97 @@ pub(crate) fn process_attrs_spread<'a>(
     let obj = ctx.b.object_expr(props);
     let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
     init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
+}
+
+// ---------------------------------------------------------------------------
+// LEGACY(svelte4): on:directive codegen
+// ---------------------------------------------------------------------------
+
+/// Generate `$.event()` calls for legacy `on:directive` syntax.
+/// Reference: `OnDirective.js` + `shared/events.js` (`build_event`, `build_event_handler`).
+fn gen_on_directive_legacy<'a>(
+    ctx: &mut Ctx<'a>,
+    od: &svelte_ast::OnDirectiveLegacy,
+    owner_id: NodeId,
+    attr_idx: usize,
+    el_name: &str,
+    after_update: &mut Vec<Statement<'a>>,
+) {
+    // --- Build event handler ---
+    let handler = if od.expression_span.is_none() {
+        // Bubble event: function($$arg) { $.bubble_event.call(this, $$props, $$arg) }
+        let bubble_call = ctx.b.static_member_expr(
+            ctx.b.rid_expr("$.bubble_event"),
+            "call",
+        );
+        let call = ctx.b.call_expr_callee(bubble_call, [
+            Arg::Expr(ctx.b.this_expr()),
+            Arg::Ident("$$props"),
+            Arg::Ident("$$arg"),
+        ]);
+        ctx.b.function_expr(ctx.b.params(["$$arg"]), vec![ctx.b.expr_stmt(call)])
+    } else {
+        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        build_legacy_event_handler(ctx, expr)
+    };
+
+    // --- Apply modifier wrappers (order matches Svelte reference) ---
+    let mut wrapped = handler;
+    for modifier in &[
+        "stopPropagation",
+        "stopImmediatePropagation",
+        "preventDefault",
+        "self",
+        "trusted",
+        "once",
+    ] {
+        if od.modifiers.iter().any(|m| m == modifier) {
+            let fn_name = format!("$.{}", modifier);
+            wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
+        }
+    }
+
+    // --- Build $.event() call ---
+    let capture = od.modifiers.iter().any(|m| m == "capture");
+    let passive = if od.modifiers.iter().any(|m| m == "passive") {
+        Some(true)
+    } else if od.modifiers.iter().any(|m| m == "nonpassive") {
+        Some(false)
+    } else {
+        None
+    };
+
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Str(od.name.clone()),
+        Arg::Ident(el_name),
+        Arg::Expr(wrapped),
+    ];
+    if capture || passive.is_some() {
+        args.push(Arg::Bool(capture));
+    }
+    if let Some(p) = passive {
+        args.push(Arg::Bool(p));
+    }
+
+    after_update.push(ctx.b.call_stmt("$.event", args));
+}
+
+/// Build event handler for legacy on:directive (non-dev mode).
+/// Reference: `events.js` `build_event_handler()`.
+fn build_legacy_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>) -> Expression<'a> {
+    match &handler {
+        // Inline arrow/function — pass through
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => handler,
+        // Identifier — pass through in non-dev mode
+        Expression::Identifier(_) => handler,
+        // Other expressions (member, conditional, etc.) — wrap in function(...$$args) { handler.apply(this, $$args) }
+        _ => {
+            let apply = ctx.b.static_member_expr(handler, "apply");
+            let call = ctx.b.call_expr_callee(apply, [
+                Arg::Expr(ctx.b.this_expr()),
+                Arg::Ident("$$args"),
+            ]);
+            ctx.b.function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)])
+        }
+    }
 }

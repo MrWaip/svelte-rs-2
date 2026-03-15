@@ -376,6 +376,63 @@ impl<'a> Builder<'a> {
         )
     }
 
+    /// Create a function expression: `function(params) { body }`
+    pub fn function_expr(
+        &self,
+        params: FormalParameters<'a>,
+        body: Vec<Statement<'a>>,
+    ) -> Expression<'a> {
+        let body = self.ast.alloc_function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(body),
+        );
+        Expression::FunctionExpression(self.alloc(self.ast.function(
+            SPAN,
+            FunctionType::FunctionExpression,
+            None,
+            false,
+            false,
+            false,
+            NONE,
+            NONE,
+            params,
+            NONE,
+            Some(body),
+        )))
+    }
+
+    /// Create params with a rest element: `...name`
+    pub fn rest_params(&self, name: &str) -> FormalParameters<'a> {
+        let atom = self.ast.atom(name);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
+        let rest_element = self.ast.binding_rest_element(SPAN, pattern);
+        let rest = self.ast.formal_parameter_rest(SPAN, self.ast.vec(), rest_element, NONE);
+        self.ast.formal_parameters(
+            SPAN,
+            ast::FormalParameterKind::FormalParameter,
+            self.ast.vec(),
+            Some(rest),
+        )
+    }
+
+    /// `this` expression
+    pub fn this_expr(&self) -> Expression<'a> {
+        self.ast.expression_this(SPAN)
+    }
+
+    /// Call expression with an arbitrary `Expression` as callee (not just a string identifier).
+    pub fn call_expr_callee<'short>(
+        &self,
+        callee: Expression<'a>,
+        args: impl IntoIterator<Item = Arg<'a, 'short>>,
+    ) -> Expression<'a> {
+        let args = args.into_iter().map(|a| self.arg_to_argument(a));
+        Expression::CallExpression(self.alloc(
+            self.ast.call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), false),
+        ))
+    }
+
     // -----------------------------------------------------------------------
     // Member expressions
     // -----------------------------------------------------------------------

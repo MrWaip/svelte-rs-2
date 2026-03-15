@@ -6,7 +6,7 @@ use svelte_span::Span;
 
 use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
-    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, StyleDirective, StyleDirectiveValue,
+    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, OnDirectiveLegacy, StyleDirective, StyleDirectiveValue,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
 };
@@ -871,6 +871,19 @@ impl<'a> Parser<'a> {
                         name: bd.name.to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
+                    }));
+                }
+                // LEGACY(svelte4): on:directive
+                token::Attribute::OnDirectiveLegacy(od) => {
+                    let expression_span = if od.has_expression {
+                        Some(od.expression.span)
+                    } else {
+                        None
+                    };
+                    attributes.push(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
+                        name: od.name.to_string(),
+                        expression_span,
+                        modifiers: od.modifiers.iter().map(|m| m.to_string()).collect(),
                     }));
                 }
             }
