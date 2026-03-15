@@ -211,6 +211,47 @@ impl FragmentItem {
         matches!(self, FragmentItem::TextConcat { parts, .. }
             if parts.len() == 1 && matches!(parts[0], ConcatPart::Expr(_)))
     }
+
+    /// Extract the `NodeId` from any single-node variant.
+    /// Panics on `TextConcat` (which has no single id).
+    pub fn node_id(&self) -> NodeId {
+        match self {
+            FragmentItem::Element(id)
+            | FragmentItem::ComponentNode(id)
+            | FragmentItem::IfBlock(id)
+            | FragmentItem::EachBlock(id)
+            | FragmentItem::RenderTag(id)
+            | FragmentItem::HtmlTag(id)
+            | FragmentItem::KeyBlock(id) => *id,
+            FragmentItem::TextConcat { .. } => panic!("TextConcat has no single NodeId"),
+        }
+    }
+}
+
+impl LoweredFragment {
+    /// Get the first item's NodeId, expecting an Element. Panics otherwise.
+    pub fn first_element_id(&self) -> NodeId {
+        match self.items[0] {
+            FragmentItem::Element(id) => id,
+            _ => panic!("expected Element as first lowered item, got {:?}", std::mem::discriminant(&self.items[0])),
+        }
+    }
+
+    /// Get the first item's NodeId, expecting an IfBlock. Panics otherwise.
+    pub fn first_if_block_id(&self) -> NodeId {
+        match self.items[0] {
+            FragmentItem::IfBlock(id) => id,
+            _ => panic!("expected IfBlock as first lowered item"),
+        }
+    }
+
+    /// Get the first item's NodeId, expecting an EachBlock. Panics otherwise.
+    pub fn first_each_block_id(&self) -> NodeId {
+        match self.items[0] {
+            FragmentItem::EachBlock(id) => id,
+            _ => panic!("expected EachBlock as first lowered item"),
+        }
+    }
 }
 
 #[derive(Clone)]
