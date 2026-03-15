@@ -122,6 +122,12 @@ pub enum RuneKind {
     Host,
 }
 
+impl RuneKind {
+    pub fn is_derived(&self) -> bool {
+        matches!(self, RuneKind::Derived | RuneKind::DerivedBy)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------

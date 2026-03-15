@@ -14,7 +14,7 @@ use svelte_analyze::{AnalysisData, ParsedExprs};
 use svelte_ast::{
     Attribute, Component, Fragment, Node, NodeId,
 };
-use svelte_js::RuneKind;
+
 
 /// Transform all parsed template expressions in-place.
 ///
@@ -248,7 +248,7 @@ fn transform_expr<'a>(
                     // Root scope: check if it's a rune that needs $.get()
                     if let Some(kind) = ctx.analysis.scoping.rune_kind(sym_id) {
                         let needs_get = ctx.analysis.scoping.is_mutated(sym_id)
-                            || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
+                            || kind.is_derived();
                         if needs_get {
                             *expr = rune_refs::make_rune_get(ctx.alloc, name);
                         }
