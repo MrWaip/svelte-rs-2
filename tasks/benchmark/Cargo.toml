@@ -13,6 +13,10 @@ doctest = false
 name = "svelte_compiler"
 harness = false
 
+[[bin]]
+name = "bench_cli"
+path = "src/bench_cli.rs"
+
 [dependencies]
 svelte_compiler = { workspace = true }
 criterion2 = { workspace = true, features = ["codspeed"] }
