@@ -40,6 +40,9 @@ fn lower_fragment(
             Node::SnippetBlock(block) => {
                 lower_fragment(&block.body, FragmentKey::SnippetBody(block.id), component, data);
             }
+            Node::KeyBlock(block) => {
+                lower_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), component, data);
+            }
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::Error(_) => {}
         }
     }
@@ -138,6 +141,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                     Node::EachBlock(block) => items.push(FragmentItem::EachBlock(block.id)),
                     Node::RenderTag(tag) => items.push(FragmentItem::RenderTag(tag.id)),
                     Node::HtmlTag(tag) => items.push(FragmentItem::HtmlTag(tag.id)),
+                    Node::KeyBlock(block) => items.push(FragmentItem::KeyBlock(block.id)),
                     _ => {}
                 }
             }

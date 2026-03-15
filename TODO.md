@@ -4,25 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `{#key expr}` (KeyBlock)
+## 1. `style:prop` directive
 
-**Why first**: нужен для роутеров (ремаунт при смене route) и анимаций.
-
-**What to change**:
-- `svelte_ast/src/lib.rs`: добавить `Node::KeyBlock { expression: Span, fragment: Fragment }`
-- `svelte_parser/src/lib.rs`: парсинг `{#key expr}...{/key}`
-- `svelte_analyze/`: content_types для KeyBlock fragment
-- `svelte_codegen_client/src/template/`: `$.key(anchor, () => expr, ($$anchor) => { ... })`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/KeyBlock.js`
-
-**Runtime**: `$.key()`
-
----
-
-## 2. `style:prop` directive
-
-**Why second**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
+**Why first**: так же часто используется как `class:`, паттерн уже есть (ClassDirective).
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Attribute::StyleDirective { name, value, modifiers }`
@@ -35,9 +19,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. Event handlers (`on:event` → `onevent`)
+## 2. Event handlers (`on:event` → `onevent`)
 
-**Why third**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
+**Why second**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
@@ -48,9 +32,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. Void HTML elements
+## 3. Void HTML elements
 
-**Why fourth**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
+**Why third**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
 
 **What to change**:
 - Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
@@ -61,9 +45,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `{@const x = expr}` (ConstTag)
+## 4. `{@const x = expr}` (ConstTag)
 
-**Why fifth**: нужен для вычислений внутри {#each} и {#if} блоков.
+**Why fourth**: нужен для вычислений внутри {#each} и {#if} блоков.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
@@ -72,3 +56,17 @@ Next 5 features to implement, in priority order.
 - `svelte_codegen_client/src/template/`: `const x = expr` (non-reactive) or `$.derived(() => expr)` (reactive)
 
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines)
+
+---
+
+## 5. `$state.raw(val)` rune
+
+**Why fifth**: простой рун, паттерн уже есть в script.rs.
+
+**What to change**:
+- `svelte_analyze/src/parse_js.rs`: добавить `RuneKind::StateRaw`
+- `svelte_codegen_client/src/script.rs`: `$state.raw(val)` → `$.state(val)` (без `$.proxy()`)
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
+
+**Runtime**: `$.state()`

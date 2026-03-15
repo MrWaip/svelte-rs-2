@@ -33,7 +33,7 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
                 let el = ctx.element(*id);
                 html.push_str(&element_html(ctx, el));
             }
-            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) => html.push_str("<!>"),
+            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) => html.push_str("<!>"),
         }
     }
     html

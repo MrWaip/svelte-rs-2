@@ -19,6 +19,8 @@ pub enum TokenType<'a> {
     EndSnippetTag,
     RenderTag(RenderTagToken<'a>),
     HtmlTag(HtmlTagToken<'a>),
+    StartKeyTag(StartKeyTag<'a>),
+    EndKeyTag,
     StyleTag(StyleTag<'a>),
     EOF,
 }
@@ -188,6 +190,11 @@ pub struct RenderTagToken<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct HtmlTagToken<'a> {
+    pub expression: JsExpression<'a>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartKeyTag<'a> {
     pub expression: JsExpression<'a>,
 }
 

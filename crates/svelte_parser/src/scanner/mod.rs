@@ -4,7 +4,7 @@ use std::{iter::Peekable, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
-    StartEachTag, StartIfTag, StartTag, Token, TokenType,
+    StartEachTag, StartIfTag, StartKeyTag, StartTag, Token, TokenType,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -635,6 +635,11 @@ impl<'a> Scanner<'a> {
             }
             "each" => self.start_each_tag(),
             "snippet" => self.start_snippet_tag(),
+            "key" => {
+                let expression = self.collect_js_expression()?;
+                self.add_token(TokenType::StartKeyTag(StartKeyTag { expression }));
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -688,6 +693,17 @@ impl<'a> Scanner<'a> {
                 }
 
                 self.add_token(TokenType::EndSnippetTag);
+
+                Ok(())
+            }
+            "key" => {
+                self.skip_whitespace();
+
+                if !self.match_char('}') {
+                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                }
+
+                self.add_token(TokenType::EndKeyTag);
 
                 Ok(())
             }

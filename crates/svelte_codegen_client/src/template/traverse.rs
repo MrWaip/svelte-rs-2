@@ -13,6 +13,7 @@ use super::element::{item_needs_var, process_element};
 use super::expression::parts_are_dynamic;
 use super::if_block::gen_if_block;
 use super::html_tag::gen_html_tag;
+use super::key_block::gen_key_block;
 use super::render_tag::gen_render_tag;
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
@@ -125,6 +126,14 @@ pub(crate) fn traverse_items<'a>(
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
                     sibling_offset = 1;
                     gen_html_tag(ctx, *id, ctx.b.rid_expr(&node_name), init);
+                    prev_ident = Some(node_name);
+                }
+
+                FragmentItem::KeyBlock(id) => {
+                    let node_name = ctx.gen_ident("node");
+                    init.push(ctx.b.var_stmt(&node_name, node_expr));
+                    sibling_offset = 1;
+                    gen_key_block(ctx, *id, ctx.b.rid_expr(&node_name), init);
                     prev_ident = Some(node_name);
                 }
             }

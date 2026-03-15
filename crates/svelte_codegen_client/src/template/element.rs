@@ -162,7 +162,7 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         svelte_analyze::FragmentItem::Element(id) => ctx.analysis.elements_needing_var.contains(id),
-        svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) => {
+        svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) | svelte_analyze::FragmentItem::KeyBlock(_) => {
             true
         }
     }

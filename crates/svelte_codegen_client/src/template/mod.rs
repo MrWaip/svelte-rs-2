@@ -8,6 +8,7 @@ pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod if_block;
 pub(crate) mod html_tag;
+pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
 pub(crate) mod traverse;
@@ -25,6 +26,7 @@ enum SingleBlockKind {
     IfBlock(NodeId),
     EachBlock(NodeId),
     HtmlTag(NodeId),
+    KeyBlock(NodeId),
     RenderTag(NodeId),
     ComponentNode(NodeId),
 }
@@ -36,6 +38,7 @@ use component::gen_component;
 use if_block::gen_if_block;
 use each_block::gen_each_block;
 use html_tag::gen_html_tag;
+use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use traverse::traverse_items;
 
@@ -209,7 +212,10 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
         SingleBlockKind::HtmlTag(id) => {
             gen_html_tag(ctx, id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should be if/each/html at this point"),
+        SingleBlockKind::KeyBlock(id) => {
+            gen_key_block(ctx, id, ctx.b.rid_expr(&node), body);
+        }
+        _ => unreachable!("SingleBlock should be if/each/html/key at this point"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -390,7 +396,10 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         SingleBlockKind::HtmlTag(id) => {
                             gen_html_tag(ctx, id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!("SingleBlock should be if/each/html at this point"),
+                        SingleBlockKind::KeyBlock(id) => {
+                            gen_key_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                        }
+                        _ => unreachable!("SingleBlock should be if/each/html/key at this point"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",
@@ -457,6 +466,7 @@ fn single_block_kind(item: &FragmentItem) -> SingleBlockKind {
         FragmentItem::IfBlock(id) => SingleBlockKind::IfBlock(id),
         FragmentItem::EachBlock(id) => SingleBlockKind::EachBlock(id),
         FragmentItem::HtmlTag(id) => SingleBlockKind::HtmlTag(id),
+        FragmentItem::KeyBlock(id) => SingleBlockKind::KeyBlock(id),
         FragmentItem::RenderTag(id) => SingleBlockKind::RenderTag(id),
         FragmentItem::ComponentNode(id) => SingleBlockKind::ComponentNode(id),
         _ => unreachable!("SingleBlock should contain a block-level item"),
