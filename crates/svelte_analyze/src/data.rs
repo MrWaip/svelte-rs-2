@@ -216,27 +216,27 @@ impl FragmentItem {
 }
 
 impl LoweredFragment {
-    /// Get the first item's NodeId, expecting an Element. Panics otherwise.
-    pub fn first_element_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::Element(id) => id,
-            _ => panic!("expected Element as first lowered item, got {:?}", std::mem::discriminant(&self.items[0])),
+    /// Get the first item's NodeId if it is an Element.
+    pub fn first_element_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::Element(id) => Some(*id),
+            _ => None,
         }
     }
 
-    /// Get the first item's NodeId, expecting an IfBlock. Panics otherwise.
-    pub fn first_if_block_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::IfBlock(id) => id,
-            _ => panic!("expected IfBlock as first lowered item"),
+    /// Get the first item's NodeId if it is an IfBlock.
+    pub fn first_if_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::IfBlock(id) => Some(*id),
+            _ => None,
         }
     }
 
-    /// Get the first item's NodeId, expecting an EachBlock. Panics otherwise.
-    pub fn first_each_block_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::EachBlock(id) => id,
-            _ => panic!("expected EachBlock as first lowered item"),
+    /// Get the first item's NodeId if it is an EachBlock.
+    pub fn first_each_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::EachBlock(id) => Some(*id),
+            _ => None,
         }
     }
 }

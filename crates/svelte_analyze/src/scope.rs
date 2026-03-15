@@ -138,10 +138,10 @@ impl ComponentScoping {
                 return false;
             }
             if rune.kind.is_derived() {
-                if !rune.derived_deps.is_empty() {
-                    return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
+                if rune.derived_deps.is_empty() {
+                    return true; // deps unknown (e.g. $derived.by) — assume dynamic
                 }
-                return false;
+                return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
             }
             return true;
         }
