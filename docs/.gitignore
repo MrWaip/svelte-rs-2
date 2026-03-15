@@ -1,0 +1,3 @@
+wasm_*
+node_modules
+compiler
