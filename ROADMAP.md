@@ -92,6 +92,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | 10 | `$state.eager(val)` | `$.state($.eager(val))` | S | Experimental async — forces immediate UI updates during `await`. Requires `experimental.async` flag |
 | 11 | `$effect.pending()` | `$.effect_pending()` | S | Returns number of pending promises in current boundary. Used with `<svelte:boundary pending>` |
 | 12 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
+| 13 | `$store` auto-subscription | `$.store_get`/`$.store_set` with scope analysis | S, A | `$count` → auto `.subscribe()`. Needs scope analysis to resolve `$`-prefixed vars to store imports |
 
 ---
 
@@ -456,7 +457,6 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 | `export let` (props) | `$props()` | Different script transform | S |
 | `$:` reactive assignments | `$derived` / `$effect` | Labeled statement → `$.derived`/`$.effect` | S |
 | `$$props` / `$$restProps` / `$$slots` | `$props()` with rest | Runtime vars | S, T |
-| `$store` auto-subscription | Use stores via `.subscribe()` or runes | `$.store_get`/`$.store_set` with scope analysis | S |
 | `beforeUpdate` / `afterUpdate` | `$effect.pre` / `$effect` | `$.legacy_pre_effect` / `$.user_effect` | S |
 | `createEventDispatcher` | Callback props | Runtime only, no compiler changes | — |
 
