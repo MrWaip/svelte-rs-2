@@ -2,7 +2,7 @@ use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
-use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
+use svelte_js::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
@@ -88,11 +88,6 @@ pub struct AnalysisData {
     /// Top-level snippets whose bodies don't reference component-scoped variables.
     pub hoistable_snippets: FxHashSet<NodeId>,
 
-    // -- Cached sets for codegen (populated after mutations pass) --
-    /// All rune symbol names with their kinds (precomputed).
-    pub rune_names: FxHashMap<String, RuneKind>,
-    /// All mutated rune names (script + template, all via OXC references).
-    pub mutated_runes: FxHashSet<String>,
     /// Elements that need a DOM variable during traversal (precomputed for codegen).
     pub elements_needing_var: FxHashSet<NodeId>,
 
@@ -137,8 +132,6 @@ impl AnalysisData {
             exports: Vec::new(),
             snippet_params: FxHashMap::default(),
             hoistable_snippets: FxHashSet::default(),
-            rune_names: FxHashMap::default(),
-            mutated_runes: FxHashSet::default(),
             elements_needing_var: FxHashSet::default(),
             element_has_spread: FxHashSet::default(),
             element_has_class_directives: FxHashSet::default(),
@@ -152,27 +145,21 @@ impl AnalysisData {
         }
     }
 
-    /// Populate cached rune name sets from ComponentScoping.
-    /// Call after build_scoping + detect_mutations.
-    pub fn cache_rune_sets(&mut self) {
-        self.rune_names = self.scoping.rune_names();
-        self.mutated_runes = self.scoping.mutated_rune_names();
-    }
 }
 
 impl AnalysisData {
     pub fn is_rune(&self, name: &str) -> bool {
-        self.rune_names.contains_key(name)
+        self.scoping.rune_info_by_name(name).is_some()
     }
 
     pub fn is_mutable_rune(&self, name: &str) -> bool {
-        self.mutated_runes.contains(name)
+        self.scoping
+            .rune_info_by_name(name)
+            .is_some_and(|(_, mutated)| mutated)
     }
 
-    pub fn rune_kind(&self, name: &str) -> Option<RuneKind> {
-        let root = self.scoping.root_scope_id();
-        let sym_id = self.scoping.find_binding(root, name)?;
-        self.scoping.rune_kind(sym_id)
+    pub fn rune_kind(&self, name: &str) -> Option<svelte_js::RuneKind> {
+        self.scoping.rune_info_by_name(name).map(|(kind, _)| kind)
     }
 }
 
