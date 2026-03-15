@@ -2,14 +2,7 @@ pub mod token;
 
 use std::{iter::Peekable, str::Chars, vec};
 
-const VOID_ELEMENTS: &[&str] = &[
-    "area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link",
-    "meta", "param", "source", "track", "wbr",
-];
-
-pub fn is_void(name: &str) -> bool {
-    VOID_ELEMENTS.contains(&name)
-}
+pub use svelte_ast::is_void;
 
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,

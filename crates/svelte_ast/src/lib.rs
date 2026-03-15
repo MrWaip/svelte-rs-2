@@ -1,5 +1,14 @@
 use svelte_span::Span;
 
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link",
+    "meta", "param", "source", "track", "wbr",
+];
+
+pub fn is_void(name: &str) -> bool {
+    VOID_ELEMENTS.contains(&name)
+}
+
 /// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
