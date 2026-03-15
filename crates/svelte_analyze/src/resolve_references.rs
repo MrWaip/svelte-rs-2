@@ -86,12 +86,12 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        body_scope: ScopeId,
+        parent_scope: ScopeId,
+        _body_scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        // The collection expression uses the parent scope (body_scope's parent),
-        // but find_binding walks up, so body_scope works correctly.
-        self.resolve_expr_refs(block.id, body_scope, data);
+        // Collection expression belongs to parent scope, not the each-block's child scope.
+        self.resolve_expr_refs(block.id, parent_scope, data);
     }
 
     fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
