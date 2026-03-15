@@ -163,3 +163,4 @@ macro_rules! impl_composite_visitor {
 impl_composite_visitor!(A: 0, B: 1);
 impl_composite_visitor!(A: 0, B: 1, C: 2);
 impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3);
+impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3, E: 4);

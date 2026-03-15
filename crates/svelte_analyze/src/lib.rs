@@ -33,14 +33,15 @@ use svelte_diagnostics::Diagnostic;
 /// Pass order:
 /// 1. parse_js      — parse JS expressions + script block (stores ASTs in ParsedExprs)
 /// 2. build_scoping — build unified scope tree (script + template)
-/// 3. resolve_references — resolve template refs to SymbolId, register mutations in OXC
-/// 4. known_values  — evaluate const declarations with literal initializers
-/// 5. props         — analyze $props() destructuring
-/// 6. lower         — trim whitespace, group text+expressions
-/// 7. composite walk — reactivity + elseif + element flags + hoistable snippets
-/// 8. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
-/// 9. needs_var     — compute elements needing DOM variable
-/// 10. validate     — semantic checks
+/// 3. resolve_references — resolve template refs to SymbolId, register mutations
+/// 4. store_subscriptions — detect $store subscriptions
+/// 5. known_values  — evaluate const declarations with literal initializers
+/// 6. props         — analyze $props() destructuring
+/// 7. lower         — trim whitespace, group text+expressions
+/// 8. composite walk — reactivity + elseif + element flags + hoistable snippets
+/// 9. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
+/// 10. needs_var    — compute elements needing DOM variable
+/// 11. validate     — semantic checks
 pub fn analyze<'a>(
     alloc: &'a Allocator,
     component: &Component,
@@ -55,8 +56,8 @@ pub fn analyze<'a>(
     register_snippet_params(&component.fragment, component, &mut data);
 
     scope::build_scoping(component, &mut data);
-    store_subscriptions::detect_store_subscriptions(&mut data);
     resolve_references::resolve_references(component, &mut data);
+    store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
     lower::lower(component, &mut data);
@@ -91,8 +92,16 @@ pub fn analyze<'a>(
     }
 
     // Classify fragments + mark which have dynamic children (single pass over lowered_fragments)
+    debug_assert!(
+        !data.lowered_fragments.is_empty() || component.fragment.nodes.is_empty(),
+        "classify_and_mark_dynamic requires lowered_fragments (from lower pass)"
+    );
     content_types::classify_and_mark_dynamic(&mut data);
     // Separate walker pass: needs_var depends on content_types (computed above)
+    debug_assert!(
+        !data.content_types.is_empty() || component.fragment.nodes.is_empty(),
+        "needs_var requires content_types (from classify_and_mark_dynamic)"
+    );
     {
         let root = data.scoping.root_scope_id();
         let mut visitor = needs_var::NeedsVarVisitor;
@@ -112,6 +121,7 @@ fn register_snippet_params(
     for node in &fragment.nodes {
         match node {
             svelte_ast::Node::SnippetBlock(block) => {
+                // TODO: parse via OXC for destructured/default params (currently simple split)
                 let params = if let Some(span) = block.params_span {
                     component
                         .source_text(span)

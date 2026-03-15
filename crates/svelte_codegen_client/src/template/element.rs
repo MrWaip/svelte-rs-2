@@ -119,7 +119,7 @@ pub(crate) fn process_element<'a>(
             Some(svelte_analyze::FragmentItem::EachBlock(_))
         ) => {
             // Controlled each block: element itself is the anchor, no $.child() traversal
-            let each_id = ctx.lowered_fragment(&child_key).first_each_block_id();
+            let each_id = ctx.lowered_fragment(&child_key).first_each_block_id().unwrap();
             gen_each_block(ctx, each_id, ctx.b.rid_expr(el_name), true, init);
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }

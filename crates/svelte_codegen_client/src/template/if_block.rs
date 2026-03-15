@@ -46,7 +46,7 @@ pub(crate) fn gen_if_block<'a>(
         let alt_is_elseif = ctx.analysis.alt_is_elseif.contains(&current);
 
         if alt_is_elseif {
-            let nested_id = ctx.lowered_fragment(&alternate_key).first_if_block_id();
+            let nested_id = ctx.lowered_fragment(&alternate_key).first_if_block_id().unwrap();
             current = nested_id;
             continue;
         } else {
