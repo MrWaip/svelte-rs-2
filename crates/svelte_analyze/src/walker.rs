@@ -23,7 +23,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
@@ -70,7 +70,7 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             }
             Node::EachBlock(block) => {
                 let body_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
-                visitor.visit_each_block(block, body_scope, data);
+                visitor.visit_each_block(block, scope, body_scope, data);
                 walk_template(&block.body, data, body_scope, visitor);
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
@@ -125,8 +125,8 @@ macro_rules! delegate_visitor_methods {
         fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_if_block(block, scope, data);)+
         }
-        fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_each_block(block, body_scope, data);)+
+        fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_each_block(block, parent_scope, body_scope, data);)+
         }
         fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_snippet_block(block, scope, data);)+
@@ -163,3 +163,4 @@ macro_rules! impl_composite_visitor {
 impl_composite_visitor!(A: 0, B: 1);
 impl_composite_visitor!(A: 0, B: 1, C: 2);
 impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3);
+impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3, E: 4);
