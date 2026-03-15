@@ -179,6 +179,17 @@ fn walk_node<'a>(
             parse_expr(alloc, source, block.expression_span.start, block.id, data, parsed, diags);
             walk_fragment(alloc, &block.fragment, component, data, parsed, diags);
         }
+        Node::ConstTag(tag) => {
+            let decl_text = component.source_text(tag.declaration_span);
+            // Split "name = expr" at the first '=' to extract identifier and init expression
+            if let Some(eq_pos) = decl_text.find('=') {
+                let name = decl_text[..eq_pos].trim().to_string();
+                let init_text = decl_text[eq_pos + 1..].trim();
+                let init_offset = tag.declaration_span.start + (decl_text.len() - decl_text[eq_pos + 1..].trim_start().len()) as u32;
+                parse_expr(alloc, init_text, init_offset, tag.id, data, parsed, diags);
+                data.const_tag_names.insert(tag.id, vec![name]);
+            }
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

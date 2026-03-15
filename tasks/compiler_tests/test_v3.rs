@@ -335,3 +335,8 @@ fn store_basic() {
 fn store_write() {
     assert_compiler("store_write");
 }
+
+#[rstest]
+fn const_tag() {
+    assert_compiler("const_tag");
+}

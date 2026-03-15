@@ -2,6 +2,7 @@
 
 pub(crate) mod attributes;
 pub(crate) mod component;
+pub(crate) mod const_tag;
 pub(crate) mod each_block;
 pub(crate) mod element;
 pub(crate) mod expression;
@@ -40,6 +41,7 @@ use each_block::gen_each_block;
 use html_tag::gen_html_tag;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
+use const_tag::emit_const_tags;
 use traverse::traverse_items;
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,8 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
 
     let mut hoisted = Vec::new();
     let mut body = Vec::new();
+
+    emit_const_tags(ctx, key, &mut body);
 
     match ct {
         ContentType::Empty => {}
@@ -288,6 +292,8 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
 
     let mut body: Vec<Statement<'a>> = Vec::new();
 
+    emit_const_tags(ctx, key, &mut body);
+
     match ct {
         ContentType::Empty => {}
         ContentType::StaticText => {
@@ -346,16 +352,16 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                     .call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))]),
             ));
 
-            let mut result = Vec::new();
-            result.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
-            result.extend(init);
-            emit_template_effect(ctx, update, &mut result);
-            result.extend(after_update);
-            result.push(ctx.b.call_stmt(
+            // Prepend const tags from body, then element code
+            body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
+            body.extend(init);
+            emit_template_effect(ctx, update, &mut body);
+            body.extend(after_update);
+            body.push(ctx.b.call_stmt(
                 "$.append",
                 [Arg::Ident("$$anchor"), Arg::Ident(&el_name)],
             ));
-            return result;
+            return body;
         }
         ContentType::SingleBlock => {
             let kind = single_block_kind(&ctx.lowered_fragment(&key).items[0]);

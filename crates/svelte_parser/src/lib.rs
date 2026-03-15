@@ -5,7 +5,7 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, ConstTag,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, OnDirectiveLegacy, StyleDirective, StyleDirectiveValue,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
@@ -263,6 +263,14 @@ impl<'a> Parser<'a> {
                         id: self.ids.next(),
                         span: token.span,
                         expression_span: html_tag.expression.span,
+                    });
+                    push_child(&mut children_stack, node);
+                }
+                TokenType::ConstTag(ct) => {
+                    let node = Node::ConstTag(ConstTag {
+                        id: self.ids.next(),
+                        span: token.span,
+                        declaration_span: ct.declaration.span,
                     });
                     push_child(&mut children_stack, node);
                 }
@@ -1159,6 +1167,36 @@ mod tests {
     fn html_tag_complex_expression() {
         let c = parse("{@html '<p>' + name + '</p>'}");
         assert_html_tag(&c, 0, "'<p>' + name + '</p>'");
+    }
+
+    // --- ConstTag tests ---
+
+    fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_decl: &str) {
+        if let Node::ConstTag(ref ct) = fragment.nodes[index] {
+            assert_eq!(c.source_text(ct.declaration_span), expected_decl);
+        } else {
+            panic!("expected ConstTag at index {index}");
+        }
+    }
+
+    #[test]
+    fn const_tag_basic() {
+        let c = parse("{#each items as item}{@const doubled = item * 2}<p>{doubled}</p>{/each}");
+        if let Node::EachBlock(ref eb) = c.fragment.nodes[0] {
+            assert_const_tag(&c, &eb.body, 0, "doubled = item * 2");
+        } else {
+            panic!("expected EachBlock at index 0");
+        }
+    }
+
+    #[test]
+    fn const_tag_in_if_block() {
+        let c = parse("{#if show}{@const x = count + 1}<p>{x}</p>{/if}");
+        if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
+            assert_const_tag(&c, &ib.consequent, 0, "x = count + 1");
+        } else {
+            panic!("expected IfBlock at index 0");
+        }
     }
 
     // --- KeyBlock tests ---

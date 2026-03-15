@@ -140,6 +140,9 @@ fn walk_node<'a>(
         Node::HtmlTag(tag) => {
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
         }
+        Node::ConstTag(tag) => {
+            transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+        }
         Node::KeyBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
             walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
