@@ -88,7 +88,7 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_each_block(&mut self, block: &EachBlock, _body_scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_each_block(&mut self, block: &EachBlock, _parent_scope: ScopeId, _body_scope: ScopeId, data: &mut AnalysisData) {
         if self.expr_is_dynamic(&block.id, data) {
             data.dynamic_nodes.insert(block.id);
         }
