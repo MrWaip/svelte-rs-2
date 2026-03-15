@@ -155,34 +155,16 @@ impl<'a> Ctx<'a> {
 
     // -- Node lookups (O(1)) --
 
-    pub fn element(&self, id: NodeId) -> &'a Element {
-        self.index.elements.get(&id).copied()
-            .unwrap_or_else(|| panic!("element {:?} not found in index", id))
-    }
+    pub fn element(&self, id: NodeId) -> &'a Element { self.get_node(&self.index.elements, id, "element") }
+    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode { self.get_node(&self.index.component_nodes, id, "component node") }
+    pub fn if_block(&self, id: NodeId) -> &'a IfBlock { self.get_node(&self.index.if_blocks, id, "if block") }
+    pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(&self.index.each_blocks, id, "each block") }
+    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
+    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
 
-    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode {
-        self.index.component_nodes.get(&id).copied()
-            .unwrap_or_else(|| panic!("component node {:?} not found in index", id))
-    }
-
-    pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
-        self.index.if_blocks.get(&id).copied()
-            .unwrap_or_else(|| panic!("if block {:?} not found in index", id))
-    }
-
-    pub fn each_block(&self, id: NodeId) -> &'a EachBlock {
-        self.index.each_blocks.get(&id).copied()
-            .unwrap_or_else(|| panic!("each block {:?} not found in index", id))
-    }
-
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock {
-        self.index.snippet_blocks.get(&id).copied()
-            .unwrap_or_else(|| panic!("snippet block {:?} not found in index", id))
-    }
-
-    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
-        self.index.render_tags.get(&id).copied()
-            .unwrap_or_else(|| panic!("render tag {:?} not found in index", id))
+    fn get_node<T>(&self, map: &FxHashMap<NodeId, &'a T>, id: NodeId, label: &str) -> &'a T {
+        map.get(&id).copied()
+            .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id))
     }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {

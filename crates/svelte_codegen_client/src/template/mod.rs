@@ -147,10 +147,7 @@ fn gen_root_single_element<'a>(
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
-    let el_id = match ctx.lowered_fragment(&FragmentKey::Root).items[0] {
-        FragmentItem::Element(id) => id,
-        _ => unreachable!(),
-    };
+    let el_id = ctx.lowered_fragment(&FragmentKey::Root).first_element_id();
 
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
@@ -319,10 +316,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
         }
         ContentType::SingleElement => {
-            let el_id = match ctx.lowered_fragment(&key).items[0] {
-                FragmentItem::Element(id) => id,
-                _ => unreachable!(),
-            };
+            let el_id = ctx.lowered_fragment(&key).first_element_id();
 
             let el = ctx.element(el_id);
             let html = element_html(ctx, el);
