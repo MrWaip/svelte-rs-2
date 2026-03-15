@@ -89,3 +89,29 @@ Codegen (`svelte_codegen_client`) uses direct recursion — no visitor pattern t
 To port a new feature, use `/port-svelte <feature description>`.
 
 Read `TODO.md` for current work items. Full feature catalog in `ROADMAP.md`.
+
+## Code style
+
+### Architecture boundaries
+
+- OXC types (`Expression<'a>`, `Program<'a>`) never appear in public API. `svelte_js` is the only facade.
+- AST is immutable after parsing. Analysis results go into side tables (`AnalysisData`, keyed by `NodeId`).
+- AST stores `Span` for JS expressions; codegen re-parses from source. No JS subtree copying between phases.
+- `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
+
+### Naming
+
+- `gen_*` — creates and returns statements.
+- `process_*` — mutates provided `&mut Vec` in-place.
+- `emit_*` — appends specialized statements to a `&mut Vec`.
+- `pub(crate)` by default; `pub` only for entry points and types.
+
+### Rust idioms
+
+- Early return over deep nesting.
+- Exhaustive `match` for enums; `if let` when only one variant matters.
+- `.copied()`, `.is_some_and()`, `.map_or()` over verbose match/if-let for simple Option ops.
+- `.remove()` for ownership transfer from side tables (not `.get().cloned()`).
+- `unwrap_or_else(|| panic!(...))` only for internal invariants, never for user errors. User errors → `Diagnostic`.
+- Repeating `match` patterns on an enum → extract into a method on that enum.
+- Comments answer "why", never describe what the line does.
