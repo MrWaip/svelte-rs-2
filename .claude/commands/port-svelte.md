@@ -100,3 +100,19 @@ Update `TODO.md`:
 - If new blockers were discovered — note them
 
 Both files must be kept in sync. `TODO.md` is a sliding window of 5 items from `ROADMAP.md`.
+
+## Step 8: Benchmark
+
+If the ported feature adds new syntax or constructs (new AST node types, new block types,
+new directive types), update the benchmark generator to include them:
+
+1. Add the new construct to `tasks/generate_benchmark/src/main.rs` (in the chunk template)
+2. Bump the benchmark version: generate a new `big_vN.svelte`:
+   ```
+   just generate-benchmark big_vN
+   ```
+   where N is the next version number (check existing files in `tasks/benchmark/benches/compiler/`)
+3. Verify the new benchmark file compiles: `cargo bench -p benchmark -- --test`
+4. Do NOT modify or delete previous `big_vN.svelte` files — their CodSpeed history must remain valid
+
+Skip this step if the feature only changes codegen output without adding new syntax.
