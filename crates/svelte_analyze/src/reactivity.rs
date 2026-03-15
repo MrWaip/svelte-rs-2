@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock,
-    KeyBlock, NodeId, RenderTag, SnippetBlock,
+    Attribute, BindDirective, ComponentNode, ConstTag, EachBlock, Element, ExpressionTag, HtmlTag,
+    IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock,
 };
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
@@ -66,6 +66,12 @@ impl TemplateVisitor for ReactivityVisitor {
     }
 
     fn visit_html_tag(&mut self, tag: &HtmlTag, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data) {
+            data.dynamic_nodes.insert(tag.id);
+        }
+    }
+
+    fn visit_const_tag(&mut self, tag: &ConstTag, _scope: ScopeId, data: &mut AnalysisData) {
         if self.expr_is_dynamic(&tag.id, data) {
             data.dynamic_nodes.insert(tag.id);
         }

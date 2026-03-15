@@ -192,9 +192,12 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
         }
     }
 
-    // Walk template to add each-block scopes
+    // Walk template to add each-block scopes and const bindings
     let root = data.scoping.root_scope_id();
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root);
+    // Take const_tag_names temporarily to avoid split borrow on `data`
+    let const_tag_names = std::mem::take(&mut data.const_tag_names);
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names);
+    data.const_tag_names = const_tag_names;
 }
 
 fn walk_template_scopes(
@@ -202,6 +205,7 @@ fn walk_template_scopes(
     component: &Component,
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
+    const_tag_names: &FxHashMap<NodeId, Vec<String>>,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -219,30 +223,38 @@ fn walk_template_scopes(
                     scoping.add_binding(child_scope, idx_name);
                 }
 
-                walk_template_scopes(&block.body, component, scoping, child_scope);
+                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names);
 
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
-                    walk_template_scopes(fb, component, scoping, current_scope);
+                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names);
                 }
             }
             Node::Element(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names);
             }
             Node::ComponentNode(cn) => {
-                walk_template_scopes(&cn.fragment, component, scoping, current_scope);
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names);
             }
             Node::IfBlock(block) => {
-                walk_template_scopes(&block.consequent, component, scoping, current_scope);
+                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names);
                 if let Some(alt) = &block.alternate {
-                    walk_template_scopes(alt, component, scoping, current_scope);
+                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names);
                 }
             }
             Node::SnippetBlock(block) => {
-                walk_template_scopes(&block.body, component, scoping, current_scope);
+                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names);
             }
             Node::KeyBlock(block) => {
-                walk_template_scopes(&block.fragment, component, scoping, current_scope);
+                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names);
+            }
+            Node::ConstTag(tag) => {
+                if let Some(names) = const_tag_names.get(&tag.id) {
+                    for name in names {
+                        let sym_id = scoping.add_binding(current_scope, name);
+                        scoping.mark_rune(sym_id, RuneKind::Derived);
+                    }
+                }
             }
             Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::Error(_) => {}
         }

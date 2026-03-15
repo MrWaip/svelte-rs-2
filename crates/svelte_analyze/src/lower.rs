@@ -14,6 +14,14 @@ fn lower_fragment(
     component: &Component,
     data: &mut AnalysisData,
 ) {
+    // Collect ConstTag node IDs for this fragment
+    let const_ids: Vec<_> = fragment.nodes.iter()
+        .filter_map(|n| n.as_const_tag().map(|ct| ct.id))
+        .collect();
+    if !const_ids.is_empty() {
+        data.const_tags.insert(key, const_ids);
+    }
+
     let items = build_items(fragment, component);
     data.lowered_fragments.insert(key, LoweredFragment { items });
 
@@ -43,7 +51,7 @@ fn lower_fragment(
             Node::KeyBlock(block) => {
                 lower_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), component, data);
             }
-            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::Error(_) => {}
+            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
     }
 }
@@ -62,7 +70,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
-            Node::Comment(_) | Node::SnippetBlock(_) | Node::Error(_) => continue,
+            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::Error(_) => continue,
             _ => regular.push(node),
         }
     }

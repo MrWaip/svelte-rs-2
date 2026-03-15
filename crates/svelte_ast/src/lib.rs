@@ -119,6 +119,7 @@ impl_node_enum! {
     SnippetBlock(SnippetBlock)   => is_snippet_block / as_snippet_block,
     RenderTag(RenderTag)         => is_render_tag / as_render_tag,
     HtmlTag(HtmlTag)             => is_html_tag / as_html_tag,
+    ConstTag(ConstTag)           => is_const_tag / as_const_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     Error(ErrorNode)             => is_error / as_error,
 }
@@ -279,6 +280,17 @@ pub struct HtmlTag {
     pub span: Span,
     /// Span of the JS expression: "content" in `{@html content}`.
     pub expression_span: Span,
+}
+
+// ---------------------------------------------------------------------------
+// ConstTag — {@const decl}
+// ---------------------------------------------------------------------------
+
+pub struct ConstTag {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the declaration text: `doubled = item * 2` in `{@const doubled = item * 2}`.
+    pub declaration_span: Span,
 }
 
 // ---------------------------------------------------------------------------

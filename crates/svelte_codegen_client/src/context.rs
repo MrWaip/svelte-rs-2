@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, FragmentKey, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
+use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_span::Span;
 
 use crate::builder::Builder;
@@ -16,6 +16,7 @@ struct NodeIndex<'a> {
     snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
     html_tags: FxHashMap<NodeId, &'a HtmlTag>,
+    const_tags: FxHashMap<NodeId, &'a ConstTag>,
     expr_spans: FxHashMap<NodeId, Span>,
 }
 
@@ -29,6 +30,7 @@ impl<'a> NodeIndex<'a> {
             snippet_blocks: FxHashMap::default(),
             render_tags: FxHashMap::default(),
             html_tags: FxHashMap::default(),
+            const_tags: FxHashMap::default(),
             expr_spans: FxHashMap::default(),
         };
         index.walk(fragment);
@@ -69,6 +71,9 @@ impl<'a> NodeIndex<'a> {
                 }
                 Node::HtmlTag(t) => {
                     self.html_tags.insert(t.id, t);
+                }
+                Node::ConstTag(t) => {
+                    self.const_tags.insert(t.id, t);
                 }
                 Node::KeyBlock(b) => {
                     self.walk(&b.fragment);
@@ -161,6 +166,7 @@ impl<'a> Ctx<'a> {
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(&self.index.each_blocks, id, "each block") }
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
+    pub fn const_tag(&self, id: NodeId) -> &'a ConstTag { self.get_node(&self.index.const_tags, id, "const tag") }
 
     fn get_node<T>(&self, map: &FxHashMap<NodeId, &'a T>, id: NodeId, label: &str) -> &'a T {
         map.get(&id).copied()

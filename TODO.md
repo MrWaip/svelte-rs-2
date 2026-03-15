@@ -4,23 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `{@const x = expr}` (ConstTag)
+## 1. `$state.raw(val)` rune
 
-**Why first**: нужен для вычислений внутри {#each} и {#if} блоков.
-
-**What to change**:
-- `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
-- `svelte_parser/src/lib.rs`: парсинг `{@const ...}` с извлечением variable declaration
-- `svelte_analyze/`: scope integration — const binding visible in same block
-- `svelte_codegen_client/src/template/`: `const x = expr` (non-reactive) or `$.derived(() => expr)` (reactive)
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines)
-
----
-
-## 2. `$state.raw(val)` rune
-
-**Why second**: простой рун, паттерн уже есть в script.rs.
+**Why first**: простой рун, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: добавить `RuneKind::StateRaw`
@@ -32,7 +18,7 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `class` attribute — Object/array syntax (Svelte 5)
+## 2. `class` attribute — Object/array syntax (Svelte 5)
 
 **Why third**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
 
@@ -44,7 +30,7 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `$state.snapshot(val)` rune
+## 3. `$state.snapshot(val)` rune
 
 **Why fourth**: простая перезапись вызова, паттерн уже есть в script.rs.
 
@@ -58,7 +44,7 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `$effect.tracking()` rune
+## 4. `$effect.tracking()` rune
 
 **Why fifth**: тривиальная перезапись вызова, без аргументов.
 

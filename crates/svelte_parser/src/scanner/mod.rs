@@ -1033,6 +1033,16 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "const" => {
+                self.skip_whitespace();
+                let declaration = self.collect_js_expression()?;
+
+                self.add_token(TokenType::ConstTag(token::ConstTagToken {
+                    declaration,
+                }));
+
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -1736,6 +1746,16 @@ mod tests {
         assert!(matches!(tokens[0].token_type, TokenType::HtmlTag(_)));
         if let TokenType::HtmlTag(ref ht) = tokens[0].token_type {
             assert_eq!(ht.expression.value, "content");
+        }
+    }
+
+    #[test]
+    fn const_tag_tokens() {
+        let mut scanner = Scanner::new("{@const doubled = item * 2}");
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::ConstTag(_)));
+        if let TokenType::ConstTag(ref ct) = tokens[0].token_type {
+            assert_eq!(ct.declaration.value, "doubled = item * 2");
         }
     }
 

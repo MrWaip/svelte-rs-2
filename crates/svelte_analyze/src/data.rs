@@ -112,6 +112,11 @@ pub struct AnalysisData {
     /// Store subscriptions: base names (e.g. "count" for `$count`) of variables
     /// that have `$`-prefixed references and are root-scope non-rune bindings.
     pub store_subscriptions: FxHashSet<String>,
+
+    /// ConstTag declared identifier names, keyed by ConstTag NodeId.
+    pub const_tag_names: FxHashMap<NodeId, Vec<String>>,
+    /// ConstTag NodeIds grouped by the fragment they belong to.
+    pub const_tags: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
 impl AnalysisData {
@@ -142,6 +147,8 @@ impl AnalysisData {
             fragment_has_dynamic_children: FxHashSet::default(),
             needs_context: false,
             store_subscriptions: FxHashSet::default(),
+            const_tag_names: FxHashMap::default(),
+            const_tags: FxHashMap::default(),
         }
     }
 
