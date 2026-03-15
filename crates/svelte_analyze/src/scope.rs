@@ -208,21 +208,25 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
 
     // Walk template to add each-block scopes and const bindings
     let root = data.scoping.root_scope_id();
-    // Take const_tag_names temporarily to avoid split borrow on `data`
+    // Take temporarily to avoid split borrow on `data`
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
-    let destructured_ids = &data.const_tags.destructured;
+    let destructured_ids: FxHashSet<NodeId> = data.const_tags.destructured.keys().copied().collect();
     let mut const_sym_ids: Vec<(NodeId, String, SymbolId)> = Vec::new();
     let mut generated_temps: Vec<(NodeId, String)> = Vec::new();
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, destructured_ids, &mut const_sym_ids, &mut generated_temps);
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &destructured_ids, &mut const_sym_ids, &mut generated_temps);
     data.const_tags.names = const_tag_names;
 
     // Store generated temp names and build binding_to_temp mapping
     for (node_id, temp_name) in &generated_temps {
-        data.const_tags.destructured_temp.insert(*node_id, temp_name.clone());
+        if let Some(info) = data.const_tags.destructured.get_mut(node_id) {
+            info.temp_name = temp_name.clone();
+        }
     }
     for (node_id, _name, sym_id) in &const_sym_ids {
-        if let Some(temp_name) = data.const_tags.destructured_temp.get(node_id) {
-            data.const_tags.binding_to_temp.insert(*sym_id, temp_name.clone());
+        if let Some(info) = data.const_tags.destructured.get(node_id) {
+            if !info.temp_name.is_empty() {
+                data.const_tags.binding_to_temp.insert(*sym_id, info.temp_name.clone());
+            }
         }
     }
 }

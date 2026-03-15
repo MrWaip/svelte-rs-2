@@ -345,3 +345,8 @@ fn const_tag() {
 fn const_tag_destructure() {
     assert_compiler("const_tag_destructure");
 }
+
+#[rstest]
+fn const_tag_destructure_shadow() {
+    assert_compiler("const_tag_destructure_shadow");
+}

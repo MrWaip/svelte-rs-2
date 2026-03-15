@@ -230,7 +230,7 @@ impl<'a> Ctx<'a> {
 
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.const_tags.names(id) }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.const_tags.by_fragment(key) }
-    pub fn is_const_destructured(&self, id: NodeId) -> bool { self.analysis.const_tags.destructured.contains(&id) }
-    pub fn const_tag_temp_name(&self, id: NodeId) -> Option<&str> { self.analysis.const_tags.destructured_temp.get(&id).map(|s| s.as_str()) }
-    pub fn const_tag_pattern_text(&self, id: NodeId) -> Option<&str> { self.analysis.const_tags.pattern_text.get(&id).map(|s| s.as_str()) }
+    pub fn is_const_destructured(&self, id: NodeId) -> bool { self.analysis.const_tags.destructured.contains_key(&id) }
+    pub fn const_tag_temp_name(&self, id: NodeId) -> Option<&str> { self.analysis.const_tags.destructured.get(&id).map(|d| d.temp_name.as_str()) }
+    pub fn const_tag_pattern_text(&self, id: NodeId) -> Option<&str> { self.analysis.const_tags.destructured.get(&id).map(|d| d.pattern_text.as_str()) }
 }

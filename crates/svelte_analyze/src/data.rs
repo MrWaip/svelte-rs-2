@@ -148,16 +148,20 @@ impl SnippetData {
     pub fn is_hoistable(&self, id: NodeId) -> bool { self.hoistable.contains(&id) }
 }
 
+/// Per-node destructuring info for a const tag.
+pub struct ConstDestructure {
+    /// LHS pattern text, e.g. "{ x, y }" or "[a, b]".
+    pub pattern_text: String,
+    /// Generated temp var name, e.g. "computed_const". Populated during build_scoping.
+    pub temp_name: String,
+}
+
 /// ConstTag analysis: declared names and per-fragment grouping.
 pub struct ConstTagData {
     pub names: FxHashMap<NodeId, Vec<String>>,
     pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
-    /// Const tags that use destructuring patterns (object or array).
-    pub destructured: FxHashSet<NodeId>,
-    /// Pattern text for destructured const tags, e.g. "{ x, y }" or "[a, b]".
-    pub pattern_text: FxHashMap<NodeId, String>,
-    /// Pre-assigned temp var names for destructured const tags.
-    pub destructured_temp: FxHashMap<NodeId, String>,
+    /// Destructuring info per const tag (only present for destructured tags).
+    pub destructured: FxHashMap<NodeId, ConstDestructure>,
     /// Maps each SymbolId of a destructured const binding to its temp var name.
     pub binding_to_temp: FxHashMap<SymbolId, String>,
 }
@@ -167,9 +171,7 @@ impl ConstTagData {
         Self {
             names: FxHashMap::default(),
             by_fragment: FxHashMap::default(),
-            destructured: FxHashSet::default(),
-            pattern_text: FxHashMap::default(),
-            destructured_temp: FxHashMap::default(),
+            destructured: FxHashMap::default(),
             binding_to_temp: FxHashMap::default(),
         }
     }

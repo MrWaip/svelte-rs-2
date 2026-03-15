@@ -303,10 +303,13 @@ fn parse_const_tag<'a>(
 
     data.const_tags.names.insert(tag.id, names);
     if is_destructured {
-        data.const_tags.destructured.insert(tag.id);
         let pattern_end = assign.left.span().end as usize;
-        let pattern_text = decl_text[..pattern_end].trim();
-        data.const_tags.pattern_text.insert(tag.id, pattern_text.to_string());
+        let pattern_text = decl_text[..pattern_end].trim().to_string();
+        // temp_name is populated later in build_scoping (needs scope access)
+        data.const_tags.destructured.insert(tag.id, crate::data::ConstDestructure {
+            pattern_text,
+            temp_name: String::new(),
+        });
     }
 }
 
