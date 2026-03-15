@@ -36,6 +36,18 @@ All common operations are in the `justfile`. Use `just` instead of raw cargo com
 | `just test-parser` | Run parser tests |
 | `just test-analyzer` | Run analyzer tests |
 
+| `just generate-benchmark [name] [chunks]` | Generate benchmark `.svelte` file (default: `big_v1`, 50 chunks) |
+| `just compare-benchmark [file]` | Wall-clock comparison: Rust vs Svelte JS compiler |
+
+## Benchmarks
+
+Two complementary systems:
+
+- **CodSpeed (CI, automatic)** — runs on every push, tracks CPU instruction count via Valgrind. Deterministic, no noise. Alerts on regressions. Only measures Rust.
+- **`just compare-benchmark` (local, manual)** — wall-clock Rust vs JS comparison. Run after major changes or for reporting.
+
+Benchmark files are versioned (`big_v1.svelte`, `big_v2.svelte`, ...). When porting a feature that adds new syntax, `/port-svelte` Step 8 creates a new version. Old files are never modified — their CodSpeed history stays valid.
+
 ## General rules for commands
 
 If stuck after 3 attempts on the same issue, stop and report what you've tried. Do not loop indefinitely.
