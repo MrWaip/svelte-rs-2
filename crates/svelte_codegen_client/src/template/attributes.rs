@@ -111,7 +111,7 @@ pub(crate) fn process_class_directives<'a>(
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
-    if !ctx.analysis.element_flags.has_class_directives.contains(&el.id) {
+    if !ctx.has_class_directives(el.id) {
         return;
     }
 
@@ -126,12 +126,8 @@ pub(crate) fn process_class_directives<'a>(
         .collect();
 
     // Find static class value from precomputed span
-    let static_class = ctx
-        .analysis
-        .element_flags
-        .static_class
-        .get(&el.id)
-        .map(|span| ctx.component.source_text(*span).to_string())
+    let static_class = ctx.analysis.element_flags.static_class(el.id)
+        .map(|span| ctx.component.source_text(span).to_string())
         .unwrap_or_default();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
@@ -151,7 +147,7 @@ pub(crate) fn process_class_directives<'a>(
             (ctx.b.rid_expr(name), true)
         };
 
-        let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+        let is_mutated_rune = ctx.is_mutable_rune(name);
 
         let name_alloc = ctx.b.alloc_str(name);
 
@@ -205,7 +201,7 @@ pub(crate) fn process_style_directives<'a>(
 ) {
     use svelte_ast::StyleDirectiveValue;
 
-    if !ctx.analysis.element_flags.has_style_directives.contains(&el.id) {
+    if !ctx.has_style_directives(el.id) {
         return;
     }
 
@@ -220,12 +216,8 @@ pub(crate) fn process_style_directives<'a>(
         .collect();
 
     // Find static style value from precomputed span
-    let static_style = ctx
-        .analysis
-        .element_flags
-        .static_style
-        .get(&el.id)
-        .map(|span| ctx.component.source_text(*span).to_string())
+    let static_style = ctx.analysis.element_flags.static_style(el.id)
+        .map(|span| ctx.component.source_text(span).to_string())
         .unwrap_or_default();
 
     let mut normal_props: Vec<ObjProp<'a>> = Vec::new();
@@ -238,7 +230,7 @@ pub(crate) fn process_style_directives<'a>(
 
         match &sd.value {
             StyleDirectiveValue::Shorthand => {
-                let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+                let is_mutated_rune = ctx.is_mutable_rune(name);
                 if is_mutated_rune {
                     let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
                     target.push(ObjProp::KeyValue(name_alloc, get_call));
@@ -248,7 +240,7 @@ pub(crate) fn process_style_directives<'a>(
             }
             StyleDirectiveValue::Expression(span) => {
                 let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-                let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+                let is_mutated_rune = ctx.is_mutable_rune(name);
                 let expr_text = ctx.component.source_text(*span).trim();
                 let same_name = expr_text == name.as_str();
 
@@ -320,7 +312,7 @@ fn build_style_concat<'a>(
             svelte_ast::ConcatPart::Dynamic(span) => {
                 // Check if the dynamic expression is a simple mutated rune reference
                 let expr_text = ctx.component.source_text(*span).trim();
-                let is_mutated_rune = ctx.analysis.is_mutable_rune(expr_text);
+                let is_mutated_rune = ctx.is_mutable_rune(expr_text);
 
                 if is_mutated_rune {
                     // Drain the pre-parsed expression (it's just `shade` as an identifier)
@@ -353,7 +345,7 @@ fn gen_bind_directive<'a>(
         return None;
     };
 
-    let is_mutated_rune = ctx.analysis.is_mutable_rune(&var_name);
+    let is_mutated_rune = ctx.is_mutable_rune(&var_name);
 
     let getter_body = if is_mutated_rune {
         ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])

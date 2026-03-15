@@ -53,13 +53,7 @@ use traverse::traverse_items;
 /// `hoistable_snippets` are module-level snippet declarations.
 pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let key = FragmentKey::Root;
-    let ct = ctx
-        .analysis
-        .fragments
-        .content_types
-        .get(&key)
-        .copied()
-        .unwrap_or(ContentType::Empty);
+    let ct = ctx.content_type(&key);
 
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
@@ -70,12 +64,12 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut hoistable_snippet_ids = Vec::new();
     for node in &ctx.component.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            if let Some(params) = ctx.analysis.snippets.params.get(&block.id) {
+            if let Some(params) = ctx.analysis.snippets.params(block.id) {
                 for param in params {
                     ctx.gen_ident(param);
                 }
             }
-            if ctx.analysis.snippets.hoistable.contains(&block.id) {
+            if ctx.is_snippet_hoistable(block.id) {
                 hoistable_snippet_ids.push(block.id);
             } else {
                 instance_snippet_ids.push(block.id);
@@ -281,13 +275,7 @@ fn gen_root_mixed<'a>(
 
 /// Generate statements for a fragment, destined for `($$anchor) => { ... }`.
 pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
-    let ct = ctx
-        .analysis
-        .fragments
-        .content_types
-        .get(&key)
-        .copied()
-        .unwrap_or(ContentType::Empty);
+    let ct = ctx.content_type(&key);
 
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
