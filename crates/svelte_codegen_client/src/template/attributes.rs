@@ -92,8 +92,8 @@ pub(crate) fn process_attr<'a>(
                 after_update.push(stmt);
             }
         }
-        Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) => {
-            // Spread handled by process_attrs_spread; class directives by process_class_directives
+        Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
+            // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
     }
 }
@@ -184,6 +184,93 @@ pub(crate) fn process_class_directives<'a>(
 
     // let classes_N;
     init.push(ctx.b.let_stmt(&classes_name));
+    // Push assignment to update vector for combined template_effect
+    update.push(ctx.b.expr_stmt(assign));
+}
+
+/// Generate `$.set_style(el, "static-style", styles_N, { ... })` for style:name directives.
+/// Pushes `let styles_N;` to `init` and the assignment to `update` for combined template_effect.
+pub(crate) fn process_style_directives<'a>(
+    ctx: &mut Ctx<'a>,
+    el: &Element,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+    update: &mut Vec<Statement<'a>>,
+) {
+    if !ctx.analysis.element_has_style_directives.contains(&el.id) {
+        return;
+    }
+
+    let style_dirs: Vec<_> = el
+        .attributes
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, a)| match a {
+            Attribute::StyleDirective(sd) => Some((idx, sd)),
+            _ => None,
+        })
+        .collect();
+
+    // Find static style value from precomputed span
+    let static_style = ctx
+        .analysis
+        .element_static_style
+        .get(&el.id)
+        .map(|span| ctx.component.source_text(*span).to_string())
+        .unwrap_or_default();
+
+    let mut props: Vec<ObjProp<'a>> = Vec::new();
+
+    for (attr_idx, sd) in &style_dirs {
+        let name = &sd.name;
+
+        let (expr, is_simple_ident_same_name) = if sd.expression_span.is_some() {
+            let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+            let same_name = sd.expression_span
+                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
+                .unwrap_or(false);
+            (parsed, same_name)
+        } else {
+            // shorthand: style:color → identifier `color`
+            (ctx.b.rid_expr(name), true)
+        };
+
+        let is_mutated_rune = ctx.analysis.is_mutable_rune(name);
+
+        let name_alloc = ctx.b.alloc_str(name);
+
+        if is_mutated_rune {
+            let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+            props.push(ObjProp::KeyValue(name_alloc, get_call));
+        } else if is_simple_ident_same_name {
+            props.push(ObjProp::Shorthand(name_alloc));
+        } else {
+            props.push(ObjProp::KeyValue(name_alloc, expr));
+        }
+    }
+
+    let obj = ctx.b.object_expr(props);
+    let styles_name = ctx.gen_ident("styles");
+
+    // $.set_style(el, "static-style", styles_N, { ... })
+    let set_style_call = ctx.b.call_expr(
+        "$.set_style",
+        [
+            Arg::Ident(el_name),
+            Arg::Str(static_style),
+            Arg::Ident(&styles_name),
+            Arg::Expr(obj),
+        ],
+    );
+
+    // styles_N = $.set_style(...)
+    let assign = ctx.b.assign_expr(
+        AssignLeft::Ident(styles_name.clone()),
+        AssignRight::Expr(set_style_call),
+    );
+
+    // let styles_N;
+    init.push(ctx.b.let_stmt(&styles_name));
     // Push assignment to update vector for combined template_effect
     update.push(ctx.b.expr_stmt(assign));
 }
@@ -309,7 +396,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 }
                 continue;
             }
-            Attribute::ClassDirective(_) => continue,
+            Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => continue,
         }
     }
 

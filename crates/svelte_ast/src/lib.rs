@@ -225,6 +225,12 @@ impl Element {
                 expression_span: x.expression_span,
                 shorthand: x.shorthand,
             }),
+            Attribute::StyleDirective(x) => Attribute::StyleDirective(StyleDirective {
+                name: x.name.clone(),
+                expression_span: x.expression_span,
+                shorthand: x.shorthand,
+                important: x.important,
+            }),
             Attribute::BindDirective(x) => Attribute::BindDirective(BindDirective {
                 name: x.name.clone(),
                 expression_span: x.expression_span,
@@ -381,6 +387,8 @@ pub enum Attribute {
     ShorthandOrSpread(ShorthandOrSpread),
     /// class:name or class:name={expr}
     ClassDirective(ClassDirective),
+    /// style:name or style:name={expr} or style:name|important
+    StyleDirective(StyleDirective),
     /// bind:name or bind:name={expr}
     BindDirective(BindDirective),
 }
@@ -424,6 +432,14 @@ pub struct ClassDirective {
     /// Span of the JS expression. None means shorthand (class:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
+}
+
+pub struct StyleDirective {
+    pub name: String,
+    /// Span of the JS expression. None means shorthand (style:name).
+    pub expression_span: Option<Span>,
+    pub shorthand: bool,
+    pub important: bool,
 }
 
 pub struct BindDirective {

@@ -5,7 +5,7 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode,
+    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, StyleDirective,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
@@ -828,6 +828,19 @@ impl<'a> Parser<'a> {
                         name: cd.name.to_string(),
                         expression_span,
                         shorthand: cd.shorthand,
+                    }));
+                }
+                token::Attribute::StyleDirective(sd) => {
+                    let expression_span = if sd.shorthand {
+                        None
+                    } else {
+                        Some(sd.expression.span)
+                    };
+                    attributes.push(Attribute::StyleDirective(StyleDirective {
+                        name: sd.name.to_string(),
+                        expression_span,
+                        shorthand: sd.shorthand,
+                        important: sd.important,
                     }));
                 }
                 token::Attribute::BindDirective(bd) => {

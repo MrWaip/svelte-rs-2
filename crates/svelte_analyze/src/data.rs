@@ -105,6 +105,10 @@ pub struct AnalysisData {
     pub element_has_class_directives: FxHashSet<NodeId>,
     /// Static class attribute Span for elements (value_span of StringAttribute named "class").
     pub element_static_class: FxHashMap<NodeId, Span>,
+    /// Elements that have at least one style directive.
+    pub element_has_style_directives: FxHashSet<NodeId>,
+    /// Static style attribute Span for elements (value_span of StringAttribute named "style").
+    pub element_static_style: FxHashMap<NodeId, Span>,
     /// Input elements that need `$.remove_input_defaults` (have bind or value attr).
     pub needs_input_defaults: FxHashSet<NodeId>,
     /// Fragments whose items contain at least one dynamic child.
@@ -139,6 +143,8 @@ impl AnalysisData {
             element_has_spread: FxHashSet::default(),
             element_has_class_directives: FxHashSet::default(),
             element_static_class: FxHashMap::default(),
+            element_has_style_directives: FxHashSet::default(),
+            element_static_style: FxHashMap::default(),
             needs_input_defaults: FxHashSet::default(),
             fragment_has_dynamic_children: FxHashSet::default(),
             needs_context: false,
