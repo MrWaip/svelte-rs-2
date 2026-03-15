@@ -315,3 +315,13 @@ fn on_directive_modifiers() {
 fn void_elements() {
     assert_compiler("void_elements");
 }
+
+#[rstest]
+fn textarea_self_closing() {
+    assert_compiler("textarea_self_closing");
+}
+
+#[rstest]
+fn mixed_html_elements() {
+    assert_compiler("mixed_html_elements");
+}
