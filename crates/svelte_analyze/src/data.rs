@@ -116,6 +116,9 @@ pub struct AnalysisData {
 
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
+    /// Store subscriptions: base names (e.g. "count" for `$count`) of variables
+    /// that have `$`-prefixed references and are root-scope non-rune bindings.
+    pub store_subscriptions: FxHashSet<String>,
 }
 
 impl AnalysisData {
@@ -148,6 +151,7 @@ impl AnalysisData {
             needs_input_defaults: FxHashSet::default(),
             fragment_has_dynamic_children: FxHashSet::default(),
             needs_context: false,
+            store_subscriptions: FxHashSet::default(),
         }
     }
 

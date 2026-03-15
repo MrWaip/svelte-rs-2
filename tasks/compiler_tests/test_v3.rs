@@ -325,3 +325,13 @@ fn non_void_self_closing() {
 fn mixed_html_elements() {
     assert_compiler("mixed_html_elements");
 }
+
+#[rstest]
+fn store_basic() {
+    assert_compiler("store_basic");
+}
+
+#[rstest]
+fn store_write() {
+    assert_compiler("store_write");
+}
