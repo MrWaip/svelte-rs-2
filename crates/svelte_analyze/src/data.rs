@@ -160,8 +160,6 @@ pub struct ConstTagData {
     pub destructured_temp: FxHashMap<NodeId, String>,
     /// Maps each SymbolId of a destructured const binding to its temp var name.
     pub binding_to_temp: FxHashMap<SymbolId, String>,
-    /// Counter for generating unique temp var names.
-    temp_counter: usize,
 }
 
 impl ConstTagData {
@@ -173,23 +171,11 @@ impl ConstTagData {
             pattern_text: FxHashMap::default(),
             destructured_temp: FxHashMap::default(),
             binding_to_temp: FxHashMap::default(),
-            temp_counter: 0,
         }
     }
 
     pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
-
-    /// Generate the next unique temp var name: "computed_const", "computed_const_1", ...
-    pub fn next_temp_name(&mut self) -> String {
-        let name = if self.temp_counter == 0 {
-            "computed_const".to_string()
-        } else {
-            format!("computed_const_{}", self.temp_counter)
-        };
-        self.temp_counter += 1;
-        name
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -307,9 +307,6 @@ fn parse_const_tag<'a>(
         let pattern_end = assign.left.span().end as usize;
         let pattern_text = decl_text[..pattern_end].trim();
         data.const_tags.pattern_text.insert(tag.id, pattern_text.to_string());
-        // Assign temp var name now (before build_scoping, which needs it for binding_to_temp)
-        let temp_name = data.const_tags.next_temp_name();
-        data.const_tags.destructured_temp.insert(tag.id, temp_name);
     }
 }
 

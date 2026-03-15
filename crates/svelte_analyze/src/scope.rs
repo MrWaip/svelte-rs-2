@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
@@ -149,6 +149,20 @@ impl ComponentScoping {
         self.symbol_scope_id(sym_id) != self.root_scope_id()
     }
 
+    // -- Unique name generation --
+
+    /// Generate a unique name that doesn't conflict with any binding in the scope chain.
+    /// Similar to Svelte's `scope.generate()`.
+    pub fn generate(&self, base: &str, scope: ScopeId) -> String {
+        let mut candidate = base.to_string();
+        let mut counter = 1u32;
+        while self.find_binding(scope, &candidate).is_some() {
+            candidate = format!("{}_{}", base, counter);
+            counter += 1;
+        }
+        candidate
+    }
+
     // -- Name-based lookup for codegen (works with names, not SymbolIds) --
 
     /// Lookup rune kind + mutated status by variable name (root scope).
@@ -196,11 +210,16 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
     // Take const_tag_names temporarily to avoid split borrow on `data`
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
+    let destructured_ids = &data.const_tags.destructured;
     let mut const_sym_ids: Vec<(NodeId, String, SymbolId)> = Vec::new();
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &mut const_sym_ids);
+    let mut generated_temps: Vec<(NodeId, String)> = Vec::new();
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, destructured_ids, &mut const_sym_ids, &mut generated_temps);
     data.const_tags.names = const_tag_names;
 
-    // Build binding_to_temp: map each destructured const binding's SymbolId to its temp var name
+    // Store generated temp names and build binding_to_temp mapping
+    for (node_id, temp_name) in &generated_temps {
+        data.const_tags.destructured_temp.insert(*node_id, temp_name.clone());
+    }
     for (node_id, _name, sym_id) in &const_sym_ids {
         if let Some(temp_name) = data.const_tags.destructured_temp.get(node_id) {
             data.const_tags.binding_to_temp.insert(*sym_id, temp_name.clone());
@@ -214,7 +233,9 @@ fn walk_template_scopes(
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
     const_tag_names: &FxHashMap<NodeId, Vec<String>>,
+    destructured_ids: &FxHashSet<NodeId>,
     const_sym_ids: &mut Vec<(NodeId, String, SymbolId)>,
+    generated_temps: &mut Vec<(NodeId, String)>,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -232,36 +253,46 @@ fn walk_template_scopes(
                     scoping.add_binding(child_scope, idx_name);
                 }
 
-                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
 
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
-                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
                 }
             }
             Node::Element(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
             }
             Node::ComponentNode(cn) => {
-                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
             }
             Node::IfBlock(block) => {
-                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
                 if let Some(alt) = &block.alternate {
-                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
                 }
             }
             Node::SnippetBlock(block) => {
-                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
             }
             Node::KeyBlock(block) => {
-                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
+                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names, destructured_ids, const_sym_ids, generated_temps);
             }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
+                    let is_destructured = destructured_ids.contains(&tag.id);
+                    if is_destructured {
+                        // Generate unique temp name, checking scope for conflicts
+                        let temp_name = scoping.generate("computed_const", current_scope);
+                        let temp_sym = scoping.add_binding(current_scope, &temp_name);
+                        scoping.mark_rune(temp_sym, RuneKind::Derived);
+                        generated_temps.push((tag.id, temp_name));
+                    }
                     for name in names {
                         let sym_id = scoping.add_binding(current_scope, name);
-                        scoping.mark_rune(sym_id, RuneKind::Derived);
+                        if !is_destructured {
+                            scoping.mark_rune(sym_id, RuneKind::Derived);
+                        }
                         const_sym_ids.push((tag.id, name.clone(), sym_id));
                     }
                 }
