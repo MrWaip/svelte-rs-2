@@ -1,8 +1,11 @@
 use std::fmt::Write;
 
 fn main() {
-    let n: usize = std::env::args()
-        .nth(1)
+    let args: Vec<String> = std::env::args().collect();
+
+    let name = args.get(1).map(|s| s.as_str()).unwrap_or("big_v1");
+    let n: usize = args
+        .get(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
 
@@ -16,12 +19,14 @@ fn main() {
     }
 
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let filename = format!("{name}.svelte");
     let path = std::path::Path::new(manifest_dir)
-        .join("../benchmark/benches/compiler/big.svelte");
-    std::fs::write(&path, &out).expect("failed to write big.svelte");
+        .join("../benchmark/benches/compiler")
+        .join(&filename);
+    std::fs::write(&path, &out).expect("failed to write benchmark file");
 
     let lines = out.lines().count();
-    println!("Generated big.svelte: {lines} lines ({n} chunks)");
+    println!("Generated {filename}: {lines} lines ({n} chunks)");
 }
 
 fn write_script(out: &mut String) {
