@@ -166,7 +166,7 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **Analyze**: Scope integration — const binding visible in subsequent template nodes within same block
 - **Codegen**: `const x = $.derived(() => expr)` — always wraps in derived
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines, destructuring support)
-- **Deferred**: Object/array destructuring, dev mode `$.tag()`, placement validation
+- **Deferred**: ~~Object/array destructuring~~, dev mode `$.tag()`, placement validation
 
 ### ~~`style:prop={value}` — Style directive~~ ✅
 - **Phases**: P, A, T

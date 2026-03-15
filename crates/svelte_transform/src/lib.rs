@@ -245,6 +245,12 @@ fn transform_expr<'a>(
 
             // Look up in scope tree
             if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) {
+                // Destructured const var → $.get(temp).prop
+                if let Some(temp_name) = ctx.analysis.const_tags.binding_to_temp.get(&sym_id) {
+                    *expr = rune_refs::make_computed_const_get(ctx.alloc, temp_name, name);
+                    return;
+                }
+
                 let is_root = ctx.analysis.scoping.symbol_scope_id(sym_id)
                     == ctx.analysis.scoping.root_scope_id();
 

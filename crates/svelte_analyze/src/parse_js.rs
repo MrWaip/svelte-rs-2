@@ -1,4 +1,7 @@
 use oxc_allocator::Allocator;
+use oxc_ast::ast::{AssignmentTarget, AssignmentTargetMaybeDefault, Expression};
+use oxc_parser::Parser as OxcParser;
+use oxc_span::{GetSpan, SourceType};
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, NodeId, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 use svelte_js::{ExpressionInfo, ExpressionKind};
@@ -180,15 +183,7 @@ fn walk_node<'a>(
             walk_fragment(alloc, &block.fragment, component, data, parsed, diags);
         }
         Node::ConstTag(tag) => {
-            let decl_text = component.source_text(tag.declaration_span);
-            // Split "name = expr" at the first '=' to extract identifier and init expression
-            if let Some(eq_pos) = decl_text.find('=') {
-                let name = decl_text[..eq_pos].trim().to_string();
-                let init_text = decl_text[eq_pos + 1..].trim();
-                let init_offset = tag.declaration_span.start + (decl_text.len() - decl_text[eq_pos + 1..].trim_start().len()) as u32;
-                parse_expr(alloc, init_text, init_offset, tag.id, data, parsed, diags);
-                data.const_tags.names.insert(tag.id, vec![name]);
-            }
+            parse_const_tag(alloc, tag, component, data, parsed, diags);
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
@@ -262,5 +257,142 @@ fn walk_attrs<'a>(
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ConstTag parsing — handles both simple identifiers and destructuring
+// ---------------------------------------------------------------------------
+
+fn parse_const_tag<'a>(
+    alloc: &'a Allocator,
+    tag: &svelte_ast::ConstTag,
+    component: &Component,
+    data: &mut AnalysisData,
+    parsed: &mut ParsedExprs<'a>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let decl_text = component.source_text(tag.declaration_span);
+
+    // Parse the full declaration text as an expression using a temp allocator.
+    // "x = expr" or "{ x, y } = expr" are valid AssignmentExpressions.
+    let temp_alloc = Allocator::default();
+    let temp_src: &str = temp_alloc.alloc_str(decl_text);
+    let Ok(full_expr) = OxcParser::new(&temp_alloc, temp_src, SourceType::default())
+        .parse_expression()
+    else {
+        return;
+    };
+
+    let Expression::AssignmentExpression(assign) = &full_expr else {
+        return;
+    };
+
+    // Extract names from LHS
+    let mut names = Vec::new();
+    let is_destructured = extract_target_names(&assign.left, &mut names);
+
+    // Get init expression boundaries from RHS span
+    let init_start = assign.right.span().start as usize;
+    let init_text = decl_text[init_start..].trim();
+    let init_offset = tag.declaration_span.start
+        + (decl_text.len() - decl_text[init_start..].trim_start().len()) as u32;
+
+    // Parse init into main allocator (existing pipeline)
+    parse_expr(alloc, init_text, init_offset, tag.id, data, parsed, diags);
+
+    data.const_tags.names.insert(tag.id, names);
+    if is_destructured {
+        data.const_tags.destructured.insert(tag.id);
+        let pattern_end = assign.left.span().end as usize;
+        let pattern_text = decl_text[..pattern_end].trim();
+        data.const_tags.pattern_text.insert(tag.id, pattern_text.to_string());
+        // Assign temp var name now (before build_scoping, which needs it for binding_to_temp)
+        let temp_name = data.const_tags.next_temp_name();
+        data.const_tags.destructured_temp.insert(tag.id, temp_name);
+    }
+}
+
+/// Extract identifier names from an assignment target.
+/// Returns true if the target is a destructuring pattern.
+fn extract_target_names(target: &AssignmentTarget, names: &mut Vec<String>) -> bool {
+    match target {
+        AssignmentTarget::AssignmentTargetIdentifier(id) => {
+            names.push(id.name.as_str().to_string());
+            false
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            for prop in &obj.properties {
+                extract_assignment_property_names(prop, names);
+            }
+            if let Some(rest) = &obj.rest {
+                extract_target_name(&rest.target, names);
+            }
+            true
+        }
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            for elem in arr.elements.iter().flatten() {
+                extract_maybe_default_name(elem, names);
+            }
+            if let Some(rest) = &arr.rest {
+                extract_target_name(&rest.target, names);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn extract_assignment_property_names(
+    prop: &oxc_ast::ast::AssignmentTargetProperty,
+    names: &mut Vec<String>,
+) {
+    match prop {
+        oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(id) => {
+            names.push(id.binding.name.as_str().to_string());
+        }
+        oxc_ast::ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(p) => {
+            extract_maybe_default_name(&p.binding, names);
+        }
+    }
+}
+
+fn extract_maybe_default_name(target: &AssignmentTargetMaybeDefault, names: &mut Vec<String>) {
+    match target {
+        AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => {
+            extract_target_name(&d.binding, names);
+        }
+        _ => {
+            // AssignmentTargetMaybeDefault also implements Into<AssignmentTarget>
+            // but for simple targets, try direct match
+            if let AssignmentTargetMaybeDefault::AssignmentTargetIdentifier(id) = target {
+                names.push(id.name.as_str().to_string());
+            }
+        }
+    }
+}
+
+fn extract_target_name(target: &AssignmentTarget, names: &mut Vec<String>) {
+    match target {
+        AssignmentTarget::AssignmentTargetIdentifier(id) => {
+            names.push(id.name.as_str().to_string());
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            for prop in &obj.properties {
+                extract_assignment_property_names(prop, names);
+            }
+            if let Some(rest) = &obj.rest {
+                extract_target_name(&rest.target, names);
+            }
+        }
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            for elem in arr.elements.iter().flatten() {
+                extract_maybe_default_name(elem, names);
+            }
+            if let Some(rest) = &arr.rest {
+                extract_target_name(&rest.target, names);
+            }
+        }
+        _ => {}
     }
 }

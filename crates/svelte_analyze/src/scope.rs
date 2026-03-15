@@ -196,8 +196,16 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
     // Take const_tag_names temporarily to avoid split borrow on `data`
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names);
+    let mut const_sym_ids: Vec<(NodeId, String, SymbolId)> = Vec::new();
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &mut const_sym_ids);
     data.const_tags.names = const_tag_names;
+
+    // Build binding_to_temp: map each destructured const binding's SymbolId to its temp var name
+    for (node_id, _name, sym_id) in &const_sym_ids {
+        if let Some(temp_name) = data.const_tags.destructured_temp.get(node_id) {
+            data.const_tags.binding_to_temp.insert(*sym_id, temp_name.clone());
+        }
+    }
 }
 
 fn walk_template_scopes(
@@ -206,6 +214,7 @@ fn walk_template_scopes(
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
     const_tag_names: &FxHashMap<NodeId, Vec<String>>,
+    const_sym_ids: &mut Vec<(NodeId, String, SymbolId)>,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -223,36 +232,37 @@ fn walk_template_scopes(
                     scoping.add_binding(child_scope, idx_name);
                 }
 
-                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names);
+                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, const_sym_ids);
 
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
-                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names);
+                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, const_sym_ids);
                 }
             }
             Node::Element(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
             }
             Node::ComponentNode(cn) => {
-                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
             }
             Node::IfBlock(block) => {
-                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names, const_sym_ids);
                 if let Some(alt) = &block.alternate {
-                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names);
+                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names, const_sym_ids);
                 }
             }
             Node::SnippetBlock(block) => {
-                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names, const_sym_ids);
             }
             Node::KeyBlock(block) => {
-                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names, const_sym_ids);
             }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
                     for name in names {
                         let sym_id = scoping.add_binding(current_scope, name);
                         scoping.mark_rune(sym_id, RuneKind::Derived);
+                        const_sym_ids.push((tag.id, name.clone(), sym_id));
                     }
                 }
             }

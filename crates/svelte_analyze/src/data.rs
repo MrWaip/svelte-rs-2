@@ -5,6 +5,8 @@ use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
+pub use oxc_semantic::SymbolId;
+
 use crate::scope::ComponentScoping;
 
 // ---------------------------------------------------------------------------
@@ -150,6 +152,16 @@ impl SnippetData {
 pub struct ConstTagData {
     pub names: FxHashMap<NodeId, Vec<String>>,
     pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    /// Const tags that use destructuring patterns (object or array).
+    pub destructured: FxHashSet<NodeId>,
+    /// Pattern text for destructured const tags, e.g. "{ x, y }" or "[a, b]".
+    pub pattern_text: FxHashMap<NodeId, String>,
+    /// Pre-assigned temp var names for destructured const tags.
+    pub destructured_temp: FxHashMap<NodeId, String>,
+    /// Maps each SymbolId of a destructured const binding to its temp var name.
+    pub binding_to_temp: FxHashMap<SymbolId, String>,
+    /// Counter for generating unique temp var names.
+    temp_counter: usize,
 }
 
 impl ConstTagData {
@@ -157,11 +169,27 @@ impl ConstTagData {
         Self {
             names: FxHashMap::default(),
             by_fragment: FxHashMap::default(),
+            destructured: FxHashSet::default(),
+            pattern_text: FxHashMap::default(),
+            destructured_temp: FxHashMap::default(),
+            binding_to_temp: FxHashMap::default(),
+            temp_counter: 0,
         }
     }
 
     pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+
+    /// Generate the next unique temp var name: "computed_const", "computed_const_1", ...
+    pub fn next_temp_name(&mut self) -> String {
+        let name = if self.temp_counter == 0 {
+            "computed_const".to_string()
+        } else {
+            format!("computed_const_{}", self.temp_counter)
+        };
+        self.temp_counter += 1;
+        name
+    }
 }
 
 // ---------------------------------------------------------------------------

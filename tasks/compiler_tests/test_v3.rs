@@ -340,3 +340,8 @@ fn store_write() {
 fn const_tag() {
     assert_compiler("const_tag");
 }
+
+#[rstest]
+fn const_tag_destructure() {
+    assert_compiler("const_tag_destructure");
+}

@@ -65,6 +65,20 @@ pub fn make_props_access<'a>(alloc: &'a Allocator, prop_name: &str) -> Expressio
     ))
 }
 
+/// Build `$.get(temp_var).prop_name` — member access on a derived destructured const.
+pub fn make_computed_const_get<'a>(
+    alloc: &'a Allocator,
+    temp_var: &str,
+    prop_name: &str,
+) -> Expression<'a> {
+    let get_call = make_rune_get(alloc, temp_var);
+    let ast = AstBuilder::new(alloc);
+    let property = ast.identifier_name(SPAN, ast.atom(prop_name));
+    Expression::StaticMemberExpression(ast.alloc(
+        ast.static_member_expression(SPAN, get_call, property, false),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
