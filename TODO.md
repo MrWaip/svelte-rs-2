@@ -4,22 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. Void HTML elements
+## 1. `{@const x = expr}` (ConstTag)
 
-**Why first**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
-
-**What to change**:
-- Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
-- В scanner/parser: auto-set `self_closing: true` для void elements
-- Validation: ошибка на `</input>` и child-контент внутри void elements
-
-**Reference**: `reference/compiler/phases/1-parse/state/element.js` line 371, `reference/compiler/utils.js`
-
----
-
-## 2. `{@const x = expr}` (ConstTag)
-
-**Why second**: нужен для вычислений внутри {#each} и {#if} блоков.
+**Why first**: нужен для вычислений внутри {#each} и {#if} блоков.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
@@ -31,9 +18,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `$state.raw(val)` rune
+## 2. `$state.raw(val)` rune
 
-**Why third**: простой рун, паттерн уже есть в script.rs.
+**Why second**: простой рун, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: добавить `RuneKind::StateRaw`
@@ -45,9 +32,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `class` attribute — Object/array syntax (Svelte 5)
+## 3. `class` attribute — Object/array syntax (Svelte 5)
 
-**Why fourth**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
+**Why third**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: detect object/array expression in `class` attribute value
@@ -57,9 +44,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `$state.snapshot(val)` rune
+## 4. `$state.snapshot(val)` rune
 
-**Why fifth**: простая перезапись вызова, паттерн уже есть в script.rs.
+**Why fourth**: простая перезапись вызова, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$state.snapshot(val)` as inline call rewrite
@@ -68,3 +55,17 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
 
 **Runtime**: `$.snapshot()`
+
+---
+
+## 5. `$effect.tracking()` rune
+
+**Why fifth**: тривиальная перезапись вызова, без аргументов.
+
+**What to change**:
+- `svelte_analyze/src/parse_js.rs`: detect `$effect.tracking()` as inline call rewrite
+- `svelte_codegen_client/src/script.rs`: `$effect.tracking()` → `$.effect_tracking()`
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
+
+**Runtime**: `$.effect_tracking()`

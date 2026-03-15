@@ -57,23 +57,17 @@ Current work items: see `TODO.md`.
 
 ---
 
-## Tier 0 — Parser Fundamentals
+## Tier 0 — Parser Fundamentals ✅
 
 Theme: critical parser capabilities needed for correct HTML handling. Without these, common valid HTML fails to parse.
 
-### Void (self-closing) HTML elements
+### ~~Void (self-closing) HTML elements~~ ✅
 - **Phases**: P, V
-- **Priority**: High — `<input>`, `<br>`, `<img>` etc. without explicit `/>` currently fail to parse
-- **Problem**: Parser only recognizes explicit `/>` syntax as self-closing. `<input>` (without `/`) is treated as an opening tag expecting `</input>`, which produces a spurious error
-- **Void elements**: `area`, `base`, `br`, `col`, `command`, `embed`, `hr`, `img`, `input`, `keygen`, `link`, `meta`, `param`, `source`, `track`, `wbr`, `!doctype`
 - **Work items**:
-  1. Add `VOID_ELEMENTS` constant and `is_void(name)` helper
-  2. In scanner/parser: auto-set `self_closing: true` when tag name is void (even without `/>`)
-  3. Validation: emit error on `</input>` and similar (closing tag for void element) — `void_element_invalid_content`
-  4. Validation: emit error if void element has children
-- **Ref**: `reference/compiler/phases/1-parse/state/element.js` line 371: `const self_closing = parser.eat('/') || is_void(tag.name);`
-- **Ref**: `reference/compiler/utils.js` — `is_void()`, `VOID_ELEMENT_NAMES`
-- **Infrastructure**: `self_closing` field already exists in `Element` AST node, codegen handles it correctly
+  1. [x] Add `VOID_ELEMENTS` constant and `is_void(name)` helper
+  2. [x] In scanner/parser: auto-set `self_closing: true` when tag name is void (even without `/>`)
+  3. [x] Validation: emit error on `</input>` and similar (closing tag for void element) — `void_element_invalid_content`
+  4. [ ] Validation: emit error if void element has children (deferred — requires parser-level check for content between void open tags)
 
 ---
 

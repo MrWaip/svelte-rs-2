@@ -1,0 +1,4 @@
+<input type="text">
+<br>
+<img src="test.png">
+<hr>
