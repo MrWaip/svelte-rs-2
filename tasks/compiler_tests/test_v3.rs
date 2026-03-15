@@ -310,3 +310,8 @@ fn on_directive() {
 fn on_directive_modifiers() {
     assert_compiler("on_directive_modifiers");
 }
+
+#[rstest]
+fn void_elements() {
+    assert_compiler("void_elements");
+}
