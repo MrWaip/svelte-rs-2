@@ -243,6 +243,13 @@ fn walk_attrs<'a>(
                 parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
+            // LEGACY(svelte4): on:directive — parse expression if present
+            Attribute::OnDirectiveLegacy(a) => {
+                if let Some(span) = a.expression_span {
+                    let source = component.source_text(span);
+                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                }
+            }
         }
     }
 }

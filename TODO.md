@@ -4,22 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. Event handlers (`on:event` → `onevent`)
+## 1. Void HTML elements
 
-**Why first**: базовая интерактивность уже работает через `onclick={handler}`, но `on:event` синтаксис Svelte 4 ещё не поддержан.
-
-**What to change**:
-- `svelte_parser/src/lib.rs`: парсинг `on:click={handler}` → `Attribute::OnDirective`
-- `svelte_ast/src/lib.rs`: добавить `Attribute::OnDirective { name, expression, modifiers }`
-- `svelte_codegen_client/src/template/attributes.rs`: генерация event listener
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
-
----
-
-## 2. Void HTML elements
-
-**Why second**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
+**Why first**: `<input>`, `<br>`, `<img>` без `/>` сейчас не парсятся — критично для валидного HTML.
 
 **What to change**:
 - Добавить `VOID_ELEMENTS` constant и `is_void(name)` helper
@@ -30,9 +17,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `{@const x = expr}` (ConstTag)
+## 2. `{@const x = expr}` (ConstTag)
 
-**Why third**: нужен для вычислений внутри {#each} и {#if} блоков.
+**Why second**: нужен для вычислений внутри {#each} и {#if} блоков.
 
 **What to change**:
 - `svelte_ast/src/lib.rs`: добавить `Node::ConstTag { id, span, declaration_span }`
@@ -44,9 +31,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `$state.raw(val)` rune
+## 3. `$state.raw(val)` rune
 
-**Why fourth**: простой рун, паттерн уже есть в script.rs.
+**Why third**: простой рун, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: добавить `RuneKind::StateRaw`
@@ -58,12 +45,26 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `class` attribute — Object/array syntax (Svelte 5)
+## 4. `class` attribute — Object/array syntax (Svelte 5)
 
-**Why fifth**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
+**Why fourth**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
 
 **What to change**:
 - `svelte_parser/src/lib.rs`: detect object/array expression in `class` attribute value
 - `svelte_codegen_client/src/template/attributes.rs`: генерация `$.set_class(el, ...)`
 
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
+
+---
+
+## 5. `$state.snapshot(val)` rune
+
+**Why fifth**: простая перезапись вызова, паттерн уже есть в script.rs.
+
+**What to change**:
+- `svelte_analyze/src/parse_js.rs`: detect `$state.snapshot(val)` as inline call rewrite
+- `svelte_codegen_client/src/script.rs`: `$state.snapshot(val)` → `$.snapshot(val)`
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
+
+**Runtime**: `$.snapshot()`

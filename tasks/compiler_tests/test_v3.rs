@@ -300,3 +300,13 @@ fn style_directive_string() {
 fn style_directive_concat() {
     assert_compiler("style_directive_concat");
 }
+
+#[rstest]
+fn on_directive() {
+    assert_compiler("on_directive");
+}
+
+#[rstest]
+fn on_directive_modifiers() {
+    assert_compiler("on_directive_modifiers");
+}
