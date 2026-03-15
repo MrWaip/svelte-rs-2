@@ -46,10 +46,7 @@ pub(crate) fn gen_if_block<'a>(
         let alt_is_elseif = ctx.analysis.alt_is_elseif.contains(&current);
 
         if alt_is_elseif {
-            let nested_id = match &ctx.lowered_fragment(&alternate_key).items[0] {
-                svelte_analyze::FragmentItem::IfBlock(id) => *id,
-                _ => unreachable!(),
-            };
+            let nested_id = ctx.lowered_fragment(&alternate_key).first_if_block_id();
             current = nested_id;
             continue;
         } else {
