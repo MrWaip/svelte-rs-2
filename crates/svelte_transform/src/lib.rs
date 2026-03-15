@@ -53,6 +53,7 @@ pub fn transform_component<'a>(
         analysis,
         prop_sources,
         prop_non_sources,
+        store_subscriptions: &analysis.store_subscriptions,
     };
 
     let root_scope = analysis.scoping.root_scope_id();
@@ -64,6 +65,7 @@ struct TransformCtx<'a> {
     analysis: &'a AnalysisData,
     prop_sources: FxHashSet<String>,
     prop_non_sources: FxHashMap<String, String>,
+    store_subscriptions: &'a FxHashSet<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +228,15 @@ fn transform_expr<'a>(
             if let Some(prop_name) = ctx.prop_non_sources.get(name) {
                 *expr = rune_refs::make_props_access(ctx.alloc, prop_name);
                 return;
+            }
+
+            // Store subscriptions: $X → $X() (thunk call)
+            if name.starts_with('$') && name.len() > 1 {
+                let base = &name[1..];
+                if ctx.store_subscriptions.contains(base) {
+                    *expr = rune_refs::make_thunk_call(ctx.alloc, name);
+                    return;
+                }
             }
 
             // Look up in scope tree

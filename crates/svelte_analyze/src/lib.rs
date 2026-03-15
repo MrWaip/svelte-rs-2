@@ -11,6 +11,7 @@ mod parse_js;
 mod props;
 mod reactivity;
 pub mod scope;
+mod store_subscriptions;
 mod validate;
 pub(crate) mod walker;
 
@@ -53,6 +54,7 @@ pub fn analyze<'a>(
     register_snippet_params(&component.fragment, component, &mut data);
 
     scope::build_scoping(component, &mut data);
+    store_subscriptions::detect_store_subscriptions(&mut data);
     mutations::detect_mutations(component, &mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);

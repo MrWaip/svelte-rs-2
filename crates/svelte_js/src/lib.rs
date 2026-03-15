@@ -83,6 +83,9 @@ pub struct ScriptInfo {
     pub exports: Vec<ExportInfo>,
     /// True when the script contains `$effect(...)` or `$effect.pre(...)` calls.
     pub has_effects: bool,
+    /// Base names of `$`-prefixed identifiers found in the script body
+    /// (e.g. `"count"` for `$count`). Used to detect store subscriptions.
+    pub store_candidates: Vec<CompactString>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,7 +163,6 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
-    let mut has_effects = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -186,34 +188,24 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
             Statement::FunctionDeclaration(func) => {
                 collect_func_declaration(func, offset, &mut declarations);
             }
-            Statement::ExpressionStatement(expr_stmt) => {
-                if is_effect_call(&expr_stmt.expression) {
-                    has_effects = true;
-                }
-            }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects }
+    ScriptInfo { declarations, props_declaration, exports, has_effects: false, store_candidates: Vec::new() }
 }
 
-/// Check if an expression is a `$effect(...)` or `$effect.pre(...)` call.
-fn is_effect_call(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
+/// Enrich ScriptInfo from OXC's unresolved references in one pass.
+/// Detects both `has_effects` ($effect usage) and store candidates ($count etc).
+fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
+    for key in scoping.root_unresolved_references().keys() {
+        let name = key.as_str();
+        if name == "$effect" {
+            info.has_effects = true;
+        } else if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+            info.store_candidates.push(compact(&name[1..]));
         }
     }
-    false
 }
 
 fn collect_export_names_from_declaration(
@@ -433,10 +425,13 @@ pub fn analyze_script_with_scoping(
     let program = &result.program;
 
     // Extract ScriptInfo by walking the AST
-    let script_info = extract_script_info(program, offset, source);
+    let mut script_info = extract_script_info(program, offset, source);
 
     // Build semantic analysis and extract Scoping
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
+
+    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+
     let scoping = sem.semantic.into_scoping();
 
     Ok((script_info, scoping))
@@ -471,8 +466,13 @@ pub fn analyze_script_with_alloc<'a>(
     }
 
     let program = result.program;
-    let script_info = extract_script_info(&program, offset, source);
+    let mut script_info = extract_script_info(&program, offset, source);
     let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+
+    // Extract has_effects + store_candidates from unresolved references in one pass.
+    // $effect → has_effects; $count (non-rune) → store candidate.
+    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+
     let scoping = sem.semantic.into_scoping();
 
     Ok((script_info, scoping, program))
@@ -790,6 +790,11 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let mut seen = std::collections::HashSet::new();
     refs.retain(|r| seen.insert(r.clone()));
     refs
+}
+
+/// Check if a `$`-prefixed name is a known rune (not a store candidate).
+fn is_rune_name(name: &str) -> bool {
+    matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host")
 }
 
 fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {

@@ -38,6 +38,10 @@ impl ReactivityVisitor {
                 if params.iter().any(|p| p == &r.name) {
                     return true;
                 }
+                // Store subscriptions ($count) are always dynamic
+                if is_store_ref(&r.name, data) {
+                    return true;
+                }
                 data.scoping.is_dynamic_ref(scope, &r.name)
             });
         }
@@ -141,6 +145,14 @@ fn component_attr_is_dynamic(
             }
             false
         });
+    }
+    false
+}
+
+/// Check if a reference name is a store subscription (`$X` where X is in store_subscriptions).
+fn is_store_ref(name: &str, data: &AnalysisData) -> bool {
+    if name.starts_with('$') && name.len() > 1 {
+        return data.store_subscriptions.contains(&name[1..]);
     }
     false
 }
