@@ -5,7 +5,6 @@ use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
-pub use oxc_semantic::SymbolId;
 
 use crate::scope::ComponentScoping;
 
@@ -162,8 +161,6 @@ pub struct ConstTagData {
     pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
     /// Destructuring info per const tag (only present for destructured tags).
     pub destructured: FxHashMap<NodeId, ConstDestructure>,
-    /// Maps each SymbolId of a destructured const binding to its temp var name.
-    pub binding_to_temp: FxHashMap<SymbolId, String>,
 }
 
 impl ConstTagData {
@@ -172,7 +169,6 @@ impl ConstTagData {
             names: FxHashMap::default(),
             by_fragment: FxHashMap::default(),
             destructured: FxHashMap::default(),
-            binding_to_temp: FxHashMap::default(),
         }
     }
 
