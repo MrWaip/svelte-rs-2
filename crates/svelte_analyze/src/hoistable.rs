@@ -110,7 +110,8 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        _scope: ScopeId,
+        _parent_scope: ScopeId,
+        _body_scope: ScopeId,
         data: &mut AnalysisData,
     ) {
         self.check_expr(&block.id, data);

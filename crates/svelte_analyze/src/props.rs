@@ -12,7 +12,7 @@ pub fn analyze_props(data: &mut AnalysisData) {
         .map(|p| {
             // In runes mode, a prop needs $.prop() source when it has a default,
             // is reassigned, is mutated, or is bindable.
-            let is_mutated = data.mutated_runes.contains(p.local_name.as_str());
+            let is_mutated = data.is_mutable_rune(p.local_name.as_str());
             let is_prop_source =
                 p.default_span.is_some() || is_mutated;
 

@@ -2,7 +2,7 @@ use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
-use svelte_js::{ExpressionInfo, RuneKind, ScriptInfo};
+use svelte_js::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
@@ -88,13 +88,6 @@ pub struct AnalysisData {
     /// Top-level snippets whose bodies don't reference component-scoped variables.
     pub hoistable_snippets: FxHashSet<NodeId>,
 
-    // -- Cached sets for codegen (populated after mutations pass) --
-    /// All rune symbol names with their kinds (precomputed).
-    pub rune_names: FxHashMap<String, RuneKind>,
-    /// All mutated rune names (script assignments + bind directives).
-    pub mutated_runes: FxHashSet<String>,
-    /// Rune names mutated only via bind directives.
-    pub bind_mutated_runes: FxHashSet<String>,
     /// Elements that need a DOM variable during traversal (precomputed for codegen).
     pub elements_needing_var: FxHashSet<NodeId>,
 
@@ -139,9 +132,6 @@ impl AnalysisData {
             exports: Vec::new(),
             snippet_params: FxHashMap::default(),
             hoistable_snippets: FxHashSet::default(),
-            rune_names: FxHashMap::default(),
-            mutated_runes: FxHashSet::default(),
-            bind_mutated_runes: FxHashSet::default(),
             elements_needing_var: FxHashSet::default(),
             element_has_spread: FxHashSet::default(),
             element_has_class_directives: FxHashSet::default(),
@@ -155,28 +145,21 @@ impl AnalysisData {
         }
     }
 
-    /// Populate cached rune name sets from ComponentScoping.
-    /// Call after build_scoping + detect_mutations.
-    pub fn cache_rune_sets(&mut self) {
-        self.rune_names = self.scoping.rune_names();
-        self.mutated_runes = self.scoping.mutated_rune_names();
-        self.bind_mutated_runes = self.scoping.bind_mutated_rune_names();
-    }
 }
 
 impl AnalysisData {
     pub fn is_rune(&self, name: &str) -> bool {
-        self.rune_names.contains_key(name)
+        self.scoping.rune_info_by_name(name).is_some()
     }
 
     pub fn is_mutable_rune(&self, name: &str) -> bool {
-        self.mutated_runes.contains(name)
+        self.scoping
+            .rune_info_by_name(name)
+            .is_some_and(|(_, mutated)| mutated)
     }
 
-    pub fn rune_kind(&self, name: &str) -> Option<RuneKind> {
-        let root = self.scoping.root_scope_id();
-        let sym_id = self.scoping.find_binding(root, name)?;
-        self.scoping.rune_kind(sym_id)
+    pub fn rune_kind(&self, name: &str) -> Option<svelte_js::RuneKind> {
+        self.scoping.rune_info_by_name(name).map(|(kind, _)| kind)
     }
 }
 
@@ -233,27 +216,27 @@ impl FragmentItem {
 }
 
 impl LoweredFragment {
-    /// Get the first item's NodeId, expecting an Element. Panics otherwise.
-    pub fn first_element_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::Element(id) => id,
-            _ => panic!("expected Element as first lowered item, got {:?}", std::mem::discriminant(&self.items[0])),
+    /// Get the first item's NodeId if it is an Element.
+    pub fn first_element_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::Element(id) => Some(*id),
+            _ => None,
         }
     }
 
-    /// Get the first item's NodeId, expecting an IfBlock. Panics otherwise.
-    pub fn first_if_block_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::IfBlock(id) => id,
-            _ => panic!("expected IfBlock as first lowered item"),
+    /// Get the first item's NodeId if it is an IfBlock.
+    pub fn first_if_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::IfBlock(id) => Some(*id),
+            _ => None,
         }
     }
 
-    /// Get the first item's NodeId, expecting an EachBlock. Panics otherwise.
-    pub fn first_each_block_id(&self) -> NodeId {
-        match self.items[0] {
-            FragmentItem::EachBlock(id) => id,
-            _ => panic!("expected EachBlock as first lowered item"),
+    /// Get the first item's NodeId if it is an EachBlock.
+    pub fn first_each_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::EachBlock(id) => Some(*id),
+            _ => None,
         }
     }
 }

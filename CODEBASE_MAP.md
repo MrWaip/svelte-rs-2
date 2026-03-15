@@ -110,8 +110,9 @@ enum ExpressionKind {
     Identifier(String), Literal, CallExpression { callee: String },
     MemberExpression, ArrowFunction, Assignment, Other,
 }
-struct Reference { name: String, span: Span, flags: ReferenceFlags }
+struct Reference { name: String, span: Span, flags: ReferenceFlags, symbol_id: Option<SymbolId> }
 enum ReferenceFlags { Read, Write, ReadWrite }
+// symbol_id populated by resolve_references pass in svelte_analyze
 
 struct ScriptInfo { declarations: Vec<DeclarationInfo>, props_declaration: Option<PropsDeclaration> }
 struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune: Option<RuneKind> }
@@ -145,11 +146,11 @@ pub use data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey,
 
 **9 passes** (порядок важен):
 1. `parse_js` — парсит JS-выражения → `expressions`, `attr_expressions`, `script`; builds `ComponentScoping` via single OXC parse
-2. `build_scoping` — marks runes in scoping, walks template to add each-block child scopes
-3. `known_values` — const-декларации с литеральным init → `known_values`
-4. `mutations` — template assignments + bind directives → `mutated_runes`, `bind_mutated_runes`
+2. `build_scoping` — marks runes in scoping, walks template to add each-block child scopes, resolves derived deps to SymbolId
+3. `resolve_references` — resolves all template references to SymbolId, registers write refs in OXC Scoping → `symbol_is_mutated()` covers script + template; caches rune name sets
+4. `known_values` — const-декларации с литеральным init → `known_values`
 5. `lower` — trim whitespace, группирует Text+ExprTag → `lowered_fragments`
-6. `reactivity` — scope-aware binding resolution → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
+6. `reactivity` — SymbolId-based dynamism check → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
 7. `content_types` — классификация по lowered items → `content_types`
 8. `elseif` — определяет alternate-фрагменты с единственным elseif → `alt_is_elseif`
 9. `validate` — семантические проверки
@@ -157,20 +158,21 @@ pub use data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey,
 **Scope system** (`scope.rs`):
 ```rust
 struct ComponentScoping {
-    scoping: oxc_semantic::Scoping,       // unified scope tree (script + template)
-    runes: HashMap<SymbolId, RuneKind>,   // which symbols are runes
-    bind_mutated: HashSet<SymbolId>,      // symbols mutated via bind:
-    node_scopes: HashMap<NodeId, ScopeId>, // each-block NodeId → child ScopeId
+    scoping: oxc_semantic::Scoping,          // unified scope tree (script + template)
+    runes: HashMap<SymbolId, RuneKind>,      // which symbols are runes
+    node_scopes: HashMap<NodeId, ScopeId>,   // each-block NodeId → child ScopeId
+    derived_deps: HashMap<SymbolId, Vec<SymbolId>>, // $derived deps (SymbolId-based)
 }
 // from_scoping(Scoping) / empty()
 // add_child_scope(parent) -> ScopeId
 // add_binding(scope, name) -> SymbolId
 // find_binding(scope, name) -> Option<SymbolId>  — walks parent chain
 // mark_rune(id, kind) / is_rune(id) / rune_kind(id)
-// mark_symbol_mutated(id) / symbol_is_mutated(id)
-// is_dynamic_ref(scope, name) -> bool  — true if rune or non-root binding
+// is_mutated(id) -> bool  — delegates to OXC symbol_is_mutated()
+// register_template_reference(sym_id, flags)  — registers ref in OXC Scoping
+// is_dynamic_by_id(sym_id) -> bool  — true if rune or non-root binding
 // node_scope(NodeId) -> Option<ScopeId>
-// rune_names() / mutated_rune_names() / bind_mutated_rune_names()
+// rune_names() / mutated_rune_names()
 ```
 
 **Ключевые типы** (`data.rs`):
@@ -201,16 +203,15 @@ struct AnalysisData {
     alt_is_elseif: HashSet<NodeId>,         // IfBlock'и, чей alternate — единственный elseif
     props: Option<PropsAnalysis>,
     // Cached sets for codegen (populated by cache_rune_sets()):
-    rune_names: HashSet<String>,
+    rune_names: HashMap<String, RuneKind>,
     mutated_runes: HashSet<String>,
-    bind_mutated_runes: HashSet<String>,
 }
 
 // Методы:
 // data.is_rune(name) -> bool
 // data.is_mutable_rune(name) -> bool
 // data.rune_kind(name) -> Option<RuneKind>
-// data.cache_rune_sets()  — call after build_scoping + detect_mutations
+// data.cache_rune_sets()  — call after resolve_references
 ```
 
 ---

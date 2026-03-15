@@ -7,7 +7,7 @@ use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
-use svelte_analyze::PropsAnalysis;
+use svelte_analyze::{ComponentScoping, PropsAnalysis};
 use svelte_ast::ScriptLanguage;
 use svelte_js::RuneKind;
 
@@ -34,8 +34,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     };
 
     let allocator = ctx.b.ast.allocator;
-    let rune_names = &ctx.analysis.rune_names;
-    let mutated_runes = &ctx.analysis.mutated_runes;
+    let component_scoping = &ctx.analysis.scoping;
     let props = ctx.analysis.props.as_ref();
     let store_subscriptions = &ctx.analysis.store_subscriptions;
 
@@ -44,8 +43,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         return transform_program(
             allocator,
             program,
-            rune_names,
-            mutated_runes,
+            component_scoping,
             props,
             &ctx.prop_sources,
             &ctx.prop_non_sources,
@@ -61,8 +59,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         allocator,
         script_text,
         is_ts,
-        rune_names,
-        mutated_runes,
+        component_scoping,
         props,
         &ctx.prop_sources,
         &ctx.prop_non_sources,
@@ -75,8 +72,7 @@ fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     is_ts: bool,
-    rune_names: &FxHashMap<String, RuneKind>,
-    mutated_runes: &FxHashSet<String>,
+    component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
@@ -105,7 +101,7 @@ fn transform_script_text<'a>(
                 is_prop_source: p.is_prop_source,
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
-                is_mutated: mutated_runes.contains(&p.local_name),
+                is_mutated: component_scoping.rune_info_by_name(&p.local_name).is_some_and(|(_, m)| m),
                 default_text: p.default_text.clone(),
                 is_lazy_default: p.is_lazy_default,
             }).collect(),
@@ -114,8 +110,7 @@ fn transform_script_text<'a>(
 
     let mut transformer = ScriptTransformer {
         b: &b,
-        rune_names,
-        mutated_runes,
+        component_scoping,
         prop_sources,
         prop_non_sources,
         store_subscriptions,
@@ -158,8 +153,7 @@ fn transform_script_text<'a>(
 fn transform_program<'a>(
     allocator: &'a Allocator,
     mut program: Program<'a>,
-    rune_names: &FxHashMap<String, RuneKind>,
-    mutated_runes: &FxHashSet<String>,
+    component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
@@ -181,7 +175,7 @@ fn transform_program<'a>(
                 is_prop_source: p.is_prop_source,
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
-                is_mutated: mutated_runes.contains(&p.local_name),
+                is_mutated: component_scoping.rune_info_by_name(&p.local_name).is_some_and(|(_, m)| m),
                 default_text: p.default_text.clone(),
                 is_lazy_default: p.is_lazy_default,
             })
@@ -190,8 +184,7 @@ fn transform_program<'a>(
 
     let mut transformer = ScriptTransformer {
         b: &b,
-        rune_names,
-        mutated_runes,
+        component_scoping,
         prop_sources,
         prop_non_sources,
         store_subscriptions,
@@ -251,9 +244,8 @@ struct PropGenItem {
 
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
-    /// Analysis data: name-based lookups instead of SymbolId-based tables.
-    rune_names: &'b FxHashMap<String, RuneKind>,
-    mutated_runes: &'b FxHashSet<String>,
+    /// ComponentScoping — source of truth for rune kind + mutation status.
+    component_scoping: &'b ComponentScoping,
     prop_sources: &'b FxHashSet<String>,
     prop_non_sources: &'b FxHashMap<String, String>,
     /// Base names of store subscriptions (e.g. "count" for `$count`).
@@ -276,9 +268,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let name = id.name.as_str();
-        let &kind = self.rune_names.get(name)?;
-        Some((kind, self.mutated_runes.contains(name)))
+        self.component_scoping.rune_info_by_name(id.name.as_str())
     }
 
     /// Resolve a reference identifier to its rune kind and mutated status.
@@ -291,9 +281,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let name = id.name.as_str();
-        let &kind = self.rune_names.get(name)?;
-        Some((kind, self.mutated_runes.contains(name)))
+        self.component_scoping.rune_info_by_name(id.name.as_str())
     }
 
     /// Resolve a reference identifier to its prop kind (source or non-source).
@@ -692,7 +680,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     return;
                 };
                 let needs_get = mutated
-                    || matches!(kind, RuneKind::Derived | RuneKind::DerivedBy);
+                    || kind.is_derived();
                 if needs_get {
                     let name = id.name.as_str().to_string();
                     *node = crate::rune_transform::transform_rune_get(self.b, &name);

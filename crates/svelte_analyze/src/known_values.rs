@@ -5,6 +5,9 @@ use crate::data::AnalysisData;
 
 /// Evaluate declarations with literal initializers and store their known values.
 /// For unmutated runes like `let x = $state("world")`, extracts the rune argument.
+///
+/// Note: uses declaration name as key — assumes all declarations are in root scope.
+/// If block-scoped runes are added, switch to SymbolId-based keys.
 pub fn collect_known_values(component: &Component, data: &mut AnalysisData) {
     let script = match &data.script {
         Some(s) => s,
