@@ -280,3 +280,8 @@ fn html_tag() {
 fn key_block() {
     assert_compiler("key_block");
 }
+
+#[rstest]
+fn style_directive() {
+    assert_compiler("style_directive");
+}

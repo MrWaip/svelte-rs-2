@@ -24,8 +24,14 @@ impl TemplateVisitor for ElementFlagsVisitor {
             Attribute::ClassDirective(_) => {
                 data.element_has_class_directives.insert(el.id);
             }
+            Attribute::StyleDirective(_) => {
+                data.element_has_style_directives.insert(el.id);
+            }
             Attribute::StringAttribute(sa) if sa.name == "class" => {
                 data.element_static_class.insert(el.id, sa.value_span);
+            }
+            Attribute::StringAttribute(sa) if sa.name == "style" => {
+                data.element_static_style.insert(el.id, sa.value_span);
             }
             Attribute::BindDirective(_) if el.name == "input" => {
                 data.needs_input_defaults.insert(el.id);

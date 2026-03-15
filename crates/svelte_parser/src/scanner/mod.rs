@@ -4,7 +4,7 @@ use std::{iter::Peekable, str::Chars, vec};
 use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, JsExpression, ScriptTag,
-    StartEachTag, StartIfTag, StartKeyTag, StartTag, Token, TokenType,
+    StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -161,6 +161,8 @@ impl<'a> Scanner<'a> {
 
             if AttributeIdentifierType::is_class_directive(name) {
                 AttributeIdentifierType::ClassDirective(value).as_ok()
+            } else if AttributeIdentifierType::is_style_directive(name) {
+                AttributeIdentifierType::StyleDirective(value).as_ok()
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 AttributeIdentifierType::BindDirective(value).as_ok()
             } else {
@@ -311,6 +313,9 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::ClassDirective(value) => {
                         self.class_directive(value)
                     }
+                    AttributeIdentifierType::StyleDirective(value) => {
+                        self.style_directive(value)
+                    }
                     AttributeIdentifierType::BindDirective(value) => self.bind_directive(value),
                     AttributeIdentifierType::None => break,
                 }
@@ -358,6 +363,42 @@ impl<'a> Scanner<'a> {
                 value: name,
             },
             shorthand: true,
+        }))
+    }
+
+    fn style_directive(&mut self, name: &'a str) -> Result<Attribute<'a>, Diagnostic> {
+        // Check for |important modifier
+        let important = if self.match_char('|') {
+            // Consume "important"
+            let start = self.current;
+            while self.peek().is_some_and(|c| c.is_alphabetic()) {
+                self.advance();
+            }
+            let modifier = self.slice_source(start, self.current);
+            modifier == "important"
+        } else {
+            false
+        };
+
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+
+            return Ok(Attribute::StyleDirective(StyleDirective {
+                expression: res.expression,
+                name,
+                shorthand: false,
+                important,
+            }));
+        }
+
+        Ok(Attribute::StyleDirective(StyleDirective {
+            name,
+            expression: JsExpression {
+                span: SPAN,
+                value: name,
+            },
+            shorthand: true,
+            important,
         }))
     }
 
@@ -1332,6 +1373,7 @@ mod tests {
                 Attribute::HTMLAttribute(value) => value.name,
                 Attribute::ExpressionTag(_) => "$expression",
                 Attribute::ClassDirective(_) => "$classDirective",
+                Attribute::StyleDirective(_) => "$styleDirective",
                 Attribute::BindDirective(_) => "$bindDirective",
             };
 
@@ -1339,6 +1381,7 @@ mod tests {
                 Attribute::HTMLAttribute(value) => value.value.clone(),
                 Attribute::ExpressionTag(value) => AttributeValue::String(value.expression.value),
                 Attribute::ClassDirective(cd) => AttributeValue::String(cd.expression.value),
+                Attribute::StyleDirective(sd) => AttributeValue::String(sd.expression.value),
                 Attribute::BindDirective(bd) => AttributeValue::String(bd.expression.value),
             };
 
