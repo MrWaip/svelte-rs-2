@@ -92,7 +92,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | 10 | `$state.eager(val)` | `$.state($.eager(val))` | S | Experimental async — forces immediate UI updates during `await`. Requires `experimental.async` flag |
 | 11 | `$effect.pending()` | `$.effect_pending()` | S | Returns number of pending promises in current boundary. Used with `<svelte:boundary pending>` |
 | 12 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
-| 13 | `$store` auto-subscription | `$.store_get`/`$.store_set` with scope analysis | S, A | `$count` → auto `.subscribe()`. Needs scope analysis to resolve `$`-prefixed vars to store imports |
+| 13 | ~~`$store` auto-subscription~~ | ~~`$.store_get`/`$.store_set` with scope analysis~~ | ~~S, A~~ | ✅ Done — read, assign, compound assign, update (++/--) in both template and script |
 
 ---
 

@@ -40,6 +40,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
+    let has_stores = !ctx.analysis.store_subscriptions.is_empty();
     let needs_push = has_bindable || has_exports || ctx.analysis.needs_context;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
@@ -51,6 +52,33 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             Arg::Ident("$$props"),
             Arg::Expr(ctx.b.bool_expr(true)),
         ])));
+    }
+
+    // Store subscription setup:
+    //   const $count = () => $.store_get(count, "$count", $$stores);
+    //   const [$$stores, $$cleanup] = $.setup_stores();
+    if has_stores {
+        // Sort store names for deterministic output
+        let mut store_names: Vec<&String> = ctx.analysis.store_subscriptions.iter().collect();
+        store_names.sort();
+
+        for base_name in &store_names {
+            let dollar_name = format!("${}", base_name);
+            let dollar_name_str: &str = ctx.b.alloc_str(&dollar_name);
+            let base_str: &str = ctx.b.alloc_str(base_name);
+            // const $name = () => $.store_get(name, "$name", $$stores)
+            let store_get = ctx.b.call_expr("$.store_get", [
+                Arg::Ident(base_str),
+                Arg::Str(dollar_name.clone()),
+                Arg::Ident("$$stores"),
+            ]);
+            let thunk = ctx.b.thunk(store_get);
+            fn_body.push(ctx.b.const_stmt(dollar_name_str, thunk));
+        }
+
+        // const [$$stores, $$cleanup] = $.setup_stores()
+        let setup_call = ctx.b.call_expr("$.setup_stores", std::iter::empty::<Arg<'_, '_>>());
+        fn_body.push(ctx.b.const_array_destruct_stmt(&["$$stores", "$$cleanup"], setup_call));
     }
 
     // Instance-level snippet declarations (generated during root template for correct numbering)
@@ -80,6 +108,11 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         } else {
             fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
         }
+    }
+
+    // Store cleanup: $$cleanup() — runs after $.pop()
+    if has_stores {
+        fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
     }
 
     // -----------------------------------------------------------------------

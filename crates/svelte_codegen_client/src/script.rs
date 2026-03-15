@@ -37,6 +37,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let rune_names = &ctx.analysis.rune_names;
     let mutated_runes = &ctx.analysis.mutated_runes;
     let props = ctx.analysis.props.as_ref();
+    let store_subscriptions = &ctx.analysis.store_subscriptions;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
@@ -48,6 +49,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
             props,
             &ctx.prop_sources,
             &ctx.prop_non_sources,
+            store_subscriptions,
         );
     }
 
@@ -64,6 +66,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         props,
         &ctx.prop_sources,
         &ctx.prop_non_sources,
+        store_subscriptions,
     )
 }
 
@@ -77,6 +80,7 @@ fn transform_script_text<'a>(
     props: Option<&PropsAnalysis>,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
+    store_subscriptions: &FxHashSet<String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -114,6 +118,7 @@ fn transform_script_text<'a>(
         mutated_runes,
         prop_sources,
         prop_non_sources,
+        store_subscriptions,
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
@@ -158,6 +163,7 @@ fn transform_program<'a>(
     props: Option<&PropsAnalysis>,
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
+    store_subscriptions: &FxHashSet<String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let b = Builder::new(allocator);
 
@@ -188,6 +194,7 @@ fn transform_program<'a>(
         mutated_runes,
         prop_sources,
         prop_non_sources,
+        store_subscriptions,
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
@@ -249,6 +256,8 @@ struct ScriptTransformer<'b, 'a> {
     mutated_runes: &'b FxHashSet<String>,
     prop_sources: &'b FxHashSet<String>,
     prop_non_sources: &'b FxHashMap<String, String>,
+    /// Base names of store subscriptions (e.g. "count" for `$count`).
+    store_subscriptions: &'b FxHashSet<String>,
     /// OXC scoping from SemanticBuilder — used to resolve references to symbols.
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
@@ -305,6 +314,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         } else {
             None
         }
+    }
+
+    /// Check if an identifier name is a `$store` reference (e.g. `$count` where `count` is a store).
+    fn is_store_ref(&self, name: &str) -> bool {
+        if name.starts_with('$') && name.len() > 1 {
+            return self.store_subscriptions.contains(&name[1..]);
+        }
+        false
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -661,6 +678,15 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     }
                     return;
                 }
+                // Store subscription read: $count → $count()
+                // Only transform original source identifiers (with reference_id),
+                // not synthetic ones we create during transformation.
+                let id_name = id.name.as_str();
+                if id.reference_id.get().is_some() && self.is_store_ref(id_name) {
+                    let name = id_name.to_string();
+                    *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
+                    return;
+                }
                 // Regular rune check
                 let Some((kind, mutated)) = self.rune_for_ref(id) else {
                     return;
@@ -691,6 +717,34 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     *node = self.b.call_expr(&name, [Arg::Expr(right)]);
                     return;
                 }
+            }
+            // Store subscription assignment: $count = val → $.store_set(count, val)
+            // Compound: $count += val → $.store_set(count, $count() + val)
+            let id_name = id.name.as_str();
+            if self.is_store_ref(id_name) {
+                let base_name: &str = self.b.alloc_str(&id_name[1..]);
+                let dollar_name: &str = self.b.alloc_str(id_name);
+                let right = self.b.move_expr(&mut assign.right);
+
+                let value = if assign.operator.is_assign() {
+                    right
+                } else {
+                    // Read current value via thunk call: $count()
+                    let current = self.b.call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
+                    if let Some(bin_op) = assign.operator.to_binary_operator() {
+                        self.b.ast.expression_binary(oxc_span::SPAN, current, bin_op, right)
+                    } else if let Some(log_op) = assign.operator.to_logical_operator() {
+                        self.b.ast.expression_logical(oxc_span::SPAN, current, log_op, right)
+                    } else {
+                        unreachable!("all compound assignment operators are either binary or logical")
+                    }
+                };
+
+                *node = self.b.call_expr("$.store_set", [
+                    Arg::Ident(base_name),
+                    Arg::Expr(value),
+                ]);
+                return;
             }
             if let Some((_, mutated)) = self.rune_for_ref(id) {
                 if mutated {
@@ -736,6 +790,25 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     *node = self.b.call_expr(fn_name, args);
                     return;
                 }
+            }
+            // Store subscription update: $count++ → $.update_store(count, $count())
+            // ++$count → $.update_pre_store(count, $count())
+            // $count-- → $.update_store(count, $count(), -1)
+            let id_name = id.name.as_str();
+            if self.is_store_ref(id_name) {
+                let base_name: &str = self.b.alloc_str(&id_name[1..]);
+                let dollar_name: &str = self.b.alloc_str(id_name);
+                let fn_name = if upd.prefix { "$.update_pre_store" } else { "$.update_store" };
+                let thunk_call = self.b.call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
+                let mut args: Vec<Arg<'a, '_>> = vec![
+                    Arg::Ident(base_name),
+                    Arg::Expr(thunk_call),
+                ];
+                if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+                    args.push(Arg::Num(-1.0));
+                }
+                *node = self.b.call_expr(fn_name, args);
+                return;
             }
             if let Some((_, mutated)) = self.rune_for_ref(id) {
                 if mutated {

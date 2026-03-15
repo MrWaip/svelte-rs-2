@@ -83,6 +83,9 @@ pub struct ScriptInfo {
     pub exports: Vec<ExportInfo>,
     /// True when the script contains `$effect(...)` or `$effect.pre(...)` calls.
     pub has_effects: bool,
+    /// Base names of `$`-prefixed identifiers found in the script body
+    /// (e.g. `"count"` for `$count`). Used to detect store subscriptions.
+    pub store_candidates: Vec<CompactString>,
 }
 
 #[derive(Debug, Clone)]
@@ -195,7 +198,16 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects }
+    // Collect $-prefixed identifier references from the script body
+    let mut store_candidates = Vec::new();
+    for stmt in &program.body {
+        collect_dollar_refs_from_stmt(stmt, &mut store_candidates);
+    }
+    // Deduplicate
+    store_candidates.sort();
+    store_candidates.dedup();
+
+    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates }
 }
 
 /// Check if an expression is a `$effect(...)` or `$effect.pre(...)` call.
@@ -790,6 +802,94 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let mut seen = std::collections::HashSet::new();
     refs.retain(|r| seen.insert(r.clone()));
     refs
+}
+
+/// Collect base names of `$`-prefixed identifiers from a statement.
+fn collect_dollar_refs_from_stmt(stmt: &oxc_ast::ast::Statement<'_>, out: &mut Vec<CompactString>) {
+    use oxc_ast::ast::Statement;
+    match stmt {
+        Statement::ExpressionStatement(es) => {
+            collect_dollar_refs_from_expr(&es.expression, out);
+        }
+        Statement::VariableDeclaration(decl) => {
+            for d in &decl.declarations {
+                if let Some(init) = &d.init {
+                    collect_dollar_refs_from_expr(init, out);
+                }
+            }
+        }
+        Statement::ReturnStatement(ret) => {
+            if let Some(arg) = &ret.argument {
+                collect_dollar_refs_from_expr(arg, out);
+            }
+        }
+        Statement::IfStatement(s) => {
+            collect_dollar_refs_from_expr(&s.test, out);
+            collect_dollar_refs_from_stmt(&s.consequent, out);
+            if let Some(alt) = &s.alternate {
+                collect_dollar_refs_from_stmt(alt, out);
+            }
+        }
+        Statement::BlockStatement(block) => {
+            for s in &block.body {
+                collect_dollar_refs_from_stmt(s, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_dollar_refs_from_expr(expr: &Expression<'_>, out: &mut Vec<CompactString>) {
+    match expr {
+        Expression::Identifier(id) => {
+            let name = id.name.as_str();
+            if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+                // Skip known rune names
+                if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
+                    out.push(compact(&name[1..]));
+                }
+            }
+        }
+        Expression::AssignmentExpression(assign) => {
+            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
+                let name = id.name.as_str();
+                if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+                    if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
+                        out.push(compact(&name[1..]));
+                    }
+                }
+            }
+            collect_dollar_refs_from_expr(&assign.right, out);
+        }
+        Expression::UpdateExpression(upd) => {
+            if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
+                let name = id.name.as_str();
+                if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+                    if !matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host") {
+                        out.push(compact(&name[1..]));
+                    }
+                }
+            }
+        }
+        Expression::BinaryExpression(bin) => {
+            collect_dollar_refs_from_expr(&bin.left, out);
+            collect_dollar_refs_from_expr(&bin.right, out);
+        }
+        Expression::CallExpression(call) => {
+            collect_dollar_refs_from_expr(&call.callee, out);
+            for arg in &call.arguments {
+                if let Some(e) = arg.as_expression() {
+                    collect_dollar_refs_from_expr(e, out);
+                }
+            }
+        }
+        Expression::ConditionalExpression(cond) => {
+            collect_dollar_refs_from_expr(&cond.test, out);
+            collect_dollar_refs_from_expr(&cond.consequent, out);
+            collect_dollar_refs_from_expr(&cond.alternate, out);
+        }
+        _ => {}
+    }
 }
 
 fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {
