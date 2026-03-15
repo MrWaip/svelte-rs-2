@@ -57,7 +57,8 @@ pub(crate) fn gen_component<'a>(
             Attribute::ShorthandOrSpread(_) => AttrKind::Shorthand {
                 attr_idx: idx,
             },
-            Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => AttrKind::Skip,
+            Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_)
+            | Attribute::OnDirectiveLegacy(_) => AttrKind::Skip,
         };
         (kind, is_dynamic)
     }).collect();

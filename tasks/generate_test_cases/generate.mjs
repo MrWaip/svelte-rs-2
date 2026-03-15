@@ -1,7 +1,9 @@
 import { compile } from "svelte/compiler";
 import { readFileSync } from "node:fs";
 
-const files = JSON.parse(readFileSync("/dev/stdin", "utf8"));
+// Read from temp file written by the Rust caller, or fall back to /dev/stdin
+const inputPath = process.env.INPUT_FILE || "/dev/stdin";
+const files = JSON.parse(readFileSync(inputPath, "utf8"));
 const results = {};
 for (const file of files) {
   const text = readFileSync(file, "utf8");
