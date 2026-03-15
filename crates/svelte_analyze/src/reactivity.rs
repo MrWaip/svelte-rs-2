@@ -29,7 +29,6 @@ impl ReactivityVisitor {
         &self,
         node_id: &NodeId,
         data: &AnalysisData,
-        scope: ScopeId,
     ) -> bool {
         if let Some(info) = data.expressions.get(node_id) {
             let params = self.current_snippet_params(data);
@@ -42,7 +41,11 @@ impl ReactivityVisitor {
                 if is_store_ref(&r.name, data) {
                     return true;
                 }
-                data.scoping.is_dynamic_ref(scope, &r.name)
+                if let Some(sym_id) = r.symbol_id {
+                    data.scoping.is_dynamic_by_id(sym_id)
+                } else {
+                    false
+                }
             });
         }
         false
@@ -50,58 +53,55 @@ impl ReactivityVisitor {
 }
 
 impl TemplateVisitor for ReactivityVisitor {
-    fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data, scope) {
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data) {
             data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data, scope) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data) {
             data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data, scope) {
+    fn visit_html_tag(&mut self, tag: &HtmlTag, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&tag.id, data) {
             data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-        if attr_is_dynamic(attr, idx, el.id, data, scope) {
+    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_is_dynamic(attr, idx, el.id, data) {
             data.dynamic_attrs.insert((el.id, idx));
             data.node_needs_ref.insert(el.id);
         }
     }
 
     fn visit_bind_directive(&mut self, _dir: &BindDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        // Bind directives always need a DOM ref
         data.node_needs_ref.insert(el.id);
     }
 
-    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&block.id, data, scope) {
+    fn visit_if_block(&mut self, block: &IfBlock, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&block.id, data) {
             data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_each_block(&mut self, block: &EachBlock, body_scope: ScopeId, data: &mut AnalysisData) {
-        // body_scope is fine for the expression check — find_binding walks up parent scopes,
-        // so `items` in `{#each items as item}` resolves correctly from the child scope.
-        if self.expr_is_dynamic(&block.id, data, body_scope) {
+    fn visit_each_block(&mut self, block: &EachBlock, _body_scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&block.id, data) {
             data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&block.id, data, scope) {
+    fn visit_key_block(&mut self, block: &KeyBlock, _scope: ScopeId, data: &mut AnalysisData) {
+        if self.expr_is_dynamic(&block.id, data) {
             data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
-        if component_attr_is_dynamic(attr, idx, cn.id, data, scope) {
+    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+        if component_attr_is_dynamic(attr, idx, cn.id, data) {
             data.dynamic_attrs.insert((cn.id, idx));
         }
     }
@@ -123,7 +123,6 @@ fn component_attr_is_dynamic(
     attr_idx: usize,
     owner_id: NodeId,
     data: &AnalysisData,
-    current_scope: ScopeId,
 ) -> bool {
     if matches!(
         attr,
@@ -133,8 +132,7 @@ fn component_attr_is_dynamic(
     }
     if let Some(info) = data.attr_expressions.get(&(owner_id, attr_idx)) {
         return info.references.iter().any(|r| {
-            // Any rune (even unmutated $state) or non-root binding makes it dynamic
-            if let Some(sym_id) = data.scoping.find_binding(current_scope, &r.name) {
+            if let Some(sym_id) = r.symbol_id {
                 let root = data.scoping.root_scope_id();
                 if data.scoping.symbol_scope_id(sym_id) != root {
                     return true;
@@ -164,7 +162,6 @@ fn attr_is_dynamic(
     attr_idx: usize,
     el_id: NodeId,
     data: &AnalysisData,
-    current_scope: ScopeId,
 ) -> bool {
     if matches!(
         attr,
@@ -180,8 +177,11 @@ fn attr_is_dynamic(
                     return true;
                 }
             }
-            // Delegate to is_dynamic_ref for rune/scope checks
-            data.scoping.is_dynamic_ref(current_scope, &r.name)
+            if let Some(sym_id) = r.symbol_id {
+                data.scoping.is_dynamic_by_id(sym_id)
+            } else {
+                false
+            }
         });
     }
     false

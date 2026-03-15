@@ -1,7 +1,7 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 pub use oxc_semantic::{ScopeId, SymbolId};
-use oxc_semantic::{NodeId as OxcNodeId, ScopeFlags, Scoping, SymbolFlags};
+use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
@@ -16,14 +16,10 @@ pub struct ComponentScoping {
     scoping: Scoping,
     /// Which symbols are runes.
     runes: FxHashMap<SymbolId, RuneKind>,
-    /// Which symbols are mutated via bind directives.
-    bind_mutated: FxHashSet<SymbolId>,
-    /// Symbols mutated in template expressions (e.g. `{count = 99}`).
-    template_mutated: FxHashSet<SymbolId>,
     /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
     node_scopes: FxHashMap<NodeId, ScopeId>,
-    /// For $derived/$derived.by: names referenced in the init expression.
-    derived_deps: FxHashMap<SymbolId, Vec<String>>,
+    /// For $derived/$derived.by: symbols referenced in the init expression.
+    derived_deps: FxHashMap<SymbolId, Vec<SymbolId>>,
 }
 
 impl ComponentScoping {
@@ -32,8 +28,6 @@ impl ComponentScoping {
         Self {
             scoping,
             runes: FxHashMap::default(),
-            bind_mutated: FxHashSet::default(),
-            template_mutated: FxHashSet::default(),
             node_scopes: FxHashMap::default(),
             derived_deps: FxHashMap::default(),
         }
@@ -87,12 +81,9 @@ impl ComponentScoping {
         self.scoping.find_binding(scope, name.into())
     }
 
-    /// Check if a symbol has any mutation (script assignments via OXC, template assignments,
-    /// or bind directives).
+    /// Check if a symbol has any mutation (script + template, all via OXC references).
     pub fn is_mutated(&self, id: SymbolId) -> bool {
         self.scoping.symbol_is_mutated(id)
-            || self.template_mutated.contains(&id)
-            || self.bind_mutated.contains(&id)
     }
 
     /// Get the scope a symbol was declared in.
@@ -106,7 +97,7 @@ impl ComponentScoping {
         self.runes.insert(id, kind);
     }
 
-    pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<String>) {
+    pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<SymbolId>) {
         self.derived_deps.insert(id, deps);
     }
 
@@ -118,41 +109,33 @@ impl ComponentScoping {
         self.runes.contains_key(&id)
     }
 
-    pub fn mark_bind_mutated(&mut self, id: SymbolId) {
-        self.bind_mutated.insert(id);
+    /// Register a template reference into OXC Scoping.
+    /// For Write/ReadWrite refs, `symbol_is_mutated()` will return true.
+    pub fn register_template_reference(&mut self, sym_id: SymbolId, flags: OxcReferenceFlags) {
+        let scope = self.scoping.symbol_scope_id(sym_id);
+        let reference = OxcReference::new(OxcNodeId::DUMMY, scope, flags);
+        let ref_id = self.scoping.create_reference(reference);
+        self.scoping.add_resolved_reference(sym_id, ref_id);
     }
 
-    /// Mark a symbol as mutated from a template expression.
-    pub fn mark_template_mutated(&mut self, sym_id: SymbolId) {
-        self.template_mutated.insert(sym_id);
+    // -- Convenience: SymbolId-based dynamism check --
+
+    /// Check if a symbol is dynamic (by SymbolId, without name resolution).
+    pub fn is_dynamic_by_id(&self, sym_id: SymbolId) -> bool {
+        self.is_dynamic_by_id_inner(sym_id, 0)
     }
 
-    // -- Convenience: scope-aware resolution --
-
-    /// Check if a reference is dynamic in the given scope.
-    /// A reference is dynamic if it resolves to a rune or a non-root-scope binding
-    /// (e.g., each-block variable).
-    pub fn is_dynamic_ref(&self, scope: ScopeId, name: &str) -> bool {
-        self.is_dynamic_ref_inner(scope, name, 0)
-    }
-
-    fn is_dynamic_ref_inner(&self, scope: ScopeId, name: &str, depth: u8) -> bool {
+    fn is_dynamic_by_id_inner(&self, sym_id: SymbolId, depth: u8) -> bool {
         if depth > 16 {
-            return true; // conservative: treat unknown-depth chains as dynamic
+            return true;
         }
-        let Some(sym_id) = self.find_binding(scope, name) else {
-            return false;
-        };
         if let Some(&kind) = self.runes.get(&sym_id) {
-            // Unmutated $state is effectively constant
             if kind == RuneKind::State && !self.is_mutated(sym_id) {
                 return false;
             }
-            // $derived is dynamic only if any of its dependencies are dynamic
             if matches!(kind, RuneKind::Derived | RuneKind::DerivedBy) {
                 if let Some(deps) = self.derived_deps.get(&sym_id) {
-                    let root = self.root_scope_id();
-                    return deps.iter().any(|dep| self.is_dynamic_ref_inner(root, dep, depth + 1));
+                    return deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
                 }
                 return false;
             }
@@ -172,20 +155,11 @@ impl ComponentScoping {
             .collect()
     }
 
-    /// Names of all mutated runes (script assignments + template assignments + bind directives).
-    pub(crate) fn mutated_rune_names(&self) -> FxHashSet<String> {
+    /// Names of all mutated runes (script + template, all via OXC references).
+    pub(crate) fn mutated_rune_names(&self) -> rustc_hash::FxHashSet<String> {
         self.runes
             .keys()
             .filter(|&&id| self.is_mutated(id))
-            .map(|&id| self.scoping.symbol_name(id).to_string())
-            .collect()
-    }
-
-    /// Names of runes mutated only via bind directives.
-    pub(crate) fn bind_mutated_rune_names(&self) -> FxHashSet<String> {
-        self.bind_mutated
-            .iter()
-            .filter(|id| self.runes.contains_key(id))
             .map(|&id| self.scoping.symbol_name(id).to_string())
             .collect()
     }
@@ -211,8 +185,12 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
                     if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy)
                         && !decl.rune_init_refs.is_empty()
                     {
-                        let deps: Vec<String> = decl.rune_init_refs.iter().map(|r| r.to_string()).collect();
-                        data.scoping.set_derived_deps(sym_id, deps);
+                        let deps: Vec<SymbolId> = decl.rune_init_refs.iter()
+                            .filter_map(|name| data.scoping.find_binding(root, name))
+                            .collect();
+                        if !deps.is_empty() {
+                            data.scoping.set_derived_deps(sym_id, deps);
+                        }
                     }
                 }
             }
