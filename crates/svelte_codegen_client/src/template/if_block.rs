@@ -43,7 +43,7 @@ pub(crate) fn gen_if_block<'a>(
         }
 
         let alternate_key = FragmentKey::IfAlternate(current);
-        let alt_is_elseif = ctx.analysis.alt_is_elseif.contains(&current);
+        let alt_is_elseif = ctx.is_elseif_alt(current);
 
         if alt_is_elseif {
             let nested_id = ctx.lowered_fragment(&alternate_key).first_if_block_id().unwrap();

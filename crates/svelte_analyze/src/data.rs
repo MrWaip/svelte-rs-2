@@ -87,6 +87,16 @@ impl ElementFlags {
             dynamic_attrs: FxHashSet::default(),
         }
     }
+
+    pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
+    pub fn has_class_directives(&self, id: NodeId) -> bool { self.has_class_directives.contains(&id) }
+    pub fn has_style_directives(&self, id: NodeId) -> bool { self.has_style_directives.contains(&id) }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
+    pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
+    pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }
+    pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.dynamic_attrs.contains(&(id, idx)) }
+    pub fn static_class(&self, id: NodeId) -> Option<Span> { self.static_class.get(&id).copied() }
+    pub fn static_style(&self, id: NodeId) -> Option<Span> { self.static_style.get(&id).copied() }
 }
 
 /// Fragment lowering results and content classification.
@@ -104,6 +114,18 @@ impl FragmentData {
             has_dynamic_children: FxHashSet::default(),
         }
     }
+
+    pub fn content_type(&self, key: &FragmentKey) -> ContentType {
+        self.content_types.get(key).copied().unwrap_or(ContentType::Empty)
+    }
+
+    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
+        self.has_dynamic_children.contains(key)
+    }
+
+    pub fn lowered(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
+        self.lowered.get(key)
+    }
 }
 
 /// Snippet analysis: parameter names and hoistability.
@@ -119,6 +141,9 @@ impl SnippetData {
             hoistable: FxHashSet::default(),
         }
     }
+
+    pub fn params(&self, id: NodeId) -> Option<&Vec<String>> { self.params.get(&id) }
+    pub fn is_hoistable(&self, id: NodeId) -> bool { self.hoistable.contains(&id) }
 }
 
 /// ConstTag analysis: declared names and per-fragment grouping.
@@ -134,6 +159,9 @@ impl ConstTagData {
             by_fragment: FxHashMap::default(),
         }
     }
+
+    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +226,12 @@ impl AnalysisData {
 }
 
 impl AnalysisData {
+    pub fn is_dynamic(&self, id: NodeId) -> bool { self.dynamic_nodes.contains(&id) }
+    pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
+    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
+    pub fn attr_expression(&self, id: NodeId, idx: usize) -> Option<&ExpressionInfo> { self.attr_expressions.get(&(id, idx)) }
+    pub fn known_value(&self, name: &str) -> Option<&String> { self.known_values.get(name) }
+
     pub fn is_rune(&self, name: &str) -> bool {
         self.scoping.rune_info_by_name(name).is_some()
     }
