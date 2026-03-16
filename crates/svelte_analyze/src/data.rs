@@ -62,15 +62,15 @@ pub enum FragmentKey {
 
 /// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
 pub struct ElementFlags {
-    pub has_spread: FxHashSet<NodeId>,
-    pub has_class_directives: FxHashSet<NodeId>,
-    pub static_class: FxHashMap<NodeId, Span>,
-    pub has_style_directives: FxHashSet<NodeId>,
-    pub static_style: FxHashMap<NodeId, Span>,
-    pub needs_input_defaults: FxHashSet<NodeId>,
-    pub needs_var: FxHashSet<NodeId>,
-    pub needs_ref: FxHashSet<NodeId>,
-    pub dynamic_attrs: FxHashSet<(NodeId, usize)>,
+    pub(crate) has_spread: FxHashSet<NodeId>,
+    pub(crate) has_class_directives: FxHashSet<NodeId>,
+    pub(crate) static_class: FxHashMap<NodeId, Span>,
+    pub(crate) has_style_directives: FxHashSet<NodeId>,
+    pub(crate) static_style: FxHashMap<NodeId, Span>,
+    pub(crate) needs_input_defaults: FxHashSet<NodeId>,
+    pub(crate) needs_var: FxHashSet<NodeId>,
+    pub(crate) needs_ref: FxHashSet<NodeId>,
+    pub(crate) dynamic_attrs: FxHashSet<(NodeId, usize)>,
 }
 
 impl ElementFlags {
@@ -101,9 +101,9 @@ impl ElementFlags {
 
 /// Fragment lowering results and content classification.
 pub struct FragmentData {
-    pub lowered: FxHashMap<FragmentKey, LoweredFragment>,
-    pub content_types: FxHashMap<FragmentKey, ContentType>,
-    pub has_dynamic_children: FxHashSet<FragmentKey>,
+    pub(crate) lowered: FxHashMap<FragmentKey, LoweredFragment>,
+    pub(crate) content_types: FxHashMap<FragmentKey, ContentType>,
+    pub(crate) has_dynamic_children: FxHashSet<FragmentKey>,
 }
 
 impl FragmentData {
@@ -130,8 +130,8 @@ impl FragmentData {
 
 /// Snippet analysis: parameter names and hoistability.
 pub struct SnippetData {
-    pub params: FxHashMap<NodeId, Vec<String>>,
-    pub hoistable: FxHashSet<NodeId>,
+    pub(crate) params: FxHashMap<NodeId, Vec<String>>,
+    pub(crate) hoistable: FxHashSet<NodeId>,
 }
 
 impl SnippetData {
@@ -148,11 +148,11 @@ impl SnippetData {
 
 /// ConstTag analysis: declared names and per-fragment grouping.
 pub struct ConstTagData {
-    pub names: FxHashMap<NodeId, Vec<String>>,
-    pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    pub(crate) names: FxHashMap<NodeId, Vec<String>>,
+    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
     /// Generated tmp variable names for destructured const tags.
     /// Filled by svelte_transform, consumed by codegen.
-    pub tmp_names: FxHashMap<NodeId, String>,
+    pub(crate) tmp_names: FxHashMap<NodeId, String>,
 }
 
 impl ConstTagData {
@@ -167,6 +167,7 @@ impl ConstTagData {
     pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
     pub fn tmp_name(&self, id: NodeId) -> Option<&String> { self.tmp_names.get(&id) }
+    pub fn insert_tmp_name(&mut self, id: NodeId, name: String) { self.tmp_names.insert(id, name); }
 }
 
 // ---------------------------------------------------------------------------
