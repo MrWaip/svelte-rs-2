@@ -4,21 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `class` attribute — Object/array syntax (Svelte 5)
+## 1. `$state.snapshot(val)` rune
 
-**Why first**: новый синтаксис `class={{ active: isActive }}` и `class={[base, active && "active"]}`.
-
-**What to change**:
-- `svelte_parser/src/lib.rs`: detect object/array expression in `class` attribute value
-- `svelte_codegen_client/src/template/attributes.rs`: генерация `$.set_class(el, ...)`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
-
----
-
-## 2. `$state.snapshot(val)` rune
-
-**Why second**: простая перезапись вызова, паттерн уже есть в script.rs.
+**Why first**: простая перезапись вызова, паттерн уже есть в script.rs.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$state.snapshot(val)` as inline call rewrite
@@ -30,9 +18,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `$effect.tracking()` rune
+## 2. `$effect.tracking()` rune
 
-**Why third**: тривиальная перезапись вызова, без аргументов.
+**Why second**: тривиальная перезапись вызова, без аргументов.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$effect.tracking()` as inline call rewrite
@@ -44,9 +32,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `$effect.root(fn)` rune
+## 3. `$effect.root(fn)` rune
 
-**Why fourth**: простая перезапись вызова, аналогична `$effect.pre`.
+**Why third**: простая перезапись вызова, аналогична `$effect.pre`.
 
 **What to change**:
 - `svelte_codegen_client/src/script.rs`: `$effect.root(fn)` → `$.effect_root(fn)`
@@ -57,9 +45,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `$inspect(vals)` rune
+## 4. `$inspect(vals)` rune
 
-**Why fifth**: dev-mode only — strip in prod. Needs `dev` compiler option.
+**Why fourth**: dev-mode only — strip in prod. Needs `dev` compiler option.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$inspect(...)` as inline call rewrite
@@ -68,3 +56,16 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
 
 **Runtime**: `$.inspect()`
+
+---
+
+## 5. `{@debug vars}` — Dev-mode debugger
+
+**Why fifth**: dev-mode only template feature, similar dev flag dependency as `$inspect`.
+
+**What to change**:
+- Parser: parse `{@debug x, y}`
+- AST: `Node::DebugTag { id, span, identifiers: Vec<Span> }`
+- Codegen: `debugger` statement + `console.log` (dev) / nothing (prod)
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/DebugTag.js`

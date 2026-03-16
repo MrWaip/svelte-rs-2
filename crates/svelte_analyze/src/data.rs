@@ -64,6 +64,8 @@ pub enum FragmentKey {
 pub struct ElementFlags {
     pub(crate) has_spread: FxHashSet<NodeId>,
     pub(crate) has_class_directives: FxHashSet<NodeId>,
+    pub(crate) has_class_attribute: FxHashSet<NodeId>,
+    pub(crate) needs_clsx: FxHashSet<(NodeId, usize)>,
     pub(crate) static_class: FxHashMap<NodeId, Span>,
     pub(crate) has_style_directives: FxHashSet<NodeId>,
     pub(crate) static_style: FxHashMap<NodeId, Span>,
@@ -78,6 +80,8 @@ impl ElementFlags {
         Self {
             has_spread: FxHashSet::default(),
             has_class_directives: FxHashSet::default(),
+            has_class_attribute: FxHashSet::default(),
+            needs_clsx: FxHashSet::default(),
             static_class: FxHashMap::default(),
             has_style_directives: FxHashSet::default(),
             static_style: FxHashMap::default(),
@@ -90,6 +94,8 @@ impl ElementFlags {
 
     pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
     pub fn has_class_directives(&self, id: NodeId) -> bool { self.has_class_directives.contains(&id) }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.has_class_attribute.contains(&id) }
+    pub fn needs_clsx(&self, id: NodeId, idx: usize) -> bool { self.needs_clsx.contains(&(id, idx)) }
     pub fn has_style_directives(&self, id: NodeId) -> bool { self.has_style_directives.contains(&id) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }

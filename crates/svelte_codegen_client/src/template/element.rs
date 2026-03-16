@@ -8,7 +8,7 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::{process_attr, process_attrs_spread, process_class_directives, process_style_directives};
+use super::attributes::{process_attr, process_attrs_spread, process_class_attribute_and_directives, process_style_directives};
 use super::each_block::gen_each_block;
 use super::expression::{build_concat, emit_trailing_next};
 use super::traverse::traverse_items;
@@ -52,9 +52,9 @@ pub(crate) fn process_element<'a>(
         }
     }
 
-    // Class directives
+    // Class attribute and/or class directives
     let el = ctx.element(el_id);
-    process_class_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
+    process_class_attribute_and_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // Style directives
     let el = ctx.element(el_id);

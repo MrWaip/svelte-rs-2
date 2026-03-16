@@ -9,6 +9,25 @@ use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
 
+/// Build an object property for a directive expression.
+/// Handles the three-way branch: mutated rune → `$.get(name)`, same-name → shorthand, else → key-value.
+fn build_directive_prop<'a>(
+    ctx: &mut Ctx<'a>,
+    name: &str,
+    expr: Expression<'a>,
+    same_name: bool,
+) -> ObjProp<'a> {
+    let name_alloc = ctx.b.alloc_str(name);
+    if ctx.is_mutable_rune(name) {
+        let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+        ObjProp::KeyValue(name_alloc, get_call)
+    } else if same_name {
+        ObjProp::Shorthand(name_alloc)
+    } else {
+        ObjProp::KeyValue(name_alloc, expr)
+    }
+}
+
 /// Process a single attribute (non-spread path).
 pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
@@ -31,6 +50,10 @@ pub(crate) fn process_attr<'a>(
     match attr {
         Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {
             // Static — already in template HTML
+        }
+        Attribute::ExpressionAttribute(a) if a.name == "class" => {
+            // Handled by process_class_attribute_and_directives
+            return;
         }
         Attribute::ExpressionAttribute(a) => {
             if let Some(event_name) = a.name.strip_prefix("on") {
@@ -102,91 +125,128 @@ pub(crate) fn process_attr<'a>(
     }
 }
 
-/// Generate `$.set_class(el, 1, "static-class", null, classes_N, { ... })` for class:name directives.
-/// Pushes `let classes_N;` to `init` and the assignment to `update` for combined template_effect.
-pub(crate) fn process_class_directives<'a>(
+/// Generate `$.set_class(el, 1, value, null, prev, { ... })` for class expression attributes
+/// and/or class:name directives. Handles all combinations:
+/// - class={expr} only → `$.set_class(el, 1, $.clsx(expr))`
+/// - class:name directives only → `$.set_class(el, 1, "", null, prev, { ... })`
+/// - class={expr} + class:name → `$.set_class(el, 1, $.clsx(expr), null, prev, { ... })`
+pub(crate) fn process_class_attribute_and_directives<'a>(
     ctx: &mut Ctx<'a>,
     el: &Element,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
-    if !ctx.has_class_directives(el.id) {
+    let has_class_attr = ctx.has_class_attribute(el.id);
+    let has_class_dirs = ctx.has_class_directives(el.id);
+
+    if !has_class_attr && !has_class_dirs {
         return;
     }
 
-    let class_dirs: Vec<_> = el
-        .attributes
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, a)| match a {
-            Attribute::ClassDirective(cd) => Some((idx, cd)),
-            _ => None,
-        })
-        .collect();
+    // --- Build class value ---
+    let (class_value, class_attr_is_dynamic) = if has_class_attr {
+        // Find the class expression attribute index
+        let (attr_idx, _) = el.attributes.iter().enumerate()
+            .find(|(_, a)| matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "class"))
+            .expect("has_class_attribute set but no ExpressionAttribute with name=class");
 
-    // Find static class value from precomputed span
-    let static_class = ctx.static_class(el.id)
-        .map(|span| ctx.component.source_text(span).to_string())
-        .unwrap_or_default();
-
-    let mut props: Vec<ObjProp<'a>> = Vec::new();
-
-    for (attr_idx, cd) in &class_dirs {
-        let name = &cd.name;
-
-        let (expr, is_simple_ident_same_name) = if cd.expression_span.is_some() {
-            let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-            // Check if expression text matches the class name (for shorthand output)
-            let same_name = cd.expression_span
-                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
-                .unwrap_or(false);
-            (parsed, same_name)
-        } else {
-            // shorthand: class:name → identifier `name`
-            (ctx.b.rid_expr(name), true)
-        };
-
-        let is_mutated_rune = ctx.is_mutable_rune(name);
-
-        let name_alloc = ctx.b.alloc_str(name);
-
-        if is_mutated_rune {
-            let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-            props.push(ObjProp::KeyValue(name_alloc, get_call));
-        } else if is_simple_ident_same_name {
-            props.push(ObjProp::Shorthand(name_alloc));
-        } else {
-            props.push(ObjProp::KeyValue(name_alloc, expr));
+        let mut expr = get_attr_expr(ctx, el.id, attr_idx);
+        if ctx.needs_clsx(el.id, attr_idx) {
+            expr = ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
         }
+
+        let is_dynamic = ctx.is_dynamic_attr(el.id, attr_idx);
+        (expr, is_dynamic)
+    } else {
+        // No class expression attribute — use static class or empty string
+        let static_class = ctx.static_class(el.id)
+            .map(|span| ctx.component.source_text(span).to_string())
+            .unwrap_or_default();
+        (ctx.b.str_expr(&static_class), false)
+    };
+
+    // --- Build class directives object ---
+    let directives_obj = if has_class_dirs {
+        let class_dirs: Vec<_> = el.attributes.iter().enumerate()
+            .filter_map(|(idx, a)| match a {
+                Attribute::ClassDirective(cd) => Some((idx, cd)),
+                _ => None,
+            })
+            .collect();
+
+        let mut props: Vec<ObjProp<'a>> = Vec::new();
+        for (attr_idx, cd) in &class_dirs {
+            let name = &cd.name;
+            let (expr, same_name) = if cd.expression_span.is_some() {
+                let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+                let same = cd.expression_span
+                    .map(|span| ctx.component.source_text(span).trim() == name.as_str())
+                    .unwrap_or(false);
+                (parsed, same)
+            } else {
+                (ctx.b.rid_expr(name), true)
+            };
+            props.push(build_directive_prop(ctx, name, expr, same_name));
+        }
+        Some(ctx.b.object_expr(props))
+    } else {
+        None
+    };
+
+    // --- Determine if any directive is dynamic ---
+    let directives_are_dynamic = has_class_dirs && el.attributes.iter().enumerate().any(|(idx, a)| {
+        matches!(a, Attribute::ClassDirective(_)) && ctx.is_dynamic_attr(el.id, idx)
+    });
+
+    let has_state = class_attr_is_dynamic || directives_are_dynamic;
+
+    // --- Generate $.set_class() call ---
+    if let Some(dir_obj) = directives_obj {
+        // With directives: $.set_class(el, 1, value, null, prev, { ... })
+        if has_state {
+            let classes_name = ctx.gen_ident("classes");
+            let set_class_call = ctx.b.call_expr(
+                "$.set_class",
+                [
+                    Arg::Ident(el_name),
+                    Arg::Num(1.0),
+                    Arg::Expr(class_value),
+                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Ident(&classes_name),
+                    Arg::Expr(dir_obj),
+                ],
+            );
+            let assign = ctx.b.assign_expr(
+                AssignLeft::Ident(classes_name.clone()),
+                AssignRight::Expr(set_class_call),
+            );
+            init.push(ctx.b.let_stmt(&classes_name));
+            update.push(ctx.b.expr_stmt(assign));
+        } else {
+            // No state: use empty object {} as prev
+            let set_class_call = ctx.b.call_expr(
+                "$.set_class",
+                [
+                    Arg::Ident(el_name),
+                    Arg::Num(1.0),
+                    Arg::Expr(class_value),
+                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Expr(ctx.b.object_expr(vec![])),
+                    Arg::Expr(dir_obj),
+                ],
+            );
+            init.push(ctx.b.expr_stmt(set_class_call));
+        }
+    } else {
+        // Without directives: $.set_class(el, 1, value)
+        let set_class_call = ctx.b.call_expr(
+            "$.set_class",
+            [Arg::Ident(el_name), Arg::Num(1.0), Arg::Expr(class_value)],
+        );
+        let target = if has_state { &mut *update } else { &mut *init };
+        target.push(ctx.b.expr_stmt(set_class_call));
     }
-
-    let obj = ctx.b.object_expr(props);
-    let classes_name = ctx.gen_ident("classes");
-
-    // $.set_class(el, 1, "static-class", null, classes_N, { ... })
-    let set_class_call = ctx.b.call_expr(
-        "$.set_class",
-        [
-            Arg::Ident(el_name),
-            Arg::Num(1.0),
-            Arg::Str(static_class),
-            Arg::Expr(ctx.b.null_expr()),
-            Arg::Ident(&classes_name),
-            Arg::Expr(obj),
-        ],
-    );
-
-    // classes_N = $.set_class(...)
-    let assign = ctx.b.assign_expr(
-        AssignLeft::Ident(classes_name.clone()),
-        AssignRight::Expr(set_class_call),
-    );
-
-    // let classes_N;
-    init.push(ctx.b.let_stmt(&classes_name));
-    // Push assignment to update vector for combined template_effect
-    update.push(ctx.b.expr_stmt(assign));
 }
 
 /// Generate `$.set_style(el, "static-style", styles_N, { ... })` for style:name directives.
@@ -225,38 +285,25 @@ pub(crate) fn process_style_directives<'a>(
 
     for (attr_idx, sd) in &style_dirs {
         let name = &sd.name;
-        let name_alloc = ctx.b.alloc_str(name);
         let target = if sd.important { &mut important_props } else { &mut normal_props };
 
         match &sd.value {
             StyleDirectiveValue::Shorthand => {
-                let is_mutated_rune = ctx.is_mutable_rune(name);
-                if is_mutated_rune {
-                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-                    target.push(ObjProp::KeyValue(name_alloc, get_call));
-                } else {
-                    target.push(ObjProp::Shorthand(name_alloc));
-                }
+                let expr = ctx.b.rid_expr(name);
+                target.push(build_directive_prop(ctx, name, expr, true));
             }
             StyleDirectiveValue::Expression(span) => {
                 let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-                let is_mutated_rune = ctx.is_mutable_rune(name);
                 let expr_text = ctx.component.source_text(*span).trim();
                 let same_name = expr_text == name.as_str();
-
-                if is_mutated_rune {
-                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-                    target.push(ObjProp::KeyValue(name_alloc, get_call));
-                } else if same_name {
-                    target.push(ObjProp::Shorthand(name_alloc));
-                } else {
-                    target.push(ObjProp::KeyValue(name_alloc, parsed));
-                }
+                target.push(build_directive_prop(ctx, name, parsed, same_name));
             }
             StyleDirectiveValue::String(s) => {
+                let name_alloc = ctx.b.alloc_str(name);
                 target.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(s)));
             }
             StyleDirectiveValue::Concatenation(parts) => {
+                let name_alloc = ctx.b.alloc_str(name);
                 let expr = build_style_concat(ctx, el.id, *attr_idx, parts);
                 target.push(ObjProp::KeyValue(name_alloc, expr));
             }
