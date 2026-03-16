@@ -168,15 +168,13 @@ impl<'a> Ctx<'a> {
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(&self.index.each_blocks, id, "each block") }
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
-    pub fn const_tag(&self, id: NodeId) -> &'a ConstTag { self.get_node(&self.index.const_tags, id, "const tag") }
-
     fn get_node<T>(&self, map: &FxHashMap<NodeId, &'a T>, id: NodeId, label: &str) -> &'a T {
         map.get(&id).copied()
             .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id))
     }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
-        self.analysis.fragments.lowered.get(key)
+        self.analysis.fragments.lowered(key)
             .unwrap_or_else(|| panic!("lowered fragment {:?} not found", key))
     }
 
@@ -208,10 +206,11 @@ impl<'a> Ctx<'a> {
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_input_defaults(id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_var(id) }
     pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.analysis.element_flags.is_dynamic_attr(id, idx) }
+    pub fn static_class(&self, id: NodeId) -> Option<Span> { self.analysis.element_flags.static_class(id) }
+    pub fn static_style(&self, id: NodeId) -> Option<Span> { self.analysis.element_flags.static_style(id) }
 
     // -- Snippet shortcuts --
 
-    pub fn snippet_params(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.snippets.params(id) }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.analysis.snippets.is_hoistable(id) }
 
     // -- ConstTag shortcuts --

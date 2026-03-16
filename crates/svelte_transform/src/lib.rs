@@ -142,8 +142,7 @@ fn walk_node<'a>(
             let params = ctx
                 .analysis
                 .snippets
-                .params
-                .get(&block.id)
+                .params(block.id)
                 .cloned()
                 .unwrap_or_default();
             ctx.const_aliases.push(FxHashMap::default());
@@ -161,10 +160,10 @@ fn walk_node<'a>(
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
 
             // For destructured const tags: generate tmp name, register aliases
-            let names = ctx.analysis.const_tags.names.get(&tag.id).cloned().unwrap_or_default();
+            let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {
                 let tmp = ctx.ident_gen.gen("computed_const");
-                ctx.analysis.const_tags.tmp_names.insert(tag.id, tmp.clone());
+                ctx.analysis.const_tags.insert_tmp_name(tag.id, tmp.clone());
                 let aliases: FxHashMap<_, _> = names
                     .iter()
                     .map(|n| (n.clone(), (tmp.clone(), n.clone())))

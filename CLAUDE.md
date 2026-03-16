@@ -98,6 +98,7 @@ Read `TODO.md` for current work items. Full feature catalog in `ROADMAP.md`.
 - AST is immutable after parsing. Analysis results go into side tables (`AnalysisData`, keyed by `NodeId`).
 - AST stores `Span` for JS expressions; codegen re-parses from source. No JS subtree copying between phases.
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
+- Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
 
 ### Naming
 

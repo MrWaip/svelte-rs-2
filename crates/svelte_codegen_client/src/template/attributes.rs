@@ -126,7 +126,7 @@ pub(crate) fn process_class_directives<'a>(
         .collect();
 
     // Find static class value from precomputed span
-    let static_class = ctx.analysis.element_flags.static_class(el.id)
+    let static_class = ctx.static_class(el.id)
         .map(|span| ctx.component.source_text(span).to_string())
         .unwrap_or_default();
 
@@ -216,7 +216,7 @@ pub(crate) fn process_style_directives<'a>(
         .collect();
 
     // Find static style value from precomputed span
-    let static_style = ctx.analysis.element_flags.static_style(el.id)
+    let static_style = ctx.static_style(el.id)
         .map(|span| ctx.component.source_text(span).to_string())
         .unwrap_or_default();
 

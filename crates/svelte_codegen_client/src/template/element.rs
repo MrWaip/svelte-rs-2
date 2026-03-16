@@ -68,11 +68,7 @@ pub(crate) fn process_element<'a>(
         ContentType::DynamicText if !has_state => {
             // textContent shortcut
             let items: Vec<_> = ctx
-                .analysis
-                .fragments
-                .lowered
-                .get(&child_key)
-                .unwrap()
+                .lowered_fragment(&child_key)
                 .items
                 .clone();
             let expr = build_concat(ctx, &items[0]);
@@ -87,11 +83,7 @@ pub(crate) fn process_element<'a>(
         ContentType::DynamicText => {
             let text_name = ctx.gen_ident("text");
             let items: Vec<_> = ctx
-                .analysis
-                .fragments
-                .lowered
-                .get(&child_key)
-                .unwrap()
+                .lowered_fragment(&child_key)
                 .items
                 .clone();
             // is_text only for standalone {expression} (single Expr part, no surrounding text)
