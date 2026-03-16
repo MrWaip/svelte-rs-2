@@ -77,6 +77,11 @@ fn state_runes() {
 }
 
 #[rstest]
+fn state_raw() {
+    assert_compiler("state_raw");
+}
+
+#[rstest]
 fn each_block() {
     assert_compiler("each_block");
 }

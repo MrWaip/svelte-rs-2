@@ -113,6 +113,7 @@ pub enum DeclarationKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuneKind {
     State,
+    StateRaw,
     Derived,
     DerivedBy,
     Effect,
@@ -845,6 +846,7 @@ fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
                     let prop = member.property.name.as_str();
                     return match (obj.name.as_str(), prop) {
                         ("$derived", "by") => Some(RuneKind::DerivedBy),
+                        ("$state", "raw") => Some(RuneKind::StateRaw),
                         _ => None,
                     };
                 }

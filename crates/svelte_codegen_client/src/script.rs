@@ -577,7 +577,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     call.callee = self.b.rid_expr("$.derived");
                     node.init = Some(Expression::CallExpression(call));
                 }
-                RuneKind::State => {
+                RuneKind::State | RuneKind::StateRaw => {
                     if mutated {
                         call.callee = self.b.rid_expr("$.state");
 
@@ -603,7 +603,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             dummy.into_expression()
                         };
-                        let value = if Self::should_proxy(&value) {
+                        let value = if kind == RuneKind::State && Self::should_proxy(&value) {
                             self.b.call_expr("$.proxy", [Arg::Expr(value)])
                         } else {
                             value
@@ -734,7 +734,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 ]);
                 return;
             }
-            if let Some((_, mutated)) = self.rune_for_ref(id) {
+            if let Some((kind, mutated)) = self.rune_for_ref(id) {
                 if mutated {
                     let name = id.name.as_str().to_string();
                     let right = self.b.move_expr(&mut assign.right);
@@ -753,7 +753,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                         }
                     };
 
-                    let needs_proxy = Self::should_proxy(&value);
+                    let needs_proxy = kind != RuneKind::StateRaw && Self::should_proxy(&value);
                     *node = crate::rune_transform::transform_rune_set(self.b, &name, value, needs_proxy);
                     return;
                 }
