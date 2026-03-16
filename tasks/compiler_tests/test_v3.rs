@@ -82,6 +82,21 @@ fn state_raw() {
 }
 
 #[rstest]
+fn state_snapshot_basic() {
+    assert_compiler("state_snapshot_basic");
+}
+
+#[rstest]
+fn state_snapshot_expression() {
+    assert_compiler("state_snapshot_expression");
+}
+
+#[rstest]
+fn state_snapshot_reactive() {
+    assert_compiler("state_snapshot_reactive");
+}
+
+#[rstest]
 fn each_block() {
     assert_compiler("each_block");
 }
