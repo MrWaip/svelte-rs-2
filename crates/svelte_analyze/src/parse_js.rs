@@ -181,13 +181,18 @@ fn walk_node<'a>(
         }
         Node::ConstTag(tag) => {
             let decl_text = component.source_text(tag.declaration_span);
-            // Split "name = expr" at the first '=' to extract identifier and init expression
-            if let Some(eq_pos) = decl_text.find('=') {
-                let name = decl_text[..eq_pos].trim().to_string();
-                let init_text = decl_text[eq_pos + 1..].trim();
-                let init_offset = tag.declaration_span.start + (decl_text.len() - decl_text[eq_pos + 1..].trim_start().len()) as u32;
-                parse_expr(alloc, init_text, init_offset, tag.id, data, parsed, diags);
-                data.const_tags.names.insert(tag.id, vec![name]);
+            let arena_source: &'a str = alloc.alloc_str(decl_text);
+            match svelte_js::parse_const_declaration_with_alloc(alloc, arena_source, tag.declaration_span.start) {
+                Ok((names, references, init_expr)) => {
+                    data.expressions.insert(tag.id, ExpressionInfo {
+                        kind: ExpressionKind::Other,
+                        references,
+                        has_side_effects: false,
+                    });
+                    parsed.exprs.insert(tag.id, init_expr);
+                    data.const_tags.names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());
+                }
+                Err(diag) => diags.push(diag),
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
