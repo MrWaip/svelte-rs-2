@@ -4,23 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `$state.snapshot(val)` rune
+## 1. `$effect.tracking()` rune
 
-**Why first**: простая перезапись вызова, паттерн уже есть в script.rs.
-
-**What to change**:
-- `svelte_analyze/src/parse_js.rs`: detect `$state.snapshot(val)` as inline call rewrite
-- `svelte_codegen_client/src/script.rs`: `$state.snapshot(val)` → `$.snapshot(val)`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
-
-**Runtime**: `$.snapshot()`
-
----
-
-## 2. `$effect.tracking()` rune
-
-**Why second**: тривиальная перезапись вызова, без аргументов.
+**Why first**: тривиальная перезапись вызова, без аргументов.
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$effect.tracking()` as inline call rewrite
@@ -32,9 +18,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `$effect.root(fn)` rune
+## 2. `$effect.root(fn)` rune
 
-**Why third**: простая перезапись вызова, аналогична `$effect.pre`.
+**Why second**: простая перезапись вызова, аналогична `$effect.pre`.
 
 **What to change**:
 - `svelte_codegen_client/src/script.rs`: `$effect.root(fn)` → `$.effect_root(fn)`
@@ -42,6 +28,19 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
 
 **Runtime**: `$.effect_root()`
+
+---
+
+## 3. `$host()` rune
+
+**Why third**: простая замена выражения, для custom elements.
+
+**What to change**:
+- `svelte_codegen_client/src/script.rs`: `$host()` → `$$props.$$host`
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
+
+**Runtime**: expression replacement
 
 ---
 
