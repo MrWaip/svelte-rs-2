@@ -10,7 +10,7 @@ use oxc_ast::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, ParsedExprs};
+use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::{
     Attribute, Component, Fragment, Node, NodeId,
 };
@@ -24,13 +24,15 @@ use svelte_ast::{
 /// - Prop non-sources → `$$props.name`
 /// - Each-block context variables → `$.get(name)`
 /// - Snippet parameters → `name()` (thunk call)
+/// - Destructured const aliases → `$.get(tmp).prop`
 ///
 /// Must be called AFTER all analysis passes are complete.
 pub fn transform_component<'a>(
     alloc: &'a Allocator,
     component: &Component,
-    analysis: &'a AnalysisData,
+    analysis: &mut AnalysisData,
     parsed: &mut ParsedExprs<'a>,
+    ident_gen: &mut IdentGen,
 ) {
     // Precompute prop info
     let mut prop_sources = FxHashSet::default();
@@ -48,24 +50,29 @@ pub fn transform_component<'a>(
         }
     }
 
-    let ctx = TransformCtx {
+    let root_scope = analysis.scoping.root_scope_id();
+
+    let mut ctx = TransformCtx {
         alloc,
         analysis,
         prop_sources,
         prop_non_sources,
-        store_subscriptions: &analysis.store_subscriptions,
+        ident_gen,
+        const_aliases: vec![FxHashMap::default()],
     };
 
-    let root_scope = analysis.scoping.root_scope_id();
-    walk_fragment(&ctx, &component.fragment, component, parsed, root_scope, &[]);
+    walk_fragment(&mut ctx, &component.fragment, component, parsed, root_scope, &[]);
 }
 
-struct TransformCtx<'a> {
+struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
-    analysis: &'a AnalysisData,
+    analysis: &'b mut AnalysisData,
     prop_sources: FxHashSet<String>,
     prop_non_sources: FxHashMap<String, String>,
-    store_subscriptions: &'a FxHashSet<String>,
+    ident_gen: &'b mut IdentGen,
+    /// Stack of alias maps for destructured const tags. Each scope level
+    /// maps binding_name → (tmp_var, prop_name).
+    const_aliases: Vec<FxHashMap<String, (String, String)>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +80,7 @@ struct TransformCtx<'a> {
 // ---------------------------------------------------------------------------
 
 fn walk_fragment<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     fragment: &Fragment,
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
@@ -86,7 +93,7 @@ fn walk_fragment<'a>(
 }
 
 fn walk_node<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     node: &Node,
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
@@ -107,9 +114,13 @@ fn walk_node<'a>(
         }
         Node::IfBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
+            ctx.const_aliases.push(FxHashMap::default());
             walk_fragment(ctx, &block.consequent, component, parsed, scope, snippet_params);
+            ctx.const_aliases.pop();
             if let Some(alt) = &block.alternate {
+                ctx.const_aliases.push(FxHashMap::default());
                 walk_fragment(ctx, alt, component, parsed, scope, snippet_params);
+                ctx.const_aliases.pop();
             }
         }
         Node::EachBlock(block) => {
@@ -117,7 +128,9 @@ fn walk_node<'a>(
 
             // Each block body uses child scope (context + index vars)
             let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
+            ctx.const_aliases.push(FxHashMap::default());
             walk_fragment(ctx, &block.body, component, parsed, body_scope, snippet_params);
+            ctx.const_aliases.pop();
 
             // Fallback uses parent scope
             if let Some(fb) = &block.fallback {
@@ -131,9 +144,11 @@ fn walk_node<'a>(
                 .snippets
                 .params
                 .get(&block.id)
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-            walk_fragment(ctx, &block.body, component, parsed, scope, params);
+                .cloned()
+                .unwrap_or_default();
+            ctx.const_aliases.push(FxHashMap::default());
+            walk_fragment(ctx, &block.body, component, parsed, scope, &params);
+            ctx.const_aliases.pop();
         }
         Node::RenderTag(tag) => {
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
@@ -142,11 +157,28 @@ fn walk_node<'a>(
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
         }
         Node::ConstTag(tag) => {
+            // Transform the init expression FIRST (before aliases exist for this tag)
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+
+            // For destructured const tags: generate tmp name, register aliases
+            let names = ctx.analysis.const_tags.names.get(&tag.id).cloned().unwrap_or_default();
+            if names.len() > 1 {
+                let tmp = ctx.ident_gen.gen("computed_const");
+                ctx.analysis.const_tags.tmp_names.insert(tag.id, tmp.clone());
+                let aliases: FxHashMap<_, _> = names
+                    .iter()
+                    .map(|n| (n.clone(), (tmp.clone(), n.clone())))
+                    .collect();
+                if let Some(top) = ctx.const_aliases.last_mut() {
+                    top.extend(aliases);
+                }
+            }
         }
         Node::KeyBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
+            ctx.const_aliases.push(FxHashMap::default());
             walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
+            ctx.const_aliases.pop();
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
@@ -154,7 +186,7 @@ fn walk_node<'a>(
 
 /// Transform a single expression stored in `parsed.exprs` at the given node ID.
 fn transform_node_expr<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     node_id: NodeId,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
@@ -167,7 +199,7 @@ fn transform_node_expr<'a>(
 
 /// Transform attribute expressions.
 fn transform_attrs<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     owner_id: NodeId,
     attrs: &[Attribute],
     parsed: &mut ParsedExprs<'a>,
@@ -201,7 +233,7 @@ fn transform_attrs<'a>(
 ///
 /// `shadow` is a stack of sets of names shadowed by arrow function parameters.
 fn transform_expr<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
     snippet_params: &[String],
@@ -214,6 +246,14 @@ fn transform_expr<'a>(
             // Skip if shadowed by an arrow function parameter
             if shadow.iter().rev().any(|s| s.contains(name)) {
                 return;
+            }
+
+            // Destructured const alias → $.get(tmp).prop
+            for aliases in ctx.const_aliases.iter().rev() {
+                if let Some((tmp, prop)) = aliases.get(name) {
+                    *expr = rune_refs::make_member_get(ctx.alloc, tmp, prop);
+                    return;
+                }
             }
 
             // Snippet params → name() thunk call
@@ -237,7 +277,7 @@ fn transform_expr<'a>(
             // Store subscriptions: $X → $X() (thunk call)
             if name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];
-                if ctx.store_subscriptions.contains(base) {
+                if ctx.analysis.store_subscriptions.contains(base) {
                     *expr = rune_refs::make_thunk_call(ctx.alloc, name);
                     return;
                 }
@@ -337,7 +377,7 @@ fn transform_expr<'a>(
 
 /// Walk into an expression's children and transform them.
 fn walk_expr_children<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
     snippet_params: &[String],
@@ -426,7 +466,7 @@ fn walk_expr_children<'a>(
 
 /// Transform statements inside arrow function bodies.
 fn transform_stmt<'a>(
-    ctx: &TransformCtx<'a>,
+    ctx: &mut TransformCtx<'a, '_>,
     stmt: &mut Statement<'a>,
     scope: ScopeId,
     snippet_params: &[String],

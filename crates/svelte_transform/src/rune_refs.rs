@@ -55,6 +55,16 @@ pub fn make_thunk_call<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
     ast.expression_call(SPAN, callee, NONE, ast.vec(), false)
 }
 
+/// Build `$.get(signal_name).prop` — member access on a derived signal.
+pub fn make_member_get<'a>(alloc: &'a Allocator, signal_name: &str, prop: &str) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    let get_call = make_rune_get(alloc, signal_name);
+    let property = ast.identifier_name(SPAN, ast.atom(prop));
+    Expression::StaticMemberExpression(ast.alloc(
+        ast.static_member_expression(SPAN, get_call, property, false),
+    ))
+}
+
 /// Build `$$props.name` — static member expression.
 pub fn make_props_access<'a>(alloc: &'a Allocator, prop_name: &str) -> Expression<'a> {
     let ast = AstBuilder::new(alloc);

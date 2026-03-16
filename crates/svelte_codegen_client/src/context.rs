@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::{AnalysisData, ContentType, FragmentKey, LoweredFragment, ParsedExprs};
+use svelte_analyze::{AnalysisData, ContentType, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
 use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, HtmlTag, IfBlock, Node, NodeId, RenderTag, SnippetBlock};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
@@ -96,8 +96,8 @@ pub struct Ctx<'a> {
     pub analysis: &'a AnalysisData,
     /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
     pub parsed: &'a mut ParsedExprs<'a>,
-    /// Monotonically incrementing counter per name prefix.
-    ident_counters: FxHashMap<String, u32>,
+    /// Shared unique identifier generator.
+    ident_gen: &'a mut IdentGen,
     /// Template declarations from nested fragments, hoisted to module scope.
     pub module_hoisted: Vec<Statement<'a>>,
 
@@ -124,6 +124,7 @@ impl<'a> Ctx<'a> {
         component: &'a Component,
         analysis: &'a AnalysisData,
         parsed: &'a mut ParsedExprs<'a>,
+        ident_gen: &'a mut IdentGen,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
@@ -148,7 +149,7 @@ impl<'a> Ctx<'a> {
             component,
             analysis,
             parsed,
-            ident_counters: FxHashMap::default(),
+            ident_gen,
             module_hoisted: Vec::new(),
             index,
             needs_binding_group: false,
@@ -183,20 +184,7 @@ impl<'a> Ctx<'a> {
 
     /// Generate a unique identifier like `root`, `root_1`, `root_2`, …
     pub fn gen_ident(&mut self, prefix: &str) -> String {
-        // Avoid allocating a String key on every lookup (cache hit path is allocation-free)
-        let count = if let Some(c) = self.ident_counters.get_mut(prefix) {
-            let n = *c;
-            *c += 1;
-            n
-        } else {
-            self.ident_counters.insert(prefix.to_string(), 1);
-            0
-        };
-        if count == 0 {
-            prefix.to_string()
-        } else {
-            format!("{}_{}", prefix, count)
-        }
+        self.ident_gen.gen(prefix)
     }
 
     // -- Analysis shortcuts --

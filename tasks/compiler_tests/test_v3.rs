@@ -340,3 +340,18 @@ fn store_write() {
 fn const_tag() {
     assert_compiler("const_tag");
 }
+
+#[rstest]
+fn const_tag_destructured() {
+    assert_compiler("const_tag_destructured");
+}
+
+#[rstest]
+fn const_tag_destructured_multi() {
+    assert_compiler("const_tag_destructured_multi");
+}
+
+#[rstest]
+fn const_tag_destructured_if() {
+    assert_compiler("const_tag_destructured_if");
+}
