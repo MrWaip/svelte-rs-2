@@ -82,7 +82,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 |---|---------|-----------|--------|-------|
 | 1 | ~~`$effect(fn)`~~ | `$.user_effect(fn)` | S | ✅ Done |
 | 2 | ~~`$effect.pre(fn)`~~ | `$.user_pre_effect(fn)` | S | ✅ Done |
-| 3 | `$state.raw(val)` | `$.state(val)` (no `$.proxy()`) | S | Add `RuneKind::StateRaw`, skip proxy wrapping |
+| 3 | ~~`$state.raw(val)`~~ | `$.state(val)` (no `$.proxy()`) | S | ✅ Done. Deferred: destructuring (shared gap with `$state`), class fields, `$state.frozen` rename validation |
 | 4 | `$state.snapshot(val)` | `$.snapshot(val)` | S | Inline call rewrite, not a declarator |
 | 5 | `$effect.tracking()` | `$.effect_tracking()` | S | Trivial call rewrite, no args |
 | 6 | `$effect.root(fn)` | `$.effect_root(fn)` | S | Simple callee rewrite, pass through args |
