@@ -7,6 +7,26 @@ export const example = [
   "",
 ].join("\n");
 
+export const moduleExample = `let count = $state(0);
+const doubled = $derived(count * 2);
+
+export function increment() {
+    count++;
+}
+
+export function getCount() {
+    return count;
+}
+
+export function getDoubled() {
+    return doubled;
+}
+
+$effect(() => {
+    console.log("count changed:", count);
+});
+`;
+
 export const benchmarkExample = `<script>
     import { onMount } from "svelte";
 

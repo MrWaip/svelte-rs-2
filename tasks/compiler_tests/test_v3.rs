@@ -6,7 +6,7 @@ use std::{
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::compile;
+use svelte_compiler::{compile, compile_module};
 
 fn assert_compiler(case: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -409,4 +409,36 @@ fn class_variable() {
 #[rstest]
 fn class_expr_with_directives() {
     assert_compiler("class_expr_with_directives");
+}
+
+// ---------------------------------------------------------------------------
+// Module compilation tests
+// ---------------------------------------------------------------------------
+
+fn assert_compiler_module(case: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("cases2")
+        .join(case)
+        .join("case.svelte.js");
+    let input = read_to_string(&path).unwrap();
+
+    let result = compile_module(&input);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("[{case}] compile_module produced no JS"));
+
+    let dir = path.parent().unwrap();
+    let expected = read_to_string(dir.join("case-svelte.js")).unwrap();
+
+    File::create(dir.join("case-rust.js"))
+        .unwrap()
+        .write_all(js.as_bytes())
+        .unwrap();
+
+    assert_eq!(js, expected);
+}
+
+#[rstest]
+fn module_compilation() {
+    assert_compiler_module("module_compilation");
 }
