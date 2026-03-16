@@ -11,7 +11,7 @@ use oxc_codegen::Codegen;
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::Component;
 
-use builder::{Arg, ObjProp};
+use builder::{Arg, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -155,5 +155,23 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     let program = b.program(program_body);
 
+    Codegen::default().build(&program).code
+}
+
+/// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
+/// Applies rune transforms but produces a plain ES module (no component wrapping).
+pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &AnalysisData) -> String {
+    let arena_source: &str = alloc.alloc_str(source);
+    let (imports, body) = script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
+
+    let b = Builder::new(alloc);
+    let import_svelte = b.import_all("$", "svelte/internal/client");
+
+    let mut program_body: Vec<Statement<'_>> = Vec::new();
+    program_body.push(import_svelte);
+    program_body.extend(imports);
+    program_body.extend(body);
+
+    let program = b.program(program_body);
     Codegen::default().build(&program).code
 }

@@ -3,6 +3,7 @@ use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use serde::Serialize;
+use svelte_compiler::CompileResult;
 use svelte_diagnostics::LineIndex;
 use wasm_bindgen::prelude::*;
 
@@ -24,6 +25,42 @@ struct WasmCompileResult {
     diagnostics: Vec<WasmDiagnostic>,
 }
 
+fn to_wasm_result(
+    result: CompileResult,
+    source: &str,
+) -> WasmCompileResult {
+    let line_index = LineIndex::new(source);
+
+    let diagnostics: Vec<WasmDiagnostic> = result
+        .diagnostics
+        .iter()
+        .map(|d| {
+            let (start_line, start_col) = line_index.line_col(d.span.start as usize);
+            let (end_line, end_col) = line_index.line_col(d.span.end as usize);
+            let mut message = d.kind.message();
+            if let Some(url) = d.kind.svelte_doc_url() {
+                message.push('\n');
+                message.push_str(&url);
+            }
+            WasmDiagnostic {
+                code: d.kind.code().to_string(),
+                message,
+                severity: format!("{:?}", d.severity),
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+                frame: line_index.code_frame(source, d.span),
+            }
+        })
+        .collect();
+
+    WasmCompileResult {
+        js: result.js,
+        diagnostics,
+    }
+}
+
 #[wasm_bindgen]
 pub struct WasmCompiler {}
 
@@ -37,38 +74,13 @@ impl WasmCompiler {
     #[wasm_bindgen()]
     pub fn compile(&self, source: &str) -> Result<JsValue, serde_wasm_bindgen::Error> {
         let result = svelte_compiler::compile(source);
-        let line_index = LineIndex::new(source);
+        serde_wasm_bindgen::to_value(&to_wasm_result(result, source))
+    }
 
-        let diagnostics: Vec<WasmDiagnostic> = result
-            .diagnostics
-            .iter()
-            .map(|d| {
-                let (start_line, start_col) = line_index.line_col(d.span.start as usize);
-                let (end_line, end_col) = line_index.line_col(d.span.end as usize);
-                let mut message = d.kind.message();
-                if let Some(url) = d.kind.svelte_doc_url() {
-                    message.push('\n');
-                    message.push_str(&url);
-                }
-                WasmDiagnostic {
-                    code: d.kind.code().to_string(),
-                    message,
-                    severity: format!("{:?}", d.severity),
-                    start_line,
-                    start_col,
-                    end_line,
-                    end_col,
-                    frame: line_index.code_frame(source, d.span),
-                }
-            })
-            .collect();
-
-        let wasm_result = WasmCompileResult {
-            js: result.js,
-            diagnostics,
-        };
-
-        serde_wasm_bindgen::to_value(&wasm_result)
+    #[wasm_bindgen()]
+    pub fn compile_module(&self, source: &str) -> Result<JsValue, serde_wasm_bindgen::Error> {
+        let result = svelte_compiler::compile_module(source);
+        serde_wasm_bindgen::to_value(&to_wasm_result(result, source))
     }
 
     #[wasm_bindgen()]
