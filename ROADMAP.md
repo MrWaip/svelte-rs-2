@@ -84,7 +84,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | 2 | ~~`$effect.pre(fn)`~~ | `$.user_pre_effect(fn)` | S | ✅ Done |
 | 3 | ~~`$state.raw(val)`~~ | `$.state(val)` (no `$.proxy()`) | S | ✅ Done. Deferred: destructuring (shared gap with `$state`), class fields, `$state.frozen` rename validation |
 | 4 | ~~`$state.snapshot(val)`~~ | `$.snapshot(val)` | S | ✅ Done |
-| 5 | `$effect.tracking()` | `$.effect_tracking()` | S | Trivial call rewrite, no args |
+| 5 | ~~`$effect.tracking()`~~ | `$.effect_tracking()` | S | ✅ Done. Trivial call rewrite, no args |
 | 6 | `$effect.root(fn)` | `$.effect_root(fn)` | S | Simple callee rewrite, pass through args |
 | 7 | `$inspect(vals)` | `$.inspect(...)` | S | Dev-mode only — strip in prod. Needs `dev` compiler option |
 | 8 | `$inspect.trace()` | dev-only trace | S | Same `dev` flag dependency |
