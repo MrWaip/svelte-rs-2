@@ -164,9 +164,10 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **AST**: `Node::ConstTag { id, span, declaration_span }`
 - **Parser**: Parse `{@const ...}` extracting variable declaration
 - **Analyze**: Scope integration — const binding visible in subsequent template nodes within same block
-- **Codegen**: `const x = $.derived(() => expr)` — always wraps in derived
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js` (~134 lines, destructuring support)
-- **Deferred**: Object/array destructuring, dev mode `$.tag()`, placement validation
+- **Transform**: Destructuring → generates tmp var (`$$const_0`), rewrites aliases to `$.get(tmp).prop`
+- **Codegen**: Simple: `const x = $.derived(() => expr)`. Destructured: `const $$const_0 = $.derived(() => expr)` + aliases
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/ConstTag.js`
+- **Deferred**: dev mode `$.tag()`, placement validation
 
 ### ~~`style:prop={value}` — Style directive~~ ✅
 - **Phases**: P, A, T
