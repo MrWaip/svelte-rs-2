@@ -139,9 +139,10 @@ impl<'a> Parser<'a> {
                     push_child(&mut children_stack, node);
                 }
                 TokenType::StartTag(tag) => {
+                    let name = tag.name_span.source_text(self.source);
                     let attrs = self.convert_attributes(&tag.attributes);
                     if tag.self_closing {
-                        let name = tag.name.to_string();
+                        let name = name.to_string();
                         let node = if is_component_name(&name) {
                             Node::ComponentNode(ComponentNode {
                                 id: self.ids.next(),
@@ -164,7 +165,7 @@ impl<'a> Parser<'a> {
                         push_child(&mut children_stack, node);
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
-                            name: tag.name.to_string(),
+                            name: name.to_string(),
                             span_start: token.span,
                             attributes: attrs,
                         }));
@@ -182,7 +183,7 @@ impl<'a> Parser<'a> {
                 TokenType::StartIfTag(start_if) => {
                     entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
                         span: token.span,
-                        test_span: start_if.expression.span,
+                        test_span: start_if.expression_span,
                         elseif: false,
                         consequent: None,
                         in_alternate: false,
@@ -207,10 +208,10 @@ impl<'a> Parser<'a> {
                 TokenType::StartEachTag(each) => {
                     entry_stack.push(StackEntry::EachBlock(EachBlockEntry {
                         span: token.span,
-                        expression_span: each.collection.span,
-                        context_span: each.item.span,
-                        index_span: each.index.map(|i| i.span),
-                        key_span: each.key.map(|k| k.span),
+                        expression_span: each.collection_span,
+                        context_span: each.context_span,
+                        index_span: each.index_span,
+                        key_span: each.key_span,
                     }));
                     children_stack.push(vec![]); // body children
                 }
@@ -224,8 +225,8 @@ impl<'a> Parser<'a> {
                 TokenType::StartSnippetTag(snippet_tag) => {
                     entry_stack.push(StackEntry::SnippetBlock(SnippetBlockEntry {
                         span_start: token.span,
-                        name: snippet_tag.name.to_string(),
-                        params_span: snippet_tag.params.map(|p| p.span),
+                        name: snippet_tag.name_span.source_text(self.source).to_string(),
+                        params_span: snippet_tag.params_span,
                     }));
                     children_stack.push(vec![]);
                 }
@@ -239,7 +240,7 @@ impl<'a> Parser<'a> {
                 TokenType::StartKeyTag(key_tag) => {
                     entry_stack.push(StackEntry::KeyBlock(KeyBlockEntry {
                         span: token.span,
-                        expression_span: key_tag.expression.span,
+                        expression_span: key_tag.expression_span,
                     }));
                     children_stack.push(vec![]);
                 }
@@ -254,7 +255,7 @@ impl<'a> Parser<'a> {
                     let node = Node::RenderTag(RenderTag {
                         id: self.ids.next(),
                         span: token.span,
-                        expression_span: render_tag.expression.span,
+                        expression_span: render_tag.expression_span,
                     });
                     push_child(&mut children_stack, node);
                 }
@@ -262,7 +263,7 @@ impl<'a> Parser<'a> {
                     let node = Node::HtmlTag(HtmlTag {
                         id: self.ids.next(),
                         span: token.span,
-                        expression_span: html_tag.expression.span,
+                        expression_span: html_tag.expression_span,
                     });
                     push_child(&mut children_stack, node);
                 }
@@ -270,7 +271,7 @@ impl<'a> Parser<'a> {
                     let node = Node::ConstTag(ConstTag {
                         id: self.ids.next(),
                         span: token.span,
-                        declaration_span: ct.declaration.span,
+                        declaration_span: ct.declaration_span,
                     });
                     push_child(&mut children_stack, node);
                 }
@@ -280,16 +281,13 @@ impl<'a> Parser<'a> {
                         continue;
                     }
 
-                    let content_start = self.offset_of(script_tag.source);
-                    let content_end = content_start + script_tag.source.len();
-
-                    let language = if script_tag.is_typescript() {
+                    let language = if script_tag.is_typescript {
                         ScriptLanguage::TypeScript
                     } else {
                         ScriptLanguage::JavaScript
                     };
 
-                    let context = if script_tag.is_module() {
+                    let context = if script_tag.is_module {
                         ScriptContext::Module
                     } else {
                         ScriptContext::Default
@@ -297,7 +295,7 @@ impl<'a> Parser<'a> {
 
                     script_data = Some(ScriptData {
                         span: token.span,
-                        content_span: Span::new(content_start as u32, content_end as u32),
+                        content_span: script_tag.content_span,
                         language,
                         context,
                     });
@@ -308,12 +306,9 @@ impl<'a> Parser<'a> {
                         continue;
                     }
 
-                    let content_start = self.offset_of(style_tag.source);
-                    let content_end = content_start + style_tag.source.len();
-
                     css_data = Some(CssData {
                         span: token.span,
-                        content_span: Span::new(content_start as u32, content_end as u32),
+                        content_span: style_tag.content_span,
                     });
                 }
                 TokenType::EOF => break,
@@ -351,13 +346,15 @@ impl<'a> Parser<'a> {
 
     fn handle_end_tag(
         &mut self,
-        tag: &token::EndTag<'_>,
+        tag: &token::EndTag,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<Node>>,
     ) {
+        let tag_name = tag.name_span.source_text(self.source);
+
         // Void elements cannot have closing tags
-        if scanner::is_void(tag.name) {
+        if scanner::is_void(tag_name) {
             self.recover(Diagnostic::void_element_invalid_content(span));
             let node = Node::Error(svelte_ast::ErrorNode {
                 id: self.ids.next(),
@@ -369,7 +366,7 @@ impl<'a> Parser<'a> {
 
         // Try to find a matching element in the stack
         let match_idx = entry_stack.iter().rposition(|e| {
-            matches!(e, StackEntry::Element(el) if el.name == tag.name)
+            matches!(e, StackEntry::Element(el) if el.name == tag_name)
         });
 
         match match_idx {
@@ -426,7 +423,7 @@ impl<'a> Parser<'a> {
 
     fn handle_else_tag(
         &mut self,
-        else_tag: &token::ElseTag<'_>,
+        else_tag: &token::ElseTag,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<Node>>,
@@ -448,10 +445,10 @@ impl<'a> Parser<'a> {
 
             children_stack.push(vec![]);
 
-            let expr = else_tag.expression.as_ref().unwrap();
+            let expr_span = else_tag.expression_span.unwrap();
             entry_stack.push(StackEntry::IfBlock(IfBlockEntry {
                 span,
-                test_span: expr.span,
+                test_span: expr_span,
                 elseif: true,
                 consequent: None,
                 in_alternate: false,
@@ -757,31 +754,31 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn make_text(&mut self, token: &Token<'a>) -> Node {
+    fn make_text(&mut self, token: &Token) -> Node {
         Node::Text(Text {
             id: self.ids.next(),
             span: token.span,
         })
     }
 
-    fn make_comment(&mut self, token: &Token<'a>) -> Node {
+    fn make_comment(&mut self, token: &Token) -> Node {
         Node::Comment(Comment {
             id: self.ids.next(),
             span: token.span,
         })
     }
 
-    fn make_expression_tag(&mut self, interpolation: &ExpressionTag<'a>) -> Node {
+    fn make_expression_tag(&mut self, interpolation: &ExpressionTag) -> Node {
         Node::ExpressionTag(svelte_ast::ExpressionTag {
             id: self.ids.next(),
             span: interpolation.span,
-            expression_span: interpolation.expression.span,
+            expression_span: interpolation.expression_span,
         })
     }
 
     fn convert_attributes(
         &mut self,
-        token_attrs: &[token::Attribute<'a>],
+        token_attrs: &[token::Attribute],
     ) -> Vec<Attribute> {
         let mut attributes = Vec::new();
 
@@ -789,17 +786,16 @@ impl<'a> Parser<'a> {
             match attr {
                 token::Attribute::HTMLAttribute(html_attr) => {
                     let result = match &html_attr.value {
-                        token::AttributeValue::String(value) => {
-                            let start = self.offset_of(value);
+                        token::AttributeValue::String(span) => {
                             Attribute::StringAttribute(StringAttribute {
-                                name: html_attr.name.to_string(),
-                                value_span: Span::new(start as u32, (start + value.len()) as u32),
+                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                value_span: *span,
                             })
                         }
                         token::AttributeValue::ExpressionTag(expr_tag) => {
                             Attribute::ExpressionAttribute(ExpressionAttribute {
-                                name: html_attr.name.to_string(),
-                                expression_span: expr_tag.expression.span,
+                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                expression_span: expr_tag.expression_span,
                                 shorthand: false,
                             })
                         }
@@ -808,32 +804,32 @@ impl<'a> Parser<'a> {
                                 .parts
                                 .iter()
                                 .map(|part| match part {
-                                    token::ConcatenationPart::String(s) => {
-                                        ConcatPart::Static(s.to_string())
+                                    token::ConcatenationPart::String(span) => {
+                                        ConcatPart::Static(span.source_text(self.source).to_string())
                                     }
                                     token::ConcatenationPart::Expression(et) => {
-                                        ConcatPart::Dynamic(et.expression.span)
+                                        ConcatPart::Dynamic(et.expression_span)
                                     }
                                 })
                                 .collect();
 
                             Attribute::ConcatenationAttribute(ConcatenationAttribute {
-                                name: html_attr.name.to_string(),
+                                name: html_attr.name_span.source_text(self.source).to_string(),
                                 parts,
                             })
                         }
                         token::AttributeValue::Empty => {
                             Attribute::BooleanAttribute(BooleanAttribute {
-                                name: html_attr.name.to_string(),
+                                name: html_attr.name_span.source_text(self.source).to_string(),
                             })
                         }
                     };
                     attributes.push(result);
                 }
                 token::Attribute::ExpressionTag(expr_tag) => {
-                    let is_spread = expr_tag.expression.value.starts_with("...");
+                    let is_spread = expr_tag.expression_span.source_text(self.source).starts_with("...");
                     attributes.push(Attribute::ShorthandOrSpread(ShorthandOrSpread {
-                        expression_span: expr_tag.expression.span,
+                        expression_span: expr_tag.expression_span,
                         is_spread,
                     }));
                 }
@@ -841,10 +837,10 @@ impl<'a> Parser<'a> {
                     let expression_span = if cd.shorthand {
                         None
                     } else {
-                        Some(cd.expression.span)
+                        Some(cd.expression_span)
                     };
                     attributes.push(Attribute::ClassDirective(ClassDirective {
-                        name: cd.name.to_string(),
+                        name: cd.name_span.source_text(self.source).to_string(),
                         expression_span,
                         shorthand: cd.shorthand,
                     }));
@@ -855,16 +851,16 @@ impl<'a> Parser<'a> {
                     } else {
                         match &sd.value {
                             token::AttributeValue::ExpressionTag(et) => {
-                                StyleDirectiveValue::Expression(et.expression.span)
+                                StyleDirectiveValue::Expression(et.expression_span)
                             }
-                            token::AttributeValue::String(s) => {
-                                StyleDirectiveValue::String(s.to_string())
+                            token::AttributeValue::String(span) => {
+                                StyleDirectiveValue::String(span.source_text(self.source).to_string())
                             }
                             token::AttributeValue::Concatenation(c) => {
                                 StyleDirectiveValue::Concatenation(
                                     c.parts.iter().map(|p| match p {
-                                        token::ConcatenationPart::String(s) => ConcatPart::Static(s.to_string()),
-                                        token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic(et.expression.span),
+                                        token::ConcatenationPart::String(span) => ConcatPart::Static(span.source_text(self.source).to_string()),
+                                        token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic(et.expression_span),
                                     }).collect(),
                                 )
                             }
@@ -875,7 +871,7 @@ impl<'a> Parser<'a> {
                         }
                     };
                     attributes.push(Attribute::StyleDirective(StyleDirective {
-                        name: sd.name.to_string(),
+                        name: sd.name_span.source_text(self.source).to_string(),
                         value,
                         important: sd.important,
                     }));
@@ -884,10 +880,10 @@ impl<'a> Parser<'a> {
                     let expression_span = if bd.shorthand {
                         None
                     } else {
-                        Some(bd.expression.span)
+                        Some(bd.expression_span)
                     };
                     attributes.push(Attribute::BindDirective(BindDirective {
-                        name: bd.name.to_string(),
+                        name: bd.name_span.source_text(self.source).to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
                     }));
@@ -895,30 +891,20 @@ impl<'a> Parser<'a> {
                 // LEGACY(svelte4): on:directive
                 token::Attribute::OnDirectiveLegacy(od) => {
                     let expression_span = if od.has_expression {
-                        Some(od.expression.span)
+                        Some(od.expression_span)
                     } else {
                         None
                     };
                     attributes.push(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
-                        name: od.name.to_string(),
+                        name: od.name_span.source_text(self.source).to_string(),
                         expression_span,
-                        modifiers: od.modifiers.iter().map(|m| m.to_string()).collect(),
+                        modifiers: od.modifiers.iter().map(|m| m.source_text(self.source).to_string()).collect(),
                     }));
                 }
             }
         }
 
         attributes
-    }
-
-    fn offset_of(&self, s: &str) -> usize {
-        let source_ptr = self.source.as_ptr() as usize;
-        let s_ptr = s.as_ptr() as usize;
-        assert!(
-            s_ptr >= source_ptr && s_ptr <= source_ptr + self.source.len(),
-            "slice is not within source"
-        );
-        s_ptr - source_ptr
     }
 }
 
