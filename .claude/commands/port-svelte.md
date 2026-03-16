@@ -3,8 +3,7 @@
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
 The command argument is a feature description (e.g. `$derived`, `{@html}`, `style:prop`).
-Before starting, read `TODO.md`, find the matching item, and use the listed files and reference links.
-If the argument doesn't match any TODO item, check `ROADMAP.md` for the full catalog.
+Before starting, read `ROADMAP.md`, find the matching item, and use the listed files and reference links.
 
 ## Approach
 
@@ -183,12 +182,6 @@ Update `ROADMAP.md`:
 - Mark `[x]` for completed checkboxes (deferred items from Step 2d stay as `[ ]`)
 - If new subtasks were discovered during implementation — add them as `- [ ]`
 
-Update `TODO.md`:
-- Remove the completed item
-- Pull the next unchecked item from `ROADMAP.md` (by priority order) so TODO always has 5 items
-- If new blockers were discovered — note them
-
-Both files must be kept in sync. `TODO.md` is a sliding window of 5 items from `ROADMAP.md`.
 
 ## Step 9: Benchmark
 
