@@ -7,7 +7,8 @@ Rust компилятор Svelte v5. Компилирует `.svelte` → client
 ```
 source: &str
   → svelte_parser::Parser → Component (AST)
-  → svelte_analyze::analyze → (AnalysisData, Vec<Diagnostic>)
+  → svelte_analyze::analyze → (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+  → svelte_transform::transform_component → (mutates ParsedExprs in-place)
   → svelte_codegen_client::generate → String (JS)
 ```
 
@@ -60,12 +61,18 @@ struct Component {
 struct Fragment { nodes: Vec<Node> }
 
 enum Node {
-    Text(Text),               // id, span
-    Element(Element),         // id, span, name, self_closing, attributes, fragment, kind
-    Comment(Comment),         // id, span
-    ExpressionTag(ExprTag),   // id, span, expression_span
-    IfBlock(IfBlock),         // id, span, test_span, elseif, consequent, alternate: Option<Fragment>
-    EachBlock(EachBlock),     // id, span, expression_span, context_span, index_span?, key_span?, body, fallback?
+    Text(Text),                   // id, span
+    Element(Element),             // id, span, name, self_closing, attributes, fragment, kind
+    ComponentNode(ComponentNode), // id, span, name, attributes, fragment
+    Comment(Comment),             // id, span
+    ExpressionTag(ExprTag),       // id, span, expression_span
+    IfBlock(IfBlock),             // id, span, test_span, elseif, consequent, alternate: Option<Fragment>
+    EachBlock(EachBlock),         // id, span, expression_span, context_span, index_span?, key_span?, body, fallback?
+    SnippetBlock(SnippetBlock),   // id, span, params_span?, body
+    RenderTag(RenderTag),         // id, span, expression_span
+    HtmlTag(HtmlTag),             // id, span, expression_span
+    ConstTag(ConstTag),           // id, span, declaration_span
+    KeyBlock(KeyBlock),           // id, span, expression_span, fragment
 }
 
 enum Attribute {
@@ -77,6 +84,7 @@ enum Attribute {
     ClassDirective(ClassDirective),               // name, expression_span?, shorthand
     StyleDirective(StyleDirective),               // name, value: StyleDirectiveValue, important
     BindDirective(BindDirective),                 // name, expression_span?, shorthand
+    OnDirectiveLegacy(OnDirectiveLegacy),         // name, expression_span?, modifiers (Svelte 4)
 }
 
 enum ConcatPart { Static(String), Dynamic(Span) }
@@ -138,80 +146,136 @@ Parser::new(source: &str).parse() -> (Component, Vec<Diagnostic>)
 
 ```rust
 // Публичный API
-fn analyze(component: &Component) -> (AnalysisData, Vec<Diagnostic>)
+fn analyze<'a>(alloc: &'a Allocator, component: &Component) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
 
 // Re-exports из data.rs:
-pub use data::{AnalysisData, ConcatPart, ContentType, FragmentItem, FragmentKey, LoweredFragment, PropAnalysis, PropsAnalysis};
+pub use data::{
+    AnalysisData, ConcatPart, ConstTagData, ContentType, ElementFlags, FragmentData,
+    FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
+};
+pub use ident_gen::IdentGen;
+pub use scope::ComponentScoping;
 ```
 
-**9 passes** (порядок важен):
-1. `parse_js` — парсит JS-выражения → `expressions`, `attr_expressions`, `script`; builds `ComponentScoping` via single OXC parse
-2. `build_scoping` — marks runes in scoping, walks template to add each-block child scopes, resolves derived deps to SymbolId
-3. `resolve_references` — resolves all template references to SymbolId, registers write refs in OXC Scoping → `symbol_is_mutated()` covers script + template; caches rune name sets
-4. `known_values` — const-декларации с литеральным init → `known_values`
-5. `lower` — trim whitespace, группирует Text+ExprTag → `lowered_fragments`
-6. `reactivity` — SymbolId-based dynamism check → `dynamic_nodes`, `dynamic_attrs`, `node_needs_ref`
-7. `content_types` — классификация по lowered items → `content_types`
-8. `elseif` — определяет alternate-фрагменты с единственным elseif → `alt_is_elseif`
-9. `validate` — семантические проверки
+**11 passes** (порядок важен):
+1. `parse_js` — парсит JS-выражения → `ParsedExprs`, `expressions`, `attr_expressions`, `script`
+2. `build_scoping` — строит единое дерево скоупов (script + template) → `ComponentScoping`
+3. `resolve_references` — резолвит template-ссылки к SymbolId, регистрирует мутации
+4. `store_subscriptions` — определяет `$store` подписки → `store_subscriptions`
+5. `known_values` — const-декларации с литеральным init → `known_values`
+6. `props` — анализ `$props()` деструктуризации → `props`
+7. `lower` — trim whitespace, группирует Text+ExprTag → `fragments.lowered`
+8. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` (4 visitor'а за один обход)
+9. `classify_and_mark_dynamic` — классификация фрагментов → `fragments.content_types`, `fragments.has_dynamic_children`
+10. `needs_var` — элементы, которым нужна DOM-переменная → `element_flags.needs_var`
+11. `validate` — семантические проверки
 
 **Scope system** (`scope.rs`):
 ```rust
-struct ComponentScoping {
-    scoping: oxc_semantic::Scoping,          // unified scope tree (script + template)
-    runes: HashMap<SymbolId, RuneKind>,      // which symbols are runes
-    node_scopes: HashMap<NodeId, ScopeId>,   // each-block NodeId → child ScopeId
-    derived_deps: HashMap<SymbolId, Vec<SymbolId>>, // $derived deps (SymbolId-based)
-}
-// from_scoping(Scoping) / empty()
+struct ComponentScoping { /* oxc-based, lifetime-free */ }
+// empty() / root_scope_id() -> ScopeId
 // add_child_scope(parent) -> ScopeId
 // add_binding(scope, name) -> SymbolId
 // find_binding(scope, name) -> Option<SymbolId>  — walks parent chain
-// mark_rune(id, kind) / is_rune(id) / rune_kind(id)
-// is_mutated(id) -> bool  — delegates to OXC symbol_is_mutated()
-// register_template_reference(sym_id, flags)  — registers ref in OXC Scoping
-// is_dynamic_by_id(sym_id) -> bool  — true if rune or non-root binding
+// is_rune(sym_id) / rune_kind(sym_id) / rune_info_by_name(name) -> Option<(RuneKind, mutated)>
+// is_mutated(sym_id) -> bool
 // node_scope(NodeId) -> Option<ScopeId>
-// rune_names() / mutated_rune_names()
+```
+
+**`IdentGen`** (`ident_gen.rs`):
+```rust
+struct IdentGen { /* counters: HashMap<String, u32> */ }
+// gen(prefix: &str) -> String  — "root" → "root", "root_1", "root_2", ...
+// Shared between svelte_transform and svelte_codegen_client via &mut IdentGen
 ```
 
 **Ключевые типы** (`data.rs`):
 ```rust
-enum FragmentKey { Root, Element(NodeId), IfConsequent(NodeId), IfAlternate(NodeId), EachBody(NodeId), EachFallback(NodeId) }
+// Parsed OXC Expression ASTs — separate from AnalysisData to avoid lifetime propagation
+struct ParsedExprs<'a> {
+    exprs: FxHashMap<NodeId, Expression<'a>>,                        // template expressions
+    attr_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,          // attribute expressions
+    concat_part_exprs: FxHashMap<(NodeId, usize, usize), Expression<'a>>, // concat parts
+    script_program: Option<Program<'a>>,                             // consumed by codegen
+}
+
+enum FragmentKey {
+    Root,
+    Element(NodeId), ComponentNode(NodeId),
+    IfConsequent(NodeId), IfAlternate(NodeId),
+    EachBody(NodeId), EachFallback(NodeId),
+    SnippetBody(NodeId), KeyBlockBody(NodeId),
+}
 
 enum FragmentItem {
-    Element(NodeId),
-    IfBlock(NodeId),
-    EachBlock(NodeId),
-    TextConcat { parts: Vec<ConcatPart> },
+    Element(NodeId), ComponentNode(NodeId),
+    IfBlock(NodeId), EachBlock(NodeId),
+    RenderTag(NodeId), HtmlTag(NodeId), KeyBlock(NodeId),
+    TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
 }
-enum ConcatPart { Text(String), Expr(NodeId) }  // NB: другой ConcatPart чем в svelte_ast!
+// item.is_standalone_expr() -> bool
+// item.node_id() -> NodeId  (panic on TextConcat)
+
+enum ConcatPart { Text(String), Expr(NodeId) }  // NB: другой тип чем в svelte_ast!
 
 enum ContentType { Empty, StaticText, DynamicText, SingleElement, SingleBlock, Mixed }
 
+// Sub-structs (поля pub(crate), доступ через методы):
+struct ElementFlags {
+    // has_spread, has_class_directives, static_class, has_style_directives, static_style,
+    // needs_input_defaults, needs_var, needs_ref, dynamic_attrs
+}
+// ElementFlags методы: has_spread(id), has_class_directives(id), has_style_directives(id),
+// needs_input_defaults(id), needs_var(id), needs_ref(id), is_dynamic_attr(id, idx),
+// static_class(id) -> Option<Span>, static_style(id) -> Option<Span>
+
+struct FragmentData {
+    // lowered, content_types, has_dynamic_children
+}
+// FragmentData методы: content_type(key) -> ContentType, has_dynamic_children(key) -> bool,
+// lowered(key) -> Option<&LoweredFragment>
+
+struct SnippetData {
+    // params, hoistable
+}
+// SnippetData методы: params(id) -> Option<&Vec<String>>, is_hoistable(id) -> bool
+
+struct ConstTagData {
+    // names: per-node declared names, by_fragment: const tags per fragment,
+    // tmp_names: generated tmp vars for destructuring (filled by transform, consumed by codegen)
+}
+// ConstTagData методы: names(id) -> Option<&Vec<String>>, by_fragment(key) -> Option<&Vec<NodeId>>,
+// tmp_name(id) -> Option<&String>, insert_tmp_name(id, name)
+
 struct AnalysisData {
-    lowered_fragments: HashMap<FragmentKey, LoweredFragment>,
-    expressions: HashMap<NodeId, ExpressionInfo>,
-    attr_expressions: HashMap<(NodeId, usize), ExpressionInfo>,  // (element_id, attr_index)
+    // Flat fields:
+    expressions: FxHashMap<NodeId, ExpressionInfo>,
+    attr_expressions: FxHashMap<(NodeId, usize), ExpressionInfo>,
     script: Option<ScriptInfo>,
-    scoping: ComponentScoping,              // unified scope tree (oxc-based)
-    dynamic_attrs: HashSet<(NodeId, usize)>,
-    dynamic_nodes: HashSet<NodeId>,
-    node_needs_ref: HashSet<NodeId>,
-    content_types: HashMap<FragmentKey, ContentType>,
-    known_values: HashMap<String, String>,  // compile-time known const values
-    alt_is_elseif: HashSet<NodeId>,         // IfBlock'и, чей alternate — единственный elseif
+    scoping: ComponentScoping,
+    dynamic_nodes: FxHashSet<NodeId>,
+    known_values: FxHashMap<String, String>,
+    alt_is_elseif: FxHashSet<NodeId>,
     props: Option<PropsAnalysis>,
-    // Cached sets for codegen (populated by cache_rune_sets()):
-    rune_names: HashMap<String, RuneKind>,
-    mutated_runes: HashSet<String>,
+    exports: Vec<ExportInfo>,
+    needs_context: bool,
+    store_subscriptions: FxHashSet<String>,
+    // Sub-structs:
+    element_flags: ElementFlags,
+    fragments: FragmentData,
+    snippets: SnippetData,
+    const_tags: ConstTagData,
 }
 
-// Методы:
+// AnalysisData методы:
+// data.is_dynamic(id) -> bool
+// data.is_elseif_alt(id) -> bool
+// data.expression(id) -> Option<&ExpressionInfo>
+// data.attr_expression(id, idx) -> Option<&ExpressionInfo>
+// data.known_value(name) -> Option<&String>
 // data.is_rune(name) -> bool
 // data.is_mutable_rune(name) -> bool
 // data.rune_kind(name) -> Option<RuneKind>
-// data.cache_rune_sets()  — call after resolve_references
 ```
 
 ---
@@ -235,6 +299,10 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 - `needs_binding_group: bool` — флаг для генерации `binding_group`
 - `gen_ident(prefix)` — генерирует уникальные имена (`text`, `text_1`, …)
 - `element(id) / if_block(id) / each_block(id) / expr_span(id)` — O(1) lookup по NodeId
+- Shortcuts для sub-structs: `content_type(key)`, `has_dynamic_children(key)`, `has_spread(id)`,
+  `has_class_directives(id)`, `has_style_directives(id)`, `needs_var(id)`, `needs_input_defaults(id)`,
+  `is_dynamic_attr(id, idx)`, `static_class(id)`, `static_style(id)`, `is_snippet_hoistable(id)`,
+  `const_tag_names(id)`, `const_tags_for_fragment(key)`
 
 `builder.rs` — `Builder<'a>`:
 Враппер над OXC `AstBuilder`. Методы: `bid/rid/rid_expr`, `bool_expr/num_expr/str_expr`, `call/call_expr/call_stmt`, `var_stmt/let_stmt_init/const_stmt`, `block_stmt/if_stmt/assign_stmt`, `params/no_params/arrow/arrow_expr/function_decl`, `static_member_expr`, `template_str_expr/template_parts_expr`, `import_all/export_default/program`, `empty_array_expr`, `alloc`.
@@ -249,6 +317,10 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 Трансформации rune через OXC `SemanticBuilder` + `ScriptTransformer`:
 - mutated rune `$state(val)` → `$.state(val)`, read → `$.get(name)`, `name = x` → `$.set(name, x)`, `name++` → `$.update(name)`, `++name` → `$.update_pre(name)`
 - unmutated rune → inline value (`void 0` если нет аргументов)
+
+`template/const_tag.rs` — генерация `{@const ...}`:
+- Simple: `const name = $.derived(() => expr)`
+- Destructured: генерирует tmp var (`$$const_0`), сохраняет в `const_tags.tmp_names` для transform
 
 `template/mod.rs` — `gen_root_fragment(ctx) -> (hoisted, body)`:
 Стратегии по `ContentType`:
@@ -266,6 +338,32 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 `template/expression.rs` — генерация JS-выражений из span'ов
 `template/html.rs` — построение HTML template strings
 `template/traverse.rs` — обход DOM-дерева (`.first_child`, `.sibling`)
+
+---
+
+### `svelte_transform`
+`crates/svelte_transform/src/`
+
+```rust
+// Публичный API
+fn transform_component<'a>(
+    alloc: &'a Allocator,
+    component: &Component,
+    analysis: &mut AnalysisData,
+    parsed: &mut ParsedExprs<'a>,
+    ident_gen: &mut IdentGen,
+)
+```
+
+Трансформирует expression AST'ы in-place. Вызывается ПОСЛЕ `analyze`, ДО `generate`.
+
+Перезаписывает:
+- Rune references → `$.get(name)` / `$.set(name, val)` / `$.update(name)`
+- Prop sources → `name()` (thunk call)
+- Prop non-sources → `$$props.name`
+- Each-block context variables → `$.get(name)`
+- Snippet parameters → `name()` (thunk call)
+- Destructured const aliases → `$.get(tmp).prop`
 
 ---
 
@@ -298,6 +396,8 @@ svelte_ast ← svelte_js
   ↑              ↑
 svelte_parser  svelte_analyze
   ↑              ↑
+         svelte_transform
+                 ↑
          svelte_codegen_client
                  ↑
           svelte_compiler
@@ -307,10 +407,10 @@ svelte_parser  svelte_analyze
 
 ## Ключевые инварианты
 
-- OXC lifetime'ы **никогда** не выходят из `svelte_js` или `svelte_codegen_client`
-- `oxc_semantic::Scoping` — owned, lifetime-free (внутри self_cell). Живёт в `ComponentScoping` внутри `AnalysisData`
-- Все side tables в `AnalysisData` — owned, без lifetime параметров
-- AST хранит `Span` для JS-выражений; codegen re-парсит из source
+- OXC Expression AST'ы живут в `ParsedExprs<'a>` (аллокатор принадлежит caller'у). В публичный API `svelte_compiler` они не выходят
+- `oxc_semantic::Scoping` — owned, lifetime-free. Живёт в `ComponentScoping` внутри `AnalysisData`
+- Все поля `AnalysisData` — owned, без lifetime параметров
+- AST хранит `Span` для JS-выражений; `parse_js` парсит их один раз в `ParsedExprs`; `transform` мутирует; `codegen` использует
 - `u32` везде где возможно вместо `usize` (NodeId, Span)
 - `ConcatPart` в `svelte_ast` и `svelte_analyze` — **разные типы** с одинаковым именем
-- Script block парсится **один раз** через `analyze_script_with_scoping()` → `(ScriptInfo, Scoping)`
+- Sub-struct поля `ElementFlags`, `FragmentData`, `SnippetData`, `ConstTagData` — `pub(crate)`, снаружи только через методы
