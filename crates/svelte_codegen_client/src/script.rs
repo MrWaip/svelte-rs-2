@@ -637,6 +637,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                             match (obj.name.as_str(), member.property.name.as_str()) {
                                 ("$effect", "pre") => Some("$.user_pre_effect"),
                                 ("$state", "snapshot") => Some("$.snapshot"),
+                                ("$effect", "tracking") => Some("$.effect_tracking"),
                                 _ => None,
                             }
                         } else {

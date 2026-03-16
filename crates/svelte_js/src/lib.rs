@@ -117,6 +117,7 @@ pub enum RuneKind {
     Derived,
     DerivedBy,
     Effect,
+    EffectTracking,
     Props,
     Bindable,
     Inspect,
@@ -243,6 +244,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
+    let mut has_effects = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -268,21 +270,26 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
             Statement::FunctionDeclaration(func) => {
                 collect_func_declaration(func, offset, &mut declarations);
             }
+            Statement::ExpressionStatement(es) => {
+                // $effect(fn) and $effect.pre(fn) need context (push/pop).
+                // $effect.tracking() does NOT — it's a pure read.
+                if is_effect_call(&es.expression) {
+                    has_effects = true;
+                }
+            }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects: false, store_candidates: Vec::new() }
+    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates: Vec::new() }
 }
 
 /// Enrich ScriptInfo from OXC's unresolved references in one pass.
-/// Detects both `has_effects` ($effect usage) and store candidates ($count etc).
+/// Detects store candidates ($count etc) from unresolved `$`-prefixed references.
 fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
     for key in scoping.root_unresolved_references().keys() {
         let name = key.as_str();
-        if name == "$effect" {
-            info.has_effects = true;
-        } else if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
             info.store_candidates.push(compact(&name[1..]));
         }
     }
@@ -826,6 +833,25 @@ fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32,
     }
 }
 
+/// Returns true for `$effect(fn)` and `$effect.pre(fn)` calls — these need
+/// `$.push`/`$.pop` context wrapping. Does NOT match `$effect.tracking()`.
+fn is_effect_call(expr: &Expression<'_>) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        match &call.callee {
+            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
+            Expression::StaticMemberExpression(member) => {
+                if let Expression::Identifier(obj) = &member.object {
+                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr {
         match &call.callee {
@@ -847,6 +873,7 @@ fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
                     return match (obj.name.as_str(), prop) {
                         ("$derived", "by") => Some(RuneKind::DerivedBy),
                         ("$state", "raw") => Some(RuneKind::StateRaw),
+                        ("$effect", "tracking") => Some(RuneKind::EffectTracking),
                         _ => None,
                     };
                 }
