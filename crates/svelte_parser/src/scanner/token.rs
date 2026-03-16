@@ -1,252 +1,198 @@
-use core::fmt;
 use svelte_span::{GetSpan, Span};
 use svelte_diagnostics::Diagnostic;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TokenType<'a> {
+pub enum TokenType {
     Text,
     Comment,
-    StartTag(StartTag<'a>),
-    EndTag(EndTag<'a>),
-    Interpolation(ExpressionTag<'a>),
-    StartIfTag(StartIfTag<'a>),
-    ElseTag(ElseTag<'a>),
-    ScriptTag(ScriptTag<'a>),
+    StartTag(StartTag),
+    EndTag(EndTag),
+    Interpolation(ExpressionTag),
+    StartIfTag(StartIfTag),
+    ElseTag(ElseTag),
+    ScriptTag(ScriptTag),
     EndIfTag,
-    StartEachTag(StartEachTag<'a>),
+    StartEachTag(StartEachTag),
     EndEachTag,
-    StartSnippetTag(StartSnippetTag<'a>),
+    StartSnippetTag(StartSnippetTag),
     EndSnippetTag,
-    RenderTag(RenderTagToken<'a>),
-    HtmlTag(HtmlTagToken<'a>),
-    ConstTag(ConstTagToken<'a>),
-    StartKeyTag(StartKeyTag<'a>),
+    RenderTag(RenderTagToken),
+    HtmlTag(HtmlTagToken),
+    ConstTag(ConstTagToken),
+    StartKeyTag(StartKeyTag),
     EndKeyTag,
-    StyleTag(StyleTag<'a>),
+    StyleTag(StyleTag),
     EOF,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ScriptTag<'a> {
-    pub source: &'a str,
-    pub attributes: Vec<Attribute<'a>>,
-}
-
-impl ScriptTag<'_> {
-    pub fn is_typescript(&self) -> bool {
-        self.attributes.iter().any(|item| match item {
-            Attribute::HTMLAttribute(attr) => {
-                attr.name == "lang"
-                    && matches!(attr.value, AttributeValue::String(v) if v == "ts")
-            }
-            _ => false,
-        })
-    }
-
-    pub fn is_module(&self) -> bool {
-        self.attributes.iter().any(|item| match item {
-            Attribute::HTMLAttribute(attr) => {
-                (attr.name == "module" && attr.value == AttributeValue::Empty)
-                    || (attr.name == "context"
-                        && matches!(attr.value, AttributeValue::String(v) if v == "module"))
-            }
-            _ => false,
-        })
-    }
+pub struct ScriptTag {
+    pub content_span: Span,
+    pub is_typescript: bool,
+    pub is_module: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StartTag<'a> {
-    pub attributes: Vec<Attribute<'a>>,
-    pub name: &'a str,
+pub struct StartTag {
+    pub attributes: Vec<Attribute>,
+    pub name_span: Span,
     pub self_closing: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct EndTag<'a> {
-    pub name: &'a str,
+pub struct EndTag {
+    pub name_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StartEachTag<'a> {
-    pub collection: JsExpression<'a>,
-    pub item: JsExpression<'a>,
-    pub index: Option<JsExpression<'a>>,
-    pub key: Option<JsExpression<'a>>,
+pub struct StartEachTag {
+    pub collection_span: Span,
+    pub context_span: Span,
+    pub index_span: Option<Span>,
+    pub key_span: Option<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct HTMLAttribute<'a> {
-    pub name: &'a str,
-    pub value: AttributeValue<'a>,
+pub struct HTMLAttribute {
+    pub name_span: Span,
+    pub value: AttributeValue,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Attribute<'a> {
-    HTMLAttribute(HTMLAttribute<'a>),
-    ExpressionTag(ExpressionTag<'a>),
-    ClassDirective(ClassDirective<'a>),
-    StyleDirective(StyleDirective<'a>),
-    BindDirective(BindDirective<'a>),
+pub enum Attribute {
+    HTMLAttribute(HTMLAttribute),
+    ExpressionTag(ExpressionTag),
+    ClassDirective(ClassDirective),
+    StyleDirective(StyleDirective),
+    BindDirective(BindDirective),
     /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
-    OnDirectiveLegacy(OnDirectiveLegacy<'a>),
+    OnDirectiveLegacy(OnDirectiveLegacy),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ClassDirective<'a> {
+pub struct ClassDirective {
     pub shorthand: bool,
-    pub name: &'a str,
-    pub expression: JsExpression<'a>,
+    pub name_span: Span,
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StyleDirective<'a> {
+pub struct StyleDirective {
     pub shorthand: bool,
-    pub name: &'a str,
-    pub value: AttributeValue<'a>,
+    pub name_span: Span,
+    pub value: AttributeValue,
     pub important: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct BindDirective<'a> {
+pub struct BindDirective {
     pub shorthand: bool,
-    pub name: &'a str,
-    pub expression: JsExpression<'a>,
+    pub name_span: Span,
+    pub expression_span: Span,
 }
 
 /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
 #[derive(Debug, PartialEq, Eq)]
-pub struct OnDirectiveLegacy<'a> {
+pub struct OnDirectiveLegacy {
     /// Event name after "on:" (e.g., "click" in `on:click`).
-    pub name: &'a str,
+    pub name_span: Span,
     /// Handler expression. Empty if bubble event (no `={...}`).
-    pub expression: JsExpression<'a>,
+    pub expression_span: Span,
     /// Modifiers from pipe-separated list (e.g., ["preventDefault", "once"]).
-    pub modifiers: Vec<&'a str>,
+    pub modifiers: Vec<Span>,
     /// Whether an expression was provided (`on:click={handler}` vs `on:click`).
     pub has_expression: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum AttributeValue<'a> {
-    String(&'a str),
-    ExpressionTag(ExpressionTag<'a>),
-    Concatenation(Concatenation<'a>),
+pub enum AttributeValue {
+    String(Span),
+    ExpressionTag(ExpressionTag),
+    Concatenation(Concatenation),
     Empty,
 }
 
 /// Any expression in curly braces `{ 1 + 1 }` or `{ name }` in the template.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ExpressionTag<'a> {
+pub struct ExpressionTag {
     pub span: Span,
-    pub expression: JsExpression<'a>,
+    pub expression_span: Span,
 }
 
-/// The JS expression itself.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct JsExpression<'a> {
+pub struct Concatenation {
     pub span: Span,
-    pub value: &'a str,
-}
-
-impl fmt::Display for AttributeValue<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AttributeValue::String(value) => write!(f, "{}", value),
-            AttributeValue::ExpressionTag(value) => write!(f, "{}", value.expression.value),
-            AttributeValue::Empty => write!(f, ""),
-            AttributeValue::Concatenation(concatenation) => {
-                for part in &concatenation.parts {
-                    match part {
-                        ConcatenationPart::String(v) => write!(f, "({})", v)?,
-                        ConcatenationPart::Expression(et) => {
-                            write!(f, "({{{}}})", et.expression.value)?
-                        }
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
+    pub parts: Vec<ConcatenationPart>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Concatenation<'a> {
-    pub start: usize,
-    pub end: usize,
-    pub parts: Vec<ConcatenationPart<'a>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ConcatenationPart<'a> {
-    String(&'a str),
-    Expression(ExpressionTag<'a>),
+pub enum ConcatenationPart {
+    String(Span),
+    Expression(ExpressionTag),
 }
 
 #[derive(Debug)]
-pub struct Token<'a> {
-    pub token_type: TokenType<'a>,
+pub struct Token {
+    pub token_type: TokenType,
     pub span: Span,
-    pub lexeme: &'a str,
 }
 
-impl GetSpan for Token<'_> {
+impl GetSpan for Token {
     fn span(&self) -> Span {
         self.span
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StyleTag<'a> {
-    pub source: &'a str,
-    pub attributes: Vec<Attribute<'a>>,
+pub struct StyleTag {
+    pub content_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StartSnippetTag<'a> {
-    pub name: &'a str,
-    pub params: Option<JsExpression<'a>>,
+pub struct StartSnippetTag {
+    pub name_span: Span,
+    pub params_span: Option<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct RenderTagToken<'a> {
-    pub expression: JsExpression<'a>,
+pub struct RenderTagToken {
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct HtmlTagToken<'a> {
-    pub expression: JsExpression<'a>,
+pub struct HtmlTagToken {
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ConstTagToken<'a> {
-    pub declaration: JsExpression<'a>,
+pub struct ConstTagToken {
+    pub declaration_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StartKeyTag<'a> {
-    pub expression: JsExpression<'a>,
+pub struct StartKeyTag {
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct StartIfTag<'a> {
-    pub expression: JsExpression<'a>,
+pub struct StartIfTag {
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ElseTag<'a> {
+pub struct ElseTag {
     pub elseif: bool,
-    pub expression: Option<JsExpression<'a>>,
+    pub expression_span: Option<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AttributeIdentifierType<'a> {
-    HTMLAttribute(&'a str),
-    ClassDirective(&'a str),
-    StyleDirective(&'a str),
-    BindDirective(&'a str),
+    HTMLAttribute(Span, &'a str),
+    ClassDirective(Span, &'a str),
+    StyleDirective(Span, &'a str),
+    BindDirective(Span, &'a str),
     /// LEGACY(svelte4): on:directive
-    OnDirectiveLegacy(&'a str),
+    OnDirectiveLegacy(Span, &'a str),
     None,
 }
 
