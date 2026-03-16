@@ -4,23 +4,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 1. `$effect.tracking()` rune
+## 1. `$effect.root(fn)` rune
 
-**Why first**: тривиальная перезапись вызова, без аргументов.
-
-**What to change**:
-- `svelte_analyze/src/parse_js.rs`: detect `$effect.tracking()` as inline call rewrite
-- `svelte_codegen_client/src/script.rs`: `$effect.tracking()` → `$.effect_tracking()`
-
-**Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
-
-**Runtime**: `$.effect_tracking()`
-
----
-
-## 2. `$effect.root(fn)` rune
-
-**Why second**: простая перезапись вызова, аналогична `$effect.pre`.
+**Why first**: простая перезапись вызова, аналогична `$effect.pre`.
 
 **What to change**:
 - `svelte_codegen_client/src/script.rs`: `$effect.root(fn)` → `$.effect_root(fn)`
@@ -31,9 +17,9 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 3. `$host()` rune
+## 2. `$host()` rune
 
-**Why third**: простая замена выражения, для custom elements.
+**Why second**: простая замена выражения, для custom elements.
 
 **What to change**:
 - `svelte_codegen_client/src/script.rs`: `$host()` → `$$props.$$host`
@@ -41,6 +27,19 @@ Next 5 features to implement, in priority order.
 **Reference**: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`
 
 **Runtime**: expression replacement
+
+---
+
+## 3. `bind:this` directive
+
+**Why third**: element reference binding, most common bind directive after `bind:value`.
+
+**What to change**:
+- `svelte_codegen_client/src/template/attributes.rs`: `bind:this={ref}` → `$.bind_this(el, ($$value) => ref = $$value, () => ref)`
+
+**Reference**: `reference/compiler/phases/3-transform/client/visitors/BindDirective.js`
+
+**Runtime**: `$.bind_this()`
 
 ---
 

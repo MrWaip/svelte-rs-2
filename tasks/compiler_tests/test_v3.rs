@@ -292,6 +292,11 @@ fn effect_runes() {
 }
 
 #[rstest]
+fn effect_tracking() {
+    assert_compiler("effect_tracking");
+}
+
+#[rstest]
 fn html_tag() {
     assert_compiler("html_tag");
 }
