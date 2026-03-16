@@ -9,6 +9,25 @@ use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
 
+/// Build an object property for a directive expression.
+/// Handles the three-way branch: mutated rune → `$.get(name)`, same-name → shorthand, else → key-value.
+fn build_directive_prop<'a>(
+    ctx: &mut Ctx<'a>,
+    name: &str,
+    expr: Expression<'a>,
+    same_name: bool,
+) -> ObjProp<'a> {
+    let name_alloc = ctx.b.alloc_str(name);
+    if ctx.is_mutable_rune(name) {
+        let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+        ObjProp::KeyValue(name_alloc, get_call)
+    } else if same_name {
+        ObjProp::Shorthand(name_alloc)
+    } else {
+        ObjProp::KeyValue(name_alloc, expr)
+    }
+}
+
 /// Process a single attribute (non-spread path).
 pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
@@ -159,27 +178,16 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for (attr_idx, cd) in &class_dirs {
             let name = &cd.name;
-            let (expr, is_simple_ident_same_name) = if cd.expression_span.is_some() {
+            let (expr, same_name) = if cd.expression_span.is_some() {
                 let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-                let same_name = cd.expression_span
+                let same = cd.expression_span
                     .map(|span| ctx.component.source_text(span).trim() == name.as_str())
                     .unwrap_or(false);
-                (parsed, same_name)
+                (parsed, same)
             } else {
                 (ctx.b.rid_expr(name), true)
             };
-
-            let is_mutated_rune = ctx.is_mutable_rune(name);
-            let name_alloc = ctx.b.alloc_str(name);
-
-            if is_mutated_rune {
-                let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-                props.push(ObjProp::KeyValue(name_alloc, get_call));
-            } else if is_simple_ident_same_name {
-                props.push(ObjProp::Shorthand(name_alloc));
-            } else {
-                props.push(ObjProp::KeyValue(name_alloc, expr));
-            }
+            props.push(build_directive_prop(ctx, name, expr, same_name));
         }
         Some(ctx.b.object_expr(props))
     } else {
@@ -232,27 +240,12 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         }
     } else {
         // Without directives: $.set_class(el, 1, value)
-        if has_state {
-            let set_class_call = ctx.b.call_expr(
-                "$.set_class",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Num(1.0),
-                    Arg::Expr(class_value),
-                ],
-            );
-            update.push(ctx.b.expr_stmt(set_class_call));
-        } else {
-            let set_class_call = ctx.b.call_expr(
-                "$.set_class",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Num(1.0),
-                    Arg::Expr(class_value),
-                ],
-            );
-            init.push(ctx.b.expr_stmt(set_class_call));
-        }
+        let set_class_call = ctx.b.call_expr(
+            "$.set_class",
+            [Arg::Ident(el_name), Arg::Num(1.0), Arg::Expr(class_value)],
+        );
+        let target = if has_state { &mut *update } else { &mut *init };
+        target.push(ctx.b.expr_stmt(set_class_call));
     }
 }
 
@@ -292,38 +285,25 @@ pub(crate) fn process_style_directives<'a>(
 
     for (attr_idx, sd) in &style_dirs {
         let name = &sd.name;
-        let name_alloc = ctx.b.alloc_str(name);
         let target = if sd.important { &mut important_props } else { &mut normal_props };
 
         match &sd.value {
             StyleDirectiveValue::Shorthand => {
-                let is_mutated_rune = ctx.is_mutable_rune(name);
-                if is_mutated_rune {
-                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-                    target.push(ObjProp::KeyValue(name_alloc, get_call));
-                } else {
-                    target.push(ObjProp::Shorthand(name_alloc));
-                }
+                let expr = ctx.b.rid_expr(name);
+                target.push(build_directive_prop(ctx, name, expr, true));
             }
             StyleDirectiveValue::Expression(span) => {
                 let parsed = get_attr_expr(ctx, el.id, *attr_idx);
-                let is_mutated_rune = ctx.is_mutable_rune(name);
                 let expr_text = ctx.component.source_text(*span).trim();
                 let same_name = expr_text == name.as_str();
-
-                if is_mutated_rune {
-                    let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
-                    target.push(ObjProp::KeyValue(name_alloc, get_call));
-                } else if same_name {
-                    target.push(ObjProp::Shorthand(name_alloc));
-                } else {
-                    target.push(ObjProp::KeyValue(name_alloc, parsed));
-                }
+                target.push(build_directive_prop(ctx, name, parsed, same_name));
             }
             StyleDirectiveValue::String(s) => {
+                let name_alloc = ctx.b.alloc_str(name);
                 target.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(s)));
             }
             StyleDirectiveValue::Concatenation(parts) => {
+                let name_alloc = ctx.b.alloc_str(name);
                 let expr = build_style_concat(ctx, el.id, *attr_idx, parts);
                 target.push(ObjProp::KeyValue(name_alloc, expr));
             }
