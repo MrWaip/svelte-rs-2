@@ -292,6 +292,16 @@ fn effect_runes() {
 }
 
 #[rstest]
+fn effect_root_basic() {
+    assert_compiler("effect_root_basic");
+}
+
+#[rstest]
+fn effect_root_cleanup() {
+    assert_compiler("effect_root_cleanup");
+}
+
+#[rstest]
 fn effect_tracking() {
     assert_compiler("effect_tracking");
 }
