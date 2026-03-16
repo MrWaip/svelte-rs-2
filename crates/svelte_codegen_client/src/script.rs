@@ -636,6 +636,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                         if let Expression::Identifier(obj) = &member.object {
                             match (obj.name.as_str(), member.property.name.as_str()) {
                                 ("$effect", "pre") => Some("$.user_pre_effect"),
+                                ("$state", "snapshot") => Some("$.snapshot"),
                                 _ => None,
                             }
                         } else {
