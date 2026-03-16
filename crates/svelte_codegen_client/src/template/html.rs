@@ -43,6 +43,7 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
 pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     let has_spread = ctx.has_spread(el.id);
     let has_class_directives = ctx.has_class_directives(el.id);
+    let has_class_attribute = ctx.has_class_attribute(el.id);
 
     let mut html = String::new();
     write!(html, "<{}", el.name).unwrap();
@@ -52,8 +53,8 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
         for attr in &el.attributes {
             match attr {
                 Attribute::StringAttribute(a) => {
-                    // Skip class attr when class directives are present — set_class handles it
-                    if a.name == "class" && has_class_directives {
+                    // Skip class attr when class directives or class expression present — set_class handles it
+                    if a.name == "class" && (has_class_directives || has_class_attribute) {
                         continue;
                     }
                     write!(

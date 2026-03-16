@@ -215,6 +215,20 @@ fn walk_attrs<'a>(
             Attribute::ExpressionAttribute(a) => {
                 let source = component.source_text(a.expression_span);
                 parse_attr_expr(alloc, source, a.expression_span.start, key, data, parsed, diags);
+                // class={[...]} or class={{...}} or class={x} need clsx to resolve
+                if a.name == "class" {
+                    if let Some(expr) = parsed.attr_exprs.get(&key) {
+                        let needs = !matches!(
+                            expr,
+                            oxc_ast::ast::Expression::StringLiteral(_)
+                                | oxc_ast::ast::Expression::TemplateLiteral(_)
+                                | oxc_ast::ast::Expression::BinaryExpression(_)
+                        );
+                        if needs {
+                            data.element_flags.needs_clsx.insert(key);
+                        }
+                    }
+                }
             }
             Attribute::ConcatenationAttribute(a) => {
                 parse_concat_parts(alloc, &a.parts, owner_id, attr_idx, component, data, parsed, diags);
