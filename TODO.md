@@ -45,9 +45,13 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 4. `$inspect(vals)` rune
+---
 
-**Why fourth**: dev-mode only — strip in prod. Needs `dev` compiler option.
+# Deprioritized (Dev-mode features)
+
+Requires `dev` compiler option infrastructure. Will be implemented after core features are complete.
+
+## `$inspect(vals)` rune
 
 **What to change**:
 - `svelte_analyze/src/parse_js.rs`: detect `$inspect(...)` as inline call rewrite
@@ -59,9 +63,7 @@ Next 5 features to implement, in priority order.
 
 ---
 
-## 5. `{@debug vars}` — Dev-mode debugger
-
-**Why fifth**: dev-mode only template feature, similar dev flag dependency as `$inspect`.
+## `{@debug vars}` — Dev-mode debugger
 
 **What to change**:
 - Parser: parse `{@debug x, y}`
