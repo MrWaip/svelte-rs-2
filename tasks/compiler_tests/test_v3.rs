@@ -360,3 +360,23 @@ fn const_tag_destructured_multi() {
 fn const_tag_destructured_if() {
     assert_compiler("const_tag_destructured_if");
 }
+
+#[rstest]
+fn class_array() {
+    assert_compiler("class_array");
+}
+
+#[rstest]
+fn class_object() {
+    assert_compiler("class_object");
+}
+
+#[rstest]
+fn class_variable() {
+    assert_compiler("class_variable");
+}
+
+#[rstest]
+fn class_expr_with_directives() {
+    assert_compiler("class_expr_with_directives");
+}

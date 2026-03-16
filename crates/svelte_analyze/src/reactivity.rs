@@ -25,6 +25,18 @@ impl ReactivityVisitor {
             .map_or(&[], |v| v.as_slice())
     }
 
+    /// Check if an attribute expression references a snippet parameter.
+    fn attr_refs_snippet_param(&self, owner_id: &NodeId, attr_idx: usize, data: &AnalysisData) -> bool {
+        let params = self.current_snippet_params(data);
+        if params.is_empty() {
+            return false;
+        }
+        if let Some(info) = data.attr_expressions.get(&(*owner_id, attr_idx)) {
+            return info.references.iter().any(|r| params.iter().any(|p| p == &r.name));
+        }
+        false
+    }
+
     fn expr_is_dynamic(
         &self,
         node_id: &NodeId,
@@ -78,7 +90,9 @@ impl TemplateVisitor for ReactivityVisitor {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_is_dynamic(attr, idx, el.id, data) {
+        let is_dynamic = attr_is_dynamic(attr, idx, el.id, data)
+            || self.attr_refs_snippet_param(&el.id, idx, data);
+        if is_dynamic {
             data.element_flags.dynamic_attrs.insert((el.id, idx));
             data.element_flags.needs_ref.insert(el.id);
         }

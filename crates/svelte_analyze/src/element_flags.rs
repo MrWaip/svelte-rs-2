@@ -27,6 +27,9 @@ impl TemplateVisitor for ElementFlagsVisitor {
             Attribute::StyleDirective(_) => {
                 data.element_flags.has_style_directives.insert(el.id);
             }
+            Attribute::ExpressionAttribute(ea) if ea.name == "class" => {
+                data.element_flags.has_class_attribute.insert(el.id);
+            }
             Attribute::StringAttribute(sa) if sa.name == "class" => {
                 data.element_flags.static_class.insert(el.id, sa.value_span);
             }

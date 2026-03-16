@@ -176,7 +176,7 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 - **Codegen**: `$.set_style(el, staticStyle, prev, { directives })` — same pattern as `$.set_class()`. `|important` produces `[{ normal }, { important }]` array format.
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/element.js`
 
-### `class` attribute — Object/array syntax (Svelte 5)
+### ~~`class` attribute — Object/array syntax (Svelte 5)~~ ✅
 - **Phases**: P, A, T
 - **Syntax**: `class={{ active: isActive, bold }}`, `class={[base, isActive && "active", variant]}`
 - **Parser**: Detect object/array expression in `class` attribute value
