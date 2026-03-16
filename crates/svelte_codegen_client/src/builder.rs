@@ -238,6 +238,34 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
+    /// `const { a, b } = init;` — object destructuring const declaration.
+    pub fn const_object_destruct_stmt(&self, names: &[String], init: Expression<'a>) -> Statement<'a> {
+        let properties: Vec<_> = names.iter().map(|name| {
+            let atom = self.ast.atom(name.as_str());
+            let key = ast::PropertyKey::StaticIdentifier(
+                self.alloc(self.ast.identifier_name(SPAN, atom)),
+            );
+            let value = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
+            self.ast.binding_property(SPAN, key, value, true, false)
+        }).collect();
+        let object_pattern = self.ast.object_pattern(
+            SPAN,
+            self.ast.vec_from_iter(properties),
+            NONE,
+        );
+        let pattern = ast::BindingPattern::ObjectPattern(self.alloc(object_pattern));
+        let decl = self.ast.variable_declarator(
+            SPAN, VariableDeclarationKind::Const, pattern, NONE, Some(init), false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Const,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     fn var_decl_stmt(
         &self,
         name: &str,

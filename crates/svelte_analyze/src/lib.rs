@@ -3,6 +3,7 @@ mod data;
 mod element_flags;
 mod elseif;
 mod hoistable;
+pub mod ident_gen;
 mod known_values;
 mod lower;
 mod needs_var;
@@ -19,6 +20,7 @@ pub use data::{
     AnalysisData, ConcatPart, ConstTagData, ContentType, ElementFlags, FragmentData, FragmentItem,
     FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
+pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
 
 use oxc_allocator::Allocator;

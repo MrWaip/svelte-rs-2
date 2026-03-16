@@ -150,6 +150,9 @@ impl SnippetData {
 pub struct ConstTagData {
     pub names: FxHashMap<NodeId, Vec<String>>,
     pub by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+    /// Generated tmp variable names for destructured const tags.
+    /// Filled by svelte_transform, consumed by codegen.
+    pub tmp_names: FxHashMap<NodeId, String>,
 }
 
 impl ConstTagData {
@@ -157,11 +160,13 @@ impl ConstTagData {
         Self {
             names: FxHashMap::default(),
             by_fragment: FxHashMap::default(),
+            tmp_names: FxHashMap::default(),
         }
     }
 
     pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+    pub fn tmp_name(&self, id: NodeId) -> Option<&String> { self.tmp_names.get(&id) }
 }
 
 // ---------------------------------------------------------------------------

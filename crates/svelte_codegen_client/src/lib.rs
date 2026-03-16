@@ -8,15 +8,15 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 
-use svelte_analyze::{AnalysisData, ParsedExprs};
+use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::Component;
 
 use builder::{Arg, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
