@@ -132,6 +132,76 @@ impl RuneKind {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Parse a `{@const name = expr}` declaration via OXC.
+///
+/// `source` is the raw declaration text (e.g. `"doubled = item * 2"` or `"{a, b} = obj"`).
+/// `offset` is `declaration_span.start` in the original .svelte file.
+///
+/// Returns binding names, references from the init expression, and the init `Expression` AST.
+pub fn parse_const_declaration_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+) -> Result<(Vec<CompactString>, Vec<Reference>, Expression<'a>), Diagnostic> {
+    // Wrap as "const {source};" so OXC can parse it as a full statement
+    let wrapped_owned = format!("const {};", source);
+    let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
+    let prefix_len: u32 = 6; // "const "
+
+    let result = OxcParser::new(alloc, wrapped_str, SourceType::default()).parse();
+
+    if !result.errors.is_empty() {
+        return Err(Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)));
+    }
+
+    let program = result.program;
+    let stmt = program.body.into_iter().next()
+        .ok_or_else(|| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+
+    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
+        return Err(Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)));
+    };
+
+    let mut declarator = var_decl.declarations.remove(0);
+
+    let mut names = Vec::new();
+    extract_all_binding_names(&declarator.id, &mut names);
+
+    let init = declarator.init.take()
+        .ok_or_else(|| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+
+    // OXC spans are relative to the wrapped string; adjust by subtracting the prefix
+    let ref_offset = offset.wrapping_sub(prefix_len);
+    let mut references = Vec::new();
+    collect_references(&init, ref_offset, &mut references);
+
+    Ok((names, references, init))
+}
+
+fn extract_all_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, names: &mut Vec<CompactString>) {
+    use oxc_ast::ast::BindingPattern;
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => names.push(compact(&id.name)),
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                extract_all_binding_names(&prop.value, names);
+            }
+            if let Some(rest) = &obj.rest {
+                extract_all_binding_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for elem in arr.elements.iter().flatten() {
+                extract_all_binding_names(elem, names);
+            }
+            if let Some(rest) = &arr.rest {
+                extract_all_binding_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::AssignmentPattern(assign) => extract_all_binding_names(&assign.left, names),
+    }
+}
+
 /// Parse a JS expression into a provided allocator, returning both metadata and AST.
 ///
 /// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
@@ -922,6 +992,41 @@ mod tests {
         let info = analyze_expression("x", 100).unwrap();
         assert_eq!(info.references[0].span.start, 100);
         assert_eq!(info.references[0].span.end, 101);
+    }
+
+    #[test]
+    fn parse_const_declaration_simple() {
+        let alloc = Allocator::default();
+        let source = alloc.alloc_str("doubled = item * 2");
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        assert_eq!(names, vec![compact("doubled")]);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].name, "item");
+        // "const doubled = item * 2" — "item" starts at byte 16 in wrapped string
+        // offset adjustment: 10 - 6 = 4, so span = 16 + 4 = 20
+        assert_eq!(refs[0].span.start, 20);
+    }
+
+    #[test]
+    fn parse_const_declaration_destructuring() {
+        let alloc = Allocator::default();
+        // offset >= 6 required (compensates "const " prefix in wrapping arithmetic)
+        let source = alloc.alloc_str("{a, b} = obj");
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        assert_eq!(names, vec![compact("a"), compact("b")]);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].name, "obj");
+    }
+
+    #[test]
+    fn parse_const_declaration_multiple_equals() {
+        let alloc = Allocator::default();
+        let source = alloc.alloc_str("a = b === c");
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        assert_eq!(names, vec![compact("a")]);
+        assert_eq!(refs.len(), 2);
+        assert!(refs.iter().any(|r| r.name == "b"));
+        assert!(refs.iter().any(|r| r.name == "c"));
     }
 
     #[test]
