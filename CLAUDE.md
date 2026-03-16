@@ -91,7 +91,7 @@ Codegen (`svelte_codegen_client`) uses direct recursion — no visitor pattern t
 
 To port a new feature, use `/port-svelte <feature description>`.
 
-Read `TODO.md` for current work items. Full feature catalog in `ROADMAP.md`.
+Read `ROADMAP.md` for the full feature catalog and current priorities.
 
 ## Code style
 
