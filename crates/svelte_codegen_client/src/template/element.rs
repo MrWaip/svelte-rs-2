@@ -14,6 +14,12 @@ use super::expression::{build_concat, emit_trailing_next};
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
+///
+/// Statement ordering matches the Svelte reference compiler's two-state model:
+/// - Simple attributes ($.set_attribute, etc.) → parent state → before children
+/// - Directives ($.attach, $.action, $.bind_*) → element_state → after children
+///
+/// Merge order: simple attrs → children init → directive init → updates → after_update
 pub(crate) fn process_element<'a>(
     ctx: &mut Ctx<'a>,
     el_id: NodeId,
@@ -35,7 +41,11 @@ pub(crate) fn process_element<'a>(
         ));
     }
 
-    // Attributes — spread path or per-attribute path
+    // --- Attributes (simple attrs go into init/update directly; directives into separate buffers) ---
+    // Directive init/after_update are collected separately and merged after children.
+    let mut directive_init: Vec<Statement<'a>> = Vec::new();
+    let mut directive_after_update: Vec<Statement<'a>> = Vec::new();
+
     if ctx.has_spread(el_id) {
         let el_clone = el.clone_without_fragment();
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
@@ -48,7 +58,7 @@ pub(crate) fn process_element<'a>(
         let el = ctx.element(el_id);
         let tag = el.name.clone();
         for (idx, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_id, idx, el_name, &tag, attr_dynamic[idx], init, update, after_update);
+            process_attr(ctx, attr, el_id, idx, el_name, &tag, attr_dynamic[idx], init, update, &mut directive_init, &mut directive_after_update);
         }
     }
 
@@ -60,7 +70,7 @@ pub(crate) fn process_element<'a>(
     let el = ctx.element(el_id);
     process_style_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
-    // Children
+    // --- Children ---
     let has_state = ctx.has_dynamic_children(&child_key);
     match ct {
         ContentType::Empty | ContentType::StaticText => {}
@@ -144,6 +154,10 @@ pub(crate) fn process_element<'a>(
             update.extend(child_update);
         }
     }
+
+    // --- Merge directive statements after children (matching Svelte's element_state merge) ---
+    init.extend(directive_init);
+    after_update.extend(directive_after_update);
 }
 
 /// Check if a fragment item needs a DOM variable.

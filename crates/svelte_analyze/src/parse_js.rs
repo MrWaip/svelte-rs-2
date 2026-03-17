@@ -308,6 +308,11 @@ fn walk_attrs<'a>(
                     parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
                 }
             }
+            Attribute::AttachTag(a) => {
+                let span = a.expression_span;
+                let source = component.source_text(span);
+                parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+            }
         }
     }
 }

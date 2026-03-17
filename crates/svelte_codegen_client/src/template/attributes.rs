@@ -29,6 +29,10 @@ fn build_directive_prop<'a>(
 }
 
 /// Process a single attribute (non-spread path).
+///
+/// `init` — simple attributes when non-dynamic (before children).
+/// `directive_init` — directive statements like $.attach, $.action, $.bind_* (after children).
+/// `after_update` — transition, animate, on:event directives (after template_effect).
 pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr: &Attribute,
@@ -39,6 +43,7 @@ pub(crate) fn process_attr<'a>(
     is_dyn: bool,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
+    directive_init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
 ) {
     let target = if is_dyn {
@@ -114,7 +119,7 @@ pub(crate) fn process_attr<'a>(
             if let Some(placement) = gen_bind_directive(ctx, bind, el_name, tag_name) {
                 match placement {
                     BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
-                    BindPlacement::Init(stmt) => init.push(stmt),
+                    BindPlacement::Init(stmt) => directive_init.push(stmt),
                 }
             }
         }
@@ -122,7 +127,7 @@ pub(crate) fn process_attr<'a>(
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
         Attribute::UseDirective(ud) => {
-            gen_use_directive(ctx, ud, owner_id, attr_idx, el_name, init);
+            gen_use_directive(ctx, ud, owner_id, attr_idx, el_name, directive_init);
         }
         // LEGACY(svelte4): on:directive
         Attribute::OnDirectiveLegacy(od) => {
@@ -133,6 +138,9 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::AnimateDirective(ad) => {
             gen_animate_directive(ctx, ad, owner_id, attr_idx, el_name, after_update);
+        }
+        Attribute::AttachTag(_) => {
+            gen_attach_tag(ctx, owner_id, attr_idx, el_name, directive_init);
         }
     }
 }
@@ -716,6 +724,7 @@ pub(crate) fn process_attrs_spread<'a>(
             Attribute::OnDirectiveLegacy(_) => continue,
             Attribute::TransitionDirective(_) => continue,
             Attribute::AnimateDirective(_) => continue,
+            Attribute::AttachTag(_) => continue,
         }
     }
 
@@ -775,6 +784,24 @@ fn gen_use_directive<'a>(
     }
 
     init.push(ctx.b.call_stmt("$.action", args));
+}
+
+// ---------------------------------------------------------------------------
+// {@attach expr} codegen
+// ---------------------------------------------------------------------------
+
+/// Generate `$.attach(el, () => expr)`.
+/// Reference: `AttachTag.js`.
+fn gen_attach_tag<'a>(
+    ctx: &mut Ctx<'a>,
+    owner_id: NodeId,
+    attr_idx: usize,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+) {
+    let expr = get_attr_expr(ctx, owner_id, attr_idx);
+    let thunk = ctx.b.thunk(expr);
+    init.push(ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]));
 }
 
 // ---------------------------------------------------------------------------

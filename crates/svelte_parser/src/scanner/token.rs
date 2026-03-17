@@ -70,6 +70,8 @@ pub enum Attribute {
     OnDirectiveLegacy(OnDirectiveLegacy),
     TransitionDirective(TransitionDirective),
     AnimateDirective(AnimateDirective),
+    /// {@attach expr} — element attachment (Svelte 5.29+)
+    AttachTag(AttachTagToken),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -80,6 +82,13 @@ pub struct AnimateDirective {
     pub expression_span: Span,
     /// Whether an expression was provided.
     pub has_expression: bool,
+}
+
+/// {@attach expr} — element attachment (Svelte 5.29+)
+#[derive(Debug, PartialEq, Eq)]
+pub struct AttachTagToken {
+    /// Span of the JS expression inside `{@attach expr}`.
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]

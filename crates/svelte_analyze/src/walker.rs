@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    AnimateDirective, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock, Element,
-    ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock,
+    AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
+    Element, ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock,
     TransitionDirective, UseDirective,
 };
 
@@ -33,6 +33,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after element children have been walked. Use for bottom-up computations.
     fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
@@ -70,6 +71,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                     }
                     if let Attribute::AnimateDirective(dir) = attr {
                         visitor.visit_animate_directive(dir, el, scope, data);
+                    }
+                    if let Attribute::AttachTag(tag) = attr {
+                        visitor.visit_attach_tag(tag, el, scope, data);
                     }
                 }
                 walk_template(&el.fragment, data, scope, visitor);
@@ -168,6 +172,9 @@ macro_rules! delegate_visitor_methods {
         }
         fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_animate_directive(dir, el, scope, data);)+
+        }
+        fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_attach_tag(tag, el, scope, data);)+
         }
         fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_component_attribute(attr, idx, cn, scope, data);)+
