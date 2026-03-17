@@ -52,7 +52,7 @@ Scope: client-side compilation only (no SSR, no legacy mode).
 - [x] `class` object/array syntax (Svelte 5)
 
 ### Event handling
-- [x] Svelte 5 event attributes — `onclick={handler}` → `$.event()` / `$.delegated()`
+- [x] Svelte 5 event attributes — `onclick={handler}` → `$.delegated()` for delegatable events
 - [x] Event delegation — `$.delegate([...events])` at component level
 - [x] `on:event` — legacy event directive (Svelte 4)
 
@@ -116,6 +116,42 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 |---|------|-------------|
 | 1 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
 | 2 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
+
+---
+
+## Tier 1c — Event Attributes (fix + extend)
+
+Theme: complete the Svelte 5 event system. `onclick={handler}` is the standard way; `on:click` is legacy.
+
+**Current state**: delegatable events (click, input, change, etc.) correctly generate `$.delegated()`. Non-delegatable events (scroll, resize, etc.) incorrectly fall through to `$.set_attribute()`.
+
+Key file: `crates/svelte_codegen_client/src/template/attributes.rs`
+Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`, `Attribute.js`
+
+| # | Feature | Current | Correct | Phases |
+|---|---------|---------|---------|--------|
+| 1 | Non-delegatable event attrs | `$.set_attribute("onscroll", fn)` | `$.event("scroll", el, fn)` | T |
+| 2 | Event capture suffix | Not handled | `onclickcapture` → `capture: true` flag | A, T |
+| 3 | Passive event auto-detection | Not handled | Auto-passive for `touchstart`, `wheel`, etc. | T |
+| 4 | Handler wrapping (non-inline) | Not handled | `(...$$args) => handler.apply(this, $$args)` | T |
+
+---
+
+## Tier 1d — Expression Memoization
+
+Theme: prevent over-firing of reactive expressions containing function calls.
+
+The reference compiler's `Memoizer` class wraps expressions with `has_call` in `$.derived()` to memoize them. Without this, expressions like `onclick={getHandler()}` or `{@render fn(getArg())}` re-evaluate on every render cycle.
+
+Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js` (Memoizer class)
+
+| # | Feature | Phases | Description |
+|---|---------|--------|-------------|
+| 1 | `has_call` detection in analysis | A | Track whether expression contains `CallExpression` |
+| 2 | Memoizer codegen utility | T | Generate `$.derived(() => expr)` + `$.get(id)` pairs |
+| 3 | Integration: event handlers | T | Memoize `onclick={getHandler()}` |
+| 4 | Integration: component props | T | Memoize non-simple prop expressions with calls |
+| 5 | Integration: render tag args | T | Memoize `{@render fn(getArg())}` |
 
 ---
 
@@ -197,6 +233,11 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Phases**: T
 - **Codegen**: Special text update handling for `<title>` element content
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/TitleElement.js`
+
+### Component `bind:this`
+- **Phases**: T
+- **Codegen**: `$.bind_this(component, setter, getter)` — different from element `bind:this`, binds to component instance
+- **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
 
 ---
 
@@ -415,6 +456,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: only allowed at root level
 - [ ] Validation: no attributes allowed (diagnostic)
 - [ ] `filename` parameter for `compile()` to produce correct hash (currently uses `"(unknown)"` default)
+
+### Render tag
+- [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
+
+### Event attributes (Tier 1c)
+- [ ] Handler memoization for expressions with calls (`has_call`) — depends on Tier 1d memoization
 
 ### CSS (Tier 6)
 - [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
