@@ -326,12 +326,14 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 - [ ] Validation: duplicate transition directives *(discovered during port, deferred)*
 - [ ] Validation: conflicting transition: + in:/out: on same element *(discovered during port, deferred)*
 
-### `animate:name={params}` — FLIP animations
+### `animate:name={params}` — FLIP animations [x]
 - **Phases**: P, A, T
 - **AST**: `Attribute::AnimateDirective { name, expression_span: Option<Span> }`
 - **Constraint**: Only valid inside keyed `{#each}` blocks (validation needed)
 - **Codegen**: `$.animation(el, animateFn, () => params)`
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/AnimateDirective.js`
+- [ ] Validation: `animate:` only valid inside keyed `{#each}` blocks *(discovered during port, deferred)*
+- [ ] Validation: duplicate `animate:` directives on same element *(discovered during port, deferred)*
 
 ### `{@attach fn}` — Element attachment (Svelte 5.29+)
 - **Phases**: P, A, T

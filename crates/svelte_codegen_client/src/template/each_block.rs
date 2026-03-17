@@ -3,7 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
-use svelte_ast::NodeId;
+use svelte_ast::{Attribute, Node, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -15,7 +15,7 @@ use super::gen_fragment;
 const EACH_ITEM_REACTIVE: u32 = 1;
 // const EACH_INDEX_REACTIVE: u32 = 2;
 const EACH_IS_CONTROLLED: u32 = 4;
-// const EACH_IS_ANIMATED: u32 = 8;
+const EACH_IS_ANIMATED: u32 = 8;
 const EACH_ITEM_IMMUTABLE: u32 = 16;
 
 /// Generate statements for an `{#each ...}` block.
@@ -45,6 +45,17 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_CONTROLLED;
     }
 
+    // animate: can only appear on elements that are the sole child of a keyed each block
+    if block.key_span.is_some() && block.body.nodes.iter().any(|node| {
+        if let Node::Element(el) = node {
+            el.attributes.iter().any(|a| matches!(a, Attribute::AnimateDirective(_)))
+        } else {
+            false
+        }
+    }) {
+        flags |= EACH_IS_ANIMATED;
+    }
+
     let expr_source = ctx.component.source_text(expr_span).trim();
     let collection_fn = if ctx.prop_sources.contains(expr_source) {
         // Prop getter is already a function — pass directly without thunk
@@ -53,6 +64,14 @@ pub(crate) fn gen_each_block<'a>(
         let collection = get_node_expr(ctx, block_id);
         ctx.b
             .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)])
+    };
+
+    // Key function: keyed each uses (item) => key_expr, unkeyed uses $.index
+    let key_fn = if let Some(key_expr) = ctx.parsed.key_exprs.remove(&block_id) {
+        let key_body = ctx.b.expr_stmt(key_expr);
+        ctx.b.arrow_expr(ctx.b.params([&context_name]), [key_body])
+    } else {
+        ctx.b.rid_expr("$.index")
     };
 
     let frag_body = gen_fragment(ctx, body_key);
@@ -67,7 +86,7 @@ pub(crate) fn gen_each_block<'a>(
             Arg::Expr(anchor),
             Arg::Num(flags as f64),
             Arg::Expr(collection_fn),
-            Arg::IdentRef(ctx.b.rid("$.index")),
+            Arg::Expr(key_fn),
             Arg::Expr(frag_fn),
         ],
     ));

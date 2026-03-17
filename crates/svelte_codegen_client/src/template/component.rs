@@ -59,7 +59,8 @@ pub(crate) fn gen_component<'a>(
             },
             Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_)
             | Attribute::UseDirective(_) | Attribute::OnDirectiveLegacy(_)
-            | Attribute::TransitionDirective(_) => AttrKind::Skip,
+            | Attribute::TransitionDirective(_)
+            | Attribute::AnimateDirective(_) => AttrKind::Skip,
         };
         (kind, is_dynamic)
     }).collect();

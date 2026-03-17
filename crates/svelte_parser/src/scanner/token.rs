@@ -69,6 +69,17 @@ pub enum Attribute {
     /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
     TransitionDirective(TransitionDirective),
+    AnimateDirective(AnimateDirective),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AnimateDirective {
+    /// Name after "animate:" (e.g., "flip" in `animate:flip`).
+    pub name_span: Span,
+    /// Expression span if `={expr}` was provided.
+    pub expression_span: Span,
+    /// Whether an expression was provided.
+    pub has_expression: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -219,6 +230,8 @@ pub enum AttributeIdentifierType<'a> {
     OnDirectiveLegacy(Span, &'a str),
     /// transition:, in:, or out: directive
     TransitionDirective(Span, &'a str),
+    /// animate: directive
+    AnimateDirective(Span, &'a str),
     None,
 }
 
@@ -246,6 +259,10 @@ impl<'a> AttributeIdentifierType<'a> {
 
     pub fn is_transition_directive(name: &str) -> bool {
         name == "transition" || name == "in" || name == "out"
+    }
+
+    pub fn is_animate_directive(name: &str) -> bool {
+        name == "animate"
     }
 
     pub fn is_empty(&self) -> bool {

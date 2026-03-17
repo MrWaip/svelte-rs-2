@@ -5,11 +5,12 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, ConstTag,
-    ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, OnDirectiveLegacy, StyleDirective, StyleDirectiveValue,
-    ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
-    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
-    TransitionDirective, TransitionDirection, UseDirective,
+    AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
+    ComponentNode, ConstTag, ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
+    OnDirectiveLegacy, StyleDirective, StyleDirectiveValue, ExpressionAttribute, Fragment, HtmlTag,
+    IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script, ScriptContext,
+    ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text, TransitionDirective,
+    TransitionDirection, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -929,6 +930,17 @@ impl<'a> Parser<'a> {
                         expression_span,
                         modifiers: td.modifiers.iter().map(|m| m.source_text(self.source).to_string()).collect(),
                         direction,
+                    }));
+                }
+                token::Attribute::AnimateDirective(ad) => {
+                    let expression_span = if ad.has_expression {
+                        Some(ad.expression_span)
+                    } else {
+                        None
+                    };
+                    attributes.push(Attribute::AnimateDirective(AnimateDirective {
+                        name: ad.name_span.source_text(self.source).to_string(),
+                        expression_span,
                     }));
                 }
             }
