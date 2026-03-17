@@ -1,4 +1,4 @@
-use crate::data::{AnalysisData, ConcatPart, ContentStrategy, FragmentItem};
+use crate::data::{AnalysisData, ConcatPart, ContentStrategy, FragmentItem, SingleBlockKind};
 
 /// Classify all fragments and mark which ones have dynamic children.
 /// Single pass over `lowered_fragments` instead of two separate traversals.
@@ -50,13 +50,13 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
     if items.len() == 1 {
         match &items[0] {
             FragmentItem::Element(id) => return ContentStrategy::SingleElement(*id),
-            FragmentItem::ComponentNode(id)
-            | FragmentItem::IfBlock(id)
-            | FragmentItem::EachBlock(id)
-            | FragmentItem::RenderTag(id)
-            | FragmentItem::HtmlTag(id)
-            | FragmentItem::KeyBlock(id)
-            | FragmentItem::SvelteElement(id) => return ContentStrategy::SingleBlock(*id),
+            FragmentItem::IfBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::IfBlock(*id)),
+            FragmentItem::EachBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::EachBlock(*id)),
+            FragmentItem::HtmlTag(id) => return ContentStrategy::SingleBlock(SingleBlockKind::HtmlTag(*id)),
+            FragmentItem::KeyBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::KeyBlock(*id)),
+            FragmentItem::RenderTag(id) => return ContentStrategy::SingleBlock(SingleBlockKind::RenderTag(*id)),
+            FragmentItem::ComponentNode(id) => return ContentStrategy::SingleBlock(SingleBlockKind::ComponentNode(*id)),
+            FragmentItem::SvelteElement(id) => return ContentStrategy::SingleBlock(SingleBlockKind::SvelteElement(*id)),
             FragmentItem::TextConcat { .. } => {}
         }
     }

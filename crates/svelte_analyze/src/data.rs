@@ -375,6 +375,29 @@ pub struct PropAnalysis {
 // ContentStrategy — classification of what a fragment contains, with embedded data
 // ---------------------------------------------------------------------------
 
+/// Block-type discriminant for ContentStrategy::SingleBlock.
+/// Mirrors FragmentItem block variants so classify_items encodes the type once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SingleBlockKind {
+    IfBlock(NodeId),
+    EachBlock(NodeId),
+    HtmlTag(NodeId),
+    KeyBlock(NodeId),
+    RenderTag(NodeId),
+    ComponentNode(NodeId),
+    SvelteElement(NodeId),
+}
+
+impl SingleBlockKind {
+    pub fn node_id(&self) -> NodeId {
+        match self {
+            Self::IfBlock(id) | Self::EachBlock(id) | Self::HtmlTag(id)
+            | Self::KeyBlock(id) | Self::RenderTag(id) | Self::ComponentNode(id)
+            | Self::SvelteElement(id) => *id,
+        }
+    }
+}
+
 /// Describes the content of a fragment. Carries item data so codegen does not
 /// need to re-inspect the lowered fragment for common decisions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -384,8 +407,8 @@ pub enum ContentStrategy {
     Static(String),
     /// Exactly one element node. Contains its NodeId.
     SingleElement(NodeId),
-    /// Exactly one block node (IfBlock, EachBlock, etc.). Contains its NodeId.
-    SingleBlock(NodeId),
+    /// Exactly one block node (IfBlock, EachBlock, etc.). Contains the block kind with its NodeId.
+    SingleBlock(SingleBlockKind),
     /// Text with expressions, or a mix of elements/blocks/text.
     Dynamic { has_elements: bool, has_blocks: bool, has_text: bool },
 }

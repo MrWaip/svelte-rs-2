@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_analyze::{ContentStrategy, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentKey, SingleBlockKind};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -113,7 +113,7 @@ pub(crate) fn process_element<'a>(
             ));
         }
 
-        ContentStrategy::SingleBlock(id) if ctx.is_each_block(id) => {
+        ContentStrategy::SingleBlock(SingleBlockKind::EachBlock(id)) => {
             // Controlled each block: element itself is the anchor, no $.child() traversal
             gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));

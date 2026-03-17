@@ -18,22 +18,11 @@ pub(crate) mod traverse;
 
 use oxc_ast::ast::Statement;
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, SingleBlockKind};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
-
-/// Discriminant for SingleBlock items — used by codegen and Ctx::single_block_kind.
-pub(crate) enum SingleBlockKind {
-    IfBlock(NodeId),
-    EachBlock(NodeId),
-    HtmlTag(NodeId),
-    KeyBlock(NodeId),
-    RenderTag(NodeId),
-    ComponentNode(NodeId),
-    SvelteElement(NodeId),
-}
 
 use element::process_element;
 use expression::{emit_template_effect, emit_text_update, emit_trailing_next};
@@ -112,7 +101,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         ContentStrategy::Static(ref text) => gen_root_static_text(ctx, text, &mut body),
         ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => gen_root_dynamic_text(ctx, &mut body),
         ContentStrategy::SingleElement(el_id) => gen_root_single_element(ctx, el_id, &tpl_name, &mut hoisted, &mut body),
-        ContentStrategy::SingleBlock(block_id) => gen_root_single_block(ctx, block_id, &mut body),
+        ContentStrategy::SingleBlock(ref kind) => gen_root_single_block(ctx, kind, &mut body),
         ContentStrategy::Dynamic { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
@@ -206,17 +195,16 @@ fn gen_root_single_element<'a>(
     ));
 }
 
-fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, block_id: NodeId, body: &mut Vec<Statement<'a>>) {
-    let kind = ctx.single_block_kind(block_id);
+fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &mut Vec<Statement<'a>>) {
 
     // RenderTag / ComponentNode at root: call directly with $$anchor, no wrapping
     match kind {
         SingleBlockKind::RenderTag(id) => {
-            gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), body);
+            gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
         SingleBlockKind::ComponentNode(id) => {
-            gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), body);
+            gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
         _ => {}
@@ -232,20 +220,20 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, block_id: NodeId, body: &mut Vec
 
     match kind {
         SingleBlockKind::IfBlock(id) => {
-            let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
+            let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
             body.push(ctx.b.block_stmt(stmts));
         }
         SingleBlockKind::EachBlock(id) => {
-            gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, body);
+            gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
         SingleBlockKind::HtmlTag(id) => {
-            gen_html_tag(ctx, id, ctx.b.rid_expr(&node), body);
+            gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         SingleBlockKind::KeyBlock(id) => {
-            gen_key_block(ctx, id, ctx.b.rid_expr(&node), body);
+            gen_key_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         SingleBlockKind::SvelteElement(id) => {
-            gen_svelte_element(ctx, id, ctx.b.rid_expr(&node), body);
+            gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
     }
@@ -388,19 +376,17 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
             return body;
         }
-        ContentStrategy::SingleBlock(block_id) => {
-            let kind = ctx.single_block_kind(block_id);
-
+        ContentStrategy::SingleBlock(ref kind) => {
             // RenderTag / ComponentNode: call directly with $$anchor
             // Still consume a "fragment" ident for consistent numbering
             match kind {
                 SingleBlockKind::RenderTag(id) => {
                     ctx.gen_ident("fragment");
-                    gen_render_tag(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
+                    gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
                 SingleBlockKind::ComponentNode(id) => {
                     ctx.gen_ident("fragment");
-                    gen_component(ctx, id, ctx.b.rid_expr("$$anchor"), &mut body);
+                    gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
                 _ => {
                     let frag = ctx.gen_ident("fragment");
@@ -412,20 +398,20 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                     ));
                     match kind {
                         SingleBlockKind::IfBlock(id) => {
-                            let stmts = gen_if_block(ctx, id, ctx.b.rid_expr(&node));
+                            let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
                             body.push(ctx.b.block_stmt(stmts));
                         }
                         SingleBlockKind::EachBlock(id) => {
-                            gen_each_block(ctx, id, ctx.b.rid_expr(&node), false, &mut body);
+                            gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, &mut body);
                         }
                         SingleBlockKind::HtmlTag(id) => {
-                            gen_html_tag(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                            gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
                         SingleBlockKind::KeyBlock(id) => {
-                            gen_key_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                            gen_key_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
                         SingleBlockKind::SvelteElement(id) => {
-                            gen_svelte_element(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                            gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
                         _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
                     }

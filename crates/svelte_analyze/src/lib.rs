@@ -18,7 +18,7 @@ pub(crate) mod walker;
 
 pub use data::{
     AnalysisData, ConcatPart, ConstTagData, ContentStrategy, ElementFlags, FragmentData, FragmentItem,
-    FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
+    FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SingleBlockKind, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
