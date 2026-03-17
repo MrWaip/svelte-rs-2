@@ -30,8 +30,20 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 is_lazy_default,
             }
         })
-        .collect();
+        .collect::<Vec<PropAnalysis>>();
 
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
-    data.props = Some(PropsAnalysis { props, has_bindable });
+
+    let mut prop_sources = rustc_hash::FxHashSet::default();
+    let mut prop_non_sources = rustc_hash::FxHashMap::default();
+    for p in &props {
+        if p.is_rest { continue; }
+        if p.is_prop_source {
+            prop_sources.insert(p.local_name.clone());
+        } else {
+            prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
+        }
+    }
+
+    data.props = Some(PropsAnalysis { props, has_bindable, prop_sources, prop_non_sources });
 }
