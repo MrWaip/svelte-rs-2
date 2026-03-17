@@ -1,6 +1,7 @@
 # Roadmap: Svelte 5 Client Compiler in Rust
 
 Scope: client-side compilation only (no SSR, no legacy mode).
+For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 **Phase notation**: **P** = Parser/AST, **A** = Analyze, **S** = Script codegen, **T** = Template codegen, **V** = Validation
 
