@@ -41,6 +41,29 @@ Scope: client-side compilation only (no SSR, no legacy mode).
 - [x] IfBlock, EachBlock
 - [x] SnippetBlock, RenderTag
 - [x] Text node, ExpressionTag
+- [x] `{@html expr}`, `{#key expr}`, `{@const}`
+- [x] `style:prop` directive, `class` object/array syntax
+
+### Directives (Tier 4)
+- [x] `use:action={params}` — action directive
+- [x] `transition:` / `in:` / `out:` — transitions (local/global, params)
+- [x] `animate:name={params}` — FLIP animations
+- [x] `{@attach fn}` — element attachment (Svelte 5.29+)
+- [x] `on:event` — legacy event directive (Svelte 4)
+
+### Special elements (Tier 5)
+- [x] `<svelte:options>` — compiler options tag (parser + validation)
+- [x] `<svelte:head>` — document head insertion
+
+### Runes (Tier 1)
+- [x] `$state.raw(val)` → `$.state(val)` (no proxy)
+- [x] `$state.snapshot(val)` → `$.snapshot(val)`
+- [x] `$effect.tracking()` → `$.effect_tracking()`
+- [x] `$effect.root(fn)` → `$.effect_root(fn)`
+- [x] `$store` auto-subscription → `$.store_get` / `$.store_set`
+
+### Module compilation (Tier 1b)
+- [x] `compile_module()` entry point + `analyze_module()` + WASM export
 
 ### Bind directives (Tier 3)
 - [x] `bind:value` (input, textarea, select), `bind:checked`, `bind:group`, `bind:files`
@@ -312,7 +335,7 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js` (~30 lines)
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`) *(discovered during port, deferred)*
 
-### `transition:name={params}` / `in:` / `out:` — Transitions [x]
+### ~~`transition:name={params}` / `in:` / `out:` — Transitions~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Attribute::TransitionDirective { name, expression_span: Option<Span>, modifiers: Vec<String>, direction: TransitionDirection }`
   - `TransitionDirection`: `Both` | `In` | `Out`
@@ -326,7 +349,7 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 - [ ] Validation: duplicate transition directives *(discovered during port, deferred)*
 - [ ] Validation: conflicting transition: + in:/out: on same element *(discovered during port, deferred)*
 
-### `animate:name={params}` — FLIP animations [x]
+### ~~`animate:name={params}` — FLIP animations~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Attribute::AnimateDirective { name, expression_span: Option<Span> }`
 - **Constraint**: Only valid inside keyed `{#each}` blocks (validation needed)
