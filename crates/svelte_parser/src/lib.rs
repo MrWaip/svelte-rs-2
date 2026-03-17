@@ -6,10 +6,11 @@ use svelte_span::Span;
 
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
-    ComponentNode, ConstTag, ConcatPart, ConcatenationAttribute, Component, EachBlock, Element,
-    OnDirectiveLegacy, StyleDirective, StyleDirectiveValue, ExpressionAttribute, Fragment, HtmlTag,
-    IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script, ScriptContext,
-    ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text, TransitionDirective,
+    ComponentNode, ConstTag, ConcatPart, ConcatenationAttribute, Component, CssMode,
+    CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
+    KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
+    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
+    StyleDirective, StyleDirectiveValue, SvelteOptions, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
 
@@ -342,6 +343,9 @@ impl<'a> Parser<'a> {
             css,
         );
         component.set_next_node_id(self.ids.current());
+
+        // Extract <svelte:options> from fragment (must be top-level)
+        self.extract_svelte_options(&mut component);
 
         (component, self.diagnostics)
     }
@@ -953,6 +957,259 @@ impl<'a> Parser<'a> {
 
         attributes
     }
+
+    // -----------------------------------------------------------------------
+    // <svelte:options> extraction
+    // -----------------------------------------------------------------------
+
+    fn extract_svelte_options(&mut self, component: &mut Component) {
+        let options_idx = component
+            .fragment
+            .nodes
+            .iter()
+            .position(|n| n.as_element().is_some_and(|el| el.name == "svelte:options"));
+
+        let Some(idx) = options_idx else {
+            return;
+        };
+
+        let node = component.fragment.nodes.remove(idx);
+        let Node::Element(el) = node else {
+            unreachable!();
+        };
+
+        // Check for duplicate <svelte:options>
+        let has_another = component
+            .fragment
+            .nodes
+            .iter()
+            .any(|n| n.as_element().is_some_and(|e| e.name == "svelte:options"));
+        if has_another {
+            self.recover(Diagnostic::svelte_options_duplicate(el.span));
+        }
+
+        // Validate no children
+        if !el.fragment.is_empty() {
+            self.recover(Diagnostic::svelte_options_no_children(el.span));
+        }
+
+        component.options = Some(self.read_svelte_options(&el));
+    }
+
+    fn read_svelte_options(&mut self, el: &Element) -> SvelteOptions {
+        let mut options = SvelteOptions {
+            span: el.span,
+            runes: None,
+            namespace: None,
+            css: None,
+            custom_element: None,
+            immutable: None,
+            accessors: None,
+            preserve_whitespace: None,
+            attributes: el.attributes.clone(),
+        };
+
+        for attr in &el.attributes {
+            match attr {
+                Attribute::BooleanAttribute(ba) => {
+                    self.process_svelte_option_bool(&ba.name, true, el.span, &mut options);
+                }
+                Attribute::StringAttribute(sa) => {
+                    let value = sa.value_span.source_text(self.source).to_string();
+                    self.process_svelte_option_string(&sa.name, &value, el.span, &mut options);
+                }
+                Attribute::ExpressionAttribute(ea) => {
+                    let expr_text = ea.expression_span.source_text(self.source).trim();
+                    match expr_text {
+                        "true" => {
+                            self.process_svelte_option_bool(&ea.name, true, el.span, &mut options);
+                        }
+                        "false" => {
+                            self.process_svelte_option_bool(&ea.name, false, el.span, &mut options);
+                        }
+                        _ => {
+                            // Could be an object expression for customElement
+                            if ea.name == "customElement" {
+                                self.process_custom_element_expression(
+                                    ea.expression_span,
+                                    el.span,
+                                    &mut options,
+                                );
+                            } else {
+                                self.recover(Diagnostic::svelte_options_invalid_attribute(el.span));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Directives and other non-standard attributes are not allowed
+                    self.recover(Diagnostic::svelte_options_invalid_attribute(el.span));
+                }
+            }
+        }
+
+        options
+    }
+
+    fn process_svelte_option_bool(
+        &mut self,
+        name: &str,
+        value: bool,
+        span: Span,
+        options: &mut SvelteOptions,
+    ) {
+        match name {
+            "runes" => options.runes = Some(value),
+            "immutable" => options.immutable = Some(value),
+            "accessors" => options.accessors = Some(value),
+            "preserveWhitespace" => options.preserve_whitespace = Some(value),
+            "namespace" | "css" | "customElement" => {
+                self.recover(Diagnostic::svelte_options_invalid_attribute_value(
+                    span,
+                    "a string value".into(),
+                ));
+            }
+            // LEGACY(svelte4): `tag` renamed to `customElement`
+            "tag" => {
+                self.recover(Diagnostic::svelte_options_deprecated_tag(span));
+            }
+            _ => {
+                self.recover(Diagnostic::svelte_options_unknown_attribute(
+                    span,
+                    name.to_string(),
+                ));
+            }
+        }
+    }
+
+    fn process_svelte_option_string(
+        &mut self,
+        name: &str,
+        value: &str,
+        span: Span,
+        options: &mut SvelteOptions,
+    ) {
+        match name {
+            "namespace" => match value {
+                "html" => options.namespace = Some(Namespace::Html),
+                "svg" | "http://www.w3.org/2000/svg" => options.namespace = Some(Namespace::Svg),
+                "mathml" | "http://www.w3.org/1998/Math/MathML" => {
+                    options.namespace = Some(Namespace::Mathml)
+                }
+                _ => {
+                    self.recover(Diagnostic::svelte_options_invalid_attribute_value(
+                        span,
+                        r#""html", "mathml" or "svg""#.into(),
+                    ));
+                }
+            },
+            "css" => {
+                if value == "injected" {
+                    options.css = Some(CssMode::Injected);
+                } else {
+                    self.recover(Diagnostic::svelte_options_invalid_attribute_value(
+                        span,
+                        r#""injected""#.into(),
+                    ));
+                }
+            }
+            "customElement" => {
+                if let Some(tag_err) = validate_custom_element_tag(value) {
+                    match tag_err {
+                        TagError::Invalid => {
+                            self.recover(
+                                Diagnostic::svelte_options_invalid_custom_element_tag(span),
+                            );
+                        }
+                        TagError::Reserved => {
+                            self.recover(Diagnostic::svelte_options_reserved_tag_name(span));
+                        }
+                    }
+                } else {
+                    options.custom_element = Some(CustomElementConfig::Tag(value.to_string()));
+                }
+            }
+            "runes" | "immutable" | "accessors" | "preserveWhitespace" => {
+                self.recover(Diagnostic::svelte_options_invalid_attribute_value(
+                    span,
+                    "true or false".into(),
+                ));
+            }
+            // LEGACY(svelte4): `tag` renamed to `customElement`
+            "tag" => {
+                self.recover(Diagnostic::svelte_options_deprecated_tag(span));
+            }
+            _ => {
+                self.recover(Diagnostic::svelte_options_unknown_attribute(
+                    span,
+                    name.to_string(),
+                ));
+            }
+        }
+    }
+
+    fn process_custom_element_expression(
+        &mut self,
+        expression_span: Span,
+        el_span: Span,
+        options: &mut SvelteOptions,
+    ) {
+        let expr_text = expression_span.source_text(self.source).trim();
+
+        // `null` is backwards compat from Svelte 4 — just ignore
+        if expr_text == "null" {
+            return;
+        }
+
+        // Must be an object expression
+        if !expr_text.starts_with('{') {
+            self.recover(Diagnostic::svelte_options_invalid_attribute(el_span));
+            return;
+        }
+
+        // Store the expression span; full object parsing deferred to analysis
+        options.custom_element = Some(CustomElementConfig::Expression(expression_span));
+    }
+}
+
+// Custom element tag name validation
+enum TagError {
+    Invalid,
+    Reserved,
+}
+
+fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
+    if tag.is_empty() {
+        return None; // Empty tag is allowed (means "no tag")
+    }
+
+    // Must start with lowercase letter, contain a hyphen, and only valid chars
+    let is_valid = tag.starts_with(|c: char| c.is_ascii_lowercase())
+        && tag.contains('-')
+        && tag
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.' || c == '_');
+
+    if !is_valid {
+        return Some(TagError::Invalid);
+    }
+
+    const RESERVED: &[&str] = &[
+        "annotation-xml",
+        "color-profile",
+        "font-face",
+        "font-face-src",
+        "font-face-uri",
+        "font-face-format",
+        "font-face-name",
+        "missing-glyph",
+    ];
+
+    if RESERVED.contains(&tag) {
+        return Some(TagError::Reserved);
+    }
+
+    None
 }
 
 fn is_component_name(name: &str) -> bool {
@@ -1504,5 +1761,235 @@ mod tests {
         assert_element(&c, 0, "input", true);
         assert_element(&c, 1, "br", true);
         assert_element(&c, 2, "hr", true);
+    }
+
+    // --- <svelte:options> tests ---
+
+    fn assert_options_runes(c: &Component, expected: bool) {
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.runes, Some(expected), "expected runes={expected}");
+    }
+
+    fn assert_options_namespace(c: &Component, expected: svelte_ast::Namespace) {
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.namespace, Some(expected), "expected namespace={expected:?}");
+    }
+
+    fn assert_options_css(c: &Component, expected: svelte_ast::CssMode) {
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.css, Some(expected), "expected css={expected:?}");
+    }
+
+    fn assert_options_custom_element_tag(c: &Component, expected_tag: &str) {
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        match &opts.custom_element {
+            Some(svelte_ast::CustomElementConfig::Tag(tag)) => {
+                assert_eq!(tag, expected_tag, "expected customElement tag");
+            }
+            _ => panic!("expected CustomElementConfig::Tag"),
+        }
+    }
+
+    fn assert_options_custom_element_expression(c: &Component) {
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert!(
+            matches!(&opts.custom_element, Some(svelte_ast::CustomElementConfig::Expression(_))),
+            "expected CustomElementConfig::Expression"
+        );
+    }
+
+    fn assert_no_options(c: &Component) {
+        assert!(c.options.is_none(), "expected no svelte:options");
+    }
+
+    #[test]
+    fn svelte_options_runes_true() {
+        let c = parse("<svelte:options runes={true} />");
+        assert_options_runes(&c, true);
+        assert!(c.fragment.is_empty(), "svelte:options should be removed from fragment");
+    }
+
+    #[test]
+    fn svelte_options_runes_false() {
+        let c = parse("<svelte:options runes={false} />");
+        assert_options_runes(&c, false);
+    }
+
+    #[test]
+    fn svelte_options_namespace_svg() {
+        let c = parse(r#"<svelte:options namespace="svg" />"#);
+        assert_options_namespace(&c, svelte_ast::Namespace::Svg);
+    }
+
+    #[test]
+    fn svelte_options_namespace_mathml() {
+        let c = parse(r#"<svelte:options namespace="mathml" />"#);
+        assert_options_namespace(&c, svelte_ast::Namespace::Mathml);
+    }
+
+    #[test]
+    fn svelte_options_namespace_html() {
+        let c = parse(r#"<svelte:options namespace="html" />"#);
+        assert_options_namespace(&c, svelte_ast::Namespace::Html);
+    }
+
+    #[test]
+    fn svelte_options_css_injected() {
+        let c = parse(r#"<svelte:options css="injected" />"#);
+        assert_options_css(&c, svelte_ast::CssMode::Injected);
+    }
+
+    #[test]
+    fn svelte_options_custom_element_string() {
+        let c = parse(r#"<svelte:options customElement="my-element" />"#);
+        assert_options_custom_element_tag(&c, "my-element");
+    }
+
+    #[test]
+    fn svelte_options_custom_element_object() {
+        let c = parse(r#"<svelte:options customElement={{ tag: "my-element", shadow: "open" }} />"#);
+        assert_options_custom_element_expression(&c);
+    }
+
+    #[test]
+    fn svelte_options_preserve_whitespace() {
+        let c = parse("<svelte:options preserveWhitespace />");
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.preserve_whitespace, Some(true));
+    }
+
+    #[test]
+    fn svelte_options_immutable() {
+        let c = parse("<svelte:options immutable={true} />");
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.immutable, Some(true));
+    }
+
+    #[test]
+    fn svelte_options_accessors() {
+        let c = parse("<svelte:options accessors={true} />");
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.accessors, Some(true));
+    }
+
+    #[test]
+    fn svelte_options_multiple_attributes() {
+        let c = parse(r#"<svelte:options runes={true} namespace="svg" />"#);
+        assert_options_runes(&c, true);
+        assert_options_namespace(&c, svelte_ast::Namespace::Svg);
+    }
+
+    #[test]
+    fn svelte_options_with_content() {
+        let c = parse("<svelte:options runes={true} />\n<p>Hello</p>");
+        assert_options_runes(&c, true);
+        // <p> should be in the fragment, svelte:options should not
+        assert_eq!(c.fragment.nodes.len(), 2); // newline text + <p>
+    }
+
+    #[test]
+    fn svelte_options_removed_from_fragment() {
+        let c = parse("<svelte:options runes={true} />");
+        assert!(c.options.is_some());
+        assert!(c.fragment.is_empty(), "svelte:options must be removed from fragment");
+    }
+
+    #[test]
+    fn no_svelte_options() {
+        let c = parse("<p>Hello</p>");
+        assert_no_options(&c);
+    }
+
+    #[test]
+    fn svelte_options_unknown_attribute_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options foo="bar" />"#);
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsUnknownAttribute(name) if name == "foo"
+        )));
+    }
+
+    #[test]
+    fn svelte_options_invalid_namespace_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options namespace="invalid" />"#);
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsInvalidAttributeValue(_)
+        )));
+    }
+
+    #[test]
+    fn svelte_options_invalid_css_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options css="external" />"#);
+        assert!(!diags.is_empty());
+    }
+
+    #[test]
+    fn svelte_options_no_children_diagnostic() {
+        let (_, diags) = parse_with_diagnostics("<svelte:options runes={true}><p>child</p></svelte:options>");
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsNoChildren
+        )));
+    }
+
+    #[test]
+    fn svelte_options_invalid_custom_element_tag_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options customElement="NoHyphen" />"#);
+        assert!(!diags.is_empty());
+    }
+
+    #[test]
+    fn svelte_options_reserved_tag_name_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options customElement="font-face" />"#);
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsReservedTagName
+        )));
+    }
+
+    #[test]
+    fn svelte_options_custom_element_null_compat() {
+        // null is backwards compat from Svelte 4 — should not error
+        let c = parse("<svelte:options customElement={null} />");
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert!(opts.custom_element.is_none());
+    }
+
+    #[test]
+    fn svelte_options_namespace_svg_uri() {
+        let c = parse(r#"<svelte:options namespace="http://www.w3.org/2000/svg" />"#);
+        assert_options_namespace(&c, svelte_ast::Namespace::Svg);
+    }
+
+    #[test]
+    fn svelte_options_deprecated_tag_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options tag="my-element" />"#);
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsDeprecatedTag
+        )));
+        // Should be a warning, not an error
+        assert!(diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Warning));
+    }
+
+    #[test]
+    fn svelte_options_invalid_tag_not_stored() {
+        let (c, diags) = parse_with_diagnostics(r#"<svelte:options customElement="NoHyphen" />"#);
+        assert!(!diags.is_empty());
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert!(opts.custom_element.is_none(), "invalid tag should not be stored");
+    }
+
+    #[test]
+    fn svelte_options_preserves_attributes() {
+        let c = parse(r#"<svelte:options runes={true} namespace="svg" />"#);
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.attributes.len(), 2);
     }
 }

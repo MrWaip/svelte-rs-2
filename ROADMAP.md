@@ -350,10 +350,12 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 
 Theme: `<svelte:*>` elements for global bindings, dynamic elements, head management, error boundaries.
 
-### `<svelte:options>` — Compiler options tag
+### ~~`<svelte:options>` — Compiler options tag~~ ✅
 - **Phases**: P only (no codegen)
-- **Attributes**: `runes={true|false}`, `namespace="html"|"svg"|"mathml"`, `customElement="tag-name"`, `css="injected"`
-- **Notes**: Parse early, store on component metadata
+- **Attributes**: `runes={true|false}`, `namespace="html"|"svg"|"mathml"`, `customElement="tag-name"`, `css="injected"`, `preserveWhitespace`, `immutable`, `accessors`
+- **Notes**: Parse early, store on component metadata. Scanner extended for `svelte:*` tag names. Validation for unknown attrs, invalid values, no children, tag names.
+- [ ] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties *(deferred — expression span stored, analysis-phase parsing needed)*
+- [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()` *(deferred — requires codegen changes)*
 
 ### `<svelte:head>` — Document head
 - **Phases**: P, A, T
