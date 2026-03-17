@@ -36,8 +36,6 @@ fn build_directive_prop<'a>(
 pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr: &Attribute,
-    owner_id: NodeId,
-    attr_idx: usize,
     el_name: &str,
     tag_name: &str,
     is_dyn: bool,
@@ -46,6 +44,7 @@ pub(crate) fn process_attr<'a>(
     directive_init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
 ) {
+    let attr_id = attr.id();
     let target = if is_dyn {
         update as &mut Vec<_>
     } else {
@@ -64,7 +63,7 @@ pub(crate) fn process_attr<'a>(
             if let Some(event_name) = a.name.strip_prefix("on") {
                 if svelte_js::is_delegatable_event(event_name) {
                     let event_str = event_name.to_string();
-                    let val = get_attr_expr(ctx, owner_id, attr_idx);
+                    let val = get_attr_expr(ctx, attr_id);
                     after_update.push(ctx.b.call_stmt(
                         "$.delegated",
                         [
@@ -79,7 +78,7 @@ pub(crate) fn process_attr<'a>(
                     return;
                 }
             }
-            let val = get_attr_expr(ctx, owner_id, attr_idx);
+            let val = get_attr_expr(ctx, attr_id);
             if a.name == "value" && tag_name == "input" {
                 target.push(ctx.b.call_stmt(
                     "$.set_value",
@@ -97,7 +96,7 @@ pub(crate) fn process_attr<'a>(
             }
         }
         Attribute::ConcatenationAttribute(a) => {
-            let val = build_attr_concat(ctx, owner_id, attr_idx, &a.parts);
+            let val = build_attr_concat(ctx, attr_id, &a.parts);
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
                 [
@@ -108,7 +107,7 @@ pub(crate) fn process_attr<'a>(
             ));
         }
         Attribute::ShorthandOrSpread(a) if !a.is_spread => {
-            let val = get_attr_expr(ctx, owner_id, attr_idx);
+            let val = get_attr_expr(ctx, attr_id);
             let name = ctx.component.source_text(a.expression_span).to_string();
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
@@ -127,20 +126,20 @@ pub(crate) fn process_attr<'a>(
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
         Attribute::UseDirective(ud) => {
-            gen_use_directive(ctx, ud, owner_id, attr_idx, el_name, directive_init);
+            gen_use_directive(ctx, ud, attr_id, el_name, directive_init);
         }
         // LEGACY(svelte4): on:directive
         Attribute::OnDirectiveLegacy(od) => {
-            gen_on_directive_legacy(ctx, od, owner_id, attr_idx, el_name, after_update);
+            gen_on_directive_legacy(ctx, od, attr_id, el_name, after_update);
         }
         Attribute::TransitionDirective(td) => {
-            gen_transition_directive(ctx, td, owner_id, attr_idx, el_name, after_update);
+            gen_transition_directive(ctx, td, attr_id, el_name, after_update);
         }
         Attribute::AnimateDirective(ad) => {
-            gen_animate_directive(ctx, ad, owner_id, attr_idx, el_name, after_update);
+            gen_animate_directive(ctx, ad, attr_id, el_name, after_update);
         }
         Attribute::AttachTag(_) => {
-            gen_attach_tag(ctx, owner_id, attr_idx, el_name, directive_init);
+            gen_attach_tag(ctx, attr_id, el_name, directive_init);
         }
     }
 }
@@ -166,17 +165,18 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class value ---
     let (class_value, class_attr_is_dynamic) = if has_class_attr {
-        // Find the class expression attribute index
-        let (attr_idx, _) = el.attributes.iter().enumerate()
-            .find(|(_, a)| matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "class"))
+        // Find the class expression attribute
+        let class_attr = el.attributes.iter()
+            .find(|a| matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "class"))
             .expect("has_class_attribute set but no ExpressionAttribute with name=class");
+        let class_attr_id = class_attr.id();
 
-        let mut expr = get_attr_expr(ctx, el.id, attr_idx);
-        if ctx.needs_clsx(el.id, attr_idx) {
+        let mut expr = get_attr_expr(ctx, class_attr_id);
+        if ctx.needs_clsx(class_attr_id) {
             expr = ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
         }
 
-        let is_dynamic = ctx.is_dynamic_attr(el.id, attr_idx);
+        let is_dynamic = ctx.is_dynamic_attr(class_attr_id);
         (expr, is_dynamic)
     } else {
         // No class expression attribute — use static class or empty string
@@ -186,18 +186,18 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class directives object ---
     let directives_obj = if has_class_dirs {
-        let class_dirs: Vec<_> = el.attributes.iter().enumerate()
-            .filter_map(|(idx, a)| match a {
-                Attribute::ClassDirective(cd) => Some((idx, cd)),
+        let class_dirs: Vec<_> = el.attributes.iter()
+            .filter_map(|a| match a {
+                Attribute::ClassDirective(cd) => Some(cd),
                 _ => None,
             })
             .collect();
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for (attr_idx, cd) in &class_dirs {
+        for cd in &class_dirs {
             let name = &cd.name;
             let (expr, same_name) = if cd.expression_span.is_some() {
-                let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+                let parsed = get_attr_expr(ctx, cd.id);
                 let same = cd.expression_span
                     .map(|span| ctx.component.source_text(span).trim() == name.as_str())
                     .unwrap_or(false);
@@ -213,8 +213,8 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
     };
 
     // --- Determine if any directive is dynamic ---
-    let directives_are_dynamic = has_class_dirs && el.attributes.iter().enumerate().any(|(idx, a)| {
-        matches!(a, Attribute::ClassDirective(_)) && ctx.is_dynamic_attr(el.id, idx)
+    let directives_are_dynamic = has_class_dirs && el.attributes.iter().any(|a| {
+        matches!(a, Attribute::ClassDirective(_)) && ctx.is_dynamic_attr(a.id())
     });
 
     let has_state = class_attr_is_dynamic || directives_are_dynamic;
@@ -286,9 +286,8 @@ pub(crate) fn process_style_directives<'a>(
     let style_dirs: Vec<_> = el
         .attributes
         .iter()
-        .enumerate()
-        .filter_map(|(idx, a)| match a {
-            Attribute::StyleDirective(sd) => Some((idx, sd)),
+        .filter_map(|a| match a {
+            Attribute::StyleDirective(sd) => Some(sd),
             _ => None,
         })
         .collect();
@@ -299,7 +298,7 @@ pub(crate) fn process_style_directives<'a>(
     let mut normal_props: Vec<ObjProp<'a>> = Vec::new();
     let mut important_props: Vec<ObjProp<'a>> = Vec::new();
 
-    for (attr_idx, sd) in &style_dirs {
+    for sd in &style_dirs {
         let name = &sd.name;
         let target = if sd.important { &mut important_props } else { &mut normal_props };
 
@@ -309,7 +308,7 @@ pub(crate) fn process_style_directives<'a>(
                 target.push(build_directive_prop(ctx, name, expr, true));
             }
             StyleDirectiveValue::Expression(span) => {
-                let parsed = get_attr_expr(ctx, el.id, *attr_idx);
+                let parsed = get_attr_expr(ctx, sd.id);
                 let expr_text = ctx.component.source_text(*span).trim();
                 let same_name = expr_text == name.as_str();
                 target.push(build_directive_prop(ctx, name, parsed, same_name));
@@ -320,7 +319,7 @@ pub(crate) fn process_style_directives<'a>(
             }
             StyleDirectiveValue::Concatenation(parts) => {
                 let name_alloc = ctx.b.alloc_str(name);
-                let expr = build_style_concat(ctx, el.id, *attr_idx, parts);
+                let expr = build_style_concat(ctx, sd.id, parts);
                 target.push(ObjProp::KeyValue(name_alloc, expr));
             }
         }
@@ -360,8 +359,7 @@ pub(crate) fn process_style_directives<'a>(
 /// Applies `$.get()` wrapping for mutated rune references.
 fn build_style_concat<'a>(
     ctx: &mut Ctx<'a>,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     parts: &[svelte_ast::ConcatPart],
 ) -> Expression<'a> {
     use crate::builder::TemplatePart;
@@ -380,11 +378,11 @@ fn build_style_concat<'a>(
                 if is_mutated_rune {
                     // Drain the pre-parsed expression (it's just `shade` as an identifier)
                     // and replace with `$.get(shade)` — the rune getter call.
-                    let _ = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
+                    let _ = get_concat_part_expr(ctx, attr_id, dyn_idx);
                     let get_call = ctx.b.call_expr("$.get", [Arg::Ident(expr_text)]);
                     tpl_parts.push(TemplatePart::Expr(get_call));
                 } else {
-                    let expr = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
+                    let expr = get_concat_part_expr(ctx, attr_id, dyn_idx);
                     tpl_parts.push(TemplatePart::Expr(expr));
                 }
                 dyn_idx += 1;
@@ -676,7 +674,8 @@ pub(crate) fn process_attrs_spread<'a>(
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-    for (attr_idx, attr) in el.attributes.iter().enumerate() {
+    for attr in &el.attributes {
+        let attr_id = attr.id();
         match attr {
             Attribute::BooleanAttribute(a) => {
                 let name_alloc = ctx.b.alloc_str(&a.name);
@@ -694,7 +693,7 @@ pub(crate) fn process_attrs_spread<'a>(
                     let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::Shorthand(name_alloc));
                 } else {
-                    let expr = get_attr_expr(ctx, el.id, attr_idx);
+                    let expr = get_attr_expr(ctx, attr_id);
                     // Hoist event handlers (on*) with function values for stable identity
                     let is_event = a.name.starts_with("on");
                     let is_fn = matches!(
@@ -713,12 +712,12 @@ pub(crate) fn process_attrs_spread<'a>(
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
-                let val = build_attr_concat(ctx, el.id, attr_idx, &a.parts);
+                let val = build_attr_concat(ctx, attr_id, &a.parts);
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }
             Attribute::ShorthandOrSpread(a) if a.is_spread => {
-                let expr = get_attr_expr(ctx, el.id, attr_idx);
+                let expr = get_attr_expr(ctx, attr_id);
                 props.push(ObjProp::Spread(expr));
             }
             Attribute::ShorthandOrSpread(a) => {
@@ -763,8 +762,7 @@ pub(crate) fn process_attrs_spread<'a>(
 fn gen_use_directive<'a>(
     ctx: &mut Ctx<'a>,
     ud: &svelte_ast::UseDirective,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
@@ -797,7 +795,7 @@ fn gen_use_directive<'a>(
 
     // Optional third arg: () => expression
     if has_expr {
-        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let expr = get_attr_expr(ctx, attr_id);
         let thunk = ctx.b.thunk(expr);
         args.push(Arg::Expr(thunk));
     }
@@ -813,12 +811,11 @@ fn gen_use_directive<'a>(
 /// Reference: `AttachTag.js`.
 fn gen_attach_tag<'a>(
     ctx: &mut Ctx<'a>,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
-    let expr = get_attr_expr(ctx, owner_id, attr_idx);
+    let expr = get_attr_expr(ctx, attr_id);
     let thunk = ctx.b.thunk(expr);
     init.push(ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]));
 }
@@ -832,8 +829,7 @@ fn gen_attach_tag<'a>(
 fn gen_transition_directive<'a>(
     ctx: &mut Ctx<'a>,
     td: &svelte_ast::TransitionDirective,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
@@ -855,7 +851,7 @@ fn gen_transition_directive<'a>(
     ];
 
     if td.expression_span.is_some() {
-        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let expr = get_attr_expr(ctx, attr_id);
         let thunk = ctx.b.thunk(expr);
         args.push(Arg::Expr(thunk));
     }
@@ -868,8 +864,7 @@ fn gen_transition_directive<'a>(
 fn gen_animate_directive<'a>(
     ctx: &mut Ctx<'a>,
     ad: &svelte_ast::AnimateDirective,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
@@ -882,7 +877,7 @@ fn gen_animate_directive<'a>(
     ];
 
     if ad.expression_span.is_some() {
-        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let expr = get_attr_expr(ctx, attr_id);
         let thunk = ctx.b.thunk(expr);
         args.push(Arg::Expr(thunk));
     } else {
@@ -910,8 +905,7 @@ fn build_directive_name_expr<'a>(ctx: &Ctx<'a>, name: &str) -> Expression<'a> {
 fn gen_on_directive_legacy<'a>(
     ctx: &mut Ctx<'a>,
     od: &svelte_ast::OnDirectiveLegacy,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
@@ -929,7 +923,7 @@ fn gen_on_directive_legacy<'a>(
         ]);
         ctx.b.function_expr(ctx.b.params(["$$arg"]), vec![ctx.b.expr_stmt(call)])
     } else {
-        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let expr = get_attr_expr(ctx, attr_id);
         build_legacy_event_handler(ctx, expr)
     };
 

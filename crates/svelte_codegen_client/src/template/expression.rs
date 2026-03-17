@@ -25,22 +25,21 @@ pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expressio
     }
 }
 
-/// Get a pre-transformed attribute expression from ParsedExprs by (owner_id, attr_index).
+/// Get a pre-transformed attribute expression from ParsedExprs by attribute NodeId.
 /// Takes ownership via remove — each expression can only be consumed once.
-pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, owner_id: NodeId, attr_idx: usize) -> Expression<'a> {
-    let key = (owner_id, attr_idx);
-    if let Some(expr) = ctx.parsed.attr_exprs.remove(&key) {
+pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
+    if let Some(expr) = ctx.parsed.attr_exprs.remove(&attr_id) {
         expr
     } else {
-        debug_assert!(false, "missing pre-transformed attr expr for {:?}", key);
+        debug_assert!(false, "missing pre-transformed attr expr for {:?}", attr_id);
         ctx.b.str_expr("")
     }
 }
 
 /// Get a pre-transformed concat part expression from ParsedExprs.
 /// Takes ownership via remove — each expression can only be consumed once.
-pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, owner_id: NodeId, attr_idx: usize, part_idx: usize) -> Expression<'a> {
-    let key = (owner_id, attr_idx, part_idx);
+pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId, part_idx: usize) -> Expression<'a> {
+    let key = (attr_id, part_idx);
     if let Some(expr) = ctx.parsed.concat_part_exprs.remove(&key) {
         expr
     } else {
@@ -137,8 +136,7 @@ pub(crate) fn build_concat_from_parts<'a>(
 
 pub(crate) fn build_attr_concat<'a>(
     ctx: &mut Ctx<'a>,
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     parts: &[AstConcatPart],
 ) -> Expression<'a> {
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
@@ -147,7 +145,7 @@ pub(crate) fn build_attr_concat<'a>(
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
             AstConcatPart::Dynamic(_) => {
-                let expr = get_concat_part_expr(ctx, owner_id, attr_idx, dyn_idx);
+                let expr = get_concat_part_expr(ctx, attr_id, dyn_idx);
                 tpl_parts.push(TemplatePart::Expr(expr));
                 dyn_idx += 1;
             }

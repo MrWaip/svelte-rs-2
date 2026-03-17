@@ -27,12 +27,12 @@ impl ReactivityVisitor {
     }
 
     /// Check if an attribute expression references a snippet parameter.
-    fn attr_refs_snippet_param(&self, owner_id: &NodeId, attr_idx: usize, data: &AnalysisData) -> bool {
+    fn attr_refs_snippet_param(&self, attr_id: NodeId, data: &AnalysisData) -> bool {
         let params = self.current_snippet_params(data);
         if params.is_empty() {
             return false;
         }
-        if let Some(info) = data.attr_expressions.get(&(*owner_id, attr_idx)) {
+        if let Some(info) = data.attr_expressions.get(&attr_id) {
             return info.references.iter().any(|r| params.iter().any(|p| p == &r.name));
         }
         false
@@ -90,11 +90,12 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        let is_dynamic = attr_is_dynamic(attr, idx, el.id, data)
-            || self.attr_refs_snippet_param(&el.id, idx, data);
+    fn visit_attribute(&mut self, attr: &Attribute, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        let attr_id = attr.id();
+        let is_dynamic = attr_is_dynamic(attr, data)
+            || self.attr_refs_snippet_param(attr_id, data);
         if is_dynamic {
-            data.element_flags.dynamic_attrs.insert((el.id, idx));
+            data.element_flags.dynamic_attrs.insert(attr_id);
             data.element_flags.needs_ref.insert(el.id);
         }
     }
@@ -137,10 +138,11 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
-        if component_attr_is_dynamic(attr, idx, cn.id, data) {
-            data.element_flags.dynamic_attrs.insert((cn.id, idx));
+    fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+        if component_attr_is_dynamic(attr, data) {
+            data.element_flags.dynamic_attrs.insert(attr.id());
         }
+        let _ = cn;
     }
 
     fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
@@ -157,8 +159,6 @@ impl TemplateVisitor for ReactivityVisitor {
 // so the child component can re-read the value reactively.
 fn component_attr_is_dynamic(
     attr: &Attribute,
-    attr_idx: usize,
-    owner_id: NodeId,
     data: &AnalysisData,
 ) -> bool {
     if matches!(
@@ -167,7 +167,7 @@ fn component_attr_is_dynamic(
     ) {
         return false;
     }
-    if let Some(info) = data.attr_expressions.get(&(owner_id, attr_idx)) {
+    if let Some(info) = data.attr_expressions.get(&attr.id()) {
         return info.references.iter().any(|r| {
             if let Some(sym_id) = r.symbol_id {
                 let root = data.scoping.root_scope_id();
@@ -196,8 +196,6 @@ fn is_store_ref(name: &str, data: &AnalysisData) -> bool {
 // change between renders and need a template_effect to stay up-to-date.
 fn attr_is_dynamic(
     attr: &Attribute,
-    attr_idx: usize,
-    el_id: NodeId,
     data: &AnalysisData,
 ) -> bool {
     if matches!(
@@ -206,7 +204,7 @@ fn attr_is_dynamic(
     ) {
         return false;
     }
-    if let Some(info) = data.attr_expressions.get(&(el_id, attr_idx)) {
+    if let Some(info) = data.attr_expressions.get(&attr.id()) {
         return info.references.iter().any(|r| {
             // Non-source props are always dynamic (accessed as $$props.name)
             if let Some(pa) = &data.props {

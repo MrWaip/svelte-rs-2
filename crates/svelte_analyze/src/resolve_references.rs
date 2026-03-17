@@ -47,13 +47,11 @@ fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
 
 /// Resolve references in an attribute expression.
 fn resolve_attr_refs(
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     scope: ScopeId,
     data: &mut AnalysisData,
 ) {
-    let key = (owner_id, attr_idx);
-    let Some(info) = data.attr_expressions.get_mut(&key) else {
+    let Some(info) = data.attr_expressions.get_mut(&attr_id) else {
         return;
     };
     for r in &mut info.references {
@@ -108,24 +106,22 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
 
     fn visit_attribute(
         &mut self,
-        _attr: &Attribute,
-        idx: usize,
-        el: &Element,
+        attr: &Attribute,
+        _el: &Element,
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        resolve_attr_refs(el.id, idx, scope, data);
+        resolve_attr_refs(attr.id(), scope, data);
     }
 
     fn visit_component_attribute(
         &mut self,
-        _attr: &Attribute,
-        idx: usize,
-        cn: &ComponentNode,
+        attr: &Attribute,
+        _cn: &ComponentNode,
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        resolve_attr_refs(cn.id, idx, scope, data);
+        resolve_attr_refs(attr.id(), scope, data);
     }
 
     fn visit_bind_directive(
@@ -149,8 +145,8 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
             resolve_expr_refs(el.id, scope, data);
         }
         // Walk attributes — resolve expression refs and bind directives
-        for (idx, attr) in el.attributes.iter().enumerate() {
-            resolve_attr_refs(el.id, idx, scope, data);
+        for attr in &el.attributes {
+            resolve_attr_refs(attr.id(), scope, data);
             if let Attribute::BindDirective(dir) = attr {
                 self.resolve_bind(dir, scope, data);
             }

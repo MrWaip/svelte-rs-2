@@ -63,7 +63,7 @@ fn parse_attr_expr<'a>(
     alloc: &'a Allocator,
     source: &str,
     offset: u32,
-    key: (NodeId, usize),
+    attr_id: NodeId,
     data: &mut AnalysisData,
     parsed: &mut ParsedExprs<'a>,
     diags: &mut Vec<Diagnostic>,
@@ -71,8 +71,8 @@ fn parse_attr_expr<'a>(
     let arena_source: &'a str = alloc.alloc_str(source);
     match svelte_js::analyze_expression_with_alloc(alloc, arena_source, offset) {
         Ok((info, expr)) => {
-            data.attr_expressions.insert(key, info);
-            parsed.attr_exprs.insert(key, expr);
+            data.attr_expressions.insert(attr_id, info);
+            parsed.attr_exprs.insert(attr_id, expr);
         }
         Err(diag) => diags.push(diag),
     }
@@ -82,8 +82,7 @@ fn parse_attr_expr<'a>(
 fn parse_concat_parts<'a>(
     alloc: &'a Allocator,
     parts: &[ConcatPart],
-    owner_id: NodeId,
-    attr_idx: usize,
+    attr_id: NodeId,
     component: &Component,
     data: &mut AnalysisData,
     parsed: &mut ParsedExprs<'a>,
@@ -98,7 +97,7 @@ fn parse_concat_parts<'a>(
             match svelte_js::analyze_expression_with_alloc(alloc, arena_source, span.start) {
                 Ok((info, expr)) => {
                     all_refs.extend(info.references);
-                    parsed.concat_part_exprs.insert((owner_id, attr_idx, dyn_idx), expr);
+                    parsed.concat_part_exprs.insert((attr_id, dyn_idx), expr);
                 }
                 Err(diag) => diags.push(diag),
             }
@@ -110,7 +109,7 @@ fn parse_concat_parts<'a>(
         references: all_refs,
         has_side_effects: false,
     };
-    data.attr_expressions.insert((owner_id, attr_idx), merged);
+    data.attr_expressions.insert(attr_id, merged);
 }
 
 fn walk_fragment<'a>(
@@ -140,11 +139,11 @@ fn walk_node<'a>(
             parse_expr(alloc, source, tag.expression_span.start, tag.id, data, parsed, diags);
         }
         Node::Element(el) => {
-            walk_attrs(alloc, el.id, &el.attributes, component, data, parsed, diags);
+            walk_attrs(alloc, &el.attributes, component, data, parsed, diags);
             walk_fragment(alloc, &el.fragment, component, data, parsed, diags);
         }
         Node::ComponentNode(cn) => {
-            walk_attrs(alloc, cn.id, &cn.attributes, component, data, parsed, diags);
+            walk_attrs(alloc, &cn.attributes, component, data, parsed, diags);
             walk_fragment(alloc, &cn.fragment, component, data, parsed, diags);
         }
         Node::IfBlock(block) => {
@@ -214,32 +213,31 @@ fn walk_node<'a>(
                 let tag_source = component.source_text(el.tag_span);
                 parse_expr(alloc, tag_source, el.tag_span.start, el.id, data, parsed, diags);
             }
-            walk_attrs(alloc, el.id, &el.attributes, component, data, parsed, diags);
+            walk_attrs(alloc, &el.attributes, component, data, parsed, diags);
             walk_fragment(alloc, &el.fragment, component, data, parsed, diags);
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
-/// Parse and store attribute expressions, keyed by (owner_id, attr_index).
+/// Parse and store attribute expressions, keyed by attribute NodeId.
 fn walk_attrs<'a>(
     alloc: &'a Allocator,
-    owner_id: NodeId,
     attrs: &[Attribute],
     component: &Component,
     data: &mut AnalysisData,
     parsed: &mut ParsedExprs<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    for (attr_idx, attr) in attrs.iter().enumerate() {
-        let key = (owner_id, attr_idx);
+    for attr in attrs {
+        let attr_id = attr.id();
         match attr {
             Attribute::ExpressionAttribute(a) => {
                 let source = component.source_text(a.expression_span);
-                parse_attr_expr(alloc, source, a.expression_span.start, key, data, parsed, diags);
+                parse_attr_expr(alloc, source, a.expression_span.start, attr_id, data, parsed, diags);
                 // class={[...]} or class={{...}} or class={x} need clsx to resolve
                 if a.name == "class" {
-                    if let Some(expr) = parsed.attr_exprs.get(&key) {
+                    if let Some(expr) = parsed.attr_exprs.get(&attr_id) {
                         let needs = !matches!(
                             expr,
                             oxc_ast::ast::Expression::StringLiteral(_)
@@ -247,18 +245,18 @@ fn walk_attrs<'a>(
                                 | oxc_ast::ast::Expression::BinaryExpression(_)
                         );
                         if needs {
-                            data.element_flags.needs_clsx.insert(key);
+                            data.element_flags.needs_clsx.insert(attr_id);
                         }
                     }
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
-                parse_concat_parts(alloc, &a.parts, owner_id, attr_idx, component, data, parsed, diags);
+                parse_concat_parts(alloc, &a.parts, attr_id, component, data, parsed, diags);
             }
             Attribute::ClassDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::StyleDirective(a) => {
@@ -266,10 +264,10 @@ fn walk_attrs<'a>(
                 match &a.value {
                     StyleDirectiveValue::Expression(span) => {
                         let source = component.source_text(*span);
-                        parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                        parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
-                        parse_concat_parts(alloc, parts, owner_id, attr_idx, component, data, parsed, diags);
+                        parse_concat_parts(alloc, parts, attr_id, component, data, parsed, diags);
                     }
                     StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
                 }
@@ -277,7 +275,7 @@ fn walk_attrs<'a>(
             Attribute::BindDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::ShorthandOrSpread(a) => {
@@ -292,12 +290,12 @@ fn walk_attrs<'a>(
                     a.expression_span
                 };
                 let source = component.source_text(span);
-                parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
             }
             Attribute::UseDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
@@ -305,25 +303,25 @@ fn walk_attrs<'a>(
             Attribute::OnDirectiveLegacy(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::TransitionDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::AnimateDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
-                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                    parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
             Attribute::AttachTag(a) => {
                 let span = a.expression_span;
                 let source = component.source_text(span);
-                parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
             }
         }
     }

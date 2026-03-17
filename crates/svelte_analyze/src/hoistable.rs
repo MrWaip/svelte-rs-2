@@ -46,9 +46,9 @@ impl HoistableSnippetsVisitor {
         }
     }
 
-    fn check_attr_expr(&mut self, owner_id: NodeId, idx: usize, data: &AnalysisData) {
+    fn check_attr_expr(&mut self, attr_id: NodeId, data: &AnalysisData) {
         let Some(root) = self.current_root else { return };
-        if let Some(info) = data.attr_expressions.get(&(owner_id, idx)) {
+        if let Some(info) = data.attr_expressions.get(&attr_id) {
             if info
                 .references
                 .iter()
@@ -119,23 +119,21 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
 
     fn visit_attribute(
         &mut self,
-        _attr: &Attribute,
-        idx: usize,
-        el: &Element,
+        attr: &Attribute,
+        _el: &Element,
         _scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        self.check_attr_expr(el.id, idx, data);
+        self.check_attr_expr(attr.id(), data);
     }
 
     fn visit_component_attribute(
         &mut self,
-        _attr: &Attribute,
-        idx: usize,
-        cn: &ComponentNode,
+        attr: &Attribute,
+        _cn: &ComponentNode,
         _scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        self.check_attr_expr(cn.id, idx, data);
+        self.check_attr_expr(attr.id(), data);
     }
 }

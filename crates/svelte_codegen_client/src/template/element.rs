@@ -50,15 +50,14 @@ pub(crate) fn process_element<'a>(
         let el_clone = el.clone_without_fragment();
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
     } else {
-        let attr_count = el.attributes.len();
-        let mut attr_dynamic = Vec::with_capacity(attr_count);
-        for idx in 0..attr_count {
-            attr_dynamic.push(ctx.is_dynamic_attr(el_id, idx));
-        }
+        let el = ctx.element(el_id);
+        let attr_dynamic: Vec<_> = el.attributes.iter()
+            .map(|attr| ctx.is_dynamic_attr(attr.id()))
+            .collect();
         let el = ctx.element(el_id);
         let tag = el.name.clone();
-        for (idx, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_id, idx, el_name, &tag, attr_dynamic[idx], init, update, &mut directive_init, &mut directive_after_update);
+        for (i, attr) in el.attributes.iter().enumerate() {
+            process_attr(ctx, attr, el_name, &tag, attr_dynamic[i], init, update, &mut directive_init, &mut directive_after_update);
         }
     }
 
