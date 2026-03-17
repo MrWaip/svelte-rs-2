@@ -64,6 +64,28 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         &ctx.prop_sources,
         &ctx.prop_non_sources,
         store_subscriptions,
+        true,
+    )
+}
+
+/// Transform a standalone JS/TS module (`.svelte.js`/`.svelte.ts`) applying rune rewrites.
+/// Unlike component scripts, exports are preserved (not stripped).
+pub fn transform_module_script<'a>(
+    allocator: &'a Allocator,
+    source: &'a str,
+    is_ts: bool,
+    component_scoping: &ComponentScoping,
+) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+    transform_script_text(
+        allocator,
+        source,
+        is_ts,
+        component_scoping,
+        None,
+        &FxHashSet::default(),
+        &FxHashMap::default(),
+        &FxHashSet::default(),
+        false,
     )
 }
 
@@ -77,6 +99,7 @@ fn transform_script_text<'a>(
     prop_sources: &FxHashSet<String>,
     prop_non_sources: &FxHashMap<String, String>,
     store_subscriptions: &FxHashSet<String>,
+    strip_exports: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -117,6 +140,7 @@ fn transform_script_text<'a>(
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
+        strip_exports,
     };
 
     let empty_scoping = Scoping::default();
@@ -191,6 +215,7 @@ fn transform_program<'a>(
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
+        strip_exports: true,
     };
 
     let empty_scoping = Scoping::default();
@@ -255,6 +280,9 @@ struct ScriptTransformer<'b, 'a> {
     props_gen: Option<PropsGenInfo>,
     /// Names of $derived/$derived.by runes whose init needs post-traverse wrapping.
     derived_pending: FxHashSet<String>,
+    /// Whether to strip `export` keywords from declarations. True for component scripts,
+    /// false for module compilation where exports must be preserved.
+    strip_exports: bool,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -499,19 +527,22 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         // Strip `export` keyword: ExportNamedDeclaration → inner declaration
-        let mut i = 0;
-        while i < stmts.len() {
-            if let Statement::ExportNamedDeclaration(_) = &stmts[i] {
-                let stmt = stmts.remove(i);
-                if let Statement::ExportNamedDeclaration(export) = stmt {
-                    if let Some(decl) = export.unbox().declaration {
-                        stmts.insert(i, Statement::from(decl));
-                        i += 1;
+        // (only for component scripts; module compilation preserves exports)
+        if self.strip_exports {
+            let mut i = 0;
+            while i < stmts.len() {
+                if let Statement::ExportNamedDeclaration(_) = &stmts[i] {
+                    let stmt = stmts.remove(i);
+                    if let Statement::ExportNamedDeclaration(export) = stmt {
+                        if let Some(decl) = export.unbox().declaration {
+                            stmts.insert(i, Statement::from(decl));
+                            i += 1;
+                        }
+                        // else: `export { x }` form — just remove
                     }
-                    // else: `export { x }` form — just remove
+                } else {
+                    i += 1;
                 }
-            } else {
-                i += 1;
             }
         }
 

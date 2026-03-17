@@ -17,6 +17,10 @@
             <div class="toolbar">
                 <h1>Rust Svelte Compiler Demo</h1>
                 <div class="toolbar-actions">
+                    <div class="toggle-group">
+                        <button id="mode-component" class="btn toggle-btn active" title="Component mode (.svelte)">Component</button>
+                        <button id="mode-module" class="btn toggle-btn" title="Module mode (.svelte.js)">Module</button>
+                    </div>
                     <button id="load-benchmark" class="btn" title="Load benchmark code">
                         Load benchmark
                     </button>
@@ -129,6 +133,30 @@
                 line-height: 1;
             }
 
+            .toggle-group {
+                display: flex;
+                gap: 0;
+            }
+
+            .toggle-btn {
+                border-radius: 0;
+                border: 1px solid var(--btn-hover);
+                opacity: 0.6;
+            }
+
+            .toggle-btn:first-child {
+                border-radius: 6px 0 0 6px;
+            }
+
+            .toggle-btn:last-child {
+                border-radius: 0 6px 6px 0;
+            }
+
+            .toggle-btn.active {
+                opacity: 1;
+                background: var(--btn-hover);
+            }
+
             .grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -207,9 +235,11 @@
 
         <script type="module">
             import prettyMs from "prettyMs";
-            import { compile as svelteCompiler } from "https://cdn.jsdelivr.net/npm/svelte@5.53.9/compiler/index.js/+esm";
+            import { compile as svelteCompiler, compileModule as svelteCompileModule } from "https://cdn.jsdelivr.net/npm/svelte@5.53.9/compiler/index.js/+esm";
 
-            import { example, benchmarkExample } from "./example.js";
+            import { example, benchmarkExample, moduleExample } from "./example.js";
+
+            let mode = "component"; // "component" or "module"
 
             let compiler = null;
             try {
@@ -249,6 +279,24 @@
                 localStorage.setItem("theme", isDark ? "dark" : "light");
                 applyTheme();
             });
+
+            // --- Mode toggle ---
+            const modeComponentBtn = document.getElementById("mode-component");
+            const modeModuleBtn = document.getElementById("mode-module");
+
+            function setMode(newMode) {
+                mode = newMode;
+                modeComponentBtn.classList.toggle("active", mode === "component");
+                modeModuleBtn.classList.toggle("active", mode === "module");
+                if (editorInstance) {
+                    const lang = mode === "module" ? "javascript" : "html";
+                    monaco.editor.setModelLanguage(editorInstance.getModel(), lang);
+                    editorInstance.setValue(mode === "module" ? moduleExample : example);
+                }
+            }
+
+            modeComponentBtn.addEventListener("click", () => setMode("component"));
+            modeModuleBtn.addEventListener("click", () => setMode("module"));
 
             // --- Benchmark button ---
             document.getElementById("load-benchmark").addEventListener("click", () => {
@@ -356,9 +404,12 @@
                 }
                 try {
                     const source = editorInstance.getValue();
+                    const compileFn = mode === "module"
+                        ? () => compiler.compile_module(source)
+                        : () => compiler.compile(source);
                     const result = checkPerformance(
                         rustPerf,
-                        () => compiler.compile(source),
+                        compileFn,
                         "rust",
                     );
 
@@ -397,20 +448,27 @@
             function compileSvelte() {
                 try {
                     const source = editorInstance.getValue();
+                    const compileFn = mode === "module"
+                        ? () => svelteCompileModule(source, { dev: false })
+                        : () => svelteCompiler(source, {
+                            discloseVersion: false,
+                            dev: false,
+                            name: "App",
+                            modernAst: true,
+                            runes: true,
+                        });
                     const result = checkPerformance(
                         sveltePerf,
-                        () =>
-                            svelteCompiler(source, {
-                                discloseVersion: false,
-                                dev: false,
-                                name: "App",
-                                modernAst: true,
-                                runes: true,
-                            }),
+                        compileFn,
                         "svelte",
                     );
 
-                    const code = compiler ? compiler.format(result.js.code) : result.js.code;
+                    let code = result.js.code;
+                    // Strip version comment from module output for clean comparison
+                    if (mode === "module") {
+                        code = code.replace(/^\/\*.*?generated by Svelte.*?\*\/\n/, "");
+                    }
+                    code = compiler ? compiler.format(code) : code;
                     originalModel.setValue(code);
                 } catch (e) {
                     console.error(e);

@@ -123,12 +123,12 @@ source (JS/TS) → analyze_module() → client_module() → JS output
 
 | # | Item | Description |
 |---|------|-------------|
-| 1 | `compile_module()` entry point | New public function: takes JS/TS source + `ModuleCompileOptions`, returns `CompileResult` |
-| 2 | `analyze_module()` | Simplified analysis: OXC parse → scopes → rune detection. No template, no props, no content_types. Hardcode `runes: true` |
-| 3 | Script transforms reuse | Apply existing `script.rs` rune transformations ($state, $derived, $effect, etc.) to module AST |
+| 1 | ~~`compile_module()` entry point~~ | ~~New public function: takes JS/TS source + `ModuleCompileOptions`, returns `CompileResult`~~ ✅ Done |
+| 2 | ~~`analyze_module()`~~ | ~~Simplified analysis: OXC parse → scopes → rune detection. No template, no props, no content_types. Hardcode `runes: true`~~ ✅ Done |
+| 3 | ~~Script transforms reuse~~ | ~~Apply existing `script.rs` rune transformations ($state, $derived, $effect, etc.) to module AST~~ ✅ Done |
 | 4 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
 | 5 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
-| 6 | WASM export | Expose `compileModule()` alongside existing `compile()` in WASM build |
+| 6 | ~~WASM export~~ | ~~Expose `compileModule()` alongside existing `compile()` in WASM build~~ ✅ Done |
 
 ### Dependencies
 - Tier 1 rune transforms (reused, not duplicated)

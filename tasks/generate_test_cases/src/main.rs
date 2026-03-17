@@ -7,11 +7,14 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn main() {
-    let files: Vec<String> =
-        glob("./tasks/compiler_tests/cases2/**/*.svelte")
-            .expect("Failed to read glob pattern")
-            .map(|entry| entry.unwrap().display().to_string())
-            .collect();
+    let svelte_files = glob("./tasks/compiler_tests/cases2/**/*.svelte")
+        .expect("Failed to read glob pattern for .svelte");
+    let module_files = glob("./tasks/compiler_tests/cases2/**/*.svelte.js")
+        .expect("Failed to read glob pattern for .svelte.js");
+    let files: Vec<String> = svelte_files
+        .chain(module_files)
+        .map(|entry| entry.unwrap().display().to_string())
+        .collect();
 
     let input_json = serde_json::to_string(&files).unwrap();
 
