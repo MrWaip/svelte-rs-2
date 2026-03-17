@@ -33,6 +33,7 @@ fn write_script(out: &mut String) {
     out.push_str(
         r#"<script>
     import { onMount } from "svelte";
+    import { fade, fly } from "svelte/transition";
 
     let {
         title = "Default Title",
@@ -138,6 +139,8 @@ fn write_chunk(out: &mut String, i: usize) {
 
     <input bind:value={{state}} />
     <div use:action={{state}}>action target</div>
+    <div transition:fade>transition target</div>
+    <div in:fly={{{{ y: 200 }}}} out:fade>in/out target</div>
 
     {{@render badge("chunk-{i}", "secondary")}}
     {{@render card(title, "Content for chunk {i}")}}

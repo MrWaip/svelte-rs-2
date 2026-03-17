@@ -8,7 +8,8 @@ use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, ConstTag,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, OnDirectiveLegacy, StyleDirective, StyleDirectiveValue,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
-    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text, UseDirective,
+    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
+    TransitionDirective, TransitionDirection, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -910,6 +911,24 @@ impl<'a> Parser<'a> {
                         name: od.name_span.source_text(self.source).to_string(),
                         expression_span,
                         modifiers: od.modifiers.iter().map(|m| m.source_text(self.source).to_string()).collect(),
+                    }));
+                }
+                token::Attribute::TransitionDirective(td) => {
+                    let expression_span = if td.has_expression {
+                        Some(td.expression_span)
+                    } else {
+                        None
+                    };
+                    let direction = match td.direction_prefix.as_str() {
+                        "in" => TransitionDirection::In,
+                        "out" => TransitionDirection::Out,
+                        _ => TransitionDirection::Both,
+                    };
+                    attributes.push(Attribute::TransitionDirective(TransitionDirective {
+                        name: td.name_span.source_text(self.source).to_string(),
+                        expression_span,
+                        modifiers: td.modifiers.iter().map(|m| m.source_text(self.source).to_string()).collect(),
+                        direction,
                     }));
                 }
             }

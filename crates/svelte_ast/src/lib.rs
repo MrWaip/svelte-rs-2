@@ -332,6 +332,8 @@ pub enum Attribute {
     /// LEGACY(svelte4): on:event or on:event={handler} or on:event|modifier={handler}
     /// Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
+    /// transition:name, in:name, or out:name
+    TransitionDirective(TransitionDirective),
 }
 
 #[derive(Clone)]
@@ -427,6 +429,30 @@ pub struct OnDirectiveLegacy {
     pub expression_span: Option<Span>,
     /// Modifiers like "preventDefault", "stopPropagation", "capture", etc.
     pub modifiers: Vec<String>,
+}
+
+/// Direction of a transition directive.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TransitionDirection {
+    /// `transition:` — plays on both intro and outro
+    Both,
+    /// `in:` — plays only on intro
+    In,
+    /// `out:` — plays only on outro
+    Out,
+}
+
+/// transition:name, in:name, or out:name directive.
+#[derive(Clone)]
+pub struct TransitionDirective {
+    /// Transition function name (e.g., "fade", "fly", "custom.fn").
+    pub name: String,
+    /// Span of the argument expression. None if no expression.
+    pub expression_span: Option<Span>,
+    /// Modifiers like "local", "global".
+    pub modifiers: Vec<String>,
+    /// Whether this is `transition:`, `in:`, or `out:`.
+    pub direction: TransitionDirection,
 }
 
 // ---------------------------------------------------------------------------

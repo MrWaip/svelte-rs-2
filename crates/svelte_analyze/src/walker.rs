@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     Attribute, BindDirective, ComponentNode, ConstTag, EachBlock, Element, ExpressionTag, Fragment,
-    HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock, UseDirective,
+    HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock, TransitionDirective, UseDirective,
 };
 
 use crate::data::AnalysisData;
@@ -30,6 +30,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after element children have been walked. Use for bottom-up computations.
     fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
@@ -61,6 +62,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                     }
                     if let Attribute::UseDirective(dir) = attr {
                         visitor.visit_use_directive(dir, el, scope, data);
+                    }
+                    if let Attribute::TransitionDirective(dir) = attr {
+                        visitor.visit_transition_directive(dir, el, scope, data);
                     }
                 }
                 walk_template(&el.fragment, data, scope, visitor);
@@ -153,6 +157,9 @@ macro_rules! delegate_visitor_methods {
         }
         fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_use_directive(dir, el, scope, data);)+
+        }
+        fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_transition_directive(dir, el, scope, data);)+
         }
         fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_component_attribute(attr, idx, cn, scope, data);)+
