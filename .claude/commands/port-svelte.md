@@ -28,6 +28,8 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 ### Step 1: Parallel research
 
+When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
+
 Launch 5 Explore agents simultaneously:
 
 **Agent 1 — Parse & AST**
@@ -126,6 +128,8 @@ Create one test case per selected use case from Step 2:
 2. Add test in `tasks/compiler_tests/test_v3.rs`: `#[rstest] fn <test_name>() { assert_compiler("<test_name>"); }`
 
 After creating ALL case files, run `just generate` ONCE to generate all `case-svelte.js` files. If it fails, stop and report.
+
+After generation, read each `case-svelte.js` and verify the output matches expectations from Step 1 research (correct runtime calls, correct structure). If the output looks wrong, fix `case.svelte` now — before implementing anything.
 
 Rules:
 - **NEVER edit `case-svelte.js` or `case-rust.js`** — these are generated
