@@ -1,0 +1,8 @@
+import * as $ from "svelte/internal/client";
+import { slide } from "svelte/transition";
+var root = $.from_html(`<div>hello</div>`);
+export default function App($$anchor) {
+	var div = root();
+	$.transition(2, div, () => slide);
+	$.append($$anchor, div);
+}

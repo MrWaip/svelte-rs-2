@@ -286,6 +286,12 @@ fn walk_attrs<'a>(
                     parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
                 }
             }
+            Attribute::TransitionDirective(a) => {
+                if let Some(span) = a.expression_span {
+                    let source = component.source_text(span);
+                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                }
+            }
         }
     }
 }

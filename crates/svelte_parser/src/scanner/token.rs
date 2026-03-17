@@ -68,6 +68,7 @@ pub enum Attribute {
     UseDirective(UseDirective),
     /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
+    TransitionDirective(TransitionDirective),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -110,6 +111,20 @@ pub struct OnDirectiveLegacy {
     pub modifiers: Vec<Span>,
     /// Whether an expression was provided (`on:click={handler}` vs `on:click`).
     pub has_expression: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct TransitionDirective {
+    /// Name after the directive prefix (e.g., "fade" in `transition:fade`).
+    pub name_span: Span,
+    /// Expression span if `={expr}` was provided.
+    pub expression_span: Span,
+    /// Modifiers from pipe-separated list (e.g., "local", "global").
+    pub modifiers: Vec<Span>,
+    /// Whether an expression was provided.
+    pub has_expression: bool,
+    /// The directive prefix: "transition", "in", or "out".
+    pub direction_prefix: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -202,6 +217,8 @@ pub enum AttributeIdentifierType<'a> {
     UseDirective(Span, &'a str),
     /// LEGACY(svelte4): on:directive
     OnDirectiveLegacy(Span, &'a str),
+    /// transition:, in:, or out: directive
+    TransitionDirective(Span, &'a str),
     None,
 }
 
@@ -225,6 +242,10 @@ impl<'a> AttributeIdentifierType<'a> {
     /// LEGACY(svelte4): on:directive
     pub fn is_on_directive(name: &str) -> bool {
         name == "on"
+    }
+
+    pub fn is_transition_directive(name: &str) -> bool {
+        name == "transition" || name == "in" || name == "out"
     }
 
     pub fn is_empty(&self) -> bool {
