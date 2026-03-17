@@ -12,6 +12,7 @@ pub(crate) mod html_tag;
 pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
+pub(crate) mod svelte_head;
 pub(crate) mod traverse;
 
 use oxc_ast::ast::Statement;
@@ -98,6 +99,11 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
 
     emit_const_tags(ctx, key, &mut body);
 
+    // Collect SvelteHead IDs — $.head() calls are generated after main template init
+    let svelte_head_ids: Vec<_> = ctx.component.fragment.nodes.iter()
+        .filter_map(|n| n.as_svelte_head().map(|h| h.id))
+        .collect();
+
     match ct {
         ContentType::Empty => {}
         ContentType::StaticText => gen_root_static_text(ctx, &mut body),
@@ -105,6 +111,25 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         ContentType::SingleElement => gen_root_single_element(ctx, &tpl_name, &mut hoisted, &mut body),
         ContentType::SingleBlock => gen_root_single_block(ctx, &mut body),
         ContentType::Mixed => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
+    }
+
+    // Generate $.head() calls for <svelte:head> nodes.
+    // In the Svelte reference, hoisted nodes are visited first and push to init[],
+    // while the template var decl is unshifted to init[0]. So $.head() ends up
+    // after the template init but before $.append().
+    if !svelte_head_ids.is_empty() {
+        // Find the $.append() call at the end and insert before it
+        let insert_pos = body.len().saturating_sub(
+            if matches!(ct, ContentType::SingleElement | ContentType::Mixed | ContentType::DynamicText) { 1 } else { 0 }
+        );
+        let mut head_stmts = Vec::new();
+        for id in svelte_head_ids {
+            svelte_head::gen_svelte_head(ctx, id, &mut head_stmts);
+        }
+        // Insert head stmts before the append
+        let tail: Vec<_> = body.drain(insert_pos..).collect();
+        body.extend(head_stmts);
+        body.extend(tail);
     }
 
     (hoisted, body, snippet_stmts, hoistable_snippets)

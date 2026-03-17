@@ -248,6 +248,9 @@ fn walk_template_scopes(
             Node::KeyBlock(block) => {
                 walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names);
             }
+            Node::SvelteHead(head) => {
+                walk_template_scopes(&head.fragment, component, scoping, current_scope, const_tag_names);
+            }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
                     for name in names {
