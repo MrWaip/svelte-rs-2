@@ -1006,6 +1006,7 @@ impl<'a> Parser<'a> {
             immutable: None,
             accessors: None,
             preserve_whitespace: None,
+            attributes: el.attributes.clone(),
         };
 
         for attr in &el.attributes {
@@ -1068,6 +1069,10 @@ impl<'a> Parser<'a> {
                     "a string value".into(),
                 ));
             }
+            // LEGACY(svelte4): `tag` renamed to `customElement`
+            "tag" => {
+                self.recover(Diagnostic::svelte_options_deprecated_tag(span));
+            }
             _ => {
                 self.recover(Diagnostic::svelte_options_unknown_attribute(
                     span,
@@ -1120,14 +1125,19 @@ impl<'a> Parser<'a> {
                             self.recover(Diagnostic::svelte_options_reserved_tag_name(span));
                         }
                     }
+                } else {
+                    options.custom_element = Some(CustomElementConfig::Tag(value.to_string()));
                 }
-                options.custom_element = Some(CustomElementConfig::Tag(value.to_string()));
             }
             "runes" | "immutable" | "accessors" | "preserveWhitespace" => {
                 self.recover(Diagnostic::svelte_options_invalid_attribute_value(
                     span,
                     "true or false".into(),
                 ));
+            }
+            // LEGACY(svelte4): `tag` renamed to `customElement`
+            "tag" => {
+                self.recover(Diagnostic::svelte_options_deprecated_tag(span));
             }
             _ => {
                 self.recover(Diagnostic::svelte_options_unknown_attribute(
@@ -1954,5 +1964,32 @@ mod tests {
     fn svelte_options_namespace_svg_uri() {
         let c = parse(r#"<svelte:options namespace="http://www.w3.org/2000/svg" />"#);
         assert_options_namespace(&c, svelte_ast::Namespace::Svg);
+    }
+
+    #[test]
+    fn svelte_options_deprecated_tag_diagnostic() {
+        let (_, diags) = parse_with_diagnostics(r#"<svelte:options tag="my-element" />"#);
+        assert!(!diags.is_empty());
+        assert!(diags.iter().any(|d| matches!(
+            &d.kind,
+            svelte_diagnostics::DiagnosticKind::SvelteOptionsDeprecatedTag
+        )));
+        // Should be a warning, not an error
+        assert!(diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Warning));
+    }
+
+    #[test]
+    fn svelte_options_invalid_tag_not_stored() {
+        let (c, diags) = parse_with_diagnostics(r#"<svelte:options customElement="NoHyphen" />"#);
+        assert!(!diags.is_empty());
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert!(opts.custom_element.is_none(), "invalid tag should not be stored");
+    }
+
+    #[test]
+    fn svelte_options_preserves_attributes() {
+        let c = parse(r#"<svelte:options runes={true} namespace="svg" />"#);
+        let opts = c.options.as_ref().expect("expected svelte:options");
+        assert_eq!(opts.attributes.len(), 2);
     }
 }

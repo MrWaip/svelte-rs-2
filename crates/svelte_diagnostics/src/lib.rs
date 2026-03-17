@@ -36,6 +36,8 @@ pub enum DiagnosticKind {
     SvelteOptionsNoChildren,
     SvelteOptionsInvalidAttribute,
     SvelteOptionsDuplicate,
+    /// LEGACY(svelte4): `tag` attribute renamed to `customElement`.
+    SvelteOptionsDeprecatedTag,
     // Internal compiler errors
     InternalError(String),
 }
@@ -69,6 +71,7 @@ impl DiagnosticKind {
             Self::SvelteOptionsNoChildren => "svelte_options_children_forbidden",
             Self::SvelteOptionsInvalidAttribute => "svelte_options_invalid_attribute",
             Self::SvelteOptionsDuplicate => "svelte_options_duplicate",
+            Self::SvelteOptionsDeprecatedTag => "svelte_options_deprecated_tag",
             Self::InternalError(_) => "internal_error",
         }
     }
@@ -132,6 +135,9 @@ impl DiagnosticKind {
             Self::SvelteOptionsDuplicate => {
                 "A component can have a single <svelte:options> element".into()
             }
+            Self::SvelteOptionsDeprecatedTag => {
+                "\"tag\" option is deprecated \u{2014} use \"customElement\" instead".into()
+            }
             Self::InternalError(msg) => format!("Internal compiler error: {msg}"),
         }
     }
@@ -160,7 +166,8 @@ impl DiagnosticKind {
             | Self::SvelteOptionsReservedTagName
             | Self::SvelteOptionsNoChildren
             | Self::SvelteOptionsInvalidAttribute
-            | Self::SvelteOptionsDuplicate => {
+            | Self::SvelteOptionsDuplicate
+            | Self::SvelteOptionsDeprecatedTag => {
                 Some(format!("https://svelte.dev/e/{code}"))
             }
             _ => None,
@@ -288,6 +295,11 @@ impl Diagnostic {
 
     pub fn svelte_options_duplicate(span: Span) -> Self {
         Diagnostic { kind: DiagnosticKind::SvelteOptionsDuplicate, span, severity: Severity::Error }
+    }
+
+    /// LEGACY(svelte4): `tag` attribute renamed to `customElement`.
+    pub fn svelte_options_deprecated_tag(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsDeprecatedTag, span, severity: Severity::Warning }
     }
 
     pub fn internal_error(message: String) -> Self {

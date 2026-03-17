@@ -534,6 +534,8 @@ pub struct SvelteOptions {
     pub accessors: Option<bool>,
     /// Preserve whitespace in template.
     pub preserve_whitespace: Option<bool>,
+    /// Raw attributes from the `<svelte:options>` tag, preserved for tooling.
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
