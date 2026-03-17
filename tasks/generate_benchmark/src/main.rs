@@ -154,6 +154,10 @@ fn write_chunk(out: &mut String, i: usize) {
     <div transition:fade>transition target</div>
     <div in:fly={{{{ y: 200 }}}} out:fade>in/out target</div>
 
+    <svelte:element this={{state ? "div" : "span"}} class="dynamic-{i}">
+        Dynamic element chunk {i}: {{title}}
+    </svelte:element>
+
     {{@render badge("chunk-{i}", "secondary")}}
     {{@render card(title, "Content for chunk {i}")}}
 </div>

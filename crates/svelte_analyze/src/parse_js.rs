@@ -208,6 +208,15 @@ fn walk_node<'a>(
         Node::SvelteHead(head) => {
             walk_fragment(alloc, &head.fragment, component, data, parsed, diags);
         }
+        Node::SvelteElement(el) => {
+            // Parse the tag expression (skip for static string tags like this="div")
+            if !el.static_tag {
+                let tag_source = component.source_text(el.tag_span);
+                parse_expr(alloc, tag_source, el.tag_span.start, el.id, data, parsed, diags);
+            }
+            walk_attrs(alloc, el.id, &el.attributes, component, data, parsed, diags);
+            walk_fragment(alloc, &el.fragment, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

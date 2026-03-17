@@ -54,6 +54,7 @@ pub enum FragmentKey {
     SnippetBody(NodeId),
     KeyBlockBody(NodeId),
     SvelteHeadBody(NodeId),
+    SvelteElementBody(NodeId),
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +288,8 @@ pub enum FragmentItem {
     HtmlTag(NodeId),
     /// A KeyBlock ({#key expr}...{/key}).
     KeyBlock(NodeId),
+    /// A SvelteElement (<svelte:element this={tag}>).
+    SvelteElement(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
 }
@@ -309,7 +312,8 @@ impl FragmentItem {
             | FragmentItem::EachBlock(id)
             | FragmentItem::RenderTag(id)
             | FragmentItem::HtmlTag(id)
-            | FragmentItem::KeyBlock(id) => *id,
+            | FragmentItem::KeyBlock(id)
+            | FragmentItem::SvelteElement(id) => *id,
             FragmentItem::TextConcat { .. } => panic!("TextConcat has no single NodeId"),
         }
     }
