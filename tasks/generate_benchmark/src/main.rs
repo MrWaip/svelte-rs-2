@@ -12,6 +12,7 @@ fn main() {
     let mut out = String::with_capacity(n * 3000);
 
     write_script(&mut out);
+    write_svelte_head(&mut out);
     write_snippets(&mut out);
 
     for i in 0..n {
@@ -65,6 +66,17 @@ fn write_script(out: &mut String) {
         return { destroy() {} };
     }
 </script>
+
+"#,
+    );
+}
+
+fn write_svelte_head(out: &mut String) {
+    out.push_str(
+        r#"<svelte:head>
+    <meta name="description" content="Benchmark component">
+    <link rel="canonical" href="/benchmark">
+</svelte:head>
 
 "#,
     );

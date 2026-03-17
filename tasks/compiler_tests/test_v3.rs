@@ -659,3 +659,32 @@ fn module_compilation() {
 fn svelte_options_basic() {
     assert_compiler("svelte_options_basic");
 }
+
+// ---------------------------------------------------------------------------
+// svelte:head tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn svelte_head_basic() {
+    assert_compiler("svelte_head_basic");
+}
+
+#[rstest]
+fn svelte_head_reactive() {
+    assert_compiler("svelte_head_reactive");
+}
+
+#[rstest]
+fn svelte_head_multiple() {
+    assert_compiler("svelte_head_multiple");
+}
+
+#[rstest]
+fn svelte_head_empty() {
+    assert_compiler("svelte_head_empty");
+}
+
+#[rstest]
+fn svelte_head_with_content() {
+    assert_compiler("svelte_head_with_content");
+}

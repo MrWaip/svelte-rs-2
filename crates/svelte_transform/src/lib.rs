@@ -179,6 +179,11 @@ fn walk_node<'a>(
             walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
             ctx.const_aliases.pop();
         }
+        Node::SvelteHead(head) => {
+            ctx.const_aliases.push(FxHashMap::default());
+            walk_fragment(ctx, &head.fragment, component, parsed, scope, snippet_params);
+            ctx.const_aliases.pop();
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
