@@ -8,7 +8,7 @@ use svelte_ast::{
     Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment, ComponentNode, ConstTag,
     ConcatPart, ConcatenationAttribute, Component, EachBlock, Element, OnDirectiveLegacy, StyleDirective, StyleDirectiveValue,
     ExpressionAttribute, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeIdAllocator, RawBlock, RenderTag, Script,
-    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text,
+    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute, Text, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -886,6 +886,17 @@ impl<'a> Parser<'a> {
                         name: bd.name_span.source_text(self.source).to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
+                    }));
+                }
+                token::Attribute::UseDirective(ud) => {
+                    let expression_span = if ud.shorthand {
+                        None
+                    } else {
+                        Some(ud.expression_span)
+                    };
+                    attributes.push(Attribute::UseDirective(UseDirective {
+                        name: ud.name_span.source_text(self.source).to_string(),
+                        expression_span,
                     }));
                 }
                 // LEGACY(svelte4): on:directive

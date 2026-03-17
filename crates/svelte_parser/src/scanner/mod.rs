@@ -8,6 +8,7 @@ use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, OnDirectiveLegacy,
     ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
+    UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -169,6 +170,8 @@ impl<'a> Scanner<'a> {
                 AttributeIdentifierType::StyleDirective(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_bind_directive(name) {
                 AttributeIdentifierType::BindDirective(value_span, value).as_ok()
+            } else if AttributeIdentifierType::is_use_directive(name) {
+                AttributeIdentifierType::UseDirective(value_span, value).as_ok()
             // LEGACY(svelte4): on:directive
             } else if AttributeIdentifierType::is_on_directive(name) {
                 AttributeIdentifierType::OnDirectiveLegacy(value_span, value).as_ok()
@@ -327,6 +330,7 @@ impl<'a> Scanner<'a> {
                         self.style_directive(span)
                     }
                     AttributeIdentifierType::BindDirective(span, name) => self.bind_directive(span, name),
+                    AttributeIdentifierType::UseDirective(span, _) => self.use_directive(span),
                     // LEGACY(svelte4): on:directive
                     AttributeIdentifierType::OnDirectiveLegacy(span, _) => self.on_directive_legacy(span),
                     AttributeIdentifierType::None => break,
@@ -427,6 +431,33 @@ impl<'a> Scanner<'a> {
         }
 
         Ok(Attribute::BindDirective(BindDirective {
+            name_span,
+            expression_span: name_span,
+            shorthand: true,
+        }))
+    }
+
+    fn use_directive(&mut self, mut name_span: Span) -> Result<Attribute, Diagnostic> {
+        // Consume dotted name segments: use:a.b.c
+        while self.peek() == Some('.') {
+            self.advance(); // consume '.'
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                self.advance();
+            }
+            name_span = Span::new(name_span.start, self.current as u32);
+        }
+
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+
+            return Ok(Attribute::UseDirective(UseDirective {
+                expression_span: res.expression_span,
+                name_span,
+                shorthand: false,
+            }));
+        }
+
+        Ok(Attribute::UseDirective(UseDirective {
             name_span,
             expression_span: name_span,
             shorthand: true,
@@ -1429,6 +1460,7 @@ mod tests {
                 Attribute::ClassDirective(_) => "$classDirective",
                 Attribute::StyleDirective(sd) => sd.name_span.source_text(source),
                 Attribute::BindDirective(_) => "$bindDirective",
+                Attribute::UseDirective(ud) => ud.name_span.source_text(source),
                 Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
             };
 
@@ -1458,6 +1490,7 @@ mod tests {
                     }
                 },
                 Attribute::BindDirective(bd) => bd.expression_span.source_text(source).to_string(),
+                Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
                 Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
             };
 
