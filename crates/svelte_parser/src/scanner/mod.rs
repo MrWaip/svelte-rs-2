@@ -256,6 +256,12 @@ impl<'a> Scanner<'a> {
             return Err(Diagnostic::invalid_tag_name(self.span(name_start, self.current)));
         }
 
+        // Handle `svelte:*` special element names (e.g., svelte:options, svelte:head)
+        if name == "svelte" && self.peek() == Some(':') {
+            self.advance(); // consume ':'
+            self.identifier(); // consume the rest (options, head, window, etc.)
+        }
+
         let name_span = self.span(name_start, self.current);
 
         let attributes = self.attributes()?;
@@ -698,6 +704,12 @@ impl<'a> Scanner<'a> {
 
         if name.is_empty() {
             return Err(Diagnostic::invalid_tag_name(self.span(name_start, self.current)));
+        }
+
+        // Handle `svelte:*` special element names
+        if name == "svelte" && self.peek() == Some(':') {
+            self.advance(); // consume ':'
+            self.identifier(); // consume the rest
         }
 
         let name_span = self.span(name_start, self.current);

@@ -28,6 +28,14 @@ pub enum DiagnosticKind {
     NoEachBlockToClose,
     NoKeyBlockToClose,
     VoidElementInvalidContent,
+    // svelte:options errors
+    SvelteOptionsUnknownAttribute(String),
+    SvelteOptionsInvalidAttributeValue(String),
+    SvelteOptionsInvalidCustomElementTag,
+    SvelteOptionsReservedTagName,
+    SvelteOptionsNoChildren,
+    SvelteOptionsInvalidAttribute,
+    SvelteOptionsDuplicate,
     // Internal compiler errors
     InternalError(String),
 }
@@ -54,6 +62,13 @@ impl DiagnosticKind {
             Self::NoEachBlockToClose => "block_unexpected_close",
             Self::NoKeyBlockToClose => "block_unexpected_close",
             Self::VoidElementInvalidContent => "void_element_invalid_content",
+            Self::SvelteOptionsUnknownAttribute(_) => "svelte_options_unknown_attribute",
+            Self::SvelteOptionsInvalidAttributeValue(_) => "svelte_options_invalid_attribute_value",
+            Self::SvelteOptionsInvalidCustomElementTag => "svelte_options_invalid_customelement",
+            Self::SvelteOptionsReservedTagName => "svelte_options_reserved_tagname",
+            Self::SvelteOptionsNoChildren => "svelte_options_children_forbidden",
+            Self::SvelteOptionsInvalidAttribute => "svelte_options_invalid_attribute",
+            Self::SvelteOptionsDuplicate => "svelte_options_duplicate",
             Self::InternalError(_) => "internal_error",
         }
     }
@@ -96,6 +111,27 @@ impl DiagnosticKind {
             Self::VoidElementInvalidContent => {
                 "Void elements cannot have children or closing tags".into()
             }
+            Self::SvelteOptionsUnknownAttribute(name) => {
+                format!("<svelte:options> unknown attribute '{name}'")
+            }
+            Self::SvelteOptionsInvalidAttributeValue(expected) => {
+                format!("Value must be {expected}")
+            }
+            Self::SvelteOptionsInvalidCustomElementTag => {
+                "\"tag\" must be a valid custom element name".into()
+            }
+            Self::SvelteOptionsReservedTagName => {
+                "\"tag\" cannot be a reserved custom element name".into()
+            }
+            Self::SvelteOptionsNoChildren => {
+                "<svelte:options> cannot have children".into()
+            }
+            Self::SvelteOptionsInvalidAttribute => {
+                "<svelte:options> can only have static attributes".into()
+            }
+            Self::SvelteOptionsDuplicate => {
+                "A component can have a single <svelte:options> element".into()
+            }
             Self::InternalError(msg) => format!("Internal compiler error: {msg}"),
         }
     }
@@ -117,7 +153,14 @@ impl DiagnosticKind {
             | Self::OnlyOneTopLevelStyle
             | Self::NoEachBlockToClose
             | Self::NoKeyBlockToClose
-            | Self::VoidElementInvalidContent => {
+            | Self::VoidElementInvalidContent
+            | Self::SvelteOptionsUnknownAttribute(_)
+            | Self::SvelteOptionsInvalidAttributeValue(_)
+            | Self::SvelteOptionsInvalidCustomElementTag
+            | Self::SvelteOptionsReservedTagName
+            | Self::SvelteOptionsNoChildren
+            | Self::SvelteOptionsInvalidAttribute
+            | Self::SvelteOptionsDuplicate => {
                 Some(format!("https://svelte.dev/e/{code}"))
             }
             _ => None,
@@ -217,6 +260,34 @@ impl Diagnostic {
 
     pub fn void_element_invalid_content(span: Span) -> Self {
         Self::error(DiagnosticKind::VoidElementInvalidContent, span)
+    }
+
+    pub fn svelte_options_unknown_attribute(span: Span, name: String) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsUnknownAttribute(name), span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_invalid_attribute_value(span: Span, expected: String) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidAttributeValue(expected), span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_invalid_custom_element_tag(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidCustomElementTag, span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_reserved_tag_name(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsReservedTagName, span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_no_children(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsNoChildren, span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_invalid_attribute(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidAttribute, span, severity: Severity::Error }
+    }
+
+    pub fn svelte_options_duplicate(span: Span) -> Self {
+        Diagnostic { kind: DiagnosticKind::SvelteOptionsDuplicate, span, severity: Severity::Error }
     }
 
     pub fn internal_error(message: String) -> Self {
