@@ -3,7 +3,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
-use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
 
@@ -71,9 +70,11 @@ pub struct ElementFlags {
     pub(crate) has_class_directives: FxHashSet<NodeId>,
     pub(crate) has_class_attribute: FxHashSet<NodeId>,
     pub(crate) needs_clsx: FxHashSet<(NodeId, usize)>,
-    pub(crate) static_class: FxHashMap<NodeId, Span>,
+    /// Pre-extracted static class attribute value (avoids span→string conversion in codegen).
+    pub(crate) static_class: FxHashMap<NodeId, String>,
     pub(crate) has_style_directives: FxHashSet<NodeId>,
-    pub(crate) static_style: FxHashMap<NodeId, Span>,
+    /// Pre-extracted static style attribute value (avoids span→string conversion in codegen).
+    pub(crate) static_style: FxHashMap<NodeId, String>,
     pub(crate) needs_input_defaults: FxHashSet<NodeId>,
     pub(crate) needs_var: FxHashSet<NodeId>,
     pub(crate) needs_ref: FxHashSet<NodeId>,
@@ -106,14 +107,14 @@ impl ElementFlags {
     pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
     pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }
     pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.dynamic_attrs.contains(&(id, idx)) }
-    pub fn static_class(&self, id: NodeId) -> Option<Span> { self.static_class.get(&id).copied() }
-    pub fn static_style(&self, id: NodeId) -> Option<Span> { self.static_style.get(&id).copied() }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(&id).map(|s| s.as_str()) }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
 }
 
 /// Fragment lowering results and content classification.
 pub struct FragmentData {
     pub(crate) lowered: FxHashMap<FragmentKey, LoweredFragment>,
-    pub(crate) content_types: FxHashMap<FragmentKey, ContentType>,
+    pub(crate) content_types: FxHashMap<FragmentKey, ContentStrategy>,
     pub(crate) has_dynamic_children: FxHashSet<FragmentKey>,
 }
 
@@ -126,8 +127,8 @@ impl FragmentData {
         }
     }
 
-    pub fn content_type(&self, key: &FragmentKey) -> ContentType {
-        self.content_types.get(key).copied().unwrap_or(ContentType::Empty)
+    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
+        self.content_types.get(key).cloned().unwrap_or(ContentStrategy::Empty)
     }
 
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
@@ -161,9 +162,6 @@ impl SnippetData {
 pub struct ConstTagData {
     pub(crate) names: FxHashMap<NodeId, Vec<String>>,
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
-    /// Generated tmp variable names for destructured const tags.
-    /// Filled by svelte_transform, consumed by codegen.
-    pub(crate) tmp_names: FxHashMap<NodeId, String>,
 }
 
 impl ConstTagData {
@@ -171,14 +169,11 @@ impl ConstTagData {
         Self {
             names: FxHashMap::default(),
             by_fragment: FxHashMap::default(),
-            tmp_names: FxHashMap::default(),
         }
     }
 
     pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
-    pub fn tmp_name(&self, id: NodeId) -> Option<&String> { self.tmp_names.get(&id) }
-    pub fn insert_tmp_name(&mut self, id: NodeId, name: String) { self.tmp_names.insert(id, name); }
 }
 
 // ---------------------------------------------------------------------------
@@ -377,20 +372,20 @@ pub struct PropAnalysis {
 }
 
 // ---------------------------------------------------------------------------
-// ContentType — classification of what a fragment contains
+// ContentStrategy — classification of what a fragment contains, with embedded data
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentType {
+/// Describes the content of a fragment. Carries item data so codegen does not
+/// need to re-inspect the lowered fragment for common decisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentStrategy {
     Empty,
-    /// Only static text, no expressions.
-    StaticText,
-    /// Text and/or expressions (at least one expression).
-    DynamicText,
-    /// Exactly one element, nothing else.
-    SingleElement,
-    /// Exactly one block (IfBlock or EachBlock), nothing else.
-    SingleBlock,
-    /// Mix of elements, blocks, and/or text.
-    Mixed,
+    /// Only static text, no expressions. Contains the pre-extracted text value.
+    Static(String),
+    /// Exactly one element node. Contains its NodeId.
+    SingleElement(NodeId),
+    /// Exactly one block node (IfBlock, EachBlock, etc.). Contains its NodeId.
+    SingleBlock(NodeId),
+    /// Text with expressions, or a mix of elements/blocks/text.
+    Dynamic { has_elements: bool, has_blocks: bool, has_text: bool },
 }

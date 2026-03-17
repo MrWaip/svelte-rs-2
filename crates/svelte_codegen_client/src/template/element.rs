@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_analyze::{ContentType, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentKey};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -73,9 +73,9 @@ pub(crate) fn process_element<'a>(
     // --- Children ---
     let has_state = ctx.has_dynamic_children(&child_key);
     match ct {
-        ContentType::Empty | ContentType::StaticText => {}
+        ContentStrategy::Empty | ContentStrategy::Static(_) => {}
 
-        ContentType::DynamicText if !has_state => {
+        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } if !has_state => {
             // textContent shortcut
             let items: Vec<_> = ctx
                 .lowered_fragment(&child_key)
@@ -90,7 +90,7 @@ pub(crate) fn process_element<'a>(
             ));
         }
 
-        ContentType::DynamicText => {
+        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => {
             let text_name = ctx.gen_ident("text");
             let items: Vec<_> = ctx
                 .lowered_fragment(&child_key)
@@ -113,17 +113,13 @@ pub(crate) fn process_element<'a>(
             ));
         }
 
-        ContentType::SingleBlock if matches!(
-            ctx.lowered_fragment(&child_key).items.first(),
-            Some(svelte_analyze::FragmentItem::EachBlock(_))
-        ) => {
+        ContentStrategy::SingleBlock(id) if ctx.is_each_block(id) => {
             // Controlled each block: element itself is the anchor, no $.child() traversal
-            let each_id = ctx.lowered_fragment(&child_key).first_each_block_id().unwrap();
-            gen_each_block(ctx, each_id, ctx.b.rid_expr(el_name), true, init);
+            gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }
 
-        ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
+        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Dynamic { .. } => {
             // Clone needed: traverse_items borrows ctx mutably
             let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
 

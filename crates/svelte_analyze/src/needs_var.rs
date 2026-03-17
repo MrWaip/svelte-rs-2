@@ -8,7 +8,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, Element};
 
-use crate::data::{AnalysisData, ContentType, FragmentItem, FragmentKey};
+use crate::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct NeedsVarVisitor;
@@ -41,12 +41,13 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         .fragments
         .content_types
         .get(&key)
-        .copied()
-        .unwrap_or(ContentType::Empty);
+        .cloned()
+        .unwrap_or(ContentStrategy::Empty);
     match ct {
-        ContentType::Empty | ContentType::StaticText => false,
-        ContentType::DynamicText | ContentType::SingleBlock => true,
-        ContentType::SingleElement | ContentType::Mixed => {
+        ContentStrategy::Empty | ContentStrategy::Static(_) => false,
+        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => true, // DynamicText
+        ContentStrategy::SingleBlock(_) => true,
+        ContentStrategy::SingleElement(_) | ContentStrategy::Dynamic { .. } => {
             let Some(lf) = data.fragments.lowered.get(&key) else {
                 return false;
             };
