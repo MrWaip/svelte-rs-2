@@ -65,6 +65,7 @@ pub enum Attribute {
     ClassDirective(ClassDirective),
     StyleDirective(StyleDirective),
     BindDirective(BindDirective),
+    UseDirective(UseDirective),
     /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
 }
@@ -86,6 +87,13 @@ pub struct StyleDirective {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BindDirective {
+    pub shorthand: bool,
+    pub name_span: Span,
+    pub expression_span: Span,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct UseDirective {
     pub shorthand: bool,
     pub name_span: Span,
     pub expression_span: Span,
@@ -191,6 +199,7 @@ pub enum AttributeIdentifierType<'a> {
     ClassDirective(Span, &'a str),
     StyleDirective(Span, &'a str),
     BindDirective(Span, &'a str),
+    UseDirective(Span, &'a str),
     /// LEGACY(svelte4): on:directive
     OnDirectiveLegacy(Span, &'a str),
     None,
@@ -207,6 +216,10 @@ impl<'a> AttributeIdentifierType<'a> {
 
     pub fn is_bind_directive(name: &str) -> bool {
         name == "bind"
+    }
+
+    pub fn is_use_directive(name: &str) -> bool {
+        name == "use"
     }
 
     /// LEGACY(svelte4): on:directive
