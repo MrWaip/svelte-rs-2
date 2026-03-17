@@ -36,7 +36,7 @@ impl TemplateVisitor for ElementFlagsVisitor {
             Attribute::StringAttribute(sa) if sa.name == "style" => {
                 data.element_flags.static_style.insert(el.id, sa.value_span);
             }
-            Attribute::BindDirective(_) if el.name == "input" => {
+            Attribute::BindDirective(bd) if el.name == "input" && matches!(bd.name.as_str(), "value" | "checked" | "group") => {
                 data.element_flags.needs_input_defaults.insert(el.id);
             }
             Attribute::ExpressionAttribute(ea) if ea.name == "value" && el.name == "input" => {
