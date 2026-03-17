@@ -93,6 +93,8 @@ To port a new feature, use `/port-svelte <feature description>`.
 
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
+When `/port-svelte` discovers deferred items (edge cases, validations, blocked work), add them to the **Deferred** section at the bottom of `ROADMAP.md`, grouped under the parent feature name with its tier reference (e.g., `### feature-name (Tier N)`).
+
 ### Legacy features (Svelte 4 → removed in Svelte 6)
 
 Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 6) is ported with isolation in mind so it can be cleanly deleted later.
