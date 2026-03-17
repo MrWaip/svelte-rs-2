@@ -336,6 +336,8 @@ pub enum Attribute {
     TransitionDirective(TransitionDirective),
     /// animate:name or animate:name={expr}
     AnimateDirective(AnimateDirective),
+    /// {@attach expr} — element attachment (Svelte 5.29+)
+    AttachTag(AttachTag),
 }
 
 #[derive(Clone)]
@@ -464,6 +466,14 @@ pub struct AnimateDirective {
     pub name: String,
     /// Span of the argument expression. None if no expression (`animate:name`).
     pub expression_span: Option<Span>,
+}
+
+/// {@attach expr} — element attachment (Svelte 5.29+).
+/// Modern alternative to `use:action`. Re-runs on reactive dependency changes.
+#[derive(Clone)]
+pub struct AttachTag {
+    /// Span of the JS expression inside `{@attach expr}`.
+    pub expression_span: Span,
 }
 
 // ---------------------------------------------------------------------------

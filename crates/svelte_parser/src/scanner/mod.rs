@@ -5,8 +5,8 @@ use std::{iter::Peekable, str::Chars, vec};
 pub use svelte_ast::is_void;
 
 use token::{
-    AnimateDirective, Attribute, AttributeIdentifierType, AttributeValue, BindDirective,
-    ClassDirective, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
+    AnimateDirective, AttachTagToken, Attribute, AttributeIdentifierType, AttributeValue,
+    BindDirective, ClassDirective, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
     OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag,
     StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
 };
@@ -315,7 +315,11 @@ impl<'a> Scanner<'a> {
             let peeked = self.peek();
 
             let attr_result = if peeked == Some('{') {
-                self.expression_tag().map(Attribute::ExpressionTag)
+                if self.source[self.current..].starts_with("{@attach") {
+                    self.attach_tag_attribute().map(Attribute::AttachTag)
+                } else {
+                    self.expression_tag().map(Attribute::ExpressionTag)
+                }
             } else {
                 let name = match self.attribute_identifier() {
                     Ok(name) => name,
@@ -570,6 +574,21 @@ impl<'a> Scanner<'a> {
             expression_span: SPAN,
             has_expression: false,
         }))
+    }
+
+    /// Parse `{@attach expr}` in the attribute position.
+    fn attach_tag_attribute(&mut self) -> Result<AttachTagToken, Diagnostic> {
+        debug_assert!(self.source[self.current..].starts_with("{@attach"));
+
+        // Consume `{@attach`
+        for _ in 0.."{@attach".len() {
+            self.advance();
+        }
+
+        self.skip_whitespace();
+        let expression_span = self.collect_js_expression()?;
+
+        Ok(AttachTagToken { expression_span })
     }
 
     fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {
@@ -1542,6 +1561,7 @@ mod tests {
                 Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
                 Attribute::TransitionDirective(td) => td.name_span.source_text(source),
                 Attribute::AnimateDirective(ad) => ad.name_span.source_text(source),
+                Attribute::AttachTag(_) => "$attachTag",
             };
 
             let value: String = match attribute {
@@ -1574,6 +1594,7 @@ mod tests {
                 Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
                 Attribute::TransitionDirective(td) => td.expression_span.source_text(source).to_string(),
                 Attribute::AnimateDirective(ad) => ad.expression_span.source_text(source).to_string(),
+                Attribute::AttachTag(at) => at.expression_span.source_text(source).to_string(),
             };
 
             assert_eq!(name, *expected_name);

@@ -585,6 +585,45 @@ fn animate_reactive_params() {
 }
 
 // ---------------------------------------------------------------------------
+// Attach tag tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn attach_basic() {
+    assert_compiler("attach_basic");
+}
+
+#[rstest]
+fn attach_inline_arrow() {
+    assert_compiler("attach_inline_arrow");
+}
+
+#[rstest]
+fn attach_conditional() {
+    assert_compiler("attach_conditional");
+}
+
+#[rstest]
+fn attach_multiple() {
+    assert_compiler("attach_multiple");
+}
+
+#[rstest]
+fn attach_with_directives() {
+    assert_compiler("attach_with_directives");
+}
+
+#[rstest]
+fn attach_in_if() {
+    assert_compiler("attach_in_if");
+}
+
+#[rstest]
+fn attach_in_each() {
+    assert_compiler("attach_in_each");
+}
+
+// ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
 

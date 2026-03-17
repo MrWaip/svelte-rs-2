@@ -335,12 +335,14 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 - [ ] Validation: `animate:` only valid inside keyed `{#each}` blocks *(discovered during port, deferred)*
 - [ ] Validation: duplicate `animate:` directives on same element *(discovered during port, deferred)*
 
-### `{@attach fn}` — Element attachment (Svelte 5.29+)
+### ~~`{@attach fn}` — Element attachment (Svelte 5.29+)~~ ✅
 - **Phases**: P, A, T
-- **AST**: `Node::AttachTag { id, span, expression_span }` (within element children)
-- **Codegen**: `$.attach(el, fn)`
+- **AST**: `Attribute::AttachTag { expression_span }` (in element attributes array)
+- **Codegen**: `$.attach(el, () => fn)`
 - **Notes**: Modern alternative to `use:action`. Re-runs on reactive dependency changes. Conditional with falsy values.
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/AttachTag.js`
+- [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props *(deferred)*
+- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping *(deferred)*
 
 ---
 

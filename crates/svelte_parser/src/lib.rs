@@ -943,6 +943,11 @@ impl<'a> Parser<'a> {
                         expression_span,
                     }));
                 }
+                token::Attribute::AttachTag(at) => {
+                    attributes.push(Attribute::AttachTag(svelte_ast::AttachTag {
+                        expression_span: at.expression_span,
+                    }));
+                }
             }
         }
 
