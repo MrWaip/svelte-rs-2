@@ -44,6 +44,12 @@ use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
 use traverse::traverse_items;
 
+/// Check if template HTML needs `importNode` (flag bit 2).
+/// `<video>` requires `importNode` instead of `cloneNode`.
+fn needs_import_node(html: &str) -> bool {
+    html.contains("<video")
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -150,11 +156,12 @@ fn gen_root_single_element<'a>(
 
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
-    hoisted.push(ctx.b.var_stmt(
-        tpl_name,
-        ctx.b
-            .call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))]),
-    ));
+    let from_html = if needs_import_node(&html) {
+        ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
+    } else {
+        ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
+    };
+    hoisted.push(ctx.b.var_stmt(tpl_name, from_html));
 
     let el_name_str = ctx.element(el_id).name.clone();
     let el_name = ctx.gen_ident(&el_name_str);
@@ -235,11 +242,12 @@ fn gen_root_mixed<'a>(
     }
 
     let html = fragment_html(ctx, FragmentKey::Root);
+    let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
     hoisted.push(ctx.b.var_stmt(
         tpl_name,
         ctx.b.call_expr(
             "$.from_html",
-            [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
+            [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
         ),
     ));
 
@@ -336,11 +344,12 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ctx.module_hoisted.extend(sub_hoisted);
 
             // Hoist AFTER children so inner templates come first (bottom-up order)
-            ctx.module_hoisted.push(ctx.b.var_stmt(
-                &tpl_name,
-                ctx.b
-                    .call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))]),
-            ));
+            let from_html = if needs_import_node(&html) {
+                ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
+            } else {
+                ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
+            };
+            ctx.module_hoisted.push(ctx.b.var_stmt(&tpl_name, from_html));
 
             // Prepend const tags from body, then element code
             body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
@@ -408,11 +417,12 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             }
 
             let html = fragment_html(ctx, key);
+            let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
             let tpl_stmt = ctx.b.var_stmt(
                 &tpl_name,
                 ctx.b.call_expr(
                     "$.from_html",
-                    [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(1.0)],
+                    [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
                 ),
             );
 

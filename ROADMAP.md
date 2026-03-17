@@ -42,6 +42,21 @@ Scope: client-side compilation only (no SSR, no legacy mode).
 - [x] SnippetBlock, RenderTag
 - [x] Text node, ExpressionTag
 
+### Bind directives (Tier 3)
+- [x] `bind:value` (input, textarea, select), `bind:checked`, `bind:group`, `bind:files`
+- [x] `bind:indeterminate`, `bind:open` (generic `$.bind_property`)
+- [x] `bind:innerHTML`, `bind:innerText`, `bind:textContent` (contenteditable)
+- [x] `bind:clientWidth/Height`, `bind:offsetWidth/Height` (element size)
+- [x] `bind:contentRect`, `bind:contentBoxSize`, `bind:borderBoxSize`, `bind:devicePixelContentBoxSize` (resize observer)
+- [x] `bind:currentTime`, `bind:paused`, `bind:volume`, `bind:muted`, `bind:playbackRate` (media R/W)
+- [x] `bind:buffered`, `bind:seekable`, `bind:seeking`, `bind:ended`, `bind:readyState`, `bind:played` (media RO)
+- [x] `bind:duration`, `bind:videoWidth`, `bind:videoHeight`, `bind:naturalWidth`, `bind:naturalHeight` (event-based RO)
+- [x] `bind:this` (element reference)
+- [x] `bind:focused`
+- [ ] `bind:property={get, set}` — function bindings (Svelte 5) *(deferred)*
+- [ ] Window bindings: `scrollX`, `scrollY`, `innerWidth`, `innerHeight`, `outerWidth`, `outerHeight`, `online`, `devicePixelRatio` *(requires `<svelte:window>` parser)*
+- [ ] Document bindings: `activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState` *(requires `<svelte:document>` parser)*
+
 ### Optimizations
 - [x] Whitespace trimming
 - [x] Merge adjacent text/interpolation
@@ -193,9 +208,11 @@ Key files: `svelte_ast/src/lib.rs`, `svelte_parser/src/lib.rs`, `svelte_codegen_
 
 ---
 
-## Tier 3 — Bind Directive Completeness
+## Tier 3 — Bind Directive Completeness ✅
 
 Theme: parser/AST already supports `bind:name={expr}`. Need element-aware codegen dispatch per binding type.
+
+**Status**: Codegen complete for all regular-element bindings. Window/document bindings deferred to Tier 4 (requires `<svelte:window>` / `<svelte:document>` parser support).
 
 Key file: `crates/svelte_codegen_client/src/template/attributes.rs`
 Ref: `reference/compiler/phases/3-transform/client/visitors/BindDirective.js`
