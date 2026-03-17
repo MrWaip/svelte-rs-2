@@ -123,6 +123,7 @@ impl_node_enum! {
     HtmlTag(HtmlTag)             => is_html_tag / as_html_tag,
     ConstTag(ConstTag)           => is_const_tag / as_const_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
+    SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
     Error(ErrorNode)             => is_error / as_error,
 }
 
@@ -304,6 +305,16 @@ pub struct KeyBlock {
     pub span: Span,
     /// Span of the JS expression: "count" in `{#key count}`.
     pub expression_span: Span,
+    pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteHead — <svelte:head>...</svelte:head>
+// ---------------------------------------------------------------------------
+
+pub struct SvelteHead {
+    pub id: NodeId,
+    pub span: Span,
     pub fragment: Fragment,
 }
 

@@ -357,12 +357,15 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, head managem
 - [ ] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties *(deferred — expression span stored, analysis-phase parsing needed)*
 - [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()` *(deferred — requires codegen changes)*
 
-### `<svelte:head>` — Document head
+### ~~`<svelte:head>` — Document head~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Node::SvelteHead { id, span, fragment }`
-- **Codegen**: `$.head(($$anchor) => { ... })`
+- **Codegen**: `$.head(hash, ($$anchor) => { ... })`
 - **Constraint**: Top-level only
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteHead.js`
+- [ ] Validation: `<svelte:head>` only allowed at root level *(discovered during port, deferred)*
+- [ ] Validation: no attributes allowed (diagnostic) *(discovered during port, deferred)*
+- [ ] `filename` parameter for `compile()` to produce correct hash *(discovered during port, deferred — currently uses "(unknown)" default)*
 
 ### `<svelte:element this={tag}>` — Dynamic element
 - **Phases**: P, A, T
