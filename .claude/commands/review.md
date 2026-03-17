@@ -98,6 +98,8 @@ For each finding:
 
 ## Output rules
 
+**This command produces a report only. Never modify source files, branches, or commits.**
+
 After all agents complete, merge their findings into one ranked report.
 
 1. **Rank** by: how many downstream workarounds or unnecessary checks would disappear if the root cause were fixed
@@ -125,3 +127,5 @@ For each finding:
 End with:
 - Total findings by agent (before filtering to top 5/7)
 - Suggested next review: which dimension deserves a deeper dedicated pass
+
+**Save the complete report to `REVIEW.md` in the project root (overwrite if exists). This file is read by `/review-fix`.**

@@ -1,6 +1,6 @@
 # Review Fix: $ARGUMENTS
 
-Implement findings from the last `/review` run in this conversation.
+Implement findings from the last `/review` run.
 
 ## Input
 
@@ -10,12 +10,11 @@ Implement findings from the last `/review` run in this conversation.
 
 ## Step 1: Locate the review
 
-Find the most recent `/review` output in this conversation. If no review output exists, stop and tell the user.
+Read `REVIEW.md` from the project root. If the file does not exist, stop and tell the user to run `/review` first.
 
 ## Step 2: Plan
 
 For each target finding:
-
 1. Read all files listed in the **Evidence** section
 2. Read `CODEBASE_MAP.md` for type signatures and module structure
 3. If the fix touches a new feature area, read `GOTCHAS.md`
@@ -28,7 +27,6 @@ For each target finding:
 **Present the plan and wait for approval before writing any code.**
 
 If the fix description is ambiguous, flag it here instead of guessing.
-
 If a single finding requires changes across 5+ files, plan the first step only and explain what remains.
 
 ## Step 3: Implement
@@ -41,8 +39,10 @@ If tests fail: fix and retry. **Stop after 3 failed attempts** — report what y
 
 If a finding conflicts with changes already made, skip it and explain the conflict.
 
-## Step 4: Verify
+## Step 4: Verify & Update
 
 Run `just test-all`.
+
+Update `REVIEW.md`: mark implemented findings with ~~strikethrough~~, add a one-line note of what was done. Skip strikethrough findings when running `all`.
 
 Summarize: which findings were implemented, which were skipped (and why), what to verify manually.
