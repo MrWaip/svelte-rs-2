@@ -654,3 +654,8 @@ fn assert_compiler_module(case: &str) {
 fn module_compilation() {
     assert_compiler_module("module_compilation");
 }
+
+#[rstest]
+fn svelte_options_basic() {
+    assert_compiler("svelte_options_basic");
+}

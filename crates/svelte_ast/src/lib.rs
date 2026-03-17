@@ -21,6 +21,7 @@ pub struct Component {
     pub fragment: Fragment,
     pub script: Option<Script>,
     pub css: Option<RawBlock>,
+    pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
     pub source: String,
     next_node_id: u32,
@@ -33,6 +34,7 @@ impl Component {
             fragment,
             script,
             css,
+            options: None,
             source,
             next_node_id: 0,
         }
@@ -508,6 +510,51 @@ pub enum ScriptLanguage {
 pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteOptions — parsed from <svelte:options> tag
+// ---------------------------------------------------------------------------
+
+/// Component-level options parsed from `<svelte:options .../>`.
+/// Stored on `Component.options` after extraction from the fragment.
+pub struct SvelteOptions {
+    pub span: Span,
+    /// Whether this component uses runes mode. `None` = inherit from compiler options.
+    pub runes: Option<bool>,
+    /// Component namespace: "html" (default), "svg", or "mathml".
+    pub namespace: Option<Namespace>,
+    /// CSS injection mode. Currently only "injected" is valid.
+    pub css: Option<CssMode>,
+    /// Custom element tag name (simple string form).
+    pub custom_element: Option<CustomElementConfig>,
+    /// LEGACY(svelte4): immutable mode. Deprecated in Svelte 5.
+    pub immutable: Option<bool>,
+    /// LEGACY(svelte4): accessors mode. Deprecated in Svelte 5.
+    pub accessors: Option<bool>,
+    /// Preserve whitespace in template.
+    pub preserve_whitespace: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Namespace {
+    Html,
+    Svg,
+    Mathml,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CssMode {
+    Injected,
+}
+
+/// Custom element configuration from `<svelte:options customElement=...>`.
+pub enum CustomElementConfig {
+    /// Simple string form: `customElement="my-tag"`
+    Tag(String),
+    /// Object form: `customElement={{ tag: "...", ... }}`
+    /// Stores the expression span for deferred parsing in analysis.
+    Expression(Span),
 }
 
 // ---------------------------------------------------------------------------
