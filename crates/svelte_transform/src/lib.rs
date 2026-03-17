@@ -33,7 +33,7 @@ use svelte_ast::{
 pub fn transform_component<'a>(
     alloc: &'a Allocator,
     component: &Component,
-    analysis: &mut AnalysisData,
+    analysis: &AnalysisData,
     parsed: &mut ParsedExprs<'a>,
     ident_gen: &mut IdentGen,
 ) -> TransformData {
@@ -71,7 +71,7 @@ pub fn transform_component<'a>(
 
 struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
-    analysis: &'b mut AnalysisData,
+    analysis: &'b AnalysisData,
     prop_sources: FxHashSet<String>,
     prop_non_sources: FxHashMap<String, String>,
     ident_gen: &'b mut IdentGen,
