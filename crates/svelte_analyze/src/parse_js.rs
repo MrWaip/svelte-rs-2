@@ -158,6 +158,16 @@ fn walk_node<'a>(
         Node::EachBlock(block) => {
             let source = component.source_text(block.expression_span);
             parse_expr(alloc, source, block.expression_span.start, block.id, data, parsed, diags);
+            if let Some(key_span) = block.key_span {
+                let key_source = component.source_text(key_span);
+                let arena_source: &'a str = alloc.alloc_str(key_source);
+                match svelte_js::analyze_expression_with_alloc(alloc, arena_source, key_span.start) {
+                    Ok((_info, expr)) => {
+                        parsed.key_exprs.insert(block.id, expr);
+                    }
+                    Err(diag) => diags.push(diag),
+                }
+            }
             walk_fragment(alloc, &block.body, component, data, parsed, diags);
             if let Some(fb) = &block.fallback {
                 walk_fragment(alloc, fb, component, data, parsed, diags);
@@ -287,6 +297,12 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::TransitionDirective(a) => {
+                if let Some(span) = a.expression_span {
+                    let source = component.source_text(span);
+                    parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);
+                }
+            }
+            Attribute::AnimateDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
                     parse_attr_expr(alloc, source, span.start, key, data, parsed, diags);

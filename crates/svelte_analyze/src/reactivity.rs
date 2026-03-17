@@ -1,7 +1,8 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ComponentNode, ConstTag, EachBlock, Element, ExpressionTag, HtmlTag,
-    IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock, TransitionDirective, UseDirective,
+    AnimateDirective, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock, Element,
+    ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock,
+    TransitionDirective, UseDirective,
 };
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
@@ -107,6 +108,10 @@ impl TemplateVisitor for ReactivityVisitor {
     }
 
     fn visit_transition_directive(&mut self, _dir: &TransitionDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        data.element_flags.needs_ref.insert(el.id);
+    }
+
+    fn visit_animate_directive(&mut self, _dir: &AnimateDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
         data.element_flags.needs_ref.insert(el.id);
     }
 
