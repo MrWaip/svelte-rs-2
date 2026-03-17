@@ -2,7 +2,7 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget,
-        BindingIdentifier, CallExpression, ExportDefaultDeclarationKind,
+        BindingIdentifier, CallExpression, ChainElement, ExportDefaultDeclarationKind,
         Expression, FormalParameters, Function, FunctionType, IdentifierReference,
         ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
         NumericLiteral, Program, Statement,
@@ -478,6 +478,19 @@ impl<'a> Builder<'a> {
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         Expression::CallExpression(self.alloc(
             self.ast.call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), false),
+        ))
+    }
+
+    /// Optional call expression: `callee?.(...args)` — ChainExpression wrapping an optional CallExpression.
+    pub fn maybe_call_expr<'short>(
+        &self,
+        callee: Expression<'a>,
+        args: impl IntoIterator<Item = Arg<'a, 'short>>,
+    ) -> Expression<'a> {
+        let args = args.into_iter().map(|a| self.arg_to_argument(a));
+        let call = self.ast.call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), true);
+        Expression::ChainExpression(self.alloc(
+            self.ast.chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
         ))
     }
 

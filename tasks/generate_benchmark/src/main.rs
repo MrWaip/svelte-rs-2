@@ -59,6 +59,10 @@ fn write_script(out: &mut String) {
     export function formatTitle(prefix) {
         return prefix + ": " + title;
     }
+
+    function action(node, arg) {
+        return { destroy() {} };
+    }
 </script>
 
 "#,
@@ -133,6 +137,7 @@ fn write_chunk(out: &mut String, i: usize) {
     {{/each}}
 
     <input bind:value={{state}} />
+    <div use:action={{state}}>action target</div>
 
     {{@render badge("chunk-{i}", "secondary")}}
     {{@render card(title, "Content for chunk {i}")}}

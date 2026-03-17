@@ -121,6 +121,9 @@ pub(crate) fn process_attr<'a>(
         Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
+        Attribute::UseDirective(ud) => {
+            gen_use_directive(ctx, ud, owner_id, attr_idx, el_name, init);
+        }
         // LEGACY(svelte4): on:directive
         Attribute::OnDirectiveLegacy(od) => {
             gen_on_directive_legacy(ctx, od, owner_id, attr_idx, el_name, after_update);
@@ -702,6 +705,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 continue;
             }
             Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => continue,
+            Attribute::UseDirective(_) => continue,
             // LEGACY(svelte4): on:directive handled separately
             Attribute::OnDirectiveLegacy(_) => continue,
         }
@@ -714,6 +718,67 @@ pub(crate) fn process_attrs_spread<'a>(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// use:action directive codegen
+// ---------------------------------------------------------------------------
+
+/// Generate `$.action(el, ($$node) => name?.($$node), () => expr)`.
+/// Reference: `UseDirective.js`.
+fn gen_use_directive<'a>(
+    ctx: &mut Ctx<'a>,
+    ud: &svelte_ast::UseDirective,
+    owner_id: NodeId,
+    attr_idx: usize,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+) {
+    // Build handler params: ($$node) or ($$node, $$action_arg)
+    let has_expr = ud.expression_span.is_some();
+    let params = if has_expr {
+        ctx.b.params(["$$node", "$$action_arg"])
+    } else {
+        ctx.b.params(["$$node"])
+    };
+
+    // Build directive name expression (handles dotted names like "a.b")
+    let name_expr = build_directive_name_expr(ctx, &ud.name);
+
+    // Build optional call: name?.($$node) or name?.($$node, $$action_arg)
+    let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$node")];
+    if has_expr {
+        call_args.push(Arg::Ident("$$action_arg"));
+    }
+    let action_call = ctx.b.maybe_call_expr(name_expr, call_args);
+
+    // Wrap in arrow: ($$node) => name?.($$node)
+    let handler = ctx.b.arrow_expr(params, [ctx.b.expr_stmt(action_call)]);
+
+    // Build $.action() args
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Ident(el_name),
+        Arg::Expr(handler),
+    ];
+
+    // Optional third arg: () => expression
+    if has_expr {
+        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let thunk = ctx.b.thunk(expr);
+        args.push(Arg::Expr(thunk));
+    }
+
+    init.push(ctx.b.call_stmt("$.action", args));
+}
+
+/// Parse a directive name like "a.b.c" into a member expression.
+fn build_directive_name_expr<'a>(ctx: &Ctx<'a>, name: &str) -> Expression<'a> {
+    let parts: Vec<&str> = name.split('.').collect();
+    let mut expr = ctx.b.rid_expr(parts[0]);
+    for part in &parts[1..] {
+        expr = ctx.b.static_member_expr(expr, part);
+    }
+    expr
+}
+
 // LEGACY(svelte4): on:directive codegen
 // ---------------------------------------------------------------------------
 
