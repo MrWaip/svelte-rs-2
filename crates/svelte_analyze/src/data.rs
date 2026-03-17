@@ -257,6 +257,14 @@ impl AnalysisData {
     pub fn rune_kind(&self, name: &str) -> Option<svelte_js::RuneKind> {
         self.scoping.rune_info_by_name(name).map(|(kind, _)| kind)
     }
+
+    pub fn prop_sources(&self) -> Option<&FxHashSet<String>> {
+        self.props.as_ref().map(|pa| &pa.prop_sources)
+    }
+
+    pub fn prop_non_sources(&self) -> Option<&FxHashMap<String, String>> {
+        self.props.as_ref().map(|pa| &pa.prop_non_sources)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +363,10 @@ pub enum ConcatPart {
 pub struct PropsAnalysis {
     pub props: Vec<PropAnalysis>,
     pub has_bindable: bool,
+    /// Prop names that need `$.prop()` source wrappers (called as thunks).
+    pub prop_sources: FxHashSet<String>,
+    /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
+    pub prop_non_sources: FxHashMap<String, String>,
 }
 
 pub struct PropAnalysis {

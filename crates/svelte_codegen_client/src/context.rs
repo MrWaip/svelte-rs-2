@@ -137,21 +137,8 @@ impl<'a> Ctx<'a> {
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
-        let mut prop_sources = FxHashSet::default();
-        let mut prop_non_sources = FxHashMap::default();
-        if let Some(pa) = &analysis.props {
-            for p in &pa.props {
-                if p.is_rest {
-                    // Rest props are accessed directly (from $.rest_props result)
-                    continue;
-                }
-                if p.is_prop_source {
-                    prop_sources.insert(p.local_name.clone());
-                } else {
-                    prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
-                }
-            }
-        }
+        let prop_sources = analysis.prop_sources().cloned().unwrap_or_default();
+        let prop_non_sources = analysis.prop_non_sources().cloned().unwrap_or_default();
 
         Self {
             b: Builder::new(allocator),
