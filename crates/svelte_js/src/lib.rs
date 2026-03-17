@@ -784,6 +784,48 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
                 }
             }
         }
+        Expression::ArrowFunctionExpression(arrow) => {
+            for stmt in &arrow.body.statements {
+                collect_statement_references(stmt, offset, refs);
+            }
+        }
+        Expression::SequenceExpression(seq) => {
+            for expr in &seq.expressions {
+                collect_references(expr, offset, refs);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32, refs: &mut Vec<Reference>) {
+    use oxc_ast::ast::Statement;
+    match stmt {
+        Statement::ExpressionStatement(es) => collect_references(&es.expression, offset, refs),
+        Statement::ReturnStatement(ret) => {
+            if let Some(arg) = &ret.argument {
+                collect_references(arg, offset, refs);
+            }
+        }
+        Statement::BlockStatement(block) => {
+            for s in &block.body {
+                collect_statement_references(s, offset, refs);
+            }
+        }
+        Statement::IfStatement(if_stmt) => {
+            collect_references(&if_stmt.test, offset, refs);
+            collect_statement_references(&if_stmt.consequent, offset, refs);
+            if let Some(alt) = &if_stmt.alternate {
+                collect_statement_references(alt, offset, refs);
+            }
+        }
+        Statement::VariableDeclaration(decl) => {
+            for d in &decl.declarations {
+                if let Some(init) = &d.init {
+                    collect_references(init, offset, refs);
+                }
+            }
+        }
         _ => {}
     }
 }

@@ -124,6 +124,7 @@ impl_node_enum! {
     ConstTag(ConstTag)           => is_const_tag / as_const_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
+    SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
     Error(ErrorNode)             => is_error / as_error,
 }
 
@@ -315,6 +316,21 @@ pub struct KeyBlock {
 pub struct SvelteHead {
     pub id: NodeId,
     pub span: Span,
+    pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteElement — <svelte:element this={tag}>...</svelte:element>
+// ---------------------------------------------------------------------------
+
+pub struct SvelteElement {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the `this` expression (the dynamic tag).
+    pub tag_span: Span,
+    /// True when `this="literal"` (StringAttribute) — tag is a static string, not a JS expression.
+    pub static_tag: bool,
+    pub attributes: Vec<Attribute>,
     pub fragment: Fragment,
 }
 

@@ -350,6 +350,9 @@ impl<'a> Parser<'a> {
         // Convert <svelte:head> elements to SvelteHead nodes
         Self::convert_svelte_head(&mut component);
 
+        // Convert <svelte:element> elements to SvelteElement nodes
+        Self::convert_svelte_element(&mut component.fragment);
+
         (component, self.diagnostics)
     }
 
@@ -1191,6 +1194,74 @@ impl<'a> Parser<'a> {
                     *node = Node::SvelteHead(head);
                 }
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // <svelte:element> conversion
+    // -----------------------------------------------------------------------
+
+    /// Convert `<svelte:element this={expr}>` Element nodes to SvelteElement nodes.
+    /// Unlike svelte:head, these can appear anywhere in the tree, so we walk recursively.
+    fn convert_svelte_element(fragment: &mut Fragment) {
+        for node in &mut fragment.nodes {
+            match node {
+                Node::Element(el) if el.name == "svelte:element" => {
+                    let (tag_span, static_tag) = Self::extract_this_attribute(&mut el.attributes);
+                    let mut svelte_el = svelte_ast::SvelteElement {
+                        id: el.id,
+                        span: el.span,
+                        tag_span,
+                        static_tag,
+                        attributes: std::mem::take(&mut el.attributes),
+                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    };
+                    Self::convert_svelte_element(&mut svelte_el.fragment);
+                    *node = Node::SvelteElement(svelte_el);
+                }
+                Node::Element(el) => Self::convert_svelte_element(&mut el.fragment),
+                Node::ComponentNode(cn) => Self::convert_svelte_element(&mut cn.fragment),
+                Node::IfBlock(block) => {
+                    Self::convert_svelte_element(&mut block.consequent);
+                    if let Some(alt) = &mut block.alternate {
+                        Self::convert_svelte_element(alt);
+                    }
+                }
+                Node::EachBlock(block) => {
+                    Self::convert_svelte_element(&mut block.body);
+                    if let Some(fallback) = &mut block.fallback {
+                        Self::convert_svelte_element(fallback);
+                    }
+                }
+                Node::SnippetBlock(block) => Self::convert_svelte_element(&mut block.body),
+                Node::KeyBlock(block) => Self::convert_svelte_element(&mut block.fragment),
+                Node::SvelteHead(head) => Self::convert_svelte_element(&mut head.fragment),
+                Node::SvelteElement(el) => Self::convert_svelte_element(&mut el.fragment),
+                _ => {}
+            }
+        }
+    }
+
+    /// Extract the `this` attribute from an attribute list, returning its expression span.
+    /// Removes the `this` attribute from the vec.
+    /// Returns (tag_span, is_static) — is_static is true for `this="literal"`.
+    fn extract_this_attribute(attributes: &mut Vec<svelte_ast::Attribute>) -> (Span, bool) {
+        let pos = attributes.iter().position(|attr| match attr {
+            svelte_ast::Attribute::ExpressionAttribute(a) => a.name == "this",
+            svelte_ast::Attribute::StringAttribute(a) => a.name == "this",
+            _ => false,
+        });
+
+        if let Some(idx) = pos {
+            let attr = attributes.remove(idx);
+            match attr {
+                svelte_ast::Attribute::ExpressionAttribute(a) => (a.expression_span, false),
+                svelte_ast::Attribute::StringAttribute(a) => (a.value_span, true),
+                _ => unreachable!(),
+            }
+        } else {
+            // Missing `this` attribute — use empty span as fallback
+            (Span::new(0, 0), false)
         }
     }
 }

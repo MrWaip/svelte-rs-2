@@ -2,7 +2,7 @@ use oxc_semantic::ScopeId;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
     Element, ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock,
-    TransitionDirective, UseDirective,
+    SvelteElement, TransitionDirective, UseDirective,
 };
 
 use crate::data::AnalysisData;
@@ -28,6 +28,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
@@ -122,6 +123,10 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             Node::SvelteHead(head) => {
                 walk_template(&head.fragment, data, scope, visitor);
             }
+            Node::SvelteElement(el) => {
+                visitor.visit_svelte_element(el, scope, data);
+                walk_template(&el.fragment, data, scope, visitor);
+            }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }
@@ -160,6 +165,9 @@ macro_rules! delegate_visitor_methods {
         }
         fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_key_block(block, scope, data);)+
+        }
+        fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_svelte_element(el, scope, data);)+
         }
         fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_attribute(attr, idx, el, scope, data);)+
