@@ -156,22 +156,6 @@ pub(crate) fn build_attr_concat<'a>(
     ctx.b.template_parts_expr(tpl_parts)
 }
 
-pub(crate) fn static_text_of(item: &FragmentItem) -> String {
-    match item {
-        FragmentItem::TextConcat { parts, .. } => parts
-            .iter()
-            .filter_map(|p| {
-                if let ConcatPart::Text(s) = p {
-                    Some(s.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect(),
-        _ => String::new(),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Emit helpers
 // ---------------------------------------------------------------------------

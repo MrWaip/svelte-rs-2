@@ -134,6 +134,37 @@ impl RuneKind {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Parse snippet parameter names from the raw params text (e.g. `"a, b"` or `"{ name }, count"`).
+///
+/// Uses OXC to parse `function f(PARAMS) {}` so destructuring patterns and default
+/// values with commas are handled correctly. Falls back to a simple comma split on
+/// parse failure.
+pub fn parse_snippet_params(params_text: &str) -> Vec<String> {
+    let alloc = Allocator::default();
+    let source = format!("function f({}) {{}}", params_text);
+    let result = OxcParser::new(&alloc, &source, SourceType::default()).parse();
+
+    if result.errors.is_empty() {
+        if let Some(oxc_ast::ast::Statement::FunctionDeclaration(func)) = result.program.body.first() {
+            let mut names: Vec<CompactString> = Vec::new();
+            for param in &func.params.items {
+                extract_all_binding_names(&param.pattern, &mut names);
+            }
+            if let Some(rest) = &func.params.rest {
+                extract_all_binding_names(&rest.rest.argument, &mut names);
+            }
+            return names.iter().map(|n| n.to_string()).collect();
+        }
+    }
+
+    // Fallback: simple comma split for trivial cases (should rarely trigger)
+    params_text
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 /// Parse a `{@const name = expr}` declaration via OXC.
 ///
 /// `source` is the raw declaration text (e.g. `"doubled = item * 2"` or `"{a, b} = obj"`).

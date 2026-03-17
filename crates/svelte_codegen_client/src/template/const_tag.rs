@@ -30,7 +30,7 @@ pub(crate) fn emit_const_tags<'a>(
             stmts.push(ctx.b.const_stmt(&names[0], derived));
         } else if names.len() > 1 {
             // Destructured: const tmp = $.derived(() => { const {a, b} = init; return {a, b}; })
-            let tmp_name = ctx.analysis.const_tags.tmp_name(id)
+            let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&id)
                 .expect("destructured const tag must have tmp_name from transform");
             let tmp_name: &str = ctx.b.alloc_str(tmp_name);
 

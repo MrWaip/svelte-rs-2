@@ -1096,6 +1096,7 @@ dependencies = [
  "svelte_ast",
  "svelte_js",
  "svelte_span",
+ "svelte_transform",
 ]
 
 [[package]]

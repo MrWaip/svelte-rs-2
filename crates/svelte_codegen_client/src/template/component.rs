@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ContentType, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
@@ -126,12 +126,12 @@ pub(crate) fn gen_component<'a>(
     // Add children snippet if component has non-empty fragment
     let children_ct = ctx.content_type(&FragmentKey::ComponentNode(id));
 
-    if children_ct != ContentType::Empty {
+    if children_ct != ContentStrategy::Empty {
         let frag_key = FragmentKey::ComponentNode(id);
 
-        // For text-first content (StaticText/DynamicText), gen_fragment doesn't emit $.next(),
-        // so the component handler must. For Mixed, gen_fragment handles it.
-        let needs_next = matches!(children_ct, ContentType::StaticText | ContentType::DynamicText);
+        // For text-first content (Static/DynamicText), gen_fragment doesn't emit $.next(),
+        // so the component handler must. For Dynamic (mixed), gen_fragment handles it.
+        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. });
 
         let mut body_stmts = Vec::new();
         if needs_next {

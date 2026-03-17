@@ -17,7 +17,7 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentType, ElementFlags, FragmentData, FragmentItem,
+    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, ElementFlags, FragmentData, FragmentItem,
     FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
@@ -87,7 +87,7 @@ pub fn analyze<'a>(
         let mut visitor = (
             reactivity::ReactivityVisitor::new(),
             elseif::ElseifVisitor,
-            element_flags::ElementFlagsVisitor,
+            element_flags::ElementFlagsVisitor::new(&component.source),
             hoistable::HoistableSnippetsVisitor::new(script_names, top_level_snippet_ids),
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
@@ -151,14 +151,8 @@ fn register_snippet_params(
     for node in &fragment.nodes {
         match node {
             svelte_ast::Node::SnippetBlock(block) => {
-                // TODO: parse via OXC for destructured/default params (currently simple split)
                 let params = if let Some(span) = block.params_span {
-                    component
-                        .source_text(span)
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
+                    svelte_js::parse_snippet_params(component.source_text(span))
                 } else {
                     Vec::new()
                 };
@@ -201,6 +195,19 @@ mod tests {
     use svelte_parser::Parser;
 
     use super::*;
+
+    fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
+        let actual = data.fragments.content_types.get(&key)
+            .unwrap_or_else(|| panic!("no content strategy for {:?}", key));
+        let actual_variant = match actual {
+            ContentStrategy::Empty => "Empty",
+            ContentStrategy::Static(_) => "Static",
+            ContentStrategy::SingleElement(_) => "SingleElement",
+            ContentStrategy::SingleBlock(_) => "SingleBlock",
+            ContentStrategy::Dynamic { .. } => "Dynamic",
+        };
+        assert_eq!(actual_variant, variant, "expected {:?} to be {}", key, variant);
+    }
 
     // -----------------------------------------------------------------------
     // Finders — identify nodes by source text (span-based)
@@ -310,7 +317,7 @@ mod tests {
         (component, data)
     }
 
-    fn assert_root_content_type(data: &AnalysisData, expected: ContentType) {
+    fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
         let actual = data
             .fragments
             .content_types
@@ -379,7 +386,7 @@ mod tests {
         data: &AnalysisData,
         component: &Component,
         tag_name: &str,
-        expected: ContentType,
+        expected: ContentStrategy,
     ) {
         let el = find_element(&component.fragment, tag_name)
             .unwrap_or_else(|| panic!("no element <{tag_name}>"));
@@ -395,7 +402,7 @@ mod tests {
         data: &AnalysisData,
         component: &Component,
         test_text: &str,
-        expected: ContentType,
+        expected: ContentStrategy,
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
@@ -411,7 +418,7 @@ mod tests {
         data: &AnalysisData,
         component: &Component,
         test_text: &str,
-        expected: ContentType,
+        expected: ContentStrategy,
     ) {
         let block = find_if_block(&component.fragment, component, test_text)
             .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
@@ -455,25 +462,25 @@ mod tests {
     #[test]
     fn empty_component() {
         let (_c, data) = analyze_source("");
-        assert_root_content_type(&data, ContentType::Empty);
+        assert_root_content_type(&data, ContentStrategy::Empty);
     }
 
     #[test]
     fn static_text_content() {
         let (_c, data) = analyze_source("Hello world");
-        assert_root_content_type(&data, ContentType::StaticText);
+        assert_root_content_type(&data, ContentStrategy::Static("Hello world".to_string()));
     }
 
     #[test]
     fn single_element() {
         let (_c, data) = analyze_source("<div></div>");
-        assert_root_content_type(&data, ContentType::SingleElement);
+        assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
     }
 
     #[test]
     fn mixed_content() {
         let (_c, data) = analyze_source("<div></div><span></span>");
-        assert_root_content_type(&data, ContentType::Mixed);
+        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: true, has_blocks: false, has_text: false });
     }
 
     #[test]
@@ -487,7 +494,7 @@ mod tests {
     #[test]
     fn dynamic_text_content() {
         let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-        assert_root_content_type(&data, ContentType::DynamicText);
+        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true });
     }
 
     #[test]
@@ -520,7 +527,7 @@ mod tests {
         // Leading and trailing whitespace-only text should not appear as items.
         let (_c, data) = analyze_source("\n  <div></div>\n  ");
         assert_lowered_item_count(&data, FragmentKey::Root, 1);
-        assert_root_content_type(&data, ContentType::SingleElement);
+        assert_content_strategy_variant(&data, FragmentKey::Root, "SingleElement");
     }
 
     #[test]
@@ -530,7 +537,7 @@ mod tests {
         assert_lowered_item_count(&data, FragmentKey::Root, 3);
         assert_item_is_text_concat(&data, FragmentKey::Root, 0);
         assert_item_is_text_concat(&data, FragmentKey::Root, 2);
-        assert_root_content_type(&data, ContentType::Mixed);
+        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: true, has_blocks: false, has_text: true });
     }
 
     #[test]
@@ -538,7 +545,7 @@ mod tests {
         let (c, data) =
             analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
         assert_dynamic_tag(&data, &c, "count");
-        assert_element_content_type(&data, &c, "div", ContentType::DynamicText);
+        assert_element_content_type(&data, &c, "div", ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true });
     }
 
     #[test]
@@ -554,8 +561,9 @@ mod tests {
     #[test]
     fn if_block_alternate_content_type() {
         let (c, data) = analyze_source("{#if x}Hello{:else}<span></span>{/if}");
-        assert_consequent_content_type(&data, &c, "x", ContentType::StaticText);
-        assert_alternate_content_type(&data, &c, "x", ContentType::SingleElement);
+        assert_consequent_content_type(&data, &c, "x", ContentStrategy::Static("Hello".to_string()));
+        let if_id = find_if_block(&c.fragment, &c, "x").unwrap().id;
+        assert_content_strategy_variant(&data, FragmentKey::IfAlternate(if_id), "SingleElement");
     }
 
     #[test]

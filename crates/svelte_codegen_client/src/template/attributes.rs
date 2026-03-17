@@ -180,10 +180,8 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         (expr, is_dynamic)
     } else {
         // No class expression attribute — use static class or empty string
-        let static_class = ctx.static_class(el.id)
-            .map(|span| ctx.component.source_text(span).to_string())
-            .unwrap_or_default();
-        (ctx.b.str_expr(&static_class), false)
+        let static_class = ctx.static_class(el.id).unwrap_or("");
+        (ctx.b.str_expr(static_class), false)
     };
 
     // --- Build class directives object ---
@@ -295,10 +293,8 @@ pub(crate) fn process_style_directives<'a>(
         })
         .collect();
 
-    // Find static style value from precomputed span
-    let static_style = ctx.static_style(el.id)
-        .map(|span| ctx.component.source_text(span).to_string())
-        .unwrap_or_default();
+    // Read precomputed static style value
+    let static_style = ctx.static_style(el.id).unwrap_or("").to_string();
 
     let mut normal_props: Vec<ObjProp<'a>> = Vec::new();
     let mut important_props: Vec<ObjProp<'a>> = Vec::new();

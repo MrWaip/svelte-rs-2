@@ -10,13 +10,14 @@ use oxc_codegen::Codegen;
 
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::Component;
+use svelte_transform::TransformData;
 
 use builder::{Arg, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation

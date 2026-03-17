@@ -3,7 +3,10 @@
 //! Transforms rune references, prop accesses, and each-block variables
 //! in pre-parsed Expression ASTs. Runs between analyze and codegen.
 
+mod data;
 mod rune_refs;
+
+pub use data::TransformData;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -33,7 +36,7 @@ pub fn transform_component<'a>(
     analysis: &mut AnalysisData,
     parsed: &mut ParsedExprs<'a>,
     ident_gen: &mut IdentGen,
-) {
+) -> TransformData {
     // Precompute prop info
     let mut prop_sources = FxHashSet::default();
     let mut prop_non_sources = FxHashMap::default();
@@ -59,9 +62,11 @@ pub fn transform_component<'a>(
         prop_non_sources,
         ident_gen,
         const_aliases: vec![FxHashMap::default()],
+        transform_data: TransformData::new(),
     };
 
     walk_fragment(&mut ctx, &component.fragment, component, parsed, root_scope, &[]);
+    ctx.transform_data
 }
 
 struct TransformCtx<'a, 'b> {
@@ -73,6 +78,7 @@ struct TransformCtx<'a, 'b> {
     /// Stack of alias maps for destructured const tags. Each scope level
     /// maps binding_name → (tmp_var, prop_name).
     const_aliases: Vec<FxHashMap<String, (String, String)>>,
+    transform_data: TransformData,
 }
 
 // ---------------------------------------------------------------------------
@@ -114,13 +120,13 @@ fn walk_node<'a>(
         }
         Node::IfBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &block.consequent, component, parsed, scope, snippet_params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &block.consequent, component, parsed, scope, snippet_params);
+            });
             if let Some(alt) = &block.alternate {
-                ctx.const_aliases.push(FxHashMap::default());
-                walk_fragment(ctx, alt, component, parsed, scope, snippet_params);
-                ctx.const_aliases.pop();
+                with_alias_scope(ctx, |ctx| {
+                    walk_fragment(ctx, alt, component, parsed, scope, snippet_params);
+                });
             }
         }
         Node::EachBlock(block) => {
@@ -128,9 +134,9 @@ fn walk_node<'a>(
 
             // Each block body uses child scope (context + index vars)
             let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &block.body, component, parsed, body_scope, snippet_params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &block.body, component, parsed, body_scope, snippet_params);
+            });
 
             // Fallback uses parent scope
             if let Some(fb) = &block.fallback {
@@ -145,9 +151,9 @@ fn walk_node<'a>(
                 .params(block.id)
                 .cloned()
                 .unwrap_or_default();
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &block.body, component, parsed, scope, &params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &block.body, component, parsed, scope, &params);
+            });
         }
         Node::RenderTag(tag) => {
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
@@ -163,7 +169,7 @@ fn walk_node<'a>(
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {
                 let tmp = ctx.ident_gen.gen("computed_const");
-                ctx.analysis.const_tags.insert_tmp_name(tag.id, tmp.clone());
+                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp.clone());
                 let aliases: FxHashMap<_, _> = names
                     .iter()
                     .map(|n| (n.clone(), (tmp.clone(), n.clone())))
@@ -175,14 +181,14 @@ fn walk_node<'a>(
         }
         Node::KeyBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
+            });
         }
         Node::SvelteHead(head) => {
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &head.fragment, component, parsed, scope, snippet_params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &head.fragment, component, parsed, scope, snippet_params);
+            });
         }
         Node::SvelteElement(el) => {
             // Transform the tag expression (skip for static string tags)
@@ -190,9 +196,9 @@ fn walk_node<'a>(
                 transform_node_expr(ctx, el.id, parsed, scope, snippet_params);
             }
             transform_attrs(ctx, el.id, &el.attributes, parsed, scope, snippet_params);
-            ctx.const_aliases.push(FxHashMap::default());
-            walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
-            ctx.const_aliases.pop();
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
+            });
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
@@ -514,6 +520,16 @@ fn extract_arrow_params(params: &FormalParameters<'_>) -> FxHashSet<String> {
         extract_binding_names(&rest.rest.argument, &mut names);
     }
     names
+}
+
+/// Push a fresh alias scope before `f` and pop it after. Eliminates boilerplate push/pop pairs.
+fn with_alias_scope<'a, 'b, F>(ctx: &mut TransformCtx<'a, 'b>, f: F)
+where
+    F: FnOnce(&mut TransformCtx<'a, 'b>),
+{
+    ctx.const_aliases.push(FxHashMap::default());
+    f(ctx);
+    ctx.const_aliases.pop();
 }
 
 fn extract_binding_names(pattern: &BindingPattern<'_>, names: &mut FxHashSet<String>) {

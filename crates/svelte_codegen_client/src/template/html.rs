@@ -2,12 +2,10 @@
 
 use std::fmt::Write;
 
-use svelte_analyze::{ConcatPart, ContentType, FragmentItem, FragmentKey};
+use svelte_analyze::{ConcatPart, ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
-
-use super::expression::static_text_of;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
@@ -90,25 +88,21 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     let has_state = ctx.has_dynamic_children(&child_key);
 
     match ct {
-        ContentType::Empty => {}
-        ContentType::StaticText => {
-            let lf = ctx.lowered_fragment(&child_key);
-            html.push_str(&static_text_of(&lf.items[0]));
+        ContentStrategy::Empty => {}
+        ContentStrategy::Static(ref text) => {
+            html.push_str(text);
         }
-        ContentType::DynamicText if !has_state => {
+        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } if !has_state => {
             // textContent shortcut — no placeholder
         }
-        ContentType::DynamicText => {
+        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => {
             // space placeholder for the text node
             html.push(' ');
         }
-        ContentType::SingleBlock if matches!(
-            ctx.lowered_fragment(&child_key).items.first(),
-            Some(FragmentItem::EachBlock(_))
-        ) => {
+        ContentStrategy::SingleBlock(id) if ctx.is_each_block(id) => {
             // Controlled each block: no <!> anchor in template
         }
-        ContentType::SingleElement | ContentType::SingleBlock | ContentType::Mixed => {
+        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Dynamic { .. } => {
             html.push_str(&fragment_html(ctx, child_key));
         }
     }
@@ -116,4 +110,3 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
     write!(html, "</{}>", el.name).unwrap();
     html
 }
-
