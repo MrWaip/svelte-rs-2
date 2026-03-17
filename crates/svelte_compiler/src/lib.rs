@@ -46,6 +46,38 @@ pub fn compile(source: &str) -> CompileResult {
     }
 }
 
+/// Compile a standalone `.svelte.js`/`.svelte.ts` module to client-side JavaScript.
+/// Applies rune transforms ($state, $derived, $effect, etc.) without component wrapping.
+pub fn compile_module(source: &str) -> CompileResult {
+    let js_alloc = oxc_allocator::Allocator::default();
+
+    let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let (analysis, analyze_diags) = svelte_analyze::analyze_module(source, false);
+        let js = svelte_codegen_client::generate_module(&js_alloc, source, false, &analysis);
+        (js, analyze_diags)
+    }));
+
+    match codegen_result {
+        Ok((js, diagnostics)) => CompileResult {
+            js: Some(js),
+            diagnostics,
+        },
+        Err(panic_payload) => {
+            let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown internal error".to_string()
+            };
+            CompileResult {
+                js: None,
+                diagnostics: vec![Diagnostic::internal_error(message)],
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

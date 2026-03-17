@@ -114,6 +114,34 @@ pub fn analyze<'a>(
     (data, parsed, diags)
 }
 
+/// Simplified analysis for standalone `.svelte.js`/`.svelte.ts` modules.
+///
+/// Only parses JS, builds scopes, and detects runes. No template, no props,
+/// no fragment classification — modules are pure JS with rune transforms.
+pub fn analyze_module(source: &str, is_ts: bool) -> (AnalysisData, Vec<Diagnostic>) {
+    let mut data = AnalysisData::new();
+    let mut diags = Vec::new();
+
+    match svelte_js::analyze_script_with_scoping(source, 0, is_ts) {
+        Ok((script_info, scoping)) => {
+            data.scoping = scope::ComponentScoping::from_scoping(scoping);
+
+            // Mark runes from script declarations
+            for decl in &script_info.declarations {
+                if let Some(rune_kind) = decl.is_rune {
+                    let root = data.scoping.root_scope_id();
+                    if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
+                        data.scoping.mark_rune(sym_id, rune_kind);
+                    }
+                }
+            }
+        }
+        Err(errs) => diags.extend(errs),
+    }
+
+    (data, diags)
+}
+
 /// Recursively register snippet parameter names for all snippets in the tree.
 fn register_snippet_params(
     fragment: &svelte_ast::Fragment,
