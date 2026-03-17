@@ -411,6 +411,66 @@ fn class_expr_with_directives() {
     assert_compiler("class_expr_with_directives");
 }
 
+#[rstest]
+fn bind_select_value() {
+    assert_compiler("bind_select_value");
+}
+
+#[rstest]
+fn bind_files() {
+    assert_compiler("bind_files");
+}
+
+#[rstest]
+fn bind_property() {
+    assert_compiler("bind_property");
+}
+
+#[rstest]
+fn bind_content_editable() {
+    assert_compiler("bind_content_editable");
+}
+
+#[rstest]
+fn bind_element_size() {
+    assert_compiler("bind_element_size");
+}
+
+#[rstest]
+fn bind_resize_observer() {
+    assert_compiler("bind_resize_observer");
+}
+
+#[rstest]
+fn bind_media_rw() {
+    assert_compiler("bind_media_rw");
+}
+
+#[rstest]
+fn bind_media_ro() {
+    assert_compiler("bind_media_ro");
+}
+
+#[rstest]
+fn bind_media_property() {
+    assert_compiler("bind_media_property");
+}
+
+#[rstest]
+fn bind_img() {
+    assert_compiler("bind_img");
+}
+
+#[rstest]
+fn bind_this() {
+    assert_compiler("bind_this");
+}
+
+#[rstest]
+fn bind_focused() {
+    assert_compiler("bind_focused");
+}
+
 // ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
