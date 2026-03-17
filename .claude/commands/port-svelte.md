@@ -102,10 +102,10 @@ Deferred to ROADMAP (M cases): ...
 
 ### 2d: Record deferred items in ROADMAP
 
-For cases NOT selected by the user:
-- Find or create the feature's section in `ROADMAP.md`
-- Add each deferred case as `- [ ] <description> *(discovered during port, deferred)*`
-- Do NOT remove or modify existing ROADMAP entries
+For cases NOT selected by the user, add them to the **Deferred** section at the bottom of `ROADMAP.md`:
+- Find or create a sub-heading `### <feature name> (Tier N)` under the **Deferred** section
+- Add each deferred case as `- [ ] <description>`
+- Do NOT scatter deferred items inside completed feature sections — they all go in **Deferred**
 
 ### 2e: Check what already exists
 
@@ -179,8 +179,8 @@ If the test still fails after 3 attempts, stop and report what you've tried.
 ## Step 8: Update tracking
 
 Update `ROADMAP.md`:
-- Mark `[x]` for completed checkboxes (deferred items from Step 2d stay as `[ ]`)
-- If new subtasks were discovered during implementation — add them as `- [ ]`
+- Move the completed feature to the **Done ✅** section
+- If new deferred items were discovered during implementation — add them to the **Deferred** section at the bottom
 
 
 ## Step 9: Benchmark
