@@ -5,10 +5,10 @@ use std::{iter::Peekable, str::Chars, vec};
 pub use svelte_ast::is_void;
 
 use token::{
-    Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
-    Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, OnDirectiveLegacy,
-    ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
-    TransitionDirective, UseDirective,
+    AnimateDirective, Attribute, AttributeIdentifierType, AttributeValue, BindDirective,
+    ClassDirective, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
+    OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag,
+    StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -177,6 +177,8 @@ impl<'a> Scanner<'a> {
                 AttributeIdentifierType::OnDirectiveLegacy(value_span, value).as_ok()
             } else if AttributeIdentifierType::is_transition_directive(name) {
                 AttributeIdentifierType::TransitionDirective(value_span, name).as_ok()
+            } else if AttributeIdentifierType::is_animate_directive(name) {
+                AttributeIdentifierType::AnimateDirective(value_span, value).as_ok()
             } else {
                 Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32)).as_err()
             }
@@ -337,6 +339,9 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::OnDirectiveLegacy(span, _) => self.on_directive_legacy(span),
                     AttributeIdentifierType::TransitionDirective(span, prefix) => {
                         self.transition_directive(span, prefix)
+                    }
+                    AttributeIdentifierType::AnimateDirective(span, _) => {
+                        self.animate_directive(span)
                     }
                     AttributeIdentifierType::None => break,
                 }
@@ -537,6 +542,33 @@ impl<'a> Scanner<'a> {
             modifiers,
             has_expression: false,
             direction_prefix: prefix.to_string(),
+        }))
+    }
+
+    /// Parse `animate:name={expr}` or `animate:name`.
+    fn animate_directive(&mut self, mut name_span: Span) -> Result<Attribute, Diagnostic> {
+        // Consume dotted name segments: animate:a.b.c
+        while self.peek() == Some('.') {
+            self.advance(); // consume '.'
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                self.advance();
+            }
+            name_span = Span::new(name_span.start, self.current as u32);
+        }
+
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+            return Ok(Attribute::AnimateDirective(AnimateDirective {
+                name_span,
+                expression_span: res.expression_span,
+                has_expression: true,
+            }));
+        }
+
+        Ok(Attribute::AnimateDirective(AnimateDirective {
+            name_span,
+            expression_span: SPAN,
+            has_expression: false,
         }))
     }
 
@@ -1509,6 +1541,7 @@ mod tests {
                 Attribute::UseDirective(ud) => ud.name_span.source_text(source),
                 Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
                 Attribute::TransitionDirective(td) => td.name_span.source_text(source),
+                Attribute::AnimateDirective(ad) => ad.name_span.source_text(source),
             };
 
             let value: String = match attribute {
@@ -1540,6 +1573,7 @@ mod tests {
                 Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
                 Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
                 Attribute::TransitionDirective(td) => td.expression_span.source_text(source).to_string(),
+                Attribute::AnimateDirective(ad) => ad.expression_span.source_text(source).to_string(),
             };
 
             assert_eq!(name, *expected_name);

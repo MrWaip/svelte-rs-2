@@ -131,6 +131,9 @@ pub(crate) fn process_attr<'a>(
         Attribute::TransitionDirective(td) => {
             gen_transition_directive(ctx, td, owner_id, attr_idx, el_name, after_update);
         }
+        Attribute::AnimateDirective(ad) => {
+            gen_animate_directive(ctx, ad, owner_id, attr_idx, el_name, after_update);
+        }
     }
 }
 
@@ -712,6 +715,7 @@ pub(crate) fn process_attrs_spread<'a>(
             // LEGACY(svelte4): on:directive handled separately
             Attribute::OnDirectiveLegacy(_) => continue,
             Attribute::TransitionDirective(_) => continue,
+            Attribute::AnimateDirective(_) => continue,
         }
     }
 
@@ -811,6 +815,35 @@ fn gen_transition_directive<'a>(
     }
 
     after_update.push(ctx.b.call_stmt("$.transition", args));
+}
+
+/// Generate `$.animation(el, () => animateFn, () => params)`.
+/// Reference: `AnimateDirective.js`.
+fn gen_animate_directive<'a>(
+    ctx: &mut Ctx<'a>,
+    ad: &svelte_ast::AnimateDirective,
+    owner_id: NodeId,
+    attr_idx: usize,
+    el_name: &str,
+    after_update: &mut Vec<Statement<'a>>,
+) {
+    let name_expr = build_directive_name_expr(ctx, &ad.name);
+    let name_thunk = ctx.b.thunk(name_expr);
+
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Ident(el_name),
+        Arg::Expr(name_thunk),
+    ];
+
+    if ad.expression_span.is_some() {
+        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let thunk = ctx.b.thunk(expr);
+        args.push(Arg::Expr(thunk));
+    } else {
+        args.push(Arg::Expr(ctx.b.null_expr()));
+    }
+
+    after_update.push(ctx.b.call_stmt("$.animation", args));
 }
 
 /// Parse a directive name like "a.b.c" into a member expression.

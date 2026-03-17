@@ -561,6 +561,30 @@ fn transition_reactive_params() {
 }
 
 // ---------------------------------------------------------------------------
+// Animate directive tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn animate_basic() {
+    assert_compiler("animate_basic");
+}
+
+#[rstest]
+fn animate_params() {
+    assert_compiler("animate_params");
+}
+
+#[rstest]
+fn animate_dotted_name() {
+    assert_compiler("animate_dotted_name");
+}
+
+#[rstest]
+fn animate_reactive_params() {
+    assert_compiler("animate_reactive_params");
+}
+
+// ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
 
