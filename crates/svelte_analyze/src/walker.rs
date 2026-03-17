@@ -119,6 +119,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 visitor.visit_key_block(block, scope, data);
                 walk_template(&block.fragment, data, scope, visitor);
             }
+            Node::SvelteHead(head) => {
+                walk_template(&head.fragment, data, scope, visitor);
+            }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }

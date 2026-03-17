@@ -205,6 +205,9 @@ fn walk_node<'a>(
                 Err(diag) => diags.push(diag),
             }
         }
+        Node::SvelteHead(head) => {
+            walk_fragment(alloc, &head.fragment, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

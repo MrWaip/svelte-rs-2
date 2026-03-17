@@ -53,6 +53,7 @@ pub enum FragmentKey {
     EachFallback(NodeId),
     SnippetBody(NodeId),
     KeyBlockBody(NodeId),
+    SvelteHeadBody(NodeId),
 }
 
 // ---------------------------------------------------------------------------

@@ -79,6 +79,9 @@ impl<'a> NodeIndex<'a> {
                 Node::KeyBlock(b) => {
                     self.walk(&b.fragment);
                 }
+                Node::SvelteHead(h) => {
+                    self.walk(&h.fragment);
+                }
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
                 }

@@ -10,7 +10,7 @@ use svelte_ast::{
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
-    StyleDirective, StyleDirectiveValue, SvelteOptions, Text, TransitionDirective,
+    StyleDirective, StyleDirectiveValue, SvelteHead, SvelteOptions, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
 
@@ -346,6 +346,9 @@ impl<'a> Parser<'a> {
 
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
+
+        // Convert <svelte:head> elements to SvelteHead nodes
+        Self::convert_svelte_head(&mut component);
 
         (component, self.diagnostics)
     }
@@ -1169,6 +1172,26 @@ impl<'a> Parser<'a> {
 
         // Store the expression span; full object parsing deferred to analysis
         options.custom_element = Some(CustomElementConfig::Expression(expression_span));
+    }
+
+    // -----------------------------------------------------------------------
+    // <svelte:head> conversion
+    // -----------------------------------------------------------------------
+
+    /// Convert `<svelte:head>` Element nodes in the root fragment to SvelteHead nodes.
+    fn convert_svelte_head(component: &mut Component) {
+        for node in &mut component.fragment.nodes {
+            if let Node::Element(el) = node {
+                if el.name == "svelte:head" {
+                    let head = SvelteHead {
+                        id: el.id,
+                        span: el.span,
+                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    };
+                    *node = Node::SvelteHead(head);
+                }
+            }
+        }
     }
 }
 

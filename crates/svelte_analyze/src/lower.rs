@@ -51,6 +51,9 @@ fn lower_fragment(
             Node::KeyBlock(block) => {
                 lower_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), component, data);
             }
+            Node::SvelteHead(head) => {
+                lower_fragment(&head.fragment, FragmentKey::SvelteHeadBody(head.id), component, data);
+            }
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
     }
@@ -70,7 +73,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
-            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::Error(_) => continue,
+            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::SvelteHead(_) | Node::Error(_) => continue,
             _ => regular.push(node),
         }
     }
