@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteElement};
+use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteElement};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 use svelte_transform::TransformData;
@@ -17,9 +17,7 @@ struct NodeIndex<'a> {
     each_blocks: FxHashMap<NodeId, &'a EachBlock>,
     snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
-    html_tags: FxHashMap<NodeId, &'a HtmlTag>,
     const_tags: FxHashMap<NodeId, &'a ConstTag>,
-    key_blocks: FxHashMap<NodeId, &'a KeyBlock>,
     svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
     expr_spans: FxHashMap<NodeId, Span>,
 }
@@ -33,9 +31,7 @@ impl<'a> NodeIndex<'a> {
             each_blocks: FxHashMap::default(),
             snippet_blocks: FxHashMap::default(),
             render_tags: FxHashMap::default(),
-            html_tags: FxHashMap::default(),
             const_tags: FxHashMap::default(),
-            key_blocks: FxHashMap::default(),
             svelte_elements: FxHashMap::default(),
             expr_spans: FxHashMap::default(),
         };
@@ -75,14 +71,11 @@ impl<'a> NodeIndex<'a> {
                 Node::RenderTag(t) => {
                     self.render_tags.insert(t.id, t);
                 }
-                Node::HtmlTag(t) => {
-                    self.html_tags.insert(t.id, t);
-                }
+                Node::HtmlTag(_) => {}
                 Node::ConstTag(t) => {
                     self.const_tags.insert(t.id, t);
                 }
                 Node::KeyBlock(b) => {
-                    self.key_blocks.insert(b.id, b);
                     self.walk(&b.fragment);
                 }
                 Node::SvelteHead(h) => {
@@ -216,9 +209,6 @@ impl<'a> Ctx<'a> {
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy { self.analysis.fragments.content_type(key) }
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool { self.analysis.fragments.has_dynamic_children(key) }
 
-    /// Returns `true` if the node at `id` is an EachBlock.
-    pub fn is_each_block(&self, id: NodeId) -> bool { self.index.each_blocks.contains_key(&id) }
-
     // -- Element flag shortcuts --
 
     pub fn has_spread(&self, id: NodeId) -> bool { self.analysis.element_flags.has_spread(id) }
@@ -241,17 +231,4 @@ impl<'a> Ctx<'a> {
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.const_tags.names(id) }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.const_tags.by_fragment(key) }
 
-    /// Determine the block kind for a `ContentStrategy::SingleBlock(id)` node.
-    /// Checks the node index in O(1) per lookup.
-    pub fn single_block_kind(&self, id: NodeId) -> crate::template::SingleBlockKind {
-        use crate::template::SingleBlockKind;
-        if self.index.if_blocks.contains_key(&id) { return SingleBlockKind::IfBlock(id); }
-        if self.index.each_blocks.contains_key(&id) { return SingleBlockKind::EachBlock(id); }
-        if self.index.html_tags.contains_key(&id) { return SingleBlockKind::HtmlTag(id); }
-        if self.index.key_blocks.contains_key(&id) { return SingleBlockKind::KeyBlock(id); }
-        if self.index.render_tags.contains_key(&id) { return SingleBlockKind::RenderTag(id); }
-        if self.index.component_nodes.contains_key(&id) { return SingleBlockKind::ComponentNode(id); }
-        if self.index.svelte_elements.contains_key(&id) { return SingleBlockKind::SvelteElement(id); }
-        panic!("single_block_kind: unknown node type for NodeId {:?}", id)
-    }
 }

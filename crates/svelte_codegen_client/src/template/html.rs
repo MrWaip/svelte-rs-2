@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use svelte_analyze::{ConcatPart, ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ConcatPart, ContentStrategy, FragmentItem, FragmentKey, SingleBlockKind};
 use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
@@ -99,7 +99,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
             // space placeholder for the text node
             html.push(' ');
         }
-        ContentStrategy::SingleBlock(id) if ctx.is_each_block(id) => {
+        ContentStrategy::SingleBlock(SingleBlockKind::EachBlock(_)) => {
             // Controlled each block: no <!> anchor in template
         }
         ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Dynamic { .. } => {
