@@ -305,11 +305,12 @@ Note: `bind:this` uses a different pattern — NOT getter/setter, uses `build_bi
 
 Theme: action, transition, animation directives. New AST attribute variants + parser + codegen.
 
-### `use:action={params}` — Action directive
+### ~~`use:action={params}` — Action directive~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Attribute::UseDirective { name, expression_span: Option<Span> }`
 - **Codegen**: `$.action(el, () => actionFn, () => params)`
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js` (~30 lines)
+- [ ] `use:action` with `await` expression (requires `run_after_blockers`) *(discovered during port, deferred)*
 
 ### `transition:name={params}` / `in:` / `out:` — Transitions
 - **Phases**: P, A, T

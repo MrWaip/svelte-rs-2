@@ -347,6 +347,41 @@ fn on_directive_modifiers() {
 }
 
 #[rstest]
+fn use_action_basic() {
+    assert_compiler("use_action_basic");
+}
+
+#[rstest]
+fn use_action_expression() {
+    assert_compiler("use_action_expression");
+}
+
+#[rstest]
+fn use_action_reactive() {
+    assert_compiler("use_action_reactive");
+}
+
+#[rstest]
+fn use_action_dotted() {
+    assert_compiler("use_action_dotted");
+}
+
+#[rstest]
+fn use_action_multiple() {
+    assert_compiler("use_action_multiple");
+}
+
+#[rstest]
+fn use_action_in_if() {
+    assert_compiler("use_action_in_if");
+}
+
+#[rstest]
+fn use_action_in_each() {
+    assert_compiler("use_action_in_each");
+}
+
+#[rstest]
 fn void_elements() {
     assert_compiler("void_elements");
 }

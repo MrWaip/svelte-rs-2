@@ -327,6 +327,8 @@ pub enum Attribute {
     StyleDirective(StyleDirective),
     /// bind:name or bind:name={expr}
     BindDirective(BindDirective),
+    /// use:name or use:name={expr}
+    UseDirective(UseDirective),
     /// LEGACY(svelte4): on:event or on:event={handler} or on:event|modifier={handler}
     /// Deprecated in Svelte 5, remove in Svelte 6.
     OnDirectiveLegacy(OnDirectiveLegacy),
@@ -405,6 +407,15 @@ pub struct BindDirective {
     /// Span of the JS expression. None means shorthand (bind:name).
     pub expression_span: Option<Span>,
     pub shorthand: bool,
+}
+
+/// use:name or use:name={expr}
+#[derive(Clone)]
+pub struct UseDirective {
+    /// Directive name (e.g., "tooltip" in `use:tooltip`, "a.b" in `use:a.b`).
+    pub name: String,
+    /// Span of the argument expression. None if no expression (`use:name`).
+    pub expression_span: Option<Span>,
 }
 
 /// LEGACY(svelte4): on:directive syntax. Deprecated in Svelte 5, remove in Svelte 6.
