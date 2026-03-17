@@ -103,7 +103,7 @@ For each finding:
 After all agents complete, merge their findings into one ranked report.
 
 1. **Rank** by: how many downstream workarounds or unnecessary checks would disappear if the root cause were fixed
-2. **Output top 5 only** (top 7 if perf agent was included)
+2. **Include all findings** — no limit
 3. Skip: clippy-level issues, formatting, import ordering, style preferences
 
 For each finding:
@@ -124,8 +124,10 @@ For each finding:
 **Simplifies**: [What becomes unnecessary once this is fixed — list the downstream code that gets simpler or deleted]
 ```
 
-End with:
-- Total findings by agent (before filtering to top 5/7)
-- Suggested next review: which dimension deserves a deeper dedicated pass
-
 **Save the complete report to `REVIEW.md` in the project root (overwrite if exists). This file is read by `/review-fix`.**
+
+In chat, output only a summary:
+- Total findings count by severity (critical / warning / suggestion)
+- Total findings count by agent
+- Top 3 titles with their #N for quick `/review-fix` reference
+- "Full report saved to REVIEW.md"
