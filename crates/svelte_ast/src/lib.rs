@@ -334,6 +334,8 @@ pub enum Attribute {
     OnDirectiveLegacy(OnDirectiveLegacy),
     /// transition:name, in:name, or out:name
     TransitionDirective(TransitionDirective),
+    /// animate:name or animate:name={expr}
+    AnimateDirective(AnimateDirective),
 }
 
 #[derive(Clone)]
@@ -453,6 +455,15 @@ pub struct TransitionDirective {
     pub modifiers: Vec<String>,
     /// Whether this is `transition:`, `in:`, or `out:`.
     pub direction: TransitionDirection,
+}
+
+/// animate:name or animate:name={expr}
+#[derive(Clone)]
+pub struct AnimateDirective {
+    /// Directive name (e.g., "flip" in `animate:flip`, "custom.fn" in `animate:custom.fn`).
+    pub name: String,
+    /// Span of the argument expression. None if no expression (`animate:name`).
+    pub expression_span: Option<Span>,
 }
 
 // ---------------------------------------------------------------------------
