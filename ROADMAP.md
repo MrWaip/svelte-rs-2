@@ -180,12 +180,15 @@ Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js` (Me
 
 Theme: `<svelte:*>` elements for global bindings, dynamic elements, error boundaries.
 
-### `<svelte:element this={tag}>` — Dynamic element
+### ~~`<svelte:element this={tag}>` — Dynamic element~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Node::SvelteElement { id, span, tag_span, attributes, fragment }`
 - **Codegen**: `$.element(anchor, () => tag, ($$anchor, element) => { ... })`
 - **Notes**: Namespace inference with explicit `xmlns` control, void element validation
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteElement.js` (~161 lines)
+- [ ] `svelte:element` inside `{#if}` block *(deferred)*
+- [ ] `svelte:element` with `class:` directives *(deferred)*
+- [ ] `svelte:element` with `style:` directives *(deferred)*
 
 ### `<svelte:window>` — Window events & bindings
 - **Phases**: P, A, T

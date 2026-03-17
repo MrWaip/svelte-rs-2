@@ -688,3 +688,53 @@ fn svelte_head_empty() {
 fn svelte_head_with_content() {
     assert_compiler("svelte_head_with_content");
 }
+
+#[rstest]
+fn svelte_element_basic() {
+    assert_compiler("svelte_element_basic");
+}
+
+#[rstest]
+fn svelte_element_self_closing() {
+    assert_compiler("svelte_element_self_closing");
+}
+
+#[rstest]
+fn svelte_element_static_tag() {
+    assert_compiler("svelte_element_static_tag");
+}
+
+#[rstest]
+fn svelte_element_attributes() {
+    assert_compiler("svelte_element_attributes");
+}
+
+#[rstest]
+fn svelte_element_spread() {
+    assert_compiler("svelte_element_spread");
+}
+
+#[rstest]
+fn svelte_element_onclick() {
+    assert_compiler("svelte_element_onclick");
+}
+
+#[rstest]
+fn svelte_element_bind() {
+    assert_compiler("svelte_element_bind");
+}
+
+#[rstest]
+fn svelte_element_null_tag() {
+    assert_compiler("svelte_element_null_tag");
+}
+
+#[rstest]
+fn svelte_element_xmlns() {
+    assert_compiler("svelte_element_xmlns");
+}
+
+#[rstest]
+fn svelte_element_children_expr() {
+    assert_compiler("svelte_element_children_expr");
+}

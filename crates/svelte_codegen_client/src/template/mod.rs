@@ -12,6 +12,7 @@ pub(crate) mod html_tag;
 pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
+pub(crate) mod svelte_element;
 pub(crate) mod svelte_head;
 pub(crate) mod traverse;
 
@@ -31,6 +32,7 @@ enum SingleBlockKind {
     KeyBlock(NodeId),
     RenderTag(NodeId),
     ComponentNode(NodeId),
+    SvelteElement(NodeId),
 }
 
 use element::process_element;
@@ -43,6 +45,7 @@ use html_tag::gen_html_tag;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
+use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
 
 /// Check if template HTML needs `importNode` (flag bit 2).
@@ -243,7 +246,10 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
         SingleBlockKind::KeyBlock(id) => {
             gen_key_block(ctx, id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should be if/each/html/key at this point"),
+        SingleBlockKind::SvelteElement(id) => {
+            gen_svelte_element(ctx, id, ctx.b.rid_expr(&node), body);
+        }
+        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -423,7 +429,10 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         SingleBlockKind::KeyBlock(id) => {
                             gen_key_block(ctx, id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!("SingleBlock should be if/each/html/key at this point"),
+                        SingleBlockKind::SvelteElement(id) => {
+                            gen_svelte_element(ctx, id, ctx.b.rid_expr(&node), &mut body);
+                        }
+                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",
@@ -494,6 +503,7 @@ fn single_block_kind(item: &FragmentItem) -> SingleBlockKind {
         FragmentItem::KeyBlock(id) => SingleBlockKind::KeyBlock(id),
         FragmentItem::RenderTag(id) => SingleBlockKind::RenderTag(id),
         FragmentItem::ComponentNode(id) => SingleBlockKind::ComponentNode(id),
+        FragmentItem::SvelteElement(id) => SingleBlockKind::SvelteElement(id),
         _ => unreachable!("SingleBlock should contain a block-level item"),
     }
 }

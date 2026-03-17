@@ -183,6 +183,9 @@ fn register_snippet_params(
                     register_snippet_params(fb, component, data);
                 }
             }
+            svelte_ast::Node::SvelteElement(el) => {
+                register_snippet_params(&el.fragment, component, data);
+            }
             _ => {}
         }
     }
