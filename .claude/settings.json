@@ -1,0 +1,7 @@
+{
+  "ignorePatterns": [
+    "docs/compiler",
+    "target",
+    "tasks/benchmark/benches/compiler/*"
+  ]
+}
