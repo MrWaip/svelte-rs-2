@@ -184,6 +184,16 @@ fn walk_node<'a>(
             walk_fragment(ctx, &head.fragment, component, parsed, scope, snippet_params);
             ctx.const_aliases.pop();
         }
+        Node::SvelteElement(el) => {
+            // Transform the tag expression (skip for static string tags)
+            if !el.static_tag {
+                transform_node_expr(ctx, el.id, parsed, scope, snippet_params);
+            }
+            transform_attrs(ctx, el.id, &el.attributes, parsed, scope, snippet_params);
+            ctx.const_aliases.push(FxHashMap::default());
+            walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
+            ctx.const_aliases.pop();
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

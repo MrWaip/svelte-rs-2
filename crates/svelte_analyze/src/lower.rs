@@ -54,6 +54,9 @@ fn lower_fragment(
             Node::SvelteHead(head) => {
                 lower_fragment(&head.fragment, FragmentKey::SvelteHeadBody(head.id), component, data);
             }
+            Node::SvelteElement(el) => {
+                lower_fragment(&el.fragment, FragmentKey::SvelteElementBody(el.id), component, data);
+            }
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
     }
@@ -153,6 +156,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                     Node::RenderTag(tag) => items.push(FragmentItem::RenderTag(tag.id)),
                     Node::HtmlTag(tag) => items.push(FragmentItem::HtmlTag(tag.id)),
                     Node::KeyBlock(block) => items.push(FragmentItem::KeyBlock(block.id)),
+                    Node::SvelteElement(el) => items.push(FragmentItem::SvelteElement(el.id)),
                     _ => {}
                 }
             }

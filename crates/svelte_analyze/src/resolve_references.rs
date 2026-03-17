@@ -1,7 +1,7 @@
 use oxc_semantic::{ReferenceFlags as OxcReferenceFlags, ScopeId};
 use svelte_ast::{
     Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock,
-    KeyBlock, NodeId, RenderTag,
+    KeyBlock, NodeId, RenderTag, SvelteElement,
 };
 
 use crate::data::AnalysisData;
@@ -130,6 +130,31 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
+        self.resolve_bind(dir, scope, data);
+    }
+
+    fn visit_svelte_element(
+        &mut self,
+        el: &SvelteElement,
+        scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        // Resolve tag expression references (skip for static string tags)
+        if !el.static_tag {
+            resolve_expr_refs(el.id, scope, data);
+        }
+        // Walk attributes — resolve expression refs and bind directives
+        for (idx, attr) in el.attributes.iter().enumerate() {
+            resolve_attr_refs(el.id, idx, scope, data);
+            if let Attribute::BindDirective(dir) = attr {
+                self.resolve_bind(dir, scope, data);
+            }
+        }
+    }
+}
+
+impl ResolveReferencesVisitor<'_> {
+    fn resolve_bind(&self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
         let name = if dir.shorthand {
             dir.name.as_str()
         } else if let Some(span) = dir.expression_span {

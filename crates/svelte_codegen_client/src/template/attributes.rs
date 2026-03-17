@@ -639,7 +639,15 @@ fn gen_bind_directive<'a>(
 
         // --- bind:this ---
         "this" => {
-            let setter = build_setter(ctx, var_name.clone());
+            // svelte:element uses proxy flag because the element type is unknown at compile time
+            let setter = if tag_name.is_empty() && ctx.is_mutable_rune(&var_name) {
+                let body = ctx.b.call_expr("$.set", [
+                    Arg::Ident(&var_name), Arg::Ident("$$value"), Arg::Expr(ctx.b.bool_expr(true)),
+                ]);
+                ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+            } else {
+                build_setter(ctx, var_name.clone())
+            };
             let getter = build_getter(ctx, &var_name);
             let stmt = ctx.b.call_stmt("$.bind_this", [
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
@@ -691,8 +699,21 @@ pub(crate) fn process_attrs_spread<'a>(
                     props.push(ObjProp::Shorthand(name_alloc));
                 } else {
                     let expr = get_attr_expr(ctx, el.id, attr_idx);
-                    let name_alloc = ctx.b.alloc_str(&a.name);
-                    props.push(ObjProp::KeyValue(name_alloc, expr));
+                    // Hoist event handlers (on*) with function values for stable identity
+                    let is_event = a.name.starts_with("on");
+                    let is_fn = matches!(
+                        &expr,
+                        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                    );
+                    if is_event && is_fn {
+                        let handler_name = ctx.gen_ident("event_handler");
+                        init.push(ctx.b.var_stmt(&handler_name, expr));
+                        let name_alloc = ctx.b.alloc_str(&a.name);
+                        props.push(ObjProp::KeyValue(name_alloc, ctx.b.rid_expr(&handler_name)));
+                    } else {
+                        let name_alloc = ctx.b.alloc_str(&a.name);
+                        props.push(ObjProp::KeyValue(name_alloc, expr));
+                    }
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
@@ -728,10 +749,12 @@ pub(crate) fn process_attrs_spread<'a>(
         }
     }
 
-    // $.attribute_effect(el, () => ({...}))
-    let obj = ctx.b.object_expr(props);
-    let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
-    init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
+    // $.attribute_effect(el, () => ({...})) — skip if no renderable properties
+    if !props.is_empty() {
+        let obj = ctx.b.object_expr(props);
+        let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
+        init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
+    }
 }
 
 // ---------------------------------------------------------------------------
