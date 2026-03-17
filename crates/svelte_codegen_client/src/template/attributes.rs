@@ -128,6 +128,9 @@ pub(crate) fn process_attr<'a>(
         Attribute::OnDirectiveLegacy(od) => {
             gen_on_directive_legacy(ctx, od, owner_id, attr_idx, el_name, after_update);
         }
+        Attribute::TransitionDirective(td) => {
+            gen_transition_directive(ctx, td, owner_id, attr_idx, el_name, after_update);
+        }
     }
 }
 
@@ -708,6 +711,7 @@ pub(crate) fn process_attrs_spread<'a>(
             Attribute::UseDirective(_) => continue,
             // LEGACY(svelte4): on:directive handled separately
             Attribute::OnDirectiveLegacy(_) => continue,
+            Attribute::TransitionDirective(_) => continue,
         }
     }
 
@@ -767,6 +771,46 @@ fn gen_use_directive<'a>(
     }
 
     init.push(ctx.b.call_stmt("$.action", args));
+}
+
+// ---------------------------------------------------------------------------
+// transition:/in:/out: directive codegen
+// ---------------------------------------------------------------------------
+
+/// Generate `$.transition(flags, el, () => transitionFn, () => params)`.
+/// Reference: `TransitionDirective.js`.
+fn gen_transition_directive<'a>(
+    ctx: &mut Ctx<'a>,
+    td: &svelte_ast::TransitionDirective,
+    owner_id: NodeId,
+    attr_idx: usize,
+    el_name: &str,
+    after_update: &mut Vec<Statement<'a>>,
+) {
+    // TRANSITION_IN = 1, TRANSITION_OUT = 2, TRANSITION_GLOBAL = 4
+    let mut flags: u32 = if td.modifiers.iter().any(|m| m == "global") { 4 } else { 0 };
+    match td.direction {
+        svelte_ast::TransitionDirection::Both => flags |= 1 | 2,
+        svelte_ast::TransitionDirection::In => flags |= 1,
+        svelte_ast::TransitionDirection::Out => flags |= 2,
+    }
+
+    let name_expr = build_directive_name_expr(ctx, &td.name);
+    let name_thunk = ctx.b.thunk(name_expr);
+
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Num(flags as f64),
+        Arg::Ident(el_name),
+        Arg::Expr(name_thunk),
+    ];
+
+    if td.expression_span.is_some() {
+        let expr = get_attr_expr(ctx, owner_id, attr_idx);
+        let thunk = ctx.b.thunk(expr);
+        args.push(Arg::Expr(thunk));
+    }
+
+    after_update.push(ctx.b.call_stmt("$.transition", args));
 }
 
 /// Parse a directive name like "a.b.c" into a member expression.

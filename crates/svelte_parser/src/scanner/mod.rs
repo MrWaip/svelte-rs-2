@@ -8,7 +8,7 @@ use token::{
     Attribute, AttributeIdentifierType, AttributeValue, BindDirective, ClassDirective,
     Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute, OnDirectiveLegacy,
     ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective, Token, TokenType,
-    UseDirective,
+    TransitionDirective, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -175,6 +175,8 @@ impl<'a> Scanner<'a> {
             // LEGACY(svelte4): on:directive
             } else if AttributeIdentifierType::is_on_directive(name) {
                 AttributeIdentifierType::OnDirectiveLegacy(value_span, value).as_ok()
+            } else if AttributeIdentifierType::is_transition_directive(name) {
+                AttributeIdentifierType::TransitionDirective(value_span, name).as_ok()
             } else {
                 Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32)).as_err()
             }
@@ -333,6 +335,9 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::UseDirective(span, _) => self.use_directive(span),
                     // LEGACY(svelte4): on:directive
                     AttributeIdentifierType::OnDirectiveLegacy(span, _) => self.on_directive_legacy(span),
+                    AttributeIdentifierType::TransitionDirective(span, prefix) => {
+                        self.transition_directive(span, prefix)
+                    }
                     AttributeIdentifierType::None => break,
                 }
             };
@@ -491,6 +496,47 @@ impl<'a> Scanner<'a> {
             expression_span: SPAN,
             modifiers,
             has_expression: false,
+        }))
+    }
+
+    /// Parse `transition:name|modifier={expr}`, `in:name`, or `out:name`.
+    fn transition_directive(&mut self, mut name_span: Span, prefix: &str) -> Result<Attribute, Diagnostic> {
+        // Consume dotted name segments: transition:a.b.c
+        while self.peek() == Some('.') {
+            self.advance(); // consume '.'
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                self.advance();
+            }
+            name_span = Span::new(name_span.start, self.current as u32);
+        }
+
+        // Parse |modifier segments
+        let mut modifiers = Vec::new();
+        while self.match_char('|') {
+            let start = self.current;
+            while self.peek().is_some_and(|c| c.is_alphabetic() || c == '_') {
+                self.advance();
+            }
+            modifiers.push(self.span(start, self.current));
+        }
+
+        if self.match_char('=') {
+            let res = self.expression_tag()?;
+            return Ok(Attribute::TransitionDirective(TransitionDirective {
+                name_span,
+                expression_span: res.expression_span,
+                modifiers,
+                has_expression: true,
+                direction_prefix: prefix.to_string(),
+            }));
+        }
+
+        Ok(Attribute::TransitionDirective(TransitionDirective {
+            name_span,
+            expression_span: SPAN,
+            modifiers,
+            has_expression: false,
+            direction_prefix: prefix.to_string(),
         }))
     }
 
@@ -1462,6 +1508,7 @@ mod tests {
                 Attribute::BindDirective(_) => "$bindDirective",
                 Attribute::UseDirective(ud) => ud.name_span.source_text(source),
                 Attribute::OnDirectiveLegacy(od) => od.name_span.source_text(source),
+                Attribute::TransitionDirective(td) => td.name_span.source_text(source),
             };
 
             let value: String = match attribute {
@@ -1492,6 +1539,7 @@ mod tests {
                 Attribute::BindDirective(bd) => bd.expression_span.source_text(source).to_string(),
                 Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
                 Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
+                Attribute::TransitionDirective(td) => td.expression_span.source_text(source).to_string(),
             };
 
             assert_eq!(name, *expected_name);

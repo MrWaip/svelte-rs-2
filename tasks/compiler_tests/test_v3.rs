@@ -507,6 +507,60 @@ fn bind_focused() {
 }
 
 // ---------------------------------------------------------------------------
+// Transition tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn transition_basic() {
+    assert_compiler("transition_basic");
+}
+
+#[rstest]
+fn transition_params() {
+    assert_compiler("transition_params");
+}
+
+#[rstest]
+fn transition_in() {
+    assert_compiler("transition_in");
+}
+
+#[rstest]
+fn transition_out() {
+    assert_compiler("transition_out");
+}
+
+#[rstest]
+fn transition_in_out_separate() {
+    assert_compiler("transition_in_out_separate");
+}
+
+#[rstest]
+fn transition_local() {
+    assert_compiler("transition_local");
+}
+
+#[rstest]
+fn transition_global() {
+    assert_compiler("transition_global");
+}
+
+#[rstest]
+fn transition_dotted_name() {
+    assert_compiler("transition_dotted_name");
+}
+
+#[rstest]
+fn transition_in_if() {
+    assert_compiler("transition_in_if");
+}
+
+#[rstest]
+fn transition_reactive_params() {
+    assert_compiler("transition_reactive_params");
+}
+
+// ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
 

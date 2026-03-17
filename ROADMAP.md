@@ -312,17 +312,19 @@ Theme: action, transition, animation directives. New AST attribute variants + pa
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/UseDirective.js` (~30 lines)
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`) *(discovered during port, deferred)*
 
-### `transition:name={params}` / `in:` / `out:` — Transitions
+### `transition:name={params}` / `in:` / `out:` — Transitions [x]
 - **Phases**: P, A, T
 - **AST**: `Attribute::TransitionDirective { name, expression_span: Option<Span>, modifiers: Vec<String>, direction: TransitionDirection }`
   - `TransitionDirection`: `Both` | `In` | `Out`
 - **Modifiers**: `|local` (scoped to block), `|global` (default)
 - **Codegen**:
-  - `transition:fade` → `$.transition(el, flags, fade, () => params)`
-  - `in:fly` → `$.transition(el, TRANSITION_IN, fly, () => params)`
-  - `out:slide` → `$.transition(el, TRANSITION_OUT, slide, () => params)`
+  - `transition:fade` → `$.transition(flags, el, () => fade, () => params)`
+  - `in:fly` → `$.transition(TRANSITION_IN, el, () => fly)`
+  - `out:slide` → `$.transition(TRANSITION_OUT, el, () => slide)`
 - **Events**: Elements get `introstart`, `introend`, `outrostart`, `outroend` events
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/TransitionDirective.js`
+- [ ] Validation: duplicate transition directives *(discovered during port, deferred)*
+- [ ] Validation: conflicting transition: + in:/out: on same element *(discovered during port, deferred)*
 
 ### `animate:name={params}` — FLIP animations
 - **Phases**: P, A, T
