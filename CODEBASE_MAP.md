@@ -73,6 +73,8 @@ enum Node {
     HtmlTag(HtmlTag),             // id, span, expression_span
     ConstTag(ConstTag),           // id, span, declaration_span
     KeyBlock(KeyBlock),           // id, span, expression_span, fragment
+    SvelteHead(SvelteHead),       // id, span, fragment
+    Error(ErrorNode),             // id, span
 }
 
 enum Attribute {
@@ -84,12 +86,17 @@ enum Attribute {
     ClassDirective(ClassDirective),               // name, expression_span?, shorthand
     StyleDirective(StyleDirective),               // name, value: StyleDirectiveValue, important
     BindDirective(BindDirective),                 // name, expression_span?, shorthand
+    UseDirective(UseDirective),                   // name, expression_span?
     OnDirectiveLegacy(OnDirectiveLegacy),         // name, expression_span?, modifiers (Svelte 4)
+    TransitionDirective(TransitionDirective),     // name, expression_span?, modifiers, direction: TransitionDirection
+    AnimateDirective(AnimateDirective),           // name, expression_span?
+    AttachTag(AttachTag),                         // expression_span (Svelte 5.29+)
 }
 
 enum ConcatPart { Static(String), Dynamic(Span) }
 enum StyleDirectiveValue { Shorthand, Expression(Span), String(String), Concatenation(Vec<ConcatPart>) }
 enum ElementKind { Unknown, Input }
+enum TransitionDirection { Both, In, Out }
 enum ScriptContext { Default, Module }
 enum ScriptLanguage { JavaScript, TypeScript }
 
@@ -205,6 +212,7 @@ enum FragmentKey {
     IfConsequent(NodeId), IfAlternate(NodeId),
     EachBody(NodeId), EachFallback(NodeId),
     SnippetBody(NodeId), KeyBlockBody(NodeId),
+    SvelteHeadBody(NodeId),
 }
 
 enum FragmentItem {
@@ -338,6 +346,7 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 `template/expression.rs` — генерация JS-выражений из span'ов
 `template/html.rs` — построение HTML template strings
 `template/traverse.rs` — обход DOM-дерева (`.first_child`, `.sibling`)
+`template/svelte_head.rs` — `<svelte:head>` codegen (`$.head()`)
 
 ---
 
@@ -373,7 +382,9 @@ fn transform_component<'a>(
 ```rust
 struct CompileResult { pub js: String }
 fn compile(source: &str) -> Result<CompileResult, Diagnostic>
-// = parse → analyze → (fatal diag check) → generate
+// = parse → analyze → (fatal diag check) → transform → generate
+fn compile_module(source: &str) -> Result<CompileResult, Diagnostic>
+// = OXC parse → analyze_module → rune transforms → JS output (no template/CSS)
 ```
 
 ---
