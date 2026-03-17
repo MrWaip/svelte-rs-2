@@ -1,4 +1,5 @@
 mod content_types;
+mod markers;
 mod data;
 mod element_flags;
 mod elseif;
@@ -57,8 +58,8 @@ pub fn analyze<'a>(
     // Register snippet parameter names (recursive — handles nested snippets)
     register_snippet_params(&component.fragment, component, &mut data);
 
-    scope::build_scoping(component, &mut data);
-    resolve_references::resolve_references(component, &mut data);
+    let scoping_built = scope::build_scoping(component, &mut data);
+    let _refs_resolved = resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);

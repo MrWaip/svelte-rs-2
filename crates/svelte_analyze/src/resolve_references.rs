@@ -11,10 +11,15 @@ use svelte_ast::Component;
 
 /// Resolve all template references to SymbolIds and register write references in OXC Scoping.
 /// After this pass, `symbol_is_mutated()` covers both script and template mutations.
-pub fn resolve_references(component: &Component, data: &mut AnalysisData) {
+pub fn resolve_references(
+    component: &Component,
+    data: &mut AnalysisData,
+    _scoping: crate::markers::ScopingBuilt,
+) -> crate::markers::ReferencesResolved {
     let root_scope = data.scoping.root_scope_id();
     let mut visitor = ResolveReferencesVisitor { component };
     walker::walk_template(&component.fragment, data, root_scope, &mut visitor);
+    crate::markers::ReferencesResolved::new()
 }
 
 struct ResolveReferencesVisitor<'a> {

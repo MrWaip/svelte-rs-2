@@ -169,7 +169,7 @@ impl ComponentScoping {
 ///
 /// The `Scoping` is already initialized by `parse_js` (via `analyze_script_with_scoping`),
 /// so this pass only marks runes and walks the template to add each-block scopes.
-pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
+pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::markers::ScopingBuilt {
     // Mark runes from script declarations
     if let Some(script_info) = &data.script {
         for decl in &script_info.declarations {
@@ -198,6 +198,7 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) {
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
     walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names);
     data.const_tags.names = const_tag_names;
+    crate::markers::ScopingBuilt::new()
 }
 
 fn walk_template_scopes(
