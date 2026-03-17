@@ -25,7 +25,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_attribute(
         &mut self,
         attr: &Attribute,
-        _idx: usize,
         el: &Element,
         _scope: ScopeId,
         data: &mut AnalysisData,

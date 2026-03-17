@@ -29,13 +29,13 @@ pub(crate) trait TemplateVisitor {
     fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after element children have been walked. Use for bottom-up computations.
     fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after snippet block body has been walked. Use with `visit_snippet_block` for stack-based context.
@@ -59,8 +59,8 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             }
             Node::Element(el) => {
                 visitor.visit_element(el, scope, data);
-                for (idx, attr) in el.attributes.iter().enumerate() {
-                    visitor.visit_attribute(attr, idx, el, scope, data);
+                for attr in &el.attributes {
+                    visitor.visit_attribute(attr, el, scope, data);
                     if let Attribute::BindDirective(dir) = attr {
                         visitor.visit_bind_directive(dir, el, scope, data);
                     }
@@ -102,8 +102,8 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 visitor.leave_snippet_block(block, scope, data);
             }
             Node::ComponentNode(cn) => {
-                for (idx, attr) in cn.attributes.iter().enumerate() {
-                    visitor.visit_component_attribute(attr, idx, cn, scope, data);
+                for attr in &cn.attributes {
+                    visitor.visit_component_attribute(attr, cn, scope, data);
                 }
                 walk_template(&cn.fragment, data, scope, visitor);
             }
@@ -169,8 +169,8 @@ macro_rules! delegate_visitor_methods {
         fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_svelte_element(el, scope, data);)+
         }
-        fn visit_attribute(&mut self, attr: &Attribute, idx: usize, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_attribute(attr, idx, el, scope, data);)+
+        fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_attribute(attr, el, scope, data);)+
         }
         fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_bind_directive(dir, el, scope, data);)+
@@ -187,8 +187,8 @@ macro_rules! delegate_visitor_methods {
         fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_attach_tag(tag, el, scope, data);)+
         }
-        fn visit_component_attribute(&mut self, attr: &Attribute, idx: usize, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_component_attribute(attr, idx, cn, scope, data);)+
+        fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_component_attribute(attr, cn, scope, data);)+
         }
         fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.leave_element(el, scope, data);)+

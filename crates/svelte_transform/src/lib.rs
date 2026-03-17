@@ -111,11 +111,11 @@ fn walk_node<'a>(
             transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
         }
         Node::Element(el) => {
-            transform_attrs(ctx, el.id, &el.attributes, parsed, scope, snippet_params);
+            transform_attrs(ctx, &el.attributes, parsed, scope, snippet_params);
             walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
         }
         Node::ComponentNode(cn) => {
-            transform_attrs(ctx, cn.id, &cn.attributes, parsed, scope, snippet_params);
+            transform_attrs(ctx, &cn.attributes, parsed, scope, snippet_params);
             walk_fragment(ctx, &cn.fragment, component, parsed, scope, snippet_params);
         }
         Node::IfBlock(block) => {
@@ -195,7 +195,7 @@ fn walk_node<'a>(
             if !el.static_tag {
                 transform_node_expr(ctx, el.id, parsed, scope, snippet_params);
             }
-            transform_attrs(ctx, el.id, &el.attributes, parsed, scope, snippet_params);
+            transform_attrs(ctx, &el.attributes, parsed, scope, snippet_params);
             with_alias_scope(ctx, |ctx| {
                 walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
             });
@@ -220,15 +220,14 @@ fn transform_node_expr<'a>(
 /// Transform attribute expressions.
 fn transform_attrs<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    owner_id: NodeId,
     attrs: &[Attribute],
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
     snippet_params: &[String],
 ) {
-    for (attr_idx, attr) in attrs.iter().enumerate() {
-        let key = (owner_id, attr_idx);
-        if let Some(expr) = parsed.attr_exprs.get_mut(&key) {
+    for attr in attrs {
+        let attr_id = attr.id();
+        if let Some(expr) = parsed.attr_exprs.get_mut(&attr_id) {
             transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
         }
 
@@ -236,7 +235,7 @@ fn transform_attrs<'a>(
         if let Attribute::ConcatenationAttribute(a) = attr {
             let dyn_count = a.parts.iter().filter(|p| matches!(p, svelte_ast::ConcatPart::Dynamic(_))).count();
             for dyn_idx in 0..dyn_count {
-                let part_key = (owner_id, attr_idx, dyn_idx);
+                let part_key = (attr_id, dyn_idx);
                 if let Some(expr) = parsed.concat_part_exprs.get_mut(&part_key) {
                     transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
                 }

@@ -16,9 +16,9 @@ use super::gen_fragment;
 enum AttrKind<'a> {
     String { name: &'a str, value_span: Span },
     Boolean { name: &'a str },
-    Expression { name: &'a str, attr_idx: usize, shorthand: bool },
-    Concatenation { name: &'a str, attr_idx: usize },
-    Shorthand { attr_idx: usize },
+    Expression { name: &'a str, attr_id: NodeId, shorthand: bool },
+    Concatenation { name: &'a str, attr_id: NodeId },
+    Shorthand { attr_id: NodeId },
     Spread,
     Skip,
 }
@@ -34,8 +34,8 @@ pub(crate) fn gen_component<'a>(
     let name: &str = &cn.name;
 
     // Collect attribute info while borrowing ctx immutably
-    let attr_infos: Vec<(AttrKind<'_>, bool)> = cn.attributes.iter().enumerate().map(|(idx, attr)| {
-        let is_dynamic = ctx.is_dynamic_attr(id, idx);
+    let attr_infos: Vec<(AttrKind<'_>, bool)> = cn.attributes.iter().map(|attr| {
+        let is_dynamic = ctx.is_dynamic_attr(attr.id());
         let kind = match attr {
             Attribute::StringAttribute(a) => AttrKind::String {
                 name: &a.name,
@@ -46,16 +46,16 @@ pub(crate) fn gen_component<'a>(
             },
             Attribute::ExpressionAttribute(a) => AttrKind::Expression {
                 name: &a.name,
-                attr_idx: idx,
+                attr_id: a.id,
                 shorthand: a.shorthand,
             },
             Attribute::ConcatenationAttribute(a) => AttrKind::Concatenation {
                 name: &a.name,
-                attr_idx: idx,
+                attr_id: a.id,
             },
             Attribute::ShorthandOrSpread(a) if a.is_spread => AttrKind::Spread,
-            Attribute::ShorthandOrSpread(_) => AttrKind::Shorthand {
-                attr_idx: idx,
+            Attribute::ShorthandOrSpread(a) => AttrKind::Shorthand {
+                attr_id: a.id,
             },
             Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_)
             | Attribute::UseDirective(_) | Attribute::OnDirectiveLegacy(_)
@@ -79,9 +79,9 @@ pub(crate) fn gen_component<'a>(
                 let key = ctx.b.alloc_str(name);
                 props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
             }
-            AttrKind::Expression { name, attr_idx, shorthand } => {
+            AttrKind::Expression { name, attr_id, shorthand } => {
                 let key = ctx.b.alloc_str(name);
-                let expr = get_attr_expr(ctx, id, attr_idx);
+                let expr = get_attr_expr(ctx, attr_id);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
                 } else if shorthand {
@@ -90,12 +90,13 @@ pub(crate) fn gen_component<'a>(
                     props.push(ObjProp::KeyValue(key, expr));
                 }
             }
-            AttrKind::Concatenation { name, attr_idx } => {
+            AttrKind::Concatenation { name, attr_id } => {
                 let key = ctx.b.alloc_str(name);
                 // Re-borrow to access ConcatPart slice
                 let cn = ctx.component_node(id);
-                if let Attribute::ConcatenationAttribute(a) = &cn.attributes[attr_idx] {
-                    let val = build_attr_concat(ctx, id, attr_idx, &a.parts);
+                let concat_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
+                if let Some(Attribute::ConcatenationAttribute(a)) = concat_attr {
+                    let val = build_attr_concat(ctx, attr_id, &a.parts);
                     if is_dynamic {
                         props.push(ObjProp::Getter(key, val));
                     } else {
@@ -103,16 +104,17 @@ pub(crate) fn gen_component<'a>(
                     }
                 }
             }
-            AttrKind::Shorthand { attr_idx } => {
+            AttrKind::Shorthand { attr_id } => {
                 // Re-borrow to get the shorthand name
                 let cn = ctx.component_node(id);
-                let name_text = if let Attribute::ShorthandOrSpread(a) = &cn.attributes[attr_idx] {
+                let shorthand_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
+                let name_text = if let Some(Attribute::ShorthandOrSpread(a)) = shorthand_attr {
                     ctx.component.source_text(a.expression_span).trim().to_string()
                 } else {
                     unreachable!()
                 };
                 let key = ctx.b.alloc_str(&name_text);
-                let expr = get_attr_expr(ctx, id, attr_idx);
+                let expr = get_attr_expr(ctx, attr_id);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
                 } else {

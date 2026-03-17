@@ -15,10 +15,10 @@ use crate::scope::ComponentScoping;
 pub struct ParsedExprs<'a> {
     /// Template expressions: ExpressionTag, IfBlock test, EachBlock expr, RenderTag, HtmlTag.
     pub exprs: FxHashMap<NodeId, Expression<'a>>,
-    /// Attribute expressions: (owner_element_id, attr_index).
-    pub attr_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
-    /// ConcatenationAttribute dynamic parts: (owner_id, attr_index, part_index).
-    pub concat_part_exprs: FxHashMap<(NodeId, usize, usize), Expression<'a>>,
+    /// Attribute expressions, keyed by attribute NodeId.
+    pub attr_exprs: FxHashMap<NodeId, Expression<'a>>,
+    /// ConcatenationAttribute dynamic parts: (attr_id, part_index).
+    pub concat_part_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
     /// EachBlock key expressions: keyed by EachBlock NodeId.
     pub key_exprs: FxHashMap<NodeId, Expression<'a>>,
     /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
@@ -69,7 +69,7 @@ pub struct ElementFlags {
     pub(crate) has_spread: FxHashSet<NodeId>,
     pub(crate) has_class_directives: FxHashSet<NodeId>,
     pub(crate) has_class_attribute: FxHashSet<NodeId>,
-    pub(crate) needs_clsx: FxHashSet<(NodeId, usize)>,
+    pub(crate) needs_clsx: FxHashSet<NodeId>,
     /// Pre-extracted static class attribute value (avoids span→string conversion in codegen).
     pub(crate) static_class: FxHashMap<NodeId, String>,
     pub(crate) has_style_directives: FxHashSet<NodeId>,
@@ -78,7 +78,7 @@ pub struct ElementFlags {
     pub(crate) needs_input_defaults: FxHashSet<NodeId>,
     pub(crate) needs_var: FxHashSet<NodeId>,
     pub(crate) needs_ref: FxHashSet<NodeId>,
-    pub(crate) dynamic_attrs: FxHashSet<(NodeId, usize)>,
+    pub(crate) dynamic_attrs: FxHashSet<NodeId>,
 }
 
 impl ElementFlags {
@@ -101,12 +101,12 @@ impl ElementFlags {
     pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
     pub fn has_class_directives(&self, id: NodeId) -> bool { self.has_class_directives.contains(&id) }
     pub fn has_class_attribute(&self, id: NodeId) -> bool { self.has_class_attribute.contains(&id) }
-    pub fn needs_clsx(&self, id: NodeId, idx: usize) -> bool { self.needs_clsx.contains(&(id, idx)) }
+    pub fn needs_clsx(&self, id: NodeId) -> bool { self.needs_clsx.contains(&id) }
     pub fn has_style_directives(&self, id: NodeId) -> bool { self.has_style_directives.contains(&id) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
     pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }
-    pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.dynamic_attrs.contains(&(id, idx)) }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.dynamic_attrs.contains(&id) }
     pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(&id).map(|s| s.as_str()) }
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
 }
@@ -183,8 +183,8 @@ impl ConstTagData {
 pub struct AnalysisData {
     /// Parsed JS metadata for ExpressionTag nodes (and IfBlock/EachBlock test expressions).
     pub expressions: FxHashMap<NodeId, ExpressionInfo>,
-    /// Parsed JS metadata for element attribute expressions: (element_id, attr_index).
-    pub attr_expressions: FxHashMap<(NodeId, usize), ExpressionInfo>,
+    /// Parsed JS metadata for attribute expressions, keyed by attribute NodeId.
+    pub attr_expressions: FxHashMap<NodeId, ExpressionInfo>,
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
@@ -241,7 +241,7 @@ impl AnalysisData {
     pub fn is_dynamic(&self, id: NodeId) -> bool { self.dynamic_nodes.contains(&id) }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
-    pub fn attr_expression(&self, id: NodeId, idx: usize) -> Option<&ExpressionInfo> { self.attr_expressions.get(&(id, idx)) }
+    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
     pub fn known_value(&self, name: &str) -> Option<&String> { self.known_values.get(name) }
 
     pub fn is_rune(&self, name: &str) -> bool {

@@ -214,11 +214,11 @@ impl<'a> Ctx<'a> {
     pub fn has_spread(&self, id: NodeId) -> bool { self.analysis.element_flags.has_spread(id) }
     pub fn has_class_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_directives(id) }
     pub fn has_class_attribute(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_attribute(id) }
-    pub fn needs_clsx(&self, id: NodeId, idx: usize) -> bool { self.analysis.element_flags.needs_clsx(id, idx) }
+    pub fn needs_clsx(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_clsx(id) }
     pub fn has_style_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_style_directives(id) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_input_defaults(id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_var(id) }
-    pub fn is_dynamic_attr(&self, id: NodeId, idx: usize) -> bool { self.analysis.element_flags.is_dynamic_attr(id, idx) }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.analysis.element_flags.is_dynamic_attr(id) }
     pub fn static_class(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_class(id) }
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_style(id) }
 
