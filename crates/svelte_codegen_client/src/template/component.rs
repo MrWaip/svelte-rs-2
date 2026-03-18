@@ -175,35 +175,158 @@ pub(crate) fn gen_component<'a>(
             return;
         };
 
-        let setter = if ctx.is_mutable_rune(&var_name) {
-            let var_str = ctx.b.alloc_str(&var_name);
-            let body = ctx.b.call_expr("$.set", [
-                Arg::Ident(var_str), Arg::Ident("$$value"), Arg::Expr(ctx.b.bool_expr(true)),
-            ]);
-            ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
-        } else {
-            let body = ctx.b.assign_expr(
-                AssignLeft::Ident(var_name.clone()),
-                AssignRight::Expr(ctx.b.rid_expr("$$value")),
-            );
-            ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
-        };
-
-        let getter = if ctx.is_mutable_rune(&var_name) {
-            let var_str = ctx.b.alloc_str(&var_name);
-            let body = ctx.b.call_expr("$.get", [Arg::Ident(var_str)]);
-            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
-        } else {
-            let body = ctx.b.rid_expr(&var_name);
-            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
-        };
-
-        ctx.b.call_expr("$.bind_this", [
-            Arg::Expr(component_call), Arg::Expr(setter), Arg::Expr(getter),
-        ])
+        build_bind_this_call(ctx, &var_name, component_call)
     } else {
         component_call
     };
 
     init.push(ctx.b.expr_stmt(final_expr));
+}
+
+/// Check if a string is a simple JS identifier (no member access, no computed access).
+fn is_simple_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+}
+
+/// Add optional chaining to all member accesses in an expression string.
+/// `obj.ref` → `obj?.ref`, `refs[i]` → `refs?.[i]`, `a.b.c` → `a?.b?.c`
+fn add_optional_chaining(expr: &str) -> String {
+    let mut result = String::new();
+    let mut depth = 0i32;
+    for c in expr.chars() {
+        match c {
+            '.' if depth == 0 => result.push_str("?."),
+            '[' if depth == 0 => {
+                result.push_str("?.[");
+                depth += 1;
+            }
+            '[' => {
+                result.push('[');
+                depth += 1;
+            }
+            ']' => {
+                result.push(']');
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
+            c => result.push(c),
+        }
+    }
+    result
+}
+
+/// Extract identifier-like tokens from an expression string.
+fn extract_identifiers(expr: &str) -> Vec<String> {
+    expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+        .filter(|s| {
+            !s.is_empty()
+                && s.chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        })
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
+fn build_bind_this_call<'a>(
+    ctx: &mut Ctx<'a>,
+    expr_text: &str,
+    value: Expression<'a>,
+) -> Expression<'a> {
+    if is_simple_identifier(expr_text) {
+        // Simple identifier: use $.set/$.get for mutable runes, plain assignment otherwise
+        let setter = if ctx.is_mutable_rune(expr_text) {
+            let var_str = ctx.b.alloc_str(expr_text);
+            let body = ctx.b.call_expr("$.set", [
+                Arg::Ident(var_str),
+                Arg::Ident("$$value"),
+                Arg::Expr(ctx.b.bool_expr(true)),
+            ]);
+            ctx.b
+                .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+        } else {
+            let body = ctx.b.assign_expr(
+                AssignLeft::Ident(expr_text.to_string()),
+                AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            );
+            ctx.b
+                .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+        };
+
+        let getter = if ctx.is_mutable_rune(expr_text) {
+            let var_str = ctx.b.alloc_str(expr_text);
+            let body = ctx.b.call_expr("$.get", [Arg::Ident(var_str)]);
+            ctx.b
+                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+        } else {
+            let body = ctx.b.rid_expr(expr_text);
+            ctx.b
+                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+        };
+
+        ctx.b.call_expr("$.bind_this", [
+            Arg::Expr(value),
+            Arg::Expr(setter),
+            Arg::Expr(getter),
+        ])
+    } else {
+        // Member/computed expression: use raw assignment for setter, optional chaining for getter
+        let each_context: Vec<String> = extract_identifiers(expr_text)
+            .into_iter()
+            .filter(|id| ctx.each_vars.contains(id))
+            .collect();
+
+        // Setter: ($$value[, ctx_vars]) => <expr> = $$value
+        let setter_body = format!("{expr_text} = $$value");
+        let setter_expr = ctx.b.parse_expression(&setter_body);
+        let mut setter_params: Vec<&str> = vec!["$$value"];
+        let each_ctx_owned: Vec<String> = each_context.clone();
+        for v in &each_ctx_owned {
+            setter_params.push(v);
+        }
+        let setter = ctx
+            .b
+            .arrow_expr(ctx.b.params(setter_params), [ctx.b.expr_stmt(setter_expr)]);
+
+        // Getter: ([ctx_vars]) => <expr_with_optional_chaining>
+        let getter_text = add_optional_chaining(expr_text);
+        let getter_expr = ctx.b.parse_expression(&getter_text);
+        let mut getter_params: Vec<&str> = Vec::new();
+        for v in &each_ctx_owned {
+            getter_params.push(v);
+        }
+        let getter = ctx
+            .b
+            .arrow_expr(ctx.b.params(getter_params), [ctx.b.expr_stmt(getter_expr)]);
+
+        if each_context.is_empty() {
+            ctx.b.call_expr("$.bind_this", [
+                Arg::Expr(value),
+                Arg::Expr(setter),
+                Arg::Expr(getter),
+            ])
+        } else {
+            // 4th arg: () => [ctx_var1, ctx_var2, ...]
+            let context_values: Vec<Arg<'_, '_>> = each_context
+                .iter()
+                .map(|v| {
+                    let s = ctx.b.alloc_str(v);
+                    Arg::Ident(s)
+                })
+                .collect();
+            let context_array = ctx.b.array_from_args(context_values);
+            let context_thunk = ctx.b.thunk(context_array);
+
+            ctx.b.call_expr("$.bind_this", [
+                Arg::Expr(value),
+                Arg::Expr(setter),
+                Arg::Expr(getter),
+                Arg::Expr(context_thunk),
+            ])
+        }
+    }
 }
