@@ -94,7 +94,8 @@ pub(crate) fn traverse_items<'a>(
                 | FragmentItem::HtmlTag(_)
                 | FragmentItem::KeyBlock(_)
                 | FragmentItem::SvelteElement(_)
-                | FragmentItem::SvelteBoundary(_) => {
+                | FragmentItem::SvelteBoundary(_)
+                | FragmentItem::TitleElement(_) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
                     sibling_offset = 1;
@@ -111,6 +112,7 @@ pub(crate) fn traverse_items<'a>(
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
                         FragmentItem::SvelteElement(id) => super::svelte_element::gen_svelte_element(ctx, *id, anchor, init),
                         FragmentItem::SvelteBoundary(id) => super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init),
+                        FragmentItem::TitleElement(id) => super::title_element::gen_title_element(ctx, *id, init),
                         _ => unreachable!(),
                     }
                     prev_ident = Some(node_name);
