@@ -31,6 +31,10 @@
     function action(node, arg) {
         return { destroy() {} };
     }
+
+    function handleError(error) {
+        console.error(error);
+    }
 </script>
 
 <svelte:head>
@@ -107,6 +111,13 @@
 
     {@render badge("chunk-0", "secondary")}
     {@render card(title, "Content for chunk 0")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 0: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 0: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -164,6 +175,13 @@
 
     {@render badge("chunk-1", "secondary")}
     {@render card(title, "Content for chunk 1")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 1: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 1: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -221,6 +239,13 @@
 
     {@render badge("chunk-2", "secondary")}
     {@render card(title, "Content for chunk 2")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 2: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 2: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -278,6 +303,13 @@
 
     {@render badge("chunk-3", "secondary")}
     {@render card(title, "Content for chunk 3")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 3: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 3: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -335,6 +367,13 @@
 
     {@render badge("chunk-4", "secondary")}
     {@render card(title, "Content for chunk 4")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 4: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 4: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -392,6 +431,13 @@
 
     {@render badge("chunk-5", "secondary")}
     {@render card(title, "Content for chunk 5")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 5: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 5: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -449,6 +495,13 @@
 
     {@render badge("chunk-6", "secondary")}
     {@render card(title, "Content for chunk 6")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 6: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 6: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -506,6 +559,13 @@
 
     {@render badge("chunk-7", "secondary")}
     {@render card(title, "Content for chunk 7")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 7: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 7: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -563,6 +623,13 @@
 
     {@render badge("chunk-8", "secondary")}
     {@render card(title, "Content for chunk 8")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 8: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 8: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -620,6 +687,13 @@
 
     {@render badge("chunk-9", "secondary")}
     {@render card(title, "Content for chunk 9")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 9: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 9: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -677,6 +751,13 @@
 
     {@render badge("chunk-10", "secondary")}
     {@render card(title, "Content for chunk 10")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 10: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 10: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -734,6 +815,13 @@
 
     {@render badge("chunk-11", "secondary")}
     {@render card(title, "Content for chunk 11")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 11: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 11: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -791,6 +879,13 @@
 
     {@render badge("chunk-12", "secondary")}
     {@render card(title, "Content for chunk 12")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 12: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 12: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -848,6 +943,13 @@
 
     {@render badge("chunk-13", "secondary")}
     {@render card(title, "Content for chunk 13")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 13: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 13: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -905,6 +1007,13 @@
 
     {@render badge("chunk-14", "secondary")}
     {@render card(title, "Content for chunk 14")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 14: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 14: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -962,6 +1071,13 @@
 
     {@render badge("chunk-15", "secondary")}
     {@render card(title, "Content for chunk 15")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 15: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 15: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1019,6 +1135,13 @@
 
     {@render badge("chunk-16", "secondary")}
     {@render card(title, "Content for chunk 16")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 16: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 16: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1076,6 +1199,13 @@
 
     {@render badge("chunk-17", "secondary")}
     {@render card(title, "Content for chunk 17")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 17: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 17: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1133,6 +1263,13 @@
 
     {@render badge("chunk-18", "secondary")}
     {@render card(title, "Content for chunk 18")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 18: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 18: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1190,6 +1327,13 @@
 
     {@render badge("chunk-19", "secondary")}
     {@render card(title, "Content for chunk 19")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 19: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 19: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1247,6 +1391,13 @@
 
     {@render badge("chunk-20", "secondary")}
     {@render card(title, "Content for chunk 20")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 20: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 20: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1304,6 +1455,13 @@
 
     {@render badge("chunk-21", "secondary")}
     {@render card(title, "Content for chunk 21")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 21: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 21: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1361,6 +1519,13 @@
 
     {@render badge("chunk-22", "secondary")}
     {@render card(title, "Content for chunk 22")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 22: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 22: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1418,6 +1583,13 @@
 
     {@render badge("chunk-23", "secondary")}
     {@render card(title, "Content for chunk 23")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 23: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 23: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1475,6 +1647,13 @@
 
     {@render badge("chunk-24", "secondary")}
     {@render card(title, "Content for chunk 24")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 24: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 24: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1532,6 +1711,13 @@
 
     {@render badge("chunk-25", "secondary")}
     {@render card(title, "Content for chunk 25")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 25: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 25: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1589,6 +1775,13 @@
 
     {@render badge("chunk-26", "secondary")}
     {@render card(title, "Content for chunk 26")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 26: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 26: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1646,6 +1839,13 @@
 
     {@render badge("chunk-27", "secondary")}
     {@render card(title, "Content for chunk 27")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 27: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 27: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1703,6 +1903,13 @@
 
     {@render badge("chunk-28", "secondary")}
     {@render card(title, "Content for chunk 28")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 28: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 28: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1760,6 +1967,13 @@
 
     {@render badge("chunk-29", "secondary")}
     {@render card(title, "Content for chunk 29")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 29: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 29: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1817,6 +2031,13 @@
 
     {@render badge("chunk-30", "secondary")}
     {@render card(title, "Content for chunk 30")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 30: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 30: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1874,6 +2095,13 @@
 
     {@render badge("chunk-31", "secondary")}
     {@render card(title, "Content for chunk 31")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 31: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 31: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1931,6 +2159,13 @@
 
     {@render badge("chunk-32", "secondary")}
     {@render card(title, "Content for chunk 32")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 32: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 32: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -1988,6 +2223,13 @@
 
     {@render badge("chunk-33", "secondary")}
     {@render card(title, "Content for chunk 33")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 33: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 33: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2045,6 +2287,13 @@
 
     {@render badge("chunk-34", "secondary")}
     {@render card(title, "Content for chunk 34")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 34: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 34: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2102,6 +2351,13 @@
 
     {@render badge("chunk-35", "secondary")}
     {@render card(title, "Content for chunk 35")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 35: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 35: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2159,6 +2415,13 @@
 
     {@render badge("chunk-36", "secondary")}
     {@render card(title, "Content for chunk 36")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 36: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 36: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2216,6 +2479,13 @@
 
     {@render badge("chunk-37", "secondary")}
     {@render card(title, "Content for chunk 37")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 37: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 37: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2273,6 +2543,13 @@
 
     {@render badge("chunk-38", "secondary")}
     {@render card(title, "Content for chunk 38")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 38: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 38: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2330,6 +2607,13 @@
 
     {@render badge("chunk-39", "secondary")}
     {@render card(title, "Content for chunk 39")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 39: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 39: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2387,6 +2671,13 @@
 
     {@render badge("chunk-40", "secondary")}
     {@render card(title, "Content for chunk 40")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 40: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 40: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2444,6 +2735,13 @@
 
     {@render badge("chunk-41", "secondary")}
     {@render card(title, "Content for chunk 41")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 41: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 41: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2501,6 +2799,13 @@
 
     {@render badge("chunk-42", "secondary")}
     {@render card(title, "Content for chunk 42")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 42: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 42: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2558,6 +2863,13 @@
 
     {@render badge("chunk-43", "secondary")}
     {@render card(title, "Content for chunk 43")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 43: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 43: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2615,6 +2927,13 @@
 
     {@render badge("chunk-44", "secondary")}
     {@render card(title, "Content for chunk 44")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 44: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 44: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2672,6 +2991,13 @@
 
     {@render badge("chunk-45", "secondary")}
     {@render card(title, "Content for chunk 45")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 45: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 45: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2729,6 +3055,13 @@
 
     {@render badge("chunk-46", "secondary")}
     {@render card(title, "Content for chunk 46")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 46: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 46: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2786,6 +3119,13 @@
 
     {@render badge("chunk-47", "secondary")}
     {@render card(title, "Content for chunk 47")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 47: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 47: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2843,6 +3183,13 @@
 
     {@render badge("chunk-48", "secondary")}
     {@render card(title, "Content for chunk 48")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 48: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 48: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 
 <div>
@@ -2900,5 +3247,12 @@
 
     {@render badge("chunk-49", "secondary")}
     {@render card(title, "Content for chunk 49")}
+
+    <svelte:boundary onerror={handleError}>
+        <p>Boundary chunk 49: {title}</p>
+        {#snippet failed(error)}
+            <p>Error in chunk 49: {error.message}</p>
+        {/snippet}
+    </svelte:boundary>
 </div>
 

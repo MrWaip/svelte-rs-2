@@ -844,3 +844,63 @@ fn svelte_body_action() {
 fn svelte_body_combined() {
     assert_compiler("svelte_body_combined");
 }
+
+#[rstest]
+fn boundary_basic() {
+    assert_compiler("boundary_basic");
+}
+
+#[rstest]
+fn boundary_failed_snippet() {
+    assert_compiler("boundary_failed_snippet");
+}
+
+#[rstest]
+fn boundary_onerror() {
+    assert_compiler("boundary_onerror");
+}
+
+#[rstest]
+fn boundary_pending_snippet() {
+    assert_compiler("boundary_pending_snippet");
+}
+
+#[rstest]
+fn boundary_failed_onerror() {
+    assert_compiler("boundary_failed_onerror");
+}
+
+#[rstest]
+fn boundary_failed_attribute() {
+    assert_compiler("boundary_failed_attribute");
+}
+
+#[rstest]
+fn boundary_all_three() {
+    assert_compiler("boundary_all_three");
+}
+
+#[rstest]
+fn boundary_reactive_onerror() {
+    assert_compiler("boundary_reactive_onerror");
+}
+
+#[rstest]
+fn boundary_nested() {
+    assert_compiler("boundary_nested");
+}
+
+#[rstest]
+fn boundary_const_tag() {
+    assert_compiler("boundary_const_tag");
+}
+
+#[rstest]
+fn boundary_in_if() {
+    assert_compiler("boundary_in_if");
+}
+
+#[rstest]
+fn boundary_other_snippets() {
+    assert_compiler("boundary_other_snippets");
+}

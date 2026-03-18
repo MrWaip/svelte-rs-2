@@ -57,6 +57,9 @@ fn lower_fragment(
             Node::SvelteElement(el) => {
                 lower_fragment(&el.fragment, FragmentKey::SvelteElementBody(el.id), component, data);
             }
+            Node::SvelteBoundary(b) => {
+                lower_fragment(&b.fragment, FragmentKey::SvelteBoundaryBody(b.id), component, data);
+            }
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
@@ -158,6 +161,7 @@ fn build_items(fragment: &Fragment, component: &Component) -> Vec<FragmentItem> 
                     Node::HtmlTag(tag) => items.push(FragmentItem::HtmlTag(tag.id)),
                     Node::KeyBlock(block) => items.push(FragmentItem::KeyBlock(block.id)),
                     Node::SvelteElement(el) => items.push(FragmentItem::SvelteElement(el.id)),
+                    Node::SvelteBoundary(b) => items.push(FragmentItem::SvelteBoundary(b.id)),
                     _ => {}
                 }
             }

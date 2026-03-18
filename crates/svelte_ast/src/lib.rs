@@ -128,6 +128,7 @@ impl_node_enum! {
     SvelteWindow(SvelteWindow)       => is_svelte_window / as_svelte_window,
     SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
     SvelteBody(SvelteBody)           => is_svelte_body / as_svelte_body,
+    SvelteBoundary(SvelteBoundary)   => is_svelte_boundary / as_svelte_boundary,
     Error(ErrorNode)                 => is_error / as_error,
 }
 
@@ -364,6 +365,17 @@ pub struct SvelteDocument {
 // ---------------------------------------------------------------------------
 
 pub struct SvelteBody {
+    pub id: NodeId,
+    pub span: Span,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteBoundary — <svelte:boundary onerror={fn} failed={snippet}>...</svelte:boundary>
+// ---------------------------------------------------------------------------
+
+pub struct SvelteBoundary {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,

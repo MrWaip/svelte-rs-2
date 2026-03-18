@@ -38,7 +38,8 @@ fn item_is_dynamic(
         | FragmentItem::RenderTag(id)
         | FragmentItem::HtmlTag(id)
         | FragmentItem::KeyBlock(id)
-        | FragmentItem::SvelteElement(id) => dynamic_nodes.contains(id),
+        | FragmentItem::SvelteElement(id)
+        | FragmentItem::SvelteBoundary(id) => dynamic_nodes.contains(id),
     }
 }
 
@@ -57,6 +58,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
             FragmentItem::RenderTag(id) => return ContentStrategy::SingleBlock(SingleBlockKind::RenderTag(*id)),
             FragmentItem::ComponentNode(id) => return ContentStrategy::SingleBlock(SingleBlockKind::ComponentNode(*id)),
             FragmentItem::SvelteElement(id) => return ContentStrategy::SingleBlock(SingleBlockKind::SvelteElement(*id)),
+            FragmentItem::SvelteBoundary(id) => return ContentStrategy::SingleBlock(SingleBlockKind::SvelteBoundary(*id)),
             FragmentItem::TextConcat { .. } => {}
         }
     }
@@ -75,7 +77,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
             | FragmentItem::RenderTag(_)
             | FragmentItem::HtmlTag(_)
             | FragmentItem::KeyBlock(_)
-            | FragmentItem::SvelteElement(_) => has_block = true,
+            | FragmentItem::SvelteElement(_)
+            | FragmentItem::SvelteBoundary(_) => has_block = true,
             FragmentItem::TextConcat { has_expr, .. } => {
                 if *has_expr {
                     has_dynamic_text = true;
