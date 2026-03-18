@@ -216,10 +216,9 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Codegen**: `$.boundary(anchor, props, ($$anchor) => { ... })`
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js` (~126 lines)
 
-### `<title>` — Special handling in `<svelte:head>`
+### ~~`<title>` — Special handling in `<svelte:head>`~~ ✅
 - **Phases**: T
-- **Codegen**: Special text update handling for `<title>` element content
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/TitleElement.js`
+- **Codegen**: `$.document.title = value` with `$.effect()` / `$.deferred_template_effect()` wrapping
 
 ### Component `bind:this`
 - **Phases**: T
@@ -453,6 +452,10 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: only allowed at root level
 - [ ] Validation: no attributes allowed (diagnostic)
 - [ ] `filename` parameter for `compile()` to produce correct hash (currently uses `"(unknown)"` default)
+
+### `<title>` in `<svelte:head>` (Tier 5)
+- [ ] Validation: `<title>` cannot have attributes (`title_illegal_attribute`)
+- [ ] Validation: `<title>` children must be Text or ExpressionTag only (`title_invalid_content`)
 
 ### Render tag
 - [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish

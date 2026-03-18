@@ -18,6 +18,7 @@ pub(crate) mod svelte_body;
 pub(crate) mod svelte_document;
 pub(crate) mod svelte_head;
 pub(crate) mod svelte_window;
+pub(crate) mod title_element;
 pub(crate) mod traverse;
 
 use oxc_ast::ast::Statement;
@@ -236,6 +237,10 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &m
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
+        SingleBlockKind::TitleElement(id) => {
+            title_element::gen_title_element(ctx, *id, body);
+            return;
+        }
         _ => {}
     }
 
@@ -419,6 +424,10 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 SingleBlockKind::ComponentNode(id) => {
                     ctx.gen_ident("fragment");
                     gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
+                }
+                SingleBlockKind::TitleElement(id) => {
+                    ctx.gen_ident("fragment");
+                    title_element::gen_title_element(ctx, *id, &mut body);
                 }
                 _ => {
                     let frag = ctx.gen_ident("fragment");
