@@ -122,6 +122,9 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         data: &mut AnalysisData,
     ) {
         resolve_attr_refs(attr.id(), scope, data);
+        if let Attribute::BindDirective(dir) = attr {
+            self.resolve_bind(dir, scope, data);
+        }
     }
 
     fn visit_bind_directive(

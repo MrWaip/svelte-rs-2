@@ -502,6 +502,11 @@ fn bind_this() {
 }
 
 #[rstest]
+fn component_bind_this() {
+    assert_compiler("component_bind_this");
+}
+
+#[rstest]
 fn bind_focused() {
     assert_compiler("bind_focused");
 }
