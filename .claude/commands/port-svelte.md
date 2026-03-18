@@ -30,6 +30,8 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
 
+All agents must use: relative paths from project root, `rg` instead of `find -exec`/`grep -r`, no `\;` (use `+` or pipes), no `$()` substitution.
+
 Launch exactly 5 Explore agents simultaneously (do not merge or combine agents):
 
 1. **Agent 1 — Parse & AST**
@@ -54,7 +56,13 @@ Launch exactly 5 Explore agents simultaneously (do not merge or combine agents):
    - `reference/compiler/tests/` — snapshot inputs and expected outputs for this feature
    - Search for the feature name (and aliases) across all reference files to catch cross-cutting concerns
 
-After all agents complete, synthesize findings from agent results only. Do not read additional files at this step — note gaps in the plan instead. Output: what the feature requires end-to-end, what's already done, what's missing.
+After all agents complete, synthesize findings from agent results. Agents return summaries, not full file contents — you may need to read key files yourself for planning details.
+
+**Controlled follow-up reads** (max 5 files): only files that agents identified as critical for the implementation plan but whose exact content (type signatures, function signatures, match arms) you need to see. List the files and why before reading. Do not re-read files that agents already summarized adequately. Do not launch additional agents (Plan, Explore, or otherwise).
+
+Output: what the feature requires end-to-end, what's already done, what's missing.
+
+Steps 2 and 3 are done by the main agent directly — no subagent delegation.
 
 ### Step 2: Use-case checklist
 
