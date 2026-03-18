@@ -216,6 +216,9 @@ fn walk_node<'a>(
             walk_attrs(alloc, &el.attributes, component, data, parsed, diags);
             walk_fragment(alloc, &el.fragment, component, data, parsed, diags);
         }
+        Node::SvelteWindow(w) => {
+            walk_attrs(alloc, &w.attributes, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

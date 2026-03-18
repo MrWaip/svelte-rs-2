@@ -125,6 +125,7 @@ impl_node_enum! {
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
     SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
+    SvelteWindow(SvelteWindow)   => is_svelte_window / as_svelte_window,
     Error(ErrorNode)             => is_error / as_error,
 }
 
@@ -330,6 +331,17 @@ pub struct SvelteElement {
     pub tag_span: Span,
     /// True when `this="literal"` (StringAttribute) — tag is a static string, not a JS expression.
     pub static_tag: bool,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteWindow — <svelte:window on:event={handler} bind:scrollY />
+// ---------------------------------------------------------------------------
+
+pub struct SvelteWindow {
+    pub id: NodeId,
+    pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: Fragment,
 }
