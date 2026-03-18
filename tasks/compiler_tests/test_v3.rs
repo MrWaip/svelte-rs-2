@@ -824,3 +824,23 @@ fn svelte_element_xmlns() {
 fn svelte_element_children_expr() {
     assert_compiler("svelte_element_children_expr");
 }
+
+#[rstest]
+fn svelte_body_event_attr() {
+    assert_compiler("svelte_body_event_attr");
+}
+
+#[rstest]
+fn svelte_body_event_legacy() {
+    assert_compiler("svelte_body_event_legacy");
+}
+
+#[rstest]
+fn svelte_body_action() {
+    assert_compiler("svelte_body_action");
+}
+
+#[rstest]
+fn svelte_body_combined() {
+    assert_compiler("svelte_body_combined");
+}

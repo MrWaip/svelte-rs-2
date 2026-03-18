@@ -180,6 +180,9 @@ fn walk_node<'a>(
         Node::SvelteDocument(d) => {
             transform_attrs(ctx, &d.attributes, parsed, scope);
         }
+        Node::SvelteBody(b) => {
+            transform_attrs(ctx, &b.attributes, parsed, scope);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

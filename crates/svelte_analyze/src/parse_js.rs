@@ -222,6 +222,9 @@ fn walk_node<'a>(
         Node::SvelteDocument(d) => {
             walk_attrs(alloc, &d.attributes, component, data, parsed, diags);
         }
+        Node::SvelteBody(b) => {
+            walk_attrs(alloc, &b.attributes, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
