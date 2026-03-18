@@ -326,7 +326,7 @@ fn walk_template_scopes(
                     }
                 }
             }
-            Node::SvelteWindow(_) | Node::SvelteDocument(_) => {}
+            Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
             Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::Error(_) => {}
         }
     }

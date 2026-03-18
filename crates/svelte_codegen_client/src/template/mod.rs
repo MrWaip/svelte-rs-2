@@ -13,6 +13,7 @@ pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
 pub(crate) mod svelte_element;
+pub(crate) mod svelte_body;
 pub(crate) mod svelte_document;
 pub(crate) mod svelte_head;
 pub(crate) mod svelte_window;
@@ -107,6 +108,14 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         .collect();
     for id in svelte_document_ids {
         svelte_document::gen_svelte_document(ctx, id, &mut body);
+    }
+
+    // Generate svelte:body events/actions — go to init (before template)
+    let svelte_body_ids: Vec<_> = ctx.component.fragment.nodes.iter()
+        .filter_map(|n| n.as_svelte_body().map(|b| b.id))
+        .collect();
+    for id in svelte_body_ids {
+        svelte_body::gen_svelte_body(ctx, id, &mut body);
     }
 
     // Collect SvelteHead IDs — $.head() calls are generated after main template init

@@ -10,7 +10,7 @@ use svelte_ast::{
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
-    StyleDirective, StyleDirectiveValue, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
+    StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
 
@@ -355,6 +355,9 @@ impl<'a> Parser<'a> {
 
         // Convert <svelte:document> elements to SvelteDocument nodes
         Self::convert_svelte_document(&mut component);
+
+        // Convert <svelte:body> elements to SvelteBody nodes
+        Self::convert_svelte_body(&mut component);
 
         // Convert <svelte:element> elements to SvelteElement nodes
         Self::convert_svelte_element(&mut component.fragment);
@@ -1245,6 +1248,23 @@ impl<'a> Parser<'a> {
                         fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
                     };
                     *node = Node::SvelteDocument(doc);
+                }
+            }
+        }
+    }
+
+    /// Convert `<svelte:body>` Element nodes in the root fragment to SvelteBody nodes.
+    fn convert_svelte_body(component: &mut Component) {
+        for node in &mut component.fragment.nodes {
+            if let Node::Element(el) = node {
+                if el.name == "svelte:body" {
+                    let body = SvelteBody {
+                        id: el.id,
+                        span: el.span,
+                        attributes: std::mem::take(&mut el.attributes),
+                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    };
+                    *node = Node::SvelteBody(body);
                 }
             }
         }
