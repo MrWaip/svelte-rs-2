@@ -30,8 +30,6 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
 
-All agents must use: relative paths from project root, `rg` instead of `find -exec`/`grep -r`, no `\;` (use `+` or pipes), no `$()` substitution.
-
 Launch exactly 5 Explore agents simultaneously (do not merge or combine agents):
 
 1. **Agent 1 — Parse & AST**
