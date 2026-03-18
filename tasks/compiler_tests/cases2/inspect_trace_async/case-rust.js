@@ -7,7 +7,7 @@ export default function App($$anchor, $$props) {
 	let data = $.tag($.state(null), "data");
 	async function fetchData() {
 		return await $.trace(() => "fetchData ((unknown):3:1)", async () => {
-			$.set(data, await fetch("/api"), true);
+			$.set(data, (await $.track_reactivity_loss(fetch("/api")))(), true);
 		});
 	}
 	var $$exports = { ...$.legacy_api() };
