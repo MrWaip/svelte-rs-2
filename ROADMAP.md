@@ -51,6 +51,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `{@const x = expr}` — block-scoped constant (incl. destructuring)
 - [x] `style:prop` directive (shorthand, expression, string, concat, `|important`)
 - [x] `class` object/array syntax (Svelte 5)
+- [x] `{#await promise}` — async blocks (full form, short then/catch, no bindings, destructured, pending only)
 
 ### Event handling
 - [x] Svelte 5 event attributes — `onclick={handler}` → `$.delegated()` for delegatable events
@@ -161,13 +162,9 @@ Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js` (Me
 
 ## Tier 2 — Remaining Template Blocks
 
-### `{#await promise}` — Async blocks
+### ~~`{#await promise}` — Async blocks~~ ✅
 - **Phases**: P, A, T
-- **AST**: `Node::AwaitBlock { id, span, expression_span, pending, then_binding, then, catch_binding, catch }`
-- **Parser**: `{#await expr}...{:then val}...{:catch err}...{/await}`, short form `{#await expr then val}...{/await}`
 - **Codegen**: `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`
-- **Notes**: Needs child scopes for `then`/`catch` bindings. Common in real apps (data fetching).
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/AwaitBlock.js` (~124 lines)
 
 ### `{@debug vars}` — Dev-mode debugger
 - **Phases**: P, T
@@ -485,6 +482,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `experimental.async` handling for const tag scoping changes
 - [ ] Dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] Handler wrapping for snippet params used as event handlers (`function(...$$args) { reset()?.apply(this, $$args) }`)
+
+### `{#await}` (Tier 2)
+- [ ] `has_blockers` / `$.async()` wrapping for experimental async mode
+- [ ] Dev-mode `$.apply()` wrapping for await expression
+- [ ] Array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
+- [ ] Validation: duplicate `{:then}` or `{:catch}` clauses
 
 ### Component `bind:this` (Tier 5)
 - [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen

@@ -215,7 +215,7 @@ pub(crate) fn emit_trailing_next<'a>(
 pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
-        FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) | FragmentItem::KeyBlock(id) | FragmentItem::SvelteElement(id) | FragmentItem::SvelteBoundary(id) | FragmentItem::TitleElement(id) => {
+        FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) | FragmentItem::KeyBlock(id) | FragmentItem::SvelteElement(id) | FragmentItem::SvelteBoundary(id) | FragmentItem::AwaitBlock(id) | FragmentItem::TitleElement(id) => {
             ctx.is_dynamic(*id)
         }
     }

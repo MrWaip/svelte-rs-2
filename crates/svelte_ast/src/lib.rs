@@ -129,6 +129,7 @@ impl_node_enum! {
     SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
     SvelteBody(SvelteBody)           => is_svelte_body / as_svelte_body,
     SvelteBoundary(SvelteBoundary)   => is_svelte_boundary / as_svelte_boundary,
+    AwaitBlock(AwaitBlock)           => is_await_block / as_await_block,
     Error(ErrorNode)                 => is_error / as_error,
 }
 
@@ -380,6 +381,27 @@ pub struct SvelteBoundary {
     pub span: Span,
     pub attributes: Vec<Attribute>,
     pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// AwaitBlock — {#await expr}...{:then val}...{:catch err}...{/await}
+// ---------------------------------------------------------------------------
+
+pub struct AwaitBlock {
+    pub id: NodeId,
+    pub span: Span,
+    /// Span of the promise expression.
+    pub expression_span: Span,
+    /// Span of the then binding pattern (e.g., `value` or `{name, age}`). None if no binding.
+    pub value_span: Option<Span>,
+    /// Span of the catch binding pattern (e.g., `error`). None if no binding.
+    pub error_span: Option<Span>,
+    /// Content shown while promise is pending. None if short form.
+    pub pending: Option<Fragment>,
+    /// Content shown when promise resolves.
+    pub then: Option<Fragment>,
+    /// Content shown when promise rejects.
+    pub catch: Option<Fragment>,
 }
 
 // ---------------------------------------------------------------------------
