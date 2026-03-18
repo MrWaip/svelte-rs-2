@@ -2,7 +2,8 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget,
-        BindingIdentifier, CallExpression, ChainElement, ExportDefaultDeclarationKind,
+        BindingIdentifier, CallExpression, ChainElement, ComputedMemberExpression,
+        ExportDefaultDeclarationKind,
         Expression, FormalParameters, Function, FunctionType, IdentifierReference,
         ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
         NumericLiteral, Program, Statement,
@@ -29,6 +30,7 @@ pub enum Arg<'a, 'short> {
 
 pub enum AssignLeft<'a> {
     StaticMember(StaticMemberExpression<'a>),
+    ComputedMember(ComputedMemberExpression<'a>),
     Ident(String),
 }
 
@@ -385,6 +387,9 @@ impl<'a> Builder<'a> {
             AssignLeft::StaticMember(m) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(m))
             }
+            AssignLeft::ComputedMember(m) => {
+                AssignmentTarget::ComputedMemberExpression(self.alloc(m))
+            }
             AssignLeft::Ident(name) => {
                 let atom = self.ast.atom(&name);
                 AssignmentTarget::AssignmentTargetIdentifier(self.alloc(
@@ -585,6 +590,22 @@ impl<'a> Builder<'a> {
     /// `this` expression
     pub fn this_expr(&self) -> Expression<'a> {
         self.ast.expression_this(SPAN)
+    }
+
+    /// `new.target` meta-property expression
+    pub fn new_target_expr(&self) -> Expression<'a> {
+        Expression::MetaProperty(self.alloc(
+            self.ast.meta_property(
+                SPAN,
+                self.ast.identifier_name(SPAN, self.ast.atom("new")),
+                self.ast.identifier_name(SPAN, self.ast.atom("target")),
+            ),
+        ))
+    }
+
+    /// `object[property]` — computed member expression
+    pub fn computed_member(&self, object: Expression<'a>, property: Expression<'a>) -> ComputedMemberExpression<'a> {
+        self.ast.computed_member_expression(SPAN, object, property, false)
     }
 
     /// Call expression with an arbitrary `Expression` as callee (not just a string identifier).
