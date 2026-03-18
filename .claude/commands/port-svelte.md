@@ -30,30 +30,31 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
 
-Launch 5 Explore agents simultaneously:
+Launch exactly 5 Explore agents simultaneously (do not merge or combine agents):
 
-**Agent 1 — Parse & AST**
-- `reference/compiler/phases/1-parse/` — syntax variants, how the feature is parsed
-- `reference/compiler/types/template.d.ts` — AST node shape, optional fields, union variants
-- `crates/svelte_ast/src/lib.rs` — what AST types we already have
+1. **Agent 1 — Parse & AST**
+   - `reference/compiler/phases/1-parse/` — syntax variants, how the feature is parsed
+   - `reference/compiler/types/template.d.ts` — AST node shape, optional fields, union variants
+   - `crates/svelte_ast/src/lib.rs` — what AST types we already have
 
-**Agent 2 — Analysis**
-- `reference/compiler/phases/2-analyze/visitors/` — metadata, flags, special conditions
-- `crates/svelte_analyze/src/` — what analysis passes we already have
+2. **Agent 2 — Analysis**
+   - `reference/compiler/phases/2-analyze/visitors/` — metadata, flags, special conditions
+   - `crates/svelte_analyze/src/` — what analysis passes we already have
 
-**Agent 3 — Codegen**
-- `reference/compiler/phases/3-transform/client/visitors/` — codegen branches, edge case handling
-- Focus on: `if`/`switch` branches (each = distinct use case), runtime `$.helper()` calls, diagnostics
+3. **Agent 3 — Codegen**
+   - `reference/compiler/phases/3-transform/client/visitors/` — codegen branches, edge case handling
+   - Focus on: `if`/`switch` branches (each = distinct use case), runtime `$.helper()` calls, diagnostics
+   - When reading reference codegen, extract ONLY: what runtime functions are called, with what arguments, in what order. Ignore the visitor dispatch structure.
 
-**Agent 4 — Existing codebase**
-- `tasks/compiler_tests/cases2/` — which test cases already cover this feature
-- `crates/svelte_codegen_client/src/` — what's already implemented
+4. **Agent 4 — Existing codebase**
+   - `tasks/compiler_tests/cases2/` — which test cases already cover this feature
+   - `crates/svelte_codegen_client/src/` — what's already implemented
 
-**Agent 5 — Test examples**
-- `reference/compiler/tests/` — snapshot inputs and expected outputs for this feature
-- Search for the feature name (and aliases) across all reference files to catch cross-cutting concerns
+5. **Agent 5 — Test examples**
+   - `reference/compiler/tests/` — snapshot inputs and expected outputs for this feature
+   - Search for the feature name (and aliases) across all reference files to catch cross-cutting concerns
 
-After all agents complete, synthesize findings: what the feature requires end-to-end, what's already done, what's missing.
+After all agents complete, synthesize findings from agent results only. Do not read additional files at this step — note gaps in the plan instead. Output: what the feature requires end-to-end, what's already done, what's missing.
 
 ### Step 2: Use-case checklist
 
@@ -83,7 +84,7 @@ Produce a structured list grouped by category. Example:
 
 Number every case. Mark which are already handled (from Agent 4 findings).
 
-Present cases in **batches of up to 4** via `AskUserQuestion` with `multiSelect: true`, one round per category. After all rounds:
+If 10 or fewer use cases total — present all at once. If more than 10 — present in batches of up to 4 per category via `AskUserQuestion` with `multiSelect: true`. After all rounds:
 
 ```
 Selected for porting (N cases): ...
@@ -99,11 +100,13 @@ Produce a concrete plan:
 - Specific changes per layer: new types, new functions, modified match arms
 - Order: AST types → parser → analysis → codegen
 
+If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
+
 **Present the plan and wait for approval before proceeding.**
 
 ---
 
-## EXECUTE PHASE (steps 4–9)
+## EXECUTE PHASE (steps 4–8)
 
 Start here after plan approval. Steps are sequential — run tests before moving to the next step.
 
@@ -114,12 +117,14 @@ Check current branch:
 git branch --show-current
 ```
 
-- If already on a feature branch (not `master`): continue on the current branch
+- If on a `claude/*` branch: stay on it — this is a Claude Code managed branch
+- If on any other non-`master` branch: switch to master first, then create a new branch
 - If on `master`: create a feature branch:
   ```
   git checkout master && git pull && git checkout -b port/<item>-<short-name>
   ```
-  Then verify with `git branch --show-current`. If still on master, stop and fix before proceeding.
+
+Verify with `git branch --show-current`. If still on master, stop and fix before proceeding. Never commit directly to master.
 
 ### Step 5: Test cases
 
@@ -127,9 +132,9 @@ Create one test case per selected use case from Step 2:
 1. `tasks/compiler_tests/cases2/<feature>_<variant>/case.svelte` — minimal component for that use case
 2. Add test in `tasks/compiler_tests/test_v3.rs`: `#[rstest] fn <test_name>() { assert_compiler("<test_name>"); }`
 
-After creating ALL case files, run `just generate` ONCE to generate all `case-svelte.js` files. If it fails, stop and report.
+After creating ALL case files, run `just generate` ONCE to generate all `case-svelte.js` files. If it fails, stop and report. Do not attempt to fix the generator.
 
-After generation, read each `case-svelte.js` and verify the output matches expectations from Step 1 research (correct runtime calls, correct structure). If the output looks wrong, fix `case.svelte` now — before implementing anything.
+After generation, read each `case-svelte.js` and verify the output matches expectations from Step 1 research (correct runtime calls, correct structure). If the output looks wrong, fix `case.svelte` now — before implementing anything. If the reference compiler output itself looks incorrect (bug in reference), note it and ask how to proceed.
 
 Rules:
 - **NEVER edit `case-svelte.js` or `case-rust.js`** — these are generated
@@ -143,46 +148,43 @@ If new syntax is needed (identified in Step 3):
 2. Add parsing to `crates/svelte_parser/src/lib.rs`
 3. Add parser tests following `/test-pattern`
 
-### Step 7: Analysis
+### Step 7: Analysis & Codegen
 
 If new metadata is needed (identified in Step 3):
 1. Add or extend a pass in `crates/svelte_analyze/src/`
 2. Add analyze tests following `/test-pattern`
 
-### Step 8: Codegen
-
-Implement in the corresponding `svelte_codegen_client` module (see navigation table in CLAUDE.md).
+Implement codegen in the corresponding `svelte_codegen_client` module (see navigation table in CLAUDE.md).
 
 Key differences from Svelte:
 - Direct recursive functions, not AST walker (zimmerframe)
 - `AnalysisData` side tables, not mutated AST metadata
 - Store `Span`, re-parse in codegen via `svelte_js` — not stored expressions
 
-### Step 9: Verify
+### Step 8: Verify & Finalize
 
-Run each test case:
+**Verify each test case individually:**
 ```
 just test-case <test_name>
 ```
 
-Then run all tests:
+**Cross-check against Step 2 checklist:** confirm every selected use case has a passing test. If any are missing, add them now.
+
+**Run full suite:**
 ```
 just test-compiler
 ```
 
 If a test fails after 3 attempts, stop and report what you tried. Do NOT fix other tests in the same run.
 
-### Step 10: Update tracking
+**If implementation failed and cannot be completed:** run `git stash` to save partial work, report what was done and what remains. Do not leave a broken state on the branch.
 
+**Update tracking:**
 - Move completed feature to **Done ✅** in `ROADMAP.md`
 - Add any newly discovered deferred items to **Deferred** section
 
-### Step 11: Benchmark
-
-If the feature adds new syntax (new AST node types, block types, directive types):
+**Benchmark** (only if the feature adds new syntax — new AST node types, block types, directive types):
 1. Add the construct to `tasks/generate_benchmark/src/main.rs`
 2. Generate new `big_vN.svelte`: `just generate-benchmark big_vN`
 3. Verify: `cargo bench -p benchmark -- --test`
 4. Do NOT modify previous `big_vN.svelte` files
-
-Skip if the feature only changes codegen output without new syntax.
