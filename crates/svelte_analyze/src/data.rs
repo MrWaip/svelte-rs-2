@@ -179,6 +179,21 @@ impl ConstTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// DebugTag per-fragment grouping.
+pub struct DebugTagData {
+    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+}
+
+impl DebugTagData {
+    pub fn new() -> Self {
+        Self {
+            by_fragment: FxHashMap::default(),
+        }
+    }
+
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+}
+
 // ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
@@ -213,6 +228,8 @@ pub struct AnalysisData {
     pub snippets: SnippetData,
     /// ConstTag declared names and per-fragment grouping.
     pub const_tags: ConstTagData,
+    /// DebugTag per-fragment grouping.
+    pub debug_tags: DebugTagData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
 }
@@ -234,6 +251,7 @@ impl AnalysisData {
             fragments: FragmentData::new(),
             snippets: SnippetData::new(),
             const_tags: ConstTagData::new(),
+            debug_tags: DebugTagData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
         }
     }

@@ -122,6 +122,7 @@ impl_node_enum! {
     RenderTag(RenderTag)         => is_render_tag / as_render_tag,
     HtmlTag(HtmlTag)             => is_html_tag / as_html_tag,
     ConstTag(ConstTag)           => is_const_tag / as_const_tag,
+    DebugTag(DebugTag)           => is_debug_tag / as_debug_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
     SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
@@ -300,6 +301,17 @@ pub struct ConstTag {
     pub span: Span,
     /// Span of the declaration text: `doubled = item * 2` in `{@const doubled = item * 2}`.
     pub declaration_span: Span,
+}
+
+// ---------------------------------------------------------------------------
+// DebugTag — {@debug vars}
+// ---------------------------------------------------------------------------
+
+pub struct DebugTag {
+    pub id: NodeId,
+    pub span: Span,
+    /// Spans of the identifier names. Empty vec means `{@debug}` (debug all).
+    pub identifiers: Vec<Span>,
 }
 
 // ---------------------------------------------------------------------------

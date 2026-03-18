@@ -19,6 +19,7 @@ pub enum TokenType {
     RenderTag(RenderTagToken),
     HtmlTag(HtmlTagToken),
     ConstTag(ConstTagToken),
+    DebugTag(DebugTagToken),
     StartKeyTag(StartKeyTag),
     EndKeyTag,
     StartAwaitTag(StartAwaitTag),
@@ -213,6 +214,11 @@ pub struct HtmlTagToken {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConstTagToken {
     pub declaration_span: Span,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct DebugTagToken {
+    pub identifiers: Vec<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

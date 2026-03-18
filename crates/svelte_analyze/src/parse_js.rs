@@ -252,7 +252,7 @@ fn walk_node<'a>(
             walk_attrs(alloc, &b.attributes, component, data, parsed, diags);
             walk_fragment(alloc, &b.fragment, component, data, parsed, diags);
         }
-        Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
+        Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
