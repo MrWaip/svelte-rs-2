@@ -12,7 +12,7 @@ source: &str
   → svelte_codegen_client::generate → String (JS)
 ```
 
-Entry point: `svelte_compiler::compile(source: &str) -> Result<CompileResult, Diagnostic>`
+Entry point: `svelte_compiler::compile(source: &str, options: &CompileOptions) -> CompileResult`
 
 ---
 
@@ -380,10 +380,12 @@ fn transform_component<'a>(
 `crates/svelte_compiler/src/lib.rs`
 
 ```rust
-struct CompileResult { pub js: String }
-fn compile(source: &str) -> Result<CompileResult, Diagnostic>
+struct CompileResult { pub js: Option<String>, pub diagnostics: Vec<Diagnostic> }
+struct CompileOptions { dev, filename, name, custom_element, namespace, css, runes, ... }
+struct ModuleCompileOptions { dev, filename }
+fn compile(source: &str, options: &CompileOptions) -> CompileResult
 // = parse → analyze → (fatal diag check) → transform → generate
-fn compile_module(source: &str) -> Result<CompileResult, Diagnostic>
+fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileResult
 // = OXC parse → analyze_module → rune transforms → JS output (no template/CSS)
 ```
 

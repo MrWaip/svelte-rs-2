@@ -129,6 +129,7 @@ pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
     pub analysis: &'a AnalysisData,
+    pub name: &'a str,
     /// Data produced by the transform phase (e.g. tmp names for destructured const tags).
     pub transform_data: TransformData,
     /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
@@ -162,13 +163,16 @@ impl<'a> Ctx<'a> {
         parsed: &'a mut ParsedExprs<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
+        name: &str,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
+        let name = allocator.alloc_str(name);
 
         Self {
             b: Builder::new(allocator),
             component,
             analysis,
+            name,
             transform_data,
             parsed,
             ident_gen,

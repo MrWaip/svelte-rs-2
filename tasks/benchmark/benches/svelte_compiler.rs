@@ -13,8 +13,9 @@ fn bench_svelte_compiler(criterion: &mut Criterion) {
         let source = read_to_string(&path).unwrap();
         let id = BenchmarkId::from_parameter(path.display().to_string());
 
+        let opts = svelte_compiler::CompileOptions::default();
         group.bench_function(id, |b| {
-            b.iter(|| svelte_compiler::compile(&source));
+            b.iter(|| svelte_compiler::compile(&source, &opts));
         });
     }
 
