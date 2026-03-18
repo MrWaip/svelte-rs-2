@@ -230,10 +230,11 @@ impl<'a> Ctx<'a> {
 
     pub fn is_dynamic(&self, id: NodeId) -> bool { self.analysis.is_dynamic(id) }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.analysis.is_elseif_alt(id) }
-    pub fn is_mutable_rune(&self, name: &str) -> bool {
-        let root = self.analysis.scoping.root_scope_id();
-        self.analysis.scoping.find_binding(root, name)
-            .is_some_and(|sym| self.analysis.scoping.is_rune(sym) && self.analysis.scoping.is_mutated(sym))
+    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
+        self.analysis.bind_semantics.is_mutable_rune_target(id)
+    }
+    pub fn is_prop_source_node(&self, id: NodeId) -> bool {
+        self.analysis.bind_semantics.is_prop_source(id)
     }
     pub fn is_import(&self, name: &str) -> bool {
         let root = self.analysis.scoping.root_scope_id();

@@ -194,6 +194,39 @@ impl DebugTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// Pre-computed bind/directive semantics for codegen.
+///
+/// Eliminates string-based symbol re-resolution in codegen: instead of
+/// `source_text(span) → find_binding → is_rune && is_mutated`, codegen
+/// reads pre-computed flags keyed by NodeId.
+pub struct BindSemanticsData {
+    /// Bind directives / class directives / style directives whose target
+    /// is a mutable rune (needs `$.get()`/`$.set()` instead of plain access).
+    /// Key: directive NodeId.
+    pub(crate) mutable_rune_targets: FxHashSet<NodeId>,
+    /// Nodes whose expression resolves to a prop source
+    /// (each_block collection, render_tag argument identifiers).
+    /// Key: EachBlock NodeId or RenderTag argument NodeId.
+    pub(crate) prop_source_nodes: FxHashSet<NodeId>,
+}
+
+impl BindSemanticsData {
+    pub fn new() -> Self {
+        Self {
+            mutable_rune_targets: FxHashSet::default(),
+            prop_source_nodes: FxHashSet::default(),
+        }
+    }
+
+    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
+        self.mutable_rune_targets.contains(&id)
+    }
+
+    pub fn is_prop_source(&self, id: NodeId) -> bool {
+        self.prop_source_nodes.contains(&id)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
@@ -232,6 +265,8 @@ pub struct AnalysisData {
     pub debug_tags: DebugTagData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
+    pub bind_semantics: BindSemanticsData,
 }
 
 impl AnalysisData {
@@ -253,6 +288,7 @@ impl AnalysisData {
             const_tags: ConstTagData::new(),
             debug_tags: DebugTagData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
+            bind_semantics: BindSemanticsData::new(),
         }
     }
 }

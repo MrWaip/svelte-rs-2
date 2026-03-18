@@ -156,6 +156,9 @@ fn gen_window_binding<'a>(
     bind: &svelte_ast::BindDirective,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    // Pre-computed by analysis — no string-based symbol re-resolution needed.
+    let is_rune = ctx.is_mutable_rune_target(bind.id);
+
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
@@ -164,8 +167,8 @@ fn gen_window_binding<'a>(
         return;
     };
 
-    let build_getter = |ctx: &mut Ctx<'a>, var: &str| -> Expression<'a> {
-        let body = if ctx.is_mutable_rune(var) {
+    let build_getter = |ctx: &mut Ctx<'a>, var: &str, is_rune: bool| -> Expression<'a> {
+        let body = if is_rune {
             ctx.b.call_expr("$.get", [Arg::Ident(var)])
         } else {
             ctx.b.rid_expr(var)
@@ -175,8 +178,8 @@ fn gen_window_binding<'a>(
 
     // Window binding setters use `$.set(var, $$value, true)` — the `true` prevents
     // re-triggering reactivity within the binding's own effect.
-    let build_setter = |ctx: &mut Ctx<'a>, var: String| -> Expression<'a> {
-        let body = if ctx.is_mutable_rune(&var) {
+    let build_setter = |ctx: &mut Ctx<'a>, var: String, is_rune: bool| -> Expression<'a> {
+        let body = if is_rune {
             ctx.b.call_expr("$.set", [
                 Arg::Ident(&var),
                 Arg::Ident("$$value"),
@@ -194,8 +197,8 @@ fn gen_window_binding<'a>(
     let stmt = match bind.name.as_str() {
         "scrollX" | "scrollY" => {
             let axis = if bind.name == "scrollX" { "x" } else { "y" };
-            let getter = build_getter(ctx, &var_name);
-            let setter = build_setter(ctx, var_name);
+            let getter = build_getter(ctx, &var_name, is_rune);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_window_scroll", [
                 Arg::Str(axis.to_string()),
                 Arg::Expr(getter),
@@ -203,18 +206,18 @@ fn gen_window_binding<'a>(
             ])
         }
         "innerWidth" | "innerHeight" | "outerWidth" | "outerHeight" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_window_size", [
                 Arg::Str(bind.name.clone()),
                 Arg::Expr(setter),
             ])
         }
         "online" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_online", [Arg::Expr(setter)])
         }
         "devicePixelRatio" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("devicePixelRatio".to_string()),
                 Arg::Str("resize".to_string()),
