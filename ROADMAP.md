@@ -209,7 +209,7 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Codegen**: Events → `$.event($.document.body, ...)`. Supports `use:action`.
 - **Constraint**: Top-level only, no children
 
-### `<svelte:boundary>` — Error boundary (Svelte 5.3+)
+### ~~`<svelte:boundary>` — Error boundary (Svelte 5.3+)~~ ✅
 - **Phases**: P, A, T
 - **AST**: `Node::SvelteBoundary { id, span, attributes, fragment }`
 - **Snippets**: `failed` (receives error + reset), `pending` (initial loading)
@@ -473,6 +473,15 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: no children allowed (`disallow_children`)
 - [ ] Validation: only allowed at root level (not nested)
 - [ ] Validation: only one `<svelte:body>` per component
+
+### `<svelte:boundary>` (Tier 5)
+- [ ] Attribute validation: reject non-`onerror`/`failed`/`pending` attrs (`svelte_boundary_invalid_attribute`)
+- [ ] Attribute value validation: reject string/boolean values (`svelte_boundary_invalid_attribute_value`)
+- [ ] `@const` duplication into hoisted snippets (reference compiler duplicates const tags inside `failed`/`pending` snippets)
+- [ ] Import reactivity: imported identifiers used in boundary attributes should generate getters (`has_state`)
+- [ ] `experimental.async` handling for const tag scoping changes
+- [ ] Dev mode: snippet wrapping with `$.wrap_snippet`
+- [ ] Handler wrapping for snippet params used as event handlers (`function(...$$args) { reset()?.apply(this, $$args) }`)
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis

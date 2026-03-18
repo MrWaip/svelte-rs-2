@@ -181,6 +181,9 @@ fn register_snippet_params(
             svelte_ast::Node::SvelteElement(el) => {
                 register_snippet_params(&el.fragment, component, data);
             }
+            svelte_ast::Node::SvelteBoundary(b) => {
+                register_snippet_params(&b.fragment, component, data);
+            }
             _ => {}
         }
     }
