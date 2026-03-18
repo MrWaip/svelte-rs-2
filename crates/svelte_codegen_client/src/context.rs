@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 use svelte_transform::TransformData;
@@ -19,6 +19,7 @@ struct NodeIndex<'a> {
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
     const_tags: FxHashMap<NodeId, &'a ConstTag>,
     svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
+    svelte_boundaries: FxHashMap<NodeId, &'a SvelteBoundary>,
     svelte_windows: FxHashMap<NodeId, &'a SvelteWindow>,
     svelte_documents: FxHashMap<NodeId, &'a SvelteDocument>,
     svelte_bodies: FxHashMap<NodeId, &'a SvelteBody>,
@@ -36,6 +37,7 @@ impl<'a> NodeIndex<'a> {
             render_tags: FxHashMap::default(),
             const_tags: FxHashMap::default(),
             svelte_elements: FxHashMap::default(),
+            svelte_boundaries: FxHashMap::default(),
             svelte_windows: FxHashMap::default(),
             svelte_documents: FxHashMap::default(),
             svelte_bodies: FxHashMap::default(),
@@ -90,6 +92,10 @@ impl<'a> NodeIndex<'a> {
                 Node::SvelteElement(el) => {
                     self.svelte_elements.insert(el.id, el);
                     self.walk(&el.fragment);
+                }
+                Node::SvelteBoundary(b) => {
+                    self.svelte_boundaries.insert(b.id, b);
+                    self.walk(&b.fragment);
                 }
                 Node::SvelteWindow(w) => {
                     self.svelte_windows.insert(w.id, w);
@@ -171,6 +177,7 @@ impl<'a> Ctx<'a> {
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(&self.index.svelte_elements, id, "svelte element") }
+    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(&self.index.svelte_boundaries, id, "svelte boundary") }
     pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(&self.index.svelte_windows, id, "svelte window") }
     pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(&self.index.svelte_documents, id, "svelte document") }
     pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(&self.index.svelte_bodies, id, "svelte body") }

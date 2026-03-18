@@ -183,6 +183,12 @@ fn walk_node<'a>(
         Node::SvelteBody(b) => {
             transform_attrs(ctx, &b.attributes, parsed, scope);
         }
+        Node::SvelteBoundary(b) => {
+            transform_attrs(ctx, &b.attributes, parsed, scope);
+            with_alias_scope(ctx, |ctx| {
+                walk_fragment(ctx, &b.fragment, component, parsed, scope);
+            });
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
