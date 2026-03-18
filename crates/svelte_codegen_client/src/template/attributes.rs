@@ -757,6 +757,17 @@ pub(crate) fn process_attrs_spread<'a>(
 // use:action directive codegen
 // ---------------------------------------------------------------------------
 
+/// Generate `$.action(target, ...)` for `use:action` on special elements (svelte:body, etc.).
+pub(crate) fn gen_use_directive_on<'a>(
+    ctx: &mut Ctx<'a>,
+    ud: &svelte_ast::UseDirective,
+    attr_id: NodeId,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+) {
+    gen_use_directive(ctx, ud, attr_id, el_name, init);
+}
+
 /// Generate `$.action(el, ($$node) => name?.($$node), () => expr)`.
 /// Reference: `UseDirective.js`.
 fn gen_use_directive<'a>(

@@ -1,7 +1,7 @@
 use oxc_semantic::{ReferenceFlags as OxcReferenceFlags, ScopeId};
 use svelte_ast::{
     Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock,
-    KeyBlock, NodeId, RenderTag, SvelteDocument, SvelteElement, SvelteWindow,
+    KeyBlock, NodeId, RenderTag, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
 use crate::data::AnalysisData;
@@ -178,6 +178,17 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
             if let Attribute::BindDirective(dir) = attr {
                 self.resolve_bind(dir, scope, data);
             }
+        }
+    }
+
+    fn visit_svelte_body(
+        &mut self,
+        body: &SvelteBody,
+        scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        for attr in &body.attributes {
+            resolve_attr_refs(attr.id(), scope, data);
         }
     }
 }

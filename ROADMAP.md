@@ -79,6 +79,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `<svelte:head>` — document head insertion
 - [x] `<svelte:window>` — window events (`on:`, `onscroll`), bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
 - [x] `<svelte:document>` — document events (`on:`, `onkeydown`), bindings (`activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState`)
+- [x] `<svelte:body>` — body events (`on:`, `onclick`), actions (`use:action`)
 
 ### Module compilation
 - [x] `compile_module()` entry point + `analyze_module()` + WASM export
@@ -203,12 +204,10 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Constraint**: Top-level only, no children
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteDocument.js`
 
-### `<svelte:body>` — Body events & actions
+### ~~`<svelte:body>` — Body events & actions~~ ✅
 - **Phases**: P, A, T
-- **Codegen**: Events → `$.event($.body, ...)`. Supports `use:action`.
+- **Codegen**: Events → `$.event($.document.body, ...)`. Supports `use:action`.
 - **Constraint**: Top-level only, no children
-- **Deps**: `use:action` (done)
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteBody.js`
 
 ### `<svelte:boundary>` — Error boundary (Svelte 5.3+)
 - **Phases**: P, A, T
@@ -468,6 +467,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] HMR support — `$.hmr()` wrapper, `import.meta.hot.accept()`
 - [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
 - [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
+
+### `<svelte:body>` (Tier 5)
+- [ ] Validation: only event attributes and directives allowed (reject non-event attrs, spreads)
+- [ ] Validation: no children allowed (`disallow_children`)
+- [ ] Validation: only allowed at root level (not nested)
+- [ ] Validation: only one `<svelte:body>` per component
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
