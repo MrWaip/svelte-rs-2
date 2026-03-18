@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteElement};
+use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 use svelte_transform::TransformData;
@@ -19,6 +19,7 @@ struct NodeIndex<'a> {
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
     const_tags: FxHashMap<NodeId, &'a ConstTag>,
     svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
+    svelte_windows: FxHashMap<NodeId, &'a SvelteWindow>,
     expr_spans: FxHashMap<NodeId, Span>,
 }
 
@@ -33,6 +34,7 @@ impl<'a> NodeIndex<'a> {
             render_tags: FxHashMap::default(),
             const_tags: FxHashMap::default(),
             svelte_elements: FxHashMap::default(),
+            svelte_windows: FxHashMap::default(),
             expr_spans: FxHashMap::default(),
         };
         index.walk(fragment);
@@ -84,6 +86,9 @@ impl<'a> NodeIndex<'a> {
                 Node::SvelteElement(el) => {
                     self.svelte_elements.insert(el.id, el);
                     self.walk(&el.fragment);
+                }
+                Node::SvelteWindow(w) => {
+                    self.svelte_windows.insert(w.id, w);
                 }
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
@@ -156,6 +161,7 @@ impl<'a> Ctx<'a> {
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(&self.index.svelte_elements, id, "svelte element") }
+    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(&self.index.svelte_windows, id, "svelte window") }
     fn get_node<T>(&self, map: &FxHashMap<NodeId, &'a T>, id: NodeId, label: &str) -> &'a T {
         map.get(&id).copied()
             .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id))

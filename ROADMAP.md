@@ -77,6 +77,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ### Special elements
 - [x] `<svelte:options>` — compiler options tag (parser + validation)
 - [x] `<svelte:head>` — document head insertion
+- [x] `<svelte:window>` — window events (`on:`, `onscroll`), bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
 
 ### Module compilation
 - [x] `compile_module()` entry point + `analyze_module()` + WASM export
@@ -190,22 +191,11 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - [ ] `svelte:element` with `class:` directives *(deferred)*
 - [ ] `svelte:element` with `style:` directives *(deferred)*
 
-### `<svelte:window>` — Window events & bindings
+### ~~`<svelte:window>` — Window events & bindings~~ ✅
 - **Phases**: P, A, T
-- **Codegen**: Events → `$.event($.window, ...)`. Bindings → see table below
+- **Codegen**: Events → `$.event($.window, ...)`. Bindings → `$.bind_window_scroll`, `$.bind_window_size`, `$.bind_online`, `$.bind_property`
 - **Constraint**: Top-level only, no children
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteWindow.js`
-
-| Binding | Runtime |
-|---------|---------|
-| `bind:scrollX` | `$.bind_window_scroll("x", get, set)` |
-| `bind:scrollY` | `$.bind_window_scroll("y", get, set)` |
-| `bind:innerWidth` | `$.bind_window_size("innerWidth", set)` |
-| `bind:innerHeight` | `$.bind_window_size("innerHeight", set)` |
-| `bind:outerWidth` | `$.bind_window_size("outerWidth", set)` |
-| `bind:outerHeight` | `$.bind_window_size("outerHeight", set)` |
-| `bind:online` | `$.bind_online(set)` |
-| `bind:devicePixelRatio` | `$.bind_window_size("devicePixelRatio", set)` |
 
 ### `<svelte:document>` — Document events & bindings
 - **Phases**: P, A, T
@@ -434,7 +424,6 @@ Items discovered during porting but not critical for the feature to work. Groupe
 
 ### Bind directives (Tier 3)
 - [ ] `bind:property={get, set}` — function bindings (Svelte 5)
-- [ ] Window bindings (`scrollX`, `scrollY`, `innerWidth`, etc.) — blocked on `<svelte:window>` (Tier 5)
 - [ ] Document bindings (`activeElement`, `fullscreenElement`, etc.) — blocked on `<svelte:document>` (Tier 5)
 
 ### `use:action` (Tier 4)
@@ -455,6 +444,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 ### `<svelte:options>` (Tier 5)
 - [ ] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties (expression span stored, analysis-phase parsing needed)
 - [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
+
+### `<svelte:window>` (Tier 5)
+- [ ] Validation: only allowed at root level (not nested)
+- [ ] Validation: no children allowed (diagnostic)
+- [ ] Validation: no spread attributes, only event/bind directives
+- [ ] Validation: only one `<svelte:window>` per component
 
 ### `<svelte:head>` (Tier 5)
 - [ ] Validation: only allowed at root level
@@ -477,5 +472,5 @@ Items discovered during porting but not critical for the feature to work. Groupe
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
-- [ ] SvelteDocument/SvelteWindow/SvelteBody routing: events on special elements should go to `init` not `after_update`. Blocked on Tier 5
+- [ ] SvelteDocument/SvelteBody routing: events on special elements should go to `init` not `after_update`. Blocked on Tier 5
 - [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers. Blocked on `dev` compiler option
