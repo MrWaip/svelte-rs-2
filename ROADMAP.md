@@ -61,6 +61,8 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] Passive auto-detection — `ontouchstart={h}` → auto `passive: true` for touch events
 - [x] Handler wrapping — imported identifiers and member expressions wrapped in `function(...$$args) { h?.apply(this, $$args) }`
 - [x] `has_call` memoization — `onclick={getHandler()}` → `$.derived(getHandler)` + `$.get(event_handler)`
+- [x] Component prop memoization — `has_call` and non-simple+dynamic expressions wrapped in `$.derived`/`$.get`
+- [x] Render tag arg memoization — `{@render fn(getArg())}` → `$.derived`/`$.get`
 - [x] `on:event` — legacy event directive (Svelte 4)
 
 ### Bind directives
@@ -131,14 +133,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 
 ## ~~Tier 1c — Event Attributes~~ ✅
 
-## Tier 1d — Expression Memoization (remaining)
-
-Theme: extend `has_call` memoization to component props and render tags.
-
-| # | Feature | Phases | Description |
-|---|---------|--------|-------------|
-| 4 | Integration: component props | T | Memoize non-simple prop expressions with calls |
-| 5 | Integration: render tag args | T | Memoize `{@render fn(getArg())}` |
+## ~~Tier 1d — Expression Memoization~~ ✅
 
 ---
 
@@ -438,9 +433,6 @@ Items discovered during porting but not critical for the feature to work. Groupe
 
 ### Render tag
 - [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
-
-### Event attributes (Tier 1c)
-- [x] ~~Handler memoization for expressions with calls (`has_call`)~~ ✅
 
 ### CSS (Tier 6)
 - [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
