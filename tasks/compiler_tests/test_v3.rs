@@ -507,6 +507,26 @@ fn component_bind_this() {
 }
 
 #[rstest]
+fn component_bind_this_plain() {
+    assert_compiler("component_bind_this_plain");
+}
+
+#[rstest]
+fn component_bind_this_props() {
+    assert_compiler("component_bind_this_props");
+}
+
+#[rstest]
+fn component_bind_this_member() {
+    assert_compiler("component_bind_this_member");
+}
+
+#[rstest]
+fn component_bind_this_each() {
+    assert_compiler("component_bind_this_each");
+}
+
+#[rstest]
 fn bind_focused() {
     assert_compiler("bind_focused");
 }
