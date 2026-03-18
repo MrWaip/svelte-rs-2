@@ -147,6 +147,9 @@ pub struct Ctx<'a> {
     /// Snippet param names for the currently generating snippet body.
     pub snippet_param_names: Vec<String>,
 
+    /// Whether dev-mode features ($inspect, ownership checks, etc.) are enabled.
+    pub dev: bool,
+
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
 
@@ -164,6 +167,7 @@ impl<'a> Ctx<'a> {
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
         name: &str,
+        dev: bool,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
         let name = allocator.alloc_str(name);
@@ -178,6 +182,7 @@ impl<'a> Ctx<'a> {
             ident_gen,
             module_hoisted: Vec::new(),
             index,
+            dev,
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),

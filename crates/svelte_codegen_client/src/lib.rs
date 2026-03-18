@@ -16,13 +16,13 @@ use builder::{Arg, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
     // -----------------------------------------------------------------------
-    let (script_imports, script_body) = script::gen_script(&mut ctx);
+    let (script_imports, script_body) = script::gen_script(&mut ctx, dev);
 
     // -----------------------------------------------------------------------
     // 2. Template generation (consumes "root" ident first)
