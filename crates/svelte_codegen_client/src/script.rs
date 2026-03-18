@@ -775,15 +775,24 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             }
         }
 
-        // Prod strip: remove $inspect(...) and $inspect(...).with(...) statements
+        // Prod strip: $inspect.trace() → remove entirely; $inspect()/$inspect().with() → 2 EmptyStatements
         if !self.dev {
-            stmts.retain(|stmt| {
-                if let Statement::ExpressionStatement(es) = stmt {
-                    !is_inspect_call(&es.expression)
-                } else {
-                    true
+            let mut i = 0;
+            while i < stmts.len() {
+                if let Statement::ExpressionStatement(es) = &stmts[i] {
+                    if is_inspect_trace_call(&es.expression) {
+                        stmts.remove(i);
+                        continue;
+                    }
+                    if is_inspect_call(&es.expression) {
+                        stmts[i] = Statement::EmptyStatement(self.b.ast.alloc_empty_statement(oxc_span::SPAN));
+                        stmts.insert(i + 1, Statement::EmptyStatement(self.b.ast.alloc_empty_statement(oxc_span::SPAN)));
+                        i += 2;
+                        continue;
+                    }
                 }
-            });
+                i += 1;
+            }
         }
 
         // Strip $props.id() declarations (regenerated at top of component fn_body)
