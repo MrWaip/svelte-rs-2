@@ -7,6 +7,7 @@ Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` 
 - Use relative paths from project root, not absolute paths
 - Use `rg` over `find -exec` / `grep -r` where possible
 - Use `find ... -exec cmd {} +` instead of `find ... -exec cmd {} \;`
+- Avoid $() command substitution in one-liners — use pipes or split into separate commands
 
 ## Testing
 
