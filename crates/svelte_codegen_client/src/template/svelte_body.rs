@@ -104,20 +104,36 @@ fn gen_legacy_event<'a>(
     stmts.push(ctx.b.call_stmt("$.event", args));
 }
 
-/// Svelte 5 event attribute `onclick={handler}` → `$.event("click", $.document.body, handler)`.
+/// Svelte 5 event attribute → `$.event(name, $.document.body, handler [, capture] [, passive])`.
 fn gen_event_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr_id: NodeId,
-    event_name: &str,
+    raw_event_name: &str,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let handler = get_attr_expr(ctx, attr_id);
+    let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
+        (base.to_string(), true)
+    } else {
+        (raw_event_name.to_string(), false)
+    };
 
-    stmts.push(ctx.b.call_stmt("$.event", [
-        Arg::Str(event_name.to_string()),
+    let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+    let handler_expr = get_attr_expr(ctx, attr_id);
+    let handler = super::attributes::build_event_handler_s5(ctx, handler_expr, has_call, stmts);
+
+    let passive = svelte_js::is_passive_event(&event_name);
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Str(event_name),
         Arg::Ident("$.document.body"),
         Arg::Expr(handler),
-    ]));
+    ];
+    if capture || passive {
+        args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
+    }
+    if passive {
+        args.push(Arg::Bool(true));
+    }
+    stmts.push(ctx.b.call_stmt("$.event", args));
 }
 
 /// Build event handler for legacy on:directive (non-dev mode).

@@ -28,6 +28,7 @@ pub struct ExpressionInfo {
     pub kind: ExpressionKind,
     pub references: Vec<Reference>,
     pub has_side_effects: bool,
+    pub has_call: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -635,34 +636,48 @@ fn is_simple_expr(expr: &Expression<'_>) -> bool {
 pub fn is_delegatable_event(name: &str) -> bool {
     matches!(
         name,
-        "click"
-            | "input"
+        "beforeinput"
+            | "click"
             | "change"
-            | "submit"
-            | "focus"
-            | "blur"
-            | "keydown"
-            | "keyup"
-            | "keypress"
-            | "mousedown"
-            | "mouseup"
-            | "mousemove"
-            | "mouseenter"
-            | "mouseleave"
-            | "mouseover"
-            | "mouseout"
-            | "touchstart"
-            | "touchend"
-            | "touchmove"
-            | "pointerdown"
-            | "pointerup"
-            | "pointermove"
-            | "focusin"
-            | "focusout"
             | "dblclick"
             | "contextmenu"
-            | "auxclick"
+            | "focusin"
+            | "focusout"
+            | "input"
+            | "keydown"
+            | "keyup"
+            | "mousedown"
+            | "mousemove"
+            | "mouseout"
+            | "mouseover"
+            | "mouseup"
+            | "pointerdown"
+            | "pointermove"
+            | "pointerout"
+            | "pointerover"
+            | "pointerup"
+            | "touchend"
+            | "touchmove"
+            | "touchstart"
     )
+}
+
+pub fn is_capture_event(name: &str) -> bool {
+    name.ends_with("capture")
+        && name != "gotpointercapture"
+        && name != "lostpointercapture"
+}
+
+pub fn strip_capture_event(name: &str) -> Option<&str> {
+    if is_capture_event(name) {
+        Some(&name[..name.len() - 7])
+    } else {
+        None
+    }
+}
+
+pub fn is_passive_event(name: &str) -> bool {
+    matches!(name, "touchstart" | "touchmove")
 }
 
 // ---------------------------------------------------------------------------
@@ -701,10 +716,39 @@ fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo
             | Expression::UpdateExpression(_)
     );
 
+    let has_call = expression_has_call(expr);
+
     ExpressionInfo {
         kind,
         references,
         has_side_effects,
+        has_call,
+    }
+}
+
+fn expression_has_call(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::CallExpression(_) => true,
+        Expression::ConditionalExpression(c) => {
+            expression_has_call(&c.test)
+                || expression_has_call(&c.consequent)
+                || expression_has_call(&c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            expression_has_call(&b.left) || expression_has_call(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            expression_has_call(&l.left) || expression_has_call(&l.right)
+        }
+        Expression::StaticMemberExpression(m) => expression_has_call(&m.object),
+        Expression::ComputedMemberExpression(m) => {
+            expression_has_call(&m.object) || expression_has_call(&m.expression)
+        }
+        Expression::UnaryExpression(u) => expression_has_call(&u.argument),
+        Expression::SequenceExpression(s) => s.expressions.iter().any(|e| expression_has_call(e)),
+        // Function boundaries are opaque
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        _ => false,
     }
 }
 

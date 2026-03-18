@@ -1005,3 +1005,52 @@ fn await_reactive() {
 fn await_nested_content() {
     assert_compiler("await_nested_content");
 }
+
+// ---------------------------------------------------------------------------
+// Event attribute tests (Svelte 5)
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn event_attr_non_delegatable() {
+    assert_compiler("event_attr_non_delegatable");
+}
+
+#[rstest]
+fn event_attr_capture() {
+    assert_compiler("event_attr_capture");
+}
+
+#[rstest]
+fn event_attr_capture_non_deleg() {
+    assert_compiler("event_attr_capture_non_deleg");
+}
+
+#[rstest]
+fn event_attr_gotpointercapture() {
+    assert_compiler("event_attr_gotpointercapture");
+}
+
+#[rstest]
+fn event_attr_passive() {
+    assert_compiler("event_attr_passive");
+}
+
+#[rstest]
+fn event_attr_passive_window() {
+    assert_compiler("event_attr_passive_window");
+}
+
+#[rstest]
+fn event_attr_import_handler() {
+    assert_compiler("event_attr_import_handler");
+}
+
+#[rstest]
+fn event_attr_member_handler() {
+    assert_compiler("event_attr_member_handler");
+}
+
+#[rstest]
+fn event_attr_has_call() {
+    assert_compiler("event_attr_has_call");
+}

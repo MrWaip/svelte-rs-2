@@ -221,6 +221,11 @@ impl<'a> Ctx<'a> {
         self.analysis.scoping.find_binding(root, name)
             .is_some_and(|sym| self.analysis.scoping.is_rune(sym) && self.analysis.scoping.is_mutated(sym))
     }
+    pub fn is_import(&self, name: &str) -> bool {
+        let root = self.analysis.scoping.root_scope_id();
+        self.analysis.scoping.find_binding(root, name)
+            .is_some_and(|sym| self.analysis.scoping.is_import(sym))
+    }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
 

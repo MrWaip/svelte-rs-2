@@ -60,23 +60,49 @@ pub(crate) fn process_attr<'a>(
             return;
         }
         Attribute::ExpressionAttribute(a) => {
-            if let Some(event_name) = a.name.strip_prefix("on") {
-                if svelte_js::is_delegatable_event(event_name) {
-                    let event_str = event_name.to_string();
-                    let val = get_attr_expr(ctx, attr_id);
-                    after_update.push(ctx.b.call_stmt(
-                        "$.delegated",
-                        [
-                            Arg::Str(event_str.clone()),
-                            Arg::Ident(el_name),
-                            Arg::Expr(val),
-                        ],
-                    ));
-                    if !ctx.delegated_events.contains(&event_str) {
-                        ctx.delegated_events.push(event_str);
+            if let Some(raw_event_name) = a.name.strip_prefix("on") {
+                let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
+                    (base.to_string(), true)
+                } else {
+                    (raw_event_name.to_string(), false)
+                };
+
+                let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+                let val = get_attr_expr(ctx, attr_id);
+                let handler = build_event_handler_s5(ctx, val, has_call, init);
+
+                let passive = svelte_js::is_passive_event(&event_name);
+                let delegated = !capture && svelte_js::is_delegatable_event(&event_name);
+
+                if delegated {
+                    let mut args: Vec<Arg<'a, '_>> = vec![
+                        Arg::Str(event_name.clone()),
+                        Arg::Ident(el_name),
+                        Arg::Expr(handler),
+                    ];
+                    if passive {
+                        args.push(Arg::Expr(ctx.b.void_zero_expr()));
+                        args.push(Arg::Bool(true));
                     }
-                    return;
+                    after_update.push(ctx.b.call_stmt("$.delegated", args));
+                    if !ctx.delegated_events.contains(&event_name) {
+                        ctx.delegated_events.push(event_name);
+                    }
+                } else {
+                    let mut args: Vec<Arg<'a, '_>> = vec![
+                        Arg::Str(event_name),
+                        Arg::Ident(el_name),
+                        Arg::Expr(handler),
+                    ];
+                    if capture || passive {
+                        args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
+                    }
+                    if passive {
+                        args.push(Arg::Bool(true));
+                    }
+                    after_update.push(ctx.b.call_stmt("$.event", args));
                 }
+                return;
             }
             let val = get_attr_expr(ctx, attr_id);
             if a.name == "value" && tag_name == "input" {
@@ -975,6 +1001,47 @@ fn gen_on_directive_legacy<'a>(
     }
 
     after_update.push(ctx.b.call_stmt("$.event", args));
+}
+
+/// Build Svelte 5 event attribute handler (non-dev mode).
+/// Reference: `events.js` `build_event_handler()`.
+///
+/// 1. Arrow/Function → pass through
+/// 2. Identifier that is NOT an import → pass through
+/// 3. If `has_call` → memoize with `$.derived`/`$.get`
+/// 4. Remaining → wrap in `function(...$$args) { handler.apply(this, $$args) }`
+pub(crate) fn build_event_handler_s5<'a>(
+    ctx: &mut Ctx<'a>,
+    handler: Expression<'a>,
+    has_call: bool,
+    init: &mut Vec<Statement<'a>>,
+) -> Expression<'a> {
+    match &handler {
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+            return handler;
+        }
+        Expression::Identifier(ident) => {
+            if !ctx.is_import(&ident.name) {
+                return handler;
+            }
+        }
+        _ => {}
+    }
+
+    let mut handler = handler;
+
+    if has_call {
+        let id = ctx.gen_ident("event_handler");
+        let thunk = ctx.b.thunk(handler);
+        init.push(ctx.b.var_stmt(&id, ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])));
+        handler = ctx.b.call_expr("$.get", [Arg::Ident(&id)]);
+    }
+
+    let call = ctx.b.optional_member_call_expr(handler, "apply", [
+        Arg::Expr(ctx.b.this_expr()),
+        Arg::Ident("$$args"),
+    ]);
+    ctx.b.function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)])
 }
 
 /// Build event handler for legacy on:directive (non-dev mode).

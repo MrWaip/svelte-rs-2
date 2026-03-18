@@ -108,6 +108,7 @@ fn parse_concat_parts<'a>(
         kind: ExpressionKind::Other,
         references: all_refs,
         has_side_effects: false,
+        has_call: false,
     };
     data.attr_expressions.insert(attr_id, merged);
 }
@@ -210,6 +211,7 @@ fn walk_node<'a>(
                         kind: ExpressionKind::Other,
                         references,
                         has_side_effects: false,
+                        has_call: false,
                     });
                     parsed.exprs.insert(tag.id, init_expr);
                     data.const_tags.names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());
