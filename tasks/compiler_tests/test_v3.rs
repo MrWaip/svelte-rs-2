@@ -726,6 +726,56 @@ fn svelte_window_reactive() {
 }
 
 #[rstest]
+fn svelte_document_event_legacy() {
+    assert_compiler("svelte_document_event_legacy");
+}
+
+#[rstest]
+fn svelte_document_event_attr() {
+    assert_compiler("svelte_document_event_attr");
+}
+
+#[rstest]
+fn svelte_document_event_modifiers() {
+    assert_compiler("svelte_document_event_modifiers");
+}
+
+#[rstest]
+fn svelte_document_multiple_events() {
+    assert_compiler("svelte_document_multiple_events");
+}
+
+#[rstest]
+fn svelte_document_bubble() {
+    assert_compiler("svelte_document_bubble");
+}
+
+#[rstest]
+fn svelte_document_bind_active_element() {
+    assert_compiler("svelte_document_bind_active_element");
+}
+
+#[rstest]
+fn svelte_document_bind_fullscreen() {
+    assert_compiler("svelte_document_bind_fullscreen");
+}
+
+#[rstest]
+fn svelte_document_bind_visibility() {
+    assert_compiler("svelte_document_bind_visibility");
+}
+
+#[rstest]
+fn svelte_document_bind_pointer_lock() {
+    assert_compiler("svelte_document_bind_pointer_lock");
+}
+
+#[rstest]
+fn svelte_document_combined() {
+    assert_compiler("svelte_document_combined");
+}
+
+#[rstest]
 fn svelte_element_basic() {
     assert_compiler("svelte_element_basic");
 }
