@@ -12,6 +12,8 @@ Determined by `$ARGUMENTS`:
 
 ## Execution
 
+**Read-only.** Agents may run `git diff` and read files. Do not run `cargo test`, `cargo check`, `cargo build`, or any command that modifies the working tree.
+
 Launch agents immediately. Each agent gathers its own context as its first step — no sequential prefetch.
 
 For **default scope**, each agent starts with:
@@ -19,7 +21,10 @@ For **default scope**, each agent starts with:
 git diff master...HEAD --name-only
 git diff --name-only
 ```
+If both diffs are empty (no changes since master), stop and suggest running with `all` instead.
+
 Then reads all changed `.rs` files + their direct parent `mod.rs` or `lib.rs` (one level up only).
+All agents also read `CODEBASE_MAP.md` for type signatures, AnalysisData fields, and module structure — regardless of scope.
 
 For **`all` scope**, each agent reads `CODEBASE_MAP.md` + `lib.rs` of each crate in `crates/`.
 
@@ -37,8 +42,8 @@ Where does a downstream phase figure out something that an upstream phase alread
 **2. Types that lie**
 Where does the type system permit states that the data flow never actually produces? Options that are always Some after a certain phase. Vecs that are never empty. Enums where half the variants are impossible in a given context. Generic parameters used in only one way. The cost: every consumer handles impossible cases, obscuring the real data flow.
 
-**3. Implicit coupling**
-Where do two modules depend on the same assumption about data without it being encoded in a shared type or contract? Symptom: changing one module silently breaks another — not at compile time but at runtime or through wrong output. The cost: invisible breakage.
+**3. Raw handoff**
+Where does analysis collect data but not draw conclusions from it — leaving downstream phases to interpret raw facts? Symptom: codegen or transform contains `if`/`match` logic that decides *what something means* based on fields from AnalysisData, rather than reading a precomputed answer. A HashMap of raw facts exists, but the *business decision* ("this is a reactive binding", "this needs a teardown") is made in codegen instead of analysis. The cost: codegen accumulates domain logic that doesn't belong there, and the same interpretation may be needed in multiple places.
 
 ---
 
@@ -56,7 +61,10 @@ Find:
 - *Abstraction that obscures* — when inlining a wrapper/helper/trait and writing plain code makes the logic easier to follow, the abstraction is not earning its cost.
 - *Hidden sequencing* — steps that must happen in order but nothing enforces it. The fix: make ordering explicit through data dependencies (return value of step N is input of step N+1).
 
-**5. Dead weight**
+**5. Incidental logic**
+Where does a condition or branch exist only because an earlier phase didn't make a clean decision? Symptom: an `if` that checks something the type system could guarantee, a match arm that handles a case impossible at this point in the pipeline, a flag that exists because two unrelated concerns were merged into one code path. The test: can you state what the branch is *for* in one sentence? If the answer is "it handles a case that shouldn't reach here" — the fix is upstream, not a better `if`. The cost: the reader must understand *why* the condition exists, not just *what* it checks, and the answer is often "historical accident".
+
+**6. Dead weight**
 Code that survived its context. Not "unreachable" (the compiler catches that) — but code that is technically reachable yet pointless. A function parameter every caller passes the same value. A struct field always equal to one value. A match arm that does the same as default. An enum variant never handled differently from its siblings. The cost: noise that slows down every future reader.
 
 ---
@@ -65,14 +73,17 @@ Code that survived its context. Not "unreachable" (the compiler catches that) �
 
 Whether decisions are made in the right place. Focus on **where logic lives** — not what data flows (that's Agent 1), but which phase owns which decision.
 
-**6. Wrong phase, wrong abstraction level**
+**7. Wrong phase, wrong abstraction level**
 Where does a phase work at an abstraction level that isn't its job? Analysis stringifying things. Codegen re-deriving semantic information. Transform making decisions based on output format. Symptom: a function needs to import types from two non-adjacent phases. The cost: phases can't evolve independently.
 
-**7. Scattered ownership**
+**8. Scattered ownership**
 Where is a single conceptual decision owned by nobody — instead, pieces of it live in 3+ places across different phases? Distinct from "wrong phase" (one thing in the wrong place) — this is about a decision that has no single home at all. Symptom: to add a new variant, you must touch 3+ files in lockstep with no type or contract guiding you. The cost: every new feature requires a scavenger hunt.
 
-**8. Naming that misleads**
+**9. Naming that misleads**
 Not bad style — names that actively lie about what the code does. A function called `analyze_*` that also mutates. A variable called `attributes` holding filtered attributes. A type called `Context` that is really the entire codegen state. A module called `utils` that became a dumping ground. The cost: the reader builds a wrong mental model and carries it forward.
+
+**10. Implicit coupling**
+Where do two modules depend on the same assumption without it being encoded in a shared type or contract? Symptom: changing one module silently breaks another — not at compile time but at runtime or through wrong output. This is about *contracts between boundaries*, not data shape (that's Agent 1). The cost: invisible breakage that no test catches until production.
 
 ---
 
@@ -102,16 +113,17 @@ For each finding:
 
 After all agents complete, merge their findings into one ranked report.
 
-1. **Rank** by: how many downstream workarounds or unnecessary checks would disappear if the root cause were fixed
-2. **Include all findings** — no limit
-3. Skip: clippy-level issues, formatting, import ordering, style preferences
+1. **Deduplicate**: if two agents flagged the same code location, merge into one finding — pick the dimension that best describes the root cause
+2. **Rank** by: how many downstream workarounds or unnecessary checks would disappear if the root cause were fixed
+3. **Include all findings** — no limit
+4. Skip: clippy-level issues, formatting, import ordering, style preferences
 
 For each finding:
 
 ```
 ### #N — [One-line title]
 
-**Dimension**: [which of the 8 dimensions]
+**Dimension**: [which of the 10 dimensions]
 **Severity**: critical | warning | suggestion
 **Evidence**:
 - `file_path:line` — what happens here
