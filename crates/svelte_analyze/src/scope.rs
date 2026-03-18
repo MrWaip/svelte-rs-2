@@ -21,8 +21,10 @@ pub struct Rune {
 pub struct ComponentScoping {
     scoping: Scoping,
     runes: FxHashMap<SymbolId, Rune>,
-    /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks, snippets).
+    /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks, snippets, await then).
     node_scopes: FxHashMap<NodeId, ScopeId>,
+    /// AwaitBlock NodeId → ScopeId for the catch fragment (separate from node_scopes which stores then scope).
+    await_catch_scopes: FxHashMap<NodeId, ScopeId>,
     // SymbolId-keyed classification fields (single source of truth for semantic decisions)
     prop_source_syms: FxHashSet<SymbolId>,
     prop_non_source_names: FxHashMap<SymbolId, String>,
@@ -39,6 +41,7 @@ impl ComponentScoping {
             scoping,
             runes: FxHashMap::default(),
             node_scopes: FxHashMap::default(),
+            await_catch_scopes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
             store_syms: FxHashMap::default(),
@@ -72,6 +75,14 @@ impl ComponentScoping {
 
     pub fn set_node_scope(&mut self, node_id: NodeId, scope_id: ScopeId) {
         self.node_scopes.insert(node_id, scope_id);
+    }
+
+    pub fn set_await_catch_scope(&mut self, node_id: NodeId, scope_id: ScopeId) {
+        self.await_catch_scopes.insert(node_id, scope_id);
+    }
+
+    pub fn await_catch_scope(&self, node_id: NodeId) -> Option<ScopeId> {
+        self.await_catch_scopes.get(&node_id).copied()
     }
 
     // -- Symbol management --
@@ -254,6 +265,32 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::m
     crate::markers::ScopingBuilt::new()
 }
 
+/// Extract binding names from a pattern string.
+/// Simple identifiers return themselves; destructured patterns like `{ name, age }` extract identifiers.
+fn extract_binding_names(pattern: &str) -> Vec<String> {
+    let trimmed = pattern.trim();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        // Destructured — extract identifier names.
+        // Simple approach: strip braces/brackets, split by comma, strip defaults
+        let inner = &trimmed[1..trimmed.len()-1];
+        inner.split(',')
+            .filter_map(|s| {
+                // Handle `name = default` or just `name`
+                let s = s.split('=').next().unwrap_or("").trim();
+                // Handle `key: alias` (rename)
+                let s = if let Some((_key, alias)) = s.split_once(':') {
+                    alias.trim()
+                } else {
+                    s
+                };
+                if s.is_empty() { None } else { Some(s.to_string()) }
+            })
+            .collect()
+    } else {
+        vec![trimmed.to_string()]
+    }
+}
+
 fn walk_template_scopes(
     fragment: &Fragment,
     component: &Component,
@@ -326,6 +363,44 @@ fn walk_template_scopes(
                     for name in names {
                         let sym_id = scoping.add_binding(current_scope, name);
                         scoping.mark_rune(sym_id, RuneKind::Derived);
+                    }
+                }
+            }
+            Node::AwaitBlock(block) => {
+                // Pending fragment uses parent scope (no bindings)
+                if let Some(ref p) = block.pending {
+                    walk_template_scopes(p, component, scoping, current_scope, const_tag_names, snippet_params);
+                }
+
+                // Then fragment: create child scope if value binding exists
+                if let Some(ref t) = block.then {
+                    if let Some(val_span) = block.value_span {
+                        let then_scope = scoping.add_child_scope(current_scope);
+                        scoping.set_node_scope(block.id, then_scope);
+                        let binding_text = component.source_text(val_span);
+                        // For destructured bindings like `{ name, age }`, extract identifiers
+                        for name in extract_binding_names(binding_text) {
+                            scoping.add_binding(then_scope, &name);
+                        }
+                        walk_template_scopes(t, component, scoping, then_scope, const_tag_names, snippet_params);
+                    } else {
+                        walk_template_scopes(t, component, scoping, current_scope, const_tag_names, snippet_params);
+                    }
+                }
+
+                // Catch fragment: create child scope if error binding exists
+                if let Some(ref c) = block.catch {
+                    if let Some(err_span) = block.error_span {
+                        let catch_scope = scoping.add_child_scope(current_scope);
+                        // Store catch scope separately — we use await_catch_scopes map
+                        scoping.set_await_catch_scope(block.id, catch_scope);
+                        let binding_text = component.source_text(err_span);
+                        for name in extract_binding_names(binding_text) {
+                            scoping.add_binding(catch_scope, &name);
+                        }
+                        walk_template_scopes(c, component, scoping, catch_scope, const_tag_names, snippet_params);
+                    } else {
+                        walk_template_scopes(c, component, scoping, current_scope, const_tag_names, snippet_params);
                     }
                 }
             }

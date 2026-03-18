@@ -856,6 +856,7 @@ impl<'a> Scanner<'a> {
                 self.add_token(TokenType::StartKeyTag(StartKeyTag { expression_span }));
                 Ok(())
             }
+            "await" => self.start_await_tag(),
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -923,6 +924,17 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "await" => {
+                self.skip_whitespace();
+
+                if !self.match_char('}') {
+                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                }
+
+                self.add_token(TokenType::EndAwaitTag);
+
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,
@@ -976,6 +988,29 @@ impl<'a> Scanner<'a> {
                         expression_span: None,
                     }));
                 }
+
+                Ok(())
+            }
+            "then" | "catch" => {
+                let clause = if keyword == "then" {
+                    token::AwaitClause::Then
+                } else {
+                    token::AwaitClause::Catch
+                };
+
+                self.skip_whitespace();
+
+                let binding_span = if self.peek() == Some('}') {
+                    self.advance();
+                    None
+                } else {
+                    Some(self.collect_await_binding()?)
+                };
+
+                self.add_token(TokenType::AwaitClauseTag(token::AwaitClauseTag {
+                    clause,
+                    binding_span,
+                }));
 
                 Ok(())
             }
@@ -1420,6 +1455,157 @@ impl<'a> Scanner<'a> {
                 ']' if bracket_depth > 0 => bracket_depth -= 1,
                 // At depth 0: `,` means index follows, `(` means key follows, `}` means end of block
                 ',' | '}' | '(' if curly_depth == 0 && bracket_depth == 0 => {
+                    let raw = self.slice_source(start, self.prev);
+                    let trim_start = raw.len() - raw.trim_start().len();
+                    let trim_end = raw.len() - raw.trim_end().len();
+                    let span_start = start + trim_start;
+                    let span_end = self.prev - trim_end;
+
+                    return Ok(Span::new(span_start as u32, span_end as u32));
+                }
+                _ => {}
+            }
+        }
+
+        Err(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )))
+    }
+
+    /// Parse `{#await expr}`, `{#await expr then val}`, or `{#await expr catch err}`.
+    ///
+    /// The expression ends where a top-level `then` or `catch` keyword appears
+    /// (preceded and followed by whitespace), or at the closing `}`.
+    fn start_await_tag(&mut self) -> Result<(), Diagnostic> {
+        self.skip_whitespace();
+
+        // Scan for the expression, watching for ` then ` or ` catch ` keywords at top level
+        let expr_start = self.current;
+        let mut depth: u32 = 0; // tracks {}, (), []
+        let mut expr_end = expr_start;
+        let mut found_keyword: Option<&str> = None;
+
+        while !self.is_at_end() {
+            let ch = self.peek().unwrap();
+
+            if ch == '\'' || ch == '"' || ch == '`' {
+                self.advance();
+                self.skip_js_string(ch)?;
+                continue;
+            }
+
+            match ch {
+                '{' | '(' | '[' => { self.advance(); depth += 1; }
+                '}' if depth > 0 => { self.advance(); depth -= 1; }
+                ')' | ']' if depth > 0 => { self.advance(); depth -= 1; }
+                '}' if depth == 0 => {
+                    // End of tag — no then/catch keyword found
+                    expr_end = self.current;
+                    self.advance(); // consume '}'
+                    break;
+                }
+                _ if depth == 0 && ch.is_ascii_whitespace() => {
+                    // Save position before whitespace
+                    let ws_start = self.current;
+                    self.skip_whitespace();
+
+                    if self.is_at_end() { break; }
+
+                    let kw_start = self.current;
+                    let kw = self.identifier();
+
+                    if (kw == "then" || kw == "catch") && self.peek().is_some_and(|c| c.is_ascii_whitespace() || c == '}') {
+                        // Found the keyword — expression ends at whitespace before it
+                        expr_end = ws_start;
+                        found_keyword = if kw == "then" { Some("then") } else { Some("catch") };
+                        break;
+                    }
+                    // Not a keyword — continue scanning (identifier was consumed, that's fine)
+                }
+                _ => { self.advance(); }
+            }
+        }
+
+        // Trim the expression span
+        let raw = self.slice_source(expr_start, expr_end);
+        let trim_start = raw.len() - raw.trim_start().len();
+        let trim_end = raw.len() - raw.trim_end().len();
+        let expression_span = Span::new(
+            (expr_start + trim_start) as u32,
+            (expr_end - trim_end) as u32,
+        );
+
+        match found_keyword {
+            Some("then") => {
+                // Short form: {#await expr then val}
+                self.skip_whitespace();
+                let binding_span = if self.peek() == Some('}') {
+                    self.advance();
+                    None
+                } else {
+                    Some(self.collect_await_binding()?)
+                };
+                self.add_token(TokenType::StartAwaitTag(token::StartAwaitTag {
+                    expression_span,
+                    value_span: binding_span,
+                    error_span: None,
+                    initial_clause: token::AwaitInitialClause::Then,
+                }));
+            }
+            Some("catch") => {
+                // Short form: {#await expr catch err}
+                self.skip_whitespace();
+                let binding_span = if self.peek() == Some('}') {
+                    self.advance();
+                    None
+                } else {
+                    Some(self.collect_await_binding()?)
+                };
+                self.add_token(TokenType::StartAwaitTag(token::StartAwaitTag {
+                    expression_span,
+                    value_span: None,
+                    error_span: binding_span,
+                    initial_clause: token::AwaitInitialClause::Catch,
+                }));
+            }
+            _ => {
+                // Implicit form: {#await expr}
+                self.add_token(TokenType::StartAwaitTag(token::StartAwaitTag {
+                    expression_span,
+                    value_span: None,
+                    error_span: None,
+                    initial_clause: token::AwaitInitialClause::Pending,
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Collect a binding pattern for `{:then val}` / `{:catch err}` / `{#await expr then val}`.
+    /// Handles simple identifiers and destructured patterns like `{name, age}` or `[a, b]`.
+    /// Stops at `}` at depth 0 (closing the tag).
+    fn collect_await_binding(&mut self) -> Result<Span, Diagnostic> {
+        let mut curly_depth: u32 = 0;
+        let mut bracket_depth: u32 = 0;
+        let start = self.current;
+
+        while !self.is_at_end() {
+            let char = self.advance();
+
+            if char == '\'' || char == '"' || char == '`' {
+                self.skip_js_string(char)?;
+                continue;
+            }
+
+            match char {
+                '{' => curly_depth += 1,
+                '}' if curly_depth > 0 => curly_depth -= 1,
+                '[' => bracket_depth += 1,
+                ']' if bracket_depth > 0 => bracket_depth -= 1,
+                '}' if curly_depth == 0 && bracket_depth == 0 => {
+                    // End of tag
                     let raw = self.slice_source(start, self.prev);
                     let trim_start = raw.len() - raw.trim_start().len();
                     let trim_end = raw.len() - raw.trim_end().len();

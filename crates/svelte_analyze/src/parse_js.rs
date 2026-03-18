@@ -188,6 +188,19 @@ fn walk_node<'a>(
             parse_expr(alloc, source, block.expression_span.start, block.id, data, parsed, diags);
             walk_fragment(alloc, &block.fragment, component, data, parsed, diags);
         }
+        Node::AwaitBlock(block) => {
+            let source = component.source_text(block.expression_span);
+            parse_expr(alloc, source, block.expression_span.start, block.id, data, parsed, diags);
+            if let Some(ref p) = block.pending {
+                walk_fragment(alloc, p, component, data, parsed, diags);
+            }
+            if let Some(ref t) = block.then {
+                walk_fragment(alloc, t, component, data, parsed, diags);
+            }
+            if let Some(ref c) = block.catch {
+                walk_fragment(alloc, c, component, data, parsed, diags);
+            }
+        }
         Node::ConstTag(tag) => {
             let decl_text = component.source_text(tag.declaration_span);
             let arena_source: &'a str = alloc.alloc_str(decl_text);

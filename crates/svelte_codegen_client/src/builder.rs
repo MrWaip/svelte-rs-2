@@ -85,6 +85,15 @@ impl<'a> Builder<'a> {
         self.ast.expression_null_literal(SPAN)
     }
 
+    /// `void 0` expression — used where `undefined` is needed but `null` is semantically wrong.
+    pub fn void_zero_expr(&self) -> Expression<'a> {
+        self.ast.expression_unary(
+            SPAN,
+            ast::UnaryOperator::Void,
+            self.num_expr(0.0),
+        )
+    }
+
     pub fn num(&self, value: f64) -> NumericLiteral<'a> {
         self.ast.numeric_literal(SPAN, value, None, ast::NumberBase::Decimal)
     }
@@ -237,6 +246,56 @@ impl<'a> Builder<'a> {
             false,
         );
         Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
+    /// `var { a, b } = init;` — object destructuring var declaration.
+    pub fn var_object_destruct_stmt(&self, names: &[String], init: Expression<'a>) -> Statement<'a> {
+        let properties: Vec<_> = names.iter().map(|name| {
+            let atom = self.ast.atom(name.as_str());
+            let key = ast::PropertyKey::StaticIdentifier(
+                self.alloc(self.ast.identifier_name(SPAN, atom)),
+            );
+            let value = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
+            self.ast.binding_property(SPAN, key, value, true, false)
+        }).collect();
+        let object_pattern = self.ast.object_pattern(
+            SPAN,
+            self.ast.vec_from_iter(properties),
+            NONE,
+        );
+        let pattern = ast::BindingPattern::ObjectPattern(self.alloc(object_pattern));
+        let decl = self.ast.variable_declarator(
+            SPAN, VariableDeclarationKind::Var, pattern, NONE, Some(init), false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Var,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
+    /// `{ a, b }` — shorthand object expression.
+    pub fn shorthand_object_expr(&self, names: &[String]) -> Expression<'a> {
+        let properties: Vec<_> = names.iter().map(|name| {
+            let atom = self.ast.atom(name.as_str());
+            let key = ast::PropertyKey::StaticIdentifier(
+                self.alloc(self.ast.identifier_name(SPAN, atom)),
+            );
+            let value = self.rid_expr(name);
+            self.ast.object_property_kind_object_property(
+                SPAN,
+                ast::PropertyKind::Init,
+                key,
+                value,
+                false, true, false, // computed=false, shorthand=true, method=false
+            )
+        }).collect();
+        self.ast.expression_object(
+            SPAN,
+            self.ast.vec_from_iter(properties),
+        )
     }
 
     /// `const { a, b } = init;` — object destructuring const declaration.
