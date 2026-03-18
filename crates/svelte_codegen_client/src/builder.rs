@@ -191,6 +191,10 @@ impl<'a> Builder<'a> {
         Statement::ExpressionStatement(self.alloc(self.ast.expression_statement(SPAN, expr)))
     }
 
+    pub fn debugger_stmt(&self) -> Statement<'a> {
+        Statement::DebuggerStatement(self.alloc(self.ast.debugger_statement(SPAN)))
+    }
+
     pub fn var_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Var)
     }

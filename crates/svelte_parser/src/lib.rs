@@ -6,7 +6,7 @@ use svelte_span::Span;
 
 use svelte_ast::{
     AnimateDirective, Attribute, AwaitBlock, BindDirective, BooleanAttribute, ClassDirective, Comment,
-    ComponentNode, ConstTag, ConcatPart, ConcatenationAttribute, Component, CssMode,
+    ComponentNode, ConstTag, DebugTag, ConcatPart, ConcatenationAttribute, Component, CssMode,
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
@@ -328,6 +328,14 @@ impl<'a> Parser<'a> {
                         id: self.ids.next(),
                         span: token.span,
                         declaration_span: ct.declaration_span,
+                    });
+                    push_child(&mut children_stack, node);
+                }
+                TokenType::DebugTag(dt) => {
+                    let node = Node::DebugTag(DebugTag {
+                        id: self.ids.next(),
+                        span: token.span,
+                        identifiers: dt.identifiers,
                     });
                     push_child(&mut children_stack, node);
                 }
@@ -2372,5 +2380,46 @@ mod tests {
         let c = parse(r#"<svelte:options runes={true} namespace="svg" />"#);
         let opts = c.options.as_ref().expect("expected svelte:options");
         assert_eq!(opts.attributes.len(), 2);
+    }
+
+    // --- DebugTag tests ---
+
+    fn assert_debug_tag(c: &Component, fragment: &Fragment, index: usize, expected_ids: &[&str]) {
+        if let Node::DebugTag(ref dt) = fragment.nodes[index] {
+            let actual: Vec<&str> = dt.identifiers.iter().map(|s| c.source_text(*s)).collect();
+            assert_eq!(actual, expected_ids);
+        } else {
+            panic!("expected DebugTag at index {index}");
+        }
+    }
+
+    #[test]
+    fn debug_tag_empty() {
+        let c = parse("{@debug}");
+        assert_debug_tag(&c, &c.fragment, 0, &[]);
+    }
+
+    #[test]
+    fn debug_tag_single() {
+        let c = parse("{@debug x}");
+        assert_debug_tag(&c, &c.fragment, 0, &["x"]);
+    }
+
+    #[test]
+    fn debug_tag_multiple() {
+        let c = parse("{@debug x, y, z}");
+        assert_debug_tag(&c, &c.fragment, 0, &["x", "y", "z"]);
+    }
+
+    #[test]
+    fn debug_tag_member_expression_error() {
+        let (_, diagnostics) = Parser::new("{@debug x.y}").parse();
+        assert!(!diagnostics.is_empty(), "expected diagnostic for member expression in debug tag");
+    }
+
+    #[test]
+    fn debug_tag_call_expression_error() {
+        let (_, diagnostics) = Parser::new("{@debug fn()}").parse();
+        assert!(!diagnostics.is_empty(), "expected diagnostic for call expression in debug tag");
     }
 }

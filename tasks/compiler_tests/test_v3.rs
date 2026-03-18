@@ -1169,3 +1169,4 @@ fn props_id_basic() {
 fn props_id_with_props() {
     assert_compiler("props_id_with_props");
 }
+

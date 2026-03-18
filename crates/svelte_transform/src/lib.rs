@@ -209,7 +209,7 @@ fn walk_node<'a>(
                 });
             }
         }
-        Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
+        Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 

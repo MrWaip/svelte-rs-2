@@ -24,6 +24,14 @@ fn lower_fragment(
         data.const_tags.by_fragment.insert(key, const_ids);
     }
 
+    // Collect DebugTag node IDs for this fragment
+    let debug_ids: Vec<_> = fragment.nodes.iter()
+        .filter_map(|n| n.as_debug_tag().map(|dt| dt.id))
+        .collect();
+    if !debug_ids.is_empty() {
+        data.debug_tags.by_fragment.insert(key, debug_ids);
+    }
+
     let items = build_items(fragment, component, inside_head);
     data.fragments.lowered.insert(key, LoweredFragment { items });
 
@@ -74,7 +82,7 @@ fn lower_fragment(
                 }
             }
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
-            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
+            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::Error(_) => {}
         }
     }
 }
@@ -93,7 +101,7 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
-            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
+            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
             _ => regular.push(node),
         }
     }

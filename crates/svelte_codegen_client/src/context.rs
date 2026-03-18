@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{AwaitBlock, Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{AwaitBlock, Component, ComponentNode, ConstTag, DebugTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 use svelte_transform::TransformData;
@@ -18,6 +18,7 @@ struct NodeIndex<'a> {
     snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
     render_tags: FxHashMap<NodeId, &'a RenderTag>,
     const_tags: FxHashMap<NodeId, &'a ConstTag>,
+    debug_tags: FxHashMap<NodeId, &'a DebugTag>,
     svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
     svelte_boundaries: FxHashMap<NodeId, &'a SvelteBoundary>,
     await_blocks: FxHashMap<NodeId, &'a AwaitBlock>,
@@ -37,6 +38,7 @@ impl<'a> NodeIndex<'a> {
             snippet_blocks: FxHashMap::default(),
             render_tags: FxHashMap::default(),
             const_tags: FxHashMap::default(),
+            debug_tags: FxHashMap::default(),
             svelte_elements: FxHashMap::default(),
             svelte_boundaries: FxHashMap::default(),
             await_blocks: FxHashMap::default(),
@@ -84,6 +86,9 @@ impl<'a> NodeIndex<'a> {
                 Node::HtmlTag(_) => {}
                 Node::ConstTag(t) => {
                     self.const_tags.insert(t.id, t);
+                }
+                Node::DebugTag(t) => {
+                    self.debug_tags.insert(t.id, t);
                 }
                 Node::KeyBlock(b) => {
                     self.walk(&b.fragment);
@@ -264,5 +269,10 @@ impl<'a> Ctx<'a> {
 
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.const_tags.names(id) }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.const_tags.by_fragment(key) }
+
+    // -- DebugTag shortcuts --
+
+    pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.get_node(&self.index.debug_tags, id, "debug tag") }
+    pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.debug_tags.by_fragment(key) }
 
 }

@@ -4,6 +4,7 @@ pub(crate) mod attributes;
 pub(crate) mod await_block;
 pub(crate) mod component;
 pub(crate) mod const_tag;
+pub(crate) mod debug_tag;
 pub(crate) mod each_block;
 pub(crate) mod element;
 pub(crate) mod expression;
@@ -41,6 +42,7 @@ use html_tag::gen_html_tag;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
+use debug_tag::emit_debug_tags;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
@@ -98,6 +100,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut body = Vec::new();
 
     emit_const_tags(ctx, key, &mut body);
+    emit_debug_tags(ctx, key, &mut body);
 
     // Generate svelte:window events/bindings — go to init (before template)
     let svelte_window_ids: Vec<_> = ctx.component.fragment.nodes.iter()
@@ -350,6 +353,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     let mut body: Vec<Statement<'a>> = Vec::new();
 
     emit_const_tags(ctx, key, &mut body);
+    emit_debug_tags(ctx, key, &mut body);
 
     match ct {
         ContentStrategy::Empty => {}

@@ -1227,6 +1227,49 @@ impl<'a> Scanner<'a> {
 
                 Ok(())
             }
+            "debug" => {
+                self.skip_whitespace();
+
+                let mut identifiers = Vec::new();
+
+                if self.peek() != Some('}') {
+                    loop {
+                        self.skip_whitespace();
+                        let id_start = self.current;
+                        let name = self.identifier();
+                        if name.is_empty() {
+                            return Err(Diagnostic::unexpected_token(Span::new(
+                                id_start as u32,
+                                self.current as u32,
+                            )));
+                        }
+                        if self.peek() == Some('.') || self.peek() == Some('(') {
+                            return Err(Diagnostic::unexpected_token(Span::new(
+                                id_start as u32,
+                                self.current as u32 + 1,
+                            )));
+                        }
+                        identifiers.push(self.span(id_start, self.current));
+                        self.skip_whitespace();
+                        if self.peek() == Some(',') {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                // Consume closing '}'
+                if self.peek() == Some('}') {
+                    self.advance();
+                }
+
+                self.add_token(TokenType::DebugTag(token::DebugTagToken {
+                    identifiers,
+                }));
+
+                Ok(())
+            }
             _ => Err(Diagnostic::unexpected_keyword(Span::new(
                 start as u32,
                 self.current as u32,

@@ -143,13 +143,9 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 - **Phases**: P, A, T
 - **Codegen**: `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`
 
-### `{@debug vars}` — Dev-mode debugger
-- **Phases**: P, T
-- **AST**: `Node::DebugTag { id, span, identifiers: Vec<Span> }`
-- **Parser**: Parse `{@debug x, y}`
-- **Codegen**: `debugger` statement + `console.log` of variables (dev only). In prod: emit nothing
-- **Dependency**: Same `dev` flag as `$inspect` (Tier 1)
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/DebugTag.js`
+### `{@debug vars}` — Dev-mode debugger (parser + codegen done, compiler tests blocked)
+- **Phases**: P, A, T — implemented
+- **Blocked**: compiler tests require dev-mode boilerplate (Tier 8 "Dev mode")
 
 ---
 
@@ -487,6 +483,9 @@ Items discovered during porting but not critical for the feature to work. Groupe
 
 ### Component `bind:this` (Tier 5)
 - [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen
+
+### `{@debug vars}` (Tier 2)
+- [ ] Compiler tests: blocked on dev-mode boilerplate (`$.FILENAME`, `$.check_target`, `$.push`/`$.pop`, `$.legacy_api`, `$.add_svelte_meta`, `$.tag_proxy`). Parser + analysis + codegen implemented, needs Tier 8 "Dev mode" for `just generate` reference parity.
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis

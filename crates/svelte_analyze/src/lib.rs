@@ -18,7 +18,7 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, ElementFlags, FragmentData, FragmentItem,
+    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
     FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SingleBlockKind, SnippetData,
 };
 pub use ident_gen::IdentGen;
