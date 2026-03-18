@@ -44,7 +44,10 @@ pub(crate) fn gen_render_tag<'a>(
             Expression::CallExpression(inner_call) if inner_call.arguments.is_empty() => {
                 if let Expression::Identifier(ident) = &inner_call.callee {
                     let name = ident.name.as_str();
-                    if ctx.prop_sources.contains(name) {
+                    let root = ctx.analysis.scoping.root_scope_id();
+                    let is_prop_source = ctx.analysis.scoping.find_binding(root, name)
+                        .is_some_and(|s| ctx.analysis.scoping.is_prop_source(s));
+                    if is_prop_source {
                         Some(name.to_string())
                     } else {
                         None

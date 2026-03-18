@@ -76,7 +76,7 @@ pub(crate) fn build_concat<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem) -> Expres
 fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
     let info = ctx.expression(nid)?;
     if let ExpressionKind::Identifier(name) = &info.kind {
-        ctx.known_value(name.as_str()).cloned()
+        ctx.known_value(name.as_str()).map(|s| s.to_string())
     } else {
         None
     }

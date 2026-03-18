@@ -7,7 +7,7 @@ use crate::data::AnalysisData;
 /// 2. `X` is declared at root scope
 /// 3. `X` is NOT a rune
 ///
-/// Populates `data.store_subscriptions` with base names (e.g. "count" for "$count").
+/// Populates `data.scoping.store_syms` (sym_id → base_name).
 pub fn detect_store_subscriptions(data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
 
@@ -35,18 +35,19 @@ pub fn detect_store_subscriptions(data: &mut AnalysisData) {
         }
     }
 
-    // Now check and insert with mutable access to data
+    // Now check and mark with mutable access to scoping
     for name in candidates {
-        if data.store_subscriptions.contains(&name) {
-            continue;
-        }
+        // Dedup: skip if already marked
         let Some(sym_id) = data.scoping.find_binding(root, &name) else {
             continue;
         };
+        if data.scoping.is_store(sym_id) {
+            continue;
+        }
         if data.scoping.is_rune(sym_id) {
             continue;
         }
-        data.store_subscriptions.insert(name);
+        data.scoping.mark_store(sym_id, name);
     }
 }
 

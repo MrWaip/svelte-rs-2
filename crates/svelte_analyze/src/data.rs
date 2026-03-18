@@ -1,6 +1,5 @@
 use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
-
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
 
@@ -191,8 +190,6 @@ pub struct AnalysisData {
     pub scoping: ComponentScoping,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
     pub dynamic_nodes: FxHashSet<NodeId>,
-    /// Compile-time known values for const declarations with literal initializers.
-    pub known_values: FxHashMap<String, String>,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
     pub alt_is_elseif: FxHashSet<NodeId>,
     /// Props analysis (from $props() destructuring).
@@ -201,9 +198,6 @@ pub struct AnalysisData {
     pub exports: Vec<svelte_js::ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
-    /// Store subscriptions: base names (e.g. "count" for `$count`) of variables
-    /// that have `$`-prefixed references and are root-scope non-rune bindings.
-    pub store_subscriptions: FxHashSet<String>,
 
     /// Per-element flags (spread, class/style directives, needs_var, etc.).
     pub element_flags: ElementFlags,
@@ -223,12 +217,10 @@ impl AnalysisData {
             script: None,
             scoping: ComponentScoping::empty(),
             dynamic_nodes: FxHashSet::default(),
-            known_values: FxHashMap::default(),
             alt_is_elseif: FxHashSet::default(),
             props: None,
             exports: Vec::new(),
             needs_context: false,
-            store_subscriptions: FxHashSet::default(),
             element_flags: ElementFlags::new(),
             fragments: FragmentData::new(),
             snippets: SnippetData::new(),
@@ -242,28 +234,12 @@ impl AnalysisData {
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
-    pub fn known_value(&self, name: &str) -> Option<&String> { self.known_values.get(name) }
 
-    pub fn is_rune(&self, name: &str) -> bool {
-        self.scoping.rune_info_by_name(name).is_some()
-    }
-
-    pub fn is_mutable_rune(&self, name: &str) -> bool {
-        self.scoping
-            .rune_info_by_name(name)
-            .is_some_and(|(_, mutated)| mutated)
-    }
-
-    pub fn rune_kind(&self, name: &str) -> Option<svelte_js::RuneKind> {
-        self.scoping.rune_info_by_name(name).map(|(kind, _)| kind)
-    }
-
-    pub fn prop_sources(&self) -> Option<&FxHashSet<String>> {
-        self.props.as_ref().map(|pa| &pa.prop_sources)
-    }
-
-    pub fn prop_non_sources(&self) -> Option<&FxHashMap<String, String>> {
-        self.props.as_ref().map(|pa| &pa.prop_non_sources)
+    /// Known compile-time value for a name at root scope (looks up SymbolId internally).
+    pub fn known_value(&self, name: &str) -> Option<&str> {
+        let root = self.scoping.root_scope_id();
+        let sym_id = self.scoping.find_binding(root, name)?;
+        self.scoping.known_value_by_sym(sym_id)
     }
 }
 
@@ -363,10 +339,6 @@ pub enum ConcatPart {
 pub struct PropsAnalysis {
     pub props: Vec<PropAnalysis>,
     pub has_bindable: bool,
-    /// Prop names that need `$.prop()` source wrappers (called as thunks).
-    pub prop_sources: FxHashSet<String>,
-    /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
-    pub prop_non_sources: FxHashMap<String, String>,
 }
 
 pub struct PropAnalysis {

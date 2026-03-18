@@ -46,7 +46,9 @@ pub fn collect_known_values(component: &Component, data: &mut AnalysisData) {
         };
 
         if let Some(lit) = literal_src.and_then(try_eval_literal) {
-            data.known_values.insert(decl.name.to_string(), lit);
+            if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
+                data.scoping.set_known_value(sym_id, lit);
+            }
         }
     }
 }
