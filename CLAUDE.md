@@ -3,6 +3,11 @@
 Detailed crate API and type reference: `CODEBASE_MAP.md` (read when you need type signatures or module structure).
 Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` (read when adding a new feature or debugging unexpected output).
 
+## Shell conventions
+- Use relative paths from project root, not absolute paths
+- Use `rg` over `find -exec` / `grep -r` where possible
+- Use `find ... -exec cmd {} +` instead of `find ... -exec cmd {} \;`
+
 ## Testing
 
 All tests in `crates/svelte_parser` must follow the span-based pattern described in `/test-pattern`.
