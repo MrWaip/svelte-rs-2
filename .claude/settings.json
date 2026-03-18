@@ -2,6 +2,32 @@
   "ignorePatterns": [
     "docs/compiler",
     "target",
-    "tasks/benchmark/benches/compiler/*"
-  ]
+    "tasks/benchmark/benches/compiler/*",
+    "tasks/compiler_tests/cases2/*/case-svelte.js",
+    "tasks/compiler_tests/cases2/*/case-rust.js",
+    "REVIEW.md"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(cargo doc*)",
+      "Bash(cargo bench*)",
+      "Bash(cargo test*)",
+      "Bash(cargo check*)",
+      "Bash(cargo build*)",
+      "Bash(just *)",
+      "Bash(git *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(cat *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sed *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(diff *)"
+    ]
+  }
 }
