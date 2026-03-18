@@ -65,6 +65,10 @@ fn write_script(out: &mut String) {
     function action(node, arg) {
         return { destroy() {} };
     }
+
+    function handleError(error) {
+        console.error(error);
+    }
 </script>
 
 "#,
@@ -160,6 +164,13 @@ fn write_chunk(out: &mut String, i: usize) {
 
     {{@render badge("chunk-{i}", "secondary")}}
     {{@render card(title, "Content for chunk {i}")}}
+
+    <svelte:boundary onerror={{handleError}}>
+        <p>Boundary chunk {i}: {{title}}</p>
+        {{#snippet failed(error)}}
+            <p>Error in chunk {i}: {{error.message}}</p>
+        {{/snippet}}
+    </svelte:boundary>
 </div>
 
 "#,

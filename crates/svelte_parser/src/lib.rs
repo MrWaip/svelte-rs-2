@@ -10,7 +10,7 @@ use svelte_ast::{
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
-    StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
+    StyleDirective, StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
 
@@ -361,6 +361,9 @@ impl<'a> Parser<'a> {
 
         // Convert <svelte:element> elements to SvelteElement nodes
         Self::convert_svelte_element(&mut component.fragment);
+
+        // Convert <svelte:boundary> elements to SvelteBoundary nodes
+        Self::convert_svelte_boundary(&mut component.fragment);
 
         (component, self.diagnostics)
     }
@@ -1310,6 +1313,46 @@ impl<'a> Parser<'a> {
                 Node::KeyBlock(block) => Self::convert_svelte_element(&mut block.fragment),
                 Node::SvelteHead(head) => Self::convert_svelte_element(&mut head.fragment),
                 Node::SvelteElement(el) => Self::convert_svelte_element(&mut el.fragment),
+                Node::SvelteBoundary(b) => Self::convert_svelte_element(&mut b.fragment),
+                _ => {}
+            }
+        }
+    }
+
+    /// Convert `<svelte:boundary>` Element nodes to SvelteBoundary nodes.
+    /// Recursive — boundary can appear anywhere in the template.
+    fn convert_svelte_boundary(fragment: &mut Fragment) {
+        for node in &mut fragment.nodes {
+            match node {
+                Node::Element(el) if el.name == "svelte:boundary" => {
+                    let mut boundary = SvelteBoundary {
+                        id: el.id,
+                        span: el.span,
+                        attributes: std::mem::take(&mut el.attributes),
+                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    };
+                    Self::convert_svelte_boundary(&mut boundary.fragment);
+                    *node = Node::SvelteBoundary(boundary);
+                }
+                Node::Element(el) => Self::convert_svelte_boundary(&mut el.fragment),
+                Node::ComponentNode(cn) => Self::convert_svelte_boundary(&mut cn.fragment),
+                Node::IfBlock(block) => {
+                    Self::convert_svelte_boundary(&mut block.consequent);
+                    if let Some(alt) = &mut block.alternate {
+                        Self::convert_svelte_boundary(alt);
+                    }
+                }
+                Node::EachBlock(block) => {
+                    Self::convert_svelte_boundary(&mut block.body);
+                    if let Some(fallback) = &mut block.fallback {
+                        Self::convert_svelte_boundary(fallback);
+                    }
+                }
+                Node::SnippetBlock(block) => Self::convert_svelte_boundary(&mut block.body),
+                Node::KeyBlock(block) => Self::convert_svelte_boundary(&mut block.fragment),
+                Node::SvelteHead(head) => Self::convert_svelte_boundary(&mut head.fragment),
+                Node::SvelteElement(el) => Self::convert_svelte_boundary(&mut el.fragment),
+                Node::SvelteBoundary(b) => Self::convert_svelte_boundary(&mut b.fragment),
                 _ => {}
             }
         }

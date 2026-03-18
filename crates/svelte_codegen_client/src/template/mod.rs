@@ -12,6 +12,7 @@ pub(crate) mod html_tag;
 pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
+pub(crate) mod svelte_boundary;
 pub(crate) mod svelte_element;
 pub(crate) mod svelte_body;
 pub(crate) mod svelte_document;
@@ -37,6 +38,7 @@ use html_tag::gen_html_tag;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
+use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
 
@@ -262,7 +264,10 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &m
         SingleBlockKind::SvelteElement(id) => {
             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
+        SingleBlockKind::SvelteBoundary(id) => {
+            gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
+        }
+        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary at this point"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -440,7 +445,10 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         SingleBlockKind::SvelteElement(id) => {
                             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element at this point"),
+                        SingleBlockKind::SvelteBoundary(id) => {
+                            gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), &mut body);
+                        }
+                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary at this point"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",

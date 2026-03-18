@@ -318,6 +318,9 @@ fn walk_template_scopes(
             Node::SvelteElement(el) => {
                 walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
+            Node::SvelteBoundary(b) => {
+                walk_template_scopes(&b.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+            }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
                     for name in names {

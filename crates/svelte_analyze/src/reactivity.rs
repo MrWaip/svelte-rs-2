@@ -1,7 +1,7 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
-    Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag,
+    Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SvelteBoundary,
     TransitionDirective, UseDirective,
 };
 use crate::data::AnalysisData;
@@ -112,6 +112,16 @@ impl TemplateVisitor for ReactivityVisitor {
             data.element_flags.dynamic_attrs.insert(attr.id());
         }
         let _ = cn;
+    }
+
+    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, _scope: ScopeId, data: &mut AnalysisData) {
+        // Boundary attributes use the same has_state semantics as component props —
+        // reactive expressions get getters so the boundary can re-read reactively.
+        for attr in &boundary.attributes {
+            if component_attr_is_dynamic(attr, data) {
+                data.element_flags.dynamic_attrs.insert(attr.id());
+            }
+        }
     }
 
 }
