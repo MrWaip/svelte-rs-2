@@ -129,6 +129,7 @@ pub enum RuneKind {
     Bindable,
     Inspect,
     Host,
+    PropsId,
 }
 
 impl RuneKind {
@@ -997,6 +998,7 @@ fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
                         ("$derived", "by") => Some(RuneKind::DerivedBy),
                         ("$state", "raw") => Some(RuneKind::StateRaw),
                         ("$effect", "tracking") => Some(RuneKind::EffectTracking),
+                        ("$props", "id") => Some(RuneKind::PropsId),
                         _ => None,
                     };
                 }

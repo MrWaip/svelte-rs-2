@@ -422,6 +422,22 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         })
     }
 
+    fn is_props_id_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
+        decl.declarations.iter().any(|d| {
+            if let oxc_ast::ast::BindingPattern::BindingIdentifier(_) = &d.id {
+                if let Some(Expression::CallExpression(call)) = &d.init {
+                    if let Expression::StaticMemberExpression(member) = &call.callee {
+                        if let Expression::Identifier(obj) = &member.object {
+                            return obj.name.as_str() == "$props"
+                                && member.property.name.as_str() == "id";
+                        }
+                    }
+                }
+            }
+            false
+        })
+    }
+
     fn gen_props_statements(&self) -> Vec<Statement<'a>> {
         let Some(props_gen) = &self.props_gen else {
             return vec![];
@@ -769,6 +785,16 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 }
             });
         }
+
+        // Strip $props.id() declarations (regenerated at top of component fn_body)
+        stmts.retain(|stmt| {
+            if let Statement::VariableDeclaration(decl) = stmt {
+                if Self::is_props_id_declaration(decl) {
+                    return false;
+                }
+            }
+            true
+        });
 
         // Replace $props() destructuring
         if self.props_gen.is_none() {

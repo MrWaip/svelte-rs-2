@@ -45,6 +45,14 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let needs_push = has_bindable || has_exports || ctx.analysis.needs_context;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
+
+    // $props.id() → must be first statement for hydration correctness
+    if let Some(ref props_id_name) = ctx.analysis.props_id {
+        let name: &str = ctx.b.alloc_str(props_id_name);
+        let call = ctx.b.call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
+        fn_body.push(ctx.b.const_stmt(name, call));
+    }
+
     if ctx.needs_binding_group {
         fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
     }

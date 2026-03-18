@@ -1155,3 +1155,17 @@ fn inspect_trace_prod_strip() {
 fn inspect_trace_arrow() {
     assert_compiler("inspect_trace_arrow");
 }
+
+// ---------------------------------------------------------------------------
+// $props.id() rune tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn props_id_basic() {
+    assert_compiler("props_id_basic");
+}
+
+#[rstest]
+fn props_id_with_props() {
+    assert_compiler("props_id_with_props");
+}
