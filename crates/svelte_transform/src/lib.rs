@@ -189,6 +189,26 @@ fn walk_node<'a>(
                 walk_fragment(ctx, &b.fragment, component, parsed, scope);
             });
         }
+        Node::AwaitBlock(block) => {
+            transform_node_expr(ctx, block.id, parsed, scope);
+            if let Some(ref p) = block.pending {
+                with_alias_scope(ctx, |ctx| {
+                    walk_fragment(ctx, p, component, parsed, scope);
+                });
+            }
+            if let Some(ref t) = block.then {
+                let then_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
+                with_alias_scope(ctx, |ctx| {
+                    walk_fragment(ctx, t, component, parsed, then_scope);
+                });
+            }
+            if let Some(ref c) = block.catch {
+                let catch_scope = ctx.analysis.scoping.await_catch_scope(block.id).unwrap_or(scope);
+                with_alias_scope(ctx, |ctx| {
+                    walk_fragment(ctx, c, component, parsed, catch_scope);
+                });
+            }
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

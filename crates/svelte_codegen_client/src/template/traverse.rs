@@ -7,6 +7,7 @@ use svelte_analyze::FragmentItem;
 use crate::builder::{Arg, AssignLeft, AssignRight};
 use crate::context::Ctx;
 
+use super::await_block::gen_await_block;
 use super::component::gen_component;
 use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
@@ -95,6 +96,7 @@ pub(crate) fn traverse_items<'a>(
                 | FragmentItem::KeyBlock(_)
                 | FragmentItem::SvelteElement(_)
                 | FragmentItem::SvelteBoundary(_)
+                | FragmentItem::AwaitBlock(_)
                 | FragmentItem::TitleElement(_) => {
                     let node_name = ctx.gen_ident("node");
                     init.push(ctx.b.var_stmt(&node_name, node_expr));
@@ -112,6 +114,7 @@ pub(crate) fn traverse_items<'a>(
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
                         FragmentItem::SvelteElement(id) => super::svelte_element::gen_svelte_element(ctx, *id, anchor, init),
                         FragmentItem::SvelteBoundary(id) => super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init),
+                        FragmentItem::AwaitBlock(id) => gen_await_block(ctx, *id, anchor, init),
                         FragmentItem::TitleElement(id) => super::title_element::gen_title_element(ctx, *id, init),
                         _ => unreachable!(),
                     }

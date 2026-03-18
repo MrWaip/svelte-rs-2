@@ -54,6 +54,9 @@ pub enum FragmentKey {
     SvelteHeadBody(NodeId),
     SvelteElementBody(NodeId),
     SvelteBoundaryBody(NodeId),
+    AwaitPending(NodeId),
+    AwaitThen(NodeId),
+    AwaitCatch(NodeId),
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +275,8 @@ pub enum FragmentItem {
     SvelteElement(NodeId),
     /// A SvelteBoundary (<svelte:boundary>).
     SvelteBoundary(NodeId),
+    /// An AwaitBlock ({#await expr}...{/await}).
+    AwaitBlock(NodeId),
     /// A <title> element inside <svelte:head>, special-cased to assign document.title.
     TitleElement(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
@@ -299,6 +304,7 @@ impl FragmentItem {
             | FragmentItem::KeyBlock(id)
             | FragmentItem::SvelteElement(id)
             | FragmentItem::SvelteBoundary(id)
+            | FragmentItem::AwaitBlock(id)
             | FragmentItem::TitleElement(id) => *id,
             FragmentItem::TextConcat { .. } => panic!("TextConcat has no single NodeId"),
         }
@@ -378,6 +384,7 @@ pub enum SingleBlockKind {
     ComponentNode(NodeId),
     SvelteElement(NodeId),
     SvelteBoundary(NodeId),
+    AwaitBlock(NodeId),
     TitleElement(NodeId),
 }
 
@@ -387,6 +394,7 @@ impl SingleBlockKind {
             Self::IfBlock(id) | Self::EachBlock(id) | Self::HtmlTag(id)
             | Self::KeyBlock(id) | Self::RenderTag(id) | Self::ComponentNode(id)
             | Self::SvelteElement(id) | Self::SvelteBoundary(id)
+            | Self::AwaitBlock(id)
             | Self::TitleElement(id) => *id,
         }
     }

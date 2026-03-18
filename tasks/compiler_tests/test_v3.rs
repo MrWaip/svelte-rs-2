@@ -950,3 +950,58 @@ fn boundary_in_if() {
 fn boundary_other_snippets() {
     assert_compiler("boundary_other_snippets");
 }
+
+#[rstest]
+fn await_basic() {
+    assert_compiler("await_basic");
+}
+
+#[rstest]
+fn await_short_then() {
+    assert_compiler("await_short_then");
+}
+
+#[rstest]
+fn await_short_catch() {
+    assert_compiler("await_short_catch");
+}
+
+#[rstest]
+fn await_then_catch() {
+    assert_compiler("await_then_catch");
+}
+
+#[rstest]
+fn await_no_bindings() {
+    assert_compiler("await_no_bindings");
+}
+
+#[rstest]
+fn await_pending_only() {
+    assert_compiler("await_pending_only");
+}
+
+#[rstest]
+fn await_destructured() {
+    assert_compiler("await_destructured");
+}
+
+#[rstest]
+fn await_in_if() {
+    assert_compiler("await_in_if");
+}
+
+#[rstest]
+fn await_in_each() {
+    assert_compiler("await_in_each");
+}
+
+#[rstest]
+fn await_reactive() {
+    assert_compiler("await_reactive");
+}
+
+#[rstest]
+fn await_nested_content() {
+    assert_compiler("await_nested_content");
+}

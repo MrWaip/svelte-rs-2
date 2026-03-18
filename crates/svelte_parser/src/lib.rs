@@ -5,7 +5,7 @@ use scanner::{
 use svelte_span::Span;
 
 use svelte_ast::{
-    AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, Comment,
+    AnimateDirective, Attribute, AwaitBlock, BindDirective, BooleanAttribute, ClassDirective, Comment,
     ComponentNode, ConstTag, ConcatPart, ConcatenationAttribute, Component, CssMode,
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
@@ -28,6 +28,7 @@ enum StackEntry {
     EachBlock(EachBlockEntry),
     SnippetBlock(SnippetBlockEntry),
     KeyBlock(KeyBlockEntry),
+    AwaitBlock(AwaitBlockEntry),
 }
 
 struct KeyBlockEntry {
@@ -64,6 +65,26 @@ struct SnippetBlockEntry {
     span_start: Span,
     name: String,
     params_span: Option<Span>,
+}
+
+/// Tracks which sub-fragment is currently being collected.
+enum AwaitPhase {
+    Pending,
+    Then,
+    Catch,
+}
+
+struct AwaitBlockEntry {
+    span: Span,
+    expression_span: Span,
+    value_span: Option<Span>,
+    error_span: Option<Span>,
+    /// Which phase we are currently collecting children for.
+    phase: AwaitPhase,
+    /// Pending children (collected before {:then}).
+    pending_children: Option<Vec<Node>>,
+    /// Then children (collected between {:then} and {:catch}).
+    then_children: Option<Vec<Node>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +270,38 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::EndKeyTag => {
                     self.handle_end_key_tag(
+                        token.span,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
+                }
+                TokenType::StartAwaitTag(await_tag) => {
+                    use scanner::token::AwaitInitialClause;
+                    let phase = match await_tag.initial_clause {
+                        AwaitInitialClause::Pending => AwaitPhase::Pending,
+                        AwaitInitialClause::Then => AwaitPhase::Then,
+                        AwaitInitialClause::Catch => AwaitPhase::Catch,
+                    };
+                    entry_stack.push(StackEntry::AwaitBlock(AwaitBlockEntry {
+                        span: token.span,
+                        expression_span: await_tag.expression_span,
+                        value_span: await_tag.value_span,
+                        error_span: await_tag.error_span,
+                        phase,
+                        pending_children: None,
+                        then_children: None,
+                    }));
+                    children_stack.push(vec![]);
+                }
+                TokenType::AwaitClauseTag(clause_tag) => {
+                    self.handle_await_clause_tag(
+                        &clause_tag,
+                        &mut entry_stack,
+                        &mut children_stack,
+                    );
+                }
+                TokenType::EndAwaitTag => {
+                    self.handle_end_await_tag(
                         token.span,
                         &mut entry_stack,
                         &mut children_stack,
@@ -587,6 +640,100 @@ impl<'a> Parser<'a> {
         push_child(children_stack, node);
     }
 
+    fn handle_await_clause_tag(
+        &mut self,
+        clause_tag: &scanner::token::AwaitClauseTag,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let entry = entry_stack.last_mut();
+
+        let Some(StackEntry::AwaitBlock(ab)) = entry else {
+            self.recover(Diagnostic::unexpected_token(Span::new(0, 0)));
+            return;
+        };
+
+        // Save current children to the appropriate phase
+        let current_children = pop_children(children_stack);
+        match ab.phase {
+            AwaitPhase::Pending => {
+                ab.pending_children = Some(current_children);
+            }
+            AwaitPhase::Then => {
+                ab.then_children = Some(current_children);
+            }
+            AwaitPhase::Catch => {
+                // Shouldn't happen — {:catch} after {:catch}
+                self.recover(Diagnostic::unexpected_token(Span::new(0, 0)));
+                children_stack.push(vec![]);
+                return;
+            }
+        }
+
+        match clause_tag.clause {
+            scanner::token::AwaitClause::Then => {
+                ab.value_span = clause_tag.binding_span;
+                ab.phase = AwaitPhase::Then;
+            }
+            scanner::token::AwaitClause::Catch => {
+                ab.error_span = clause_tag.binding_span;
+                ab.phase = AwaitPhase::Catch;
+            }
+        }
+
+        // Push new children list for the next phase
+        children_stack.push(vec![]);
+    }
+
+    fn handle_end_await_tag(
+        &mut self,
+        span: Span,
+        entry_stack: &mut Vec<StackEntry>,
+        children_stack: &mut Vec<Vec<Node>>,
+    ) {
+        let entry = entry_stack.pop();
+
+        let Some(StackEntry::AwaitBlock(ab)) = entry else {
+            self.recover(Diagnostic::unexpected_token(span));
+            if let Some(entry) = entry {
+                entry_stack.push(entry);
+            }
+            return;
+        };
+
+        // Save current children to the appropriate phase
+        let current_children = pop_children(children_stack);
+        let merged_span = ab.span.merge(&span);
+
+        let (pending, then, catch) = match ab.phase {
+            AwaitPhase::Pending => {
+                (Some(Fragment::new(current_children)), None, None)
+            }
+            AwaitPhase::Then => {
+                let pending = ab.pending_children.map(Fragment::new);
+                (pending, Some(Fragment::new(current_children)), None)
+            }
+            AwaitPhase::Catch => {
+                let pending = ab.pending_children.map(Fragment::new);
+                let then = ab.then_children.map(Fragment::new);
+                (pending, then, Some(Fragment::new(current_children)))
+            }
+        };
+
+        let node = Node::AwaitBlock(AwaitBlock {
+            id: self.ids.next(),
+            span: merged_span,
+            expression_span: ab.expression_span,
+            value_span: ab.value_span,
+            error_span: ab.error_span,
+            pending,
+            then,
+            catch,
+        });
+
+        push_child(children_stack, node);
+    }
+
     /// Auto-close all remaining open entries at EOF.
     fn auto_close_entries(
         &mut self,
@@ -709,6 +856,30 @@ impl<'a> Parser<'a> {
                     span: merged_span,
                     expression_span: kb.expression_span,
                     fragment: Fragment::new(body_children),
+                });
+
+                push_child(children_stack, node);
+            }
+            StackEntry::AwaitBlock(ab) => {
+                self.recover(Diagnostic::unclosed_node(ab.span));
+                let current_children = pop_children(children_stack);
+                let merged_span = ab.span.merge(&eof_span);
+
+                let (pending, then, catch) = match ab.phase {
+                    AwaitPhase::Pending => (Some(Fragment::new(current_children)), None, None),
+                    AwaitPhase::Then => (ab.pending_children.map(Fragment::new), Some(Fragment::new(current_children)), None),
+                    AwaitPhase::Catch => (ab.pending_children.map(Fragment::new), ab.then_children.map(Fragment::new), Some(Fragment::new(current_children))),
+                };
+
+                let node = Node::AwaitBlock(AwaitBlock {
+                    id: self.ids.next(),
+                    span: merged_span,
+                    expression_span: ab.expression_span,
+                    value_span: ab.value_span,
+                    error_span: ab.error_span,
+                    pending,
+                    then,
+                    catch,
                 });
 
                 push_child(children_stack, node);
