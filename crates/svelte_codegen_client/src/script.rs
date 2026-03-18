@@ -720,7 +720,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             let func_name = info.name.as_deref().unwrap_or("trace");
             let full_offset = self.script_content_start + info.span_start;
             let (line, col) = compute_line_col(self.component_source, full_offset);
-            let label = format!("{func_name} ({line}:{col})");
+            let label = format!("{func_name} ((unknown):{line}:{col})");
             self.b.str_expr(&label)
         };
         let label_thunk = self.b.thunk(label_expr);
@@ -878,7 +878,17 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                             call.arguments.push(void_zero.into());
                         }
 
-                        node.init = Some(Expression::CallExpression(call));
+                        let state_expr = Expression::CallExpression(call);
+                        // In dev mode, wrap $.state() in $.tag() for debugging
+                        node.init = if self.dev {
+                            let var_name = match &node.id {
+                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
+                                _ => "state",
+                            };
+                            Some(self.b.call_expr("$.tag", [Arg::Expr(state_expr), Arg::Str(var_name.to_string())]))
+                        } else {
+                            Some(state_expr)
+                        };
                     } else {
                         let value = if call.arguments.is_empty() {
                             self.b.ast.expression_unary(

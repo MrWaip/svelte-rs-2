@@ -4,7 +4,7 @@ import * as $ from "svelte/internal/client";
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, true, App);
-	let count = $.state(0);
+	let count = $.tag($.state(0), "count");
 	function handleClick() {
 		return $.trace(() => "custom label", () => {
 			$.update(count);
