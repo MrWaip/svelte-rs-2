@@ -219,6 +219,9 @@ fn walk_node<'a>(
         Node::SvelteWindow(w) => {
             walk_attrs(alloc, &w.attributes, component, data, parsed, diags);
         }
+        Node::SvelteDocument(d) => {
+            walk_attrs(alloc, &d.attributes, component, data, parsed, diags);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

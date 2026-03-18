@@ -177,6 +177,9 @@ fn walk_node<'a>(
         Node::SvelteWindow(w) => {
             transform_attrs(ctx, &w.attributes, parsed, scope);
         }
+        Node::SvelteDocument(d) => {
+            transform_attrs(ctx, &d.attributes, parsed, scope);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }

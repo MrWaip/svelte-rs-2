@@ -57,7 +57,7 @@ fn lower_fragment(
             Node::SvelteElement(el) => {
                 lower_fragment(&el.fragment, FragmentKey::SvelteElementBody(el.id), component, data);
             }
-            Node::SvelteWindow(_) => {}
+            Node::SvelteWindow(_) | Node::SvelteDocument(_) => {}
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
     }
