@@ -78,6 +78,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `<svelte:options>` — compiler options tag (parser + validation)
 - [x] `<svelte:head>` — document head insertion
 - [x] `<svelte:window>` — window events (`on:`, `onscroll`), bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
+- [x] `<svelte:document>` — document events (`on:`, `onkeydown`), bindings (`activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState`)
 
 ### Module compilation
 - [x] `compile_module()` entry point + `analyze_module()` + WASM export
@@ -197,17 +198,10 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Constraint**: Top-level only, no children
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteWindow.js`
 
-### `<svelte:document>` — Document events & bindings
+### ~~`<svelte:document>` — Document events & bindings~~ ✅
 - **Phases**: P, A, T
 - **Constraint**: Top-level only, no children
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteDocument.js`
-
-| Binding | Runtime |
-|---------|---------|
-| `bind:activeElement` | `$.bind_active_element(set)` |
-| `bind:fullscreenElement` | `$.bind_property(document, ...)` |
-| `bind:pointerLockElement` | `$.bind_property(document, ...)` |
-| `bind:visibilityState` | `$.bind_property(document, ...)` |
 
 ### `<svelte:body>` — Body events & actions
 - **Phases**: P, A, T
@@ -424,7 +418,6 @@ Items discovered during porting but not critical for the feature to work. Groupe
 
 ### Bind directives (Tier 3)
 - [ ] `bind:property={get, set}` — function bindings (Svelte 5)
-- [ ] Document bindings (`activeElement`, `fullscreenElement`, etc.) — blocked on `<svelte:document>` (Tier 5)
 
 ### `use:action` (Tier 4)
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`)
@@ -450,6 +443,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: no children allowed (diagnostic)
 - [ ] Validation: no spread attributes, only event/bind directives
 - [ ] Validation: only one `<svelte:window>` per component
+
+### `<svelte:document>` (Tier 5)
+- [ ] Validation: only allowed at root level (not nested)
+- [ ] Validation: no children allowed (diagnostic)
+- [ ] Validation: no spread attributes, only event/bind directives
+- [ ] Validation: only one `<svelte:document>` per component
 
 ### `<svelte:head>` (Tier 5)
 - [ ] Validation: only allowed at root level

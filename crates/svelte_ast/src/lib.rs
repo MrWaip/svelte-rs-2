@@ -125,8 +125,9 @@ impl_node_enum! {
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
     SvelteElement(SvelteElement) => is_svelte_element / as_svelte_element,
-    SvelteWindow(SvelteWindow)   => is_svelte_window / as_svelte_window,
-    Error(ErrorNode)             => is_error / as_error,
+    SvelteWindow(SvelteWindow)       => is_svelte_window / as_svelte_window,
+    SvelteDocument(SvelteDocument)   => is_svelte_document / as_svelte_document,
+    Error(ErrorNode)                 => is_error / as_error,
 }
 
 pub struct ErrorNode {
@@ -340,6 +341,17 @@ pub struct SvelteElement {
 // ---------------------------------------------------------------------------
 
 pub struct SvelteWindow {
+    pub id: NodeId,
+    pub span: Span,
+    pub attributes: Vec<Attribute>,
+    pub fragment: Fragment,
+}
+
+// ---------------------------------------------------------------------------
+// SvelteDocument — <svelte:document on:event={handler} bind:activeElement />
+// ---------------------------------------------------------------------------
+
+pub struct SvelteDocument {
     pub id: NodeId,
     pub span: Span,
     pub attributes: Vec<Attribute>,
