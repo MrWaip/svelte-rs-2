@@ -238,9 +238,17 @@ fn transform_attrs<'a>(
             transform_expr(ctx, expr, scope, &mut Vec::new());
         }
 
-        // Transform ConcatenationAttribute dynamic parts
-        if let Attribute::ConcatenationAttribute(a) = attr {
-            let dyn_count = a.parts.iter().filter(|p| matches!(p, svelte_ast::ConcatPart::Dynamic(_))).count();
+        // Transform concat dynamic parts (ConcatenationAttribute + StyleDirective::Concatenation)
+        let concat_parts: Option<&[svelte_ast::ConcatPart]> = match attr {
+            Attribute::ConcatenationAttribute(a) => Some(&a.parts),
+            Attribute::StyleDirective(a) => match &a.value {
+                svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(parts) = concat_parts {
+            let dyn_count = parts.iter().filter(|p| matches!(p, svelte_ast::ConcatPart::Dynamic(_))).count();
             for dyn_idx in 0..dyn_count {
                 let part_key = (attr_id, dyn_idx);
                 if let Some(expr) = parsed.concat_part_exprs.get_mut(&part_key) {
