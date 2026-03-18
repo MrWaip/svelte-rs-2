@@ -454,7 +454,24 @@ impl<'a> Builder<'a> {
     }
 
     /// `() => expr` — zero-arg arrow wrapping a single expression.
+    /// `() => expr` — zero-arg arrow wrapping an expression.
+    /// Optimizes `() => fn()` (zero-arg call to identifier/member) into just `fn`.
     pub fn thunk(&self, expr: Expression<'a>) -> Expression<'a> {
+        if let Expression::CallExpression(call) = &expr {
+            if call.arguments.is_empty()
+                && !call.optional
+                && matches!(
+                    &call.callee,
+                    Expression::Identifier(_) | Expression::StaticMemberExpression(_)
+                )
+            {
+                // Unwrap: move callee out of the CallExpression
+                if let Expression::CallExpression(call) = expr {
+                    let call = call.unbox();
+                    return call.callee;
+                }
+            }
+        }
         self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
     }
 
@@ -559,6 +576,23 @@ impl<'a> Builder<'a> {
     ) -> Expression<'a> {
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         let call = self.ast.call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), true);
+        Expression::ChainExpression(self.alloc(
+            self.ast.chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
+        ))
+    }
+
+    /// `object?.member(args)` — optional member access with a normal call.
+    pub fn optional_member_call_expr<'short>(
+        &self,
+        object: Expression<'a>,
+        member: &str,
+        args: impl IntoIterator<Item = Arg<'a, 'short>>,
+    ) -> Expression<'a> {
+        let property = self.ast.identifier_name(SPAN, self.ast.atom(member));
+        let callee_inner = self.ast.static_member_expression(SPAN, object, property, true);
+        let callee = Expression::StaticMemberExpression(self.alloc(callee_inner));
+        let args = args.into_iter().map(|a| self.arg_to_argument(a));
+        let call = self.ast.call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), false);
         Expression::ChainExpression(self.alloc(
             self.ast.chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
         ))

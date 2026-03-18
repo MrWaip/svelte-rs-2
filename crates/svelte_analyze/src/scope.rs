@@ -221,6 +221,10 @@ impl ComponentScoping {
         self.snippet_param_syms.contains(&sym_id)
     }
 
+    pub fn is_import(&self, sym_id: SymbolId) -> bool {
+        self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import)
+    }
+
 }
 
 // ---------------------------------------------------------------------------
