@@ -1170,3 +1170,24 @@ fn props_id_with_props() {
     assert_compiler("props_id_with_props");
 }
 
+// ---------------------------------------------------------------------------
+// {@debug} tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn debug_basic() {
+    assert_compiler("debug_basic");
+}
+
+#[rstest]
+fn debug_empty() {
+    assert_compiler("debug_empty");
+}
+
+#[rstest]
+fn debug_single() {
+    assert_compiler("debug_single");
+}
+
+
+
