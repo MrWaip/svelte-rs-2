@@ -996,6 +996,14 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         if self.dev {
             if let Some(replacement) = self.transform_inspect(node) {
                 *node = replacement;
+                return;
+            }
+            // await expr → (await $.track_reactivity_loss(expr))()
+            if let Expression::AwaitExpression(await_expr) = node {
+                let arg = self.b.move_expr(&mut await_expr.argument);
+                let track_call = self.b.call_expr("$.track_reactivity_loss", [Arg::Expr(arg)]);
+                let awaited = self.b.await_expr(track_call);
+                *node = self.b.call_expr_callee(awaited, std::iter::empty::<Arg<'a, '_>>());
             }
         }
     }
