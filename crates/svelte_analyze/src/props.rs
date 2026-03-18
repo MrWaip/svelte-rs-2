@@ -6,13 +6,16 @@ pub fn analyze_props(data: &mut AnalysisData) {
         None => return,
     };
 
+    let root = data.scoping.root_scope_id();
+
     let props = decl
         .props
         .iter()
         .map(|p| {
             // In runes mode, a prop needs $.prop() source when it has a default,
             // is reassigned, is mutated, or is bindable.
-            let is_mutated = data.is_mutable_rune(p.local_name.as_str());
+            let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
+            let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
             let is_prop_source =
                 p.default_span.is_some() || is_mutated;
 
@@ -34,16 +37,17 @@ pub fn analyze_props(data: &mut AnalysisData) {
 
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
-    let mut prop_sources = rustc_hash::FxHashSet::default();
-    let mut prop_non_sources = rustc_hash::FxHashMap::default();
+    // Populate SymbolId-keyed classifications in scoping.
     for p in &props {
         if p.is_rest { continue; }
-        if p.is_prop_source {
-            prop_sources.insert(p.local_name.clone());
-        } else {
-            prop_non_sources.insert(p.local_name.clone(), p.prop_name.clone());
+        if let Some(sym_id) = data.scoping.find_binding(root, &p.local_name) {
+            if p.is_prop_source {
+                data.scoping.mark_prop_source(sym_id);
+            } else {
+                data.scoping.mark_prop_non_source(sym_id, p.prop_name.clone());
+            }
         }
     }
 
-    data.props = Some(PropsAnalysis { props, has_bindable, prop_sources, prop_non_sources });
+    data.props = Some(PropsAnalysis { props, has_bindable });
 }

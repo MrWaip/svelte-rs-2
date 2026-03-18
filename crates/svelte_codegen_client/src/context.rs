@@ -1,4 +1,4 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
@@ -117,11 +117,6 @@ pub struct Ctx<'a> {
     /// Snippet param names for the currently generating snippet body.
     pub snippet_param_names: Vec<String>,
 
-    // -- Cached prop info (computed once from analysis) --
-    /// Prop names that need `$.prop()` source wrappers (called as thunks).
-    pub prop_sources: FxHashSet<String>,
-    /// Non-source prop names → their original prop_name (accessed as `$$props.name`).
-    pub prop_non_sources: FxHashMap<String, String>,
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
 }
@@ -137,9 +132,6 @@ impl<'a> Ctx<'a> {
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
 
-        let prop_sources = analysis.prop_sources().cloned().unwrap_or_default();
-        let prop_non_sources = analysis.prop_non_sources().cloned().unwrap_or_default();
-
         Self {
             b: Builder::new(allocator),
             component,
@@ -151,8 +143,6 @@ impl<'a> Ctx<'a> {
             index,
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
-            prop_sources,
-            prop_non_sources,
             delegated_events: Vec::new(),
         }
     }
@@ -187,9 +177,13 @@ impl<'a> Ctx<'a> {
 
     pub fn is_dynamic(&self, id: NodeId) -> bool { self.analysis.is_dynamic(id) }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.analysis.is_elseif_alt(id) }
-    pub fn is_mutable_rune(&self, name: &str) -> bool { self.analysis.is_mutable_rune(name) }
+    pub fn is_mutable_rune(&self, name: &str) -> bool {
+        let root = self.analysis.scoping.root_scope_id();
+        self.analysis.scoping.find_binding(root, name)
+            .is_some_and(|sym| self.analysis.scoping.is_rune(sym) && self.analysis.scoping.is_mutated(sym))
+    }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
-    pub fn known_value(&self, name: &str) -> Option<&String> { self.analysis.known_value(name) }
+    pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
 
     // -- Fragment shortcuts --
 

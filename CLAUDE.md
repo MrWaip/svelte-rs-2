@@ -119,6 +119,7 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 - AST stores `Span` for JS expressions; codegen re-parses from source. No JS subtree copying between phases.
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
 - Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
+- Identifier classification must go through `SymbolId`. To determine whether an identifier is a prop, store, rune, each-var, or snippet-param: resolve with `ComponentScoping::find_binding(scope, name)` first, then query by `SymbolId`. String-based membership tests (`FxHashSet<String>::contains`, `FxHashMap<String, _>::get`) are forbidden for semantic decisions. Name strings are allowed only in output (building JS AST strings, prop_name for `$$props.X` access).
 
 ### Naming
 

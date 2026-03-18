@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
@@ -21,8 +21,15 @@ pub struct Rune {
 pub struct ComponentScoping {
     scoping: Scoping,
     runes: FxHashMap<SymbolId, Rune>,
-    /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks).
+    /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks, snippets).
     node_scopes: FxHashMap<NodeId, ScopeId>,
+    // SymbolId-keyed classification fields (single source of truth for semantic decisions)
+    prop_source_syms: FxHashSet<SymbolId>,
+    prop_non_source_names: FxHashMap<SymbolId, String>,
+    /// sym_id → base_name (e.g. SymbolId of "count" → "count")
+    store_syms: FxHashMap<SymbolId, String>,
+    known_values: FxHashMap<SymbolId, String>,
+    snippet_param_syms: FxHashSet<SymbolId>,
 }
 
 impl ComponentScoping {
@@ -32,6 +39,11 @@ impl ComponentScoping {
             scoping,
             runes: FxHashMap::default(),
             node_scopes: FxHashMap::default(),
+            prop_source_syms: FxHashSet::default(),
+            prop_non_source_names: FxHashMap::default(),
+            store_syms: FxHashMap::default(),
+            known_values: FxHashMap::default(),
+            snippet_param_syms: FxHashSet::default(),
         }
     }
 
@@ -149,14 +161,53 @@ impl ComponentScoping {
         self.symbol_scope_id(sym_id) != self.root_scope_id()
     }
 
-    // -- Name-based lookup for codegen (works with names, not SymbolIds) --
+    // -- SymbolId-keyed classification: write --
 
-    /// Lookup rune kind + mutated status by variable name (root scope).
-    pub fn rune_info_by_name(&self, name: &str) -> Option<(RuneKind, bool)> {
-        let root = self.root_scope_id();
-        let sym_id = self.find_binding(root, name)?;
-        let kind = self.rune_kind(sym_id)?;
-        Some((kind, self.is_mutated(sym_id)))
+    pub fn mark_prop_source(&mut self, sym_id: SymbolId) {
+        self.prop_source_syms.insert(sym_id);
+    }
+
+    pub fn mark_prop_non_source(&mut self, sym_id: SymbolId, prop_name: String) {
+        self.prop_non_source_names.insert(sym_id, prop_name);
+    }
+
+    pub fn mark_store(&mut self, sym_id: SymbolId, base_name: String) {
+        self.store_syms.insert(sym_id, base_name);
+    }
+
+    pub fn set_known_value(&mut self, sym_id: SymbolId, value: String) {
+        self.known_values.insert(sym_id, value);
+    }
+
+    pub fn mark_snippet_param(&mut self, sym_id: SymbolId) {
+        self.snippet_param_syms.insert(sym_id);
+    }
+
+    // -- SymbolId-keyed classification: read --
+
+    pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
+        self.prop_source_syms.contains(&sym_id)
+    }
+
+    pub fn prop_non_source_name(&self, sym_id: SymbolId) -> Option<&str> {
+        self.prop_non_source_names.get(&sym_id).map(|s| s.as_str())
+    }
+
+    pub fn is_store(&self, sym_id: SymbolId) -> bool {
+        self.store_syms.contains_key(&sym_id)
+    }
+
+    /// Returns the store_syms map for codegen iteration (sym_id → base_name).
+    pub fn store_symbols(&self) -> &FxHashMap<SymbolId, String> {
+        &self.store_syms
+    }
+
+    pub fn known_value_by_sym(&self, sym_id: SymbolId) -> Option<&str> {
+        self.known_values.get(&sym_id).map(|s| s.as_str())
+    }
+
+    pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
+        self.snippet_param_syms.contains(&sym_id)
     }
 
 }
@@ -192,12 +243,14 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::m
         }
     }
 
-    // Walk template to add each-block scopes and const bindings
+    // Walk template to add each-block/snippet scopes and const bindings.
+    // Take both tables temporarily to avoid split borrow on `data`.
     let root = data.scoping.root_scope_id();
-    // Take const_tag_names temporarily to avoid split borrow on `data`
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names);
+    let snippet_params = std::mem::take(&mut data.snippets.params);
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &snippet_params);
     data.const_tags.names = const_tag_names;
+    data.snippets.params = snippet_params;
     crate::markers::ScopingBuilt::new()
 }
 
@@ -207,6 +260,7 @@ fn walk_template_scopes(
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
     const_tag_names: &FxHashMap<NodeId, Vec<String>>,
+    snippet_params: &FxHashMap<NodeId, Vec<String>>,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -224,36 +278,45 @@ fn walk_template_scopes(
                     scoping.add_binding(child_scope, idx_name);
                 }
 
-                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names);
+                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, snippet_params);
 
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
-                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names);
+                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, snippet_params);
                 }
             }
             Node::Element(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::ComponentNode(cn) => {
-                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::IfBlock(block) => {
-                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names, snippet_params);
                 if let Some(alt) = &block.alternate {
-                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names);
+                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names, snippet_params);
                 }
             }
             Node::SnippetBlock(block) => {
-                walk_template_scopes(&block.body, component, scoping, current_scope, const_tag_names);
+                // Create a child scope for snippet params — they shadow outer bindings.
+                let snippet_scope = scoping.add_child_scope(current_scope);
+                scoping.set_node_scope(block.id, snippet_scope);
+                if let Some(params) = snippet_params.get(&block.id) {
+                    for param in params {
+                        let sym_id = scoping.add_binding(snippet_scope, param);
+                        scoping.mark_snippet_param(sym_id);
+                    }
+                }
+                walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params);
             }
             Node::KeyBlock(block) => {
-                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::SvelteHead(head) => {
-                walk_template_scopes(&head.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&head.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::SvelteElement(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {

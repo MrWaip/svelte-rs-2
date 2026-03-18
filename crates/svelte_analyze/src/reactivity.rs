@@ -1,41 +1,17 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
-    Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock,
+    Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag,
     TransitionDirective, UseDirective,
 };
 use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
-pub(crate) struct ReactivityVisitor {
-    /// Stack of snippet NodeIds for nested snippets (avoids cloning param vecs).
-    snippet_id_stack: Vec<NodeId>,
-}
+pub(crate) struct ReactivityVisitor;
 
 impl ReactivityVisitor {
     pub(crate) fn new() -> Self {
-        Self {
-            snippet_id_stack: Vec::new(),
-        }
-    }
-
-    fn current_snippet_params<'a>(&self, data: &'a AnalysisData) -> &'a [String] {
-        self.snippet_id_stack
-            .last()
-            .and_then(|id| data.snippets.params.get(id))
-            .map_or(&[], |v| v.as_slice())
-    }
-
-    /// Check if an attribute expression references a snippet parameter.
-    fn attr_refs_snippet_param(&self, attr_id: NodeId, data: &AnalysisData) -> bool {
-        let params = self.current_snippet_params(data);
-        if params.is_empty() {
-            return false;
-        }
-        if let Some(info) = data.attr_expressions.get(&attr_id) {
-            return info.references.iter().any(|r| params.iter().any(|p| p == &r.name));
-        }
-        false
+        Self
     }
 
     fn expr_is_dynamic(
@@ -44,12 +20,7 @@ impl ReactivityVisitor {
         data: &AnalysisData,
     ) -> bool {
         if let Some(info) = data.expressions.get(node_id) {
-            let params = self.current_snippet_params(data);
             return info.references.iter().any(|r| {
-                // Snippet params are always dynamic (they're thunks)
-                if params.iter().any(|p| p == &r.name) {
-                    return true;
-                }
                 // Store subscriptions ($count) are always dynamic
                 if is_store_ref(&r.name, data) {
                     return true;
@@ -92,9 +63,7 @@ impl TemplateVisitor for ReactivityVisitor {
 
     fn visit_attribute(&mut self, attr: &Attribute, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
         let attr_id = attr.id();
-        let is_dynamic = attr_is_dynamic(attr, data)
-            || self.attr_refs_snippet_param(attr_id, data);
-        if is_dynamic {
+        if attr_is_dynamic(attr, data) {
             data.element_flags.dynamic_attrs.insert(attr_id);
             data.element_flags.needs_ref.insert(el.id);
         }
@@ -145,13 +114,6 @@ impl TemplateVisitor for ReactivityVisitor {
         let _ = cn;
     }
 
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
-        self.snippet_id_stack.push(block.id);
-    }
-
-    fn leave_snippet_block(&mut self, _block: &SnippetBlock, _scope: ScopeId, _data: &mut AnalysisData) {
-        self.snippet_id_stack.pop();
-    }
 }
 
 // Component props are dynamic for *any* rune reference (mutated or not).
@@ -184,10 +146,12 @@ fn component_attr_is_dynamic(
     false
 }
 
-/// Check if a reference name is a store subscription (`$X` where X is in store_subscriptions).
+/// Check if a reference name is a store subscription (`$X` where X is marked as store).
 fn is_store_ref(name: &str, data: &AnalysisData) -> bool {
     if name.starts_with('$') && name.len() > 1 {
-        return data.store_subscriptions.contains(&name[1..]);
+        let base = &name[1..];
+        let root = data.scoping.root_scope_id();
+        return data.scoping.find_binding(root, base).is_some_and(|sym| data.scoping.is_store(sym));
     }
     false
 }
@@ -206,17 +170,12 @@ fn attr_is_dynamic(
     }
     if let Some(info) = data.attr_expressions.get(&attr.id()) {
         return info.references.iter().any(|r| {
+            let Some(sym_id) = r.symbol_id else { return false; };
             // Non-source props are always dynamic (accessed as $$props.name)
-            if let Some(pa) = &data.props {
-                if pa.props.iter().any(|p| p.local_name == r.name && !p.is_prop_source) {
-                    return true;
-                }
+            if data.scoping.prop_non_source_name(sym_id).is_some() {
+                return true;
             }
-            if let Some(sym_id) = r.symbol_id {
-                data.scoping.is_dynamic_by_id(sym_id)
-            } else {
-                false
-            }
+            data.scoping.is_dynamic_by_id(sym_id)
         });
     }
     false

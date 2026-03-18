@@ -37,30 +37,23 @@ pub fn transform_component<'a>(
     parsed: &mut ParsedExprs<'a>,
     ident_gen: &mut IdentGen,
 ) -> TransformData {
-    let prop_sources = analysis.prop_sources().cloned().unwrap_or_default();
-    let prop_non_sources = analysis.prop_non_sources().cloned().unwrap_or_default();
-
     let root_scope = analysis.scoping.root_scope_id();
 
     let mut ctx = TransformCtx {
         alloc,
         analysis,
-        prop_sources,
-        prop_non_sources,
         ident_gen,
         const_aliases: vec![FxHashMap::default()],
         transform_data: TransformData::new(),
     };
 
-    walk_fragment(&mut ctx, &component.fragment, component, parsed, root_scope, &[]);
+    walk_fragment(&mut ctx, &component.fragment, component, parsed, root_scope);
     ctx.transform_data
 }
 
 struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
     analysis: &'b AnalysisData,
-    prop_sources: FxHashSet<String>,
-    prop_non_sources: FxHashMap<String, String>,
     ident_gen: &'b mut IdentGen,
     /// Stack of alias maps for destructured const tags. Each scope level
     /// maps binding_name → (tmp_var, prop_name).
@@ -78,10 +71,9 @@ fn walk_fragment<'a>(
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
 ) {
     for node in &fragment.nodes {
-        walk_node(ctx, node, component, parsed, scope, snippet_params);
+        walk_node(ctx, node, component, parsed, scope);
     }
 }
 
@@ -91,66 +83,61 @@ fn walk_node<'a>(
     component: &Component,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, tag.id, parsed, scope);
         }
         Node::Element(el) => {
-            transform_attrs(ctx, &el.attributes, parsed, scope, snippet_params);
-            walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
+            transform_attrs(ctx, &el.attributes, parsed, scope);
+            walk_fragment(ctx, &el.fragment, component, parsed, scope);
         }
         Node::ComponentNode(cn) => {
-            transform_attrs(ctx, &cn.attributes, parsed, scope, snippet_params);
-            walk_fragment(ctx, &cn.fragment, component, parsed, scope, snippet_params);
+            transform_attrs(ctx, &cn.attributes, parsed, scope);
+            walk_fragment(ctx, &cn.fragment, component, parsed, scope);
         }
         Node::IfBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, block.id, parsed, scope);
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.consequent, component, parsed, scope, snippet_params);
+                walk_fragment(ctx, &block.consequent, component, parsed, scope);
             });
             if let Some(alt) = &block.alternate {
                 with_alias_scope(ctx, |ctx| {
-                    walk_fragment(ctx, alt, component, parsed, scope, snippet_params);
+                    walk_fragment(ctx, alt, component, parsed, scope);
                 });
             }
         }
         Node::EachBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, block.id, parsed, scope);
 
             // Each block body uses child scope (context + index vars)
             let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.body, component, parsed, body_scope, snippet_params);
+                walk_fragment(ctx, &block.body, component, parsed, body_scope);
             });
 
             // Fallback uses parent scope
             if let Some(fb) = &block.fallback {
-                walk_fragment(ctx, fb, component, parsed, scope, snippet_params);
+                walk_fragment(ctx, fb, component, parsed, scope);
             }
         }
         Node::SnippetBlock(block) => {
-            // Get snippet params for this block
-            let params = ctx
-                .analysis
-                .snippets
-                .params(block.id)
-                .cloned()
-                .unwrap_or_default();
+            // Use the snippet's child scope (created in build_scoping) so that
+            // snippet params are found via find_binding and classified as snippet_params.
+            let snippet_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.body, component, parsed, scope, &params);
+                walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
             });
         }
         Node::RenderTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, tag.id, parsed, scope);
         }
         Node::HtmlTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, tag.id, parsed, scope);
         }
         Node::ConstTag(tag) => {
             // Transform the init expression FIRST (before aliases exist for this tag)
-            transform_node_expr(ctx, tag.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, tag.id, parsed, scope);
 
             // For destructured const tags: generate tmp name, register aliases
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
@@ -167,24 +154,24 @@ fn walk_node<'a>(
             }
         }
         Node::KeyBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope, snippet_params);
+            transform_node_expr(ctx, block.id, parsed, scope);
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.fragment, component, parsed, scope, snippet_params);
+                walk_fragment(ctx, &block.fragment, component, parsed, scope);
             });
         }
         Node::SvelteHead(head) => {
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &head.fragment, component, parsed, scope, snippet_params);
+                walk_fragment(ctx, &head.fragment, component, parsed, scope);
             });
         }
         Node::SvelteElement(el) => {
             // Transform the tag expression (skip for static string tags)
             if !el.static_tag {
-                transform_node_expr(ctx, el.id, parsed, scope, snippet_params);
+                transform_node_expr(ctx, el.id, parsed, scope);
             }
-            transform_attrs(ctx, &el.attributes, parsed, scope, snippet_params);
+            transform_attrs(ctx, &el.attributes, parsed, scope);
             with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &el.fragment, component, parsed, scope, snippet_params);
+                walk_fragment(ctx, &el.fragment, component, parsed, scope);
             });
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
@@ -197,10 +184,9 @@ fn transform_node_expr<'a>(
     node_id: NodeId,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
 ) {
     if let Some(expr) = parsed.exprs.get_mut(&node_id) {
-        transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
+        transform_expr(ctx, expr, scope, &mut Vec::new());
     }
 }
 
@@ -210,12 +196,11 @@ fn transform_attrs<'a>(
     attrs: &[Attribute],
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
 ) {
     for attr in attrs {
         let attr_id = attr.id();
         if let Some(expr) = parsed.attr_exprs.get_mut(&attr_id) {
-            transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
+            transform_expr(ctx, expr, scope, &mut Vec::new());
         }
 
         // Transform ConcatenationAttribute dynamic parts
@@ -224,7 +209,7 @@ fn transform_attrs<'a>(
             for dyn_idx in 0..dyn_count {
                 let part_key = (attr_id, dyn_idx);
                 if let Some(expr) = parsed.concat_part_exprs.get_mut(&part_key) {
-                    transform_expr(ctx, expr, scope, snippet_params, &mut Vec::new());
+                    transform_expr(ctx, expr, scope, &mut Vec::new());
                 }
             }
         }
@@ -242,7 +227,6 @@ fn transform_expr<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
     shadow: &mut Vec<FxHashSet<String>>,
 ) {
     match expr {
@@ -262,49 +246,44 @@ fn transform_expr<'a>(
                 }
             }
 
-            // Snippet params → name() thunk call
-            if snippet_params.iter().any(|p| p == name) {
-                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
-                return;
-            }
-
-            // Prop sources → name() thunk call
-            if ctx.prop_sources.contains(name) {
-                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
-                return;
-            }
-
-            // Prop non-sources → $$props.name
-            if let Some(prop_name) = ctx.prop_non_sources.get(name) {
-                *expr = rune_refs::make_props_access(ctx.alloc, prop_name);
-                return;
-            }
-
-            // Store subscriptions: $X → $X() (thunk call)
+            // Store subscriptions: $X → $X() (thunk call).
+            // Dollar-prefixed names can't be in the scope tree (we bind "X" not "$X"),
+            // so handle this before the scope lookup.
             if name.starts_with('$') && name.len() > 1 {
                 let base = &name[1..];
-                if ctx.analysis.store_subscriptions.contains(base) {
+                let root = ctx.analysis.scoping.root_scope_id();
+                if ctx.analysis.scoping.find_binding(root, base).is_some_and(|s| ctx.analysis.scoping.is_store(s)) {
                     *expr = rune_refs::make_thunk_call(ctx.alloc, name);
                     return;
                 }
             }
 
-            // Look up in scope tree
-            if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) {
-                let is_root = ctx.analysis.scoping.symbol_scope_id(sym_id)
-                    == ctx.analysis.scoping.root_scope_id();
+            // Scope-first: all remaining classification via SymbolId
+            let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) else {
+                return;
+            };
+            let is_root = ctx.analysis.scoping.symbol_scope_id(sym_id)
+                == ctx.analysis.scoping.root_scope_id();
 
-                if is_root {
-                    // Root scope: check if it's a rune that needs $.get()
-                    if let Some(kind) = ctx.analysis.scoping.rune_kind(sym_id) {
-                        let needs_get = ctx.analysis.scoping.is_mutated(sym_id)
-                            || kind.is_derived();
-                        if needs_get {
-                            *expr = rune_refs::make_rune_get(ctx.alloc, name);
-                        }
-                    }
+            if !is_root {
+                // Non-root: snippet param → thunk call; each-block var → $.get
+                if ctx.analysis.scoping.is_snippet_param(sym_id) {
+                    *expr = rune_refs::make_thunk_call(ctx.alloc, name);
                 } else {
-                    // Non-root scope binding (each-block variable) → $.get(name)
+                    *expr = rune_refs::make_rune_get(ctx.alloc, name);
+                }
+                return;
+            }
+
+            // Root scope classification
+            if ctx.analysis.scoping.is_prop_source(sym_id) {
+                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
+            } else if let Some(prop_name) = ctx.analysis.scoping.prop_non_source_name(sym_id) {
+                let prop_name = prop_name.to_string();
+                *expr = rune_refs::make_props_access(ctx.alloc, &prop_name);
+            } else if let Some(kind) = ctx.analysis.scoping.rune_kind(sym_id) {
+                let needs_get = ctx.analysis.scoping.is_mutated(sym_id) || kind.is_derived();
+                if needs_get {
                     *expr = rune_refs::make_rune_get(ctx.alloc, name);
                 }
             }
@@ -313,7 +292,7 @@ fn transform_expr<'a>(
         }
         Expression::AssignmentExpression(assign) => {
             // First, transform the RHS
-            transform_expr(ctx, &mut assign.right, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut assign.right, scope, shadow);
 
             // Check if LHS is a rune identifier → $.set(name, rhs)
             if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
@@ -368,7 +347,7 @@ fn transform_expr<'a>(
 
             // Transform body
             for stmt in arrow.body.statements.iter_mut() {
-                transform_stmt(ctx, stmt, scope, snippet_params, shadow);
+                transform_stmt(ctx, stmt, scope, shadow);
             }
 
             shadow.pop();
@@ -378,7 +357,7 @@ fn transform_expr<'a>(
     }
 
     // Generic: walk child expressions
-    walk_expr_children(ctx, expr, scope, snippet_params, shadow);
+    walk_expr_children(ctx, expr, scope, shadow);
 }
 
 /// Walk into an expression's children and transform them.
@@ -386,53 +365,52 @@ fn walk_expr_children<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     expr: &mut Expression<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
     shadow: &mut Vec<FxHashSet<String>>,
 ) {
     match expr {
         Expression::BinaryExpression(bin) => {
-            transform_expr(ctx, &mut bin.left, scope, snippet_params, shadow);
-            transform_expr(ctx, &mut bin.right, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut bin.left, scope, shadow);
+            transform_expr(ctx, &mut bin.right, scope, shadow);
         }
         Expression::LogicalExpression(log) => {
-            transform_expr(ctx, &mut log.left, scope, snippet_params, shadow);
-            transform_expr(ctx, &mut log.right, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut log.left, scope, shadow);
+            transform_expr(ctx, &mut log.right, scope, shadow);
         }
         Expression::UnaryExpression(un) => {
-            transform_expr(ctx, &mut un.argument, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut un.argument, scope, shadow);
         }
         Expression::ConditionalExpression(cond) => {
-            transform_expr(ctx, &mut cond.test, scope, snippet_params, shadow);
-            transform_expr(ctx, &mut cond.consequent, scope, snippet_params, shadow);
-            transform_expr(ctx, &mut cond.alternate, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut cond.test, scope, shadow);
+            transform_expr(ctx, &mut cond.consequent, scope, shadow);
+            transform_expr(ctx, &mut cond.alternate, scope, shadow);
         }
         Expression::CallExpression(call) => {
-            transform_expr(ctx, &mut call.callee, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut call.callee, scope, shadow);
             for arg in call.arguments.iter_mut() {
                 if let Some(expr) = arg.as_expression_mut() {
-                    transform_expr(ctx, expr, scope, snippet_params, shadow);
+                    transform_expr(ctx, expr, scope, shadow);
                 }
             }
         }
         Expression::StaticMemberExpression(mem) => {
-            transform_expr(ctx, &mut mem.object, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut mem.object, scope, shadow);
         }
         Expression::ComputedMemberExpression(mem) => {
-            transform_expr(ctx, &mut mem.object, scope, snippet_params, shadow);
-            transform_expr(ctx, &mut mem.expression, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut mem.object, scope, shadow);
+            transform_expr(ctx, &mut mem.expression, scope, shadow);
         }
         Expression::TemplateLiteral(tl) => {
             for e in tl.expressions.iter_mut() {
-                transform_expr(ctx, e, scope, snippet_params, shadow);
+                transform_expr(ctx, e, scope, shadow);
             }
         }
         Expression::ParenthesizedExpression(paren) => {
-            transform_expr(ctx, &mut paren.expression, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut paren.expression, scope, shadow);
         }
         Expression::ArrayExpression(arr) => {
             for elem in arr.elements.iter_mut() {
                 if let Some(expr) = elem.as_expression_mut() {
-                    transform_expr(ctx, expr, scope, snippet_params, shadow);
+                    transform_expr(ctx, expr, scope, shadow);
                 }
             }
         }
@@ -440,17 +418,17 @@ fn walk_expr_children<'a>(
             for prop in obj.properties.iter_mut() {
                 match prop {
                     ObjectPropertyKind::ObjectProperty(p) => {
-                        transform_expr(ctx, &mut p.value, scope, snippet_params, shadow);
+                        transform_expr(ctx, &mut p.value, scope, shadow);
                     }
                     ObjectPropertyKind::SpreadProperty(s) => {
-                        transform_expr(ctx, &mut s.argument, scope, snippet_params, shadow);
+                        transform_expr(ctx, &mut s.argument, scope, shadow);
                     }
                 }
             }
         }
         Expression::SequenceExpression(seq) => {
             for e in seq.expressions.iter_mut() {
-                transform_expr(ctx, e, scope, snippet_params, shadow);
+                transform_expr(ctx, e, scope, shadow);
             }
         }
         // Expressions already handled in transform_expr (Identifier, Assignment, Update, Arrow)
@@ -475,21 +453,20 @@ fn transform_stmt<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     stmt: &mut Statement<'a>,
     scope: ScopeId,
-    snippet_params: &[String],
     shadow: &mut Vec<FxHashSet<String>>,
 ) {
     match stmt {
         Statement::ExpressionStatement(es) => {
-            transform_expr(ctx, &mut es.expression, scope, snippet_params, shadow);
+            transform_expr(ctx, &mut es.expression, scope, shadow);
         }
         Statement::ReturnStatement(ret) => {
             if let Some(arg) = &mut ret.argument {
-                transform_expr(ctx, arg, scope, snippet_params, shadow);
+                transform_expr(ctx, arg, scope, shadow);
             }
         }
         Statement::BlockStatement(block) => {
             for s in block.body.iter_mut() {
-                transform_stmt(ctx, s, scope, snippet_params, shadow);
+                transform_stmt(ctx, s, scope, shadow);
             }
         }
         _ => {}

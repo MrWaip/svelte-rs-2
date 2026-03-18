@@ -41,7 +41,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = !ctx.analysis.store_subscriptions.is_empty();
+    let has_stores = !ctx.analysis.scoping.store_symbols().is_empty();
     let needs_push = has_bindable || has_exports || ctx.analysis.needs_context;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
@@ -59,8 +59,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     //   const $count = () => $.store_get(count, "$count", $$stores);
     //   const [$$stores, $$cleanup] = $.setup_stores();
     if has_stores {
-        // Sort store names for deterministic output
-        let mut store_names: Vec<&String> = ctx.analysis.store_subscriptions.iter().collect();
+        // Sort store base names for deterministic output
+        let mut store_names: Vec<&str> = ctx.analysis.scoping.store_symbols().values().map(|s| s.as_str()).collect();
         store_names.sort();
 
         for base_name in &store_names {

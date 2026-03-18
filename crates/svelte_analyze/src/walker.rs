@@ -97,8 +97,9 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 }
             }
             Node::SnippetBlock(block) => {
+                let body_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
                 visitor.visit_snippet_block(block, scope, data);
-                walk_template(&block.body, data, scope, visitor);
+                walk_template(&block.body, data, body_scope, visitor);
                 visitor.leave_snippet_block(block, scope, data);
             }
             Node::ComponentNode(cn) => {

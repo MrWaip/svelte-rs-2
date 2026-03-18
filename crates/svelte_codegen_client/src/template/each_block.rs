@@ -57,7 +57,10 @@ pub(crate) fn gen_each_block<'a>(
     }
 
     let expr_source = ctx.component.source_text(expr_span).trim();
-    let collection_fn = if ctx.prop_sources.contains(expr_source) {
+    let root = ctx.analysis.scoping.root_scope_id();
+    let is_prop_source = ctx.analysis.scoping.find_binding(root, expr_source)
+        .is_some_and(|s| ctx.analysis.scoping.is_prop_source(s));
+    let collection_fn = if is_prop_source {
         // Prop getter is already a function — pass directly without thunk
         ctx.b.rid_expr(expr_source)
     } else {

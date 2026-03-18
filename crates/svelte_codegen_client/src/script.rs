@@ -1,4 +1,4 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement, VariableDeclarator};
@@ -36,7 +36,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
     let allocator = ctx.b.ast.allocator;
     let component_scoping = &ctx.analysis.scoping;
     let props = ctx.analysis.props.as_ref();
-    let store_subscriptions = &ctx.analysis.store_subscriptions;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
@@ -45,9 +44,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
             program,
             component_scoping,
             props,
-            &ctx.prop_sources,
-            &ctx.prop_non_sources,
-            store_subscriptions,
         );
     }
 
@@ -61,9 +57,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         is_ts,
         component_scoping,
         props,
-        &ctx.prop_sources,
-        &ctx.prop_non_sources,
-        store_subscriptions,
         true,
     )
 }
@@ -82,9 +75,6 @@ pub fn transform_module_script<'a>(
         is_ts,
         component_scoping,
         None,
-        &FxHashSet::default(),
-        &FxHashMap::default(),
-        &FxHashSet::default(),
         false,
     )
 }
@@ -96,9 +86,6 @@ fn transform_script_text<'a>(
     is_ts: bool,
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
-    prop_sources: &FxHashSet<String>,
-    prop_non_sources: &FxHashMap<String, String>,
-    store_subscriptions: &FxHashSet<String>,
     strip_exports: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
@@ -117,6 +104,7 @@ fn transform_script_text<'a>(
     let scoping = sem.semantic.into_scoping();
 
     let props_gen: Option<PropsGenInfo> = props.map(|pa| {
+        let root = component_scoping.root_scope_id();
         PropsGenInfo {
             props: pa.props.iter().map(|p| PropGenItem {
                 local_name: p.local_name.clone(),
@@ -124,7 +112,8 @@ fn transform_script_text<'a>(
                 is_prop_source: p.is_prop_source,
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
-                is_mutated: component_scoping.rune_info_by_name(&p.local_name).is_some_and(|(_, m)| m),
+                is_mutated: component_scoping.find_binding(root, &p.local_name)
+                    .is_some_and(|sym| component_scoping.is_mutated(sym)),
                 default_text: p.default_text.clone(),
                 is_lazy_default: p.is_lazy_default,
             }).collect(),
@@ -134,9 +123,6 @@ fn transform_script_text<'a>(
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
-        prop_sources,
-        prop_non_sources,
-        store_subscriptions,
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
@@ -179,9 +165,6 @@ fn transform_program<'a>(
     mut program: Program<'a>,
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
-    prop_sources: &FxHashSet<String>,
-    prop_non_sources: &FxHashMap<String, String>,
-    store_subscriptions: &FxHashSet<String>,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let b = Builder::new(allocator);
 
@@ -189,29 +172,30 @@ fn transform_program<'a>(
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    let props_gen: Option<PropsGenInfo> = props.map(|pa| PropsGenInfo {
-        props: pa
-            .props
-            .iter()
-            .map(|p| PropGenItem {
-                local_name: p.local_name.clone(),
-                prop_name: p.prop_name.clone(),
-                is_prop_source: p.is_prop_source,
-                is_bindable: p.is_bindable,
-                is_rest: p.is_rest,
-                is_mutated: component_scoping.rune_info_by_name(&p.local_name).is_some_and(|(_, m)| m),
-                default_text: p.default_text.clone(),
-                is_lazy_default: p.is_lazy_default,
-            })
-            .collect(),
+    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
+        let root = component_scoping.root_scope_id();
+        PropsGenInfo {
+            props: pa
+                .props
+                .iter()
+                .map(|p| PropGenItem {
+                    local_name: p.local_name.clone(),
+                    prop_name: p.prop_name.clone(),
+                    is_prop_source: p.is_prop_source,
+                    is_bindable: p.is_bindable,
+                    is_rest: p.is_rest,
+                    is_mutated: component_scoping.find_binding(root, &p.local_name)
+                        .is_some_and(|sym| component_scoping.is_mutated(sym)),
+                    default_text: p.default_text.clone(),
+                    is_lazy_default: p.is_lazy_default,
+                })
+                .collect(),
+        }
     });
 
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
-        prop_sources,
-        prop_non_sources,
-        store_subscriptions,
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
@@ -271,10 +255,6 @@ struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     /// ComponentScoping — source of truth for rune kind + mutation status.
     component_scoping: &'b ComponentScoping,
-    prop_sources: &'b FxHashSet<String>,
-    prop_non_sources: &'b FxHashMap<String, String>,
-    /// Base names of store subscriptions (e.g. "count" for `$count`).
-    store_subscriptions: &'b FxHashSet<String>,
     /// OXC scoping from SemanticBuilder — used to resolve references to symbols.
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
@@ -296,7 +276,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        self.component_scoping.rune_info_by_name(id.name.as_str())
+        let root = self.component_scoping.root_scope_id();
+        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
+        let kind = self.component_scoping.rune_kind(comp_sym)?;
+        Some((kind, self.component_scoping.is_mutated(comp_sym)))
     }
 
     /// Resolve a reference identifier to its rune kind and mutated status.
@@ -309,7 +292,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        self.component_scoping.rune_info_by_name(id.name.as_str())
+        let root = self.component_scoping.root_scope_id();
+        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
+        let kind = self.component_scoping.rune_kind(comp_sym)?;
+        Some((kind, self.component_scoping.is_mutated(comp_sym)))
     }
 
     /// Resolve a reference identifier to its prop kind (source or non-source).
@@ -322,11 +308,12 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let name = id.name.as_str();
-        if self.prop_sources.contains(name) {
+        let root = self.component_scoping.root_scope_id();
+        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
+        if self.component_scoping.is_prop_source(comp_sym) {
             Some(PropKind::Source)
-        } else if let Some(prop_name) = self.prop_non_sources.get(name) {
-            Some(PropKind::NonSource(prop_name.clone()))
+        } else if let Some(prop_name) = self.component_scoping.prop_non_source_name(comp_sym) {
+            Some(PropKind::NonSource(prop_name.to_string()))
         } else {
             None
         }
@@ -335,7 +322,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     /// Check if an identifier name is a `$store` reference (e.g. `$count` where `count` is a store).
     fn is_store_ref(&self, name: &str) -> bool {
         if name.starts_with('$') && name.len() > 1 {
-            return self.store_subscriptions.contains(&name[1..]);
+            let base = &name[1..];
+            let root = self.component_scoping.root_scope_id();
+            return self.component_scoping.find_binding(root, base)
+                .is_some_and(|sym| self.component_scoping.is_store(sym));
         }
         false
     }

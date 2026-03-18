@@ -611,8 +611,10 @@ mod tests {
             r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#,
         );
         assert_is_rune(&data, "count");
+        let root = data.scoping.root_scope_id();
+        let count_sym = data.scoping.find_binding(root, "count").expect("symbol 'count' not found");
         assert!(
-            !data.is_mutable_rune("count"),
+            !data.scoping.is_mutated(count_sym),
             "rune 'count' should NOT be mutated — the assignment targets the each-block variable"
         );
     }
