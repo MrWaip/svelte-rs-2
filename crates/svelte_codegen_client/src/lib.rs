@@ -9,7 +9,7 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
-use svelte_ast::Component;
+use svelte_ast::{Attribute, Component, Node};
 use svelte_transform::TransformData;
 
 use builder::{Arg, Builder, ObjProp};
@@ -136,7 +136,19 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    let fn_params = if ctx.analysis.props.is_some() || needs_push {
+    // Bubble events on special elements (on:event with no expression) reference $$props
+    let has_bubble_events = component.fragment.nodes.iter().any(|n| {
+        let attrs = match n {
+            Node::SvelteWindow(w) => Some(&w.attributes),
+            Node::SvelteDocument(d) => Some(&d.attributes),
+            _ => None,
+        };
+        attrs.is_some_and(|attrs| attrs.iter().any(|a| {
+            matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression_span.is_none())
+        }))
+    });
+
+    let fn_params = if ctx.analysis.props.is_some() || needs_push || has_bubble_events {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
