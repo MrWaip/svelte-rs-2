@@ -211,6 +211,8 @@ pub struct AnalysisData {
     pub snippets: SnippetData,
     /// ConstTag declared names and per-fragment grouping.
     pub const_tags: ConstTagData,
+    /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
+    pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
 }
 
 impl AnalysisData {
@@ -229,6 +231,7 @@ impl AnalysisData {
             fragments: FragmentData::new(),
             snippets: SnippetData::new(),
             const_tags: ConstTagData::new(),
+            render_tag_arg_has_call: FxHashMap::default(),
         }
     }
 }
@@ -238,6 +241,7 @@ impl AnalysisData {
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
+    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
     pub fn known_value(&self, name: &str) -> Option<&str> {

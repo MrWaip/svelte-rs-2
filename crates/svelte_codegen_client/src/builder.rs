@@ -189,6 +189,11 @@ impl<'a> Builder<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Var)
     }
 
+    /// `let name = init;` — initialized let declaration.
+    pub fn let_init_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
+        self.var_decl_stmt(name, init, VariableDeclarationKind::Let)
+    }
+
     /// `let name;` — uninitialized variable declaration.
     pub fn let_stmt(&self, name: &str) -> Statement<'a> {
         let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
