@@ -1054,3 +1054,42 @@ fn event_attr_member_handler() {
 fn event_attr_has_call() {
     assert_compiler("event_attr_has_call");
 }
+
+// ---------------------------------------------------------------------------
+// Expression memoization tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn component_prop_has_call() {
+    assert_compiler("component_prop_has_call");
+}
+
+#[rstest]
+fn component_prop_has_call_multi() {
+    assert_compiler("component_prop_has_call_multi");
+}
+
+#[rstest]
+fn component_prop_has_call_mixed() {
+    assert_compiler("component_prop_has_call_mixed");
+}
+
+#[rstest]
+fn component_prop_memo_state() {
+    assert_compiler("component_prop_memo_state");
+}
+
+#[rstest]
+fn render_tag_arg_has_call() {
+    assert_compiler("render_tag_arg_has_call");
+}
+
+#[rstest]
+fn render_tag_arg_has_call_multi() {
+    assert_compiler("render_tag_arg_has_call_multi");
+}
+
+#[rstest]
+fn render_tag_arg_mixed() {
+    assert_compiler("render_tag_arg_mixed");
+}

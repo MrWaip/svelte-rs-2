@@ -58,6 +58,12 @@ pub enum ExpressionKind {
     Other,
 }
 
+impl ExpressionKind {
+    pub fn is_simple(&self) -> bool {
+        matches!(self, Self::Identifier(_) | Self::MemberExpression)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PropInfo {
     pub local_name: CompactString,
@@ -726,7 +732,7 @@ fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo
     }
 }
 
-fn expression_has_call(expr: &Expression<'_>) -> bool {
+pub fn expression_has_call(expr: &Expression<'_>) -> bool {
     match expr {
         Expression::CallExpression(_) => true,
         Expression::ConditionalExpression(c) => {

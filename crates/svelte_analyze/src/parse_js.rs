@@ -1,4 +1,5 @@
 use oxc_allocator::Allocator;
+use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, NodeId, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 use svelte_js::{ExpressionInfo, ExpressionKind};
@@ -179,6 +180,13 @@ fn walk_node<'a>(
         Node::RenderTag(tag) => {
             let source = component.source_text(tag.expression_span);
             parse_expr(alloc, source, tag.expression_span.start, tag.id, data, parsed, diags);
+            // Store per-argument has_call flags before transform modifies the AST
+            if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.id) {
+                let flags: Vec<bool> = call.arguments.iter().map(|arg| {
+                    svelte_js::expression_has_call(arg.to_expression())
+                }).collect();
+                data.render_tag_arg_has_call.insert(tag.id, flags);
+            }
         }
         Node::HtmlTag(tag) => {
             let source = component.source_text(tag.expression_span);
