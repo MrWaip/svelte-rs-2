@@ -11,6 +11,7 @@ use oxc_ast::{
     },
     AstBuilder, NONE,
 };
+use oxc_parser::Parser as OxcParser;
 use oxc_span::{Atom, SourceType, SPAN};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use std::cell::Cell;
@@ -615,6 +616,23 @@ impl<'a> Builder<'a> {
         parts: impl IntoIterator<Item = TemplatePart<'a>>,
     ) -> Expression<'a> {
         Expression::TemplateLiteral(self.alloc(self.template_parts(parts)))
+    }
+
+    // -----------------------------------------------------------------------
+    // Expression parsing
+    // -----------------------------------------------------------------------
+
+    /// Parse a JS expression from text. Falls back to a string literal on parse failure.
+    pub fn parse_expression(&self, text: &str) -> Expression<'a> {
+        let alloc = self.ast.allocator;
+        let arena_text: &'a str = alloc.alloc_str(text);
+        match OxcParser::new(alloc, arena_text, SourceType::default()).parse_expression() {
+            Ok(expr) => expr,
+            Err(_) => {
+                debug_assert!(false, "codegen: failed to parse expression: {text}");
+                self.str_expr(text)
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

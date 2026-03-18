@@ -220,7 +220,7 @@ Theme: `<svelte:*>` elements for global bindings, dynamic elements, error bounda
 - **Phases**: T
 - **Codegen**: `$.document.title = value` with `$.effect()` / `$.deferred_template_effect()` wrapping
 
-### Component `bind:this`
+### ~~Component `bind:this`~~ ✅
 - **Phases**: T
 - **Codegen**: `$.bind_this(component, setter, getter)` — different from element `bind:this`, binds to component instance
 - **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
@@ -485,6 +485,9 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `experimental.async` handling for const tag scoping changes
 - [ ] Dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] Handler wrapping for snippet params used as event handlers (`function(...$$args) { reset()?.apply(this, $$args) }`)
+
+### Component `bind:this` (Tier 5)
+- [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
