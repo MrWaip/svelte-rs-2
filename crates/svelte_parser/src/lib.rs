@@ -10,7 +10,7 @@ use svelte_ast::{
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
     ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
-    StyleDirective, StyleDirectiveValue, SvelteHead, SvelteOptions, Text, TransitionDirective,
+    StyleDirective, StyleDirectiveValue, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
 
@@ -349,6 +349,9 @@ impl<'a> Parser<'a> {
 
         // Convert <svelte:head> elements to SvelteHead nodes
         Self::convert_svelte_head(&mut component);
+
+        // Convert <svelte:window> elements to SvelteWindow nodes
+        Self::convert_svelte_window(&mut component);
 
         // Convert <svelte:element> elements to SvelteElement nodes
         Self::convert_svelte_element(&mut component.fragment);
@@ -1205,6 +1208,23 @@ impl<'a> Parser<'a> {
                         fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
                     };
                     *node = Node::SvelteHead(head);
+                }
+            }
+        }
+    }
+
+    /// Convert `<svelte:window>` Element nodes in the root fragment to SvelteWindow nodes.
+    fn convert_svelte_window(component: &mut Component) {
+        for node in &mut component.fragment.nodes {
+            if let Node::Element(el) = node {
+                if el.name == "svelte:window" {
+                    let window = SvelteWindow {
+                        id: el.id,
+                        span: el.span,
+                        attributes: std::mem::take(&mut el.attributes),
+                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    };
+                    *node = Node::SvelteWindow(window);
                 }
             }
         }
