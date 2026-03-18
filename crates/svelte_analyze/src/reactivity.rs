@@ -1,6 +1,6 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ComponentNode, ConstTag, EachBlock,
     Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SvelteBoundary,
     TransitionDirective, UseDirective,
 };
@@ -105,6 +105,11 @@ impl TemplateVisitor for ReactivityVisitor {
         if self.expr_is_dynamic(&block.id, data) {
             data.dynamic_nodes.insert(block.id);
         }
+    }
+
+    fn visit_await_block(&mut self, block: &AwaitBlock, _scope: ScopeId, data: &mut AnalysisData) {
+        // Await blocks are always dynamic
+        data.dynamic_nodes.insert(block.id);
     }
 
     fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {

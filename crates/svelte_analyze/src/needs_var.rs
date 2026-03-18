@@ -63,6 +63,6 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
             // Already computed: leave_element processes children before parents
             data.element_flags.needs_var.contains(id)
         }
-        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::TitleElement(_) => true,
+        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::AwaitBlock(_) | FragmentItem::TitleElement(_) => true,
     }
 }

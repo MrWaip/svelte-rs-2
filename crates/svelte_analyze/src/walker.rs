@@ -1,6 +1,6 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, BindDirective, ComponentNode, ConstTag, EachBlock,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ComponentNode, ConstTag, EachBlock,
     Element, ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, Node, RenderTag, SnippetBlock,
     SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow, TransitionDirective, UseDirective,
 };
@@ -33,6 +33,7 @@ pub(crate) trait TemplateVisitor {
     fn visit_svelte_document(&mut self, doc: &SvelteDocument, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData) {}
+    fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
     fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
@@ -145,6 +146,20 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 visitor.visit_svelte_boundary(b, scope, data);
                 walk_template(&b.fragment, data, scope, visitor);
             }
+            Node::AwaitBlock(block) => {
+                visitor.visit_await_block(block, scope, data);
+                if let Some(ref p) = block.pending {
+                    walk_template(p, data, scope, visitor);
+                }
+                if let Some(ref t) = block.then {
+                    let then_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
+                    walk_template(t, data, then_scope, visitor);
+                }
+                if let Some(ref c) = block.catch {
+                    let catch_scope = data.scoping.await_catch_scope(block.id).unwrap_or(scope);
+                    walk_template(c, data, catch_scope, visitor);
+                }
+            }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
     }
@@ -198,6 +213,9 @@ macro_rules! delegate_visitor_methods {
         }
         fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_svelte_boundary(boundary, scope, data);)+
+        }
+        fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.visit_await_block(block, scope, data);)+
         }
         fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.visit_attribute(attr, el, scope, data);)+

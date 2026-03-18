@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{AwaitBlock, Component, ComponentNode, ConstTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_span::Span;
 use svelte_transform::TransformData;
@@ -20,6 +20,7 @@ struct NodeIndex<'a> {
     const_tags: FxHashMap<NodeId, &'a ConstTag>,
     svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
     svelte_boundaries: FxHashMap<NodeId, &'a SvelteBoundary>,
+    await_blocks: FxHashMap<NodeId, &'a AwaitBlock>,
     svelte_windows: FxHashMap<NodeId, &'a SvelteWindow>,
     svelte_documents: FxHashMap<NodeId, &'a SvelteDocument>,
     svelte_bodies: FxHashMap<NodeId, &'a SvelteBody>,
@@ -38,6 +39,7 @@ impl<'a> NodeIndex<'a> {
             const_tags: FxHashMap::default(),
             svelte_elements: FxHashMap::default(),
             svelte_boundaries: FxHashMap::default(),
+            await_blocks: FxHashMap::default(),
             svelte_windows: FxHashMap::default(),
             svelte_documents: FxHashMap::default(),
             svelte_bodies: FxHashMap::default(),
@@ -96,6 +98,12 @@ impl<'a> NodeIndex<'a> {
                 Node::SvelteBoundary(b) => {
                     self.svelte_boundaries.insert(b.id, b);
                     self.walk(&b.fragment);
+                }
+                Node::AwaitBlock(b) => {
+                    self.await_blocks.insert(b.id, b);
+                    if let Some(ref p) = b.pending { self.walk(p); }
+                    if let Some(ref t) = b.then { self.walk(t); }
+                    if let Some(ref c) = b.catch { self.walk(c); }
                 }
                 Node::SvelteWindow(w) => {
                     self.svelte_windows.insert(w.id, w);
@@ -183,6 +191,7 @@ impl<'a> Ctx<'a> {
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(&self.index.svelte_elements, id, "svelte element") }
     pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(&self.index.svelte_boundaries, id, "svelte boundary") }
+    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.get_node(&self.index.await_blocks, id, "await block") }
     pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(&self.index.svelte_windows, id, "svelte window") }
     pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(&self.index.svelte_documents, id, "svelte document") }
     pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(&self.index.svelte_bodies, id, "svelte body") }

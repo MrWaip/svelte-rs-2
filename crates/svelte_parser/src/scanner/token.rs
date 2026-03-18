@@ -21,6 +21,9 @@ pub enum TokenType {
     ConstTag(ConstTagToken),
     StartKeyTag(StartKeyTag),
     EndKeyTag,
+    StartAwaitTag(StartAwaitTag),
+    AwaitClauseTag(AwaitClauseTag),
+    EndAwaitTag,
     StyleTag(StyleTag),
     EOF,
 }
@@ -215,6 +218,39 @@ pub struct ConstTagToken {
 #[derive(Debug, PartialEq, Eq)]
 pub struct StartKeyTag {
     pub expression_span: Span,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartAwaitTag {
+    pub expression_span: Span,
+    /// Then binding span if short form `{#await expr then val}`. None for implicit form.
+    pub value_span: Option<Span>,
+    /// Catch binding span if short form `{#await expr catch err}`. None for implicit form.
+    pub error_span: Option<Span>,
+    /// Which fragment to start collecting into.
+    pub initial_clause: AwaitInitialClause,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AwaitInitialClause {
+    /// Implicit form: `{#await expr}` — pending content follows.
+    Pending,
+    /// Short form: `{#await expr then val}` — then content follows.
+    Then,
+    /// Short form: `{#await expr catch err}` — catch content follows.
+    Catch,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AwaitClauseTag {
+    pub clause: AwaitClause,
+    pub binding_span: Option<Span>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AwaitClause {
+    Then,
+    Catch,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

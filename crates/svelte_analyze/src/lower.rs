@@ -62,6 +62,17 @@ fn lower_fragment(
             Node::SvelteBoundary(b) => {
                 lower_fragment(&b.fragment, FragmentKey::SvelteBoundaryBody(b.id), component, data);
             }
+            Node::AwaitBlock(block) => {
+                if let Some(ref p) = block.pending {
+                    lower_fragment(p, FragmentKey::AwaitPending(block.id), component, data);
+                }
+                if let Some(ref t) = block.then {
+                    lower_fragment(t, FragmentKey::AwaitThen(block.id), component, data);
+                }
+                if let Some(ref c) = block.catch {
+                    lower_fragment(c, FragmentKey::AwaitCatch(block.id), component, data);
+                }
+            }
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
             Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::Error(_) => {}
         }
@@ -170,6 +181,7 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
                     Node::KeyBlock(block) => items.push(FragmentItem::KeyBlock(block.id)),
                     Node::SvelteElement(el) => items.push(FragmentItem::SvelteElement(el.id)),
                     Node::SvelteBoundary(b) => items.push(FragmentItem::SvelteBoundary(b.id)),
+                    Node::AwaitBlock(block) => items.push(FragmentItem::AwaitBlock(block.id)),
                     _ => {}
                 }
             }

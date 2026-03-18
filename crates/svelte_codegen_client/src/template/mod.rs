@@ -1,6 +1,7 @@
 //! Template and DOM traversal code generation.
 
 pub(crate) mod attributes;
+pub(crate) mod await_block;
 pub(crate) mod component;
 pub(crate) mod const_tag;
 pub(crate) mod each_block;
@@ -32,6 +33,7 @@ use crate::context::Ctx;
 use element::process_element;
 use expression::{emit_template_effect, emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
+use await_block::gen_await_block;
 use component::gen_component;
 use if_block::gen_if_block;
 use each_block::gen_each_block;
@@ -272,7 +274,10 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &m
         SingleBlockKind::SvelteBoundary(id) => {
             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary at this point"),
+        SingleBlockKind::AwaitBlock(id) => {
+            gen_await_block(ctx, *id, ctx.b.rid_expr(&node), body);
+        }
+        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary/await at this point"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -457,7 +462,10 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         SingleBlockKind::SvelteBoundary(id) => {
                             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary at this point"),
+                        SingleBlockKind::AwaitBlock(id) => {
+                            gen_await_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
+                        }
+                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary/await at this point"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",
