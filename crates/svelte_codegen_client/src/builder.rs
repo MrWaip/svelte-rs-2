@@ -24,6 +24,7 @@ pub enum Arg<'a, 'short> {
     Expr(Expression<'a>),
     Arrow(ArrowFunctionExpression<'a>),
     Bool(bool),
+    Spread(Expression<'a>),
 }
 
 pub enum AssignLeft<'a> {
@@ -118,6 +119,9 @@ impl<'a> Builder<'a> {
 
     pub fn array_from_args<'short>(&self, args: impl IntoIterator<Item = Arg<'a, 'short>>) -> Expression<'a> {
         let elements = args.into_iter().map(|a| {
+            if let Arg::Spread(e) = a {
+                return ast::ArrayExpressionElement::SpreadElement(self.alloc(self.ast.spread_element(SPAN, e)));
+            }
             let expr = match a {
                 Arg::Str(v) => self.str_expr(&v),
                 Arg::Num(v) => self.num_expr(v),
@@ -126,6 +130,7 @@ impl<'a> Builder<'a> {
                 Arg::Expr(e) => e,
                 Arg::Arrow(a) => Expression::ArrowFunctionExpression(self.alloc(a)),
                 Arg::Bool(v) => self.bool_expr(v),
+                Arg::Spread(_) => unreachable!(),
             };
             ast::ArrayExpressionElement::from(expr)
         });
@@ -174,6 +179,7 @@ impl<'a> Builder<'a> {
             Arg::Expr(e) => Argument::from(e),
             Arg::Arrow(a) => Argument::ArrowFunctionExpression(self.alloc(a)),
             Arg::Bool(v) => Argument::BooleanLiteral(self.alloc(self.ast.boolean_literal(SPAN, v))),
+            Arg::Spread(e) => Argument::SpreadElement(self.alloc(self.ast.spread_element(SPAN, e))),
         }
     }
 

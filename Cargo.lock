@@ -155,6 +155,7 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "rstest",
+ "serde_json",
  "svelte_compiler",
 ]
 

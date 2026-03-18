@@ -28,7 +28,7 @@ const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 ///
 /// Returns `(imports, body)` — imports are extracted separately so they can
 /// be hoisted to the top of the generated module.
-pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     if ctx.component.script.is_none() {
         return (vec![], vec![]);
     };
@@ -44,6 +44,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
             program,
             component_scoping,
             props,
+            dev,
         );
     }
 
@@ -58,6 +59,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'
         component_scoping,
         props,
         true,
+        dev,
     )
 }
 
@@ -76,6 +78,7 @@ pub fn transform_module_script<'a>(
         component_scoping,
         None,
         false,
+        false,
     )
 }
 
@@ -87,6 +90,7 @@ fn transform_script_text<'a>(
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     strip_exports: bool,
+    dev: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -127,6 +131,7 @@ fn transform_script_text<'a>(
         props_gen,
         derived_pending: FxHashSet::default(),
         strip_exports,
+        dev,
     };
 
     let empty_scoping = Scoping::default();
@@ -165,6 +170,7 @@ fn transform_program<'a>(
     mut program: Program<'a>,
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
+    dev: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
     let b = Builder::new(allocator);
 
@@ -200,6 +206,7 @@ fn transform_program<'a>(
         props_gen,
         derived_pending: FxHashSet::default(),
         strip_exports: true,
+        dev,
     };
 
     let empty_scoping = Scoping::default();
@@ -263,6 +270,8 @@ struct ScriptTransformer<'b, 'a> {
     /// Whether to strip `export` keywords from declarations. True for component scripts,
     /// false for module compilation where exports must be preserved.
     strip_exports: bool,
+    /// Whether dev-mode transforms are enabled ($inspect → $.inspect).
+    dev: bool,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -510,6 +519,31 @@ fn wrap_lazy<'a>(b: &Builder<'a>, expr: Expression<'a>) -> Expression<'a> {
     b.arrow_expr(b.no_params(), [b.expr_stmt(expr)])
 }
 
+/// Check if an expression is a `$inspect(...)` or `$inspect(...).with(...)` call.
+fn is_inspect_call(expr: &Expression) -> bool {
+    match expr {
+        Expression::CallExpression(call) => {
+            if let Expression::Identifier(id) = &call.callee {
+                if id.name.as_str() == "$inspect" {
+                    return true;
+                }
+            }
+            // $inspect(...).with(...)
+            if let Expression::StaticMemberExpression(member) = &call.callee {
+                if member.property.name.as_str() == "with" {
+                    if let Expression::CallExpression(inner) = &member.object {
+                        if let Expression::Identifier(id) = &inner.callee {
+                            return id.name.as_str() == "$inspect";
+                        }
+                    }
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn exit_statements(
         &mut self,
@@ -534,6 +568,17 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     i += 1;
                 }
             }
+        }
+
+        // Prod strip: remove $inspect(...) and $inspect(...).with(...) statements
+        if !self.dev {
+            stmts.retain(|stmt| {
+                if let Statement::ExpressionStatement(es) = stmt {
+                    !is_inspect_call(&es.expression)
+                } else {
+                    true
+                }
+            });
         }
 
         // Replace $props() destructuring
@@ -648,7 +693,8 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             Expression::UpdateExpression(_) => {
                 self.transform_update(node, ctx);
             }
-            Expression::CallExpression(call) => {
+            Expression::CallExpression(_) => {
+                let Expression::CallExpression(call) = node else { return };
                 let new_callee = match &call.callee {
                     Expression::Identifier(id) if id.name.as_str() == "$effect" => {
                         Some("$.user_effect")
@@ -713,9 +759,113 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             _ => {}
         }
     }
+
+    fn exit_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
+        if self.dev {
+            if let Some(replacement) = self.transform_inspect(node) {
+                *node = replacement;
+            }
+        }
+    }
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
+    /// Transform `$inspect(args)` → `$.inspect(thunk, inspector, true)`
+    /// and `$inspect(args).with(cb)` → `$.inspect(thunk, inspector)`.
+    ///
+    /// Called in exit_expression (bottom-up), so for `.with()` the inner
+    /// `$inspect(...)` has already been transformed to `$.inspect(...)`.
+    fn transform_inspect(&self, node: &mut Expression<'a>) -> Option<Expression<'a>> {
+        let Expression::CallExpression(outer_call) = node else { return None };
+
+        // Case 1: $.inspect(thunk, inspector, true).with(cb)
+        // The inner call was already transformed from $inspect → $.inspect by exit_expression
+        if let Expression::StaticMemberExpression(member) = &outer_call.callee {
+            if member.property.name.as_str() == "with" {
+                if let Expression::CallExpression(inner_call) = &member.object {
+                    if let Expression::Identifier(id) = &inner_call.callee {
+                        if id.name.as_str() == "$.inspect" {
+                            let Expression::CallExpression(outer_call) = node else { unreachable!() };
+
+                            let cb = if outer_call.arguments.is_empty() {
+                                self.b.rid_expr("undefined")
+                            } else {
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                std::mem::swap(&mut outer_call.arguments[0], &mut dummy);
+                                dummy.into_expression()
+                            };
+
+                            // Take the thunk from the already-transformed inner call
+                            let Expression::StaticMemberExpression(member) = self.b.move_expr(&mut outer_call.callee) else { unreachable!() };
+                            let member = member.unbox();
+                            let Expression::CallExpression(inner_call) = member.object else { unreachable!() };
+                            let mut inner_call = inner_call.unbox();
+
+                            // First arg of inner $.inspect is the thunk
+                            let thunk = {
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                std::mem::swap(&mut inner_call.arguments[0], &mut dummy);
+                                dummy.into_expression()
+                            };
+
+                            let inspector = self.build_inspect_arrow(cb);
+                            return Some(self.b.call_expr("$.inspect", [
+                                Arg::Expr(thunk),
+                                Arg::Expr(inspector),
+                            ]));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Case 2: plain $inspect(args)
+        if let Expression::Identifier(id) = &outer_call.callee {
+            if id.name.as_str() == "$inspect" {
+                let Expression::CallExpression(call) = node else { unreachable!() };
+                let inspect_args: Vec<Expression<'a>> = call.arguments.drain(..)
+                    .map(|a| a.into_expression())
+                    .collect();
+
+                let thunk = self.build_inspect_thunk(inspect_args);
+                let console_log = self.b.static_member_expr(self.b.rid_expr("console"), "log");
+                let log_call = self.b.call_expr_callee(console_log, [
+                    Arg::Spread(self.b.rid_expr("$$args")),
+                ]);
+                let inspector = self.b.arrow_expr(
+                    self.b.rest_params("$$args"),
+                    [self.b.expr_stmt(log_call)],
+                );
+
+                return Some(self.b.call_expr("$.inspect", [
+                    Arg::Expr(thunk),
+                    Arg::Expr(inspector),
+                    Arg::Bool(true),
+                ]));
+            }
+        }
+
+        None
+    }
+
+    /// Build `() => [arg1, arg2, ...]` thunk for inspect args.
+    fn build_inspect_thunk(&self, args: Vec<Expression<'a>>) -> Expression<'a> {
+        let array_args: Vec<Arg<'a, '_>> = args.into_iter().map(Arg::Expr).collect();
+        let array = self.b.array_from_args(array_args);
+        self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(array)])
+    }
+
+    /// Build `(...$$args) => cb(...$$args)` arrow for inspect callback.
+    fn build_inspect_arrow(&self, cb: Expression<'a>) -> Expression<'a> {
+        let call = self.b.call_expr_callee(cb, [
+            Arg::Spread(self.b.rid_expr("$$args")),
+        ]);
+        self.b.arrow_expr(
+            self.b.rest_params("$$args"),
+            [self.b.expr_stmt(call)],
+        )
+    }
+
     fn transform_assignment(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         let Expression::AssignmentExpression(assign) = node else {
             return;

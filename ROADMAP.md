@@ -115,7 +115,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 
 | # | Feature | Transform | Phases | Notes |
 |---|---------|-----------|--------|-------|
-| 1 | `$inspect(vals)` | `$.inspect(...)` | S | Dev-mode only — strip in prod. Needs `dev` compiler option |
+| 1 | ~~`$inspect(vals)`~~ ✅ | `$.inspect(...)` | S | Dev-mode only — strip in prod. `dev` flag plumbed through codegen |
 | 2 | `$inspect.trace()` | dev-only trace | S | Same `dev` flag dependency |
 | 3 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
 | 4 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
@@ -376,7 +376,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `$state.frozen` → `$state.raw` rename validation
 - [ ] `$state.eager(val)` — experimental async, requires `experimental.async` flag
 - [ ] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
-- [ ] `$inspect().with(callback)` — custom inspection callback
+
+### $inspect (Tier 1)
+- [ ] `$inspect.trace()` — needs `scope.tracing` infrastructure
+- [ ] `$inspect().with(callback)` argument count validation
+- [ ] `$inspect` argument count validation (requires 1+ args)
+- [ ] Dev-mode boilerplate: `$.FILENAME`, `$.check_target()`, `$.legacy_api()`, `$.push($$props, true, App)` — needed for full reference parity in dev builds
 
 ### Module compilation (Tier 1b)
 - [x] `ModuleCompileOptions` type — subset of `CompileOptions`

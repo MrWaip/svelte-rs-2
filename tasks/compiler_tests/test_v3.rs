@@ -15,7 +15,15 @@ fn assert_compiler(case: &str) {
         .join("case.svelte");
     let input = read_to_string(&path).unwrap();
 
-    let opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+    let dir = path.parent().unwrap();
+    let config_path = dir.join("config.json");
+    let mut opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+    if config_path.exists() {
+        let config: serde_json::Value = serde_json::from_str(&read_to_string(&config_path).unwrap()).unwrap();
+        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
+            opts.dev = dev;
+        }
+    }
     let result = compile(&input, &opts);
     let js = result
         .js
@@ -1093,4 +1101,28 @@ fn render_tag_arg_has_call_multi() {
 #[rstest]
 fn render_tag_arg_mixed() {
     assert_compiler("render_tag_arg_mixed");
+}
+
+// ---------------------------------------------------------------------------
+// $inspect rune tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn inspect_basic() {
+    assert_compiler("inspect_basic");
+}
+
+#[rstest]
+fn inspect_multi_args() {
+    assert_compiler("inspect_multi_args");
+}
+
+#[rstest]
+fn inspect_with_callback() {
+    assert_compiler("inspect_with_callback");
+}
+
+#[rstest]
+fn inspect_prod_strip() {
+    assert_compiler("inspect_prod_strip");
 }

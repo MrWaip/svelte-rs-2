@@ -21,7 +21,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut ident_gen = svelte_analyze::IdentGen::new();
         let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
         let transform_data = svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen);
-        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name);
+        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name, options.dev);
         (js, analyze_diags)
     }));
 

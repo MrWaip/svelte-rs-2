@@ -1,5 +1,6 @@
 import { compile, compileModule } from "svelte/compiler";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // Read from temp file written by the Rust caller, or fall back to /dev/stdin
 const inputPath = process.env.INPUT_FILE || "/dev/stdin";
@@ -8,14 +9,24 @@ const results = {};
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const isModule = file.endsWith('.svelte.js') || file.endsWith('.svelte.ts');
+
+  // Per-case config override
+  const caseDir = dirname(file);
+  const configPath = join(caseDir, "config.json");
+  let caseConfig = {};
+  if (existsSync(configPath)) {
+    caseConfig = JSON.parse(readFileSync(configPath, "utf8"));
+  }
+
   const result = isModule
-    ? compileModule(text, { dev: false })
+    ? compileModule(text, { dev: false, ...caseConfig })
     : compile(text, {
         discloseVersion: false,
         dev: false,
         name: "App",
         modernAst: true,
         runes: true,
+        ...caseConfig,
       });
   let code = result.js.code;
   // Strip version comment from module output (we don't emit it)
