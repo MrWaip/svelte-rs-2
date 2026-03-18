@@ -41,6 +41,9 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `$effect.root(fn)` → `$.effect_root(fn)`
 - [x] `$store` auto-subscription → `$.store_get` / `$.store_set`
 - [x] Import hoisting, strip TypeScript, exports (`$$.exports`)
+- [x] `$inspect(vals)` → `$.inspect(...)` (dev-mode only)
+- [x] `$inspect.trace()` — dev-only trace
+- [x] `$props.id()` → `$.props_id()` (v5.20+)
 
 ### Template codegen
 - [x] Element (with all attribute types), Component (props + children-as-snippet)
@@ -52,6 +55,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `style:prop` directive (shorthand, expression, string, concat, `|important`)
 - [x] `class` object/array syntax (Svelte 5)
 - [x] `{#await promise}` — async blocks (full form, short then/catch, no bindings, destructured, pending only)
+- [x] `{@debug vars}` — dev-mode debugger (partial: 3/5 tests, 2 blocked on `$.add_svelte_meta`/`$.tag_proxy`)
 
 ### Event handling
 - [x] Svelte 5 event attributes — `onclick={handler}` → `$.delegated()` for delegatable events
@@ -85,9 +89,13 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ### Special elements
 - [x] `<svelte:options>` — compiler options tag (parser + validation)
 - [x] `<svelte:head>` — document head insertion
-- [x] `<svelte:window>` — window events (`on:`, `onscroll`), bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
-- [x] `<svelte:document>` — document events (`on:`, `onkeydown`), bindings (`activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState`)
-- [x] `<svelte:body>` — body events (`on:`, `onclick`), actions (`use:action`)
+- [x] `<svelte:window>` — window events, bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
+- [x] `<svelte:document>` — document events, bindings (`activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState`)
+- [x] `<svelte:body>` — body events, actions (`use:action`)
+- [x] `<svelte:element this={tag}>` — dynamic element (`$.element()`)
+- [x] `<svelte:boundary>` — error boundary (Svelte 5.3+, `$.boundary()`)
+- [x] `<title>` in `<svelte:head>` — `$.document.title` with effect wrapping
+- [x] Component `bind:this` — `$.bind_this(component, setter, getter)`
 
 ### Module compilation
 - [x] `compile_module()` entry point + `analyze_module()` + WASM export
@@ -115,10 +123,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 
 | # | Feature | Transform | Phases | Notes |
 |---|---------|-----------|--------|-------|
-| 1 | ~~`$inspect(vals)`~~ ✅ | `$.inspect(...)` | S | Dev-mode only — strip in prod. `dev` flag plumbed through codegen |
-| 2 | ~~`$inspect.trace()`~~ ✅ | dev-only trace | S | Same `dev` flag dependency |
-| 3 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
-| 4 | ~~`$props.id()`~~ ✅ | `$.props_id()` | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
+| 1 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
 
 ---
 
@@ -128,72 +133,6 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 |---|------|-------------|
 | 1 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
 | 2 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
-
----
-
-## ~~Tier 1c — Event Attributes~~ ✅
-
-## ~~Tier 1d — Expression Memoization~~ ✅
-
----
-
-## Tier 2 — Remaining Template Blocks
-
-### ~~`{#await promise}` — Async blocks~~ ✅
-- **Phases**: P, A, T
-- **Codegen**: `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`
-
-### `{@debug vars}` — Dev-mode debugger (partial ✅)
-- **Phases**: P, A, T — implemented
-- **Tests**: 3/5 compiler tests pass (basic, empty, single). 2 blocked on `$.add_svelte_meta`/`$.tag_proxy` (Deferred)
-
----
-
-## Tier 5 — Special Elements (remaining)
-
-Theme: `<svelte:*>` elements for global bindings, dynamic elements, error boundaries.
-
-### ~~`<svelte:element this={tag}>` — Dynamic element~~ ✅
-- **Phases**: P, A, T
-- **AST**: `Node::SvelteElement { id, span, tag_span, attributes, fragment }`
-- **Codegen**: `$.element(anchor, () => tag, ($$anchor, element) => { ... })`
-- **Notes**: Namespace inference with explicit `xmlns` control, void element validation
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteElement.js` (~161 lines)
-- [ ] `svelte:element` inside `{#if}` block *(deferred)*
-- [ ] `svelte:element` with `class:` directives *(deferred)*
-- [ ] `svelte:element` with `style:` directives *(deferred)*
-
-### ~~`<svelte:window>` — Window events & bindings~~ ✅
-- **Phases**: P, A, T
-- **Codegen**: Events → `$.event($.window, ...)`. Bindings → `$.bind_window_scroll`, `$.bind_window_size`, `$.bind_online`, `$.bind_property`
-- **Constraint**: Top-level only, no children
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteWindow.js`
-
-### ~~`<svelte:document>` — Document events & bindings~~ ✅
-- **Phases**: P, A, T
-- **Constraint**: Top-level only, no children
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteDocument.js`
-
-### ~~`<svelte:body>` — Body events & actions~~ ✅
-- **Phases**: P, A, T
-- **Codegen**: Events → `$.event($.document.body, ...)`. Supports `use:action`.
-- **Constraint**: Top-level only, no children
-
-### ~~`<svelte:boundary>` — Error boundary (Svelte 5.3+)~~ ✅
-- **Phases**: P, A, T
-- **AST**: `Node::SvelteBoundary { id, span, attributes, fragment }`
-- **Snippets**: `failed` (receives error + reset), `pending` (initial loading)
-- **Codegen**: `$.boundary(anchor, props, ($$anchor) => { ... })`
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/SvelteBoundary.js` (~126 lines)
-
-### ~~`<title>` — Special handling in `<svelte:head>`~~ ✅
-- **Phases**: T
-- **Codegen**: `$.document.title = value` with `$.effect()` / `$.deferred_template_effect()` wrapping
-
-### ~~Component `bind:this`~~ ✅
-- **Phases**: T
-- **Codegen**: `$.bind_this(component, setter, getter)` — different from element `bind:this`, binds to component instance
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
 
 ---
 
@@ -361,7 +300,7 @@ These are imported from `svelte` and used as regular function calls. The compile
 
 ## Deferred
 
-Items discovered during porting but not critical for the feature to work. Grouped by parent feature.
+Items discovered during porting but not critical for the feature to work. Grouped by parent feature, sorted by tier.
 
 ### Void elements (Tier 0)
 - [ ] Validation: emit error if void element has children (requires parser-level check for content between void open tags)
@@ -386,16 +325,20 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Full `get_function_label`: CallExpression parent → `callee(...)`, Property parent → key name
 - [ ] Filename in location label (requires plumbing `CompileOptions.filename` to script codegen)
 
-### Module compilation (Tier 1b)
-- [x] `ModuleCompileOptions` type — subset of `CompileOptions`
-- [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
-
-### `$props.id()` (Tier 2)
+### $props.id() (Tier 1)
 - [ ] Validation: duplicate `$props.id()` declarations (`props_duplicate`)
 - [ ] Validation: arguments passed to `$props.id(arg)` (`rune_invalid_arguments`)
 - [ ] Validation: wrong placement (inside function, module script) (`props_id_invalid_placement`)
 - [ ] Validation: destructuring pattern `const { x } = $props.id()`
 - [ ] Validation: reassignment to the binding (`constant_assignment`)
+
+### Module compilation (Tier 1b)
+- [x] `ModuleCompileOptions` type — subset of `CompileOptions`
+- [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
+
+### Render tag (Tier 1d)
+- [ ] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
+- [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
 
 ### `{@html expr}` (Tier 2)
 - [ ] `is_controlled` optimization (single child → innerHTML)
@@ -404,6 +347,15 @@ Items discovered during porting but not critical for the feature to work. Groupe
 ### `{@const}` (Tier 2)
 - [ ] Dev mode `$.tag()` wrapping
 - [ ] Placement validation
+
+### `{@debug vars}` (Tier 2)
+- [ ] `debug_in_if`, `debug_in_each` compiler tests: blocked on `$.add_svelte_meta` (if/each dev wrapping) and `$.tag_proxy`/`$.get(item)` (each var dev wrapping). Basic/empty/single tests pass.
+
+### `{#await}` (Tier 2)
+- [ ] `has_blockers` / `$.async()` wrapping for experimental async mode
+- [ ] Dev-mode `$.apply()` wrapping for await expression
+- [ ] Array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
+- [ ] Validation: duplicate `{:then}` or `{:catch}` clauses
 
 ### Bind directives (Tier 3)
 - [ ] `bind:property={get, set}` — function bindings (Svelte 5)
@@ -427,6 +379,11 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties (expression span stored, analysis-phase parsing needed)
 - [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
 
+### `<svelte:element>` (Tier 5)
+- [ ] `svelte:element` inside `{#if}` block
+- [ ] `svelte:element` with `class:` directives
+- [ ] `svelte:element` with `style:` directives
+
 ### `<svelte:window>` (Tier 5)
 - [ ] Validation: only allowed at root level (not nested)
 - [ ] Validation: no children allowed (diagnostic)
@@ -448,18 +405,6 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: `<title>` cannot have attributes (`title_illegal_attribute`)
 - [ ] Validation: `<title>` children must be Text or ExpressionTag only (`title_invalid_content`)
 
-### Render tag (Tier 1d)
-- [ ] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
-- [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
-
-### CSS (Tier 6)
-- [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
-
-### Compiler infrastructure (Tier 8)
-- [ ] HMR support — `$.hmr()` wrapper, `import.meta.hot.accept()`
-- [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
-- [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
-
 ### `<svelte:body>` (Tier 5)
 - [ ] Validation: only event attributes and directives allowed (reject non-event attrs, spreads)
 - [ ] Validation: no children allowed (`disallow_children`)
@@ -475,17 +420,16 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] Handler wrapping for snippet params used as event handlers (`function(...$$args) { reset()?.apply(this, $$args) }`)
 
-### `{#await}` (Tier 2)
-- [ ] `has_blockers` / `$.async()` wrapping for experimental async mode
-- [ ] Dev-mode `$.apply()` wrapping for await expression
-- [ ] Array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
-- [ ] Validation: duplicate `{:then}` or `{:catch}` clauses
-
 ### Component `bind:this` (Tier 5)
 - [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen
 
-### `{@debug vars}` (Tier 2)
-- [ ] `debug_in_if`, `debug_in_each` compiler tests: blocked on `$.add_svelte_meta` (if/each dev wrapping) and `$.tag_proxy`/`$.get(item)` (each var dev wrapping). Basic/empty/single tests pass.
+### CSS (Tier 6)
+- [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
+
+### Compiler infrastructure (Tier 8)
+- [ ] HMR support — `$.hmr()` wrapper, `import.meta.hot.accept()`
+- [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
+- [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
