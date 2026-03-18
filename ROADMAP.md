@@ -143,9 +143,9 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 - **Phases**: P, A, T
 - **Codegen**: `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`
 
-### `{@debug vars}` — Dev-mode debugger (parser + codegen done, compiler tests partially blocked)
+### `{@debug vars}` — Dev-mode debugger (partial ✅)
 - **Phases**: P, A, T — implemented
-- **Partially unblocked**: dev-mode boilerplate (`$.FILENAME`, `$.check_target`, `$.push`/`$.pop`, `$.legacy_api`) done. Still blocked on `$.tag_proxy`, `$.add_svelte_meta` for full reference parity.
+- **Tests**: 3/5 compiler tests pass (basic, empty, single). 2 blocked on `$.add_svelte_meta`/`$.tag_proxy` (Deferred)
 
 ---
 
@@ -485,7 +485,7 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen
 
 ### `{@debug vars}` (Tier 2)
-- [ ] Compiler tests: blocked on dev-mode boilerplate (`$.FILENAME`, `$.check_target`, `$.push`/`$.pop`, `$.legacy_api`, `$.add_svelte_meta`, `$.tag_proxy`). Parser + analysis + codegen implemented, needs Tier 8 "Dev mode" for `just generate` reference parity.
+- [ ] `debug_in_if`, `debug_in_each` compiler tests: blocked on `$.add_svelte_meta` (if/each dev wrapping) and `$.tag_proxy`/`$.get(item)` (each var dev wrapping). Basic/empty/single tests pass.
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
