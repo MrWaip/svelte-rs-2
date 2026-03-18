@@ -689,6 +689,27 @@ fn svelte_head_with_content() {
     assert_compiler("svelte_head_with_content");
 }
 
+// <title> in <svelte:head> tests
+#[rstest]
+fn title_static() {
+    assert_compiler("title_static");
+}
+
+#[rstest]
+fn title_dynamic() {
+    assert_compiler("title_dynamic");
+}
+
+#[rstest]
+fn title_mixed() {
+    assert_compiler("title_mixed");
+}
+
+#[rstest]
+fn title_empty() {
+    assert_compiler("title_empty");
+}
+
 // svelte:window tests
 #[rstest]
 fn svelte_window_event_legacy() {

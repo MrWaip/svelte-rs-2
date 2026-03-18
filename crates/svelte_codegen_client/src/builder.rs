@@ -398,6 +398,16 @@ impl<'a> Builder<'a> {
         self.arrow_expr(self.no_params(), [self.expr_stmt(expr)])
     }
 
+    /// `() => { ...stmts }` — zero-arg arrow wrapping a block body.
+    pub fn thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
+        self.arrow_block_expr(self.no_params(), stmts)
+    }
+
+    /// `left ?? right` — nullish coalescing.
+    pub fn logical_coalesce(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
+        self.ast.expression_logical(SPAN, left, ast::LogicalOperator::Coalesce, right)
+    }
+
     pub fn function_decl(
         &self,
         id: BindingIdentifier<'a>,
