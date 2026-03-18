@@ -116,7 +116,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | # | Feature | Transform | Phases | Notes |
 |---|---------|-----------|--------|-------|
 | 1 | ~~`$inspect(vals)`~~ ✅ | `$.inspect(...)` | S | Dev-mode only — strip in prod. `dev` flag plumbed through codegen |
-| 2 | `$inspect.trace()` | dev-only trace | S | Same `dev` flag dependency |
+| 2 | ~~`$inspect.trace()`~~ ✅ | dev-only trace | S | Same `dev` flag dependency |
 | 3 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
 | 4 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
 
@@ -378,10 +378,17 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
 
 ### $inspect (Tier 1)
-- [ ] `$inspect.trace()` — needs `scope.tracing` infrastructure
 - [ ] `$inspect().with(callback)` argument count validation
 - [ ] `$inspect` argument count validation (requires 1+ args)
 - [ ] Dev-mode boilerplate: `$.FILENAME`, `$.check_target()`, `$.legacy_api()`, `$.push($$props, true, App)` — needed for full reference parity in dev builds
+
+### $inspect.trace() (Tier 1)
+- [ ] Validation: must be first statement in function body (`inspect_trace_invalid_placement`)
+- [ ] Validation: cannot be in generator function (`inspect_trace_generator`)
+- [ ] Validation: 0-1 arguments (`rune_invalid_arguments_length`)
+- [ ] `$inspect.trace()` in template event handlers (onclick, etc.)
+- [ ] Full `get_function_label`: CallExpression parent → `callee(...)`, Property parent → key name
+- [ ] Filename in location label (requires plumbing `CompileOptions.filename` to script codegen)
 
 ### Module compilation (Tier 1b)
 - [x] `ModuleCompileOptions` type — subset of `CompileOptions`

@@ -1126,3 +1126,32 @@ fn inspect_with_callback() {
 fn inspect_prod_strip() {
     assert_compiler("inspect_prod_strip");
 }
+
+// ---------------------------------------------------------------------------
+// $inspect.trace() rune tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn inspect_trace_basic() {
+    assert_compiler("inspect_trace_basic");
+}
+
+#[rstest]
+fn inspect_trace_label() {
+    assert_compiler("inspect_trace_label");
+}
+
+#[rstest]
+fn inspect_trace_async() {
+    assert_compiler("inspect_trace_async");
+}
+
+#[rstest]
+fn inspect_trace_prod_strip() {
+    assert_compiler("inspect_trace_prod_strip");
+}
+
+#[rstest]
+fn inspect_trace_arrow() {
+    assert_compiler("inspect_trace_arrow");
+}

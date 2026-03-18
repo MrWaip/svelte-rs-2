@@ -1,7 +1,9 @@
 use rustc_hash::FxHashSet;
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, Program, Statement, VariableDeclarator};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, Expression, FunctionBody, Program, Statement, VariableDeclarator,
+};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
@@ -26,16 +28,18 @@ const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 
 /// Parse and transform the script block.
 ///
-/// Returns `(imports, body)` — imports are extracted separately so they can
+/// Returns `(imports, body, has_tracing)` — imports are extracted separately so they can
 /// be hoisted to the top of the generated module.
-pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     if ctx.component.script.is_none() {
-        return (vec![], vec![]);
+        return (vec![], vec![], false);
     };
 
     let allocator = ctx.b.ast.allocator;
     let component_scoping = &ctx.analysis.scoping;
     let props = ctx.analysis.props.as_ref();
+    let component_source = &ctx.component.source;
+    let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
@@ -45,6 +49,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
             component_scoping,
             props,
             dev,
+            component_source,
+            script_content_start,
         );
     }
 
@@ -60,6 +66,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
         props,
         true,
         dev,
+        component_source,
+        script_content_start,
     )
 }
 
@@ -71,7 +79,7 @@ pub fn transform_module_script<'a>(
     is_ts: bool,
     component_scoping: &ComponentScoping,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
-    transform_script_text(
+    let (imports, body, _has_tracing) = transform_script_text(
         allocator,
         source,
         is_ts,
@@ -79,10 +87,13 @@ pub fn transform_module_script<'a>(
         None,
         false,
         false,
-    )
+        source,
+        0,
+    );
+    (imports, body)
 }
 
-/// Parse the script source and apply rune transformations, returning (imports, body).
+/// Parse the script source and apply rune transformations, returning (imports, body, has_tracing).
 fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
@@ -91,7 +102,9 @@ fn transform_script_text<'a>(
     props: Option<&PropsAnalysis>,
     strip_exports: bool,
     dev: bool,
-) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+    component_source: &str,
+    script_content_start: u32,
+) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
     } else {
@@ -132,6 +145,11 @@ fn transform_script_text<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports,
         dev,
+        function_info_stack: Vec::new(),
+        has_tracing: false,
+        component_source,
+        script_content_start,
+        next_arrow_name: None,
     };
 
     let empty_scoping = Scoping::default();
@@ -141,6 +159,8 @@ fn transform_script_text<'a>(
     if !transformer.derived_pending.is_empty() {
         wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
     }
+
+    let has_tracing = transformer.has_tracing;
 
     let mut imports = vec![];
     let mut body = vec![];
@@ -161,7 +181,7 @@ fn transform_script_text<'a>(
         }
     }
 
-    (imports, body)
+    (imports, body, has_tracing)
 }
 
 /// Transform a pre-parsed Program AST (from analysis), applying rune transformations.
@@ -171,7 +191,9 @@ fn transform_program<'a>(
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     dev: bool,
-) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
+    component_source: &str,
+    script_content_start: u32,
+) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
     // Re-run SemanticBuilder to get fresh scoping matching current AST state
@@ -207,6 +229,11 @@ fn transform_program<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports: true,
         dev,
+        function_info_stack: Vec::new(),
+        has_tracing: false,
+        component_source,
+        script_content_start,
+        next_arrow_name: None,
     };
 
     let empty_scoping = Scoping::default();
@@ -215,6 +242,8 @@ fn transform_program<'a>(
     if !transformer.derived_pending.is_empty() {
         wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
     }
+
+    let has_tracing = transformer.has_tracing;
 
     let mut imports = vec![];
     let mut body = vec![];
@@ -235,7 +264,7 @@ fn transform_program<'a>(
         }
     }
 
-    (imports, body)
+    (imports, body, has_tracing)
 }
 
 enum PropKind {
@@ -258,6 +287,13 @@ struct PropGenItem {
     is_lazy_default: bool,
 }
 
+struct FunctionInfo {
+    is_async: bool,
+    name: Option<String>,
+    /// Byte offset of the function keyword in the script source (for auto-label location).
+    span_start: u32,
+}
+
 struct ScriptTransformer<'b, 'a> {
     b: &'b Builder<'a>,
     /// ComponentScoping — source of truth for rune kind + mutation status.
@@ -272,6 +308,16 @@ struct ScriptTransformer<'b, 'a> {
     strip_exports: bool,
     /// Whether dev-mode transforms are enabled ($inspect → $.inspect).
     dev: bool,
+    /// Stack tracking enclosing functions for $inspect.trace() context.
+    function_info_stack: Vec<FunctionInfo>,
+    /// Whether any $inspect.trace() was found (dev mode), triggers tracing import.
+    has_tracing: bool,
+    /// Full component source for line/col computation.
+    component_source: &'b str,
+    /// Byte offset of script content within the full component source.
+    script_content_start: u32,
+    /// Captured variable name for arrow functions (from VariableDeclarator).
+    next_arrow_name: Option<String>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -519,7 +565,7 @@ fn wrap_lazy<'a>(b: &Builder<'a>, expr: Expression<'a>) -> Expression<'a> {
     b.arrow_expr(b.no_params(), [b.expr_stmt(expr)])
 }
 
-/// Check if an expression is a `$inspect(...)` or `$inspect(...).with(...)` call.
+/// Check if an expression is a `$inspect(...)`, `$inspect(...).with(...)`, or `$inspect.trace(...)` call.
 fn is_inspect_call(expr: &Expression) -> bool {
     match expr {
         Expression::CallExpression(call) => {
@@ -528,13 +574,19 @@ fn is_inspect_call(expr: &Expression) -> bool {
                     return true;
                 }
             }
-            // $inspect(...).with(...)
             if let Expression::StaticMemberExpression(member) = &call.callee {
+                // $inspect(...).with(...)
                 if member.property.name.as_str() == "with" {
                     if let Expression::CallExpression(inner) = &member.object {
                         if let Expression::Identifier(id) = &inner.callee {
                             return id.name.as_str() == "$inspect";
                         }
+                    }
+                }
+                // $inspect.trace(...)
+                if member.property.name.as_str() == "trace" {
+                    if let Expression::Identifier(id) = &member.object {
+                        return id.name.as_str() == "$inspect";
                     }
                 }
             }
@@ -544,7 +596,144 @@ fn is_inspect_call(expr: &Expression) -> bool {
     }
 }
 
+/// Check if an expression is specifically a `$inspect.trace(...)` call.
+fn is_inspect_trace_call(expr: &Expression) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        if let Expression::StaticMemberExpression(member) = &call.callee {
+            if member.property.name.as_str() == "trace" {
+                if let Expression::Identifier(id) = &member.object {
+                    return id.name.as_str() == "$inspect";
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Compute 1-based line and column from source text and byte offset.
+fn compute_line_col(source: &str, offset: u32) -> (usize, usize) {
+    let offset = offset as usize;
+    let bytes = source.as_bytes();
+    let mut line = 1;
+    let mut col = 0;
+    for i in 0..offset.min(bytes.len()) {
+        if bytes[i] == b'\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
+    fn enter_function(
+        &mut self,
+        node: &mut oxc_ast::ast::Function<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        let name = node.id.as_ref().map(|id| id.name.to_string());
+        self.function_info_stack.push(FunctionInfo {
+            is_async: node.r#async,
+            name,
+            span_start: node.span.start,
+        });
+    }
+
+    fn exit_function(
+        &mut self,
+        _node: &mut oxc_ast::ast::Function<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.function_info_stack.pop();
+    }
+
+    fn enter_arrow_function_expression(
+        &mut self,
+        node: &mut ArrowFunctionExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        let name = self.next_arrow_name.take();
+        self.function_info_stack.push(FunctionInfo {
+            is_async: node.r#async,
+            name,
+            span_start: node.span.start,
+        });
+    }
+
+    fn exit_arrow_function_expression(
+        &mut self,
+        _node: &mut ArrowFunctionExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.function_info_stack.pop();
+    }
+
+    fn exit_function_body(
+        &mut self,
+        body: &mut FunctionBody<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if !self.dev {
+            return;
+        }
+        let Some(Statement::ExpressionStatement(es)) = body.statements.first() else {
+            return;
+        };
+        if !is_inspect_trace_call(&es.expression) {
+            return;
+        }
+
+        let info = self.function_info_stack.last()
+            .unwrap_or_else(|| panic!("$inspect.trace() outside function"));
+
+        // Extract explicit label argument if present
+        let trace_stmt = body.statements.remove(0);
+        let Statement::ExpressionStatement(es) = trace_stmt else { unreachable!() };
+        let Expression::CallExpression(call) = es.unbox().expression else { unreachable!() };
+        let mut call = call.unbox();
+
+        let label_expr = if !call.arguments.is_empty() {
+            // Explicit label: $inspect.trace("custom") → use the argument directly
+            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+            std::mem::swap(&mut call.arguments[0], &mut dummy);
+            dummy.into_expression()
+        } else {
+            // Auto-label: "funcName (line:col)"
+            let func_name = info.name.as_deref().unwrap_or("trace");
+            let full_offset = self.script_content_start + info.span_start;
+            let (line, col) = compute_line_col(self.component_source, full_offset);
+            let label = format!("{func_name} ({line}:{col})");
+            self.b.str_expr(&label)
+        };
+        let label_thunk = self.b.thunk(label_expr);
+
+        let is_async = info.is_async;
+
+        // Take remaining statements, build body thunk
+        let remaining: Vec<Statement<'a>> = body.statements.drain(..).collect();
+        let body_thunk = if is_async {
+            self.b.async_thunk_block(remaining)
+        } else {
+            self.b.thunk_block(remaining)
+        };
+
+        // Build: return [await] $.trace(label, bodyThunk)
+        let trace_call = self.b.call_expr("$.trace", [
+            Arg::Expr(label_thunk),
+            Arg::Expr(body_thunk),
+        ]);
+        let return_expr = if is_async {
+            self.b.await_expr(trace_call)
+        } else {
+            trace_call
+        };
+        body.statements.push(self.b.return_stmt(return_expr));
+
+        self.has_tracing = true;
+    }
+
     fn exit_statements(
         &mut self,
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
@@ -610,6 +799,13 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut VariableDeclarator<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        // Capture variable name for arrow functions (used by $inspect.trace auto-label)
+        if let Some(Expression::ArrowFunctionExpression(_)) = &node.init {
+            if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id {
+                self.next_arrow_name = Some(id.name.to_string());
+            }
+        }
+
         let rune_info = match &node.id {
             oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
                 self.rune_for_binding(id)
