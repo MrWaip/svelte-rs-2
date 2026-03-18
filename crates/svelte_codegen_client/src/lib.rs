@@ -12,7 +12,7 @@ use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::{Attribute, Component, Node};
 use svelte_transform::TransformData;
 
-use builder::{Arg, Builder, ObjProp};
+use builder::{Arg, AssignLeft, AssignRight, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -42,7 +42,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
     let has_stores = !ctx.analysis.scoping.store_symbols().is_empty();
-    let needs_push = has_bindable || has_exports || ctx.analysis.needs_context;
+    let needs_push = has_bindable || has_exports || ctx.analysis.needs_context || ctx.dev;
+    let has_component_exports = has_exports || ctx.dev;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
@@ -56,11 +57,17 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     if ctx.needs_binding_group {
         fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
     }
-    if needs_push {
-        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.push", [
-            Arg::Ident("$$props"),
-            Arg::Expr(ctx.b.bool_expr(true)),
+    if ctx.dev {
+        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.check_target", [
+            Arg::Expr(ctx.b.new_target_expr()),
         ])));
+    }
+    if needs_push {
+        let mut push_args: Vec<Arg<'_, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(ctx.b.bool_expr(true))];
+        if ctx.dev {
+            push_args.push(Arg::Ident(ctx.name));
+        }
+        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.push", push_args)));
     }
 
     // Store subscription setup:
@@ -107,12 +114,16 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             }
         }).collect();
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(props)));
+    } else if ctx.dev && needs_push {
+        // var $$exports = { ...$.legacy_api() }
+        let legacy_call = ctx.b.call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
+        fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr([ObjProp::Spread(legacy_call)])));
     }
 
     fn_body.extend(template_body);
 
     if needs_push {
-        if has_exports {
+        if has_component_exports {
             fn_body.push(ctx.b.return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])));
         } else {
             fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
@@ -170,6 +181,15 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let mut program_body: Vec<Statement<'_>> = Vec::new();
     if has_tracing {
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
+    }
+    if ctx.dev {
+        // App[$.FILENAME] = "(unknown)"
+        let left = AssignLeft::ComputedMember(b.computed_member(
+            b.rid_expr(ctx.name),
+            b.static_member_expr(b.rid_expr("$"), "FILENAME"),
+        ));
+        let right = AssignRight::Expr(b.str_expr("(unknown)"));
+        program_body.push(b.assign_stmt(left, right));
     }
     program_body.push(import_svelte);
     program_body.extend(script_imports);

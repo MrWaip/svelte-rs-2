@@ -143,9 +143,9 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 - **Phases**: P, A, T
 - **Codegen**: `$.await(anchor, () => promise, pending_fn, then_fn, catch_fn)`
 
-### `{@debug vars}` — Dev-mode debugger (parser + codegen done, compiler tests blocked)
+### `{@debug vars}` — Dev-mode debugger (parser + codegen done, compiler tests partially blocked)
 - **Phases**: P, A, T — implemented
-- **Blocked**: compiler tests require dev-mode boilerplate (Tier 8 "Dev mode")
+- **Partially unblocked**: dev-mode boilerplate (`$.FILENAME`, `$.check_target`, `$.push`/`$.pop`, `$.legacy_api`) done. Still blocked on `$.tag_proxy`, `$.add_svelte_meta` for full reference parity.
 
 ---
 
@@ -376,7 +376,7 @@ Items discovered during porting but not critical for the feature to work. Groupe
 ### $inspect (Tier 1)
 - [ ] `$inspect().with(callback)` argument count validation
 - [ ] `$inspect` argument count validation (requires 1+ args)
-- [ ] Dev-mode boilerplate: `$.FILENAME`, `$.check_target()`, `$.legacy_api()`, `$.push($$props, true, App)` — needed for full reference parity in dev builds
+- [x] Dev-mode boilerplate: `$.FILENAME`, `$.check_target()`, `$.legacy_api()`, `$.push($$props, true, App)` — needed for full reference parity in dev builds
 
 ### $inspect.trace() (Tier 1)
 - [ ] Validation: must be first statement in function body (`inspect_trace_invalid_placement`)
