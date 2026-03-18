@@ -431,7 +431,8 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: `<title>` cannot have attributes (`title_illegal_attribute`)
 - [ ] Validation: `<title>` children must be Text or ExpressionTag only (`title_invalid_content`)
 
-### Render tag
+### Render tag (Tier 1d)
+- [ ] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
 - [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
 
 ### CSS (Tier 6)
