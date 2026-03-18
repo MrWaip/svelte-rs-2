@@ -198,6 +198,8 @@ pub struct AnalysisData {
     pub alt_is_elseif: FxHashSet<NodeId>,
     /// Props analysis (from $props() destructuring).
     pub props: Option<PropsAnalysis>,
+    /// Binding name from `const id = $props.id()`.
+    pub props_id: Option<String>,
     /// Exported names from `export const/function/class` or `export { ... }`.
     pub exports: Vec<svelte_js::ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
@@ -225,6 +227,7 @@ impl AnalysisData {
             dynamic_nodes: FxHashSet::default(),
             alt_is_elseif: FxHashSet::default(),
             props: None,
+            props_id: None,
             exports: Vec::new(),
             needs_context: false,
             element_flags: ElementFlags::new(),

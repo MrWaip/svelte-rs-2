@@ -1,6 +1,18 @@
+use svelte_js::RuneKind;
+
 use crate::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 
 pub fn analyze_props(data: &mut AnalysisData) {
+    // Detect $props.id() declaration
+    if let Some(script) = data.script.as_ref() {
+        for d in &script.declarations {
+            if d.is_rune == Some(RuneKind::PropsId) {
+                data.props_id = Some(d.name.to_string());
+                break;
+            }
+        }
+    }
+
     let decl = match data.script.as_ref().and_then(|s| s.props_declaration.as_ref()) {
         Some(d) => d,
         None => return,

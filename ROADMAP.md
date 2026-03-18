@@ -118,7 +118,7 @@ Key file: `crates/svelte_codegen_client/src/script.rs`
 | 1 | ~~`$inspect(vals)`~~ ✅ | `$.inspect(...)` | S | Dev-mode only — strip in prod. `dev` flag plumbed through codegen |
 | 2 | ~~`$inspect.trace()`~~ ✅ | dev-only trace | S | Same `dev` flag dependency |
 | 3 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
-| 4 | `$props.id()` | `$$props.$$id` or inline | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
+| 4 | ~~`$props.id()`~~ ✅ | `$.props_id()` | S | Generates unique, hydration-safe ID per component instance (v5.20+) |
 
 ---
 
@@ -393,6 +393,13 @@ Items discovered during porting but not critical for the feature to work. Groupe
 ### Module compilation (Tier 1b)
 - [x] `ModuleCompileOptions` type — subset of `CompileOptions`
 - [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
+
+### `$props.id()` (Tier 2)
+- [ ] Validation: duplicate `$props.id()` declarations (`props_duplicate`)
+- [ ] Validation: arguments passed to `$props.id(arg)` (`rune_invalid_arguments`)
+- [ ] Validation: wrong placement (inside function, module script) (`props_id_invalid_placement`)
+- [ ] Validation: destructuring pattern `const { x } = $props.id()`
+- [ ] Validation: reassignment to the binding (`constant_assignment`)
 
 ### `{@html expr}` (Tier 2)
 - [ ] `is_controlled` optimization (single child → innerHTML)
