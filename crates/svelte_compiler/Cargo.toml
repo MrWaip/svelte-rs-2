@@ -11,3 +11,6 @@ svelte_diagnostics = { workspace = true }
 svelte_codegen_client = { path = "../svelte_codegen_client" }
 oxc_allocator = { workspace = true }
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

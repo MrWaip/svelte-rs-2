@@ -260,9 +260,11 @@ Theme: developer experience — errors, warnings, and diagnostic infrastructure.
 
 Theme: compiler options, source maps, dev mode support.
 
-### `CompileOptions` structure
+### `CompileOptions` structure ✅
 
-The reference compiler accepts these options (we currently accept only `source`):
+`CompileOptions` and `ModuleCompileOptions` types defined in `svelte_compiler::options`. Piped through pipeline; `component_name()` derives name from `filename`. Behavioral changes (dev mode, css injection, etc.) are deferred.
+
+The reference compiler accepts these options:
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -377,7 +379,7 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `$inspect().with(callback)` — custom inspection callback
 
 ### Module compilation (Tier 1b)
-- [ ] `ModuleCompileOptions` type — subset of `CompileOptions`
+- [x] `ModuleCompileOptions` type — subset of `CompileOptions`
 - [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
 
 ### `{@html expr}` (Tier 2)

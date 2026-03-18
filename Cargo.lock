@@ -1105,6 +1105,7 @@ version = "0.1.0"
 dependencies = [
  "oxc_allocator",
  "serde",
+ "serde_json",
  "svelte_analyze",
  "svelte_codegen_client",
  "svelte_diagnostics",

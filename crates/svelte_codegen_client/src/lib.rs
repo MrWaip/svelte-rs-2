@@ -16,8 +16,8 @@ use builder::{Arg, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
@@ -154,7 +154,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         b.params(["$$anchor"])
     };
 
-    let fn_decl = b.function_decl(b.bid("App"), fn_body, fn_params);
+    let fn_decl = b.function_decl(b.bid(ctx.name), fn_body, fn_params);
     let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
         b.alloc(fn_decl),
     ));

@@ -6,7 +6,7 @@ use std::{
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{compile, compile_module};
+use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions};
 
 fn assert_compiler(case: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -15,7 +15,8 @@ fn assert_compiler(case: &str) {
         .join("case.svelte");
     let input = read_to_string(&path).unwrap();
 
-    let result = compile(&input);
+    let opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+    let result = compile(&input, &opts);
     let js = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile produced no JS"));
@@ -659,7 +660,7 @@ fn assert_compiler_module(case: &str) {
         .join("case.svelte.js");
     let input = read_to_string(&path).unwrap();
 
-    let result = compile_module(&input);
+    let result = compile_module(&input, &ModuleCompileOptions::default());
     let js = result
         .js
         .unwrap_or_else(|| panic!("[{case}] compile_module produced no JS"));

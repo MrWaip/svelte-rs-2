@@ -14,7 +14,7 @@ fn main() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = svelte_compiler::compile(&source);
+        let _ = svelte_compiler::compile(&source, &svelte_compiler::CompileOptions::default());
     }
 
     // Measure
@@ -22,7 +22,7 @@ fn main() {
 
     for _ in 0..iterations {
         let start = Instant::now();
-        let _ = svelte_compiler::compile(&source);
+        let _ = svelte_compiler::compile(&source, &svelte_compiler::CompileOptions::default());
         times_us.push(start.elapsed().as_micros() as u64);
     }
 

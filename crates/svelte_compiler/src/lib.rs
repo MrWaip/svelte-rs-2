@@ -1,3 +1,6 @@
+mod options;
+
+pub use options::{CompileOptions, CssMode, ModuleCompileOptions, Namespace};
 use svelte_diagnostics::Diagnostic;
 
 #[derive(serde::Serialize)]
@@ -8,7 +11,8 @@ pub struct CompileResult {
 
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
-pub fn compile(source: &str) -> CompileResult {
+pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
+    let name = options.component_name();
     let (component, mut diagnostics) = svelte_parser::Parser::new(source).parse();
 
     let js_alloc = oxc_allocator::Allocator::default();
@@ -17,7 +21,7 @@ pub fn compile(source: &str) -> CompileResult {
         let mut ident_gen = svelte_analyze::IdentGen::new();
         let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
         let transform_data = svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen);
-        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data);
+        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name);
         (js, analyze_diags)
     }));
 
@@ -48,7 +52,7 @@ pub fn compile(source: &str) -> CompileResult {
 
 /// Compile a standalone `.svelte.js`/`.svelte.ts` module to client-side JavaScript.
 /// Applies rune transforms ($state, $derived, $effect, etc.) without component wrapping.
-pub fn compile_module(source: &str) -> CompileResult {
+pub fn compile_module(source: &str, _options: &ModuleCompileOptions) -> CompileResult {
     let js_alloc = oxc_allocator::Allocator::default();
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -87,7 +91,8 @@ mod tests {
     use super::*;
 
     fn check(source: &str, expected: &str) {
-        let result = compile(source);
+        let opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+        let result = compile(source, &opts);
         let js = result.js.unwrap_or_else(|| panic!("compile produced no JS"));
         assert_eq!(js, expected);
     }
@@ -139,7 +144,7 @@ export default function App($$anchor) {
 
     #[test]
     fn error_recovery_returns_diagnostics() {
-        let result = compile("<div>");
+        let result = compile("<div>", &CompileOptions::default());
         assert!(!result.diagnostics.is_empty());
         // Even with parse errors, best-effort codegen may produce output
     }
