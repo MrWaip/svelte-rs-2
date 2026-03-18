@@ -56,6 +56,9 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_ANIMATED;
     }
 
+    let index_name = block.index_span
+        .map(|span| ctx.component.source_text(span).to_string());
+
     let expr_source = ctx.component.source_text(expr_span).trim();
     let root = ctx.analysis.scoping.root_scope_id();
     let is_prop_source = ctx.analysis.scoping.find_binding(root, expr_source)
@@ -77,11 +80,25 @@ pub(crate) fn gen_each_block<'a>(
         ctx.b.rid_expr("$.index")
     };
 
+    // Track each-block variables for bind:this context detection
+    ctx.each_vars.push(context_name.clone());
+    if let Some(ref idx) = index_name {
+        ctx.each_vars.push(idx.clone());
+    }
+
     let frag_body = gen_fragment(ctx, body_key);
 
-    let frag_fn = ctx
-        .b
-        .arrow_expr(ctx.b.params(["$$anchor", &context_name]), frag_body);
+    // Pop each-block variables
+    if index_name.is_some() {
+        ctx.each_vars.pop();
+    }
+    ctx.each_vars.pop();
+
+    let frag_fn = if let Some(ref idx) = index_name {
+        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
+    } else {
+        ctx.b.arrow_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
+    };
 
     body.push(ctx.b.call_stmt(
         "$.each",
