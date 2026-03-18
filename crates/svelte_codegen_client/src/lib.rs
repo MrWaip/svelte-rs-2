@@ -22,7 +22,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     // 1. Script transformation
     // -----------------------------------------------------------------------
-    let (script_imports, script_body) = script::gen_script(&mut ctx, dev);
+    let (script_imports, script_body, has_tracing) = script::gen_script(&mut ctx, dev);
 
     // -----------------------------------------------------------------------
     // 2. Template generation (consumes "root" ident first)
@@ -160,6 +160,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     ));
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
+    if has_tracing {
+        program_body.push(b.bare_import("svelte/internal/flags/tracing"));
+    }
     program_body.push(import_svelte);
     program_body.extend(script_imports);
     program_body.extend(all_hoisted);

@@ -491,6 +491,22 @@ impl<'a> Builder<'a> {
         self.arrow_block_expr(self.no_params(), stmts)
     }
 
+    /// `async () => { ...stmts }` — zero-arg async arrow wrapping a block body.
+    pub fn async_thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
+        let body = self.ast.function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(stmts),
+        );
+        let arrow = self.ast.arrow_function_expression(SPAN, false, true, NONE, self.no_params(), NONE, body);
+        Expression::ArrowFunctionExpression(self.alloc(arrow))
+    }
+
+    /// `await expr`
+    pub fn await_expr(&self, expr: Expression<'a>) -> Expression<'a> {
+        self.ast.expression_await(SPAN, expr)
+    }
+
     /// `left ?? right` — nullish coalescing.
     pub fn logical_coalesce(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
         self.ast.expression_logical(SPAN, left, ast::LogicalOperator::Coalesce, right)
@@ -758,6 +774,19 @@ impl<'a> Builder<'a> {
     // -----------------------------------------------------------------------
     // Module-level helpers
     // -----------------------------------------------------------------------
+
+    /// `import 'source'` — side-effect-only import with no specifiers.
+    pub fn bare_import(&self, source: &str) -> Statement<'a> {
+        let source_atom = self.ast.atom(source);
+        Statement::from(self.ast.module_declaration_import_declaration(
+            SPAN,
+            None,
+            self.ast.string_literal(SPAN, source_atom, None),
+            None,
+            NONE,
+            ImportOrExportKind::Value,
+        ))
+    }
 
     pub fn import_all(&self, specifier: &str, source: &str) -> Statement<'a> {
         let spec_atom = self.ast.atom(specifier);
