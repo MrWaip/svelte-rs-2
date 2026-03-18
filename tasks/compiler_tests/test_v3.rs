@@ -689,6 +689,42 @@ fn svelte_head_with_content() {
     assert_compiler("svelte_head_with_content");
 }
 
+// svelte:window tests
+#[rstest]
+fn svelte_window_event_legacy() {
+    assert_compiler("svelte_window_event_legacy");
+}
+
+#[rstest]
+fn svelte_window_event_attr() {
+    assert_compiler("svelte_window_event_attr");
+}
+
+#[rstest]
+fn svelte_window_bind_scroll() {
+    assert_compiler("svelte_window_bind_scroll");
+}
+
+#[rstest]
+fn svelte_window_bind_size() {
+    assert_compiler("svelte_window_bind_size");
+}
+
+#[rstest]
+fn svelte_window_bind_online() {
+    assert_compiler("svelte_window_bind_online");
+}
+
+#[rstest]
+fn svelte_window_combined() {
+    assert_compiler("svelte_window_combined");
+}
+
+#[rstest]
+fn svelte_window_reactive() {
+    assert_compiler("svelte_window_reactive");
+}
+
 #[rstest]
 fn svelte_element_basic() {
     assert_compiler("svelte_element_basic");

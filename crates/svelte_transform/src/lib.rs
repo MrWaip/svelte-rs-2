@@ -174,6 +174,9 @@ fn walk_node<'a>(
                 walk_fragment(ctx, &el.fragment, component, parsed, scope);
             });
         }
+        Node::SvelteWindow(w) => {
+            transform_attrs(ctx, &w.attributes, parsed, scope);
+        }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
