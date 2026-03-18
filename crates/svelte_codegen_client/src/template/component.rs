@@ -6,7 +6,7 @@ use svelte_analyze::{ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
-use crate::builder::{Arg, ObjProp};
+use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -19,6 +19,7 @@ enum AttrKind<'a> {
     Expression { name: &'a str, attr_id: NodeId, shorthand: bool },
     Concatenation { name: &'a str, attr_id: NodeId },
     Shorthand { attr_id: NodeId },
+    BindThis { expression_span: Option<Span>, shorthand: bool, name: String },
     Spread,
     Skip,
 }
@@ -57,6 +58,11 @@ pub(crate) fn gen_component<'a>(
             Attribute::ShorthandOrSpread(a) => AttrKind::Shorthand {
                 attr_id: a.id,
             },
+            Attribute::BindDirective(b) if b.name == "this" => AttrKind::BindThis {
+                expression_span: b.expression_span,
+                shorthand: b.shorthand,
+                name: b.name.clone(),
+            },
             Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_)
             | Attribute::UseDirective(_) | Attribute::OnDirectiveLegacy(_)
             | Attribute::TransitionDirective(_)
@@ -67,6 +73,7 @@ pub(crate) fn gen_component<'a>(
     }).collect();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
+    let mut bind_this_info: Option<(Option<Span>, bool, String)> = None;
 
     for (kind, is_dynamic) in attr_infos {
         match kind {
@@ -121,6 +128,9 @@ pub(crate) fn gen_component<'a>(
                     props.push(ObjProp::Shorthand(key));
                 }
             }
+            AttrKind::BindThis { expression_span, shorthand, name } => {
+                bind_this_info = Some((expression_span, shorthand, name));
+            }
             AttrKind::Spread | AttrKind::Skip => {}
         }
     }
@@ -152,7 +162,48 @@ pub(crate) fn gen_component<'a>(
     }
 
     let props_expr = ctx.b.object_expr(props);
-    init.push(ctx.b.expr_stmt(
-        ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]),
-    ));
+    let component_call = ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
+
+    let final_expr = if let Some((expression_span, shorthand, bind_name)) = bind_this_info {
+        let var_name = if shorthand {
+            bind_name
+        } else if let Some(span) = expression_span {
+            ctx.component.source_text(span).trim().to_string()
+        } else {
+            // No expression — skip bind:this
+            init.push(ctx.b.expr_stmt(component_call));
+            return;
+        };
+
+        let setter = if ctx.is_mutable_rune(&var_name) {
+            let var_str = ctx.b.alloc_str(&var_name);
+            let body = ctx.b.call_expr("$.set", [
+                Arg::Ident(var_str), Arg::Ident("$$value"), Arg::Expr(ctx.b.bool_expr(true)),
+            ]);
+            ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+        } else {
+            let body = ctx.b.assign_expr(
+                AssignLeft::Ident(var_name.clone()),
+                AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            );
+            ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+        };
+
+        let getter = if ctx.is_mutable_rune(&var_name) {
+            let var_str = ctx.b.alloc_str(&var_name);
+            let body = ctx.b.call_expr("$.get", [Arg::Ident(var_str)]);
+            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+        } else {
+            let body = ctx.b.rid_expr(&var_name);
+            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+        };
+
+        ctx.b.call_expr("$.bind_this", [
+            Arg::Expr(component_call), Arg::Expr(setter), Arg::Expr(getter),
+        ])
+    } else {
+        component_call
+    };
+
+    init.push(ctx.b.expr_stmt(final_expr));
 }
