@@ -50,7 +50,17 @@ pub fn analyze<'a>(
     alloc: &'a Allocator,
     component: &Component,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
+    analyze_with_options(alloc, component, false)
+}
+
+/// Analyze with compile options that affect analysis behavior.
+pub fn analyze_with_options<'a>(
+    alloc: &'a Allocator,
+    component: &Component,
+    custom_element: bool,
+) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
+    data.custom_element = custom_element;
     let mut parsed = ParsedExprs::new();
     let mut diags = Vec::new();
 

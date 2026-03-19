@@ -948,6 +948,60 @@ impl<'a> Builder<'a> {
                 );
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
+            ObjProp::Setter(name, param_name, default_expr, body) => {
+                let name_atom = self.ast.atom(name);
+                let key_node = ast::PropertyKey::StaticIdentifier(
+                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                );
+                let param_atom = self.ast.atom(param_name);
+                let pattern = self.ast.binding_pattern_binding_identifier(SPAN, param_atom);
+                let param = self.ast.formal_parameter(
+                    SPAN,
+                    self.ast.vec(),
+                    pattern,
+                    NONE,
+                    default_expr.map(|e| self.alloc(e)),
+                    false,
+                    None,
+                    false,
+                    false,
+                );
+                let params = self.ast.formal_parameters(
+                    SPAN,
+                    ast::FormalParameterKind::FormalParameter,
+                    self.ast.vec_from_array([param]),
+                    NONE,
+                );
+                let fn_body = self.ast.alloc_function_body(
+                    SPAN,
+                    self.ast.vec(),
+                    self.ast.vec_from_iter(body),
+                );
+                let setter = self.ast.function(
+                    SPAN,
+                    FunctionType::FunctionExpression,
+                    None,
+                    false,
+                    false,
+                    false,
+                    NONE,
+                    NONE,
+                    params,
+                    NONE,
+                    Some(fn_body),
+                );
+                let value = Expression::FunctionExpression(self.alloc(setter));
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Set,
+                    key_node,
+                    value,
+                    false,  // method
+                    false,  // shorthand
+                    false,  // computed
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
         }
     }
 }
@@ -962,4 +1016,6 @@ pub enum ObjProp<'a> {
     Spread(Expression<'a>),
     /// `get name() { return expr }`
     Getter(&'a str, Expression<'a>),
+    /// `set name(param_name = default?) { body }`
+    Setter(&'a str, &'a str, Option<Expression<'a>>, Vec<Statement<'a>>),
 }
