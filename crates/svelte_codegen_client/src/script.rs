@@ -131,7 +131,8 @@ fn transform_script_text<'a>(
             props: pa.props.iter().map(|p| PropGenItem {
                 local_name: p.local_name.clone(),
                 prop_name: p.prop_name.clone(),
-                is_prop_source: p.is_prop_source,
+                is_prop_source: component_scoping.find_binding(root, &p.local_name)
+                    .is_some_and(|sym| component_scoping.is_prop_source(sym)),
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
                 // In custom element mode, all props are updatable via CE setters
@@ -216,7 +217,8 @@ fn transform_program<'a>(
                 .map(|p| PropGenItem {
                     local_name: p.local_name.clone(),
                     prop_name: p.prop_name.clone(),
-                    is_prop_source: p.is_prop_source,
+                    is_prop_source: component_scoping.find_binding(root, &p.local_name)
+                        .is_some_and(|sym| component_scoping.is_prop_source(sym)),
                     is_bindable: p.is_bindable,
                     is_rest: p.is_rest,
                     // In custom element mode, all props are updatable via CE setters
@@ -380,17 +382,6 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         } else {
             None
         }
-    }
-
-    /// Check if an identifier name is a `$store` reference (e.g. `$count` where `count` is a store).
-    fn is_store_ref(&self, name: &str) -> bool {
-        if name.starts_with('$') && name.len() > 1 {
-            let base = &name[1..];
-            let root = self.component_scoping.root_scope_id();
-            return self.component_scoping.find_binding(root, base)
-                .is_some_and(|sym| self.component_scoping.is_store(sym));
-        }
-        false
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -1001,7 +992,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 // Only transform original source identifiers (with reference_id),
                 // not synthetic ones we create during transformation.
                 let id_name = id.name.as_str();
-                if id.reference_id.get().is_some() && self.is_store_ref(id_name) {
+                if id.reference_id.get().is_some() && self.component_scoping.is_store_ref(id_name) {
                     let name = id_name.to_string();
                     *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                     return;
@@ -1152,7 +1143,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // Store subscription assignment: $count = val → $.store_set(count, val)
             // Compound: $count += val → $.store_set(count, $count() + val)
             let id_name = id.name.as_str();
-            if self.is_store_ref(id_name) {
+            if self.component_scoping.is_store_ref(id_name) {
                 let base_name: &str = self.b.alloc_str(&id_name[1..]);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let right = self.b.move_expr(&mut assign.right);
@@ -1226,7 +1217,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // ++$count → $.update_pre_store(count, $count())
             // $count-- → $.update_store(count, $count(), -1)
             let id_name = id.name.as_str();
-            if self.is_store_ref(id_name) {
+            if self.component_scoping.is_store_ref(id_name) {
                 let base_name: &str = self.b.alloc_str(&id_name[1..]);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let fn_name = if upd.prefix { "$.update_pre_store" } else { "$.update_store" };

@@ -22,7 +22,7 @@ impl ReactivityVisitor {
         if let Some(info) = data.expressions.get(node_id) {
             return info.references.iter().any(|r| {
                 // Store subscriptions ($count) are always dynamic
-                if is_store_ref(&r.name, data) {
+                if data.scoping.is_store_ref(&r.name) {
                     return true;
                 }
                 if let Some(sym_id) = r.symbol_id {
@@ -161,15 +161,6 @@ fn component_attr_is_dynamic(
     false
 }
 
-/// Check if a reference name is a store subscription (`$X` where X is marked as store).
-fn is_store_ref(name: &str, data: &AnalysisData) -> bool {
-    if name.starts_with('$') && name.len() > 1 {
-        let base = &name[1..];
-        let root = data.scoping.root_scope_id();
-        return data.scoping.find_binding(root, base).is_some_and(|sym| data.scoping.is_store(sym));
-    }
-    false
-}
 
 // Attributes are dynamic for any rune reference or prop access — they can
 // change between renders and need a template_effect to stay up-to-date.

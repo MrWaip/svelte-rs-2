@@ -85,17 +85,22 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_bind(&self, dir: &BindDirective, data: &mut AnalysisData) {
-        let name = if dir.shorthand {
-            &dir.name
-        } else if let Some(span) = dir.expression_span {
-            let text = self.source[span.start as usize..span.end as usize].trim();
-            text
-        } else {
+        if dir.shorthand {
+            // Shorthand: dir.name IS the binding name — string lookup acceptable
+            if Self::is_mutable_rune(&dir.name, data) {
+                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            }
             return;
-        };
+        }
 
-        if Self::is_mutable_rune(name, data) {
-            data.bind_semantics.mutable_rune_targets.insert(dir.id);
+        // Non-shorthand: use pre-resolved SymbolId from attr_expressions
+        let Some(info) = data.attr_expressions.get(&dir.id) else { return };
+        if !matches!(info.kind, svelte_js::ExpressionKind::Identifier(_)) { return }
+
+        if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {
+            if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
+                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            }
         }
     }
 
