@@ -6,7 +6,7 @@ use svelte_analyze::{ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
-use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
+use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -61,8 +61,8 @@ pub(crate) fn gen_component<'a>(
                 name: &a.name,
                 attr_id: a.id,
             },
-            Attribute::ShorthandOrSpread(a) if a.is_spread => AttrKind::Spread,
-            Attribute::ShorthandOrSpread(a) => AttrKind::Shorthand {
+            Attribute::SpreadAttribute(_) => AttrKind::Spread,
+            Attribute::Shorthand(a) => AttrKind::Shorthand {
                 attr_id: a.id,
             },
             Attribute::BindDirective(b) if b.name == "this" => AttrKind::BindThis {
@@ -122,7 +122,7 @@ pub(crate) fn gen_component<'a>(
             }
             AttrKind::Concatenation { name, attr_id } => {
                 let key = ctx.b.alloc_str(name);
-                // Re-borrow to access ConcatPart slice
+                // Re-borrow to access concatenation parts
                 let cn = ctx.component_node(id);
                 let concat_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
                 if let Some(Attribute::ConcatenationAttribute(a)) = concat_attr {
@@ -138,7 +138,7 @@ pub(crate) fn gen_component<'a>(
                 // Re-borrow to get the shorthand name
                 let cn = ctx.component_node(id);
                 let shorthand_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
-                let name_text = if let Some(Attribute::ShorthandOrSpread(a)) = shorthand_attr {
+                let name_text = if let Some(Attribute::Shorthand(a)) = shorthand_attr {
                     ctx.component.source_text(a.expression_span).trim().to_string()
                 } else {
                     unreachable!()
@@ -191,9 +191,8 @@ pub(crate) fn gen_component<'a>(
         let var_name = if shorthand {
             bind_name
         } else if let Some(span) = expression_span {
-            ctx.component.source_text(span).trim().to_string()
+            ctx.component.source_text(span).to_string()
         } else {
-            // No expression — skip bind:this
             init.push(ctx.b.expr_stmt(component_call));
             return;
         };
@@ -211,41 +210,6 @@ pub(crate) fn gen_component<'a>(
     }
 }
 
-/// Check if a string is a simple JS identifier (no member access, no computed access).
-fn is_simple_identifier(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-}
-
-/// Add optional chaining to all member accesses in an expression string.
-/// `obj.ref` → `obj?.ref`, `refs[i]` → `refs?.[i]`, `a.b.c` → `a?.b?.c`
-fn add_optional_chaining(expr: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0i32;
-    for c in expr.chars() {
-        match c {
-            '.' if depth == 0 => result.push_str("?."),
-            '[' if depth == 0 => {
-                result.push_str("?.[");
-                depth += 1;
-            }
-            '[' => {
-                result.push('[');
-                depth += 1;
-            }
-            ']' => {
-                result.push(']');
-                if depth > 0 {
-                    depth -= 1;
-                }
-            }
-            c => result.push(c),
-        }
-    }
-    result
-}
-
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
 fn build_bind_this_call<'a>(
     ctx: &mut Ctx<'a>,
@@ -253,7 +217,7 @@ fn build_bind_this_call<'a>(
     expr_text: &str,
     value: Expression<'a>,
 ) -> Expression<'a> {
-    if is_simple_identifier(expr_text) {
+    if svelte_js::is_simple_identifier(expr_text) {
         // Pre-computed by analysis — no string-based symbol re-resolution.
         let is_rune = ctx.is_mutable_rune_target(bind_id);
 
@@ -270,7 +234,7 @@ fn build_bind_this_call<'a>(
         } else {
             let body = ctx.b.assign_expr(
                 AssignLeft::Ident(expr_text.to_string()),
-                AssignRight::Expr(ctx.b.rid_expr("$$value")),
+                ctx.b.rid_expr("$$value"),
             );
             ctx.b
                 .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
@@ -311,8 +275,8 @@ fn build_bind_this_call<'a>(
             .arrow_expr(ctx.b.params(setter_params), [ctx.b.expr_stmt(setter_expr)]);
 
         // Getter: ([ctx_vars]) => <expr_with_optional_chaining>
-        let getter_text = add_optional_chaining(expr_text);
-        let getter_expr = ctx.b.parse_expression(&getter_text);
+        let getter_expr = ctx.b.parse_expression(expr_text);
+        let getter_expr = ctx.b.make_optional_chain(getter_expr);
         let mut getter_params: Vec<&str> = Vec::new();
         for v in &each_ctx_owned {
             getter_params.push(v);

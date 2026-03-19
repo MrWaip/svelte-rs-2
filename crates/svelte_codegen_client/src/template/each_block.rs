@@ -29,8 +29,7 @@ pub(crate) fn gen_each_block<'a>(
     let block = ctx.each_block(block_id);
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
-    let context_span = block.context_span;
-    let context_name = ctx.component.source_text(context_span).to_string();
+    let context_name = ctx.each_context_name(block_id);
 
     // Compute flags
     let mut flags: u32 = EACH_ITEM_IMMUTABLE;
@@ -56,8 +55,7 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_ANIMATED;
     }
 
-    let index_name = block.index_span
-        .map(|span| ctx.component.source_text(span).to_string());
+    let index_name = ctx.each_index_name(block_id);
 
     // Pre-computed by analysis — no string-based symbol re-resolution.
     let is_prop_source = ctx.is_prop_source_node(block_id);

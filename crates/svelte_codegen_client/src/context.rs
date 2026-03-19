@@ -2,50 +2,21 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{AwaitBlock, Component, ComponentNode, ConstTag, DebugTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
-use svelte_span::Span;
 use svelte_transform::TransformData;
 
 use crate::builder::Builder;
 
 /// Pre-built index for O(1) node lookup by NodeId.
 struct NodeIndex<'a> {
-    elements: FxHashMap<NodeId, &'a Element>,
-    component_nodes: FxHashMap<NodeId, &'a ComponentNode>,
-    if_blocks: FxHashMap<NodeId, &'a IfBlock>,
-    each_blocks: FxHashMap<NodeId, &'a EachBlock>,
-    snippet_blocks: FxHashMap<NodeId, &'a SnippetBlock>,
-    render_tags: FxHashMap<NodeId, &'a RenderTag>,
-    const_tags: FxHashMap<NodeId, &'a ConstTag>,
-    debug_tags: FxHashMap<NodeId, &'a DebugTag>,
-    svelte_elements: FxHashMap<NodeId, &'a SvelteElement>,
-    svelte_boundaries: FxHashMap<NodeId, &'a SvelteBoundary>,
-    await_blocks: FxHashMap<NodeId, &'a AwaitBlock>,
-    svelte_windows: FxHashMap<NodeId, &'a SvelteWindow>,
-    svelte_documents: FxHashMap<NodeId, &'a SvelteDocument>,
-    svelte_bodies: FxHashMap<NodeId, &'a SvelteBody>,
-    expr_spans: FxHashMap<NodeId, Span>,
+    nodes: FxHashMap<NodeId, &'a Node>,
 }
 
 impl<'a> NodeIndex<'a> {
     fn build(fragment: &'a Fragment) -> Self {
         let mut index = Self {
-            elements: FxHashMap::default(),
-            component_nodes: FxHashMap::default(),
-            if_blocks: FxHashMap::default(),
-            each_blocks: FxHashMap::default(),
-            snippet_blocks: FxHashMap::default(),
-            render_tags: FxHashMap::default(),
-            const_tags: FxHashMap::default(),
-            debug_tags: FxHashMap::default(),
-            svelte_elements: FxHashMap::default(),
-            svelte_boundaries: FxHashMap::default(),
-            await_blocks: FxHashMap::default(),
-            svelte_windows: FxHashMap::default(),
-            svelte_documents: FxHashMap::default(),
-            svelte_bodies: FxHashMap::default(),
-            expr_spans: FxHashMap::default(),
+            nodes: FxHashMap::default(),
         };
         index.walk(fragment);
         index
@@ -54,73 +25,29 @@ impl<'a> NodeIndex<'a> {
     fn walk(&mut self, fragment: &'a Fragment) {
         for node in &fragment.nodes {
             match node {
-                Node::Element(el) => {
-                    self.elements.insert(el.id, el);
-                    self.walk(&el.fragment);
-                }
-                Node::ComponentNode(cn) => {
-                    self.component_nodes.insert(cn.id, cn);
-                    self.walk(&cn.fragment);
-                }
+                Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
+                _ => { self.nodes.insert(node.node_id(), node); }
+            }
+            match node {
+                Node::Element(el) => self.walk(&el.fragment),
+                Node::ComponentNode(cn) => self.walk(&cn.fragment),
                 Node::IfBlock(b) => {
-                    self.if_blocks.insert(b.id, b);
                     self.walk(&b.consequent);
-                    if let Some(alt) = &b.alternate {
-                        self.walk(alt);
-                    }
+                    if let Some(alt) = &b.alternate { self.walk(alt); }
                 }
                 Node::EachBlock(b) => {
-                    self.each_blocks.insert(b.id, b);
                     self.walk(&b.body);
-                    if let Some(fb) = &b.fallback {
-                        self.walk(fb);
-                    }
+                    if let Some(fb) = &b.fallback { self.walk(fb); }
                 }
-                Node::SnippetBlock(b) => {
-                    self.snippet_blocks.insert(b.id, b);
-                    self.walk(&b.body);
-                }
-                Node::RenderTag(t) => {
-                    self.render_tags.insert(t.id, t);
-                }
-                Node::HtmlTag(_) => {}
-                Node::ConstTag(t) => {
-                    self.const_tags.insert(t.id, t);
-                }
-                Node::DebugTag(t) => {
-                    self.debug_tags.insert(t.id, t);
-                }
-                Node::KeyBlock(b) => {
-                    self.walk(&b.fragment);
-                }
-                Node::SvelteHead(h) => {
-                    self.walk(&h.fragment);
-                }
-                Node::SvelteElement(el) => {
-                    self.svelte_elements.insert(el.id, el);
-                    self.walk(&el.fragment);
-                }
-                Node::SvelteBoundary(b) => {
-                    self.svelte_boundaries.insert(b.id, b);
-                    self.walk(&b.fragment);
-                }
+                Node::SnippetBlock(b) => self.walk(&b.body),
+                Node::KeyBlock(b) => self.walk(&b.fragment),
+                Node::SvelteHead(h) => self.walk(&h.fragment),
+                Node::SvelteElement(el) => self.walk(&el.fragment),
+                Node::SvelteBoundary(b) => self.walk(&b.fragment),
                 Node::AwaitBlock(b) => {
-                    self.await_blocks.insert(b.id, b);
                     if let Some(ref p) = b.pending { self.walk(p); }
                     if let Some(ref t) = b.then { self.walk(t); }
                     if let Some(ref c) = b.catch { self.walk(c); }
-                }
-                Node::SvelteWindow(w) => {
-                    self.svelte_windows.insert(w.id, w);
-                }
-                Node::SvelteDocument(d) => {
-                    self.svelte_documents.insert(d.id, d);
-                }
-                Node::SvelteBody(b) => {
-                    self.svelte_bodies.insert(b.id, b);
-                }
-                Node::ExpressionTag(t) => {
-                    self.expr_spans.insert(t.id, t.expression_span);
                 }
                 _ => {}
             }
@@ -197,21 +124,23 @@ impl<'a> Ctx<'a> {
 
     // -- Node lookups (O(1)) --
 
-    pub fn element(&self, id: NodeId) -> &'a Element { self.get_node(&self.index.elements, id, "element") }
-    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode { self.get_node(&self.index.component_nodes, id, "component node") }
-    pub fn if_block(&self, id: NodeId) -> &'a IfBlock { self.get_node(&self.index.if_blocks, id, "if block") }
-    pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(&self.index.each_blocks, id, "each block") }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(&self.index.snippet_blocks, id, "snippet block") }
-    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(&self.index.render_tags, id, "render tag") }
-    pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(&self.index.svelte_elements, id, "svelte element") }
-    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(&self.index.svelte_boundaries, id, "svelte boundary") }
-    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.get_node(&self.index.await_blocks, id, "await block") }
-    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(&self.index.svelte_windows, id, "svelte window") }
-    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(&self.index.svelte_documents, id, "svelte document") }
-    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(&self.index.svelte_bodies, id, "svelte body") }
-    fn get_node<T>(&self, map: &FxHashMap<NodeId, &'a T>, id: NodeId, label: &str) -> &'a T {
-        map.get(&id).copied()
-            .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id))
+    pub fn element(&self, id: NodeId) -> &'a Element { self.get_node(id, "element", Node::as_element) }
+    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode { self.get_node(id, "component node", Node::as_component_node) }
+    pub fn if_block(&self, id: NodeId) -> &'a IfBlock { self.get_node(id, "if block", Node::as_if_block) }
+    pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(id, "each block", Node::as_each_block) }
+    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(id, "snippet block", Node::as_snippet_block) }
+    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(id, "render tag", Node::as_render_tag) }
+    pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(id, "svelte element", Node::as_svelte_element) }
+    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(id, "svelte boundary", Node::as_svelte_boundary) }
+    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.get_node(id, "await block", Node::as_await_block) }
+    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(id, "svelte window", Node::as_svelte_window) }
+    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(id, "svelte document", Node::as_svelte_document) }
+    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(id, "svelte body", Node::as_svelte_body) }
+    fn get_node<T>(&self, id: NodeId, label: &str, extract: fn(&Node) -> Option<&T>) -> &'a T {
+        let node = self.index.nodes.get(&id)
+            .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id));
+        extract(node)
+            .unwrap_or_else(|| panic!("{} {:?} is wrong node type", label, id))
     }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
@@ -239,10 +168,16 @@ impl<'a> Ctx<'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
         self.analysis.bind_semantics.each_context(id)
     }
-    pub fn is_import(&self, name: &str) -> bool {
-        let root = self.analysis.scoping.root_scope_id();
-        self.analysis.scoping.find_binding(root, name)
-            .is_some_and(|sym| self.analysis.scoping.is_import(sym))
+    pub fn each_context_name(&self, id: NodeId) -> String {
+        self.analysis.each_blocks.context_name(id)
+            .unwrap_or_else(|| panic!("missing context_name for each block {id:?}"))
+            .to_string()
+    }
+    pub fn each_index_name(&self, id: NodeId) -> Option<String> {
+        self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
+    }
+    pub fn is_import_sym(&self, sym_id: oxc_semantic::SymbolId) -> bool {
+        self.analysis.import_syms.contains(&sym_id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
@@ -276,7 +211,7 @@ impl<'a> Ctx<'a> {
 
     // -- DebugTag shortcuts --
 
-    pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.get_node(&self.index.debug_tags, id, "debug tag") }
+    pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.get_node(id, "debug tag", Node::as_debug_tag) }
     pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.debug_tags.by_fragment(key) }
 
 }

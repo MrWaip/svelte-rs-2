@@ -13,17 +13,24 @@ pub fn make_rune_get<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
     ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
 }
 
-/// Build `$.set(name, value)` call expression.
+/// Build `$.set(name, value[, true])` call expression.
+/// If `proxy` is true, adds a third `true` argument.
 pub fn make_rune_set<'a>(
     alloc: &'a Allocator,
     name: &str,
     value: Expression<'a>,
+    proxy: bool,
 ) -> Expression<'a> {
     let ast = AstBuilder::new(alloc);
     let callee = make_dollar_member(&ast, "set");
     let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
     let value_arg = Argument::from(value);
-    ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg]), false)
+    if proxy {
+        let true_arg = Argument::from(ast.expression_boolean_literal(SPAN, true));
+        ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg, true_arg]), false)
+    } else {
+        ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg]), false)
+    }
 }
 
 /// Build `$.update(name)` or `$.update_pre(name)` call expression.

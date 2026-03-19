@@ -32,7 +32,7 @@ generate-benchmark name='big_v1' chunks='50':
     cargo run -p generate_benchmark -- {{name}} {{chunks}}
 
 # Compare Rust vs JS compiler performance (wall-clock)
-compare-benchmark file='tasks/benchmark/benches/compiler/big_v1.svelte':
+compare-benchmark file='tasks/benchmark/benches/compiler/big_v5.svelte':
     cargo build --release -p benchmark --bin bench_cli
     cd tasks/benchmark && npm install --silent
     node tasks/benchmark/compare.mjs {{file}}

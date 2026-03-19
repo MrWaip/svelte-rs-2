@@ -9,7 +9,7 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
 
-use crate::builder::{Arg, AssignLeft, AssignRight};
+use crate::builder::{Arg, AssignLeft};
 use crate::context::Ctx;
 
 use super::expression::{build_concat_from_parts, parts_are_dynamic};
@@ -39,7 +39,7 @@ pub(crate) fn gen_title_element<'a>(
     // build_concat_from_parts already handles this for template literals (multi-part),
     // but for a single expression we need explicit nullish coalescing.
     let value = if items.first().is_some_and(|item| {
-        matches!(item, svelte_analyze::FragmentItem::TextConcat { parts, .. } if parts.len() == 1 && matches!(parts[0], svelte_analyze::ConcatPart::Expr(_)))
+        matches!(item, svelte_analyze::FragmentItem::TextConcat { parts, .. } if parts.len() == 1 && matches!(parts[0], svelte_analyze::LoweredTextPart::Expr(_)))
     }) {
         // Single expression: value ?? ""
         ctx.b.logical_coalesce(value, ctx.b.str_expr(""))
@@ -50,7 +50,7 @@ pub(crate) fn gen_title_element<'a>(
     // Build: $.document.title = value
     let doc_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "document");
     let title_member = ctx.b.static_member(doc_expr, "title");
-    let assignment = ctx.b.assign_stmt(AssignLeft::StaticMember(title_member), AssignRight::Expr(value));
+    let assignment = ctx.b.assign_stmt(AssignLeft::StaticMember(title_member), value);
 
     // Wrap in effect
     if has_state {

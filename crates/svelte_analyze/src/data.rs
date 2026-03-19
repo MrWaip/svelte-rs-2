@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
 
-use crate::scope::ComponentScoping;
+use crate::scope::{ComponentScoping, SymbolId};
 
 // ---------------------------------------------------------------------------
 // ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
@@ -194,6 +194,29 @@ impl DebugTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// Each-block context/index names, extracted from source text during scope building.
+pub struct EachBlockData {
+    pub(crate) context_names: FxHashMap<NodeId, String>,
+    pub(crate) index_names: FxHashMap<NodeId, String>,
+}
+
+impl EachBlockData {
+    pub fn new() -> Self {
+        Self {
+            context_names: FxHashMap::default(),
+            index_names: FxHashMap::default(),
+        }
+    }
+
+    pub fn context_name(&self, id: NodeId) -> Option<&str> {
+        self.context_names.get(&id).map(|s| s.as_str())
+    }
+
+    pub fn index_name(&self, id: NodeId) -> Option<&str> {
+        self.index_names.get(&id).map(|s| s.as_str())
+    }
+}
+
 /// Pre-computed bind/directive semantics for codegen.
 ///
 /// Eliminates string-based symbol re-resolution in codegen: instead of
@@ -271,10 +294,20 @@ pub struct AnalysisData {
     pub const_tags: ConstTagData,
     /// DebugTag per-fragment grouping.
     pub debug_tags: DebugTagData,
+    /// Each-block context/index names.
+    pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    /// Intermediate: per-argument identifier name (if the arg is a plain identifier).
+    /// Consumed by `resolve_render_tag_prop_sources` after props analysis.
+    pub(crate) render_tag_arg_idents: FxHashMap<NodeId, Vec<Option<String>>>,
+    /// Per-argument prop-source SymbolId for render tags.
+    /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
+    pub render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
     pub bind_semantics: BindSemanticsData,
+    /// Pre-computed import SymbolIds from root scope (O(1) lookup in codegen).
+    pub import_syms: FxHashSet<SymbolId>,
     /// Whether this component is compiled as a custom element.
     /// When true, all props become prop sources with getter/setter exports.
     pub custom_element: bool,
@@ -298,8 +331,12 @@ impl AnalysisData {
             snippets: SnippetData::new(),
             const_tags: ConstTagData::new(),
             debug_tags: DebugTagData::new(),
+            each_blocks: EachBlockData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
+            render_tag_arg_idents: FxHashMap::default(),
+            render_tag_prop_sources: FxHashMap::default(),
             bind_semantics: BindSemanticsData::new(),
+            import_syms: FxHashSet::default(),
             custom_element: false,
         }
     }
@@ -311,6 +348,7 @@ impl AnalysisData {
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
+    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
     pub fn known_value(&self, name: &str) -> Option<&str> {
@@ -353,7 +391,7 @@ pub enum FragmentItem {
     /// A <title> element inside <svelte:head>, special-cased to assign document.title.
     TitleElement(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
-    TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
+    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
 }
 
 impl FragmentItem {
@@ -361,7 +399,7 @@ impl FragmentItem {
     /// Used by codegen to pass `is_text: true` to `$.child()` / `$.sibling()`.
     pub fn is_standalone_expr(&self) -> bool {
         matches!(self, FragmentItem::TextConcat { parts, .. }
-            if parts.len() == 1 && matches!(parts[0], ConcatPart::Expr(_)))
+            if parts.len() == 1 && matches!(parts[0], LoweredTextPart::Expr(_)))
     }
 
     /// Extract the `NodeId` from any single-node variant.
@@ -411,7 +449,7 @@ impl LoweredFragment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConcatPart {
+pub enum LoweredTextPart {
     /// Static text content (possibly trimmed).
     Text(String),
     /// Expression tag node id.
@@ -434,11 +472,13 @@ pub struct PropAnalysis {
     pub default_text: Option<String>,
     pub is_bindable: bool,
     pub is_rest: bool,
-    /// Needs `$.prop()` signal wrapper (vs direct `$$props.name` access).
-    pub is_prop_source: bool,
     /// Default value requires lazy evaluation (`() => expr`).
     /// True when `default_text` is present and is not a simple expression.
     pub is_lazy_default: bool,
+    /// Prop needs `$.prop()` source (has default, is mutated, or custom element).
+    pub is_prop_source: bool,
+    /// Prop's rune symbol is mutated (reassigned somewhere in script/template).
+    pub is_mutated: bool,
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 //!
 //! A snippet is hoistable if its body doesn't reference any script-declared variables.
 
-use oxc_semantic::ScopeId;
+use oxc_semantic::{ScopeId, SymbolId};
 use rustc_hash::FxHashSet;
 use svelte_ast::{
     Attribute, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock, NodeId,
@@ -13,7 +13,7 @@ use crate::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct HoistableSnippetsVisitor {
-    script_names: FxHashSet<String>,
+    script_syms: FxHashSet<SymbolId>,
     top_level_ids: FxHashSet<NodeId>,
     /// Currently active top-level snippet (set between visit/leave_snippet_block)
     current_root: Option<NodeId>,
@@ -22,11 +22,11 @@ pub(crate) struct HoistableSnippetsVisitor {
 
 impl HoistableSnippetsVisitor {
     pub(crate) fn new(
-        script_names: FxHashSet<String>,
+        script_syms: FxHashSet<SymbolId>,
         top_level_ids: FxHashSet<NodeId>,
     ) -> Self {
         Self {
-            script_names,
+            script_syms,
             top_level_ids,
             current_root: None,
             tainted: FxHashSet::default(),
@@ -39,7 +39,7 @@ impl HoistableSnippetsVisitor {
             if info
                 .references
                 .iter()
-                .any(|r| self.script_names.contains(r.name.as_str()))
+                .any(|r| r.symbol_id.is_some_and(|sym| self.script_syms.contains(&sym)))
             {
                 self.tainted.insert(root);
             }
@@ -52,7 +52,7 @@ impl HoistableSnippetsVisitor {
             if info
                 .references
                 .iter()
-                .any(|r| self.script_names.contains(r.name.as_str()))
+                .any(|r| r.symbol_id.is_some_and(|sym| self.script_syms.contains(&sym)))
             {
                 self.tainted.insert(root);
             }
