@@ -10,10 +10,10 @@ pub use data::TransformData;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
+use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
 use svelte_ast::{
     Attribute, Component, Fragment, Node, NodeId,
 };
@@ -43,7 +43,6 @@ pub fn transform_component<'a>(
         alloc,
         analysis,
         ident_gen,
-        const_aliases: vec![FxHashMap::default()],
         transform_data: TransformData::new(),
     };
 
@@ -55,9 +54,6 @@ struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
     analysis: &'b AnalysisData,
     ident_gen: &'b mut IdentGen,
-    /// Stack of alias maps for destructured const tags. Each scope level
-    /// maps binding_name → (tmp_var, prop_name).
-    const_aliases: Vec<FxHashMap<String, (String, String)>>,
     transform_data: TransformData,
 }
 
@@ -98,13 +94,11 @@ fn walk_node<'a>(
         }
         Node::IfBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.consequent, component, parsed, scope);
-            });
+            let cons_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
+            walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
-                with_alias_scope(ctx, |ctx| {
-                    walk_fragment(ctx, alt, component, parsed, scope);
-                });
+                let alt_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::IfAlternate(block.id)).unwrap_or(scope);
+                walk_fragment(ctx, alt, component, parsed, alt_scope);
             }
         }
         Node::EachBlock(block) => {
@@ -112,9 +106,7 @@ fn walk_node<'a>(
 
             // Each block body uses child scope (context + index vars)
             let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.body, component, parsed, body_scope);
-            });
+            walk_fragment(ctx, &block.body, component, parsed, body_scope);
 
             // Fallback uses parent scope
             if let Some(fb) = &block.fallback {
@@ -122,12 +114,8 @@ fn walk_node<'a>(
             }
         }
         Node::SnippetBlock(block) => {
-            // Use the snippet's child scope (created in build_scoping) so that
-            // snippet params are found via find_binding and classified as snippet_params.
             let snippet_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
-            });
+            walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
             transform_node_expr(ctx, tag.id, parsed, scope);
@@ -136,43 +124,30 @@ fn walk_node<'a>(
             transform_node_expr(ctx, tag.id, parsed, scope);
         }
         Node::ConstTag(tag) => {
-            // Transform the init expression FIRST (before aliases exist for this tag)
             transform_node_expr(ctx, tag.id, parsed, scope);
 
-            // For destructured const tags: generate tmp name, register aliases
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {
                 let tmp = ctx.ident_gen.gen("computed_const");
-                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp.clone());
-                let aliases: FxHashMap<_, _> = names
-                    .iter()
-                    .map(|n| (n.clone(), (tmp.clone(), n.clone())))
-                    .collect();
-                if let Some(top) = ctx.const_aliases.last_mut() {
-                    top.extend(aliases);
-                }
+                ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
             }
         }
         Node::KeyBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &block.fragment, component, parsed, scope);
-            });
+            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
+            walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
         }
         Node::SvelteHead(head) => {
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &head.fragment, component, parsed, scope);
-            });
+            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteHeadBody(head.id)).unwrap_or(scope);
+            walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
         }
         Node::SvelteElement(el) => {
-            // Transform the tag expression (skip for static string tags)
             if !el.static_tag {
                 transform_node_expr(ctx, el.id, parsed, scope);
             }
             transform_attrs(ctx, &el.attributes, parsed, scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &el.fragment, component, parsed, scope);
-            });
+            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
+            walk_fragment(ctx, &el.fragment, component, parsed, child_scope);
         }
         Node::SvelteWindow(w) => {
             transform_attrs(ctx, &w.attributes, parsed, scope);
@@ -185,28 +160,22 @@ fn walk_node<'a>(
         }
         Node::SvelteBoundary(b) => {
             transform_attrs(ctx, &b.attributes, parsed, scope);
-            with_alias_scope(ctx, |ctx| {
-                walk_fragment(ctx, &b.fragment, component, parsed, scope);
-            });
+            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(b.id)).unwrap_or(scope);
+            walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
             transform_node_expr(ctx, block.id, parsed, scope);
             if let Some(ref p) = block.pending {
-                with_alias_scope(ctx, |ctx| {
-                    walk_fragment(ctx, p, component, parsed, scope);
-                });
+                let pending_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
+                walk_fragment(ctx, p, component, parsed, pending_scope);
             }
             if let Some(ref t) = block.then {
                 let then_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
-                with_alias_scope(ctx, |ctx| {
-                    walk_fragment(ctx, t, component, parsed, then_scope);
-                });
+                walk_fragment(ctx, t, component, parsed, then_scope);
             }
             if let Some(ref c) = block.catch {
                 let catch_scope = ctx.analysis.scoping.await_catch_scope(block.id).unwrap_or(scope);
-                with_alias_scope(ctx, |ctx| {
-                    walk_fragment(ctx, c, component, parsed, catch_scope);
-                });
+                walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }
         Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
@@ -281,14 +250,6 @@ fn transform_expr<'a>(
                 return;
             }
 
-            // Destructured const alias → $.get(tmp).prop
-            for aliases in ctx.const_aliases.iter().rev() {
-                if let Some((tmp, prop)) = aliases.get(name) {
-                    *expr = rune_refs::make_member_get(ctx.alloc, tmp, prop);
-                    return;
-                }
-            }
-
             // Store subscriptions: $X → $X() (thunk call).
             if ctx.analysis.scoping.is_store_ref(name) {
                 *expr = rune_refs::make_thunk_call(ctx.alloc, name);
@@ -299,6 +260,15 @@ fn transform_expr<'a>(
             let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) else {
                 return;
             };
+
+            // Destructured const alias → $.get(tmp).prop
+            if let Some(tag_id) = ctx.analysis.scoping.const_alias_tag(sym_id) {
+                if let Some(tmp) = ctx.transform_data.const_tag_tmp_names.get(&tag_id) {
+                    *expr = rune_refs::make_member_get(ctx.alloc, tmp, name);
+                    return;
+                }
+            }
+
             let is_root = ctx.analysis.scoping.symbol_scope_id(sym_id)
                 == ctx.analysis.scoping.root_scope_id();
 
@@ -520,16 +490,6 @@ fn extract_arrow_params(params: &FormalParameters<'_>) -> FxHashSet<String> {
         extract_binding_names(&rest.rest.argument, &mut names);
     }
     names
-}
-
-/// Push a fresh alias scope before `f` and pop it after. Eliminates boilerplate push/pop pairs.
-fn with_alias_scope<'a, 'b, F>(ctx: &mut TransformCtx<'a, 'b>, f: F)
-where
-    F: FnOnce(&mut TransformCtx<'a, 'b>),
-{
-    ctx.const_aliases.push(FxHashMap::default());
-    f(ctx);
-    ctx.const_aliases.pop();
 }
 
 fn extract_binding_names(pattern: &BindingPattern<'_>, names: &mut FxHashSet<String>) {
