@@ -27,7 +27,8 @@ pub fn parse_js<'a>(
         ) {
             Ok((mut info, scoping, program)) => {
                 data.exports = std::mem::take(&mut info.exports);
-                data.needs_context = info.has_effects;
+                data.needs_context = info.has_effects || info.has_class_state_fields;
+                data.has_class_state_fields = info.has_class_state_fields;
                 data.script = Some(info);
                 data.scoping = ComponentScoping::from_scoping(scoping);
                 parsed.script_program = Some(program);

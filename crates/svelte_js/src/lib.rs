@@ -94,6 +94,8 @@ pub struct ScriptInfo {
     pub exports: Vec<ExportInfo>,
     /// True when the script contains `$effect(...)` or `$effect.pre(...)` calls.
     pub has_effects: bool,
+    /// True when the script contains class fields with `$state()`/`$state.raw()` initializers.
+    pub has_class_state_fields: bool,
     /// Base names of `$`-prefixed identifiers found in the script body
     /// (e.g. `"count"` for `$count`). Used to detect store subscriptions.
     pub store_candidates: Vec<CompactString>,
@@ -286,6 +288,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
     let mut props_declaration = None;
     let mut exports = Vec::new();
     let mut has_effects = false;
+    let mut has_class_state_fields = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -318,11 +321,16 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
                     has_effects = true;
                 }
             }
+            Statement::ClassDeclaration(class) => {
+                if has_class_state_runes(&class.body) {
+                    has_class_state_fields = true;
+                }
+            }
             _ => {}
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects, store_candidates: Vec::new() }
+    ScriptInfo { declarations, props_declaration, exports, has_effects, has_class_state_fields, store_candidates: Vec::new() }
 }
 
 /// Enrich ScriptInfo from OXC's unresolved references in one pass.
@@ -446,12 +454,9 @@ fn collect_var_declarations(
                 });
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
-                let is_props = declarator.init.as_ref()
-                    .and_then(|init| detect_rune(init))
-                    .map(|r| r == RuneKind::Props)
-                    .unwrap_or(false);
+                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
 
-                if is_props {
+                if rune == Some(RuneKind::Props) {
                     let mut props = Vec::new();
 
                     for prop in &obj_pat.properties {
@@ -514,6 +519,51 @@ fn collect_var_declarations(
                     }
 
                     *props_declaration = Some(PropsDeclaration { props });
+                } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
+                    // Destructured $state/$state.raw: register each leaf binding.
+                    // Use StateRaw for analysis so all bindings are considered dynamic
+                    // (proxied values are always reactive, even if the binding isn't mutated).
+                    let mut names = Vec::new();
+                    extract_all_binding_names(&declarator.id, &mut names);
+                    for name in names {
+                        let decl_span = Span::new(
+                            declarator.span.start + offset,
+                            declarator.span.end + offset,
+                        );
+                        declarations.push(DeclarationInfo {
+                            name,
+                            span: decl_span,
+                            kind,
+                            init_span: None,
+                            is_rune: Some(RuneKind::StateRaw),
+                            rune_init_refs: vec![],
+                        });
+                    }
+                }
+            }
+            oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
+                // Destructured $state/$state.raw: register each leaf binding.
+                // Use StateRaw so all bindings are considered dynamic in analysis.
+                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
+                if let Some(rune_kind) = rune {
+                    if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
+                        let mut names = Vec::new();
+                        extract_all_binding_names(&declarator.id, &mut names);
+                        for name in names {
+                            let decl_span = Span::new(
+                                declarator.span.start + offset,
+                                declarator.span.end + offset,
+                            );
+                            declarations.push(DeclarationInfo {
+                                name,
+                                span: decl_span,
+                                kind,
+                                init_span: None,
+                                is_rune: Some(RuneKind::StateRaw),
+                                rune_init_refs: vec![],
+                            });
+                        }
+                    }
                 }
             }
             _ => {}
@@ -976,6 +1026,43 @@ fn is_effect_call(expr: &Expression<'_>) -> bool {
                 if let Expression::Identifier(obj) = &member.object {
                     if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
                         return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Check if a class body contains any PropertyDefinition with $state/$state.raw initializer,
+/// or constructor assignments like `this.x = $state(...)`.
+fn has_class_state_runes(body: &oxc_ast::ast::ClassBody<'_>) -> bool {
+    for element in &body.body {
+        match element {
+            oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
+                if let Some(value) = &prop.value {
+                    if let Some(kind) = detect_rune(value) {
+                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
+                if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
+                    if let Some(body) = &method.value.body {
+                        for stmt in &body.statements {
+                            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
+                                if let Expression::AssignmentExpression(assign) = &es.expression {
+                                    if let Some(kind) = detect_rune(&assign.right) {
+                                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
