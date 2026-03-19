@@ -10,6 +10,8 @@ pub use data::TransformData;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
+use oxc_ast_visit::walk_mut::{walk_arrow_function_expression, walk_expression};
+use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
@@ -228,10 +230,10 @@ fn transform_attrs<'a>(
 }
 
 // ---------------------------------------------------------------------------
-// Expression transformer (recursive)
+// Expression transformer (VisitMut-based)
 // ---------------------------------------------------------------------------
 
-/// Recursively transform an Expression in-place.
+/// Transform an expression tree in-place using OXC's VisitMut.
 ///
 /// Arrow function parameters are registered as scoped bindings during analysis
 /// (`register_arrow_scopes`), so `find_binding` naturally resolves them — no
@@ -241,90 +243,77 @@ fn transform_expr<'a>(
     expr: &mut Expression<'a>,
     scope: ScopeId,
 ) {
-    match expr {
-        Expression::Identifier(id) => {
+    let mut visitor = ExprTransformer { ctx, scope };
+    visitor.visit_expression(expr);
+}
+
+struct ExprTransformer<'a, 'b, 'c> {
+    ctx: &'c mut TransformCtx<'a, 'b>,
+    scope: ScopeId,
+}
+
+impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
+    fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        // Identifier: leaf node, handle directly
+        if let Expression::Identifier(id) = it {
             let name = id.name.as_str();
 
-            // Store subscriptions: $X → $X() (thunk call).
-            if ctx.analysis.scoping.is_store_ref(name) {
-                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
+            if self.ctx.analysis.scoping.is_store_ref(name) {
+                *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
                 return;
             }
 
-            // Scope-first: all remaining classification via SymbolId
-            let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) else {
+            let Some(sym_id) = self.ctx.analysis.scoping.find_binding(self.scope, name) else {
                 return;
             };
 
-            // Destructured const alias → $.get(tmp).prop
-            if let Some(tag_id) = ctx.analysis.scoping.const_alias_tag(sym_id) {
-                if let Some(tmp) = ctx.transform_data.const_tag_tmp_names.get(&tag_id) {
-                    *expr = rune_refs::make_member_get(ctx.alloc, tmp, name);
+            if let Some(tag_id) = self.ctx.analysis.scoping.const_alias_tag(sym_id) {
+                if let Some(tmp) = self.ctx.transform_data.const_tag_tmp_names.get(&tag_id) {
+                    *it = rune_refs::make_member_get(self.ctx.alloc, tmp, name);
                     return;
                 }
             }
 
-            let is_root = ctx.analysis.scoping.symbol_scope_id(sym_id)
-                == ctx.analysis.scoping.root_scope_id();
+            let is_root = self.ctx.analysis.scoping.symbol_scope_id(sym_id)
+                == self.ctx.analysis.scoping.root_scope_id();
 
             if !is_root {
-                if ctx.analysis.scoping.is_arrow_param(sym_id) {
+                if self.ctx.analysis.scoping.is_arrow_param(sym_id) {
                     // Arrow function parameter — leave as-is
-                } else if ctx.analysis.scoping.is_snippet_param(sym_id) {
-                    *expr = rune_refs::make_thunk_call(ctx.alloc, name);
+                } else if self.ctx.analysis.scoping.is_snippet_param(sym_id) {
+                    *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
                 } else {
-                    *expr = rune_refs::make_rune_get(ctx.alloc, name);
+                    *it = rune_refs::make_rune_get(self.ctx.alloc, name);
                 }
                 return;
             }
 
-            // Root scope classification
-            if ctx.analysis.scoping.is_prop_source(sym_id) {
-                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
-            } else if let Some(prop_name) = ctx.analysis.scoping.prop_non_source_name(sym_id) {
+            if self.ctx.analysis.scoping.is_prop_source(sym_id) {
+                *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
+            } else if let Some(prop_name) = self.ctx.analysis.scoping.prop_non_source_name(sym_id) {
                 let prop_name = prop_name.to_string();
-                *expr = rune_refs::make_props_access(ctx.alloc, &prop_name);
-            } else if let Some(kind) = ctx.analysis.scoping.rune_kind(sym_id) {
-                let needs_get = ctx.analysis.scoping.is_mutated(sym_id) || kind.is_derived();
+                *it = rune_refs::make_props_access(self.ctx.alloc, &prop_name);
+            } else if let Some(kind) = self.ctx.analysis.scoping.rune_kind(sym_id) {
+                let needs_get = self.ctx.analysis.scoping.is_mutated(sym_id) || kind.is_derived();
                 if needs_get {
-                    *expr = rune_refs::make_rune_get(ctx.alloc, name);
+                    *it = rune_refs::make_rune_get(self.ctx.alloc, name);
                 }
             }
             return;
         }
-        Expression::AssignmentExpression(assign) => {
-            // First, transform the RHS
-            transform_expr(ctx, &mut assign.right, scope);
 
-            // Check if LHS is a rune identifier → $.set(name, rhs)
-            if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
-                let name = id.name.as_str();
-                if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) {
-                    if ctx.analysis.scoping.rune_kind(sym_id).is_some()
-                        && ctx.analysis.scoping.is_mutated(sym_id)
-                    {
-                        let right = std::mem::replace(
-                            &mut assign.right,
-                            rune_refs::make_rune_get(ctx.alloc, ""),
-                        );
-                        *expr = rune_refs::make_rune_set(ctx.alloc, name, right, false);
-                        return;
-                    }
-                }
-            }
-            return;
-        }
-        Expression::UpdateExpression(upd) => {
+        // UpdateExpression: leaf-like, handle before walk
+        if let Expression::UpdateExpression(upd) = it {
             if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
                 let name = id.name.as_str();
-                if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope, name) {
-                    if ctx.analysis.scoping.rune_kind(sym_id).is_some()
-                        && ctx.analysis.scoping.is_mutated(sym_id)
+                if let Some(sym_id) = self.ctx.analysis.scoping.find_binding(self.scope, name) {
+                    if self.ctx.analysis.scoping.rune_kind(sym_id).is_some()
+                        && self.ctx.analysis.scoping.is_mutated(sym_id)
                     {
                         let is_increment =
                             upd.operator == oxc_syntax::operator::UpdateOperator::Increment;
-                        *expr = rune_refs::make_rune_update(
-                            ctx.alloc,
+                        *it = rune_refs::make_rune_update(
+                            self.ctx.alloc,
                             name,
                             upd.prefix,
                             is_increment,
@@ -335,129 +324,34 @@ fn transform_expr<'a>(
             }
             return;
         }
-        Expression::ArrowFunctionExpression(arrow) => {
-            // Arrow params are registered in scoping — switch to arrow's scope
-            let arrow_scope = ctx.analysis.scoping.arrow_scope(arrow.span.start)
-                .unwrap_or(scope);
-            for stmt in arrow.body.statements.iter_mut() {
-                transform_stmt(ctx, stmt, arrow_scope);
-            }
-            return;
-        }
-        _ => {}
-    }
 
-    // Generic: walk child expressions
-    walk_expr_children(ctx, expr, scope);
-}
+        // Walk all children (covers every expression type automatically)
+        walk_expression(self, it);
 
-/// Walk into an expression's children and transform them.
-fn walk_expr_children<'a>(
-    ctx: &mut TransformCtx<'a, '_>,
-    expr: &mut Expression<'a>,
-    scope: ScopeId,
-) {
-    match expr {
-        Expression::BinaryExpression(bin) => {
-            transform_expr(ctx, &mut bin.left, scope);
-            transform_expr(ctx, &mut bin.right, scope);
-        }
-        Expression::LogicalExpression(log) => {
-            transform_expr(ctx, &mut log.left, scope);
-            transform_expr(ctx, &mut log.right, scope);
-        }
-        Expression::UnaryExpression(un) => {
-            transform_expr(ctx, &mut un.argument, scope);
-        }
-        Expression::ConditionalExpression(cond) => {
-            transform_expr(ctx, &mut cond.test, scope);
-            transform_expr(ctx, &mut cond.consequent, scope);
-            transform_expr(ctx, &mut cond.alternate, scope);
-        }
-        Expression::CallExpression(call) => {
-            transform_expr(ctx, &mut call.callee, scope);
-            for arg in call.arguments.iter_mut() {
-                if let Some(expr) = arg.as_expression_mut() {
-                    transform_expr(ctx, expr, scope);
-                }
-            }
-        }
-        Expression::StaticMemberExpression(mem) => {
-            transform_expr(ctx, &mut mem.object, scope);
-        }
-        Expression::ComputedMemberExpression(mem) => {
-            transform_expr(ctx, &mut mem.object, scope);
-            transform_expr(ctx, &mut mem.expression, scope);
-        }
-        Expression::TemplateLiteral(tl) => {
-            for e in tl.expressions.iter_mut() {
-                transform_expr(ctx, e, scope);
-            }
-        }
-        Expression::ParenthesizedExpression(paren) => {
-            transform_expr(ctx, &mut paren.expression, scope);
-        }
-        Expression::ArrayExpression(arr) => {
-            for elem in arr.elements.iter_mut() {
-                if let Some(expr) = elem.as_expression_mut() {
-                    transform_expr(ctx, expr, scope);
-                }
-            }
-        }
-        Expression::ObjectExpression(obj) => {
-            for prop in obj.properties.iter_mut() {
-                match prop {
-                    ObjectPropertyKind::ObjectProperty(p) => {
-                        transform_expr(ctx, &mut p.value, scope);
-                    }
-                    ObjectPropertyKind::SpreadProperty(s) => {
-                        transform_expr(ctx, &mut s.argument, scope);
+        // Post-walk: AssignmentExpression LHS rune → $.set()
+        if let Expression::AssignmentExpression(assign) = it {
+            if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
+                let name = id.name.as_str();
+                if let Some(sym_id) = self.ctx.analysis.scoping.find_binding(self.scope, name) {
+                    if self.ctx.analysis.scoping.rune_kind(sym_id).is_some()
+                        && self.ctx.analysis.scoping.is_mutated(sym_id)
+                    {
+                        let right = std::mem::replace(
+                            &mut assign.right,
+                            rune_refs::make_rune_get(self.ctx.alloc, ""),
+                        );
+                        *it = rune_refs::make_rune_set(self.ctx.alloc, name, right, false);
                     }
                 }
             }
         }
-        Expression::SequenceExpression(seq) => {
-            for e in seq.expressions.iter_mut() {
-                transform_expr(ctx, e, scope);
-            }
-        }
-        // Expressions already handled in transform_expr (Identifier, Assignment, Update, Arrow)
-        // or leaf nodes that need no recursion:
-        Expression::Identifier(_)
-        | Expression::AssignmentExpression(_)
-        | Expression::UpdateExpression(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NullLiteral(_)
-        | Expression::FunctionExpression(_) => {}
-        _ => {
-            // Other expression types — no recursion needed for common Svelte patterns
-        }
     }
-}
 
-/// Transform statements inside arrow function bodies.
-fn transform_stmt<'a>(
-    ctx: &mut TransformCtx<'a, '_>,
-    stmt: &mut Statement<'a>,
-    scope: ScopeId,
-) {
-    match stmt {
-        Statement::ExpressionStatement(es) => {
-            transform_expr(ctx, &mut es.expression, scope);
-        }
-        Statement::ReturnStatement(ret) => {
-            if let Some(arg) = &mut ret.argument {
-                transform_expr(ctx, arg, scope);
-            }
-        }
-        Statement::BlockStatement(block) => {
-            for s in block.body.iter_mut() {
-                transform_stmt(ctx, s, scope);
-            }
-        }
-        _ => {}
+    fn visit_arrow_function_expression(&mut self, it: &mut ArrowFunctionExpression<'a>) {
+        let parent_scope = self.scope;
+        self.scope = self.ctx.analysis.scoping.arrow_scope(it.span.start)
+            .unwrap_or(self.scope);
+        walk_arrow_function_expression(self, it);
+        self.scope = parent_scope;
     }
 }
