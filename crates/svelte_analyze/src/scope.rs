@@ -6,7 +6,7 @@ use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlag
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
 
-use crate::data::AnalysisData;
+use crate::data::{AnalysisData, FragmentKey};
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -33,6 +33,10 @@ pub struct ComponentScoping {
     known_values: FxHashMap<SymbolId, String>,
     snippet_param_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
+    /// FragmentKey → ScopeId for scope-introducing fragments (IfBlock branches, KeyBlock, etc.)
+    fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
+    /// SymbolId → parent ConstTag NodeId for destructured const bindings
+    const_alias_tags: FxHashMap<SymbolId, NodeId>,
 }
 
 impl ComponentScoping {
@@ -49,6 +53,8 @@ impl ComponentScoping {
             known_values: FxHashMap::default(),
             snippet_param_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
+            fragment_scopes: FxHashMap::default(),
+            const_alias_tags: FxHashMap::default(),
         }
     }
 
@@ -231,6 +237,22 @@ impl ComponentScoping {
         self.each_block_syms.contains(&sym_id)
     }
 
+    pub(crate) fn set_fragment_scope(&mut self, key: FragmentKey, scope_id: ScopeId) {
+        self.fragment_scopes.insert(key, scope_id);
+    }
+
+    pub fn fragment_scope(&self, key: &FragmentKey) -> Option<ScopeId> {
+        self.fragment_scopes.get(key).copied()
+    }
+
+    pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
+        self.const_alias_tags.insert(sym_id, tag_id);
+    }
+
+    pub fn const_alias_tag(&self, sym_id: SymbolId) -> Option<NodeId> {
+        self.const_alias_tags.get(&sym_id).copied()
+    }
+
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
         self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import)
     }
@@ -355,9 +377,13 @@ fn walk_template_scopes(
                 walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
             }
             Node::IfBlock(block) => {
-                walk_template_scopes(&block.consequent, component, scoping, current_scope, const_tag_names, snippet_params);
+                let cons_scope = scoping.add_child_scope(current_scope);
+                scoping.set_fragment_scope(FragmentKey::IfConsequent(block.id), cons_scope);
+                walk_template_scopes(&block.consequent, component, scoping, cons_scope, const_tag_names, snippet_params);
                 if let Some(alt) = &block.alternate {
-                    walk_template_scopes(alt, component, scoping, current_scope, const_tag_names, snippet_params);
+                    let alt_scope = scoping.add_child_scope(current_scope);
+                    scoping.set_fragment_scope(FragmentKey::IfAlternate(block.id), alt_scope);
+                    walk_template_scopes(alt, component, scoping, alt_scope, const_tag_names, snippet_params);
                 }
             }
             Node::SnippetBlock(block) => {
@@ -373,29 +399,43 @@ fn walk_template_scopes(
                 walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params);
             }
             Node::KeyBlock(block) => {
-                walk_template_scopes(&block.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                let child_scope = scoping.add_child_scope(current_scope);
+                scoping.set_fragment_scope(FragmentKey::KeyBlockBody(block.id), child_scope);
+                walk_template_scopes(&block.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
             }
             Node::SvelteHead(head) => {
-                walk_template_scopes(&head.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                let child_scope = scoping.add_child_scope(current_scope);
+                scoping.set_fragment_scope(FragmentKey::SvelteHeadBody(head.id), child_scope);
+                walk_template_scopes(&head.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
             }
             Node::SvelteElement(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                let child_scope = scoping.add_child_scope(current_scope);
+                scoping.set_fragment_scope(FragmentKey::SvelteElementBody(el.id), child_scope);
+                walk_template_scopes(&el.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
             }
             Node::SvelteBoundary(b) => {
-                walk_template_scopes(&b.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                let child_scope = scoping.add_child_scope(current_scope);
+                scoping.set_fragment_scope(FragmentKey::SvelteBoundaryBody(b.id), child_scope);
+                walk_template_scopes(&b.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
             }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
+                    let is_destructured = names.len() > 1;
                     for name in names {
                         let sym_id = scoping.add_binding(current_scope, name);
                         scoping.mark_rune(sym_id, RuneKind::Derived);
+                        if is_destructured {
+                            scoping.mark_const_alias(sym_id, tag.id);
+                        }
                     }
                 }
             }
             Node::AwaitBlock(block) => {
-                // Pending fragment uses parent scope (no bindings)
+                // Pending fragment: child scope for const alias isolation
                 if let Some(ref p) = block.pending {
-                    walk_template_scopes(p, component, scoping, current_scope, const_tag_names, snippet_params);
+                    let pending_scope = scoping.add_child_scope(current_scope);
+                    scoping.set_fragment_scope(FragmentKey::AwaitPending(block.id), pending_scope);
+                    walk_template_scopes(p, component, scoping, pending_scope, const_tag_names, snippet_params);
                 }
 
                 // Then fragment: create child scope if value binding exists
