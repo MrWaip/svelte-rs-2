@@ -64,7 +64,9 @@ Full codebase review with performance analysis. Generated 2026-03-18.
 
 ---
 
-### #4 — `SingleBlockKind` mirrors `FragmentItem` variants 1:1
+### ~~#4 — `SingleBlockKind` mirrors `FragmentItem` variants 1:1~~
+
+> **Implemented**: Deleted `SingleBlockKind` enum entirely. `ContentStrategy::SingleBlock` now stores `FragmentItem` directly. Simplified `classify_items` from 10 conversion arms to a single wildcard. Added `Debug, PartialEq, Eq` derives to `FragmentItem` and `ConcatPart`.
 
 **Dimension**: 5. Incidental logic
 **Severity**: warning
