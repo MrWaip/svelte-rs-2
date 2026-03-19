@@ -12,7 +12,7 @@ use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::{Attribute, Component, Node};
 use svelte_transform::TransformData;
 
-use builder::{Arg, AssignLeft, AssignRight, Builder, ObjProp};
+use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
@@ -220,7 +220,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             b.rid_expr(ctx.name),
             b.static_member_expr(b.rid_expr("$"), "FILENAME"),
         ));
-        let right = AssignRight::Expr(b.str_expr("(unknown)"));
+        let right = b.str_expr("(unknown)");
         program_body.push(b.assign_stmt(left, right));
     }
     program_body.push(import_svelte);

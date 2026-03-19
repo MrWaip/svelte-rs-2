@@ -6,7 +6,7 @@ use svelte_analyze::{ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 use svelte_span::Span;
 
-use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
+use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -234,7 +234,7 @@ fn build_bind_this_call<'a>(
         } else {
             let body = ctx.b.assign_expr(
                 AssignLeft::Ident(expr_text.to_string()),
-                AssignRight::Expr(ctx.b.rid_expr("$$value")),
+                ctx.b.rid_expr("$$value"),
             );
             ctx.b
                 .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])

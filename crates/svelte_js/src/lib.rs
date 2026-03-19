@@ -261,6 +261,7 @@ pub fn analyze_expression_with_alloc<'a>(
     Ok((info, expr))
 }
 
+#[cfg(test)]
 /// Parse a JS expression and return owned analysis info.
 ///
 /// `source` is the raw expression text (e.g., "count + 1").

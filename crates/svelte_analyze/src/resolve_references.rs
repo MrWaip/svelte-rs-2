@@ -15,11 +15,10 @@ pub fn resolve_references(
     component: &Component,
     data: &mut AnalysisData,
     _scoping: crate::markers::ScopingBuilt,
-) -> crate::markers::ReferencesResolved {
+) {
     let root_scope = data.scoping.root_scope_id();
     let mut visitor = ResolveReferencesVisitor { component };
     walker::walk_template(&component.fragment, data, root_scope, &mut visitor);
-    crate::markers::ReferencesResolved::new()
 }
 
 struct ResolveReferencesVisitor<'a> {

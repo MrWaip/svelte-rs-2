@@ -7,7 +7,7 @@ use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 use svelte_js::ExpressionKind;
 
-use crate::builder::{Arg, AssignLeft, AssignRight, TemplatePart};
+use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ pub(crate) fn emit_text_update<'a>(
     } else {
         body.push(ctx.b.assign_stmt(
             AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
-            AssignRight::Expr(expr),
+            expr,
         ));
     }
 }

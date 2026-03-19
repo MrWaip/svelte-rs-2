@@ -10,10 +10,6 @@ use crate::walker::TemplateVisitor;
 pub(crate) struct ReactivityVisitor;
 
 impl ReactivityVisitor {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-
     fn expr_is_dynamic(
         &self,
         node_id: &NodeId,

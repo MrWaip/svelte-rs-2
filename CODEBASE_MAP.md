@@ -103,7 +103,6 @@ enum Attribute {
 
 enum ConcatPart { Static(String), Dynamic(Span) }
 enum StyleDirectiveValue { Shorthand, Expression(Span), String(String), Concatenation(Vec<ConcatPart>) }
-enum ElementKind { Unknown, Input }
 enum TransitionDirection { Both, In, Out }
 enum ScriptContext { Default, Module }
 enum ScriptLanguage { JavaScript, TypeScript }
@@ -262,7 +261,7 @@ struct SnippetData {
 
 struct ConstTagData {
     // names: per-node declared names, by_fragment: const tags per fragment,
-    // tmp_names: generated tmp vars for destructuring (filled by transform, consumed by codegen)
+    // tmp_names: generated tmp vars for destructuring (filled by transform, consumed by codegen) — stored in TransformData
 }
 // ConstTagData методы: names(id) -> Option<&Vec<String>>, by_fragment(key) -> Option<&Vec<NodeId>>,
 // tmp_name(id) -> Option<&String>, insert_tmp_name(id, name)

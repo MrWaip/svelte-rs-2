@@ -119,7 +119,7 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 - AST stores `Span` for JS expressions. `ParsedExprs<'a>` caches parsed OXC `Expression<'a>` ASTs (populated in `parse_js`, consumed in transform/codegen). No JS subtree copying between phases.
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
 - Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
-- Identifier classification must go through `SymbolId`. To determine whether an identifier is a prop, store, rune, each-var, or snippet-param: resolve with `ComponentScoping::find_binding(scope, name)` first, then query by `SymbolId`. String-based membership tests (`FxHashSet<String>::contains`, `FxHashMap<String, _>::get`) are forbidden for semantic decisions. Name strings are allowed only in output (building JS AST strings, prop_name for `$$props.X` access).
+- All identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level (e.g., arrow function parameters inside template expressions), extend `ComponentScoping` to cover it — do not fall back to string sets. OXC and `ComponentScoping` share the same `SymbolId` space for script-level bindings, so `SymbolId` from OXC can be used directly with `ComponentScoping` methods without name round-tripping.
 
 ### Naming
 
