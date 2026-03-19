@@ -26,10 +26,11 @@ pub fn analyze_props(data: &mut AnalysisData) {
         .map(|p| {
             // In runes mode, a prop needs $.prop() source when it has a default,
             // is reassigned, is mutated, or is bindable.
+            // In custom element mode, ALL props are prop sources (need getter/setter exports).
             let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
             let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
             let is_prop_source =
-                p.default_span.is_some() || is_mutated;
+                data.custom_element || p.default_span.is_some() || is_mutated;
 
             let is_lazy_default = p.default_text.as_ref()
                 .is_some_and(|text| !svelte_js::is_simple_expression(text));

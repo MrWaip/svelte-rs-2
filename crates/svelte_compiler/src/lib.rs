@@ -19,9 +19,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut ident_gen = svelte_analyze::IdentGen::new();
-        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze(&js_alloc, &component);
+        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze_with_options(&js_alloc, &component, options.custom_element);
         let transform_data = svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen);
-        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name, options.dev);
+        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name, options.dev, source);
         (js, analyze_diags)
     }));
 

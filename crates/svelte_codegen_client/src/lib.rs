@@ -1,5 +1,6 @@
 mod builder;
 mod context;
+mod custom_element;
 mod rune_transform;
 mod script;
 mod template;
@@ -9,15 +10,15 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
-use svelte_ast::{Attribute, Component, CustomElementConfig, Node};
+use svelte_ast::{Attribute, Component, Node};
 use svelte_transform::TransformData;
 
 use builder::{Arg, AssignLeft, AssignRight, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
@@ -39,11 +40,13 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     // 3. Build function body (needs &mut ctx for snippets)
     // -----------------------------------------------------------------------
+    let is_custom_element = ctx.analysis.custom_element;
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
     let has_stores = !ctx.analysis.scoping.store_symbols().is_empty();
-    let needs_push = has_bindable || has_exports || ctx.analysis.needs_context || ctx.dev;
-    let has_component_exports = has_exports || ctx.dev;
+    let has_ce_props = is_custom_element && ctx.analysis.props.as_ref().is_some_and(|p| !p.props.is_empty());
+    let needs_push = has_bindable || has_exports || has_ce_props || ctx.analysis.needs_context || ctx.dev;
+    let has_component_exports = has_exports || has_ce_props || ctx.dev;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
@@ -102,18 +105,48 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     fn_body.extend(script_body);
 
-    // var $$exports = { PI, greet, ... }
-    if has_exports {
-        let props: Vec<ObjProp<'_>> = ctx.analysis.exports.iter().map(|e| {
+    // var $$exports = { ... }
+    if has_exports || has_ce_props {
+        let mut export_props: Vec<ObjProp<'_>> = Vec::new();
+
+        // Regular exports (e.g., `export function reset()`)
+        for e in &ctx.analysis.exports {
             let name: &str = ctx.b.alloc_str(&e.name);
             if let Some(alias) = &e.alias {
                 let alias: &str = ctx.b.alloc_str(alias);
-                ObjProp::KeyValue(alias, ctx.b.rid_expr(name))
+                export_props.push(ObjProp::KeyValue(alias, ctx.b.rid_expr(name)));
             } else {
-                ObjProp::Shorthand(name)
+                export_props.push(ObjProp::Shorthand(name));
             }
-        }).collect();
-        fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(props)));
+        }
+
+        // Custom element prop getter/setters
+        if has_ce_props {
+            if let Some(ref props_analysis) = ctx.analysis.props {
+                for prop in &props_analysis.props {
+                    if prop.is_rest || prop.prop_name.starts_with("$$") {
+                        continue;
+                    }
+                    let key: &str = ctx.b.alloc_str(&prop.prop_name);
+                    let local: &str = ctx.b.alloc_str(&prop.local_name);
+
+                    // get name() { return name(); }
+                    let getter_expr = ctx.b.call_expr(local, std::iter::empty::<Arg<'_, '_>>());
+                    export_props.push(ObjProp::Getter(key, getter_expr));
+
+                    // set name($$value = default?) { name($$value); $.flush(); }
+                    let default_expr = prop.default_text.as_deref()
+                        .map(|text| ctx.b.parse_expression(text));
+                    let setter_body = vec![
+                        ctx.b.expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
+                        ctx.b.call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
+                    ];
+                    export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
+                }
+            }
+        }
+
+        fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
     } else if ctx.dev && needs_push {
         // var $$exports = { ...$.legacy_api() }
         let legacy_call = ctx.b.call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
@@ -198,25 +231,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     program_body.extend(delegate_stmts);
 
     // Custom element wrapping: customElements.define(tag, $.create_custom_element(App, ...))
-    if let Some(ce_tag) = component.options.as_ref().and_then(|o| o.custom_element.as_ref()) {
-        if let CustomElementConfig::Tag(tag) = ce_tag {
-            let create_ce = b.call_expr("$.create_custom_element", [
-                Arg::Ident(ctx.name),
-                Arg::Expr(b.object_expr(std::iter::empty::<ObjProp<'_>>())),
-                Arg::Expr(b.array_from_args(std::iter::empty::<Arg<'_, '_>>())),
-                Arg::Expr(b.array_from_args(std::iter::empty::<Arg<'_, '_>>())),
-                Arg::Expr(b.object_expr([ObjProp::KeyValue("mode", b.str_expr("open"))])),
-            ]);
-            let define_callee = b.static_member_expr(
-                b.rid_expr("customElements"),
-                "define",
-            );
-            let define_call = b.call_expr_callee(define_callee, [
-                Arg::Str(tag.clone()),
-                Arg::Expr(create_ce),
-            ]);
-            program_body.push(b.expr_stmt(define_call));
-        }
+    if let Some(ce_config) = component.options.as_ref().and_then(|o| o.custom_element.as_ref()) {
+        let ce_stmts = custom_element::gen_custom_element(&ctx, ce_config);
+        program_body.extend(ce_stmts);
     }
 
     let program = b.program(program_body);
