@@ -10,6 +10,7 @@ use oxc_span::{GetSpan as _, SourceType};
 
 use compact_str::CompactString;
 use oxc_semantic::SymbolId;
+use rustc_hash::FxHashSet;
 use svelte_span::Span;
 use svelte_diagnostics::Diagnostic;
 
@@ -1023,7 +1024,7 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     };
     let mut refs = Vec::new();
     collect_idents_recursive(arg_expr, &mut refs);
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = FxHashSet::default();
     refs.retain(|r| seen.insert(r.clone()));
     refs
 }

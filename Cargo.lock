@@ -1134,6 +1134,7 @@ dependencies = [
  "oxc_span",
  "oxc_syntax",
  "pretty_assertions",
+ "rustc-hash",
  "svelte_diagnostics",
  "svelte_span",
 ]
