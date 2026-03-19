@@ -409,6 +409,47 @@ fn build_style_concat<'a>(
     ctx.b.template_parts_expr(tpl_parts)
 }
 
+/// Build binding getter: `() => $.get(x)` for runes, `() => x` for plain vars.
+pub(crate) fn build_binding_getter<'a>(ctx: &mut Ctx<'a>, var: &str, is_rune: bool) -> Expression<'a> {
+    let body = if is_rune {
+        ctx.b.call_expr("$.get", [Arg::Ident(var)])
+    } else {
+        ctx.b.rid_expr(var)
+    };
+    ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+}
+
+/// Build binding setter: `($$value) => $.set(x, $$value)` for runes, `($$value) => x = $$value` for plain.
+pub(crate) fn build_binding_setter<'a>(ctx: &mut Ctx<'a>, var: String, is_rune: bool) -> Expression<'a> {
+    let body = if is_rune {
+        ctx.b.call_expr("$.set", [Arg::Ident(&var), Arg::Ident("$$value")])
+    } else {
+        ctx.b.assign_expr(
+            AssignLeft::Ident(var),
+            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+        )
+    };
+    ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+}
+
+/// Build binding setter with `true` flag: `($$value) => $.set(x, $$value, true)`.
+/// Used by window/document bindings to prevent re-triggering reactivity.
+pub(crate) fn build_binding_setter_silent<'a>(ctx: &mut Ctx<'a>, var: String, is_rune: bool) -> Expression<'a> {
+    let body = if is_rune {
+        ctx.b.call_expr("$.set", [
+            Arg::Ident(&var),
+            Arg::Ident("$$value"),
+            Arg::Bool(true),
+        ])
+    } else {
+        ctx.b.assign_expr(
+            AssignLeft::Ident(var),
+            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+        )
+    };
+    ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
+}
+
 /// Where to place a bind directive statement.
 enum BindPlacement<'a> {
     /// Most bindings: placed after attribute updates.
@@ -435,56 +476,33 @@ fn gen_bind_directive<'a>(
         return None;
     };
 
-    // Build getter: () => $.get(x) for runes, () => x for plain vars
-    let build_getter = |ctx: &mut Ctx<'a>, var: &str, is_rune: bool| -> Expression<'a> {
-        let body = if is_rune {
-            ctx.b.call_expr("$.get", [Arg::Ident(var)])
-        } else {
-            ctx.b.rid_expr(var)
-        };
-        ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
-    };
-
-    // Build setter: ($$value) => $.set(x, $$value) for runes, ($$value) => x = $$value for plain
-    let build_setter = |ctx: &mut Ctx<'a>, var: String, is_rune: bool| -> Expression<'a> {
-        let body = if is_rune {
-            ctx.b.call_expr("$.set", [Arg::Ident(&var), Arg::Ident("$$value")])
-        } else {
-            ctx.b.assign_expr(
-                AssignLeft::Ident(var),
-                AssignRight::Expr(ctx.b.rid_expr("$$value")),
-            )
-        };
-        ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
-    };
-
     let stmt = match bind.name.as_str() {
         // --- Input/Form ---
         "value" if tag_name == "select" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_select_value", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "value" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_value", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "checked" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_checked", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "group" => {
             ctx.needs_binding_group = true;
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_group", [
                 Arg::Ident("binding_group"),
                 Arg::Expr(ctx.b.empty_array_expr()),
@@ -494,8 +512,8 @@ fn gen_bind_directive<'a>(
             ])
         }
         "files" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_files", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
@@ -503,16 +521,16 @@ fn gen_bind_directive<'a>(
 
         // --- Generic event-based bindings (bidirectional) ---
         "indeterminate" => {
-            let setter = build_setter(ctx, var_name.clone(), is_rune);
-            let getter = build_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("indeterminate".into()), Arg::Str("change".into()),
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
             ])
         }
         "open" => {
-            let setter = build_setter(ctx, var_name.clone(), is_rune);
-            let getter = build_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("open".into()), Arg::Str("toggle".into()),
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
@@ -521,8 +539,8 @@ fn gen_bind_directive<'a>(
 
         // --- Contenteditable ---
         "innerHTML" | "innerText" | "textContent" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_content_editable", [
                 Arg::Str(bind.name.clone()), Arg::Ident(el_name),
                 Arg::Expr(getter), Arg::Expr(setter),
@@ -531,7 +549,7 @@ fn gen_bind_directive<'a>(
 
         // --- Dimension bindings (element size, readonly) ---
         "clientWidth" | "clientHeight" | "offsetWidth" | "offsetHeight" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_element_size", [
                 Arg::Ident(el_name), Arg::Str(bind.name.clone()), Arg::Expr(setter),
             ])
@@ -539,7 +557,7 @@ fn gen_bind_directive<'a>(
 
         // --- Dimension bindings (resize observer, readonly) ---
         "contentRect" | "contentBoxSize" | "borderBoxSize" | "devicePixelContentBoxSize" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_resize_observer", [
                 Arg::Ident(el_name), Arg::Str(bind.name.clone()), Arg::Expr(setter),
             ])
@@ -547,36 +565,36 @@ fn gen_bind_directive<'a>(
 
         // --- Media R/W bindings ---
         "currentTime" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_current_time", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "playbackRate" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_playback_rate", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "paused" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_paused", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "volume" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_volume", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
         "muted" => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_muted", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
@@ -584,61 +602,61 @@ fn gen_bind_directive<'a>(
 
         // --- Media RO bindings (setter only) ---
         "buffered" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_buffered", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
         "seekable" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_seekable", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
         "seeking" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_seeking", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
         "ended" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_ended", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
         "readyState" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_ready_state", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
         "played" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_played", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
 
         // --- Media/Image RO event-based bindings (bind_property, no bidirectional) ---
         "duration" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("duration".into()), Arg::Str("durationchange".into()),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "videoWidth" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("videoWidth".into()), Arg::Str("resize".into()),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "videoHeight" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("videoHeight".into()), Arg::Str("resize".into()),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "naturalWidth" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("naturalWidth".into()), Arg::Str("load".into()),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "naturalHeight" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("naturalHeight".into()), Arg::Str("load".into()),
                 Arg::Ident(el_name), Arg::Expr(setter),
@@ -647,7 +665,7 @@ fn gen_bind_directive<'a>(
 
         // --- Misc ---
         "focused" => {
-            let setter = build_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_focused", [Arg::Ident(el_name), Arg::Expr(setter)])
         }
 
@@ -660,9 +678,9 @@ fn gen_bind_directive<'a>(
                 ]);
                 ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
             } else {
-                build_setter(ctx, var_name.clone(), is_rune)
+                build_binding_setter(ctx, var_name.clone(), is_rune)
             };
-            let getter = build_getter(ctx, &var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
             let stmt = ctx.b.call_stmt("$.bind_this", [
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
             ]);
@@ -671,8 +689,8 @@ fn gen_bind_directive<'a>(
 
         // Fallback for unknown bindings
         _ => {
-            let getter = build_getter(ctx, &var_name, is_rune);
-            let setter = build_setter(ctx, var_name, is_rune);
+            let getter = build_binding_getter(ctx, &var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_value", [
                 Arg::Ident(el_name), Arg::Expr(getter), Arg::Expr(setter),
             ])
@@ -1040,7 +1058,7 @@ pub(crate) fn build_event_handler_s5<'a>(
 
 /// Build event handler for legacy on:directive (non-dev mode).
 /// Reference: `events.js` `build_event_handler()`.
-fn build_legacy_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>) -> Expression<'a> {
+pub(crate) fn build_legacy_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>) -> Expression<'a> {
     match &handler {
         // Inline arrow/function — pass through
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => handler,
@@ -1056,4 +1074,101 @@ fn build_legacy_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>) ->
             ctx.b.function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)])
         }
     }
+}
+
+/// LEGACY(svelte4): Generate `$.event()` for legacy `on:directive` on a global element
+/// (svelte:body, svelte:document, svelte:window). `target` is the element expression
+/// (e.g. `"$.document.body"`, `"$.document"`, `"$.window"`).
+pub(crate) fn gen_legacy_event_on<'a>(
+    ctx: &mut Ctx<'a>,
+    od: &svelte_ast::OnDirectiveLegacy,
+    attr_id: NodeId,
+    target: &str,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let handler = if od.expression_span.is_none() {
+        let bubble_call = ctx.b.static_member_expr(
+            ctx.b.rid_expr("$.bubble_event"),
+            "call",
+        );
+        let call = ctx.b.call_expr_callee(bubble_call, [
+            Arg::Expr(ctx.b.this_expr()),
+            Arg::Ident("$$props"),
+            Arg::Ident("$$arg"),
+        ]);
+        ctx.b.function_expr(ctx.b.params(["$$arg"]), vec![ctx.b.expr_stmt(call)])
+    } else {
+        let expr = super::expression::get_attr_expr(ctx, attr_id);
+        build_legacy_event_handler(ctx, expr)
+    };
+
+    let mut wrapped = handler;
+    for modifier in &[
+        "stopPropagation",
+        "stopImmediatePropagation",
+        "preventDefault",
+        "self",
+        "trusted",
+        "once",
+    ] {
+        if od.modifiers.iter().any(|m| m == modifier) {
+            let fn_name = format!("$.{}", modifier);
+            wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
+        }
+    }
+
+    let capture = od.modifiers.iter().any(|m| m == "capture");
+    let passive = od.modifiers.iter().find_map(|m| match m.as_str() {
+        "passive" => Some(true),
+        "nonpassive" => Some(false),
+        _ => None,
+    });
+
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Str(od.name.clone()),
+        Arg::Ident(target),
+        Arg::Expr(wrapped),
+    ];
+    if capture || passive.is_some() {
+        args.push(Arg::Bool(capture));
+    }
+    if let Some(p) = passive {
+        args.push(Arg::Bool(p));
+    }
+
+    stmts.push(ctx.b.call_stmt("$.event", args));
+}
+
+/// Generate Svelte 5 event attribute `$.event()` on a global element.
+/// `target` is the element expression (e.g. `"$.document.body"`, `"$.window"`).
+pub(crate) fn gen_event_attr_on<'a>(
+    ctx: &mut Ctx<'a>,
+    attr_id: NodeId,
+    raw_event_name: &str,
+    target: &str,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
+        (base.to_string(), true)
+    } else {
+        (raw_event_name.to_string(), false)
+    };
+
+    let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+    let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
+    let handler = build_event_handler_s5(ctx, handler_expr, has_call, stmts);
+
+    let passive = svelte_js::is_passive_event(&event_name);
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Str(event_name),
+        Arg::Ident(target),
+        Arg::Expr(handler),
+    ];
+    if capture || passive {
+        args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
+    }
+    if passive {
+        args.push(Arg::Bool(true));
+    }
+    stmts.push(ctx.b.call_stmt("$.event", args));
 }
