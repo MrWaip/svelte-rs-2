@@ -936,6 +936,18 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             }
             Expression::CallExpression(_) => {
                 let Expression::CallExpression(call) = node else { return };
+
+                // $host() → $$props.$$host (entire expression replacement, not callee rename)
+                if let Expression::Identifier(id) = &call.callee {
+                    if id.name.as_str() == "$host" {
+                        *node = self.b.static_member_expr(
+                            self.b.rid_expr("$$props"),
+                            "$$host",
+                        );
+                        return;
+                    }
+                }
+
                 let new_callee = match &call.callee {
                     Expression::Identifier(id) if id.name.as_str() == "$effect" => {
                         Some("$.user_effect")
