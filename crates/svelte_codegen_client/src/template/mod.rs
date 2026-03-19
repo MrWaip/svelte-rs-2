@@ -134,10 +134,10 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     match ct {
         ContentStrategy::Empty => {}
         ContentStrategy::Static(ref text) => gen_root_static_text(ctx, text, &mut body),
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => gen_root_dynamic_text(ctx, &mut body),
+        ContentStrategy::DynamicText => gen_root_dynamic_text(ctx, &mut body),
         ContentStrategy::SingleElement(el_id) => gen_root_single_element(ctx, el_id, &tpl_name, &mut hoisted, &mut body),
         ContentStrategy::SingleBlock(ref kind) => gen_root_single_block(ctx, kind, &mut body),
-        ContentStrategy::Dynamic { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
+        ContentStrategy::Mixed { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
     // Generate $.head() calls for <svelte:head> nodes.
@@ -147,7 +147,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     if !svelte_head_ids.is_empty() {
         // Find the $.append() call at the end and insert before it
         let insert_pos = body.len().saturating_sub(
-            if matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::Dynamic { .. }) { 1 } else { 0 }
+            if matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. }) { 1 } else { 0 }
         );
         let mut head_stmts = Vec::new();
         for id in svelte_head_ids {
@@ -370,7 +370,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 [Arg::Ident("$$anchor"), Arg::Ident(&name)],
             ));
         }
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => {
+        ContentStrategy::DynamicText => {
             // Clone needed: emit_text_update borrows ctx mutably
             let item = ctx.lowered_fragment(&key).items[0].clone();
             let name = ctx.gen_ident("text");
@@ -481,7 +481,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 }
             }
         }
-        ContentStrategy::Dynamic { .. } => {
+        ContentStrategy::Mixed { .. } => {
             // Clone needed: traverse_items borrows ctx mutably
             let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
 
