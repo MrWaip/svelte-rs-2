@@ -114,6 +114,16 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ### WASM
 - [x] Compiler compiled to WASM for browser use
 
+### Custom Elements (Tier 9)
+- [x] `customElement` compile option — forces all props to prop sources with getter/setter exports
+- [x] `$.create_custom_element()` — full argument generation (props metadata, slots, accessors, shadow config, extend)
+- [x] Props metadata — auto-populated from `$props()` destructuring, explicit config with `attribute`, `reflect`, `type`
+- [x] Shadow DOM config — `"open"` (default) and `"none"` (omit shadow root)
+- [x] `extend` option — class inheritance for custom element
+- [x] Object form parsing — `customElement={{ tag, shadow, props, extend }}` expression span re-parsed in codegen
+- [x] Tag-less registration — no `customElements.define()`, just `$.create_custom_element()` call
+- [x] Accessors — exported names populate accessors array
+
 ---
 
 ---
@@ -224,18 +234,6 @@ Gates these features:
 - Component naming for devtools
 
 ---
-
-## Tier 9 — Custom Elements
-
-Theme: Web Component compilation — alternative output format.
-
-- **`customElement` option** — compile component as custom element with shadow DOM
-- **`$.create_custom_element()`** — wrapper for component function
-- **Shadow DOM config** — `{ mode: 'open' }`, `'none'`, or custom
-- **Props metadata** — `attribute`, `reflect`, `type` for each prop
-- **`extend` option** — class inheritance for custom element
-- **`customElements.define(tag, element)`** call generation
-- **Ref**: `reference/compiler/phases/3-transform/client/transform-client.js` lines 598–677
 
 ---
 
@@ -373,7 +371,7 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
 
 ### `<svelte:options>` (Tier 5)
-- [ ] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties (expression span stored, analysis-phase parsing needed)
+- [x] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties (expression span re-parsed in codegen)
 - [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
 
 ### `<svelte:element>` (Tier 5)
@@ -427,6 +425,14 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] HMR support — `$.hmr()` wrapper, `import.meta.hot.accept()`
 - [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
 - [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
+
+### Custom Elements (Tier 9)
+- [ ] `$host()` validation: zero args (`rune_invalid_arguments`), custom element context only (`host_invalid_placement`), not in `<script module>`
+- [ ] `custom_element_props_identifier` warning when `$props()` used without CE props config
+- [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
+- [ ] Shadow DOM custom `ObjectExpression` (non-literal config)
+- [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations
+- [ ] Auto-detect boolean type from prop default literal value (in CE props config)
 
 ### `on:directive` legacy (Tier 10)
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
