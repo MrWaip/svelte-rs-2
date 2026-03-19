@@ -403,8 +403,6 @@ impl<'a> Parser<'a> {
             script,
             css,
         );
-        component.set_next_node_id(self.ids.current());
-
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 

@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::{Attribute, Element, NodeId};
 
-use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
+use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -265,7 +265,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             );
             let assign = ctx.b.assign_expr(
                 AssignLeft::Ident(classes_name.clone()),
-                AssignRight::Expr(set_class_call),
+                set_class_call,
             );
             init.push(ctx.b.let_stmt(&classes_name));
             update.push(ctx.b.expr_stmt(assign));
@@ -376,7 +376,7 @@ pub(crate) fn process_style_directives<'a>(
 
     let assign = ctx.b.assign_expr(
         AssignLeft::Ident(styles_name.clone()),
-        AssignRight::Expr(set_style_call),
+        set_style_call,
     );
 
     init.push(ctx.b.let_stmt(&styles_name));
@@ -426,7 +426,7 @@ pub(crate) fn build_binding_setter<'a>(ctx: &mut Ctx<'a>, var: String, is_rune: 
     } else {
         ctx.b.assign_expr(
             AssignLeft::Ident(var),
-            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            ctx.b.rid_expr("$$value"),
         )
     };
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
@@ -444,7 +444,7 @@ pub(crate) fn build_binding_setter_silent<'a>(ctx: &mut Ctx<'a>, var: String, is
     } else {
         ctx.b.assign_expr(
             AssignLeft::Ident(var),
-            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            ctx.b.rid_expr("$$value"),
         )
     };
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])

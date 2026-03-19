@@ -85,7 +85,7 @@ pub(crate) fn process_element<'a>(
                 crate::builder::AssignLeft::StaticMember(
                     ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
                 ),
-                crate::builder::AssignRight::Expr(expr),
+                expr,
             ));
         }
 

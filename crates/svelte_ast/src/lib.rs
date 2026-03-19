@@ -24,24 +24,17 @@ pub struct Component {
     pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
     pub source: String,
-    next_node_id: u32,
 }
 
 impl Component {
     pub fn new(source: String, fragment: Fragment, script: Option<Script>, css: Option<RawBlock>) -> Self {
-        // next_node_id is set after parsing; during parsing we use NodeIdAllocator
         Self {
             fragment,
             script,
             css,
             options: None,
             source,
-            next_node_id: 0,
         }
-    }
-
-    pub fn set_next_node_id(&mut self, id: u32) {
-        self.next_node_id = id;
     }
 
     /// Get source text for a span.

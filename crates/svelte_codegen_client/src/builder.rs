@@ -34,10 +34,6 @@ pub enum AssignLeft<'a> {
     Ident(String),
 }
 
-pub enum AssignRight<'a> {
-    Expr(Expression<'a>),
-}
-
 pub enum TemplatePart<'a> {
     Str(String),
     Expr(Expression<'a>),
@@ -378,11 +374,11 @@ impl<'a> Builder<'a> {
         Statement::IfStatement(self.alloc(self.ast.if_statement(SPAN, test, consequent, alternate)))
     }
 
-    pub fn assign_stmt(&self, left: AssignLeft<'a>, right: AssignRight<'a>) -> Statement<'a> {
+    pub fn assign_stmt(&self, left: AssignLeft<'a>, right: Expression<'a>) -> Statement<'a> {
         self.expr_stmt(self.assign_expr(left, right))
     }
 
-    pub fn assign_expr(&self, left: AssignLeft<'a>, right: AssignRight<'a>) -> Expression<'a> {
+    pub fn assign_expr(&self, left: AssignLeft<'a>, right: Expression<'a>) -> Expression<'a> {
         let left = match left {
             AssignLeft::StaticMember(m) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(m))
@@ -396,9 +392,6 @@ impl<'a> Builder<'a> {
                     self.ast.identifier_reference(SPAN, atom),
                 ))
             }
-        };
-        let right = match right {
-            AssignRight::Expr(e) => e,
         };
         let assign =
             self.ast.assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);

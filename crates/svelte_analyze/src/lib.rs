@@ -67,8 +67,9 @@ pub fn analyze_with_options<'a>(
     parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
 
     let scoping_built = scope::build_scoping(component, &mut data);
+    parse_js::register_arrow_scopes(component, &mut data, &parsed);
     data.import_syms = data.scoping.collect_import_syms();
-    let _refs_resolved = resolve_references::resolve_references(component, &mut data, scoping_built);
+    resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
@@ -100,7 +101,7 @@ pub fn analyze_with_options<'a>(
             })
             .collect();
         let mut visitor = (
-            reactivity::ReactivityVisitor::new(),
+            reactivity::ReactivityVisitor,
             elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor::new(&component.source),
             hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),

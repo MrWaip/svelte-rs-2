@@ -37,6 +37,8 @@ pub struct ComponentScoping {
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
     /// SymbolId → parent ConstTag NodeId for destructured const bindings
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
+    /// Arrow function span.start → child ScopeId (for arrow params inside JS expressions)
+    arrow_scopes: FxHashMap<u32, ScopeId>,
 }
 
 impl ComponentScoping {
@@ -55,6 +57,7 @@ impl ComponentScoping {
             each_block_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
+            arrow_scopes: FxHashMap::default(),
         }
     }
 
@@ -256,6 +259,25 @@ impl ComponentScoping {
 
     pub fn const_alias_tag(&self, sym_id: SymbolId) -> Option<NodeId> {
         self.const_alias_tags.get(&sym_id).copied()
+    }
+
+    pub fn arrow_scope(&self, span_start: u32) -> Option<ScopeId> {
+        self.arrow_scopes.get(&span_start).copied()
+    }
+
+    /// True if this symbol was declared as an arrow function parameter.
+    pub fn is_arrow_param(&self, sym_id: SymbolId) -> bool {
+        let scope = self.symbol_scope_id(sym_id);
+        self.arrow_scopes.values().any(|&s| s == scope)
+    }
+
+    pub fn register_arrow_scope(&mut self, span_start: u32, parent: ScopeId, param_names: &[String]) -> ScopeId {
+        let scope = self.add_child_scope(parent);
+        for name in param_names {
+            self.add_binding(scope, name);
+        }
+        self.arrow_scopes.insert(span_start, scope);
+        scope
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
