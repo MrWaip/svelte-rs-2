@@ -16,6 +16,8 @@ Determined by `$ARGUMENTS`:
 
 Launch agents immediately. Each agent gathers its own context as its first step — no sequential prefetch.
 
+**Wait for every agent to report completion before writing the report.** Do not poll agent output files manually. Do not fall back to doing the review yourself. Do not start writing REVIEW.md until all agents have returned their results. If an agent takes longer than expected, wait — do not proceed without its findings.
+
 For **default scope**, each agent starts with:
 ```
 git diff master...HEAD --name-only
