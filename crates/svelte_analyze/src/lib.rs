@@ -67,6 +67,7 @@ pub fn analyze_with_options<'a>(
     parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
 
     let scoping_built = scope::build_scoping(component, &mut data);
+    data.import_syms = data.scoping.collect_import_syms();
     let _refs_resolved = resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
@@ -77,10 +78,14 @@ pub fn analyze_with_options<'a>(
     // Single composite walk: reactivity + elseif + element flags + hoistable snippets
     {
         let root = data.scoping.root_scope_id();
-        let script_names: rustc_hash::FxHashSet<String> = data
+        let script_syms: rustc_hash::FxHashSet<crate::scope::SymbolId> = data
             .script
             .as_ref()
-            .map(|s| s.declarations.iter().map(|d| d.name.to_string()).collect())
+            .map(|s| {
+                s.declarations.iter()
+                    .filter_map(|d| data.scoping.find_binding(root, &d.name))
+                    .collect()
+            })
             .unwrap_or_default();
         let top_level_snippet_ids: rustc_hash::FxHashSet<svelte_ast::NodeId> = component
             .fragment
@@ -98,7 +103,7 @@ pub fn analyze_with_options<'a>(
             reactivity::ReactivityVisitor::new(),
             elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor::new(&component.source),
-            hoistable::HoistableSnippetsVisitor::new(script_names, top_level_snippet_ids),
+            hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics::BindSemanticsVisitor::new(&component.source),
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);

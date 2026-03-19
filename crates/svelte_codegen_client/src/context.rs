@@ -176,10 +176,8 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
     }
-    pub fn is_import(&self, name: &str) -> bool {
-        let root = self.analysis.scoping.root_scope_id();
-        self.analysis.scoping.find_binding(root, name)
-            .is_some_and(|sym| self.analysis.scoping.is_import(sym))
+    pub fn is_import_sym(&self, sym_id: oxc_semantic::SymbolId) -> bool {
+        self.analysis.import_syms.contains(&sym_id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }

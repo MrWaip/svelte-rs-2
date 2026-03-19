@@ -306,6 +306,8 @@ pub struct AnalysisData {
     pub render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
     pub bind_semantics: BindSemanticsData,
+    /// Pre-computed import SymbolIds from root scope (O(1) lookup in codegen).
+    pub import_syms: FxHashSet<SymbolId>,
     /// Whether this component is compiled as a custom element.
     /// When true, all props become prop sources with getter/setter exports.
     pub custom_element: bool,
@@ -334,6 +336,7 @@ impl AnalysisData {
             render_tag_arg_idents: FxHashMap::default(),
             render_tag_prop_sources: FxHashMap::default(),
             bind_semantics: BindSemanticsData::new(),
+            import_syms: FxHashSet::default(),
             custom_element: false,
         }
     }
@@ -472,6 +475,10 @@ pub struct PropAnalysis {
     /// Default value requires lazy evaluation (`() => expr`).
     /// True when `default_text` is present and is not a simple expression.
     pub is_lazy_default: bool,
+    /// Prop needs `$.prop()` source (has default, is mutated, or custom element).
+    pub is_prop_source: bool,
+    /// Prop's rune symbol is mutated (reassigned somewhere in script/template).
+    pub is_mutated: bool,
 }
 
 // ---------------------------------------------------------------------------

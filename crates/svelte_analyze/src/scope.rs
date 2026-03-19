@@ -262,6 +262,15 @@ impl ComponentScoping {
         self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import)
     }
 
+    /// Collect all import-flagged SymbolIds from root scope.
+    /// Used to pre-compute the set once during analysis rather than per-lookup in codegen.
+    pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
+        let root = self.root_scope_id();
+        self.scoping.iter_bindings_in(root)
+            .filter(|&sym_id| self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import))
+            .collect()
+    }
+
     /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
     pub fn is_store_ref(&self, name: &str) -> bool {
         if name.starts_with('$') && name.len() > 1 {
