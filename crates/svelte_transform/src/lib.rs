@@ -290,15 +290,9 @@ fn transform_expr<'a>(
             }
 
             // Store subscriptions: $X → $X() (thunk call).
-            // Dollar-prefixed names can't be in the scope tree (we bind "X" not "$X"),
-            // so handle this before the scope lookup.
-            if name.starts_with('$') && name.len() > 1 {
-                let base = &name[1..];
-                let root = ctx.analysis.scoping.root_scope_id();
-                if ctx.analysis.scoping.find_binding(root, base).is_some_and(|s| ctx.analysis.scoping.is_store(s)) {
-                    *expr = rune_refs::make_thunk_call(ctx.alloc, name);
-                    return;
-                }
+            if ctx.analysis.scoping.is_store_ref(name) {
+                *expr = rune_refs::make_thunk_call(ctx.alloc, name);
+                return;
             }
 
             // Scope-first: all remaining classification via SymbolId

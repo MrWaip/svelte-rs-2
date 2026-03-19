@@ -434,8 +434,6 @@ pub struct PropAnalysis {
     pub default_text: Option<String>,
     pub is_bindable: bool,
     pub is_rest: bool,
-    /// Needs `$.prop()` signal wrapper (vs direct `$$props.name` access).
-    pub is_prop_source: bool,
     /// Default value requires lazy evaluation (`() => expr`).
     /// True when `default_text` is present and is not a simple expression.
     pub is_lazy_default: bool,

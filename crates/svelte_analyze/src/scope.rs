@@ -235,6 +235,16 @@ impl ComponentScoping {
         self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import)
     }
 
+    /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
+    pub fn is_store_ref(&self, name: &str) -> bool {
+        if name.starts_with('$') && name.len() > 1 {
+            let base = &name[1..];
+            let root = self.root_scope_id();
+            return self.find_binding(root, base).is_some_and(|sym| self.is_store(sym));
+        }
+        false
+    }
+
 }
 
 // ---------------------------------------------------------------------------
