@@ -34,6 +34,56 @@ impl<'s> BindSemanticsVisitor<'s> {
             .is_some_and(|s| data.scoping.is_prop_source(s))
     }
 
+    /// Check if a string is a simple JS identifier (no member access, no computed access).
+    fn is_simple_identifier(s: &str) -> bool {
+        !s.is_empty()
+            && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+            && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    }
+
+    /// Extract identifier-like tokens from an expression string.
+    fn extract_identifiers(expr: &str) -> Vec<String> {
+        expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+            .filter(|s| {
+                !s.is_empty()
+                    && s.chars()
+                        .next()
+                        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+            })
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    /// Pre-compute each-block variable names referenced in a bind:this expression.
+    fn classify_bind_this(&self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
+        if dir.name != "this" {
+            return;
+        }
+        let expr_text = if dir.shorthand {
+            return; // shorthand bind:this is always a simple identifier
+        } else if let Some(span) = dir.expression_span {
+            self.source[span.start as usize..span.end as usize].trim()
+        } else {
+            return;
+        };
+
+        if Self::is_simple_identifier(expr_text) {
+            return; // simple identifiers don't need each-block context
+        }
+
+        let each_vars: Vec<String> = Self::extract_identifiers(expr_text)
+            .into_iter()
+            .filter(|name| {
+                data.scoping.find_binding(scope, name)
+                    .is_some_and(|sym| data.scoping.is_each_block_var(sym))
+            })
+            .collect();
+
+        if !each_vars.is_empty() {
+            data.bind_semantics.bind_each_context.insert(dir.id, each_vars);
+        }
+    }
+
     fn classify_bind(&self, dir: &BindDirective, data: &mut AnalysisData) {
         let name = if dir.shorthand {
             &dir.name
@@ -108,11 +158,14 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         &mut self,
         attr: &Attribute,
         _cn: &ComponentNode,
-        _scope: ScopeId,
+        scope: ScopeId,
         data: &mut AnalysisData,
     ) {
         match attr {
-            Attribute::BindDirective(dir) => self.classify_bind(dir, data),
+            Attribute::BindDirective(dir) => {
+                self.classify_bind(dir, data);
+                self.classify_bind_this(dir, scope, data);
+            }
             Attribute::ClassDirective(dir) => self.classify_class(dir, data),
             Attribute::StyleDirective(dir) => self.classify_style(dir, data),
             _ => {}

@@ -27,7 +27,9 @@ Full codebase review with performance analysis. Generated 2026-03-18.
 
 ---
 
-### #2 — `each_vars` in codegen is a manual scope stack duplicating analysis scoping
+### ~~#2 — `each_vars` in codegen is a manual scope stack duplicating analysis scoping~~
+
+> **Implemented**: Added `each_block_syms: FxHashSet<SymbolId>` to `ComponentScoping` with `mark_each_block_var`/`is_each_block_var`. Pre-computed bind:this each-block context in `BindSemanticsVisitor` (new `classify_bind_this` + `extract_identifiers`). Removed `Ctx.each_vars` field, push/pop in `gen_each_block`, and `extract_identifiers` from codegen `component.rs`. Codegen now reads pre-computed `bind_each_context` from `BindSemanticsData`.
 
 **Dimension**: 8. Scattered ownership
 **Severity**: warning
