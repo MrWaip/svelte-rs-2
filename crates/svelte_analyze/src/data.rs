@@ -208,6 +208,9 @@ pub struct BindSemanticsData {
     /// (each_block collection, render_tag argument identifiers).
     /// Key: EachBlock NodeId or RenderTag argument NodeId.
     pub(crate) prop_source_nodes: FxHashSet<NodeId>,
+    /// Pre-computed each-block variable names referenced in bind:this expressions.
+    /// Key: BindDirective NodeId. Value: names of each-block vars used in the expression.
+    pub(crate) bind_each_context: FxHashMap<NodeId, Vec<String>>,
 }
 
 impl BindSemanticsData {
@@ -215,6 +218,7 @@ impl BindSemanticsData {
         Self {
             mutable_rune_targets: FxHashSet::default(),
             prop_source_nodes: FxHashSet::default(),
+            bind_each_context: FxHashMap::default(),
         }
     }
 
@@ -224,6 +228,10 @@ impl BindSemanticsData {
 
     pub fn is_prop_source(&self, id: NodeId) -> bool {
         self.prop_source_nodes.contains(&id)
+    }
+
+    pub fn each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+        self.bind_each_context.get(&id)
     }
 }
 

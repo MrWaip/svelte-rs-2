@@ -246,19 +246,6 @@ fn add_optional_chaining(expr: &str) -> String {
     result
 }
 
-/// Extract identifier-like tokens from an expression string.
-fn extract_identifiers(expr: &str) -> Vec<String> {
-    expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
-        .filter(|s| {
-            !s.is_empty()
-                && s.chars()
-                    .next()
-                    .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        })
-        .map(|s| s.to_string())
-        .collect()
-}
-
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
 fn build_bind_this_call<'a>(
     ctx: &mut Ctx<'a>,
@@ -307,10 +294,9 @@ fn build_bind_this_call<'a>(
         ])
     } else {
         // Member/computed expression: use raw assignment for setter, optional chaining for getter
-        let each_context: Vec<String> = extract_identifiers(expr_text)
-            .into_iter()
-            .filter(|id| ctx.each_vars.contains(id))
-            .collect();
+        let each_context: Vec<String> = ctx.bind_each_context(bind_id)
+            .cloned()
+            .unwrap_or_default();
 
         // Setter: ($$value[, ctx_vars]) => <expr> = $$value
         let setter_body = format!("{expr_text} = $$value");

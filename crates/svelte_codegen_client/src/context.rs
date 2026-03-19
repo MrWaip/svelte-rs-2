@@ -158,9 +158,6 @@ pub struct Ctx<'a> {
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
 
-    /// Names of variables from enclosing each-block scopes (context + index).
-    /// Pushed on entry to each-block body, popped on exit.
-    pub each_vars: Vec<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -191,7 +188,6 @@ impl<'a> Ctx<'a> {
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
-            each_vars: Vec::new(),
         }
     }
 
@@ -235,6 +231,9 @@ impl<'a> Ctx<'a> {
     }
     pub fn is_prop_source_node(&self, id: NodeId) -> bool {
         self.analysis.bind_semantics.is_prop_source(id)
+    }
+    pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+        self.analysis.bind_semantics.each_context(id)
     }
     pub fn is_import(&self, name: &str) -> bool {
         let root = self.analysis.scoping.root_scope_id();
