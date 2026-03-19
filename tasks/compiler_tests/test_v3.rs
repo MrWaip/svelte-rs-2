@@ -23,6 +23,9 @@ fn assert_compiler(case: &str) {
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
+        if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
+            opts.custom_element = ce;
+        }
     }
     let result = compile(&input, &opts);
     let js = result
@@ -313,6 +316,11 @@ fn effect_root_cleanup() {
 #[rstest]
 fn effect_tracking() {
     assert_compiler("effect_tracking");
+}
+
+#[rstest]
+fn host_basic() {
+    assert_compiler("host_basic");
 }
 
 #[rstest]
