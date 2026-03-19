@@ -66,9 +66,6 @@ pub fn analyze_with_options<'a>(
 
     parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
 
-    // Register snippet parameter names (recursive — handles nested snippets)
-    register_snippet_params(&component.fragment, component, &mut data);
-
     let scoping_built = scope::build_scoping(component, &mut data);
     let _refs_resolved = resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
@@ -168,79 +165,6 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
             })
         }).collect();
         data.render_tag_prop_sources.insert(node_id, resolved);
-    }
-}
-
-/// Recursively register snippet parameter names for all snippets in the tree.
-fn register_snippet_params(
-    fragment: &svelte_ast::Fragment,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    for node in &fragment.nodes {
-        match node {
-            svelte_ast::Node::SnippetBlock(block) => {
-                let params = if let Some(span) = block.params_span {
-                    svelte_js::parse_snippet_params(component.source_text(span))
-                } else {
-                    Vec::new()
-                };
-                data.snippets.params.insert(block.id, params);
-                register_snippet_params(&block.body, component, data);
-            }
-            svelte_ast::Node::Element(el) => {
-                register_snippet_params(&el.fragment, component, data);
-            }
-            svelte_ast::Node::ComponentNode(cn) => {
-                register_snippet_params(&cn.fragment, component, data);
-            }
-            svelte_ast::Node::IfBlock(b) => {
-                register_snippet_params(&b.consequent, component, data);
-                if let Some(alt) = &b.alternate {
-                    register_snippet_params(alt, component, data);
-                }
-            }
-            svelte_ast::Node::EachBlock(b) => {
-                register_snippet_params(&b.body, component, data);
-                if let Some(fb) = &b.fallback {
-                    register_snippet_params(fb, component, data);
-                }
-            }
-            svelte_ast::Node::SvelteElement(el) => {
-                register_snippet_params(&el.fragment, component, data);
-            }
-            svelte_ast::Node::SvelteBoundary(b) => {
-                register_snippet_params(&b.fragment, component, data);
-            }
-            svelte_ast::Node::KeyBlock(b) => {
-                register_snippet_params(&b.fragment, component, data);
-            }
-            svelte_ast::Node::SvelteHead(h) => {
-                register_snippet_params(&h.fragment, component, data);
-            }
-            svelte_ast::Node::AwaitBlock(b) => {
-                if let Some(f) = &b.pending {
-                    register_snippet_params(f, component, data);
-                }
-                if let Some(f) = &b.then {
-                    register_snippet_params(f, component, data);
-                }
-                if let Some(f) = &b.catch {
-                    register_snippet_params(f, component, data);
-                }
-            }
-            svelte_ast::Node::Text(_)
-            | svelte_ast::Node::Comment(_)
-            | svelte_ast::Node::ExpressionTag(_)
-            | svelte_ast::Node::RenderTag(_)
-            | svelte_ast::Node::HtmlTag(_)
-            | svelte_ast::Node::ConstTag(_)
-            | svelte_ast::Node::DebugTag(_)
-            | svelte_ast::Node::Error(_)
-            | svelte_ast::Node::SvelteWindow(_)
-            | svelte_ast::Node::SvelteDocument(_)
-            | svelte_ast::Node::SvelteBody(_) => {}
-        }
     }
 }
 

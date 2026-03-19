@@ -309,8 +309,8 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::m
     // Take both tables temporarily to avoid split borrow on `data`.
     let root = data.scoping.root_scope_id();
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
-    let snippet_params = std::mem::take(&mut data.snippets.params);
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &snippet_params, &mut data.each_blocks);
+    let mut snippet_params = std::mem::take(&mut data.snippets.params);
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &mut snippet_params, &mut data.each_blocks);
     data.const_tags.names = const_tag_names;
     data.snippets.params = snippet_params;
     crate::markers::ScopingBuilt::new()
@@ -322,7 +322,7 @@ fn walk_template_scopes(
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
     const_tag_names: &FxHashMap<NodeId, Vec<String>>,
-    snippet_params: &FxHashMap<NodeId, Vec<String>>,
+    snippet_params: &mut FxHashMap<NodeId, Vec<String>>,
     each_blocks: &mut EachBlockData,
 ) {
     for node in &fragment.nodes {
@@ -372,12 +372,17 @@ fn walk_template_scopes(
                 // Create a child scope for snippet params — they shadow outer bindings.
                 let snippet_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, snippet_scope);
-                if let Some(params) = snippet_params.get(&block.id) {
-                    for param in params {
-                        let sym_id = scoping.add_binding(snippet_scope, param);
-                        scoping.mark_snippet_param(sym_id);
-                    }
+                // Compute params inline (eliminates separate register_snippet_params walk)
+                let params = if let Some(span) = block.params_span {
+                    svelte_js::parse_snippet_params(component.source_text(span))
+                } else {
+                    Vec::new()
+                };
+                for param in &params {
+                    let sym_id = scoping.add_binding(snippet_scope, param);
+                    scoping.mark_snippet_param(sym_id);
                 }
+                snippet_params.insert(block.id, params);
                 walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::KeyBlock(block) => {
