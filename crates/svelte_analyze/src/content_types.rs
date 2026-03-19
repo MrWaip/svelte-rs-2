@@ -1,4 +1,4 @@
-use crate::data::{AnalysisData, ConcatPart, ContentStrategy, FragmentItem};
+use crate::data::{AnalysisData, LoweredTextPart, ContentStrategy, FragmentItem};
 
 /// Classify all fragments and mark which ones have dynamic children.
 /// Single pass over `lowered_fragments` instead of two separate traversals.
@@ -29,7 +29,7 @@ fn item_is_dynamic(
 ) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {
-            matches!(p, ConcatPart::Expr(id) if dynamic_nodes.contains(id))
+            matches!(p, LoweredTextPart::Expr(id) if dynamic_nodes.contains(id))
         }),
         FragmentItem::Element(id)
         | FragmentItem::ComponentNode(id)
@@ -97,8 +97,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
         // Extract text from the single TextConcat item (all parts are static)
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
             parts.iter().map(|p| match p {
-                ConcatPart::Text(t) => t.as_str(),
-                ConcatPart::Expr(_) => "", // unreachable for static text
+                LoweredTextPart::Text(t) => t.as_str(),
+                LoweredTextPart::Expr(_) => "", // unreachable for static text
             }).collect::<String>()
         } else {
             String::new()

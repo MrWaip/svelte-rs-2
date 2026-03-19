@@ -19,7 +19,7 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
+    AnalysisData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
     FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
@@ -196,7 +196,34 @@ fn register_snippet_params(
             svelte_ast::Node::SvelteBoundary(b) => {
                 register_snippet_params(&b.fragment, component, data);
             }
-            _ => {}
+            svelte_ast::Node::KeyBlock(b) => {
+                register_snippet_params(&b.fragment, component, data);
+            }
+            svelte_ast::Node::SvelteHead(h) => {
+                register_snippet_params(&h.fragment, component, data);
+            }
+            svelte_ast::Node::AwaitBlock(b) => {
+                if let Some(f) = &b.pending {
+                    register_snippet_params(f, component, data);
+                }
+                if let Some(f) = &b.then {
+                    register_snippet_params(f, component, data);
+                }
+                if let Some(f) = &b.catch {
+                    register_snippet_params(f, component, data);
+                }
+            }
+            svelte_ast::Node::Text(_)
+            | svelte_ast::Node::Comment(_)
+            | svelte_ast::Node::ExpressionTag(_)
+            | svelte_ast::Node::RenderTag(_)
+            | svelte_ast::Node::HtmlTag(_)
+            | svelte_ast::Node::ConstTag(_)
+            | svelte_ast::Node::DebugTag(_)
+            | svelte_ast::Node::Error(_)
+            | svelte_ast::Node::SvelteWindow(_)
+            | svelte_ast::Node::SvelteDocument(_)
+            | svelte_ast::Node::SvelteBody(_) => {}
         }
     }
 }

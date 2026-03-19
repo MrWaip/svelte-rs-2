@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use svelte_analyze::{ConcatPart, ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{LoweredTextPart, ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
@@ -21,7 +21,7 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
                     html.push(' ');
                 } else {
                     for part in parts {
-                        if let ConcatPart::Text(t) = part {
+                        if let LoweredTextPart::Text(t) = part {
                             html.push_str(t);
                         }
                     }

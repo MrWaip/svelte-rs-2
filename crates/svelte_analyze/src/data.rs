@@ -353,7 +353,7 @@ pub enum FragmentItem {
     /// A <title> element inside <svelte:head>, special-cased to assign document.title.
     TitleElement(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
-    TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
+    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
 }
 
 impl FragmentItem {
@@ -361,7 +361,7 @@ impl FragmentItem {
     /// Used by codegen to pass `is_text: true` to `$.child()` / `$.sibling()`.
     pub fn is_standalone_expr(&self) -> bool {
         matches!(self, FragmentItem::TextConcat { parts, .. }
-            if parts.len() == 1 && matches!(parts[0], ConcatPart::Expr(_)))
+            if parts.len() == 1 && matches!(parts[0], LoweredTextPart::Expr(_)))
     }
 
     /// Extract the `NodeId` from any single-node variant.
@@ -411,7 +411,7 @@ impl LoweredFragment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConcatPart {
+pub enum LoweredTextPart {
     /// Static text content (possibly trimmed).
     Text(String),
     /// Expression tag node id.

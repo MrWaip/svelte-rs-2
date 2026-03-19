@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ConcatPart, FragmentItem};
+use svelte_analyze::{LoweredTextPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 use svelte_js::ExpressionKind;
@@ -84,11 +84,11 @@ fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
 
 pub(crate) fn build_concat_from_parts<'a>(
     ctx: &mut Ctx<'a>,
-    parts: &[ConcatPart],
+    parts: &[LoweredTextPart],
 ) -> Expression<'a> {
     // Single expr: try constant propagation first
     if parts.len() == 1 {
-        if let ConcatPart::Expr(nid) = parts[0] {
+        if let LoweredTextPart::Expr(nid) = parts[0] {
             if let Some(val) = try_resolve_known(ctx, nid) {
                 return ctx.b.str_expr(&val);
             }
@@ -100,7 +100,7 @@ pub(crate) fn build_concat_from_parts<'a>(
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
         match part {
-            ConcatPart::Text(s) => {
+            LoweredTextPart::Text(s) => {
                 // Merge with previous Str part if possible
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
@@ -108,7 +108,7 @@ pub(crate) fn build_concat_from_parts<'a>(
                     tpl_parts.push(TemplatePart::Str(s.clone()));
                 }
             }
-            ConcatPart::Expr(nid) => {
+            LoweredTextPart::Expr(nid) => {
                 if let Some(val) = try_resolve_known(ctx, *nid) {
                     // Fold into adjacent text
                     if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
@@ -221,9 +221,9 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     }
 }
 
-pub(crate) fn parts_are_dynamic(parts: &[ConcatPart], ctx: &Ctx<'_>) -> bool {
+pub(crate) fn parts_are_dynamic(parts: &[LoweredTextPart], ctx: &Ctx<'_>) -> bool {
     parts.iter().any(|p| {
-        if let ConcatPart::Expr(id) = p {
+        if let LoweredTextPart::Expr(id) = p {
             ctx.is_dynamic(*id)
         } else {
             false
