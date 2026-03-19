@@ -283,6 +283,9 @@ pub struct AnalysisData {
     pub exports: Vec<svelte_js::ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
+    /// Script contains class declarations with `$state`/`$state.raw` fields.
+    /// When true, member access on local bindings is treated as dynamic.
+    pub has_class_state_fields: bool,
 
     /// Per-element flags (spread, class/style directives, needs_var, etc.).
     pub element_flags: ElementFlags,
@@ -326,6 +329,7 @@ impl AnalysisData {
             props_id: None,
             exports: Vec::new(),
             needs_context: false,
+            has_class_state_fields: false,
             element_flags: ElementFlags::new(),
             fragments: FragmentData::new(),
             snippets: SnippetData::new(),

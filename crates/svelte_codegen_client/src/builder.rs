@@ -660,6 +660,20 @@ impl<'a> Builder<'a> {
         Expression::StaticMemberExpression(self.alloc(self.static_member(object, prop)))
     }
 
+    /// Create a computed member expression: `object[property]`.
+    pub fn computed_member_expr(&self, object: Expression<'a>, property: Expression<'a>) -> Expression<'a> {
+        let cme = self.ast.computed_member_expression(SPAN, object, property, false);
+        Expression::ComputedMemberExpression(self.alloc(cme))
+    }
+
+    /// Create an array literal: `[...items]`.
+    pub fn array_expr(&self, items: impl IntoIterator<Item = Expression<'a>>) -> Expression<'a> {
+        let elements = items.into_iter().map(|e| ast::ArrayExpressionElement::from(e));
+        Expression::ArrayExpression(self.alloc(
+            self.ast.array_expression(SPAN, self.ast.vec_from_iter(elements))
+        ))
+    }
+
     /// Convert all member accesses in an expression to optional chaining.
     /// `obj.ref` → `obj?.ref`, `a.b.c` → `a?.b?.c`, `refs[i]` → `refs?.[i]`
     pub fn make_optional_chain(&self, expr: Expression<'a>) -> Expression<'a> {
@@ -1039,6 +1053,151 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Class member builders
+    // -----------------------------------------------------------------------
+
+    /// Create a `PrivateIdentifier` node (`#name`).
+    pub fn private_identifier(&self, name: &str) -> ast::PrivateIdentifier<'a> {
+        self.ast.private_identifier(SPAN, self.ast.atom(name))
+    }
+
+    /// Create a `PropertyDefinition` class element with a private key: `#name = value;`
+    pub fn class_private_field(
+        &self,
+        name: &str,
+        value: Option<Expression<'a>>,
+    ) -> ast::ClassElement<'a> {
+        let key = ast::PropertyKey::PrivateIdentifier(
+            self.alloc(self.private_identifier(name)),
+        );
+        ast::ClassElement::PropertyDefinition(self.alloc(self.ast.property_definition(
+            SPAN,
+            ast::PropertyDefinitionType::PropertyDefinition,
+            self.ast.vec(),
+            key,
+            NONE,  // type_annotation
+            value,
+            false, // computed
+            false, // r#static
+            false, // declare
+            false, // r#override
+            false, // optional
+            false, // definite
+            false, // readonly
+            None,  // accessibility
+        )))
+    }
+
+    /// Create a getter `MethodDefinition` for a class: `get name() { body }`
+    pub fn class_getter(
+        &self,
+        key: ast::PropertyKey<'a>,
+        body_stmts: Vec<Statement<'a>>,
+    ) -> ast::ClassElement<'a> {
+        let body = self.ast.alloc_function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(body_stmts),
+        );
+        let func = self.ast.function(
+            SPAN,
+            FunctionType::FunctionExpression,
+            None,
+            false, // generator
+            false, // r#async
+            false, // declare
+            NONE,  // type_parameters
+            NONE,  // this_param
+            self.no_params(),
+            NONE,  // return_type
+            Some(body),
+        );
+        ast::ClassElement::MethodDefinition(self.alloc(self.ast.method_definition(
+            SPAN,
+            ast::MethodDefinitionType::MethodDefinition,
+            self.ast.vec(),
+            key,
+            func,
+            ast::MethodDefinitionKind::Get,
+            false, // computed
+            false, // r#static
+            false, // r#override
+            false, // optional
+            None,  // accessibility
+        )))
+    }
+
+    /// Create a setter `MethodDefinition` for a class: `set name(param) { body }`
+    pub fn class_setter(
+        &self,
+        key: ast::PropertyKey<'a>,
+        param_name: &str,
+        body_stmts: Vec<Statement<'a>>,
+    ) -> ast::ClassElement<'a> {
+        let param_atom = self.ast.atom(param_name);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, param_atom);
+        let param = self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, NONE, NONE, false, None, false, false);
+        let params = self.ast.formal_parameters(
+            SPAN,
+            ast::FormalParameterKind::FormalParameter,
+            self.ast.vec_from_array([param]),
+            NONE,
+        );
+        let body = self.ast.alloc_function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(body_stmts),
+        );
+        let func = self.ast.function(
+            SPAN,
+            FunctionType::FunctionExpression,
+            None,
+            false, // generator
+            false, // r#async
+            false, // declare
+            NONE,  // type_parameters
+            NONE,  // this_param
+            params,
+            NONE,  // return_type
+            Some(body),
+        );
+        ast::ClassElement::MethodDefinition(self.alloc(self.ast.method_definition(
+            SPAN,
+            ast::MethodDefinitionType::MethodDefinition,
+            self.ast.vec(),
+            key,
+            func,
+            ast::MethodDefinitionKind::Set,
+            false, // computed
+            false, // r#static
+            false, // r#override
+            false, // optional
+            None,  // accessibility
+        )))
+    }
+
+    /// Create a `PropertyKey` from a public identifier name.
+    pub fn public_key(&self, name: &str) -> ast::PropertyKey<'a> {
+        ast::PropertyKey::StaticIdentifier(
+            self.alloc(self.ast.identifier_name(SPAN, self.ast.atom(name))),
+        )
+    }
+
+    /// Create a `PropertyKey` from a private identifier name.
+    pub fn private_key(&self, name: &str) -> ast::PropertyKey<'a> {
+        ast::PropertyKey::PrivateIdentifier(
+            self.alloc(self.private_identifier(name)),
+        )
+    }
+
+    /// Create `this.#name` as an expression.
+    pub fn this_private_member(&self, name: &str) -> Expression<'a> {
+        let this_expr = self.ast.expression_this(SPAN);
+        let field = self.ast.private_field_expression(SPAN, this_expr, self.private_identifier(name), false);
+        Expression::PrivateFieldExpression(self.alloc(field))
     }
 }
 
