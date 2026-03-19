@@ -1005,7 +1005,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     || kind.is_derived();
                 if needs_get {
                     let name = id.name.as_str().to_string();
-                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
+                    *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                 }
             }
             _ => {}
@@ -1177,7 +1177,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     let value = if assign.operator.is_assign() {
                         right
                     } else {
-                        let left_get = crate::rune_transform::transform_rune_get(self.b, &name);
+                        let left_get = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                         if let Some(bin_op) = assign.operator.to_binary_operator() {
                             self.b.ast.expression_binary(oxc_span::SPAN, left_get, bin_op, right)
                         } else if let Some(log_op) = assign.operator.to_logical_operator() {
@@ -1188,7 +1188,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     };
 
                     let needs_proxy = kind != RuneKind::StateRaw && Self::should_proxy(&value);
-                    *node = crate::rune_transform::transform_rune_set(self.b, &name, value, needs_proxy);
+                    *node = svelte_transform::rune_refs::make_rune_set(self.b.ast.allocator, &name, value, needs_proxy);
                     return;
                 }
             }
@@ -1236,8 +1236,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 if mutated {
                     let name = id.name.as_str().to_string();
                     let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-                    *node = crate::rune_transform::transform_rune_update(
-                        self.b, &name, upd.prefix, is_increment,
+                    *node = svelte_transform::rune_refs::make_rune_update(
+                        self.b.ast.allocator, &name, upd.prefix, is_increment,
                     );
                     return;
                 }

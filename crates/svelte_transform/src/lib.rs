@@ -4,7 +4,7 @@
 //! in pre-parsed Expression ASTs. Runs between analyze and codegen.
 
 mod data;
-mod rune_refs;
+pub mod rune_refs;
 
 pub use data::TransformData;
 
@@ -314,7 +314,7 @@ fn transform_expr<'a>(
                                 &mut assign.right,
                                 rune_refs::make_rune_get(ctx.alloc, ""),
                             );
-                            *expr = rune_refs::make_rune_set(ctx.alloc, name, right);
+                            *expr = rune_refs::make_rune_set(ctx.alloc, name, right, false);
                             return;
                         }
                     }

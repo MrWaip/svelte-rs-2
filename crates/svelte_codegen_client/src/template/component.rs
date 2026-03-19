@@ -210,13 +210,6 @@ pub(crate) fn gen_component<'a>(
     }
 }
 
-/// Check if a string is a simple JS identifier (no member access, no computed access).
-fn is_simple_identifier(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-}
-
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
 fn build_bind_this_call<'a>(
     ctx: &mut Ctx<'a>,
@@ -224,7 +217,7 @@ fn build_bind_this_call<'a>(
     expr_text: &str,
     value: Expression<'a>,
 ) -> Expression<'a> {
-    if is_simple_identifier(expr_text) {
+    if svelte_js::is_simple_identifier(expr_text) {
         // Pre-computed by analysis — no string-based symbol re-resolution.
         let is_rune = ctx.is_mutable_rune_target(bind_id);
 
