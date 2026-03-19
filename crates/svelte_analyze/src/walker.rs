@@ -5,7 +5,7 @@ use svelte_ast::{
     SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow, TransitionDirective, UseDirective,
 };
 
-use crate::data::AnalysisData;
+use crate::data::{AnalysisData, FragmentKey};
 
 /// Trait for template analysis visitors.
 ///
@@ -88,9 +88,11 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             }
             Node::IfBlock(block) => {
                 visitor.visit_if_block(block, scope, data);
-                walk_template(&block.consequent, data, scope, visitor);
+                let cons_scope = data.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
+                walk_template(&block.consequent, data, cons_scope, visitor);
                 if let Some(alt) = &block.alternate {
-                    walk_template(alt, data, scope, visitor);
+                    let alt_scope = data.scoping.fragment_scope(&FragmentKey::IfAlternate(block.id)).unwrap_or(scope);
+                    walk_template(alt, data, alt_scope, visitor);
                 }
             }
             Node::EachBlock(block) => {
@@ -128,14 +130,17 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             }
             Node::KeyBlock(block) => {
                 visitor.visit_key_block(block, scope, data);
-                walk_template(&block.fragment, data, scope, visitor);
+                let child_scope = data.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
+                walk_template(&block.fragment, data, child_scope, visitor);
             }
             Node::SvelteHead(head) => {
-                walk_template(&head.fragment, data, scope, visitor);
+                let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteHeadBody(head.id)).unwrap_or(scope);
+                walk_template(&head.fragment, data, child_scope, visitor);
             }
             Node::SvelteElement(el) => {
                 visitor.visit_svelte_element(el, scope, data);
-                walk_template(&el.fragment, data, scope, visitor);
+                let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
+                walk_template(&el.fragment, data, child_scope, visitor);
             }
             Node::SvelteWindow(w) => {
                 visitor.visit_svelte_window(w, scope, data);
@@ -148,12 +153,14 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
             }
             Node::SvelteBoundary(b) => {
                 visitor.visit_svelte_boundary(b, scope, data);
-                walk_template(&b.fragment, data, scope, visitor);
+                let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(b.id)).unwrap_or(scope);
+                walk_template(&b.fragment, data, child_scope, visitor);
             }
             Node::AwaitBlock(block) => {
                 visitor.visit_await_block(block, scope, data);
                 if let Some(ref p) = block.pending {
-                    walk_template(p, data, scope, visitor);
+                    let pending_scope = data.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
+                    walk_template(p, data, pending_scope, visitor);
                 }
                 if let Some(ref t) = block.then {
                     let then_scope = data.scoping.node_scope(block.id).unwrap_or(scope);

@@ -65,7 +65,8 @@ For implementation priorities, see [ROADMAP.md](ROADMAP.md).
 | ExpressionAttribute | `Attribute` | `ExpressionAttribute` | Done | |
 | BooleanAttribute | `Attribute` | `BooleanAttribute` | Done | |
 | ConcatenationAttribute | `Attribute` | `ConcatenationAttribute` | Done | |
-| SpreadAttribute | `SpreadAttribute` | `ShorthandOrSpread` | Done | |
+| SpreadAttribute | `SpreadAttribute` | `SpreadAttribute` | Done | |
+| Shorthand | — | `Shorthand` | Done | {name} shorthand |
 | ClassDirective | `ClassDirective` | `ClassDirective` | Done | |
 | StyleDirective | `StyleDirective` | `StyleDirective` | Done | |
 | BindDirective | `BindDirective` | `BindDirective` | Done | 15+ bind types |

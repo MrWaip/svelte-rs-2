@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use svelte_ast::{Component, Fragment, Node};
 
-use crate::data::{ConcatPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
+use crate::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
     lower_fragment(&component.fragment, FragmentKey::Root, component, data);
@@ -138,13 +138,13 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
     // ends with whitespace to avoid double spaces.
     let len = regular.len();
     let mut items: Vec<FragmentItem> = Vec::new();
-    let mut concat: Vec<ConcatPart> = Vec::new();
+    let mut concat: Vec<LoweredTextPart> = Vec::new();
     let mut prev_text_ends_ws = false;
 
-    let flush = |concat: &mut Vec<ConcatPart>, items: &mut Vec<FragmentItem>| {
+    let flush = |concat: &mut Vec<LoweredTextPart>, items: &mut Vec<FragmentItem>| {
         if !concat.is_empty() {
             let parts = std::mem::take(concat);
-            let has_expr = parts.iter().any(|p| matches!(p, ConcatPart::Expr(_)));
+            let has_expr = parts.iter().any(|p| matches!(p, LoweredTextPart::Expr(_)));
             items.push(FragmentItem::TextConcat { parts, has_expr });
         }
     };
@@ -163,12 +163,12 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
                 prev_text_ends_ws = ends_with_ws(&data);
 
                 if !data.is_empty() {
-                    concat.push(ConcatPart::Text(data.into_owned()));
+                    concat.push(LoweredTextPart::Text(data.into_owned()));
                 }
             }
             Node::ExpressionTag(tag) => {
                 prev_text_ends_ws = false;
-                concat.push(ConcatPart::Expr(tag.id));
+                concat.push(LoweredTextPart::Expr(tag.id));
             }
             other => {
                 prev_text_ends_ws = false;
@@ -412,7 +412,7 @@ mod tests {
         for item in items {
             if let FragmentItem::TextConcat { parts, .. } = item {
                 for part in parts {
-                    if let ConcatPart::Text(s) = part {
+                    if let LoweredTextPart::Text(s) = part {
                         out.push(s.clone());
                     }
                 }

@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentItem;
 
-use crate::builder::{Arg, AssignLeft, AssignRight};
+use crate::builder::{Arg, AssignLeft};
 use crate::context::Ctx;
 
 use super::await_block::gen_await_block;
@@ -73,7 +73,7 @@ pub(crate) fn traverse_items<'a>(
                             AssignLeft::StaticMember(
                                 ctx.b.static_member(ctx.b.rid_expr(&name), "nodeValue"),
                             ),
-                            AssignRight::Expr(expr),
+                            expr,
                         ));
                     }
                     prev_ident = Some(name);

@@ -9,7 +9,7 @@ use svelte_ast::{
     ComponentNode, ConstTag, DebugTag, ConcatPart, ConcatenationAttribute, Component, CssMode,
     CustomElementConfig, EachBlock, Element, ExpressionAttribute, Fragment, HtmlTag, IfBlock,
     KeyBlock, Namespace, Node, NodeIdAllocator, OnDirectiveLegacy, RawBlock, RenderTag, Script,
-    ScriptContext, ScriptLanguage, ShorthandOrSpread, SnippetBlock, StringAttribute,
+    ScriptContext, ScriptLanguage, Shorthand, SnippetBlock, SpreadAttribute, StringAttribute,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow, Text, TransitionDirective,
     TransitionDirection, UseDirective,
 };
@@ -403,8 +403,6 @@ impl<'a> Parser<'a> {
             script,
             css,
         );
-        component.set_next_node_id(self.ids.current());
-
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 
@@ -997,11 +995,14 @@ impl<'a> Parser<'a> {
                             })
                         }
                         token::AttributeValue::ExpressionTag(expr_tag) => {
+                            let name = html_attr.name_span.source_text(self.source).to_string();
+                            let event_name = name.strip_prefix("on").map(|s| s.to_string());
                             Attribute::ExpressionAttribute(ExpressionAttribute {
                                 id: self.ids.next(),
-                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                name,
                                 expression_span: expr_tag.expression_span,
                                 shorthand: false,
+                                event_name,
                             })
                         }
                         token::AttributeValue::Concatenation(concat) => {
@@ -1034,12 +1035,17 @@ impl<'a> Parser<'a> {
                     attributes.push(result);
                 }
                 token::Attribute::ExpressionTag(expr_tag) => {
-                    let is_spread = expr_tag.expression_span.source_text(self.source).starts_with("...");
-                    attributes.push(Attribute::ShorthandOrSpread(ShorthandOrSpread {
-                        id: self.ids.next(),
-                        expression_span: expr_tag.expression_span,
-                        is_spread,
-                    }));
+                    if expr_tag.expression_span.source_text(self.source).starts_with("...") {
+                        attributes.push(Attribute::SpreadAttribute(SpreadAttribute {
+                            id: self.ids.next(),
+                            expression_span: expr_tag.expression_span,
+                        }));
+                    } else {
+                        attributes.push(Attribute::Shorthand(Shorthand {
+                            id: self.ids.next(),
+                            expression_span: expr_tag.expression_span,
+                        }));
+                    }
                 }
                 token::Attribute::ClassDirective(cd) => {
                     let expression_span = if cd.shorthand {
@@ -2004,11 +2010,8 @@ mod tests {
         let c = parse("<div {...props}>text</div>");
         if let Node::Element(ref el) = c.fragment.nodes[0] {
             assert_eq!(el.attributes.len(), 1);
-            if let svelte_ast::Attribute::ShorthandOrSpread(ref sos) = el.attributes[0] {
-                assert!(sos.is_spread);
-            } else {
-                panic!("expected ShorthandOrSpread");
-            }
+            assert!(matches!(el.attributes[0], svelte_ast::Attribute::SpreadAttribute(_)));
+
         } else {
             panic!("expected Element");
         }

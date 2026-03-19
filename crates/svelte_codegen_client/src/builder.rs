@@ -34,10 +34,6 @@ pub enum AssignLeft<'a> {
     Ident(String),
 }
 
-pub enum AssignRight<'a> {
-    Expr(Expression<'a>),
-}
-
 pub enum TemplatePart<'a> {
     Str(String),
     Expr(Expression<'a>),
@@ -378,11 +374,11 @@ impl<'a> Builder<'a> {
         Statement::IfStatement(self.alloc(self.ast.if_statement(SPAN, test, consequent, alternate)))
     }
 
-    pub fn assign_stmt(&self, left: AssignLeft<'a>, right: AssignRight<'a>) -> Statement<'a> {
+    pub fn assign_stmt(&self, left: AssignLeft<'a>, right: Expression<'a>) -> Statement<'a> {
         self.expr_stmt(self.assign_expr(left, right))
     }
 
-    pub fn assign_expr(&self, left: AssignLeft<'a>, right: AssignRight<'a>) -> Expression<'a> {
+    pub fn assign_expr(&self, left: AssignLeft<'a>, right: Expression<'a>) -> Expression<'a> {
         let left = match left {
             AssignLeft::StaticMember(m) => {
                 AssignmentTarget::StaticMemberExpression(self.alloc(m))
@@ -396,9 +392,6 @@ impl<'a> Builder<'a> {
                     self.ast.identifier_reference(SPAN, atom),
                 ))
             }
-        };
-        let right = match right {
-            AssignRight::Expr(e) => e,
         };
         let assign =
             self.ast.assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);
@@ -665,6 +658,49 @@ impl<'a> Builder<'a> {
 
     pub fn static_member_expr(&self, object: Expression<'a>, prop: &str) -> Expression<'a> {
         Expression::StaticMemberExpression(self.alloc(self.static_member(object, prop)))
+    }
+
+    /// Convert all member accesses in an expression to optional chaining.
+    /// `obj.ref` → `obj?.ref`, `a.b.c` → `a?.b?.c`, `refs[i]` → `refs?.[i]`
+    pub fn make_optional_chain(&self, expr: Expression<'a>) -> Expression<'a> {
+        match expr {
+            Expression::StaticMemberExpression(mut sme) => {
+                sme.optional = true;
+                let object = std::mem::replace(&mut sme.object, self.null_expr());
+                sme.object = self.make_inner_optional(object);
+                Expression::ChainExpression(self.alloc(
+                    self.ast.chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
+                ))
+            }
+            Expression::ComputedMemberExpression(mut cme) => {
+                cme.optional = true;
+                let object = std::mem::replace(&mut cme.object, self.null_expr());
+                cme.object = self.make_inner_optional(object);
+                Expression::ChainExpression(self.alloc(
+                    self.ast.chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
+                ))
+            }
+            other => other,
+        }
+    }
+
+    /// Recursively set `optional = true` on inner member expressions (not wrapped in ChainExpression).
+    fn make_inner_optional(&self, expr: Expression<'a>) -> Expression<'a> {
+        match expr {
+            Expression::StaticMemberExpression(mut sme) => {
+                sme.optional = true;
+                let object = std::mem::replace(&mut sme.object, self.null_expr());
+                sme.object = self.make_inner_optional(object);
+                Expression::StaticMemberExpression(sme)
+            }
+            Expression::ComputedMemberExpression(mut cme) => {
+                cme.optional = true;
+                let object = std::mem::replace(&mut cme.object, self.null_expr());
+                cme.object = self.make_inner_optional(object);
+                Expression::ComputedMemberExpression(cme)
+            }
+            other => other,
+        }
     }
 
     // -----------------------------------------------------------------------

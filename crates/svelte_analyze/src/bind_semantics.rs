@@ -1,6 +1,6 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, ComponentNode, EachBlock, Element, RenderTag,
+    Attribute, BindDirective, ClassDirective, ComponentNode, EachBlock, Element,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
@@ -34,13 +34,6 @@ impl<'s> BindSemanticsVisitor<'s> {
             .is_some_and(|s| data.scoping.is_prop_source(s))
     }
 
-    /// Check if a string is a simple JS identifier (no member access, no computed access).
-    fn is_simple_identifier(s: &str) -> bool {
-        !s.is_empty()
-            && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-            && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-    }
-
     /// Extract identifier-like tokens from an expression string.
     fn extract_identifiers(expr: &str) -> Vec<String> {
         expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
@@ -67,7 +60,7 @@ impl<'s> BindSemanticsVisitor<'s> {
             return;
         };
 
-        if Self::is_simple_identifier(expr_text) {
+        if svelte_js::is_simple_identifier(expr_text) {
             return; // simple identifiers don't need each-block context
         }
 
@@ -85,17 +78,22 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_bind(&self, dir: &BindDirective, data: &mut AnalysisData) {
-        let name = if dir.shorthand {
-            &dir.name
-        } else if let Some(span) = dir.expression_span {
-            let text = self.source[span.start as usize..span.end as usize].trim();
-            text
-        } else {
+        if dir.shorthand {
+            // Shorthand: dir.name IS the binding name — string lookup acceptable
+            if Self::is_mutable_rune(&dir.name, data) {
+                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            }
             return;
-        };
+        }
 
-        if Self::is_mutable_rune(name, data) {
-            data.bind_semantics.mutable_rune_targets.insert(dir.id);
+        // Non-shorthand: use pre-resolved SymbolId from attr_expressions
+        let Some(info) = data.attr_expressions.get(&dir.id) else { return };
+        if !matches!(info.kind, svelte_js::ExpressionKind::Identifier(_)) { return }
+
+        if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {
+            if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
+                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            }
         }
     }
 
@@ -221,16 +219,4 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         }
     }
 
-    fn visit_render_tag(
-        &mut self,
-        tag: &RenderTag,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        // Render tag prop_source detection requires inspecting per-argument OXC AST
-        // structure (checking if arg is a zero-arg CallExpression on a prop_source).
-        // This is deferred — codegen will continue using scoping queries for now,
-        // but keyed by SymbolId rather than by name string.
-        let _ = tag;
-    }
 }

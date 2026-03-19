@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::{Attribute, Element, NodeId};
 
-use crate::builder::{Arg, AssignLeft, AssignRight, ObjProp};
+use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
@@ -62,7 +62,7 @@ pub(crate) fn process_attr<'a>(
             return;
         }
         Attribute::ExpressionAttribute(a) => {
-            if let Some(raw_event_name) = a.name.strip_prefix("on") {
+            if let Some(raw_event_name) = a.event_name.as_deref() {
                 let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
                     (base.to_string(), true)
                 } else {
@@ -71,7 +71,7 @@ pub(crate) fn process_attr<'a>(
 
                 let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
                 let val = get_attr_expr(ctx, attr_id);
-                let handler = build_event_handler_s5(ctx, val, has_call, init);
+                let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
 
                 let passive = svelte_js::is_passive_event(&event_name);
                 let delegated = !capture && svelte_js::is_delegatable_event(&event_name);
@@ -134,7 +134,7 @@ pub(crate) fn process_attr<'a>(
                 ],
             ));
         }
-        Attribute::ShorthandOrSpread(a) if !a.is_spread => {
+        Attribute::Shorthand(a) => {
             let val = get_attr_expr(ctx, attr_id);
             let name = ctx.component.source_text(a.expression_span).to_string();
             target.push(ctx.b.call_stmt(
@@ -150,7 +150,7 @@ pub(crate) fn process_attr<'a>(
                 }
             }
         }
-        Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
+        Attribute::SpreadAttribute(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
         Attribute::UseDirective(ud) => {
@@ -265,7 +265,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             );
             let assign = ctx.b.assign_expr(
                 AssignLeft::Ident(classes_name.clone()),
-                AssignRight::Expr(set_class_call),
+                set_class_call,
             );
             init.push(ctx.b.let_stmt(&classes_name));
             update.push(ctx.b.expr_stmt(assign));
@@ -376,7 +376,7 @@ pub(crate) fn process_style_directives<'a>(
 
     let assign = ctx.b.assign_expr(
         AssignLeft::Ident(styles_name.clone()),
-        AssignRight::Expr(set_style_call),
+        set_style_call,
     );
 
     init.push(ctx.b.let_stmt(&styles_name));
@@ -426,7 +426,7 @@ pub(crate) fn build_binding_setter<'a>(ctx: &mut Ctx<'a>, var: String, is_rune: 
     } else {
         ctx.b.assign_expr(
             AssignLeft::Ident(var),
-            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            ctx.b.rid_expr("$$value"),
         )
     };
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
@@ -444,7 +444,7 @@ pub(crate) fn build_binding_setter_silent<'a>(ctx: &mut Ctx<'a>, var: String, is
     } else {
         ctx.b.assign_expr(
             AssignLeft::Ident(var),
-            AssignRight::Expr(ctx.b.rid_expr("$$value")),
+            ctx.b.rid_expr("$$value"),
         )
     };
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
@@ -471,7 +471,7 @@ fn gen_bind_directive<'a>(
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
-        ctx.component.source_text(span).trim().to_string()
+        ctx.component.source_text(span).to_string()
     } else {
         return None;
     };
@@ -733,7 +733,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 } else {
                     let expr = get_attr_expr(ctx, attr_id);
                     // Hoist event handlers (on*) with function values for stable identity
-                    let is_event = a.name.starts_with("on");
+                    let is_event = a.event_name.is_some();
                     let is_fn = matches!(
                         &expr,
                         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
@@ -754,11 +754,11 @@ pub(crate) fn process_attrs_spread<'a>(
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }
-            Attribute::ShorthandOrSpread(a) if a.is_spread => {
+            Attribute::SpreadAttribute(_) => {
                 let expr = get_attr_expr(ctx, attr_id);
                 props.push(ObjProp::Spread(expr));
             }
-            Attribute::ShorthandOrSpread(a) => {
+            Attribute::Shorthand(a) => {
                 let name = ctx.component.source_text(a.expression_span).trim();
                 let name_alloc = ctx.b.alloc_str(name);
                 props.push(ObjProp::Shorthand(name_alloc));
@@ -1024,6 +1024,7 @@ fn gen_on_directive_legacy<'a>(
 /// 4. Remaining → wrap in `function(...$$args) { handler.apply(this, $$args) }`
 pub(crate) fn build_event_handler_s5<'a>(
     ctx: &mut Ctx<'a>,
+    attr_id: NodeId,
     handler: Expression<'a>,
     has_call: bool,
     init: &mut Vec<Statement<'a>>,
@@ -1032,8 +1033,14 @@ pub(crate) fn build_event_handler_s5<'a>(
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
             return handler;
         }
-        Expression::Identifier(ident) => {
-            if !ctx.is_import(&ident.name) {
+        Expression::Identifier(_) => {
+            // Non-import identifiers are stable references — no wrapping needed.
+            // Import identifiers may be live bindings, so they need derived+get wrapping.
+            let is_import = ctx.analysis.attr_expression(attr_id)
+                .and_then(|info| info.references.first())
+                .and_then(|r| r.symbol_id)
+                .is_some_and(|sym| ctx.is_import_sym(sym));
+            if !is_import {
                 return handler;
             }
         }
@@ -1156,7 +1163,7 @@ pub(crate) fn gen_event_attr_on<'a>(
 
     let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
     let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
-    let handler = build_event_handler_s5(ctx, handler_expr, has_call, stmts);
+    let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
 
     let passive = svelte_js::is_passive_event(&event_name);
     let mut args: Vec<Arg<'a, '_>> = vec![

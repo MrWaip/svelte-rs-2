@@ -19,7 +19,7 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
+    AnalysisData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
     FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
@@ -66,23 +66,27 @@ pub fn analyze_with_options<'a>(
 
     parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
 
-    // Register snippet parameter names (recursive — handles nested snippets)
-    register_snippet_params(&component.fragment, component, &mut data);
-
     let scoping_built = scope::build_scoping(component, &mut data);
-    let _refs_resolved = resolve_references::resolve_references(component, &mut data, scoping_built);
+    parse_js::register_arrow_scopes(component, &mut data, &parsed);
+    data.import_syms = data.scoping.collect_import_syms();
+    resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
+    resolve_render_tag_prop_sources(&mut data);
     lower::lower(component, &mut data);
 
     // Single composite walk: reactivity + elseif + element flags + hoistable snippets
     {
         let root = data.scoping.root_scope_id();
-        let script_names: rustc_hash::FxHashSet<String> = data
+        let script_syms: rustc_hash::FxHashSet<crate::scope::SymbolId> = data
             .script
             .as_ref()
-            .map(|s| s.declarations.iter().map(|d| d.name.to_string()).collect())
+            .map(|s| {
+                s.declarations.iter()
+                    .filter_map(|d| data.scoping.find_binding(root, &d.name))
+                    .collect()
+            })
             .unwrap_or_default();
         let top_level_snippet_ids: rustc_hash::FxHashSet<svelte_ast::NodeId> = component
             .fragment
@@ -97,10 +101,10 @@ pub fn analyze_with_options<'a>(
             })
             .collect();
         let mut visitor = (
-            reactivity::ReactivityVisitor::new(),
+            reactivity::ReactivityVisitor,
             elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor::new(&component.source),
-            hoistable::HoistableSnippetsVisitor::new(script_names, top_level_snippet_ids),
+            hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics::BindSemanticsVisitor::new(&component.source),
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
@@ -155,49 +159,18 @@ pub fn analyze_module(source: &str, is_ts: bool) -> (AnalysisData, Vec<Diagnosti
     (data, diags)
 }
 
-/// Recursively register snippet parameter names for all snippets in the tree.
-fn register_snippet_params(
-    fragment: &svelte_ast::Fragment,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    for node in &fragment.nodes {
-        match node {
-            svelte_ast::Node::SnippetBlock(block) => {
-                let params = if let Some(span) = block.params_span {
-                    svelte_js::parse_snippet_params(component.source_text(span))
-                } else {
-                    Vec::new()
-                };
-                data.snippets.params.insert(block.id, params);
-                register_snippet_params(&block.body, component, data);
-            }
-            svelte_ast::Node::Element(el) => {
-                register_snippet_params(&el.fragment, component, data);
-            }
-            svelte_ast::Node::ComponentNode(cn) => {
-                register_snippet_params(&cn.fragment, component, data);
-            }
-            svelte_ast::Node::IfBlock(b) => {
-                register_snippet_params(&b.consequent, component, data);
-                if let Some(alt) = &b.alternate {
-                    register_snippet_params(alt, component, data);
-                }
-            }
-            svelte_ast::Node::EachBlock(b) => {
-                register_snippet_params(&b.body, component, data);
-                if let Some(fb) = &b.fallback {
-                    register_snippet_params(fb, component, data);
-                }
-            }
-            svelte_ast::Node::SvelteElement(el) => {
-                register_snippet_params(&el.fragment, component, data);
-            }
-            svelte_ast::Node::SvelteBoundary(b) => {
-                register_snippet_params(&b.fragment, component, data);
-            }
-            _ => {}
-        }
+/// Resolve render tag argument identifiers to prop-source getter names.
+/// Consumes `render_tag_arg_idents` (intermediate) and populates `render_tag_prop_sources`.
+fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
+    let root = data.scoping.root_scope_id();
+    for (node_id, idents) in data.render_tag_arg_idents.drain() {
+        let resolved = idents.into_iter().map(|opt_name| {
+            opt_name.and_then(|name| {
+                let sym = data.scoping.find_binding(root, &name)?;
+                data.scoping.is_prop_source(sym).then_some(sym)
+            })
+        }).collect();
+        data.render_tag_prop_sources.insert(node_id, resolved);
     }
 }
 

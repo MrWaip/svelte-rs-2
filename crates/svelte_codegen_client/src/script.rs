@@ -40,7 +40,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
     let props = ctx.analysis.props.as_ref();
     let component_source = &ctx.component.source;
     let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
-    let custom_element = ctx.analysis.custom_element;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
@@ -52,7 +51,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
             dev,
             component_source,
             script_content_start,
-            custom_element,
         );
     }
 
@@ -70,7 +68,6 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
         dev,
         component_source,
         script_content_start,
-        custom_element,
     )
 }
 
@@ -92,7 +89,6 @@ pub fn transform_module_script<'a>(
         false,
         source,
         0,
-        false,
     );
     (imports, body)
 }
@@ -108,7 +104,6 @@ fn transform_script_text<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
-    custom_element: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -125,23 +120,7 @@ fn transform_script_text<'a>(
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
-        let root = component_scoping.root_scope_id();
-        PropsGenInfo {
-            props: pa.props.iter().map(|p| PropGenItem {
-                local_name: p.local_name.clone(),
-                prop_name: p.prop_name.clone(),
-                is_prop_source: p.is_prop_source,
-                is_bindable: p.is_bindable,
-                is_rest: p.is_rest,
-                // In custom element mode, all props are updatable via CE setters
-                is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
-                    .is_some_and(|sym| component_scoping.is_mutated(sym)),
-                default_text: p.default_text.clone(),
-                is_lazy_default: p.is_lazy_default,
-            }).collect(),
-        }
-    });
+    let props_gen = props.map(|pa| PropsGenInfo::from_analysis(pa));
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -199,7 +178,6 @@ fn transform_program<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
-    custom_element: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
@@ -207,27 +185,7 @@ fn transform_program<'a>(
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
-        let root = component_scoping.root_scope_id();
-        PropsGenInfo {
-            props: pa
-                .props
-                .iter()
-                .map(|p| PropGenItem {
-                    local_name: p.local_name.clone(),
-                    prop_name: p.prop_name.clone(),
-                    is_prop_source: p.is_prop_source,
-                    is_bindable: p.is_bindable,
-                    is_rest: p.is_rest,
-                    // In custom element mode, all props are updatable via CE setters
-                    is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
-                        .is_some_and(|sym| component_scoping.is_mutated(sym)),
-                    default_text: p.default_text.clone(),
-                    is_lazy_default: p.is_lazy_default,
-                })
-                .collect(),
-        }
-    });
+    let props_gen = props.map(|pa| PropsGenInfo::from_analysis(pa));
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -284,6 +242,23 @@ struct PropsGenInfo {
     props: Vec<PropGenItem>,
 }
 
+impl PropsGenInfo {
+    fn from_analysis(pa: &PropsAnalysis) -> Self {
+        PropsGenInfo {
+            props: pa.props.iter().map(|p| PropGenItem {
+                local_name: p.local_name.clone(),
+                prop_name: p.prop_name.clone(),
+                is_prop_source: p.is_prop_source,
+                is_bindable: p.is_bindable,
+                is_rest: p.is_rest,
+                is_mutated: p.is_mutated,
+                default_text: p.default_text.clone(),
+                is_lazy_default: p.is_lazy_default,
+            }).collect(),
+        }
+    }
+}
+
 struct PropGenItem {
     local_name: String,
     prop_name: String,
@@ -309,8 +284,8 @@ struct ScriptTransformer<'b, 'a> {
     /// OXC scoping from SemanticBuilder — used to resolve references to symbols.
     scoping: Scoping,
     props_gen: Option<PropsGenInfo>,
-    /// Names of $derived/$derived.by runes whose init needs post-traverse wrapping.
-    derived_pending: FxHashSet<String>,
+    /// SymbolIds of $derived/$derived.by runes whose init needs post-traverse wrapping.
+    derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     /// Whether to strip `export` keywords from declarations. True for component scripts,
     /// false for module compilation where exports must be preserved.
     strip_exports: bool,
@@ -339,10 +314,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let root = self.component_scoping.root_scope_id();
-        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
-        let kind = self.component_scoping.rune_kind(comp_sym)?;
-        Some((kind, self.component_scoping.is_mutated(comp_sym)))
+        // OXC SemanticBuilder produces identical SymbolIds for the same script source,
+        // so we can use sym_id directly against ComponentScoping without name round-trip.
+        let kind = self.component_scoping.rune_kind(sym_id)?;
+        Some((kind, self.component_scoping.is_mutated(sym_id)))
     }
 
     /// Resolve a reference identifier to its rune kind and mutated status.
@@ -355,10 +330,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let root = self.component_scoping.root_scope_id();
-        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
-        let kind = self.component_scoping.rune_kind(comp_sym)?;
-        Some((kind, self.component_scoping.is_mutated(comp_sym)))
+        let kind = self.component_scoping.rune_kind(sym_id)?;
+        Some((kind, self.component_scoping.is_mutated(sym_id)))
     }
 
     /// Resolve a reference identifier to its prop kind (source or non-source).
@@ -371,26 +344,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
             return None;
         }
-        let root = self.component_scoping.root_scope_id();
-        let comp_sym = self.component_scoping.find_binding(root, id.name.as_str())?;
-        if self.component_scoping.is_prop_source(comp_sym) {
+        if self.component_scoping.is_prop_source(sym_id) {
             Some(PropKind::Source)
-        } else if let Some(prop_name) = self.component_scoping.prop_non_source_name(comp_sym) {
+        } else if let Some(prop_name) = self.component_scoping.prop_non_source_name(sym_id) {
             Some(PropKind::NonSource(prop_name.to_string()))
         } else {
             None
         }
-    }
-
-    /// Check if an identifier name is a `$store` reference (e.g. `$count` where `count` is a store).
-    fn is_store_ref(&self, name: &str) -> bool {
-        if name.starts_with('$') && name.len() > 1 {
-            let base = &name[1..];
-            let root = self.component_scoping.root_scope_id();
-            return self.component_scoping.find_binding(root, base)
-                .is_some_and(|sym| self.component_scoping.is_store(sym));
-        }
-        false
     }
 
     fn should_proxy(e: &Expression) -> bool {
@@ -534,17 +494,22 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 fn wrap_derived_thunks<'a>(
     b: &Builder<'a>,
     program: &mut oxc_ast::ast::Program<'a>,
-    names: &FxHashSet<String>,
+    pending: &FxHashSet<oxc_semantic::SymbolId>,
 ) {
     use oxc_ast::ast::Statement;
     for stmt in program.body.iter_mut() {
         if let Statement::VariableDeclaration(decl) = stmt {
             for declarator in decl.declarations.iter_mut() {
-                let name = match &declarator.id {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
+                let sym_id = match &declarator.id {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                        match id.symbol_id.get() {
+                            Some(s) => s,
+                            None => continue,
+                        }
+                    }
                     _ => continue,
                 };
-                if !names.contains(name) {
+                if !pending.contains(&sym_id) {
                     continue;
                 }
                 if let Some(Expression::CallExpression(call)) = &mut declarator.init {
@@ -873,7 +838,9 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     // to avoid OXC scope_id issues with new arrow nodes.
                     call.callee = self.b.rid_expr("$.derived");
                     if let oxc_ast::ast::BindingPattern::BindingIdentifier(bid) = &node.id {
-                        self.derived_pending.insert(bid.name.as_str().to_string());
+                        if let Some(sym_id) = bid.symbol_id.get() {
+                            self.derived_pending.insert(sym_id);
+                        }
                     }
                     node.init = Some(Expression::CallExpression(call));
                 }
@@ -1001,7 +968,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 // Only transform original source identifiers (with reference_id),
                 // not synthetic ones we create during transformation.
                 let id_name = id.name.as_str();
-                if id.reference_id.get().is_some() && self.is_store_ref(id_name) {
+                if id.reference_id.get().is_some() && self.component_scoping.is_store_ref(id_name) {
                     let name = id_name.to_string();
                     *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                     return;
@@ -1014,7 +981,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     || kind.is_derived();
                 if needs_get {
                     let name = id.name.as_str().to_string();
-                    *node = crate::rune_transform::transform_rune_get(self.b, &name);
+                    *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                 }
             }
             _ => {}
@@ -1152,7 +1119,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // Store subscription assignment: $count = val → $.store_set(count, val)
             // Compound: $count += val → $.store_set(count, $count() + val)
             let id_name = id.name.as_str();
-            if self.is_store_ref(id_name) {
+            if self.component_scoping.is_store_ref(id_name) {
                 let base_name: &str = self.b.alloc_str(&id_name[1..]);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let right = self.b.move_expr(&mut assign.right);
@@ -1186,7 +1153,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     let value = if assign.operator.is_assign() {
                         right
                     } else {
-                        let left_get = crate::rune_transform::transform_rune_get(self.b, &name);
+                        let left_get = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                         if let Some(bin_op) = assign.operator.to_binary_operator() {
                             self.b.ast.expression_binary(oxc_span::SPAN, left_get, bin_op, right)
                         } else if let Some(log_op) = assign.operator.to_logical_operator() {
@@ -1197,7 +1164,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     };
 
                     let needs_proxy = kind != RuneKind::StateRaw && Self::should_proxy(&value);
-                    *node = crate::rune_transform::transform_rune_set(self.b, &name, value, needs_proxy);
+                    *node = svelte_transform::rune_refs::make_rune_set(self.b.ast.allocator, &name, value, needs_proxy);
                     return;
                 }
             }
@@ -1226,7 +1193,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // ++$count → $.update_pre_store(count, $count())
             // $count-- → $.update_store(count, $count(), -1)
             let id_name = id.name.as_str();
-            if self.is_store_ref(id_name) {
+            if self.component_scoping.is_store_ref(id_name) {
                 let base_name: &str = self.b.alloc_str(&id_name[1..]);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let fn_name = if upd.prefix { "$.update_pre_store" } else { "$.update_store" };
@@ -1245,8 +1212,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 if mutated {
                     let name = id.name.as_str().to_string();
                     let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-                    *node = crate::rune_transform::transform_rune_update(
-                        self.b, &name, upd.prefix, is_increment,
+                    *node = svelte_transform::rune_refs::make_rune_update(
+                        self.b.ast.allocator, &name, upd.prefix, is_increment,
                     );
                     return;
                 }

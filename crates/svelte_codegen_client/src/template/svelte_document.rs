@@ -30,7 +30,7 @@ pub(crate) fn gen_svelte_document<'a>(
                 gen_legacy_event_on(ctx, od, attr_id, "$.document", stmts);
             }
             Attribute::ExpressionAttribute(ea) => {
-                if let Some(event_name) = ea.name.strip_prefix("on") {
+                if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
                     gen_event_attr_on(ctx, attr_id, event_name, "$.document", stmts);
                 }
@@ -54,7 +54,7 @@ fn gen_document_binding<'a>(
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
-        ctx.component.source_text(span).trim().to_string()
+        ctx.component.source_text(span).to_string()
     } else {
         return;
     };

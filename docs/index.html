@@ -405,8 +405,8 @@
                 try {
                     const source = editorInstance.getValue();
                     const compileFn = mode === "module"
-                        ? () => compiler.compile_module(source)
-                        : () => compiler.compile(source);
+                        ? () => compiler.compile_module(source, { dev: false })
+                        : () => compiler.compile(source, { discloseVersion: false, name: "App", runes: true });
                     const result = checkPerformance(
                         rustPerf,
                         compileFn,

@@ -40,7 +40,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `$effect.tracking()` → `$.effect_tracking()`
 - [x] `$effect.root(fn)` → `$.effect_root(fn)`
 - [x] `$store` auto-subscription → `$.store_get` / `$.store_set`
-- [x] Import hoisting, strip TypeScript, exports (`$$.exports`)
+- [x] Import hoisting, exports (`$$.exports`)
 - [x] `$inspect(vals)` → `$.inspect(...)` (dev-mode only)
 - [x] `$inspect.trace()` — dev-only trace
 - [x] `$props.id()` → `$.props_id()` (v5.20+)
@@ -134,6 +134,17 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 |---|------|-------------|
 | 1 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
 | 2 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
+
+---
+
+## Tier 1c — Strip TypeScript
+
+Theme: remove TypeScript type annotations from compiled output.
+
+| # | Feature | Phases | Description |
+|---|---------|--------|-------------|
+| 1 | Strip type annotations | S | Remove type annotations, interfaces, type aliases from `<script>` output |
+| 2 | Strip from expressions | T | Remove type assertions, `as` casts, generics from template expressions |
 
 ---
 

@@ -24,24 +24,17 @@ pub struct Component {
     pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
     pub source: String,
-    next_node_id: u32,
 }
 
 impl Component {
     pub fn new(source: String, fragment: Fragment, script: Option<Script>, css: Option<RawBlock>) -> Self {
-        // next_node_id is set after parsing; during parsing we use NodeIdAllocator
         Self {
             fragment,
             script,
             css,
             options: None,
             source,
-            next_node_id: 0,
         }
-    }
-
-    pub fn set_next_node_id(&mut self, id: u32) {
-        self.next_node_id = id;
     }
 
     /// Get source text for a span.
@@ -420,8 +413,27 @@ pub struct AwaitBlock {
 // Attributes
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-pub enum Attribute {
+macro_rules! impl_attr_enum {
+    ( $( $(#[doc = $doc:expr])* $Variant:ident($Type:ident) ),+ $(,)? ) => {
+        pub enum Attribute {
+            $( $(#[doc = $doc])* $Variant($Type), )+
+        }
+
+        impl Clone for Attribute {
+            fn clone(&self) -> Self {
+                match self { $( Attribute::$Variant(a) => Attribute::$Variant(a.clone()), )+ }
+            }
+        }
+
+        impl Attribute {
+            pub fn id(&self) -> NodeId {
+                match self { $( Attribute::$Variant(a) => a.id, )+ }
+            }
+        }
+    };
+}
+
+impl_attr_enum! {
     /// name="string"
     StringAttribute(StringAttribute),
     /// name={expr}
@@ -430,8 +442,10 @@ pub enum Attribute {
     BooleanAttribute(BooleanAttribute),
     /// name="text{expr}text"
     ConcatenationAttribute(ConcatenationAttribute),
-    /// {expr} or {...expr}
-    ShorthandOrSpread(ShorthandOrSpread),
+    /// {name} — shorthand attribute
+    Shorthand(Shorthand),
+    /// {...expr} — spread attribute
+    SpreadAttribute(SpreadAttribute),
     /// class:name or class:name={expr}
     ClassDirective(ClassDirective),
     /// style:name or style:name={expr} or style:name|important
@@ -451,26 +465,6 @@ pub enum Attribute {
     AttachTag(AttachTag),
 }
 
-impl Attribute {
-    pub fn id(&self) -> NodeId {
-        match self {
-            Attribute::StringAttribute(a) => a.id,
-            Attribute::ExpressionAttribute(a) => a.id,
-            Attribute::BooleanAttribute(a) => a.id,
-            Attribute::ConcatenationAttribute(a) => a.id,
-            Attribute::ShorthandOrSpread(a) => a.id,
-            Attribute::ClassDirective(a) => a.id,
-            Attribute::StyleDirective(a) => a.id,
-            Attribute::BindDirective(a) => a.id,
-            Attribute::UseDirective(a) => a.id,
-            Attribute::OnDirectiveLegacy(a) => a.id,
-            Attribute::TransitionDirective(a) => a.id,
-            Attribute::AnimateDirective(a) => a.id,
-            Attribute::AttachTag(a) => a.id,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct StringAttribute {
     pub id: NodeId,
@@ -485,6 +479,8 @@ pub struct ExpressionAttribute {
     /// Span of just the JS expression.
     pub expression_span: Span,
     pub shorthand: bool,
+    /// Pre-computed event name (after "on" prefix), if this is an event attribute.
+    pub event_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -508,12 +504,18 @@ pub enum ConcatPart {
     Dynamic(Span),
 }
 
+/// {name} — shorthand attribute.
 #[derive(Clone)]
-pub struct ShorthandOrSpread {
+pub struct Shorthand {
     pub id: NodeId,
-    /// Span of the expression (includes braces in the outer span).
     pub expression_span: Span,
-    pub is_spread: bool,
+}
+
+/// {...expr} — spread attribute.
+#[derive(Clone)]
+pub struct SpreadAttribute {
+    pub id: NodeId,
+    pub expression_span: Span,
 }
 
 #[derive(Clone)]
