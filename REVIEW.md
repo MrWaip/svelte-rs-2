@@ -4,6 +4,87 @@ Full codebase review. 3 agents: Data Flow, Simplicity, Boundaries.
 
 ---
 
+### #28 — Script codegen bridges two SymbolId spaces via string name round-trip
+
+**Dimension**: 3. Raw handoff
+**Severity**: critical
+**Evidence**:
+- `crates/svelte_codegen_client/src/script.rs:331` — `rune_for_binding`: OXC SymbolId → `id.name.as_str()` → `find_binding(root, name)` → ComponentScoping SymbolId
+- `crates/svelte_codegen_client/src/script.rs:347` — `rune_for_ref`: same pattern
+- `crates/svelte_codegen_client/src/script.rs:363` — `prop_kind_for_ref`: same pattern
+
+**Problem**: `ComponentScoping` and OXC's `Scoping` maintain separate SymbolId spaces over the same names. Codegen must name-round-trip to cross between them: resolve OXC SymbolId → extract string name → `find_binding(root, name)` → get ComponentScoping SymbolId. Every script-level rune/prop classification goes through this string bridge. If a name exists in both spaces with different semantics (shadowing edge cases), the bridge silently picks the wrong one.
+
+**Fix**: Build a one-time `FxHashMap<oxc_semantic::SymbolId, svelte_analyze::SymbolId>` mapping during analysis (when both scoping systems are available). Script codegen looks up the mapping directly instead of name-round-tripping.
+
+**Simplifies**: Eliminates all `find_binding` calls in `ScriptTransformer`. `rune_for_binding`, `rune_for_ref`, `prop_kind_for_ref` become direct map lookups. Removes the implicit assumption that root-scope names are unique across both SymbolId spaces.
+
+---
+
+### #29 — `PropsGenInfo::from_analysis` does `find_binding` for facts already in `PropAnalysis`
+
+**Dimension**: 3. Raw handoff
+**Severity**: critical
+**Evidence**:
+- `crates/svelte_codegen_client/src/script.rs:262` — `find_binding(root, &p.local_name).is_some_and(|sym| is_prop_source(sym))`
+- `crates/svelte_codegen_client/src/script.rs:266` — `find_binding(root, &p.local_name).is_some_and(|sym| is_mutated(sym))`
+
+**Problem**: `is_prop_source` is already stored on `PropAnalysis` (and redundantly on `ComponentScoping` — see #15). `is_mutated` is computable during analysis. Yet the `PropsGenInfo` constructor re-resolves both via `find_binding` by string name in codegen. This is the exact pattern the SymbolId principle forbids: string-based semantic decisions in downstream phases.
+
+**Fix**: Add `is_mutated: bool` to `PropAnalysis` (computed during `analyze_props`). `PropsGenInfo::from_analysis` reads `p.is_prop_source` and `p.is_mutated` directly — no `find_binding` calls.
+
+**Simplifies**: Removes two `find_binding` calls per prop. `PropsGenInfo::from_analysis` becomes a pure data mapping with no scoping queries.
+
+---
+
+### #30 — `Ctx::is_import` does `find_binding` per expression in codegen
+
+**Dimension**: 3. Raw handoff
+**Severity**: critical
+**Evidence**:
+- `crates/svelte_codegen_client/src/context.rs:179-183` — `find_binding(root, name).is_some_and(|sym| is_import(sym))`
+- `crates/svelte_codegen_client/src/template/attributes.rs:1036` — called on `IdentifierReference.name` in `build_event_handler_s5`
+
+**Problem**: Codegen checks whether an identifier is an import by resolving its name through `find_binding`. The OXC `IdentifierReference` already has a `reference_id` that resolves to its `SymbolId` — import status can be checked directly via OXC scoping. Alternatively, import status can be pre-computed per expression in analysis.
+
+**Fix**: Use OXC `reference_id` → `SymbolId` → `symbol_flags.contains(Import)` directly. Or add an `imports: FxHashSet<SymbolId>` to analysis and check by SymbolId.
+
+**Simplifies**: Removes `Ctx::is_import` and its `find_binding` call. Event handler codegen checks import status without name resolution.
+
+---
+
+### #31 — `derived_pending: FxHashSet<String>` uses string set for semantic decision
+
+**Dimension**: 3. Raw handoff
+**Severity**: critical
+**Evidence**:
+- `crates/svelte_codegen_client/src/script.rs:301` — `derived_pending: FxHashSet<String>`
+- `crates/svelte_codegen_client/src/script.rs:524` — `derived_pending.contains(name)` decides whether to wrap init in thunk
+
+**Problem**: A `FxHashSet<String>` stores names of `$derived`/`$derived.by` bindings, then `wrap_derived_thunks` checks membership by string name. The OXC `BindingIdentifier` has `symbol_id` available at the point where `derived_pending` is populated — the set should be `FxHashSet<SymbolId>`.
+
+**Fix**: Change to `FxHashSet<oxc_semantic::SymbolId>`. Populate with `binding.symbol_id()`, check with `binding.symbol_id()`.
+
+**Simplifies**: Eliminates string-based membership test. Correct even if two bindings have the same name in different scopes (impossible at root, but the type should enforce it).
+
+---
+
+### #32 — `HoistableSnippetsVisitor::script_names: FxHashSet<String>` in analyze
+
+**Dimension**: 3. Raw handoff
+**Severity**: critical
+**Evidence**:
+- `crates/svelte_analyze/src/hoistable.rs:16` — `script_names: FxHashSet<String>`
+- `crates/svelte_analyze/src/hoistable.rs:42-55` — `script_names.contains(r.name.as_str())` on expression references
+
+**Problem**: The hoistable snippets analysis checks whether a reference name matches any script-declared variable using a string set. This is in `svelte_analyze` itself — the very phase that should be using SymbolId. `ExpressionInfo.references` carries `name` but not `SymbolId`; if references carried resolved SymbolIds, the check would be `SymbolId`-based.
+
+**Fix**: Either resolve references to SymbolId in `ExpressionInfo` (requires `find_binding` during `parse_js` or a post-pass), or build `script_names` as `FxHashSet<SymbolId>` and resolve each reference name to SymbolId during the hoistable check.
+
+**Simplifies**: Eliminates the last `FxHashSet<String>` membership test in analyze. Makes hoistability checking SymbolId-consistent with the rest of the analysis pipeline.
+
+---
+
 ### #1 — `ShorthandOrSpread` conflates two semantically distinct attribute kinds
 
 **Dimension**: 2. Types that lie
