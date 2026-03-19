@@ -44,6 +44,8 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `$inspect(vals)` → `$.inspect(...)` (dev-mode only)
 - [x] `$inspect.trace()` — dev-only trace
 - [x] `$props.id()` → `$.props_id()` (v5.20+)
+- [x] `$host()` → `$$props.$$host` (custom element host reference)
+- [x] `customElements.define()` — basic custom element wrapping (simple tag form)
 
 ### Template codegen
 - [x] Element (with all attribute types), Component (props + children-as-snippet)
@@ -113,17 +115,6 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] Compiler compiled to WASM for browser use
 
 ---
-
-## Tier 1 — Remaining Runes
-
-Theme: finish rune transformations. Purely script codegen (**S**), patterns already exist in `script.rs`.
-
-Ref: `reference/compiler/phases/3-transform/client/visitors/CallExpression.js`, `ExpressionStatement.js`, `VariableDeclaration.js`
-Key file: `crates/svelte_codegen_client/src/script.rs`
-
-| # | Feature | Transform | Phases | Notes |
-|---|---------|-----------|--------|-------|
-| 1 | `$host()` | `$$props.$$host` | S | Expression replacement, for custom elements |
 
 ---
 
@@ -311,6 +302,12 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `$state.frozen` → `$state.raw` rename validation
 - [ ] `$state.eager(val)` — experimental async, requires `experimental.async` flag
 - [ ] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
+
+### $host() (Tier 1)
+- [ ] Validation: `$host()` must have zero arguments (`rune_invalid_arguments`)
+- [ ] Validation: `$host()` only in custom element component instances (`host_invalid_placement`)
+- [ ] Validation: `$host()` not in `<script module>` context
+- [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations (Tier 9 dependency)
 
 ### $inspect (Tier 1)
 - [ ] `$inspect().with(callback)` argument count validation
