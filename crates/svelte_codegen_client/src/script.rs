@@ -125,24 +125,7 @@ fn transform_script_text<'a>(
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
-        let root = component_scoping.root_scope_id();
-        PropsGenInfo {
-            props: pa.props.iter().map(|p| PropGenItem {
-                local_name: p.local_name.clone(),
-                prop_name: p.prop_name.clone(),
-                is_prop_source: component_scoping.find_binding(root, &p.local_name)
-                    .is_some_and(|sym| component_scoping.is_prop_source(sym)),
-                is_bindable: p.is_bindable,
-                is_rest: p.is_rest,
-                // In custom element mode, all props are updatable via CE setters
-                is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
-                    .is_some_and(|sym| component_scoping.is_mutated(sym)),
-                default_text: p.default_text.clone(),
-                is_lazy_default: p.is_lazy_default,
-            }).collect(),
-        }
-    });
+    let props_gen = props.map(|pa| PropsGenInfo::from_analysis(pa, component_scoping, custom_element));
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -208,28 +191,7 @@ fn transform_program<'a>(
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
 
-    let props_gen: Option<PropsGenInfo> = props.map(|pa| {
-        let root = component_scoping.root_scope_id();
-        PropsGenInfo {
-            props: pa
-                .props
-                .iter()
-                .map(|p| PropGenItem {
-                    local_name: p.local_name.clone(),
-                    prop_name: p.prop_name.clone(),
-                    is_prop_source: component_scoping.find_binding(root, &p.local_name)
-                        .is_some_and(|sym| component_scoping.is_prop_source(sym)),
-                    is_bindable: p.is_bindable,
-                    is_rest: p.is_rest,
-                    // In custom element mode, all props are updatable via CE setters
-                    is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
-                        .is_some_and(|sym| component_scoping.is_mutated(sym)),
-                    default_text: p.default_text.clone(),
-                    is_lazy_default: p.is_lazy_default,
-                })
-                .collect(),
-        }
-    });
+    let props_gen = props.map(|pa| PropsGenInfo::from_analysis(pa, component_scoping, custom_element));
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -284,6 +246,30 @@ enum PropKind {
 
 struct PropsGenInfo {
     props: Vec<PropGenItem>,
+}
+
+impl PropsGenInfo {
+    fn from_analysis(
+        pa: &PropsAnalysis,
+        component_scoping: &ComponentScoping,
+        custom_element: bool,
+    ) -> Self {
+        let root = component_scoping.root_scope_id();
+        PropsGenInfo {
+            props: pa.props.iter().map(|p| PropGenItem {
+                local_name: p.local_name.clone(),
+                prop_name: p.prop_name.clone(),
+                is_prop_source: component_scoping.find_binding(root, &p.local_name)
+                    .is_some_and(|sym| component_scoping.is_prop_source(sym)),
+                is_bindable: p.is_bindable,
+                is_rest: p.is_rest,
+                is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
+                    .is_some_and(|sym| component_scoping.is_mutated(sym)),
+                default_text: p.default_text.clone(),
+                is_lazy_default: p.is_lazy_default,
+            }).collect(),
+        }
+    }
 }
 
 struct PropGenItem {

@@ -74,6 +74,7 @@ pub fn analyze_with_options<'a>(
     store_subscriptions::detect_store_subscriptions(&mut data);
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
+    resolve_render_tag_prop_sources(&mut data);
     lower::lower(component, &mut data);
 
     // Single composite walk: reactivity + elseif + element flags + hoistable snippets
@@ -153,6 +154,21 @@ pub fn analyze_module(source: &str, is_ts: bool) -> (AnalysisData, Vec<Diagnosti
     }
 
     (data, diags)
+}
+
+/// Resolve render tag argument identifiers to prop-source getter names.
+/// Consumes `render_tag_arg_idents` (intermediate) and populates `render_tag_prop_sources`.
+fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
+    let root = data.scoping.root_scope_id();
+    for (node_id, idents) in data.render_tag_arg_idents.drain() {
+        let resolved = idents.into_iter().map(|opt_name| {
+            opt_name.and_then(|name| {
+                let sym = data.scoping.find_binding(root, &name)?;
+                data.scoping.is_prop_source(sym).then_some(sym)
+            })
+        }).collect();
+        data.render_tag_prop_sources.insert(node_id, resolved);
+    }
 }
 
 /// Recursively register snippet parameter names for all snippets in the tree.
