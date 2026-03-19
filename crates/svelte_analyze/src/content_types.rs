@@ -88,11 +88,11 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
 
     if has_element || has_block {
         let has_text = has_static_text || has_dynamic_text;
-        return ContentStrategy::Dynamic { has_elements: has_element, has_blocks: has_block, has_text };
+        return ContentStrategy::Mixed { has_elements: has_element, has_blocks: has_block, has_text };
     }
 
     if has_dynamic_text {
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true }
+        ContentStrategy::DynamicText
     } else if has_static_text {
         // Extract text from the single TextConcat item (all parts are static)
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {

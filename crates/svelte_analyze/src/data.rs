@@ -452,6 +452,8 @@ pub enum ContentStrategy {
     SingleElement(NodeId),
     /// Exactly one block node (IfBlock, EachBlock, etc.). Stores the FragmentItem directly.
     SingleBlock(FragmentItem),
-    /// Text with expressions, or a mix of elements/blocks/text.
-    Dynamic { has_elements: bool, has_blocks: bool, has_text: bool },
+    /// Text with expressions (no elements or blocks).
+    DynamicText,
+    /// Mix of elements, blocks, and/or text.
+    Mixed { has_elements: bool, has_blocks: bool, has_text: bool },
 }
