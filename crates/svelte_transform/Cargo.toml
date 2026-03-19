@@ -7,6 +7,7 @@ edition = "2021"
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_span = { workspace = true }
+oxc_ast_visit = { workspace = true }
 oxc_syntax = { workspace = true }
 svelte_analyze = { workspace = true }
 svelte_ast = { workspace = true }
