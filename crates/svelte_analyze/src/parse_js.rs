@@ -314,19 +314,19 @@ fn walk_attrs<'a>(
                     parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
                 }
             }
-            Attribute::ShorthandOrSpread(a) => {
-                // For spread attrs, skip the "..." prefix
-                let span = if a.is_spread {
-                    debug_assert!(
-                        a.expression_span.end >= a.expression_span.start + 3,
-                        "spread expression span too short to contain '...'"
-                    );
-                    svelte_span::Span::new(a.expression_span.start + 3, a.expression_span.end)
-                } else {
-                    a.expression_span
-                };
+            Attribute::SpreadAttribute(a) => {
+                // Skip the "..." prefix
+                debug_assert!(
+                    a.expression_span.end >= a.expression_span.start + 3,
+                    "spread expression span too short to contain '...'"
+                );
+                let span = svelte_span::Span::new(a.expression_span.start + 3, a.expression_span.end);
                 let source = component.source_text(span);
                 parse_attr_expr(alloc, source, span.start, attr_id, data, parsed, diags);
+            }
+            Attribute::Shorthand(a) => {
+                let source = component.source_text(a.expression_span);
+                parse_attr_expr(alloc, source, a.expression_span.start, attr_id, data, parsed, diags);
             }
             Attribute::UseDirective(a) => {
                 if let Some(span) = a.expression_span {

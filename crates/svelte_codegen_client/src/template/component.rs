@@ -61,8 +61,8 @@ pub(crate) fn gen_component<'a>(
                 name: &a.name,
                 attr_id: a.id,
             },
-            Attribute::ShorthandOrSpread(a) if a.is_spread => AttrKind::Spread,
-            Attribute::ShorthandOrSpread(a) => AttrKind::Shorthand {
+            Attribute::SpreadAttribute(_) => AttrKind::Spread,
+            Attribute::Shorthand(a) => AttrKind::Shorthand {
                 attr_id: a.id,
             },
             Attribute::BindDirective(b) if b.name == "this" => AttrKind::BindThis {
@@ -138,7 +138,7 @@ pub(crate) fn gen_component<'a>(
                 // Re-borrow to get the shorthand name
                 let cn = ctx.component_node(id);
                 let shorthand_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
-                let name_text = if let Some(Attribute::ShorthandOrSpread(a)) = shorthand_attr {
+                let name_text = if let Some(Attribute::Shorthand(a)) = shorthand_attr {
                     ctx.component.source_text(a.expression_span).trim().to_string()
                 } else {
                     unreachable!()

@@ -30,7 +30,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         data: &mut AnalysisData,
     ) {
         match attr {
-            Attribute::ShorthandOrSpread(s) if s.is_spread => {
+            Attribute::SpreadAttribute(_) => {
                 data.element_flags.has_spread.insert(el.id);
             }
             Attribute::ClassDirective(_) => {

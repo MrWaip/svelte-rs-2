@@ -449,8 +449,10 @@ impl_attr_enum! {
     BooleanAttribute(BooleanAttribute),
     /// name="text{expr}text"
     ConcatenationAttribute(ConcatenationAttribute),
-    /// {expr} or {...expr}
-    ShorthandOrSpread(ShorthandOrSpread),
+    /// {name} — shorthand attribute
+    Shorthand(Shorthand),
+    /// {...expr} — spread attribute
+    SpreadAttribute(SpreadAttribute),
     /// class:name or class:name={expr}
     ClassDirective(ClassDirective),
     /// style:name or style:name={expr} or style:name|important
@@ -484,6 +486,8 @@ pub struct ExpressionAttribute {
     /// Span of just the JS expression.
     pub expression_span: Span,
     pub shorthand: bool,
+    /// Pre-computed event name (after "on" prefix), if this is an event attribute.
+    pub event_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -507,12 +511,18 @@ pub enum ConcatPart {
     Dynamic(Span),
 }
 
+/// {name} — shorthand attribute.
 #[derive(Clone)]
-pub struct ShorthandOrSpread {
+pub struct Shorthand {
     pub id: NodeId,
-    /// Span of the expression (includes braces in the outer span).
     pub expression_span: Span,
-    pub is_spread: bool,
+}
+
+/// {...expr} — spread attribute.
+#[derive(Clone)]
+pub struct SpreadAttribute {
+    pub id: NodeId,
+    pub expression_span: Span,
 }
 
 #[derive(Clone)]

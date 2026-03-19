@@ -86,10 +86,11 @@ enum Node {
 
 enum Attribute {
     StringAttribute(StringAttribute),             // name, value_span
-    ExpressionAttribute(ExpressionAttribute),     // name, expression_span, shorthand
+    ExpressionAttribute(ExpressionAttribute),     // name, expression_span, shorthand, event_name?
     BooleanAttribute(BooleanAttribute),           // name
     ConcatenationAttribute(ConcatenationAttribute), // name, parts: Vec<ConcatPart>
-    ShorthandOrSpread(ShorthandOrSpread),         // expression_span, is_spread
+    Shorthand(Shorthand),                         // expression_span
+    SpreadAttribute(SpreadAttribute),             // expression_span
     ClassDirective(ClassDirective),               // name, expression_span?, shorthand
     StyleDirective(StyleDirective),               // name, value: StyleDirectiveValue, important
     BindDirective(BindDirective),                 // name, expression_span?, shorthand
