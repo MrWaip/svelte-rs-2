@@ -210,7 +210,8 @@ mod tests {
             ContentStrategy::Static(_) => "Static",
             ContentStrategy::SingleElement(_) => "SingleElement",
             ContentStrategy::SingleBlock(_) => "SingleBlock",
-            ContentStrategy::Dynamic { .. } => "Dynamic",
+            ContentStrategy::DynamicText => "DynamicText",
+            ContentStrategy::Mixed { .. } => "Mixed",
         };
         assert_eq!(actual_variant, variant, "expected {:?} to be {}", key, variant);
     }
@@ -486,7 +487,7 @@ mod tests {
     #[test]
     fn mixed_content() {
         let (_c, data) = analyze_source("<div></div><span></span>");
-        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: true, has_blocks: false, has_text: false });
+        assert_root_content_type(&data, ContentStrategy::Mixed { has_elements: true, has_blocks: false, has_text: false });
     }
 
     #[test]
@@ -500,7 +501,7 @@ mod tests {
     #[test]
     fn dynamic_text_content() {
         let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
-        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true });
+        assert_root_content_type(&data, ContentStrategy::DynamicText);
     }
 
     #[test]
@@ -543,7 +544,7 @@ mod tests {
         assert_lowered_item_count(&data, FragmentKey::Root, 3);
         assert_item_is_text_concat(&data, FragmentKey::Root, 0);
         assert_item_is_text_concat(&data, FragmentKey::Root, 2);
-        assert_root_content_type(&data, ContentStrategy::Dynamic { has_elements: true, has_blocks: false, has_text: true });
+        assert_root_content_type(&data, ContentStrategy::Mixed { has_elements: true, has_blocks: false, has_text: true });
     }
 
     #[test]
@@ -551,7 +552,7 @@ mod tests {
         let (c, data) =
             analyze_source(r#"<script>let count = $state(0); count++;</script><div>{count}</div>"#);
         assert_dynamic_tag(&data, &c, "count");
-        assert_element_content_type(&data, &c, "div", ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true });
+        assert_element_content_type(&data, &c, "div", ContentStrategy::DynamicText);
     }
 
     #[test]

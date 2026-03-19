@@ -166,7 +166,7 @@ pub(crate) fn gen_component<'a>(
 
         // For text-first content (Static/DynamicText), gen_fragment doesn't emit $.next(),
         // so the component handler must. For Dynamic (mixed), gen_fragment handles it.
-        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. });
+        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::DynamicText);
 
         let mut body_stmts = Vec::new();
         if needs_next {

@@ -74,7 +74,7 @@ pub(crate) fn process_element<'a>(
     match ct {
         ContentStrategy::Empty | ContentStrategy::Static(_) => {}
 
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } if !has_state => {
+        ContentStrategy::DynamicText if !has_state => {
             // textContent shortcut
             let items: Vec<_> = ctx
                 .lowered_fragment(&child_key)
@@ -89,7 +89,7 @@ pub(crate) fn process_element<'a>(
             ));
         }
 
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => {
+        ContentStrategy::DynamicText => {
             let text_name = ctx.gen_ident("text");
             let items: Vec<_> = ctx
                 .lowered_fragment(&child_key)
@@ -118,7 +118,7 @@ pub(crate) fn process_element<'a>(
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }
 
-        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Dynamic { .. } => {
+        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Mixed { .. } => {
             // Clone needed: traverse_items borrows ctx mutably
             let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
 
