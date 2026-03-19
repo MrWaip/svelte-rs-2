@@ -22,10 +22,19 @@ impl ReactivityVisitor {
                     return true;
                 }
                 if let Some(sym_id) = r.symbol_id {
-                    data.scoping.is_dynamic_by_id(sym_id)
-                } else {
-                    false
+                    if data.scoping.is_dynamic_by_id(sym_id) {
+                        return true;
+                    }
+                    // When class state fields exist, member access on local bindings
+                    // is potentially reactive (getters call $.get internally).
+                    if data.has_class_state_fields
+                        && data.scoping.symbol_scope_id(sym_id) == data.scoping.root_scope_id()
+                        && !data.scoping.is_rune(sym_id)
+                    {
+                        return true;
+                    }
                 }
+                false
             });
         }
         false
