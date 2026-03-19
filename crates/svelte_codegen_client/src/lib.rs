@@ -9,7 +9,7 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
-use svelte_ast::{Attribute, Component, Node};
+use svelte_ast::{Attribute, Component, CustomElementConfig, Node};
 use svelte_transform::TransformData;
 
 use builder::{Arg, AssignLeft, AssignRight, Builder, ObjProp};
@@ -196,6 +196,28 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     program_body.extend(all_hoisted);
     program_body.push(export_default);
     program_body.extend(delegate_stmts);
+
+    // Custom element wrapping: customElements.define(tag, $.create_custom_element(App, ...))
+    if let Some(ce_tag) = component.options.as_ref().and_then(|o| o.custom_element.as_ref()) {
+        if let CustomElementConfig::Tag(tag) = ce_tag {
+            let create_ce = b.call_expr("$.create_custom_element", [
+                Arg::Ident(ctx.name),
+                Arg::Expr(b.object_expr(std::iter::empty::<ObjProp<'_>>())),
+                Arg::Expr(b.array_from_args(std::iter::empty::<Arg<'_, '_>>())),
+                Arg::Expr(b.array_from_args(std::iter::empty::<Arg<'_, '_>>())),
+                Arg::Expr(b.object_expr([ObjProp::KeyValue("mode", b.str_expr("open"))])),
+            ]);
+            let define_callee = b.static_member_expr(
+                b.rid_expr("customElements"),
+                "define",
+            );
+            let define_call = b.call_expr_callee(define_callee, [
+                Arg::Str(tag.clone()),
+                Arg::Expr(create_ce),
+            ]);
+            program_body.push(b.expr_stmt(define_call));
+        }
+    }
 
     let program = b.program(program_body);
 
