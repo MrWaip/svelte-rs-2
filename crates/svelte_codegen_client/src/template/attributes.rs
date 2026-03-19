@@ -62,7 +62,7 @@ pub(crate) fn process_attr<'a>(
             return;
         }
         Attribute::ExpressionAttribute(a) => {
-            if let Some(raw_event_name) = a.name.strip_prefix("on") {
+            if let Some(raw_event_name) = a.event_name.as_deref() {
                 let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
                     (base.to_string(), true)
                 } else {
@@ -134,7 +134,7 @@ pub(crate) fn process_attr<'a>(
                 ],
             ));
         }
-        Attribute::ShorthandOrSpread(a) if !a.is_spread => {
+        Attribute::Shorthand(a) => {
             let val = get_attr_expr(ctx, attr_id);
             let name = ctx.component.source_text(a.expression_span).to_string();
             target.push(ctx.b.call_stmt(
@@ -150,7 +150,7 @@ pub(crate) fn process_attr<'a>(
                 }
             }
         }
-        Attribute::ShorthandOrSpread(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
+        Attribute::SpreadAttribute(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
         Attribute::UseDirective(ud) => {
@@ -733,7 +733,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 } else {
                     let expr = get_attr_expr(ctx, attr_id);
                     // Hoist event handlers (on*) with function values for stable identity
-                    let is_event = a.name.starts_with("on");
+                    let is_event = a.event_name.is_some();
                     let is_fn = matches!(
                         &expr,
                         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
@@ -754,11 +754,11 @@ pub(crate) fn process_attrs_spread<'a>(
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, val));
             }
-            Attribute::ShorthandOrSpread(a) if a.is_spread => {
+            Attribute::SpreadAttribute(_) => {
                 let expr = get_attr_expr(ctx, attr_id);
                 props.push(ObjProp::Spread(expr));
             }
-            Attribute::ShorthandOrSpread(a) => {
+            Attribute::Shorthand(a) => {
                 let name = ctx.component.source_text(a.expression_span).trim();
                 let name_alloc = ctx.b.alloc_str(name);
                 props.push(ObjProp::Shorthand(name_alloc));
