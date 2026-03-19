@@ -83,7 +83,9 @@ Full codebase review with performance analysis. Generated 2026-03-18.
 
 ---
 
-### #5 — `ContentStrategy::Dynamic` booleans are raw facts that codegen interprets
+### ~~#5 — `ContentStrategy::Dynamic` booleans are raw facts that codegen interprets~~
+
+> **Implemented**: Split `ContentStrategy::Dynamic` into `DynamicText` (text with expressions, no elements/blocks) and `Mixed { has_elements, has_blocks, has_text }`. Updated all construction sites in `content_types.rs` and all consumption sites across `needs_var.rs`, `mod.rs`, `element.rs`, `html.rs`, `component.rs`, and test assertions.
 
 **Dimension**: 3. Raw handoff
 **Severity**: warning

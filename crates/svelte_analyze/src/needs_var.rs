@@ -45,9 +45,9 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         .unwrap_or(ContentStrategy::Empty);
     match ct {
         ContentStrategy::Empty | ContentStrategy::Static(_) => false,
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => true, // DynamicText
+        ContentStrategy::DynamicText => true,
         ContentStrategy::SingleBlock(_) => true,
-        ContentStrategy::SingleElement(_) | ContentStrategy::Dynamic { .. } => {
+        ContentStrategy::SingleElement(_) | ContentStrategy::Mixed { .. } => {
             let Some(lf) = data.fragments.lowered.get(&key) else {
                 return false;
             };
