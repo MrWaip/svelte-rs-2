@@ -1,6 +1,6 @@
 mod options;
 
-pub use options::{CompileOptions, CssMode, ModuleCompileOptions, Namespace};
+pub use options::{CompileOptions, CssMode, GenerateMode, ModuleCompileOptions, Namespace};
 use svelte_diagnostics::Diagnostic;
 
 #[derive(serde::Serialize)]
