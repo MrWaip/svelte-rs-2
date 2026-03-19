@@ -3,7 +3,9 @@
 #[serde(default, rename_all = "camelCase")]
 pub struct CompileOptions {
     pub dev: bool,
+    pub generate: GenerateMode,
     pub filename: String,
+    pub root_dir: Option<String>,
     /// Explicit component name. If `None`, derived from `filename`.
     pub name: Option<String>,
     pub custom_element: bool,
@@ -27,7 +29,9 @@ impl Default for CompileOptions {
     fn default() -> Self {
         Self {
             dev: false,
+            generate: GenerateMode::default(),
             filename: "(unknown)".to_string(),
+            root_dir: None,
             name: None,
             custom_element: false,
             namespace: Namespace::default(),
@@ -78,14 +82,18 @@ impl CompileOptions {
 #[serde(default, rename_all = "camelCase")]
 pub struct ModuleCompileOptions {
     pub dev: bool,
+    pub generate: GenerateMode,
     pub filename: String,
+    pub root_dir: Option<String>,
 }
 
 impl Default for ModuleCompileOptions {
     fn default() -> Self {
         Self {
             dev: false,
+            generate: GenerateMode::default(),
             filename: "(unknown)".to_string(),
+            root_dir: None,
         }
     }
 }
@@ -110,6 +118,24 @@ pub enum CssMode {
     External,
     /// CSS injected at runtime via `<style>` tags.
     Injected,
+}
+
+/// What kind of output to generate.
+///
+/// In the Svelte JS API this is `'client' | 'server' | false`.
+/// The boolean `false` is deserialized from the string `"false"` here;
+/// WASM bindings use a custom deserializer to also accept the JS boolean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GenerateMode {
+    /// Generate client-side JavaScript (default).
+    #[default]
+    Client,
+    /// Generate server-side JavaScript (SSR).
+    Server,
+    /// Analysis only — no code output.
+    #[serde(rename = "false")]
+    False,
 }
 
 #[cfg(test)]
@@ -156,7 +182,9 @@ mod tests {
         let json = r#"{}"#;
         let opts: CompileOptions = serde_json::from_str(json).unwrap();
         assert!(!opts.dev);
+        assert_eq!(opts.generate, GenerateMode::Client);
         assert_eq!(opts.filename, "(unknown)");
+        assert!(opts.root_dir.is_none());
         assert!(opts.disclose_version);
         assert_eq!(opts.compatibility_component_api, 5);
     }
@@ -181,5 +209,54 @@ mod tests {
         let json = r#"{"css": "injected"}"#;
         let opts: CompileOptions = serde_json::from_str(json).unwrap();
         assert_eq!(opts.css, CssMode::Injected);
+    }
+
+    #[test]
+    fn serde_generate_mode() {
+        let json = r#"{"generate": "client"}"#;
+        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.generate, GenerateMode::Client);
+
+        let json = r#"{"generate": "server"}"#;
+        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.generate, GenerateMode::Server);
+
+        let json = r#"{"generate": "false"}"#;
+        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.generate, GenerateMode::False);
+    }
+
+    #[test]
+    fn serde_generate_mode_default() {
+        let json = r#"{}"#;
+        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.generate, GenerateMode::Client);
+    }
+
+    #[test]
+    fn serde_root_dir() {
+        let json = r#"{"rootDir": "/home/user/project"}"#;
+        let opts: CompileOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.root_dir.as_deref(), Some("/home/user/project"));
+    }
+
+    #[test]
+    fn serde_module_options() {
+        let json = r#"{"dev": true, "generate": "server", "filename": "mod.svelte.js", "rootDir": "/app"}"#;
+        let opts: ModuleCompileOptions = serde_json::from_str(json).unwrap();
+        assert!(opts.dev);
+        assert_eq!(opts.generate, GenerateMode::Server);
+        assert_eq!(opts.filename, "mod.svelte.js");
+        assert_eq!(opts.root_dir.as_deref(), Some("/app"));
+    }
+
+    #[test]
+    fn serde_module_options_defaults() {
+        let json = r#"{}"#;
+        let opts: ModuleCompileOptions = serde_json::from_str(json).unwrap();
+        assert!(!opts.dev);
+        assert_eq!(opts.generate, GenerateMode::Client);
+        assert_eq!(opts.filename, "(unknown)");
+        assert!(opts.root_dir.is_none());
     }
 }
