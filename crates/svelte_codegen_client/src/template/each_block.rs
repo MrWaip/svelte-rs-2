@@ -59,12 +59,11 @@ pub(crate) fn gen_each_block<'a>(
     let index_name = block.index_span
         .map(|span| ctx.component.source_text(span).to_string());
 
-    let expr_source = ctx.component.source_text(expr_span).trim();
-    let root = ctx.analysis.scoping.root_scope_id();
-    let is_prop_source = ctx.analysis.scoping.find_binding(root, expr_source)
-        .is_some_and(|s| ctx.analysis.scoping.is_prop_source(s));
+    // Pre-computed by analysis — no string-based symbol re-resolution.
+    let is_prop_source = ctx.is_prop_source_node(block_id);
     let collection_fn = if is_prop_source {
         // Prop getter is already a function — pass directly without thunk
+        let expr_source = ctx.component.source_text(expr_span).trim();
         ctx.b.rid_expr(expr_source)
     } else {
         let collection = get_node_expr(ctx, block_id);

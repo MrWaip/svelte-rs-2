@@ -4,7 +4,9 @@ Full codebase review with performance analysis. Generated 2026-03-18.
 
 ---
 
-### #1 — Codegen re-derives symbol semantics from source text via string-based lookups
+### ~~#1 — Codegen re-derives symbol semantics from source text via string-based lookups~~
+
+> **Implemented**: Pre-computed `BindSemanticsData` in analysis (new `BindSemanticsVisitor` in composite walk). Eliminated `Ctx::is_mutable_rune`. Fixed `build_style_concat` to trust pre-transformed expressions (also fixed transform to process `StyleDirective::Concatenation` parts). Refactored `gen_bind_directive`, `build_directive_prop`, `build_bind_this_call`, `gen_window_binding`, `gen_document_binding`, and each_block prop_source to use `is_mutable_rune_target(NodeId)` / `is_prop_source_node(NodeId)`. Deferred: `add_optional_chaining`, `extract_identifiers` mini-parsers (complex bind:this), render_tag per-argument prop_source, `Ctx::is_import`.
 
 **Dimension**: 1. Late knowledge / 7. Wrong phase
 **Severity**: critical
