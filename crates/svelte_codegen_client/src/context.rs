@@ -241,6 +241,14 @@ impl<'a> Ctx<'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
         self.analysis.bind_semantics.each_context(id)
     }
+    pub fn each_context_name(&self, id: NodeId) -> String {
+        self.analysis.each_blocks.context_name(id)
+            .unwrap_or_else(|| panic!("missing context_name for each block {id:?}"))
+            .to_string()
+    }
+    pub fn each_index_name(&self, id: NodeId) -> Option<String> {
+        self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
+    }
     pub fn is_import(&self, name: &str) -> bool {
         let root = self.analysis.scoping.root_scope_id();
         self.analysis.scoping.find_binding(root, name)

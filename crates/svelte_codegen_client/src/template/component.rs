@@ -191,9 +191,8 @@ pub(crate) fn gen_component<'a>(
         let var_name = if shorthand {
             bind_name
         } else if let Some(span) = expression_span {
-            ctx.component.source_text(span).trim().to_string()
+            ctx.component.source_text(span).to_string()
         } else {
-            // No expression — skip bind:this
             init.push(ctx.b.expr_stmt(component_call));
             return;
         };
@@ -216,34 +215,6 @@ fn is_simple_identifier(s: &str) -> bool {
     !s.is_empty()
         && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
         && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-}
-
-/// Add optional chaining to all member accesses in an expression string.
-/// `obj.ref` → `obj?.ref`, `refs[i]` → `refs?.[i]`, `a.b.c` → `a?.b?.c`
-fn add_optional_chaining(expr: &str) -> String {
-    let mut result = String::new();
-    let mut depth = 0i32;
-    for c in expr.chars() {
-        match c {
-            '.' if depth == 0 => result.push_str("?."),
-            '[' if depth == 0 => {
-                result.push_str("?.[");
-                depth += 1;
-            }
-            '[' => {
-                result.push('[');
-                depth += 1;
-            }
-            ']' => {
-                result.push(']');
-                if depth > 0 {
-                    depth -= 1;
-                }
-            }
-            c => result.push(c),
-        }
-    }
-    result
 }
 
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
@@ -311,8 +282,8 @@ fn build_bind_this_call<'a>(
             .arrow_expr(ctx.b.params(setter_params), [ctx.b.expr_stmt(setter_expr)]);
 
         // Getter: ([ctx_vars]) => <expr_with_optional_chaining>
-        let getter_text = add_optional_chaining(expr_text);
-        let getter_expr = ctx.b.parse_expression(&getter_text);
+        let getter_expr = ctx.b.parse_expression(expr_text);
+        let getter_expr = ctx.b.make_optional_chain(getter_expr);
         let mut getter_params: Vec<&str> = Vec::new();
         for v in &each_ctx_owned {
             getter_params.push(v);
