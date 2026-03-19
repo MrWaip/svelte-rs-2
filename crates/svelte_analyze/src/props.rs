@@ -28,7 +28,8 @@ pub fn analyze_props(data: &mut AnalysisData) {
             // is reassigned, is mutated, or is bindable.
             // In custom element mode, ALL props are prop sources (need getter/setter exports).
             let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
-            let is_mutated = sym_id.is_some_and(|id| data.scoping.is_mutated(id));
+            let is_mutated = data.custom_element
+                || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
             let is_prop_source =
                 data.custom_element || p.default_span.is_some() || is_mutated;
 
@@ -54,6 +55,8 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
                 is_lazy_default,
+                is_prop_source,
+                is_mutated,
             }
         })
         .collect::<Vec<PropAnalysis>>();

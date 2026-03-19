@@ -71,7 +71,7 @@ pub(crate) fn process_attr<'a>(
 
                 let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
                 let val = get_attr_expr(ctx, attr_id);
-                let handler = build_event_handler_s5(ctx, val, has_call, init);
+                let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
 
                 let passive = svelte_js::is_passive_event(&event_name);
                 let delegated = !capture && svelte_js::is_delegatable_event(&event_name);
@@ -1024,6 +1024,7 @@ fn gen_on_directive_legacy<'a>(
 /// 4. Remaining → wrap in `function(...$$args) { handler.apply(this, $$args) }`
 pub(crate) fn build_event_handler_s5<'a>(
     ctx: &mut Ctx<'a>,
+    attr_id: NodeId,
     handler: Expression<'a>,
     has_call: bool,
     init: &mut Vec<Statement<'a>>,
@@ -1032,8 +1033,14 @@ pub(crate) fn build_event_handler_s5<'a>(
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
             return handler;
         }
-        Expression::Identifier(ident) => {
-            if !ctx.is_import(&ident.name) {
+        Expression::Identifier(_) => {
+            // Non-import identifiers are stable references — no wrapping needed.
+            // Import identifiers may be live bindings, so they need derived+get wrapping.
+            let is_import = ctx.analysis.attr_expression(attr_id)
+                .and_then(|info| info.references.first())
+                .and_then(|r| r.symbol_id)
+                .is_some_and(|sym| ctx.is_import_sym(sym));
+            if !is_import {
                 return handler;
             }
         }
@@ -1156,7 +1163,7 @@ pub(crate) fn gen_event_attr_on<'a>(
 
     let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
     let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
-    let handler = build_event_handler_s5(ctx, handler_expr, has_call, stmts);
+    let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
 
     let passive = svelte_js::is_passive_event(&event_name);
     let mut args: Vec<Arg<'a, '_>> = vec![
