@@ -33,6 +33,8 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ### Script codegen
 - [x] `$state` rune (read, assign, update, `$.proxy()`)
 - [x] `$state.raw(val)` → `$.state(val)` (no proxy)
+- [x] `$state` / `$state.raw` destructuring — object, array, defaults, rest, nested patterns
+- [x] `$state` / `$state.raw` class fields — public, private, constructor, multiple fields
 - [x] `$state.snapshot(val)` → `$.snapshot(val)`
 - [x] `$derived` / `$derived.by` — `$.derived(() => expr)` / `$.derived(fn)`
 - [x] `$props` rune (destructure, defaults, `$bindable`, rest, mutated)
@@ -306,8 +308,8 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: emit error if void element has children (requires parser-level check for content between void open tags)
 
 ### Runes (Tier 1)
-- [ ] `$state` / `$state.raw` destructuring support in script codegen
-- [ ] `$state` / `$state.raw` class field support
+- [x] `$state` / `$state.raw` destructuring support in script codegen
+- [x] `$state` / `$state.raw` class field support
 - [ ] `$state.frozen` → `$state.raw` rename validation
 - [ ] `$state.eager(val)` — experimental async, requires `experimental.async` flag
 - [ ] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)

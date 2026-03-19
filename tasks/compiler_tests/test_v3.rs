@@ -711,6 +711,74 @@ fn attach_in_each() {
 }
 
 // ---------------------------------------------------------------------------
+// $state/$state.raw destructuring
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn state_destructure_object() {
+    assert_compiler("state_destructure_object");
+}
+
+#[rstest]
+fn state_destructure_array() {
+    assert_compiler("state_destructure_array");
+}
+
+#[rstest]
+fn state_raw_destructure_object() {
+    assert_compiler("state_raw_destructure_object");
+}
+
+#[rstest]
+fn state_raw_destructure_array() {
+    assert_compiler("state_raw_destructure_array");
+}
+
+#[rstest]
+fn state_destructure_defaults() {
+    assert_compiler("state_destructure_defaults");
+}
+
+#[rstest]
+fn state_destructure_rest() {
+    assert_compiler("state_destructure_rest");
+}
+
+#[rstest]
+fn state_destructure_nested() {
+    assert_compiler("state_destructure_nested");
+}
+
+// ---------------------------------------------------------------------------
+// $state/$state.raw class fields
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn state_class_field() {
+    assert_compiler("state_class_field");
+}
+
+#[rstest]
+fn state_raw_class_field() {
+    assert_compiler("state_raw_class_field");
+}
+
+#[rstest]
+fn state_private_class_field() {
+    assert_compiler("state_private_class_field");
+}
+
+#[rstest]
+fn state_class_constructor() {
+    assert_compiler("state_class_constructor");
+}
+
+#[rstest]
+fn state_class_multiple() {
+    assert_compiler("state_class_multiple");
+}
+
+// ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
 
