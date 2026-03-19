@@ -122,7 +122,9 @@ impl<'a> NodeIndex<'a> {
                 Node::ExpressionTag(t) => {
                     self.expr_spans.insert(t.id, t.expression_span);
                 }
-                _ => {}
+                Node::Text(_)
+                | Node::Comment(_)
+                | Node::Error(_) => {}
             }
         }
     }

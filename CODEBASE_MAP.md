@@ -164,7 +164,7 @@ fn analyze<'a>(alloc: &'a Allocator, component: &Component) -> (AnalysisData, Pa
 
 // Re-exports из data.rs:
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData,
+    AnalysisData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData,
     FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
@@ -227,12 +227,12 @@ enum FragmentItem {
     Element(NodeId), ComponentNode(NodeId),
     IfBlock(NodeId), EachBlock(NodeId),
     RenderTag(NodeId), HtmlTag(NodeId), KeyBlock(NodeId),
-    TextConcat { parts: Vec<ConcatPart>, has_expr: bool },
+    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
 }
 // item.is_standalone_expr() -> bool
 // item.node_id() -> NodeId  (panic on TextConcat)
 
-enum ConcatPart { Text(String), Expr(NodeId) }  // NB: другой тип чем в svelte_ast!
+enum LoweredTextPart { Text(String), Expr(NodeId) }  // NB: другой тип чем ConcatPart в svelte_ast!
 
 enum ContentStrategy {
     Empty, Static(String), SingleElement(NodeId), SingleBlock(FragmentItem),
@@ -463,5 +463,5 @@ svelte_parser  svelte_analyze
 - Все поля `AnalysisData` — owned, без lifetime параметров
 - AST хранит `Span` для JS-выражений; `parse_js` парсит их один раз в `ParsedExprs`; `transform` мутирует; `codegen` использует
 - `u32` везде где возможно вместо `usize` (NodeId, Span)
-- `ConcatPart` в `svelte_ast` и `svelte_analyze` — **разные типы** с одинаковым именем
+- `ConcatPart` (svelte_ast) и `LoweredTextPart` (svelte_analyze) — **разные типы** для аналогичных целей в разных фазах
 - Sub-struct поля `ElementFlags`, `FragmentData`, `SnippetData`, `ConstTagData` — `pub(crate)`, снаружи только через методы

@@ -122,7 +122,7 @@ pub(crate) fn gen_component<'a>(
             }
             AttrKind::Concatenation { name, attr_id } => {
                 let key = ctx.b.alloc_str(name);
-                // Re-borrow to access ConcatPart slice
+                // Re-borrow to access concatenation parts
                 let cn = ctx.component_node(id);
                 let concat_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
                 if let Some(Attribute::ConcatenationAttribute(a)) = concat_attr {

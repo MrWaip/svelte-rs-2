@@ -420,8 +420,27 @@ pub struct AwaitBlock {
 // Attributes
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-pub enum Attribute {
+macro_rules! impl_attr_enum {
+    ( $( $(#[doc = $doc:expr])* $Variant:ident($Type:ident) ),+ $(,)? ) => {
+        pub enum Attribute {
+            $( $(#[doc = $doc])* $Variant($Type), )+
+        }
+
+        impl Clone for Attribute {
+            fn clone(&self) -> Self {
+                match self { $( Attribute::$Variant(a) => Attribute::$Variant(a.clone()), )+ }
+            }
+        }
+
+        impl Attribute {
+            pub fn id(&self) -> NodeId {
+                match self { $( Attribute::$Variant(a) => a.id, )+ }
+            }
+        }
+    };
+}
+
+impl_attr_enum! {
     /// name="string"
     StringAttribute(StringAttribute),
     /// name={expr}
@@ -449,26 +468,6 @@ pub enum Attribute {
     AnimateDirective(AnimateDirective),
     /// {@attach expr} — element attachment (Svelte 5.29+)
     AttachTag(AttachTag),
-}
-
-impl Attribute {
-    pub fn id(&self) -> NodeId {
-        match self {
-            Attribute::StringAttribute(a) => a.id,
-            Attribute::ExpressionAttribute(a) => a.id,
-            Attribute::BooleanAttribute(a) => a.id,
-            Attribute::ConcatenationAttribute(a) => a.id,
-            Attribute::ShorthandOrSpread(a) => a.id,
-            Attribute::ClassDirective(a) => a.id,
-            Attribute::StyleDirective(a) => a.id,
-            Attribute::BindDirective(a) => a.id,
-            Attribute::UseDirective(a) => a.id,
-            Attribute::OnDirectiveLegacy(a) => a.id,
-            Attribute::TransitionDirective(a) => a.id,
-            Attribute::AnimateDirective(a) => a.id,
-            Attribute::AttachTag(a) => a.id,
-        }
-    }
 }
 
 #[derive(Clone)]

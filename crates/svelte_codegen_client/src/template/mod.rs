@@ -131,14 +131,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         .filter_map(|n| n.as_svelte_head().map(|h| h.id))
         .collect();
 
-    match ct {
-        ContentStrategy::Empty => {}
-        ContentStrategy::Static(ref text) => gen_root_static_text(ctx, text, &mut body),
-        ContentStrategy::DynamicText => gen_root_dynamic_text(ctx, &mut body),
-        ContentStrategy::SingleElement(el_id) => gen_root_single_element(ctx, el_id, &tpl_name, &mut hoisted, &mut body),
-        ContentStrategy::SingleBlock(ref kind) => gen_root_single_block(ctx, kind, &mut body),
-        ContentStrategy::Mixed { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
-    }
+    emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
 
     // Generate $.head() calls for <svelte:head> nodes.
     // In the Svelte reference, hoisted nodes are visited first and push to init[],
@@ -163,12 +156,83 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
 }
 
 // ---------------------------------------------------------------------------
-// Root strategies
+// Fragment codegen (used for if/each/nested fragments)
 // ---------------------------------------------------------------------------
 
-fn gen_root_static_text<'a>(ctx: &mut Ctx<'a>, text: &str, body: &mut Vec<Statement<'a>>) {
+/// Generate statements for a fragment, destined for `($$anchor) => { ... }`.
+pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
+    let ct = ctx.content_type(&key);
+
+    // Consume "root" name for all content types to keep numbering consistent
+    let tpl_name = ctx.gen_ident("root");
+
+    let mut body: Vec<Statement<'a>> = Vec::new();
+
+    emit_const_tags(ctx, key, &mut body);
+    emit_debug_tags(ctx, key, &mut body);
+
+    let mut sub_hoisted = Vec::new();
+    emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
+    ctx.module_hoisted.extend(sub_hoisted);
+
+    body
+}
+
+// ---------------------------------------------------------------------------
+// Shared content strategy dispatch
+// ---------------------------------------------------------------------------
+
+/// Emit body statements for a given ContentStrategy.
+///
+/// `is_root` controls whether `$.next()` is emitted for Static/DynamicText
+/// and determines the hoisting order for templates:
+/// - Root (is_root=true): template is pushed to `hoisted` BEFORE children
+///   (top-down order; the caller places hoisted after module_hoisted in output).
+/// - Non-root (is_root=false): template is pushed to `hoisted` AFTER children
+///   (bottom-up order; the caller extends module_hoisted with the local vec).
+fn emit_content_strategy<'a>(
+    ctx: &mut Ctx<'a>,
+    key: FragmentKey,
+    ct: &ContentStrategy,
+    tpl_name: &str,
+    is_root: bool,
+    hoisted: &mut Vec<Statement<'a>>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    match ct {
+        ContentStrategy::Empty => {}
+        ContentStrategy::Static(ref text) => {
+            emit_static_text(ctx, text, is_root, body);
+        }
+        ContentStrategy::DynamicText => {
+            emit_dynamic_text(ctx, key, is_root, body);
+        }
+        ContentStrategy::SingleElement(el_id) => {
+            emit_single_element(ctx, *el_id, tpl_name, is_root, hoisted, body);
+        }
+        ContentStrategy::SingleBlock(ref item) => {
+            emit_single_block(ctx, item, is_root, body);
+        }
+        ContentStrategy::Mixed { .. } => {
+            emit_mixed(ctx, key, tpl_name, is_root, hoisted, body);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Strategy implementations
+// ---------------------------------------------------------------------------
+
+fn emit_static_text<'a>(
+    ctx: &mut Ctx<'a>,
+    text: &str,
+    is_root: bool,
+    body: &mut Vec<Statement<'a>>,
+) {
     let name = ctx.gen_ident("text");
-    body.push(ctx.b.call_stmt("$.next", []));
+    if is_root {
+        body.push(ctx.b.call_stmt("$.next", []));
+    }
     let call = if text.is_empty() {
         ctx.b.call_expr("$.text", [])
     } else {
@@ -181,29 +245,34 @@ fn gen_root_static_text<'a>(ctx: &mut Ctx<'a>, text: &str, body: &mut Vec<Statem
     ));
 }
 
-fn gen_root_dynamic_text<'a>(ctx: &mut Ctx<'a>, body: &mut Vec<Statement<'a>>) {
+fn emit_dynamic_text<'a>(
+    ctx: &mut Ctx<'a>,
+    key: FragmentKey,
+    is_root: bool,
+    body: &mut Vec<Statement<'a>>,
+) {
     // Clone needed: emit_text_update borrows ctx mutably
-    let item = ctx.lowered_fragment(&FragmentKey::Root).items[0].clone();
+    let item = ctx.lowered_fragment(&key).items[0].clone();
     let name = ctx.gen_ident("text");
-    body.push(ctx.b.call_stmt("$.next", []));
+    if is_root {
+        body.push(ctx.b.call_stmt("$.next", []));
+    }
     body.push(ctx.b.var_stmt(&name, ctx.b.call_expr("$.text", [])));
-
     emit_text_update(ctx, &item, &name, body);
-
     body.push(ctx.b.call_stmt(
         "$.append",
         [Arg::Ident("$$anchor"), Arg::Ident(&name)],
     ));
 }
 
-fn gen_root_single_element<'a>(
+fn emit_single_element<'a>(
     ctx: &mut Ctx<'a>,
     el_id: NodeId,
     tpl_name: &str,
+    is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
-
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
     let from_html = if needs_import_node(&html) {
@@ -211,40 +280,67 @@ fn gen_root_single_element<'a>(
     } else {
         ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
     };
-    hoisted.push(ctx.b.var_stmt(tpl_name, from_html));
+    let tpl_stmt = ctx.b.var_stmt(tpl_name, from_html);
 
     let el_name_str = ctx.element(el_id).name.clone();
     let el_name = ctx.gen_ident(&el_name_str);
-    body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
 
-    let mut init = Vec::new();
-    let mut update = Vec::new();
-    let mut after_update = Vec::new();
-    process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
-    body.extend(init);
-    emit_template_effect(ctx, update, body);
-    body.extend(after_update);
+    if is_root {
+        // Root: template BEFORE children (top-down)
+        hoisted.push(tpl_stmt);
+        body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
+        let mut init = Vec::new();
+        let mut update = Vec::new();
+        let mut after_update = Vec::new();
+        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
+        body.extend(init);
+        emit_template_effect(ctx, update, body);
+        body.extend(after_update);
+    } else {
+        // Non-root: template AFTER children (bottom-up)
+        let mut init = Vec::new();
+        let mut update = Vec::new();
+        let mut after_update = Vec::new();
+        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
+        hoisted.push(tpl_stmt);
+        body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
+        body.extend(init);
+        emit_template_effect(ctx, update, body);
+        body.extend(after_update);
+    }
+
     body.push(ctx.b.call_stmt(
         "$.append",
         [Arg::Ident("$$anchor"), Arg::Ident(&el_name)],
     ));
 }
 
-fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem, body: &mut Vec<Statement<'a>>) {
-
-    // RenderTag / ComponentNode at root: call directly with $$anchor, no wrapping
+fn emit_single_block<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &FragmentItem,
+    is_root: bool,
+    body: &mut Vec<Statement<'a>>,
+) {
+    // RenderTag / ComponentNode / TitleElement: call directly with $$anchor, no wrapping.
+    // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
         FragmentItem::RenderTag(id) => {
+            if !is_root { ctx.gen_ident("fragment"); }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
         FragmentItem::ComponentNode(id) => {
+            if !is_root { ctx.gen_ident("fragment"); }
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
         FragmentItem::TitleElement(id) => {
+            if !is_root { ctx.gen_ident("fragment"); }
             title_element::gen_title_element(ctx, *id, body);
             return;
+        }
+        FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
+            unreachable!("SingleBlock should not contain Element or TextConcat")
         }
         _ => {}
     }
@@ -280,7 +376,7 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem, body: &mut 
         FragmentItem::AwaitBlock(id) => {
             gen_await_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should not contain Element or TextConcat"),
+        _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -289,29 +385,38 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem, body: &mut 
     ));
 }
 
-fn gen_root_mixed<'a>(
+fn emit_mixed<'a>(
     ctx: &mut Ctx<'a>,
+    key: FragmentKey,
     tpl_name: &str,
+    is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
     // Clone needed: traverse_items borrows ctx mutably
-    let items: Vec<_> = ctx.lowered_fragment(&FragmentKey::Root).items.clone();
+    let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
 
     let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
     if starts_text {
         body.push(ctx.b.call_stmt("$.next", []));
     }
 
-    let html = fragment_html(ctx, FragmentKey::Root);
+    let html = fragment_html(ctx, key);
     let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
-    hoisted.push(ctx.b.var_stmt(
-        tpl_name,
-        ctx.b.call_expr(
-            "$.from_html",
-            [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
-        ),
-    ));
+    let make_tpl_stmt = |ctx: &mut Ctx<'a>| {
+        ctx.b.var_stmt(
+            tpl_name,
+            ctx.b.call_expr(
+                "$.from_html",
+                [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
+            ),
+        )
+    };
+
+    if is_root {
+        // Root: template BEFORE children (top-down)
+        hoisted.push(make_tpl_stmt(ctx));
+    }
 
     let frag = ctx.gen_ident("fragment");
     body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(tpl_name, [])));
@@ -329,6 +434,12 @@ fn gen_root_mixed<'a>(
         hoisted,
         &mut after_update,
     );
+
+    if !is_root {
+        // Non-root: template AFTER children (bottom-up)
+        hoisted.push(make_tpl_stmt(ctx));
+    }
+
     emit_trailing_next(ctx, trailing, &mut init);
     body.extend(init);
     emit_template_effect(ctx, update, body);
@@ -338,200 +449,3 @@ fn gen_root_mixed<'a>(
         [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
     ));
 }
-
-// ---------------------------------------------------------------------------
-// Fragment codegen (used for if/each/nested fragments)
-// ---------------------------------------------------------------------------
-
-/// Generate statements for a fragment, destined for `($$anchor) => { ... }`.
-pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<Statement<'a>> {
-    let ct = ctx.content_type(&key);
-
-    // Consume "root" name for all content types to keep numbering consistent
-    let tpl_name = ctx.gen_ident("root");
-
-    let mut body: Vec<Statement<'a>> = Vec::new();
-
-    emit_const_tags(ctx, key, &mut body);
-    emit_debug_tags(ctx, key, &mut body);
-
-    match ct {
-        ContentStrategy::Empty => {}
-        ContentStrategy::Static(ref text) => {
-            let name = ctx.gen_ident("text");
-            let call = if text.is_empty() {
-                ctx.b.call_expr("$.text", [])
-            } else {
-                ctx.b.call_expr("$.text", [Arg::Str(text.clone())])
-            };
-            body.push(ctx.b.var_stmt(&name, call));
-            body.push(ctx.b.call_stmt(
-                "$.append",
-                [Arg::Ident("$$anchor"), Arg::Ident(&name)],
-            ));
-        }
-        ContentStrategy::DynamicText => {
-            // Clone needed: emit_text_update borrows ctx mutably
-            let item = ctx.lowered_fragment(&key).items[0].clone();
-            let name = ctx.gen_ident("text");
-            body.push(ctx.b.var_stmt(&name, ctx.b.call_expr("$.text", [])));
-            emit_text_update(ctx, &item, &name, &mut body);
-            body.push(ctx.b.call_stmt(
-                "$.append",
-                [Arg::Ident("$$anchor"), Arg::Ident(&name)],
-            ));
-        }
-        ContentStrategy::SingleElement(el_id) => {
-            let el = ctx.element(el_id);
-            let html = element_html(ctx, el);
-
-            let el_name_str = ctx.element(el_id).name.clone();
-            let el_name = ctx.gen_ident(&el_name_str);
-
-            let mut init = Vec::new();
-            let mut update = Vec::new();
-            let mut sub_hoisted = Vec::new();
-            let mut after_update = Vec::new();
-            process_element(
-                ctx,
-                el_id,
-                &el_name,
-                &mut init,
-                &mut update,
-                &mut sub_hoisted,
-                &mut after_update,
-            );
-            ctx.module_hoisted.extend(sub_hoisted);
-
-            // Hoist AFTER children so inner templates come first (bottom-up order)
-            let from_html = if needs_import_node(&html) {
-                ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
-            } else {
-                ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
-            };
-            ctx.module_hoisted.push(ctx.b.var_stmt(&tpl_name, from_html));
-
-            // Prepend const tags from body, then element code
-            body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(&tpl_name, [])));
-            body.extend(init);
-            emit_template_effect(ctx, update, &mut body);
-            body.extend(after_update);
-            body.push(ctx.b.call_stmt(
-                "$.append",
-                [Arg::Ident("$$anchor"), Arg::Ident(&el_name)],
-            ));
-            return body;
-        }
-        ContentStrategy::SingleBlock(ref item) => {
-            // RenderTag / ComponentNode: call directly with $$anchor
-            // Still consume a "fragment" ident for consistent numbering
-            match item {
-                FragmentItem::RenderTag(id) => {
-                    ctx.gen_ident("fragment");
-                    gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
-                }
-                FragmentItem::ComponentNode(id) => {
-                    ctx.gen_ident("fragment");
-                    gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
-                }
-                FragmentItem::TitleElement(id) => {
-                    ctx.gen_ident("fragment");
-                    title_element::gen_title_element(ctx, *id, &mut body);
-                }
-                FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
-                    unreachable!("SingleBlock should not contain Element or TextConcat")
-                }
-                _ => {
-                    let frag = ctx.gen_ident("fragment");
-                    let node = ctx.gen_ident("node");
-                    body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
-                    body.push(ctx.b.var_stmt(
-                        &node,
-                        ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
-                    ));
-                    match item {
-                        FragmentItem::IfBlock(id) => {
-                            let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
-                            body.push(ctx.b.block_stmt(stmts));
-                        }
-                        FragmentItem::EachBlock(id) => {
-                            gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, &mut body);
-                        }
-                        FragmentItem::HtmlTag(id) => {
-                            gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), &mut body);
-                        }
-                        FragmentItem::KeyBlock(id) => {
-                            gen_key_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
-                        }
-                        FragmentItem::SvelteElement(id) => {
-                            gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), &mut body);
-                        }
-                        FragmentItem::SvelteBoundary(id) => {
-                            gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), &mut body);
-                        }
-                        FragmentItem::AwaitBlock(id) => {
-                            gen_await_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
-                        }
-                        _ => unreachable!("SingleBlock should not contain Element, TextConcat, RenderTag, ComponentNode, or TitleElement here"),
-                    }
-                    body.push(ctx.b.call_stmt(
-                        "$.append",
-                        [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-                    ));
-                }
-            }
-        }
-        ContentStrategy::Mixed { .. } => {
-            // Clone needed: traverse_items borrows ctx mutably
-            let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
-
-            let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
-            if starts_text {
-                body.push(ctx.b.call_stmt("$.next", []));
-            }
-
-            let html = fragment_html(ctx, key);
-            let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
-            let tpl_stmt = ctx.b.var_stmt(
-                &tpl_name,
-                ctx.b.call_expr(
-                    "$.from_html",
-                    [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
-                ),
-            );
-
-            let frag = ctx.gen_ident("fragment");
-            body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(&tpl_name, [])));
-
-            let first = ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]);
-            let mut init = Vec::new();
-            let mut update = Vec::new();
-            let mut sub_hoisted = Vec::new();
-            let mut after_update = Vec::new();
-            let trailing = traverse_items(
-                ctx,
-                &items,
-                first,
-                &mut init,
-                &mut update,
-                &mut sub_hoisted,
-                &mut after_update,
-            );
-            ctx.module_hoisted.extend(sub_hoisted);
-            // Push own template AFTER inner templates (bottom-up order)
-            ctx.module_hoisted.push(tpl_stmt);
-            emit_trailing_next(ctx, trailing, &mut init);
-            body.extend(init);
-            emit_template_effect(ctx, update, &mut body);
-            body.extend(after_update);
-            body.push(ctx.b.call_stmt(
-                "$.append",
-                [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-            ));
-            return body;
-        }
-    }
-
-    body
-}
-

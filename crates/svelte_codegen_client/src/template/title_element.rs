@@ -39,7 +39,7 @@ pub(crate) fn gen_title_element<'a>(
     // build_concat_from_parts already handles this for template literals (multi-part),
     // but for a single expression we need explicit nullish coalescing.
     let value = if items.first().is_some_and(|item| {
-        matches!(item, svelte_analyze::FragmentItem::TextConcat { parts, .. } if parts.len() == 1 && matches!(parts[0], svelte_analyze::ConcatPart::Expr(_)))
+        matches!(item, svelte_analyze::FragmentItem::TextConcat { parts, .. } if parts.len() == 1 && matches!(parts[0], svelte_analyze::LoweredTextPart::Expr(_)))
     }) {
         // Single expression: value ?? ""
         ctx.b.logical_coalesce(value, ctx.b.str_expr(""))

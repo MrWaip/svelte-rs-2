@@ -81,13 +81,13 @@ codegen            reads: component, data.*, parsed.*
 
 `ParsedExprs<'a>` carries an OXC lifetime. It cannot live inside `AnalysisData` (would propagate `'a` everywhere). Pass it separately through the entire pipeline. `parsed.script_program` is `Option` — consumed once via `.take()` in codegen.
 
-### 3. Two unrelated `ConcatPart` types
+### 3. Two unrelated concat-part types
 
 ```rust
-svelte_ast::ConcatPart    { Static(String), Dynamic(Span) }    // in Attribute
-svelte_analyze::ConcatPart { Text(String), Expr(NodeId) }      // in LoweredFragment
+svelte_ast::ConcatPart          { Static(String), Dynamic(Span) }  // in Attribute
+svelte_analyze::LoweredTextPart { Text(String), Expr(NodeId) }     // in LoweredFragment
 ```
-The compiler catches confusion, but they look identical in search results.
+Different names now, but be aware they serve analogous roles in different phases.
 
 ### 4. Hoisting order in codegen is bottom-up
 
