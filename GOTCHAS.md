@@ -46,7 +46,8 @@ lower              reads: component, data.scoping
 composite walk     reads: data.fragments.lowered, data.scoping, data.expressions
                    writes: data.dynamic_nodes, data.alt_is_elseif,
                            data.element_flags (has_spread, has_class/style_directives, dynamic_attrs),
-                           data.snippets.hoistable
+                           data.snippets.hoistable,
+                           data.bind_semantics (mutable_rune_targets, prop_source_nodes, bind_each_context)
 
 classify           reads: data.fragments.lowered, data.dynamic_nodes
                    writes: data.fragments.content_types, data.fragments.has_dynamic_children
@@ -94,14 +95,18 @@ Hoist **after** `process_element`, not before. The element's children write into
 
 ### 5. `SingleBlock` vs `SingleElement`
 
-`ContentType::SingleElement` — exactly one `Element` node. `SingleBlock` — exactly one `IfBlock` or `EachBlock`. Codegen paths are fundamentally different: SingleElement uses `$.template(...)`, SingleBlock uses `$.comment()` as anchor.
+`ContentStrategy::SingleElement(NodeId)` — exactly one `Element` node. `SingleBlock(FragmentItem)` — exactly one block node (IfBlock, EachBlock, etc.), stored as a `FragmentItem` directly (no intermediate enum). Codegen paths are fundamentally different: SingleElement uses `$.template(...)`, SingleBlock uses `$.comment()` as anchor.
 
 ### 6. `IfBlock.elseif` vs `data.alt_is_elseif`
 
 - `IfBlock.elseif: bool` (AST field) — marks that *this* IfBlock is an elseif branch.
 - `data.alt_is_elseif: HashSet<NodeId>` — contains the NodeId of the *parent* IfBlock whose alternate is a single elseif. Different things.
 
-### 7. `needs_var` vs `needs_ref`
+### 7. `BindSemanticsData` is pre-computed in analysis, not codegen
+
+Directive targets (mutable rune? prop source? each-block context?) are classified once during the composite walk via `BindSemanticsVisitor`. Codegen queries by `NodeId` (`ctx.is_mutable_rune_target(id)`, `ctx.is_prop_source_node(id)`, `ctx.bind_each_context(id)`). Do **not** re-resolve symbols from source text in codegen — use the pre-computed side tables.
+
+### 8. `needs_var` vs `needs_ref`
 
 - `needs_var` — element needs a JS variable in codegen (for dynamic attributes, directives, etc.)
 - `needs_ref` — element needs a ref-semantic variable specifically (for `bind:this`)
