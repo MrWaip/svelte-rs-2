@@ -1,3 +1,4 @@
+mod bind_semantics;
 mod content_types;
 mod markers;
 mod data;
@@ -90,6 +91,7 @@ pub fn analyze<'a>(
             elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor::new(&component.source),
             hoistable::HoistableSnippetsVisitor::new(script_names, top_level_snippet_ids),
+            bind_semantics::BindSemanticsVisitor::new(&component.source),
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
