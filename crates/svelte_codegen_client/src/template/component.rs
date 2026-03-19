@@ -19,7 +19,7 @@ enum AttrKind<'a> {
     Expression { name: &'a str, attr_id: NodeId, shorthand: bool, has_call: bool, is_non_simple: bool },
     Concatenation { name: &'a str, attr_id: NodeId },
     Shorthand { attr_id: NodeId },
-    BindThis { expression_span: Option<Span>, shorthand: bool, name: String },
+    BindThis { bind_id: NodeId, expression_span: Option<Span>, shorthand: bool, name: String },
     Spread,
     Skip,
 }
@@ -66,6 +66,7 @@ pub(crate) fn gen_component<'a>(
                 attr_id: a.id,
             },
             Attribute::BindDirective(b) if b.name == "this" => AttrKind::BindThis {
+                bind_id: b.id,
                 expression_span: b.expression_span,
                 shorthand: b.shorthand,
                 name: b.name.clone(),
@@ -80,7 +81,7 @@ pub(crate) fn gen_component<'a>(
     }).collect();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
-    let mut bind_this_info: Option<(Option<Span>, bool, String)> = None;
+    let mut bind_this_info: Option<(NodeId, Option<Span>, bool, String)> = None;
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
 
@@ -150,8 +151,8 @@ pub(crate) fn gen_component<'a>(
                     props.push(ObjProp::Shorthand(key));
                 }
             }
-            AttrKind::BindThis { expression_span, shorthand, name } => {
-                bind_this_info = Some((expression_span, shorthand, name));
+            AttrKind::BindThis { bind_id, expression_span, shorthand, name } => {
+                bind_this_info = Some((bind_id, expression_span, shorthand, name));
             }
             AttrKind::Spread | AttrKind::Skip => {}
         }
@@ -165,7 +166,7 @@ pub(crate) fn gen_component<'a>(
 
         // For text-first content (Static/DynamicText), gen_fragment doesn't emit $.next(),
         // so the component handler must. For Dynamic (mixed), gen_fragment handles it.
-        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. });
+        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::DynamicText);
 
         let mut body_stmts = Vec::new();
         if needs_next {
@@ -186,7 +187,7 @@ pub(crate) fn gen_component<'a>(
     let props_expr = ctx.b.object_expr(props);
     let component_call = ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
 
-    let final_expr = if let Some((expression_span, shorthand, bind_name)) = bind_this_info {
+    let final_expr = if let Some((bind_id, expression_span, shorthand, bind_name)) = bind_this_info {
         let var_name = if shorthand {
             bind_name
         } else if let Some(span) = expression_span {
@@ -197,7 +198,7 @@ pub(crate) fn gen_component<'a>(
             return;
         };
 
-        build_bind_this_call(ctx, &var_name, component_call)
+        build_bind_this_call(ctx, bind_id, &var_name, component_call)
     } else {
         component_call
     };
@@ -245,28 +246,19 @@ fn add_optional_chaining(expr: &str) -> String {
     result
 }
 
-/// Extract identifier-like tokens from an expression string.
-fn extract_identifiers(expr: &str) -> Vec<String> {
-    expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
-        .filter(|s| {
-            !s.is_empty()
-                && s.chars()
-                    .next()
-                    .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        })
-        .map(|s| s.to_string())
-        .collect()
-}
-
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.
 fn build_bind_this_call<'a>(
     ctx: &mut Ctx<'a>,
+    bind_id: NodeId,
     expr_text: &str,
     value: Expression<'a>,
 ) -> Expression<'a> {
     if is_simple_identifier(expr_text) {
+        // Pre-computed by analysis — no string-based symbol re-resolution.
+        let is_rune = ctx.is_mutable_rune_target(bind_id);
+
         // Simple identifier: use $.set/$.get for mutable runes, plain assignment otherwise
-        let setter = if ctx.is_mutable_rune(expr_text) {
+        let setter = if is_rune {
             let var_str = ctx.b.alloc_str(expr_text);
             let body = ctx.b.call_expr("$.set", [
                 Arg::Ident(var_str),
@@ -284,7 +276,7 @@ fn build_bind_this_call<'a>(
                 .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
         };
 
-        let getter = if ctx.is_mutable_rune(expr_text) {
+        let getter = if is_rune {
             let var_str = ctx.b.alloc_str(expr_text);
             let body = ctx.b.call_expr("$.get", [Arg::Ident(var_str)]);
             ctx.b
@@ -302,10 +294,9 @@ fn build_bind_this_call<'a>(
         ])
     } else {
         // Member/computed expression: use raw assignment for setter, optional chaining for getter
-        let each_context: Vec<String> = extract_identifiers(expr_text)
-            .into_iter()
-            .filter(|id| ctx.each_vars.contains(id))
-            .collect();
+        let each_context: Vec<String> = ctx.bind_each_context(bind_id)
+            .cloned()
+            .unwrap_or_default();
 
         // Setter: ($$value[, ctx_vars]) => <expr> = $$value
         let setter_body = format!("{expr_text} = $$value");

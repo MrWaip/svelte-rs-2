@@ -194,6 +194,47 @@ impl DebugTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// Pre-computed bind/directive semantics for codegen.
+///
+/// Eliminates string-based symbol re-resolution in codegen: instead of
+/// `source_text(span) → find_binding → is_rune && is_mutated`, codegen
+/// reads pre-computed flags keyed by NodeId.
+pub struct BindSemanticsData {
+    /// Bind directives / class directives / style directives whose target
+    /// is a mutable rune (needs `$.get()`/`$.set()` instead of plain access).
+    /// Key: directive NodeId.
+    pub(crate) mutable_rune_targets: FxHashSet<NodeId>,
+    /// Nodes whose expression resolves to a prop source
+    /// (each_block collection, render_tag argument identifiers).
+    /// Key: EachBlock NodeId or RenderTag argument NodeId.
+    pub(crate) prop_source_nodes: FxHashSet<NodeId>,
+    /// Pre-computed each-block variable names referenced in bind:this expressions.
+    /// Key: BindDirective NodeId. Value: names of each-block vars used in the expression.
+    pub(crate) bind_each_context: FxHashMap<NodeId, Vec<String>>,
+}
+
+impl BindSemanticsData {
+    pub fn new() -> Self {
+        Self {
+            mutable_rune_targets: FxHashSet::default(),
+            prop_source_nodes: FxHashSet::default(),
+            bind_each_context: FxHashMap::default(),
+        }
+    }
+
+    pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
+        self.mutable_rune_targets.contains(&id)
+    }
+
+    pub fn is_prop_source(&self, id: NodeId) -> bool {
+        self.prop_source_nodes.contains(&id)
+    }
+
+    pub fn each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+        self.bind_each_context.get(&id)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
@@ -232,6 +273,8 @@ pub struct AnalysisData {
     pub debug_tags: DebugTagData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
+    pub bind_semantics: BindSemanticsData,
 }
 
 impl AnalysisData {
@@ -253,6 +296,7 @@ impl AnalysisData {
             const_tags: ConstTagData::new(),
             debug_tags: DebugTagData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
+            bind_semantics: BindSemanticsData::new(),
         }
     }
 }
@@ -280,7 +324,7 @@ pub struct LoweredFragment {
     pub items: Vec<FragmentItem>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FragmentItem {
     /// A standalone element node.
     Element(NodeId),
@@ -362,7 +406,7 @@ impl LoweredFragment {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcatPart {
     /// Static text content (possibly trimmed).
     Text(String),
@@ -397,34 +441,6 @@ pub struct PropAnalysis {
 // ContentStrategy — classification of what a fragment contains, with embedded data
 // ---------------------------------------------------------------------------
 
-/// Block-type discriminant for ContentStrategy::SingleBlock.
-/// Mirrors FragmentItem block variants so classify_items encodes the type once.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SingleBlockKind {
-    IfBlock(NodeId),
-    EachBlock(NodeId),
-    HtmlTag(NodeId),
-    KeyBlock(NodeId),
-    RenderTag(NodeId),
-    ComponentNode(NodeId),
-    SvelteElement(NodeId),
-    SvelteBoundary(NodeId),
-    AwaitBlock(NodeId),
-    TitleElement(NodeId),
-}
-
-impl SingleBlockKind {
-    pub fn node_id(&self) -> NodeId {
-        match self {
-            Self::IfBlock(id) | Self::EachBlock(id) | Self::HtmlTag(id)
-            | Self::KeyBlock(id) | Self::RenderTag(id) | Self::ComponentNode(id)
-            | Self::SvelteElement(id) | Self::SvelteBoundary(id)
-            | Self::AwaitBlock(id)
-            | Self::TitleElement(id) => *id,
-        }
-    }
-}
-
 /// Describes the content of a fragment. Carries item data so codegen does not
 /// need to re-inspect the lowered fragment for common decisions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -434,8 +450,10 @@ pub enum ContentStrategy {
     Static(String),
     /// Exactly one element node. Contains its NodeId.
     SingleElement(NodeId),
-    /// Exactly one block node (IfBlock, EachBlock, etc.). Contains the block kind with its NodeId.
-    SingleBlock(SingleBlockKind),
-    /// Text with expressions, or a mix of elements/blocks/text.
-    Dynamic { has_elements: bool, has_blocks: bool, has_text: bool },
+    /// Exactly one block node (IfBlock, EachBlock, etc.). Stores the FragmentItem directly.
+    SingleBlock(FragmentItem),
+    /// Text with expressions (no elements or blocks).
+    DynamicText,
+    /// Mix of elements, blocks, and/or text.
+    Mixed { has_elements: bool, has_blocks: bool, has_text: bool },
 }

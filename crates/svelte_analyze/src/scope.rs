@@ -32,6 +32,7 @@ pub struct ComponentScoping {
     store_syms: FxHashMap<SymbolId, String>,
     known_values: FxHashMap<SymbolId, String>,
     snippet_param_syms: FxHashSet<SymbolId>,
+    each_block_syms: FxHashSet<SymbolId>,
 }
 
 impl ComponentScoping {
@@ -47,6 +48,7 @@ impl ComponentScoping {
             store_syms: FxHashMap::default(),
             known_values: FxHashMap::default(),
             snippet_param_syms: FxHashSet::default(),
+            each_block_syms: FxHashSet::default(),
         }
     }
 
@@ -194,6 +196,10 @@ impl ComponentScoping {
         self.snippet_param_syms.insert(sym_id);
     }
 
+    pub fn mark_each_block_var(&mut self, sym_id: SymbolId) {
+        self.each_block_syms.insert(sym_id);
+    }
+
     // -- SymbolId-keyed classification: read --
 
     pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
@@ -219,6 +225,10 @@ impl ComponentScoping {
 
     pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
         self.snippet_param_syms.contains(&sym_id)
+    }
+
+    pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
+        self.each_block_syms.contains(&sym_id)
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
@@ -311,12 +321,14 @@ fn walk_template_scopes(
 
                 // Add context variable binding
                 let context_name = component.source_text(block.context_span);
-                scoping.add_binding(child_scope, context_name);
+                let ctx_sym = scoping.add_binding(child_scope, context_name);
+                scoping.mark_each_block_var(ctx_sym);
 
                 // Add optional index variable binding
                 if let Some(idx_span) = block.index_span {
                     let idx_name = component.source_text(idx_span);
-                    scoping.add_binding(child_scope, idx_name);
+                    let idx_sym = scoping.add_binding(child_scope, idx_name);
+                    scoping.mark_each_block_var(idx_sym);
                 }
 
                 walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, snippet_params);
