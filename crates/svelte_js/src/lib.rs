@@ -640,6 +640,13 @@ fn is_simple_expr(expr: &Expression<'_>) -> bool {
     }
 }
 
+/// Check if a string is a simple JS identifier (no member access, no computed access).
+pub fn is_simple_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+}
+
 /// Events that Svelte delegates to the document root.
 pub fn is_delegatable_event(name: &str) -> bool {
     matches!(

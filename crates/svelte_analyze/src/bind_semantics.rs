@@ -34,13 +34,6 @@ impl<'s> BindSemanticsVisitor<'s> {
             .is_some_and(|s| data.scoping.is_prop_source(s))
     }
 
-    /// Check if a string is a simple JS identifier (no member access, no computed access).
-    fn is_simple_identifier(s: &str) -> bool {
-        !s.is_empty()
-            && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-            && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-    }
-
     /// Extract identifier-like tokens from an expression string.
     fn extract_identifiers(expr: &str) -> Vec<String> {
         expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
@@ -67,7 +60,7 @@ impl<'s> BindSemanticsVisitor<'s> {
             return;
         };
 
-        if Self::is_simple_identifier(expr_text) {
+        if svelte_js::is_simple_identifier(expr_text) {
             return; // simple identifiers don't need each-block context
         }
 
