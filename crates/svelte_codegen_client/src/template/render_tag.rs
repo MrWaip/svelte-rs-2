@@ -37,6 +37,8 @@ pub(crate) fn gen_render_tag<'a>(
     let callee_span = call.callee.span();
     let callee_text = &full_source[callee_span.start as usize..callee_span.end as usize];
 
+    let prop_sources = ctx.analysis.render_tag_prop_sources(id);
+
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
@@ -45,28 +47,9 @@ pub(crate) fn gen_render_tag<'a>(
     for (i, arg) in call.unbox().arguments.into_iter().enumerate() {
         let arg_expr = arg.into_expression();
 
-        // After transform, prop sources become `name()` (CallExpression with no args).
-        // Detect this pattern and pass the getter identifier directly without a thunk.
-        let prop_getter_name = match &arg_expr {
-            Expression::CallExpression(inner_call) if inner_call.arguments.is_empty() => {
-                if let Expression::Identifier(ident) = &inner_call.callee {
-                    let name = ident.name.as_str();
-                    let root = ctx.analysis.scoping.root_scope_id();
-                    let is_prop_source = ctx.analysis.scoping.find_binding(root, name)
-                        .is_some_and(|s| ctx.analysis.scoping.is_prop_source(s));
-                    if is_prop_source {
-                        Some(name.to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(name) = &prop_getter_name {
+        // Prop-source args: pass the getter identifier directly without a thunk
+        if let Some(Some(sym_id)) = prop_sources.and_then(|ps| ps.get(i)) {
+            let name = ctx.analysis.scoping.symbol_name(*sym_id);
             call_args.push(Arg::Expr(ctx.b.rid_expr(name)));
             continue;
         }

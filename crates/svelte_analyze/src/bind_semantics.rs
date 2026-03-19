@@ -1,6 +1,6 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, ComponentNode, EachBlock, Element, RenderTag,
+    Attribute, BindDirective, ClassDirective, ComponentNode, EachBlock, Element,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
@@ -219,16 +219,4 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         }
     }
 
-    fn visit_render_tag(
-        &mut self,
-        tag: &RenderTag,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        // Render tag prop_source detection requires inspecting per-argument OXC AST
-        // structure (checking if arg is a zero-arg CallExpression on a prop_source).
-        // This is deferred — codegen will continue using scoping queries for now,
-        // but keyed by SymbolId rather than by name string.
-        let _ = tag;
-    }
 }

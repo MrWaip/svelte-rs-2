@@ -180,12 +180,21 @@ fn walk_node<'a>(
         Node::RenderTag(tag) => {
             let source = component.source_text(tag.expression_span);
             parse_expr(alloc, source, tag.expression_span.start, tag.id, data, parsed, diags);
-            // Store per-argument has_call flags before transform modifies the AST
+            // Store per-argument has_call flags and identifier names before transform
             if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.id) {
                 let flags: Vec<bool> = call.arguments.iter().map(|arg| {
                     svelte_js::expression_has_call(arg.to_expression())
                 }).collect();
                 data.render_tag_arg_has_call.insert(tag.id, flags);
+
+                let idents: Vec<Option<String>> = call.arguments.iter().map(|arg| {
+                    if let Expression::Identifier(id) = arg.to_expression() {
+                        Some(id.name.to_string())
+                    } else {
+                        None
+                    }
+                }).collect();
+                data.render_tag_arg_idents.insert(tag.id, idents);
             }
         }
         Node::HtmlTag(tag) => {

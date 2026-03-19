@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId;
 use svelte_js::{ExpressionInfo, ScriptInfo};
 
-use crate::scope::ComponentScoping;
+use crate::scope::{ComponentScoping, SymbolId};
 
 // ---------------------------------------------------------------------------
 // ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
@@ -298,6 +298,12 @@ pub struct AnalysisData {
     pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    /// Intermediate: per-argument identifier name (if the arg is a plain identifier).
+    /// Consumed by `resolve_render_tag_prop_sources` after props analysis.
+    pub(crate) render_tag_arg_idents: FxHashMap<NodeId, Vec<Option<String>>>,
+    /// Per-argument prop-source SymbolId for render tags.
+    /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
+    pub render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
     pub bind_semantics: BindSemanticsData,
     /// Whether this component is compiled as a custom element.
@@ -325,6 +331,8 @@ impl AnalysisData {
             debug_tags: DebugTagData::new(),
             each_blocks: EachBlockData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
+            render_tag_arg_idents: FxHashMap::default(),
+            render_tag_prop_sources: FxHashMap::default(),
             bind_semantics: BindSemanticsData::new(),
             custom_element: false,
         }
@@ -337,6 +345,7 @@ impl AnalysisData {
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
+    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
     pub fn known_value(&self, name: &str) -> Option<&str> {

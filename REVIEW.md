@@ -75,17 +75,11 @@ Full codebase review. 3 agents: Data Flow, Simplicity, Boundaries.
 
 ---
 
-### #5 — Render tag codegen re-derives prop-source status from post-transform AST
+### #5 — Render tag codegen re-derives prop-source status from post-transform AST ✅ FIXED
 
 **Dimension**: 7. Wrong phase, wrong abstraction level
 **Severity**: warning
-**Evidence**:
-- `crates/svelte_codegen_client/src/template/render_tag.rs:50-67` — codegen checks `ctx.analysis.scoping.find_binding(root, name).is_some_and(|s| ctx.analysis.scoping.is_prop_source(s))` on a post-transform expression
-- `crates/svelte_analyze/src/bind_semantics.rs:224-235` — analysis explicitly defers render_tag prop_source detection with comment
-
-**Problem**: Transform converts prop source reads to `name()` thunk calls, then codegen pattern-matches on the result and re-resolves through the scoping system to detect this transformation. This is a circular path: transform applies knowledge, codegen reverse-engineers it. The fragile heuristic depends on transform output shape.
-
-**Fix**: During analysis, inspect the render tag's parsed arguments, identify prop-source arguments, and store per-argument flags. Codegen reads the pre-computed flags.
+**Status**: Fixed — per-arg prop-source names pre-computed in analysis (`render_tag_prop_sources`), codegen reads flags directly.
 
 **Simplifies**: The complex `prop_getter_name` detection block (15 lines of pattern matching + scoping resolution) becomes a simple flag check.
 
@@ -174,17 +168,11 @@ Full codebase review. 3 agents: Data Flow, Simplicity, Boundaries.
 
 ---
 
-### #11 — `PropsGenInfo` construction duplicated in two codepaths
+### #11 — `PropsGenInfo` construction duplicated in two codepaths ✅ FIXED
 
 **Dimension**: 8. Scattered ownership
 **Severity**: warning
-**Evidence**:
-- `crates/svelte_codegen_client/src/script.rs:128-144` — `transform_script_text` builds `PropsGenInfo` from `PropsAnalysis`
-- `crates/svelte_codegen_client/src/script.rs:210-230` — `transform_program` builds identical `PropsGenInfo` from `PropsAnalysis`
-
-**Problem**: Both functions construct `PropsGenInfo` with exactly the same mapping logic (~20 lines each). The `is_mutated` computation includes the `custom_element` override, duplicated verbatim.
-
-**Fix**: Extract a `PropsGenInfo::from(props: &PropsAnalysis, scoping: &ComponentScoping, custom_element: bool)` constructor.
+**Status**: Fixed — extracted `PropsGenInfo::from_analysis()` constructor, both call sites use it.
 
 **Simplifies**: Removes ~20 duplicated lines. Single place to modify prop flag computation.
 

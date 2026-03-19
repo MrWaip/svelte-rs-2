@@ -124,6 +124,11 @@ impl ComponentScoping {
         self.scoping.symbol_scope_id(id)
     }
 
+    /// Get the declared name of a symbol.
+    pub fn symbol_name(&self, id: SymbolId) -> &str {
+        self.scoping.symbol_name(id)
+    }
+
     // -- Rune tracking --
 
     pub fn mark_rune(&mut self, id: SymbolId, kind: RuneKind) {
