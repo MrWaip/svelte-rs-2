@@ -65,15 +65,22 @@ enum Node {
     Element(Element),             // id, span, name, self_closing, attributes, fragment, kind
     ComponentNode(ComponentNode), // id, span, name, attributes, fragment
     Comment(Comment),             // id, span
-    ExpressionTag(ExprTag),       // id, span, expression_span
+    ExpressionTag(ExpressionTag), // id, span, expression_span
     IfBlock(IfBlock),             // id, span, test_span, elseif, consequent, alternate: Option<Fragment>
     EachBlock(EachBlock),         // id, span, expression_span, context_span, index_span?, key_span?, body, fallback?
     SnippetBlock(SnippetBlock),   // id, span, params_span?, body
     RenderTag(RenderTag),         // id, span, expression_span
     HtmlTag(HtmlTag),             // id, span, expression_span
     ConstTag(ConstTag),           // id, span, declaration_span
+    DebugTag(DebugTag),           // id, span, expression_spans
     KeyBlock(KeyBlock),           // id, span, expression_span, fragment
     SvelteHead(SvelteHead),       // id, span, fragment
+    SvelteElement(SvelteElement), // id, span, tag (Tag|Expression), attributes, fragment
+    SvelteWindow(SvelteWindow),   // id, span, attributes
+    SvelteDocument(SvelteDocument), // id, span, attributes
+    SvelteBody(SvelteBody),       // id, span, attributes
+    SvelteBoundary(SvelteBoundary), // id, span, attributes, fragment
+    AwaitBlock(AwaitBlock),       // id, span, expression_span, pending?, then_block?, catch_block?
     Error(ErrorNode),             // id, span
 }
 
@@ -157,14 +164,14 @@ fn analyze<'a>(alloc: &'a Allocator, component: &Component) -> (AnalysisData, Pa
 
 // Re-exports из data.rs:
 pub use data::{
-    AnalysisData, ConcatPart, ConstTagData, ContentType, ElementFlags, FragmentData,
+    AnalysisData, ConcatPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData,
     FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
 ```
 
-**11 passes** (порядок важен):
+**11 passes** (порядок важен, composite walk is 5 visitors):
 1. `parse_js` — парсит JS-выражения → `ParsedExprs`, `expressions`, `attr_expressions`, `script`
 2. `build_scoping` — строит единое дерево скоупов (script + template) → `ComponentScoping`
 3. `resolve_references` — резолвит template-ссылки к SymbolId, регистрирует мутации
@@ -172,7 +179,7 @@ pub use scope::ComponentScoping;
 5. `known_values` — const-декларации с литеральным init → `known_values`
 6. `props` — анализ `$props()` деструктуризации → `props`
 7. `lower` — trim whitespace, группирует Text+ExprTag → `fragments.lowered`
-8. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` (4 visitor'а за один обход)
+8. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` (5 visitor'ов за один обход)
 9. `classify_and_mark_dynamic` — классификация фрагментов → `fragments.content_types`, `fragments.has_dynamic_children`
 10. `needs_var` — элементы, которым нужна DOM-переменная → `element_flags.needs_var`
 11. `validate` — семантические проверки
@@ -186,6 +193,7 @@ struct ComponentScoping { /* oxc-based, lifetime-free */ }
 // find_binding(scope, name) -> Option<SymbolId>  — walks parent chain
 // is_rune(sym_id) / rune_kind(sym_id) / rune_info_by_name(name) -> Option<(RuneKind, mutated)>
 // is_mutated(sym_id) -> bool
+// mark_each_block_var(sym_id) / is_each_block_var(sym_id) -> bool
 // node_scope(NodeId) -> Option<ScopeId>
 ```
 
@@ -226,7 +234,10 @@ enum FragmentItem {
 
 enum ConcatPart { Text(String), Expr(NodeId) }  // NB: другой тип чем в svelte_ast!
 
-enum ContentType { Empty, StaticText, DynamicText, SingleElement, SingleBlock, Mixed }
+enum ContentStrategy {
+    Empty, Static(String), SingleElement(NodeId), SingleBlock(FragmentItem),
+    DynamicText, Mixed { has_elements, has_blocks, has_text },
+}
 
 // Sub-structs (поля pub(crate), доступ через методы):
 struct ElementFlags {
@@ -240,7 +251,7 @@ struct ElementFlags {
 struct FragmentData {
     // lowered, content_types, has_dynamic_children
 }
-// FragmentData методы: content_type(key) -> ContentType, has_dynamic_children(key) -> bool,
+// FragmentData методы: content_type(key) -> ContentStrategy, has_dynamic_children(key) -> bool,
 // lowered(key) -> Option<&LoweredFragment>
 
 struct SnippetData {
@@ -254,6 +265,17 @@ struct ConstTagData {
 }
 // ConstTagData методы: names(id) -> Option<&Vec<String>>, by_fragment(key) -> Option<&Vec<NodeId>>,
 // tmp_name(id) -> Option<&String>, insert_tmp_name(id, name)
+
+struct DebugTagData {
+    // by_fragment: debug tags per fragment
+}
+// DebugTagData методы: by_fragment(key) -> Option<&Vec<NodeId>>
+
+struct BindSemanticsData {
+    // mutable_rune_targets, prop_source_nodes, bind_each_context
+}
+// BindSemanticsData методы: is_mutable_rune_target(id) -> bool,
+// is_prop_source(id) -> bool, each_context(id) -> Option<&Vec<String>>
 
 struct AnalysisData {
     // Flat fields:
@@ -273,6 +295,8 @@ struct AnalysisData {
     fragments: FragmentData,
     snippets: SnippetData,
     const_tags: ConstTagData,
+    debug_tags: DebugTagData,
+    bind_semantics: BindSemanticsData,
 }
 
 // AnalysisData методы:
@@ -310,7 +334,8 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 - Shortcuts для sub-structs: `content_type(key)`, `has_dynamic_children(key)`, `has_spread(id)`,
   `has_class_directives(id)`, `has_style_directives(id)`, `needs_var(id)`, `needs_input_defaults(id)`,
   `is_dynamic_attr(id, idx)`, `static_class(id)`, `static_style(id)`, `is_snippet_hoistable(id)`,
-  `const_tag_names(id)`, `const_tags_for_fragment(key)`
+  `const_tag_names(id)`, `const_tags_for_fragment(key)`,
+  `is_mutable_rune_target(id)`, `is_prop_source_node(id)`, `bind_each_context(id)`
 
 `builder.rs` — `Builder<'a>`:
 Враппер над OXC `AstBuilder`. Методы: `bid/rid/rid_expr`, `bool_expr/num_expr/str_expr`, `call/call_expr/call_stmt`, `var_stmt/let_stmt_init/const_stmt`, `block_stmt/if_stmt/assign_stmt`, `params/no_params/arrow/arrow_expr/function_decl`, `static_member_expr`, `template_str_expr/template_parts_expr`, `import_all/export_default/program`, `empty_array_expr`, `alloc`.
@@ -331,13 +356,13 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 - Destructured: генерирует tmp var (`$$const_0`), сохраняет в `const_tags.tmp_names` для transform
 
 `template/mod.rs` — `gen_root_fragment(ctx) -> (hoisted, body)`:
-Стратегии по `ContentType`:
+Стратегии по `ContentStrategy`:
 - `Empty` → ничего
-- `StaticText` → `$.next(); var text = $.text("…"); $.append($$anchor, text)`
+- `Static(text)` → `$.next(); var text = $.text("…"); $.append($$anchor, text)`
 - `DynamicText` → `$.next(); var text = $.text(); $.template_effect(() => $.set_text(text, expr)); $.append`
-- `SingleElement` → `var root = $.template(\`<div>…</div>\`); var div = root(); …; $.append`
-- `SingleBlock` → `var fragment = $.comment(); var node = $.first_child(fragment); $.if/$.each; $.append`
-- `Mixed` → `var root = $.template(\`…\`, 1); var fragment = root(); traverse_items; $.append`
+- `SingleElement(id)` → `var root = $.template(\`<div>…</div>\`); var div = root(); …; $.append`
+- `SingleBlock(item)` → `var fragment = $.comment(); var node = $.first_child(fragment); $.if/$.each; $.append`
+- `Mixed { .. }` → `var root = $.template(\`…\`, 1); var fragment = root(); traverse_items; $.append`
 
 `template/element.rs` — генерация элементов (process_element)
 `template/attributes.rs` — атрибуты: static (string/boolean) в HTML, dynamic → `$.set_attribute`, bind directives
@@ -347,6 +372,19 @@ fn generate(component: &Component, analysis: &AnalysisData) -> String
 `template/html.rs` — построение HTML template strings
 `template/traverse.rs` — обход DOM-дерева (`.first_child`, `.sibling`)
 `template/svelte_head.rs` — `<svelte:head>` codegen (`$.head()`)
+`template/svelte_element.rs` — `<svelte:element>` codegen (`$.element()`)
+`template/svelte_window.rs` — `<svelte:window>` codegen (events, bindings)
+`template/svelte_document.rs` — `<svelte:document>` codegen (events, bindings)
+`template/svelte_body.rs` — `<svelte:body>` codegen (events, actions)
+`template/svelte_boundary.rs` — `<svelte:boundary>` codegen (`$.boundary()`)
+`template/title_element.rs` — `<title>` in `<svelte:head>` codegen
+`template/await_block.rs` — `{#await}` codegen
+`template/debug_tag.rs` — `{@debug}` codegen
+`template/key_block.rs` — `{#key}` codegen
+`template/html_tag.rs` — `{@html}` codegen
+`template/render_tag.rs` — `{@render}` codegen
+`template/snippet.rs` — `{#snippet}` codegen
+`template/component.rs` — `<Component>` codegen
 
 ---
 
