@@ -667,6 +667,49 @@ impl<'a> Builder<'a> {
         Expression::StaticMemberExpression(self.alloc(self.static_member(object, prop)))
     }
 
+    /// Convert all member accesses in an expression to optional chaining.
+    /// `obj.ref` → `obj?.ref`, `a.b.c` → `a?.b?.c`, `refs[i]` → `refs?.[i]`
+    pub fn make_optional_chain(&self, expr: Expression<'a>) -> Expression<'a> {
+        match expr {
+            Expression::StaticMemberExpression(mut sme) => {
+                sme.optional = true;
+                let object = std::mem::replace(&mut sme.object, self.null_expr());
+                sme.object = self.make_inner_optional(object);
+                Expression::ChainExpression(self.alloc(
+                    self.ast.chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
+                ))
+            }
+            Expression::ComputedMemberExpression(mut cme) => {
+                cme.optional = true;
+                let object = std::mem::replace(&mut cme.object, self.null_expr());
+                cme.object = self.make_inner_optional(object);
+                Expression::ChainExpression(self.alloc(
+                    self.ast.chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
+                ))
+            }
+            other => other,
+        }
+    }
+
+    /// Recursively set `optional = true` on inner member expressions (not wrapped in ChainExpression).
+    fn make_inner_optional(&self, expr: Expression<'a>) -> Expression<'a> {
+        match expr {
+            Expression::StaticMemberExpression(mut sme) => {
+                sme.optional = true;
+                let object = std::mem::replace(&mut sme.object, self.null_expr());
+                sme.object = self.make_inner_optional(object);
+                Expression::StaticMemberExpression(sme)
+            }
+            Expression::ComputedMemberExpression(mut cme) => {
+                cme.optional = true;
+                let object = std::mem::replace(&mut cme.object, self.null_expr());
+                cme.object = self.make_inner_optional(object);
+                Expression::ComputedMemberExpression(cme)
+            }
+            other => other,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Template literals
     // -----------------------------------------------------------------------

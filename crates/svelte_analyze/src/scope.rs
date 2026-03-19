@@ -6,7 +6,7 @@ use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlag
 use svelte_ast::{Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
 
-use crate::data::{AnalysisData, FragmentKey};
+use crate::data::{AnalysisData, EachBlockData, FragmentKey};
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -305,36 +305,10 @@ pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::m
     let root = data.scoping.root_scope_id();
     let const_tag_names = std::mem::take(&mut data.const_tags.names);
     let snippet_params = std::mem::take(&mut data.snippets.params);
-    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &snippet_params);
+    walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &snippet_params, &mut data.each_blocks);
     data.const_tags.names = const_tag_names;
     data.snippets.params = snippet_params;
     crate::markers::ScopingBuilt::new()
-}
-
-/// Extract binding names from a pattern string.
-/// Simple identifiers return themselves; destructured patterns like `{ name, age }` extract identifiers.
-fn extract_binding_names(pattern: &str) -> Vec<String> {
-    let trimmed = pattern.trim();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        // Destructured — extract identifier names.
-        // Simple approach: strip braces/brackets, split by comma, strip defaults
-        let inner = &trimmed[1..trimmed.len()-1];
-        inner.split(',')
-            .filter_map(|s| {
-                // Handle `name = default` or just `name`
-                let s = s.split('=').next().unwrap_or("").trim();
-                // Handle `key: alias` (rename)
-                let s = if let Some((_key, alias)) = s.split_once(':') {
-                    alias.trim()
-                } else {
-                    s
-                };
-                if s.is_empty() { None } else { Some(s.to_string()) }
-            })
-            .collect()
-    } else {
-        vec![trimmed.to_string()]
-    }
 }
 
 fn walk_template_scopes(
@@ -344,6 +318,7 @@ fn walk_template_scopes(
     current_scope: ScopeId,
     const_tag_names: &FxHashMap<NodeId, Vec<String>>,
     snippet_params: &FxHashMap<NodeId, Vec<String>>,
+    each_blocks: &mut EachBlockData,
 ) {
     for node in &fragment.nodes {
         match node {
@@ -351,39 +326,41 @@ fn walk_template_scopes(
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, child_scope);
 
-                // Add context variable binding
+                // Add context variable binding and store name in side table
                 let context_name = component.source_text(block.context_span);
                 let ctx_sym = scoping.add_binding(child_scope, context_name);
                 scoping.mark_each_block_var(ctx_sym);
+                each_blocks.context_names.insert(block.id, context_name.to_string());
 
-                // Add optional index variable binding
+                // Add optional index variable binding and store name in side table
                 if let Some(idx_span) = block.index_span {
                     let idx_name = component.source_text(idx_span);
                     let idx_sym = scoping.add_binding(child_scope, idx_name);
                     scoping.mark_each_block_var(idx_sym);
+                    each_blocks.index_names.insert(block.id, idx_name.to_string());
                 }
 
-                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
 
                 // Fallback uses parent scope (no context/index vars)
                 if let Some(fb) = &block.fallback {
-                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, snippet_params);
+                    walk_template_scopes(fb, component, scoping, current_scope, const_tag_names, snippet_params, each_blocks);
                 }
             }
             Node::Element(el) => {
-                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&el.fragment, component, scoping, current_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::ComponentNode(cn) => {
-                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&cn.fragment, component, scoping, current_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::IfBlock(block) => {
                 let cons_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::IfConsequent(block.id), cons_scope);
-                walk_template_scopes(&block.consequent, component, scoping, cons_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&block.consequent, component, scoping, cons_scope, const_tag_names, snippet_params, each_blocks);
                 if let Some(alt) = &block.alternate {
                     let alt_scope = scoping.add_child_scope(current_scope);
                     scoping.set_fragment_scope(FragmentKey::IfAlternate(block.id), alt_scope);
-                    walk_template_scopes(alt, component, scoping, alt_scope, const_tag_names, snippet_params);
+                    walk_template_scopes(alt, component, scoping, alt_scope, const_tag_names, snippet_params, each_blocks);
                 }
             }
             Node::SnippetBlock(block) => {
@@ -396,27 +373,27 @@ fn walk_template_scopes(
                         scoping.mark_snippet_param(sym_id);
                     }
                 }
-                walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::KeyBlock(block) => {
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::KeyBlockBody(block.id), child_scope);
-                walk_template_scopes(&block.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&block.fragment, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::SvelteHead(head) => {
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::SvelteHeadBody(head.id), child_scope);
-                walk_template_scopes(&head.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&head.fragment, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::SvelteElement(el) => {
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::SvelteElementBody(el.id), child_scope);
-                walk_template_scopes(&el.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&el.fragment, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::SvelteBoundary(b) => {
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::SvelteBoundaryBody(b.id), child_scope);
-                walk_template_scopes(&b.fragment, component, scoping, child_scope, const_tag_names, snippet_params);
+                walk_template_scopes(&b.fragment, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::ConstTag(tag) => {
                 if let Some(names) = const_tag_names.get(&tag.id) {
@@ -435,7 +412,7 @@ fn walk_template_scopes(
                 if let Some(ref p) = block.pending {
                     let pending_scope = scoping.add_child_scope(current_scope);
                     scoping.set_fragment_scope(FragmentKey::AwaitPending(block.id), pending_scope);
-                    walk_template_scopes(p, component, scoping, pending_scope, const_tag_names, snippet_params);
+                    walk_template_scopes(p, component, scoping, pending_scope, const_tag_names, snippet_params, each_blocks);
                 }
 
                 // Then fragment: create child scope if value binding exists
@@ -444,13 +421,12 @@ fn walk_template_scopes(
                         let then_scope = scoping.add_child_scope(current_scope);
                         scoping.set_node_scope(block.id, then_scope);
                         let binding_text = component.source_text(val_span);
-                        // For destructured bindings like `{ name, age }`, extract identifiers
-                        for name in extract_binding_names(binding_text) {
+                        for name in svelte_js::parse_snippet_params(binding_text) {
                             scoping.add_binding(then_scope, &name);
                         }
-                        walk_template_scopes(t, component, scoping, then_scope, const_tag_names, snippet_params);
+                        walk_template_scopes(t, component, scoping, then_scope, const_tag_names, snippet_params, each_blocks);
                     } else {
-                        walk_template_scopes(t, component, scoping, current_scope, const_tag_names, snippet_params);
+                        walk_template_scopes(t, component, scoping, current_scope, const_tag_names, snippet_params, each_blocks);
                     }
                 }
 
@@ -458,15 +434,14 @@ fn walk_template_scopes(
                 if let Some(ref c) = block.catch {
                     if let Some(err_span) = block.error_span {
                         let catch_scope = scoping.add_child_scope(current_scope);
-                        // Store catch scope separately — we use await_catch_scopes map
                         scoping.set_await_catch_scope(block.id, catch_scope);
                         let binding_text = component.source_text(err_span);
-                        for name in extract_binding_names(binding_text) {
+                        for name in svelte_js::parse_snippet_params(binding_text) {
                             scoping.add_binding(catch_scope, &name);
                         }
-                        walk_template_scopes(c, component, scoping, catch_scope, const_tag_names, snippet_params);
+                        walk_template_scopes(c, component, scoping, catch_scope, const_tag_names, snippet_params, each_blocks);
                     } else {
-                        walk_template_scopes(c, component, scoping, current_scope, const_tag_names, snippet_params);
+                        walk_template_scopes(c, component, scoping, current_scope, const_tag_names, snippet_params, each_blocks);
                     }
                 }
             }

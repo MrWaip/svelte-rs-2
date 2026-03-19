@@ -471,7 +471,7 @@ fn gen_bind_directive<'a>(
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
-        ctx.component.source_text(span).trim().to_string()
+        ctx.component.source_text(span).to_string()
     } else {
         return None;
     };

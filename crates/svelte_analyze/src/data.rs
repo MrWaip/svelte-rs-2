@@ -194,6 +194,29 @@ impl DebugTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// Each-block context/index names, extracted from source text during scope building.
+pub struct EachBlockData {
+    pub(crate) context_names: FxHashMap<NodeId, String>,
+    pub(crate) index_names: FxHashMap<NodeId, String>,
+}
+
+impl EachBlockData {
+    pub fn new() -> Self {
+        Self {
+            context_names: FxHashMap::default(),
+            index_names: FxHashMap::default(),
+        }
+    }
+
+    pub fn context_name(&self, id: NodeId) -> Option<&str> {
+        self.context_names.get(&id).map(|s| s.as_str())
+    }
+
+    pub fn index_name(&self, id: NodeId) -> Option<&str> {
+        self.index_names.get(&id).map(|s| s.as_str())
+    }
+}
+
 /// Pre-computed bind/directive semantics for codegen.
 ///
 /// Eliminates string-based symbol re-resolution in codegen: instead of
@@ -271,6 +294,8 @@ pub struct AnalysisData {
     pub const_tags: ConstTagData,
     /// DebugTag per-fragment grouping.
     pub debug_tags: DebugTagData,
+    /// Each-block context/index names.
+    pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
@@ -298,6 +323,7 @@ impl AnalysisData {
             snippets: SnippetData::new(),
             const_tags: ConstTagData::new(),
             debug_tags: DebugTagData::new(),
+            each_blocks: EachBlockData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
             bind_semantics: BindSemanticsData::new(),
             custom_element: false,
