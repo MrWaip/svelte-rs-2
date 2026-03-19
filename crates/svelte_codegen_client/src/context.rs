@@ -158,6 +158,8 @@ pub struct Ctx<'a> {
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     pub delegated_events: Vec<String>,
 
+    /// Original component source text (for re-parsing expression spans in codegen).
+    pub source: &'a str,
 }
 
 impl<'a> Ctx<'a> {
@@ -170,6 +172,7 @@ impl<'a> Ctx<'a> {
         transform_data: TransformData,
         name: &str,
         dev: bool,
+        source: &'a str,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
         let name = allocator.alloc_str(name);
@@ -188,6 +191,7 @@ impl<'a> Ctx<'a> {
             needs_binding_group: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
+            source,
         }
     }
 

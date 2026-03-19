@@ -40,6 +40,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
     let props = ctx.analysis.props.as_ref();
     let component_source = &ctx.component.source;
     let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
+    let custom_element = ctx.analysis.custom_element;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
@@ -51,6 +52,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
             dev,
             component_source,
             script_content_start,
+            custom_element,
         );
     }
 
@@ -68,6 +70,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
         dev,
         component_source,
         script_content_start,
+        custom_element,
     )
 }
 
@@ -89,6 +92,7 @@ pub fn transform_module_script<'a>(
         false,
         source,
         0,
+        false,
     );
     (imports, body)
 }
@@ -104,6 +108,7 @@ fn transform_script_text<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
+    custom_element: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -129,7 +134,8 @@ fn transform_script_text<'a>(
                 is_prop_source: p.is_prop_source,
                 is_bindable: p.is_bindable,
                 is_rest: p.is_rest,
-                is_mutated: component_scoping.find_binding(root, &p.local_name)
+                // In custom element mode, all props are updatable via CE setters
+                is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
                     .is_some_and(|sym| component_scoping.is_mutated(sym)),
                 default_text: p.default_text.clone(),
                 is_lazy_default: p.is_lazy_default,
@@ -193,6 +199,7 @@ fn transform_program<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
+    custom_element: bool,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
@@ -212,7 +219,8 @@ fn transform_program<'a>(
                     is_prop_source: p.is_prop_source,
                     is_bindable: p.is_bindable,
                     is_rest: p.is_rest,
-                    is_mutated: component_scoping.find_binding(root, &p.local_name)
+                    // In custom element mode, all props are updatable via CE setters
+                    is_mutated: custom_element || component_scoping.find_binding(root, &p.local_name)
                         .is_some_and(|sym| component_scoping.is_mutated(sym)),
                     default_text: p.default_text.clone(),
                     is_lazy_default: p.is_lazy_default,

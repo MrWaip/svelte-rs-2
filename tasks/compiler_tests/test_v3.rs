@@ -324,6 +324,51 @@ fn host_basic() {
 }
 
 #[rstest]
+fn custom_element_props() {
+    assert_compiler("custom_element_props");
+}
+
+#[rstest]
+fn custom_element_props_config() {
+    assert_compiler("custom_element_props_config");
+}
+
+#[rstest]
+fn custom_element_boolean_default() {
+    assert_compiler("custom_element_boolean_default");
+}
+
+#[rstest]
+fn custom_element_exports() {
+    assert_compiler("custom_element_exports");
+}
+
+#[rstest]
+fn custom_element_shadow_none() {
+    assert_compiler("custom_element_shadow_none");
+}
+
+#[rstest]
+fn custom_element_object_full() {
+    assert_compiler("custom_element_object_full");
+}
+
+#[rstest]
+fn custom_element_shadow_open() {
+    assert_compiler("custom_element_shadow_open");
+}
+
+#[rstest]
+fn custom_element_extend() {
+    assert_compiler("custom_element_extend");
+}
+
+#[rstest]
+fn custom_element_no_tag() {
+    assert_compiler("custom_element_no_tag");
+}
+
+#[rstest]
 fn html_tag() {
     assert_compiler("html_tag");
 }
