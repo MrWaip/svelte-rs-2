@@ -79,19 +79,7 @@ pub(crate) fn gen_each_block<'a>(
         ctx.b.rid_expr("$.index")
     };
 
-    // Track each-block variables for bind:this context detection
-    ctx.each_vars.push(context_name.clone());
-    if let Some(ref idx) = index_name {
-        ctx.each_vars.push(idx.clone());
-    }
-
     let frag_body = gen_fragment(ctx, body_key);
-
-    // Pop each-block variables
-    if index_name.is_some() {
-        ctx.each_vars.pop();
-    }
-    ctx.each_vars.pop();
 
     let frag_fn = if let Some(ref idx) = index_name {
         ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
