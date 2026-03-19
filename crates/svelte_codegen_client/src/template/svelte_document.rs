@@ -156,6 +156,9 @@ fn gen_document_binding<'a>(
     bind: &svelte_ast::BindDirective,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    // Pre-computed by analysis — no string-based symbol re-resolution needed.
+    let is_rune = ctx.is_mutable_rune_target(bind.id);
+
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
@@ -166,8 +169,8 @@ fn gen_document_binding<'a>(
 
     // Document binding setters use `$.set(var, $$value, true)` — the `true` prevents
     // re-triggering reactivity within the binding's own effect.
-    let build_setter = |ctx: &mut Ctx<'a>, var: String| -> Expression<'a> {
-        let body = if ctx.is_mutable_rune(&var) {
+    let build_setter = |ctx: &mut Ctx<'a>, var: String, is_rune: bool| -> Expression<'a> {
+        let body = if is_rune {
             ctx.b.call_expr("$.set", [
                 Arg::Ident(&var),
                 Arg::Ident("$$value"),
@@ -184,11 +187,11 @@ fn gen_document_binding<'a>(
 
     let stmt = match bind.name.as_str() {
         "activeElement" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_active_element", [Arg::Expr(setter)])
         }
         "fullscreenElement" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("fullscreenElement".to_string()),
                 Arg::Str("fullscreenchange".to_string()),
@@ -197,7 +200,7 @@ fn gen_document_binding<'a>(
             ])
         }
         "pointerLockElement" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("pointerLockElement".to_string()),
                 Arg::Str("pointerlockchange".to_string()),
@@ -206,7 +209,7 @@ fn gen_document_binding<'a>(
             ])
         }
         "visibilityState" => {
-            let setter = build_setter(ctx, var_name);
+            let setter = build_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
                 Arg::Str("visibilityState".to_string()),
                 Arg::Str("visibilitychange".to_string()),

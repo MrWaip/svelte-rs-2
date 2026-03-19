@@ -1,4 +1,4 @@
-use crate::data::{AnalysisData, ConcatPart, ContentStrategy, FragmentItem, SingleBlockKind};
+use crate::data::{AnalysisData, ConcatPart, ContentStrategy, FragmentItem};
 
 /// Classify all fragments and mark which ones have dynamic children.
 /// Single pass over `lowered_fragments` instead of two separate traversals.
@@ -53,17 +53,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
     if items.len() == 1 {
         match &items[0] {
             FragmentItem::Element(id) => return ContentStrategy::SingleElement(*id),
-            FragmentItem::IfBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::IfBlock(*id)),
-            FragmentItem::EachBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::EachBlock(*id)),
-            FragmentItem::HtmlTag(id) => return ContentStrategy::SingleBlock(SingleBlockKind::HtmlTag(*id)),
-            FragmentItem::KeyBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::KeyBlock(*id)),
-            FragmentItem::RenderTag(id) => return ContentStrategy::SingleBlock(SingleBlockKind::RenderTag(*id)),
-            FragmentItem::ComponentNode(id) => return ContentStrategy::SingleBlock(SingleBlockKind::ComponentNode(*id)),
-            FragmentItem::SvelteElement(id) => return ContentStrategy::SingleBlock(SingleBlockKind::SvelteElement(*id)),
-            FragmentItem::SvelteBoundary(id) => return ContentStrategy::SingleBlock(SingleBlockKind::SvelteBoundary(*id)),
-            FragmentItem::AwaitBlock(id) => return ContentStrategy::SingleBlock(SingleBlockKind::AwaitBlock(*id)),
-            FragmentItem::TitleElement(id) => return ContentStrategy::SingleBlock(SingleBlockKind::TitleElement(*id)),
             FragmentItem::TextConcat { .. } => {}
+            item => return ContentStrategy::SingleBlock(item.clone()),
         }
     }
 
@@ -97,11 +88,11 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
 
     if has_element || has_block {
         let has_text = has_static_text || has_dynamic_text;
-        return ContentStrategy::Dynamic { has_elements: has_element, has_blocks: has_block, has_text };
+        return ContentStrategy::Mixed { has_elements: has_element, has_blocks: has_block, has_text };
     }
 
     if has_dynamic_text {
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, has_text: true }
+        ContentStrategy::DynamicText
     } else if has_static_text {
         // Extract text from the single TextConcat item (all parts are static)
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {

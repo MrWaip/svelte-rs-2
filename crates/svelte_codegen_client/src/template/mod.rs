@@ -25,7 +25,7 @@ pub(crate) mod traverse;
 
 use oxc_ast::ast::Statement;
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, SingleBlockKind};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -134,10 +134,10 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     match ct {
         ContentStrategy::Empty => {}
         ContentStrategy::Static(ref text) => gen_root_static_text(ctx, text, &mut body),
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => gen_root_dynamic_text(ctx, &mut body),
+        ContentStrategy::DynamicText => gen_root_dynamic_text(ctx, &mut body),
         ContentStrategy::SingleElement(el_id) => gen_root_single_element(ctx, el_id, &tpl_name, &mut hoisted, &mut body),
         ContentStrategy::SingleBlock(ref kind) => gen_root_single_block(ctx, kind, &mut body),
-        ContentStrategy::Dynamic { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
+        ContentStrategy::Mixed { .. } => gen_root_mixed(ctx, &tpl_name, &mut hoisted, &mut body),
     }
 
     // Generate $.head() calls for <svelte:head> nodes.
@@ -147,7 +147,7 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     if !svelte_head_ids.is_empty() {
         // Find the $.append() call at the end and insert before it
         let insert_pos = body.len().saturating_sub(
-            if matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::Dynamic { .. }) { 1 } else { 0 }
+            if matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. }) { 1 } else { 0 }
         );
         let mut head_stmts = Vec::new();
         for id in svelte_head_ids {
@@ -230,19 +230,19 @@ fn gen_root_single_element<'a>(
     ));
 }
 
-fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &mut Vec<Statement<'a>>) {
+fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, item: &FragmentItem, body: &mut Vec<Statement<'a>>) {
 
     // RenderTag / ComponentNode at root: call directly with $$anchor, no wrapping
-    match kind {
-        SingleBlockKind::RenderTag(id) => {
+    match item {
+        FragmentItem::RenderTag(id) => {
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
-        SingleBlockKind::ComponentNode(id) => {
+        FragmentItem::ComponentNode(id) => {
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
-        SingleBlockKind::TitleElement(id) => {
+        FragmentItem::TitleElement(id) => {
             title_element::gen_title_element(ctx, *id, body);
             return;
         }
@@ -257,30 +257,30 @@ fn gen_root_single_block<'a>(ctx: &mut Ctx<'a>, kind: &SingleBlockKind, body: &m
         ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
     ));
 
-    match kind {
-        SingleBlockKind::IfBlock(id) => {
+    match item {
+        FragmentItem::IfBlock(id) => {
             let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
             body.push(ctx.b.block_stmt(stmts));
         }
-        SingleBlockKind::EachBlock(id) => {
+        FragmentItem::EachBlock(id) => {
             gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
-        SingleBlockKind::HtmlTag(id) => {
+        FragmentItem::HtmlTag(id) => {
             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        SingleBlockKind::KeyBlock(id) => {
+        FragmentItem::KeyBlock(id) => {
             gen_key_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        SingleBlockKind::SvelteElement(id) => {
+        FragmentItem::SvelteElement(id) => {
             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        SingleBlockKind::SvelteBoundary(id) => {
+        FragmentItem::SvelteBoundary(id) => {
             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        SingleBlockKind::AwaitBlock(id) => {
+        FragmentItem::AwaitBlock(id) => {
             gen_await_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
-        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary/await at this point"),
+        _ => unreachable!("SingleBlock should not contain Element or TextConcat"),
     }
 
     body.push(ctx.b.call_stmt(
@@ -370,7 +370,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 [Arg::Ident("$$anchor"), Arg::Ident(&name)],
             ));
         }
-        ContentStrategy::Dynamic { has_elements: false, has_blocks: false, .. } => {
+        ContentStrategy::DynamicText => {
             // Clone needed: emit_text_update borrows ctx mutably
             let item = ctx.lowered_fragment(&key).items[0].clone();
             let name = ctx.gen_ident("text");
@@ -422,21 +422,24 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
             ));
             return body;
         }
-        ContentStrategy::SingleBlock(ref kind) => {
+        ContentStrategy::SingleBlock(ref item) => {
             // RenderTag / ComponentNode: call directly with $$anchor
             // Still consume a "fragment" ident for consistent numbering
-            match kind {
-                SingleBlockKind::RenderTag(id) => {
+            match item {
+                FragmentItem::RenderTag(id) => {
                     ctx.gen_ident("fragment");
                     gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
-                SingleBlockKind::ComponentNode(id) => {
+                FragmentItem::ComponentNode(id) => {
                     ctx.gen_ident("fragment");
                     gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), &mut body);
                 }
-                SingleBlockKind::TitleElement(id) => {
+                FragmentItem::TitleElement(id) => {
                     ctx.gen_ident("fragment");
                     title_element::gen_title_element(ctx, *id, &mut body);
+                }
+                FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
+                    unreachable!("SingleBlock should not contain Element or TextConcat")
                 }
                 _ => {
                     let frag = ctx.gen_ident("fragment");
@@ -446,30 +449,30 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                         &node,
                         ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
                     ));
-                    match kind {
-                        SingleBlockKind::IfBlock(id) => {
+                    match item {
+                        FragmentItem::IfBlock(id) => {
                             let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
                             body.push(ctx.b.block_stmt(stmts));
                         }
-                        SingleBlockKind::EachBlock(id) => {
+                        FragmentItem::EachBlock(id) => {
                             gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, &mut body);
                         }
-                        SingleBlockKind::HtmlTag(id) => {
+                        FragmentItem::HtmlTag(id) => {
                             gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        SingleBlockKind::KeyBlock(id) => {
+                        FragmentItem::KeyBlock(id) => {
                             gen_key_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        SingleBlockKind::SvelteElement(id) => {
+                        FragmentItem::SvelteElement(id) => {
                             gen_svelte_element(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        SingleBlockKind::SvelteBoundary(id) => {
+                        FragmentItem::SvelteBoundary(id) => {
                             gen_svelte_boundary(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        SingleBlockKind::AwaitBlock(id) => {
+                        FragmentItem::AwaitBlock(id) => {
                             gen_await_block(ctx, *id, ctx.b.rid_expr(&node), &mut body);
                         }
-                        _ => unreachable!("SingleBlock should be if/each/html/key/svelte_element/boundary/await at this point"),
+                        _ => unreachable!("SingleBlock should not contain Element, TextConcat, RenderTag, ComponentNode, or TitleElement here"),
                     }
                     body.push(ctx.b.call_stmt(
                         "$.append",
@@ -478,7 +481,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
                 }
             }
         }
-        ContentStrategy::Dynamic { .. } => {
+        ContentStrategy::Mixed { .. } => {
             // Clone needed: traverse_items borrows ctx mutably
             let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
 
