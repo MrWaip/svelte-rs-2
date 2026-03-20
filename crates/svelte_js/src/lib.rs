@@ -153,6 +153,93 @@ impl RuneKind {
 }
 
 // ---------------------------------------------------------------------------
+// Await binding info
+// ---------------------------------------------------------------------------
+
+/// Destructuring kind for await block bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestructureKind {
+    Array,
+    Object,
+}
+
+/// Parsed binding pattern for `{:then value}` / `{:catch error}`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AwaitBindingInfo {
+    /// Simple identifier: `{:then value}`
+    Simple(String),
+    /// Destructured: `{:then { name, age }}` or `{:then [a, b]}`
+    Destructured {
+        kind: DestructureKind,
+        names: Vec<String>,
+    },
+}
+
+impl AwaitBindingInfo {
+    /// All binding names regardless of variant.
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            Self::Simple(name) => vec![name.as_str()],
+            Self::Destructured { names, .. } => names.iter().map(|s| s.as_str()).collect(),
+        }
+    }
+}
+
+/// Parse an await binding pattern via OXC.
+///
+/// Wraps the text as `var PATTERN = x;` and inspects the parsed `BindingPattern`
+/// to determine if it's a simple identifier, object destructuring, or array destructuring.
+pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
+    let trimmed = text.trim();
+
+    let alloc = Allocator::default();
+    let source = format!("var {} = x;", trimmed);
+    let result = OxcParser::new(&alloc, &source, SourceType::default()).parse();
+
+    if result.errors.is_empty() {
+        if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first() {
+            if let Some(declarator) = decl.declarations.first() {
+                match &declarator.id {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                        return AwaitBindingInfo::Simple(id.name.to_string());
+                    }
+                    oxc_ast::ast::BindingPattern::ObjectPattern(_) => {
+                        let mut names = Vec::new();
+                        extract_all_binding_names(&declarator.id, &mut names);
+                        return AwaitBindingInfo::Destructured {
+                            kind: DestructureKind::Object,
+                            names: names.into_iter().map(|n| n.to_string()).collect(),
+                        };
+                    }
+                    oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
+                        let mut names = Vec::new();
+                        extract_all_binding_names(&declarator.id, &mut names);
+                        return AwaitBindingInfo::Destructured {
+                            kind: DestructureKind::Array,
+                            names: names.into_iter().map(|n| n.to_string()).collect(),
+                        };
+                    }
+                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                        let mut names = Vec::new();
+                        extract_all_binding_names(&assign.left, &mut names);
+                        if names.len() == 1 {
+                            return AwaitBindingInfo::Simple(names[0].to_string());
+                        }
+                        return AwaitBindingInfo::Destructured {
+                            kind: DestructureKind::Object,
+                            names: names.into_iter().map(|n| n.to_string()).collect(),
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: treat as simple identifier
+    AwaitBindingInfo::Simple(trimmed.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
