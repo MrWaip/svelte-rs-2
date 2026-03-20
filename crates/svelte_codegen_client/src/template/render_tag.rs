@@ -9,22 +9,28 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 /// Generate a render tag call: `snippet(anchor, () => arg1, () => arg2, ...)`
+///
+/// Dynamic callees (non-normal bindings) use `$.snippet(anchor, getter, ...args)`.
+/// Optional chaining (`{@render fn?.()}`) uses `callee?.(anchor, ...)` or nullish coalescing.
 pub(crate) fn gen_render_tag<'a>(
     ctx: &mut Ctx<'a>,
     id: NodeId,
     anchor_expr: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    // Extract callee name from original source using the stored expression's callee span
     let tag = ctx.render_tag(id);
     let full_source = ctx.component.source_text(tag.expression_span);
 
-    // Pre-computed per-argument has_call flags (from original source, before transform)
+    let is_dynamic = ctx.analysis.render_tag_is_dynamic(id);
+    let is_chain = ctx.analysis.render_tag_is_chain(id);
+    let callee_is_getter = ctx.analysis.render_tag_callee_is_getter(id);
+
+    // Pre-computed per-argument has_call flags
     let arg_has_call = ctx.analysis.render_tag_arg_has_call(id)
         .map(|v| v.to_vec())
         .unwrap_or_default();
 
-    // Take ownership from ParsedExprs
+    // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
     let expr = ctx.parsed.exprs.remove(&id)
         .expect("render tag expression should be pre-parsed");
 
@@ -33,24 +39,29 @@ pub(crate) fn gen_render_tag<'a>(
         return;
     };
 
-    // Get callee text from original source (spans are 0-based relative to expression source)
+    // Extract callee text from original source for non-dynamic path
+    // (non-dynamic callees are normal bindings that haven't been transformed)
     let callee_span = call.callee.span();
     let callee_text = &full_source[callee_span.start as usize..callee_span.end as usize];
 
     let prop_sources = ctx.analysis.render_tag_prop_sources(id);
 
-    let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+    // Unbox to separate callee expression and arguments
+    let unboxed = call.unbox();
+    let callee_expr = unboxed.callee;
+
+    // Build argument thunks (shared between dynamic and non-dynamic paths)
+    let mut arg_thunks: Vec<Arg<'a, '_>> = Vec::new();
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
 
-    // Wrap each argument in a thunk () => arg
-    for (i, arg) in call.unbox().arguments.into_iter().enumerate() {
+    for (i, arg) in unboxed.arguments.into_iter().enumerate() {
         let arg_expr = arg.into_expression();
 
         // Prop-source args: pass the getter identifier directly without a thunk
         if let Some(Some(sym_id)) = prop_sources.and_then(|ps| ps.get(i)) {
             let name = ctx.analysis.scoping.symbol_name(*sym_id);
-            call_args.push(Arg::Expr(ctx.b.rid_expr(name)));
+            arg_thunks.push(Arg::Expr(ctx.b.rid_expr(name)));
             continue;
         }
 
@@ -65,19 +76,65 @@ pub(crate) fn gen_render_tag<'a>(
             let memo_ref = ctx.b.alloc_str(&memo_name);
             let get = ctx.b.call_expr("$.get", [Arg::Ident(memo_ref)]);
             let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(get)]);
-            call_args.push(Arg::Expr(thunk));
+            arg_thunks.push(Arg::Expr(thunk));
         } else {
             let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(arg_expr)]);
-            call_args.push(Arg::Expr(thunk));
+            arg_thunks.push(Arg::Expr(thunk));
         }
     }
 
-    let call_stmt = ctx.b.call_stmt(callee_text, call_args);
+    let final_stmt = if is_dynamic {
+        // Dynamic callee: $.snippet(anchor, callee_getter, ...args)
+        // Use the already-transformed callee expression from the AST:
+        // - Prop-source: show → show() (by transform), thunk → show (by unthunk)
+        // - Snippet param: inner → inner() (by transform), thunk → inner (by unthunk)
+        // - $state: show → $.get(show) (by transform), thunk → () => $.get(show)
+        let callee_arg = build_dynamic_callee(ctx, callee_expr, is_chain, callee_is_getter);
+
+        let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
+        snippet_args.extend(arg_thunks);
+
+        ctx.b.call_stmt("$.snippet", snippet_args)
+    } else if is_chain {
+        // Non-dynamic optional: callee?.(anchor, ...args)
+        let callee_expr = ctx.b.rid_expr(callee_text);
+        let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+        all_args.extend(arg_thunks);
+        let call_expr = ctx.b.maybe_call_expr(callee_expr, all_args);
+        ctx.b.expr_stmt(call_expr)
+    } else {
+        // Non-dynamic regular: callee(anchor, ...args)
+        let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+        all_args.extend(arg_thunks);
+        ctx.b.call_stmt(callee_text, all_args)
+    };
 
     if memo_stmts.is_empty() {
-        stmts.push(call_stmt);
+        stmts.push(final_stmt);
     } else {
-        memo_stmts.push(call_stmt);
+        memo_stmts.push(final_stmt);
         stmts.push(ctx.b.block_stmt(memo_stmts));
+    }
+}
+
+/// Build the callee argument for `$.snippet()`.
+///
+/// Uses the already-transformed callee expression from the AST.
+/// Getter callees produce `thunk(callee_expr)` which unthunks `() => f()` to `f`.
+/// Non-getter callees produce `thunk(callee_expr)` = `() => $.get(x)`.
+/// Optional chaining adds `?? $.noop`.
+fn build_dynamic_callee<'a>(
+    ctx: &mut Ctx<'a>,
+    callee_expr: Expression<'a>,
+    is_chain: bool,
+    _callee_is_getter: bool,
+) -> Expression<'a> {
+    if is_chain {
+        // Optional: () => callee_expr ?? $.noop
+        let coalesced = ctx.b.logical_coalesce(callee_expr, ctx.b.rid_expr("$.noop"));
+        ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(coalesced)])
+    } else {
+        // Regular: thunk(callee_expr) — unthunk optimizes () => f() to f
+        ctx.b.thunk(callee_expr)
     }
 }
