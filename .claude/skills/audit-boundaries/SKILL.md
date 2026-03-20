@@ -39,6 +39,16 @@ ctx.attr_needs_getter(id)
 No separate HIR/Lower crate — analyze itself provides the semantic decisions.
 Each codegen backend asks analyze different questions and maps answers to its own runtime.
 
+## Execution
+
+**Read-only.** Agents may read files. Do not run `cargo test`, `cargo check`, `cargo build`, or any command that modifies the working tree.
+
+Launch agents immediately — one per violation class (Class 1–4), each scanning independently across both `svelte_codegen_client` and `svelte_transform`. Each agent gathers its own context as its first step — no sequential prefetch. All agents also read `CODEBASE_MAP.md` for type signatures and module structure.
+
+**Wait for every agent to report completion before writing the report.** Do not poll agent output files manually. Do not fall back to doing the audit yourself. Do not start writing the output until all agents have returned their results. If an agent takes longer than expected, wait — do not proceed without its findings.
+
+After all agents complete, compile their findings into a single report (see Output Format).
+
 ## What to Find
 
 Scan these crates for phase boundary violations:
