@@ -1027,6 +1027,19 @@ impl<'a> Builder<'a> {
                 );
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
+            ObjProp::Computed(key_expr, value) => {
+                let key_node = ast::PropertyKey::from(key_expr);
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Init,
+                    key_node,
+                    value,
+                    false,  // method
+                    false,  // shorthand
+                    true,   // computed
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
             ObjProp::Setter(name, param_name, default_expr, body) => {
                 let name_atom = self.ast.atom(name);
                 let key_node = ast::PropertyKey::StaticIdentifier(
@@ -1242,4 +1255,6 @@ pub enum ObjProp<'a> {
     Getter(&'a str, Expression<'a>),
     /// `set name(param_name = default?) { body }`
     Setter(&'a str, &'a str, Option<Expression<'a>>, Vec<Statement<'a>>),
+    /// `[computed_key]: value` — computed property key
+    Computed(Expression<'a>, Expression<'a>),
 }

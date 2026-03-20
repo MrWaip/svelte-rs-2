@@ -8,7 +8,7 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::process_attrs_spread;
+use super::attributes::{process_attrs_spread, process_svelte_element_class_directives, process_svelte_element_style_directives};
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
@@ -57,6 +57,12 @@ pub(crate) fn gen_svelte_element<'a>(
     if has_attrs {
         process_attrs_spread(ctx, &el_clone, &el_name, &mut inner_init, &mut inner_after_update);
     }
+
+    // Class directives on svelte:element use $.set_class with flag 0
+    process_svelte_element_class_directives(ctx, &el_clone, &el_name, &mut inner_init);
+
+    // Style directives on svelte:element are handled via process_attrs_spread computed [$.STYLE] property
+    process_svelte_element_style_directives(ctx, &el_clone, &el_name, &mut inner_init);
 
     // Generate children
     let child_body = gen_fragment(ctx, FragmentKey::SvelteElementBody(id));

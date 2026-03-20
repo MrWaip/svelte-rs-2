@@ -32,6 +32,16 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 use element::process_element;
+
+/// Return the appropriate `$.from_*` function for the component's namespace.
+fn from_template_fn(ctx: &Ctx) -> &'static str {
+    use svelte_ast::Namespace;
+    match ctx.component.options.as_ref().and_then(|o| o.namespace.as_ref()) {
+        Some(Namespace::Svg) => "$.from_svg",
+        Some(Namespace::Mathml) => "$.from_mathml",
+        _ => "$.from_html",
+    }
+}
 use expression::{emit_template_effect, emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
 use await_block::gen_await_block;
@@ -89,11 +99,11 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     // Generate snippet bodies: instance first, then hoistable (ordering matters for ident numbering)
     let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
     for id in instance_snippet_ids {
-        snippet_stmts.push(snippet::gen_snippet_block(ctx, id));
+        snippet_stmts.push(snippet::gen_snippet_block(ctx, id, vec![]));
     }
     let mut hoistable_snippets: Vec<Statement<'a>> = Vec::new();
     for id in hoistable_snippet_ids {
-        hoistable_snippets.push(snippet::gen_snippet_block(ctx, id));
+        hoistable_snippets.push(snippet::gen_snippet_block(ctx, id, vec![]));
     }
 
     let mut hoisted = Vec::new();
@@ -275,10 +285,11 @@ fn emit_single_element<'a>(
 ) {
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
+    let from_fn = from_template_fn(ctx);
     let mut from_html = if needs_import_node(&html) {
-        ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
+        ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
     } else {
-        ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
+        ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html))])
     };
     if ctx.dev {
         let locs = build_element_locations(ctx, el_id);
@@ -410,9 +421,10 @@ fn emit_mixed<'a>(
 
     let html = fragment_html(ctx, key);
     let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
+    let from_fn = from_template_fn(ctx);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
         let mut from_html = ctx.b.call_expr(
-            "$.from_html",
+            from_fn,
             [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
         );
         if ctx.dev {

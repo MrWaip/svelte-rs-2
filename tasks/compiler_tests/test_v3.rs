@@ -1421,3 +1421,43 @@ fn ts_strip_attribute() {
 fn ts_strip_script_types() {
     assert_compiler("ts_strip_script_types");
 }
+
+#[rstest]
+fn namespace_svg() {
+    assert_compiler("namespace_svg");
+}
+
+#[rstest]
+fn namespace_mathml() {
+    assert_compiler("namespace_mathml");
+}
+
+#[rstest]
+fn svelte_element_in_if() {
+    assert_compiler("svelte_element_in_if");
+}
+
+#[rstest]
+fn svelte_element_class_directive() {
+    assert_compiler("svelte_element_class_directive");
+}
+
+#[rstest]
+fn svelte_element_style_directive() {
+    assert_compiler("svelte_element_style_directive");
+}
+
+#[rstest]
+fn boundary_const_in_snippet() {
+    assert_compiler("boundary_const_in_snippet");
+}
+
+#[rstest]
+fn boundary_imported_handler() {
+    assert_compiler("boundary_imported_handler");
+}
+
+#[rstest]
+fn bind_this_sequence() {
+    assert_compiler("bind_this_sequence");
+}
