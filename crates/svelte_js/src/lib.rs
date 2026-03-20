@@ -80,6 +80,9 @@ pub struct PropInfo {
     pub default_text: Option<String>,
     pub is_bindable: bool,
     pub is_rest: bool,
+    /// True when the default expression is simple (literal, identifier, arrow).
+    /// Pre-computed to avoid re-parsing in analyze.
+    pub is_simple_default: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -754,7 +757,7 @@ fn collect_var_declarations(
                         let local_name = extract_binding_name(&prop.value);
                         let local_name = local_name.unwrap_or_else(|| key_name.clone());
 
-                        let (default_span, default_text, is_bindable) = extract_prop_default(&prop.value, offset, source);
+                        let (default_span, default_text, is_bindable, is_simple_default) = extract_prop_default(&prop.value, offset, source);
 
                         let decl_span = Span::new(
                             prop.span.start + offset,
@@ -777,6 +780,7 @@ fn collect_var_declarations(
                             default_text,
                             is_bindable,
                             is_rest: false,
+                            is_simple_default,
                         });
                     }
 
@@ -802,6 +806,7 @@ fn collect_var_declarations(
                                 default_text: None,
                                 is_bindable: false,
                                 is_rest: true,
+                                is_simple_default: true,
                             });
                         }
                     }
@@ -1390,30 +1395,32 @@ fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<Co
     }
 }
 
-/// Extract default span, default text, and bindable flag from a prop's binding pattern.
-fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32, source: &str) -> (Option<Span>, Option<String>, bool) {
+/// Extract default span, default text, bindable flag, and simplicity flag from a prop's binding pattern.
+fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32, source: &str) -> (Option<Span>, Option<String>, bool, bool) {
     if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
         let right = &assign.right;
         // Check if default is $bindable(expr) or $bindable()
         if let Expression::CallExpression(call) = right {
             if let Expression::Identifier(ident) = &call.callee {
                 if ident.name.as_str() == "$bindable" {
-                    let (default_span, default_text) = if let Some(arg) = call.arguments.first() {
+                    let (default_span, default_text, is_simple) = if let Some(arg) = call.arguments.first() {
                         let sp = arg.span();
                         let text = &source[sp.start as usize..sp.end as usize];
-                        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()))
+                        let expr = arg.as_expression().expect("argument should be expression");
+                        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), is_simple_expr(expr))
                     } else {
-                        (None, None)
+                        (None, None, true)
                     };
-                    return (default_span, default_text, true);
+                    return (default_span, default_text, true, is_simple);
                 }
             }
         }
         let sp = right.span();
         let text = &source[sp.start as usize..sp.end as usize];
-        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), false)
+        let is_simple = is_simple_expr(right);
+        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), false, is_simple)
     } else {
-        (None, None, false)
+        (None, None, false, true)
     }
 }
 
