@@ -444,7 +444,7 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] `custom_element_props_identifier` warning when `$props()` used without CE props config
 - [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
 - [ ] Shadow DOM custom `ObjectExpression` (non-literal config)
-- [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations
+- [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations (reference compiler bug — see GOTCHAS.md #9)
 - [ ] Auto-detect boolean type from prop default literal value (in CE props config)
 
 ### `on:directive` legacy (Tier 10)
