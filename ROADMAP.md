@@ -134,27 +134,19 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ## Tier 1 — Module Compilation (remaining)
 
+### 1a — `ModuleCompileOptions`
 - [ ] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
 
 ---
 
-## Tier 2 — Strip TypeScript
-
-Theme: remove TypeScript type annotations from compiled output.
-
-- [ ] ~~Strip type annotations~~ (S) — ~~remove type annotations, interfaces, type aliases from `<script>` output~~
-- [ ] ~~Strip from expressions~~ (T) — ~~remove type assertions, `as` casts, generics from template expressions~~
-
----
-
-## Tier 3 — Remaining Edge Cases
+## Tier 2 — Remaining Edge Cases
 
 Edge cases and missing features discovered during porting. Grouped by feature area.
 
-### Runes & script
+### 2a — Runes & script
 - [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations
 
-### Template tags
+### 2b —Template tags
 - [ ] `{@html}` — `is_controlled` optimization (single child → innerHTML)
 - [ ] `{@html}` — `is_svg` / `is_mathml` namespace flags
 - [ ] `{@const}` — dev mode `$.tag()` wrapping
@@ -163,15 +155,15 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression
 - [ ] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
 
-### Bind directives
+### 2c — Bind directives
 - [ ] `bind:property={get, set}` — function bindings (Svelte 5)
 
-### Actions & attachments
+### 2d — Actions & attachments
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`)
 - [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
 - [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
 
-### Special elements
+### 2e — Special elements
 - [ ] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
 - [ ] `<svelte:element>` inside `{#if}` block
 - [ ] `<svelte:element>` with `class:` directives
@@ -184,47 +176,47 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
 - [ ] `bind:this` — SequenceExpression custom getter/setter (rarely used)
 
-### CSS
+### 2f — CSS
 - [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
 
-### Compiler infrastructure
+### 2g — Compiler infrastructure
 - [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
 - [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
 
-### Custom Elements
+### 2h — Custom Elements
 - [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
 - [ ] Shadow DOM custom `ObjectExpression` (non-literal config)
 - [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations (reference compiler bug — see GOTCHAS.md #9)
 - [ ] Auto-detect boolean type from prop default literal value (in CE props config)
 
-### Legacy `on:directive`
+### 2i — Legacy `on:directive`
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`
 - [ ] SvelteDocument/SvelteBody routing: events on special elements → `init` not `after_update`
 - [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers
 
 ---
 
-## Tier 4 — CSS Scoping
+## Tier 3 — CSS Scoping
 
 Theme: scoped CSS compilation — largest standalone workstream, new `svelte_css` subsystem.
 
 Pipeline: parse → hash → analyze → prune → transform → inject into template.
 Ref: `1-parse/read/style.js`, `2-analyze/css/`, `3-transform/css/index.js`
 
-### 4.0 — Research: выбор CSS-стека
+### 3.0 — Research: выбор CSS-стека
 - [ ] Оценить варианты: OXC css parser (`oxc_css`), `lightningcss`, `cssparser` (Servo), свой парсер
 - [ ] Критерии: полнота CSS3 selectors, `:global()` / nesting (`&`), доступ к AST для мутаций (scoping, pruning), source map support, размер зависимости, lifetime ergonomics
 - [ ] Проверить можно ли переиспользовать существующий парсер и надстроить metadata enrichment, или проще свой мини-парсер (Svelte парсит только selectors + at-rules, declarations хранит как строки)
 - [ ] Решение зафиксировать в ADR или комментарием в этом разделе
 
-### 4a — CSS AST & parser (new crate `svelte_css`)
+### 3a — CSS AST & parser (new crate `svelte_css`)
 - [ ] CSS AST types: `StyleSheet`, `Rule`, `Atrule`, `SelectorList`, `ComplexSelector`, `RelativeSelector`, `SimpleSelector` variants (type, class, id, attribute, pseudo-class, pseudo-element, combinator, nesting `&`)
 - [ ] Parse `<style>` content into CSS AST — selectors, declarations, at-rules (`@media`, `@keyframes`, etc.)
 - [ ] Nested rules support (CSS nesting with `&`)
 
 Ref: `1-parse/read/style.js` (~638 lines), `types/css.d.ts` (~201 lines)
 
-### 4b — CSS hash computation
+### 3b — CSS hash computation
 - [ ] Deterministic hash from `filename` (preferred) or CSS content (fallback)
 - [ ] Format: `svelte-{hash}` (e.g., `svelte-a1b2c3d4`)
 - [ ] Store on `AnalysisData.css.hash`
@@ -232,7 +224,7 @@ Ref: `1-parse/read/style.js` (~638 lines), `types/css.d.ts` (~201 lines)
 
 Ref: `2-analyze/index.js` lines 536–548, `validate-options.js` line 73
 
-### 4c — CSS analysis: global/local classification
+### 3c — CSS analysis: global/local classification
 - [ ] Walk CSS AST, enrich selector metadata: `is_global`, `is_global_like`
 - [ ] `:global(selector)` — contents unscoped
 - [ ] `:global { ... }` — entire block unscoped
@@ -244,7 +236,7 @@ Ref: `2-analyze/index.js` lines 536–548, `validate-options.js` line 73
 
 Ref: `2-analyze/css/css-analyze.js` (~332 lines)
 
-### 4d — CSS pruning: selector → template matching
+### 3d — CSS pruning: selector → template matching
 - [ ] Backward selector matching against template elements
 - [ ] Combinator traversal: descendant (` `), child (`>`), adjacent (`+`), general sibling (`~`)
 - [ ] Mark `element.metadata.scoped = true` for matched elements
@@ -254,7 +246,7 @@ Ref: `2-analyze/css/css-analyze.js` (~332 lines)
 
 Ref: `2-analyze/css/css-prune.js` (~1248 lines) — самый большой файл в CSS pipeline
 
-### 4e — CSS transformation: scoping & output
+### 3e — CSS transformation: scoping & output
 - [ ] Append `.svelte-HASH` class to scoped selectors (first bump, rest via `:where()`)
 - [ ] Remove `:global()` / `:global` syntax from output
 - [ ] Scope `@keyframes name` → `@keyframes svelte-HASH-name`
@@ -266,7 +258,7 @@ Ref: `2-analyze/css/css-prune.js` (~1248 lines) — самый большой ф
 
 Ref: `3-transform/css/index.js` (~480 lines)
 
-### 4f — Template hash injection
+### 3f — Template hash injection
 - [ ] For scoped elements, add `class="svelte-HASH"` in template codegen
 - [ ] Pass hash to `$.attribute_effect()` runtime call
 - [ ] `css: 'injected'` — embed CSS in JS, runtime injects `<style>` tag
@@ -274,7 +266,7 @@ Ref: `3-transform/css/index.js` (~480 lines)
 
 Ref: `3-transform/client/visitors/shared/element.js` lines 93–95
 
-### 4g — CSS custom properties
+### 3g — CSS custom properties
 - [ ] `--css-var={expr}` on elements — static: `$.set_style(el, "--var", value)`, dynamic: effect wrapping
 - [ ] `<Component --css-var={expr}>` — `$.css_props()` wrapper element injection
 - [ ] Nested `<style>` elements — no scoping, emit as global rules
@@ -299,7 +291,7 @@ Theme: developer experience — errors, warnings, and diagnostic infrastructure.
 
 Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js` (ignore stack), `reference/compiler/utils/extract_svelte_ignore.js`
 
-### Runes & script
+### 5b — Runes & script
 
 - [ ] `$state()` takes 0-1 args (`rune_invalid_arguments`). Ref: `2-analyze/visitors/CallExpression.js`
 - [ ] `$state.frozen` → `$state.raw` rename validation
@@ -320,7 +312,7 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 - [ ] Assignment to `const`, imports, `$derived` runes. Ref: `2-analyze/visitors/AssignmentExpression.js`
 - [ ] Module: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions
 
-### Elements & special elements
+### 5c — Elements & special elements
 
 - [ ] Void elements: error if void element has children
 - [ ] `<svelte:window>` — only at root level, no children, no spread attrs, only one per component
@@ -331,7 +323,7 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 - [ ] `<svelte:boundary>` — reject non-`onerror`/`failed`/`pending` attrs, reject string/boolean values
 - [ ] `custom_element_props_identifier` warning when `$props()` used without CE props config
 
-### Directives
+### 5d — Directives
 
 - [ ] `bind:` vs element compatibility (e.g., `bind:checked` only on checkbox/radio). Ref: `2-analyze/visitors/BindDirective.js`
 - [ ] `transition:` not on components. Ref: `2-analyze/visitors/Component.js`
@@ -340,12 +332,12 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 - [ ] `animate:` only inside keyed `{#each}` blocks
 - [ ] `animate:` duplicate directives on same element
 
-### Template blocks
+### 5e — Template blocks
 
 - [ ] `{@const}` placement validation
 - [ ] `{#await}` duplicate `{:then}` or `{:catch}` clauses
 
-### A11y warnings (~40 checks)
+### 5f — A11y warnings (~40 checks)
 - Missing `alt` on `<img>`, `<area>`, `<input type="image">`
 - ARIA attribute validation (`role`, `aria-*` correctness)
 - Form label association (`<label>` + `for`/`id`)
@@ -356,7 +348,7 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 - Redundant/conflicting attributes
 - **Ref**: `reference/compiler/phases/2-analyze/visitors/shared/a11y/` (~954 lines)
 
-### `<!-- svelte-ignore -->` comments
+### 5g — `<!-- svelte-ignore -->` comments
 - **Phases**: P, A
 - Parse `<!-- svelte-ignore warning_name -->` from HTML comments
 - Suppress specific warnings for the next sibling node
@@ -439,12 +431,29 @@ Ref: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
 
 Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrating codebases.
 
-- [ ] `<slot>` + `let:` (P, A, T) — `$.slot(...)`. Svelte 5: `{#snippet}` + `{@render}`
-- [ ] `<svelte:component this={X}>` (P, A, T) — `$.component(...)`. Svelte 5: `<X />` with capitalized variable
-- [ ] `<svelte:self>` (P, T) — recursive ref. Svelte 5: import component directly
-- [ ] `<svelte:fragment>` (P, T) — fragment wrapper. Svelte 5: `{#snippet}`
-- [ ] `export let` props (S) — different script transform. Svelte 5: `$props()`
-- [ ] `$:` reactive assignments (S) — labeled statement → `$.derived`/`$.effect`. Svelte 5: `$derived` / `$effect`
-- [ ] `$$props` / `$$restProps` / `$$slots` (S, T) — runtime vars. Svelte 5: `$props()` with rest
-- [ ] `beforeUpdate` / `afterUpdate` (S) — `$.legacy_pre_effect` / `$.user_effect`. Svelte 5: `$effect.pre` / `$effect`
-- [ ] `createEventDispatcher` — runtime only, no compiler changes
+### 7a — `<slot>` + `let:`
+- [ ] `$.slot(...)` (P, A, T). Svelte 5: `{#snippet}` + `{@render}`
+
+### 7b — `<svelte:component>`
+- [ ] `$.component(...)` (P, A, T). Svelte 5: `<X />` with capitalized variable
+
+### 7c — `<svelte:self>`
+- [ ] Recursive ref (P, T). Svelte 5: import component directly
+
+### 7d — `<svelte:fragment>`
+- [ ] Fragment wrapper (P, T). Svelte 5: `{#snippet}`
+
+### 7e — `export let` props
+- [ ] Different script transform (S). Svelte 5: `$props()`
+
+### 7f — `$:` reactive assignments
+- [ ] Labeled statement → `$.derived`/`$.effect` (S). Svelte 5: `$derived` / `$effect`
+
+### 7g — `$$props` / `$$restProps` / `$$slots`
+- [ ] Runtime vars (S, T). Svelte 5: `$props()` with rest
+
+### 7h — `beforeUpdate` / `afterUpdate`
+- [ ] `$.legacy_pre_effect` / `$.user_effect` (S). Svelte 5: `$effect.pre` / `$effect`
+
+### 7i — `createEventDispatcher`
+- [ ] Runtime only, no compiler changes
