@@ -186,13 +186,19 @@ pub fn parse_const_declaration_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
+    typescript: bool,
 ) -> Result<(Vec<CompactString>, Vec<Reference>, Expression<'a>), Diagnostic> {
     // Wrap as "const {source};" so OXC can parse it as a full statement
     let wrapped_owned = format!("const {};", source);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
     let prefix_len: u32 = 6; // "const "
 
-    let result = OxcParser::new(alloc, wrapped_str, SourceType::default()).parse();
+    let src_type = if typescript {
+        SourceType::default().with_typescript(true).with_module(true)
+    } else {
+        SourceType::default()
+    };
+    let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
 
     if !result.errors.is_empty() {
         return Err(Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)));
@@ -211,8 +217,12 @@ pub fn parse_const_declaration_with_alloc<'a>(
     let mut names = Vec::new();
     extract_all_binding_names(&declarator.id, &mut names);
 
-    let init = declarator.init.take()
+    let mut init = declarator.init.take()
         .ok_or_else(|| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+
+    if typescript {
+        strip_ts_expression(&mut init, alloc);
+    }
 
     // OXC spans are relative to the wrapped string; adjust by subtracting the prefix
     let ref_offset = offset.wrapping_sub(prefix_len);
@@ -254,13 +264,48 @@ pub fn analyze_expression_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
+    typescript: bool,
 ) -> Result<(ExpressionInfo, Expression<'a>), Diagnostic> {
-    let parser = OxcParser::new(alloc, source, SourceType::default());
-    let expr = parser
+    let src_type = if typescript {
+        SourceType::default().with_typescript(true)
+    } else {
+        SourceType::default()
+    };
+    let parser = OxcParser::new(alloc, source, src_type);
+    let mut expr = parser
         .parse_expression()
         .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+    if typescript {
+        strip_ts_expression(&mut expr, alloc);
+    }
     let info = extract_expression_info(&expr, offset);
     Ok((info, expr))
+}
+
+/// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.
+/// Handles: TSAsExpression, TSSatisfiesExpression, TSNonNullExpression,
+///          TSTypeAssertion, TSInstantiationExpression.
+fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
+    use std::cell::Cell;
+    let dummy = || Expression::NullLiteral(oxc_allocator::Box::new_in(
+        oxc_ast::ast::NullLiteral { span: oxc_span::SPAN, node_id: Cell::new(oxc_syntax::node::NodeId::DUMMY) },
+        alloc,
+    ));
+    // Unwrap top-level TS wrappers (may be nested, e.g. `x as T satisfies U`)
+    loop {
+        let inner = match std::mem::replace(expr, dummy()) {
+            Expression::TSAsExpression(ts) => ts.unbox().expression,
+            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
+            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
+            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
+            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
+            other => {
+                *expr = other;
+                break;
+            }
+        };
+        *expr = inner;
+    }
 }
 
 #[cfg(test)]
@@ -1248,7 +1293,7 @@ mod tests {
     fn parse_const_declaration_simple() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("doubled = item * 2");
-        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("doubled")]);
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].name, "item");
@@ -1262,7 +1307,7 @@ mod tests {
         let alloc = Allocator::default();
         // offset >= 6 required (compensates "const " prefix in wrapping arithmetic)
         let source = alloc.alloc_str("{a, b} = obj");
-        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a"), compact("b")]);
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].name, "obj");
@@ -1272,7 +1317,7 @@ mod tests {
     fn parse_const_declaration_multiple_equals() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("a = b === c");
-        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10).unwrap();
+        let (names, refs, _expr) = parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a")]);
         assert_eq!(refs.len(), 2);
         assert!(refs.iter().any(|r| r.name == "b"));

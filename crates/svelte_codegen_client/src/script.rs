@@ -130,6 +130,7 @@ fn transform_script_text<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports,
         dev,
+        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         component_source,
@@ -153,18 +154,13 @@ fn transform_script_text<'a>(
     let mut body = vec![];
 
     for stmt in program.body {
-        if matches!(
-            stmt,
+        match &stmt {
             Statement::TSTypeAliasDeclaration(_)
                 | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_)
-        ) {
-            continue;
-        }
-        if matches!(stmt, Statement::ImportDeclaration(_)) {
-            imports.push(stmt);
-        } else {
-            body.push(stmt);
+                | Statement::TSEnumDeclaration(_) => continue,
+            Statement::ImportDeclaration(import) if import.import_kind.is_type() => continue,
+            Statement::ImportDeclaration(_) => imports.push(stmt),
+            _ => body.push(stmt),
         }
     }
 
@@ -183,6 +179,9 @@ fn transform_program<'a>(
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
+    // Detect TypeScript from the program's source_type
+    let is_ts = program.source_type.is_typescript();
+
     // Re-run SemanticBuilder to get fresh scoping matching current AST state
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
@@ -197,6 +196,7 @@ fn transform_program<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports: true,
         dev,
+        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         component_source,
@@ -219,18 +219,13 @@ fn transform_program<'a>(
     let mut body = vec![];
 
     for stmt in program.body {
-        if matches!(
-            stmt,
+        match &stmt {
             Statement::TSTypeAliasDeclaration(_)
                 | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_)
-        ) {
-            continue;
-        }
-        if matches!(stmt, Statement::ImportDeclaration(_)) {
-            imports.push(stmt);
-        } else {
-            body.push(stmt);
+                | Statement::TSEnumDeclaration(_) => continue,
+            Statement::ImportDeclaration(import) if import.import_kind.is_type() => continue,
+            Statement::ImportDeclaration(_) => imports.push(stmt),
+            _ => body.push(stmt),
         }
     }
 
@@ -295,6 +290,8 @@ struct ScriptTransformer<'b, 'a> {
     strip_exports: bool,
     /// Whether dev-mode transforms are enabled ($inspect → $.inspect).
     dev: bool,
+    /// Whether the script uses TypeScript (strip type annotations during traverse).
+    is_ts: bool,
     /// Stack tracking enclosing functions for $inspect.trace() context.
     function_info_stack: Vec<FunctionInfo>,
     /// Whether any $inspect.trace() was found (dev mode), triggers tracing import.
@@ -1274,6 +1271,11 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::Function<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.return_type = None;
+            node.this_param = None;
+        }
         let name = node.id.as_ref().map(|id| id.name.to_string());
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
@@ -1295,6 +1297,10 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.return_type = None;
+        }
         let name = self.next_arrow_name.take();
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
@@ -1457,11 +1463,28 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         }
     }
 
+    fn enter_formal_parameter(
+        &mut self,
+        node: &mut oxc_ast::ast::FormalParameter<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.readonly = false;
+            node.r#override = false;
+        }
+    }
+
     fn enter_variable_declarator(
         &mut self,
         node: &mut VariableDeclarator<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.definite = false;
+        }
         // Capture variable name for arrow functions (used by $inspect.trace auto-label)
         if let Some(Expression::ArrowFunctionExpression(_)) = &node.init {
             if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id {
@@ -1557,6 +1580,29 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
+        // Strip TS expression wrappers (as, satisfies, non-null, type assertion, instantiation)
+        if self.is_ts {
+            loop {
+                match node {
+                    Expression::TSAsExpression(_)
+                    | Expression::TSSatisfiesExpression(_)
+                    | Expression::TSNonNullExpression(_)
+                    | Expression::TSTypeAssertion(_)
+                    | Expression::TSInstantiationExpression(_) => {
+                        let inner = match self.b.move_expr(node) {
+                            Expression::TSAsExpression(ts) => ts.unbox().expression,
+                            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
+                            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
+                            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
+                            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
+                            _ => unreachable!(),
+                        };
+                        *node = inner;
+                    }
+                    _ => break,
+                }
+            }
+        }
         match node {
             Expression::AssignmentExpression(_) => {
                 self.transform_assignment(node, ctx);
