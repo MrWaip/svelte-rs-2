@@ -30,33 +30,30 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
 
-Launch exactly 5 Explore agents simultaneously (do not merge or combine agents):
+Launch 3 Explore agents simultaneously:
 
-1. **Agent 1 — Parse & AST**
-   - `reference/compiler/phases/1-parse/` — syntax variants, how the feature is parsed
-   - `reference/compiler/types/template.d.ts` — AST node shape, optional fields, union variants
-   - `crates/svelte_ast/src/lib.rs` — what AST types we already have
-
-2. **Agent 2 — Analysis**
-   - `reference/compiler/phases/2-analyze/visitors/` — metadata, flags, special conditions
-   - `crates/svelte_analyze/src/` — what analysis passes we already have
-
-3. **Agent 3 — Codegen**
-   - `reference/compiler/phases/3-transform/client/visitors/` — codegen branches, edge case handling
+1. **Agent 1 — Reference compiler**
+   - Trace the feature through all 3 phases of the reference compiler:
+     - `reference/compiler/phases/1-parse/` — syntax variants, how the feature is parsed
+     - `reference/compiler/types/template.d.ts` — AST node shape, optional fields, union variants
+     - `reference/compiler/phases/2-analyze/visitors/` — metadata, flags, special conditions
+     - `reference/compiler/phases/3-transform/client/visitors/` — codegen branches, edge case handling
    - Focus on: `if`/`switch` branches (each = distinct use case), runtime `$.helper()` calls, diagnostics
    - When reading reference codegen, extract ONLY: what runtime functions are called, with what arguments, in what order. Ignore the visitor dispatch structure.
 
-4. **Agent 4 — Existing codebase**
-   - `tasks/compiler_tests/cases2/` — which test cases already cover this feature
+2. **Agent 2 — Our codebase**
+   - `crates/svelte_ast/src/lib.rs` — what AST types we already have
+   - `crates/svelte_analyze/src/` — what analysis passes we already have
    - `crates/svelte_codegen_client/src/` — what's already implemented
+   - `tasks/compiler_tests/cases2/` — which test cases already cover this feature
 
-5. **Agent 5 — Test examples**
+3. **Agent 3 — Test examples**
    - `reference/compiler/tests/` — snapshot inputs and expected outputs for this feature
    - Search for the feature name (and aliases) across all reference files to catch cross-cutting concerns
 
 After all agents complete, synthesize findings from agent results. Agents return summaries, not full file contents — you may need to read key files yourself for planning details.
 
-**Controlled follow-up reads** (max 5 files): only files that agents identified as critical for the implementation plan but whose exact content (type signatures, function signatures, match arms) you need to see. List the files and why before reading. Do not re-read files that agents already summarized adequately. Do not launch additional agents (Plan, Explore, or otherwise).
+**Controlled follow-up reads:** only files that agents identified as critical for the implementation plan but whose exact content (type signatures, function signatures, match arms) you need to see. List the files and why before reading. Do not re-read files that agents already summarized adequately. Do not launch additional agents (Plan, Explore, or otherwise).
 
 Output: what the feature requires end-to-end, what's already done, what's missing.
 
@@ -88,7 +85,7 @@ Produce a structured list grouped by category. Example:
 10. Missing expression
 ```
 
-Number every case. Mark which are already handled (from Agent 4 findings).
+Number every case. Mark which are already handled (from Agent 2 findings).
 
 If 10 or fewer use cases total — present all at once. If more than 10 — present in batches of up to 4 per category via `AskUserQuestion` with `multiSelect: true`. After all rounds:
 
