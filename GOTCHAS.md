@@ -111,6 +111,18 @@ Directive targets (mutable rune? prop source? each-block context?) are classifie
 - `needs_var` — element needs a JS variable in codegen (for dynamic attributes, directives, etc.)
 - `needs_ref` — element needs a ref-semantic variable specifically (for `bind:this`)
 
+### 9. `$host()` without props/exports breaks at runtime (reference compiler bug)
+
+`$host()` transforms to `$$props.$$host`. But `$$props` is only added as a function parameter when `needs_push` is true (has props, exports, effects, or bindable). A custom element component that uses `$host()` alone (no `$props()`, no exports, no `$effect`) compiles to:
+
+```js
+export default function App($$anchor) {   // ← no $$props param
+  let host = $$props.$$host;              // ← ReferenceError at runtime
+}
+```
+
+**This is a bug in the reference Svelte compiler that we intentionally replicate.** The fix would be: detect `$host()` in script analysis → set `needs_context = true` → triggers `$$props` param + `$.push`/`$.pop`. Not implemented because the reference compiler has the same bug. See `host_basic` test case.
+
 ---
 
 ## Checklist for a New Node Type
