@@ -97,6 +97,14 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
 
     fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
         resolve_expr_refs(tag.id, scope, data);
+
+        // Store the scope for this render tag so we can resolve dynamic callees later
+        // (after props analysis populates is_prop_source).
+        if let Some(name) = data.render_tag_callee_name.get(&tag.id) {
+            if let Some(sym_id) = data.scoping.find_binding(scope, name) {
+                data.render_tag_callee_sym.insert(tag.id, sym_id);
+            }
+        }
     }
 
     fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {

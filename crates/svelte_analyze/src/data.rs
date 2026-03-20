@@ -307,6 +307,17 @@ pub struct AnalysisData {
     /// Per-argument prop-source SymbolId for render tags.
     /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
     pub render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
+    /// Callee identifier name for render tags (only set when callee is an Identifier).
+    pub(crate) render_tag_callee_name: FxHashMap<NodeId, String>,
+    /// Callee SymbolId for render tags (resolved during resolve_references).
+    pub(crate) render_tag_callee_sym: FxHashMap<NodeId, SymbolId>,
+    /// Render tags whose expression was a ChainExpression (`{@render fn?.()}`).
+    pub render_tag_is_chain: FxHashSet<NodeId>,
+    /// Dynamic render tags — callee is a non-normal binding (prop, state, snippet param, etc.).
+    pub render_tag_dynamic: FxHashSet<NodeId>,
+    /// Render tags whose callee is a getter function (prop-source or snippet param).
+    /// These pass the callee directly to `$.snippet` instead of wrapping in a thunk.
+    pub render_tag_callee_is_getter: FxHashSet<NodeId>,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
     pub bind_semantics: BindSemanticsData,
     /// Pre-computed import SymbolIds from root scope (O(1) lookup in codegen).
@@ -339,6 +350,11 @@ impl AnalysisData {
             render_tag_arg_has_call: FxHashMap::default(),
             render_tag_arg_idents: FxHashMap::default(),
             render_tag_prop_sources: FxHashMap::default(),
+            render_tag_callee_name: FxHashMap::default(),
+            render_tag_callee_sym: FxHashMap::default(),
+            render_tag_is_chain: FxHashSet::default(),
+            render_tag_dynamic: FxHashSet::default(),
+            render_tag_callee_is_getter: FxHashSet::default(),
             bind_semantics: BindSemanticsData::new(),
             import_syms: FxHashSet::default(),
             custom_element: false,
@@ -353,6 +369,9 @@ impl AnalysisData {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
     pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
+    pub fn render_tag_is_chain(&self, id: NodeId) -> bool { self.render_tag_is_chain.contains(&id) }
+    pub fn render_tag_is_dynamic(&self, id: NodeId) -> bool { self.render_tag_dynamic.contains(&id) }
+    pub fn render_tag_callee_is_getter(&self, id: NodeId) -> bool { self.render_tag_callee_is_getter.contains(&id) }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
     pub fn known_value(&self, name: &str) -> Option<&str> {

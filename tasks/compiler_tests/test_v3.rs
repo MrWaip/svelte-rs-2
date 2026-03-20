@@ -1257,6 +1257,31 @@ fn render_tag_arg_mixed() {
     assert_compiler("render_tag_arg_mixed");
 }
 
+#[rstest]
+fn render_tag_dynamic_prop() {
+    assert_compiler("render_tag_dynamic_prop");
+}
+
+#[rstest]
+fn render_tag_dynamic_state() {
+    assert_compiler("render_tag_dynamic_state");
+}
+
+#[rstest]
+fn render_tag_dynamic_snippet_param() {
+    assert_compiler("render_tag_dynamic_snippet_param");
+}
+
+#[rstest]
+fn render_tag_optional() {
+    assert_compiler("render_tag_optional");
+}
+
+#[rstest]
+fn render_tag_optional_dynamic() {
+    assert_compiler("render_tag_optional_dynamic");
+}
+
 // ---------------------------------------------------------------------------
 // $inspect rune tests
 // ---------------------------------------------------------------------------
