@@ -2,7 +2,9 @@ use rustc_hash::FxHashSet;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{NONE, ast::{
-    ArrowFunctionExpression, Expression, FunctionBody, Program, Statement, VariableDeclarator,
+    ArrowFunctionExpression, ClassElement, Expression, FunctionBody,
+    ImportDeclarationSpecifier, MethodDefinitionType, Program,
+    PropertyDefinitionType, Statement, VariableDeclarator,
 }};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
@@ -155,10 +157,6 @@ fn transform_script_text<'a>(
 
     for stmt in program.body {
         match &stmt {
-            Statement::TSTypeAliasDeclaration(_)
-                | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_) => continue,
-            Statement::ImportDeclaration(import) if import.import_kind.is_type() => continue,
             Statement::ImportDeclaration(_) => imports.push(stmt),
             _ => body.push(stmt),
         }
@@ -220,10 +218,6 @@ fn transform_program<'a>(
 
     for stmt in program.body {
         match &stmt {
-            Statement::TSTypeAliasDeclaration(_)
-                | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_) => continue,
-            Statement::ImportDeclaration(import) if import.import_kind.is_type() => continue,
             Statement::ImportDeclaration(_) => imports.push(stmt),
             _ => body.push(stmt),
         }
@@ -1259,6 +1253,20 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::ClassBody<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.body.retain(|member| match member {
+                ClassElement::PropertyDefinition(prop) => {
+                    !prop.declare
+                        && prop.r#type != PropertyDefinitionType::TSAbstractPropertyDefinition
+                }
+                ClassElement::MethodDefinition(method) => {
+                    method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                }
+                ClassElement::TSIndexSignature(_) => false,
+                _ => true,
+            });
+        }
+
         let Some(info) = self.class_state_stack.pop() else { return };
         if info.fields.is_empty() {
             return;
@@ -1386,6 +1394,48 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        // Strip TypeScript declarations and type-only imports/exports
+        if self.is_ts {
+            // Remove individual type specifiers from imports/exports
+            for stmt in stmts.iter_mut() {
+                match stmt {
+                    Statement::ImportDeclaration(import) => {
+                        if let Some(specs) = &mut import.specifiers {
+                            specs.retain(|spec| {
+                                !matches!(spec, ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
+                            });
+                        }
+                    }
+                    Statement::ExportNamedDeclaration(export) if export.declaration.is_none() => {
+                        export.specifiers.retain(|spec| !spec.export_kind.is_type());
+                    }
+                    _ => {}
+                }
+            }
+
+            // Remove entire TS-only statements
+            stmts.retain(|stmt| match stmt {
+                Statement::TSTypeAliasDeclaration(_)
+                | Statement::TSInterfaceDeclaration(_)
+                | Statement::TSModuleDeclaration(_)
+                | Statement::TSEnumDeclaration(_) => false,
+                Statement::VariableDeclaration(decl) if decl.declare => false,
+                Statement::FunctionDeclaration(func) if func.declare => false,
+                Statement::ClassDeclaration(class) if class.declare => false,
+                Statement::ImportDeclaration(import) if import.import_kind.is_type() => false,
+                Statement::ExportNamedDeclaration(export) if export.export_kind.is_type() => false,
+                Statement::ExportAllDeclaration(export) if export.export_kind.is_type() => false,
+                // Remove imports/exports left with no specifiers after type-specifier filtering
+                Statement::ImportDeclaration(import) => {
+                    import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
+                }
+                Statement::ExportNamedDeclaration(export) => {
+                    export.declaration.is_some() || !export.specifiers.is_empty()
+                }
+                _ => true,
+            });
+        }
+
         // Strip `export` keyword: ExportNamedDeclaration → inner declaration
         // (only for component scripts; module compilation preserves exports)
         if self.strip_exports {
@@ -1473,6 +1523,99 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             node.accessibility = None;
             node.readonly = false;
             node.r#override = false;
+        }
+    }
+
+    fn enter_catch_parameter(
+        &mut self,
+        node: &mut oxc_ast::ast::CatchParameter<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+        }
+    }
+
+    fn enter_call_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::CallExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_new_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::NewExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_tagged_template_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::TaggedTemplateExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_class(
+        &mut self,
+        node: &mut oxc_ast::ast::Class<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.super_type_arguments = None;
+            node.implements.clear();
+            node.r#abstract = false;
+        }
+    }
+
+    fn enter_property_definition(
+        &mut self,
+        node: &mut oxc_ast::ast::PropertyDefinition<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.readonly = false;
+            node.r#override = false;
+            node.optional = false;
+            node.definite = false;
+        }
+    }
+
+    fn enter_accessor_property(
+        &mut self,
+        node: &mut oxc_ast::ast::AccessorProperty<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.r#override = false;
+            node.definite = false;
+        }
+    }
+
+    fn enter_method_definition(
+        &mut self,
+        node: &mut oxc_ast::ast::MethodDefinition<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.accessibility = None;
+            node.r#override = false;
+            node.optional = false;
         }
     }
 
