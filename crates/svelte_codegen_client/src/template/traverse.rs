@@ -59,7 +59,7 @@ pub(crate) fn traverse_items<'a>(
                     sibling_offset = 1;
 
                     let is_dyn = parts_are_dynamic(parts, ctx);
-                    if is_dyn {
+                    if is_dyn && !ctx.bound_contenteditable {
                         let expr =
                             super::expression::build_concat_from_parts(ctx, parts);
                         update.push(ctx.b.call_stmt(
@@ -67,6 +67,7 @@ pub(crate) fn traverse_items<'a>(
                             [Arg::Ident(&name), Arg::Expr(expr)],
                         ));
                     } else {
+                        // Static text or bound_contenteditable: nodeValue= in init
                         let expr =
                             super::expression::build_concat_from_parts(ctx, parts);
                         init.push(ctx.b.assign_stmt(

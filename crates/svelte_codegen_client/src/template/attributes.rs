@@ -39,8 +39,10 @@ pub(crate) fn process_attr<'a>(
     ctx: &mut Ctx<'a>,
     attr: &Attribute,
     el_name: &str,
+    el_id: NodeId,
     tag_name: &str,
     is_dyn: bool,
+    has_use_directive: bool,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
     directive_init: &mut Vec<Statement<'a>>,
@@ -109,7 +111,11 @@ pub(crate) fn process_attr<'a>(
                 return;
             }
             let val = get_attr_expr(ctx, attr_id);
-            if a.name == "value" && tag_name == "input" {
+            if a.name == "value" && tag_name == "input" && ctx.has_bind_group(el_id) {
+                // bind:group + value attr: use __value cache pattern
+                emit_bind_group_value(ctx, el_name, attr_id, val, init, update);
+                return;
+            } else if a.name == "value" && tag_name == "input" {
                 target.push(ctx.b.call_stmt(
                     "$.set_value",
                     [Arg::Ident(el_name), Arg::Expr(val)],
@@ -145,7 +151,7 @@ pub(crate) fn process_attr<'a>(
             ));
         }
         Attribute::BindDirective(bind) => {
-            if let Some(placement) = gen_bind_directive(ctx, bind, el_name, tag_name) {
+            if let Some(placement) = gen_bind_directive(ctx, bind, el_name, tag_name, has_use_directive) {
                 match placement {
                     BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                     BindPlacement::Init(stmt) => directive_init.push(stmt),
@@ -452,6 +458,76 @@ pub(crate) fn build_binding_setter_silent<'a>(ctx: &mut Ctx<'a>, var: String, is
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
 }
 
+/// Emit the `__value` cache pattern for `value` attributes on elements with `bind:group`.
+///
+/// Produces:
+/// ```js
+/// var input_value;
+/// $.template_effect(() => {
+///     if (input_value !== (input_value = expr)) {
+///         input.value = (input.__value = expr) ?? "";
+///     }
+/// });
+/// ```
+fn emit_bind_group_value<'a>(
+    ctx: &mut Ctx<'a>,
+    el_name: &str,
+    _attr_id: NodeId,
+    val_expr: Expression<'a>,
+    init: &mut Vec<Statement<'a>>,
+    _update: &mut Vec<Statement<'a>>,
+) {
+    let cache_name = ctx.gen_ident(&format!("{}_value", el_name));
+
+    // var input_value;
+    init.push(ctx.b.var_uninit_stmt(&cache_name));
+
+    // Clone expression for reuse in __value body
+    let val_expr2 = ctx.b.clone_expr(&val_expr);
+
+    // cache = expr → assignment in the condition test
+    let cache_assign = ctx.b.assign_expr(
+        AssignLeft::Ident(cache_name.clone()),
+        val_expr,
+    );
+
+    // cache !== (cache = expr)
+    let test = ctx.b.ast.expression_binary(
+        oxc_span::SPAN,
+        ctx.b.rid_expr(&cache_name),
+        oxc_ast::ast::BinaryOperator::StrictInequality,
+        cache_assign,
+    );
+
+    // el.__value = expr (using cloned expression)
+    let dunder_value_assign = ctx.b.assign_expr(
+        AssignLeft::StaticMember(
+            ctx.b.static_member(ctx.b.rid_expr(el_name), "__value"),
+        ),
+        val_expr2,
+    );
+
+    // (el.__value = expr) ?? ""
+    let coalesced = ctx.b.logical_coalesce(dunder_value_assign, ctx.b.str_expr(""));
+
+    // el.value = (el.__value = expr) ?? ""
+    let value_assign = ctx.b.assign_stmt(
+        AssignLeft::StaticMember(
+            ctx.b.static_member(ctx.b.rid_expr(el_name), "value"),
+        ),
+        coalesced,
+    );
+
+    // if (cache !== (cache = expr)) { el.value = ... }
+    let if_body = ctx.b.block_stmt(vec![value_assign]);
+    let if_stmt = ctx.b.if_stmt(test, if_body, None);
+
+    // $.template_effect(() => { if_stmt })
+    let effect_fn = ctx.b.arrow_block_expr(ctx.b.no_params(), vec![if_stmt]);
+    let effect_call = ctx.b.call_stmt("$.template_effect", [Arg::Expr(effect_fn)]);
+    init.push(effect_call);
+}
+
 /// Where to place a bind directive statement.
 enum BindPlacement<'a> {
     /// Most bindings: placed after attribute updates.
@@ -466,9 +542,47 @@ fn gen_bind_directive<'a>(
     bind: &svelte_ast::BindDirective,
     el_name: &str,
     tag_name: &str,
+    has_use_directive: bool,
 ) -> Option<BindPlacement<'a>> {
     // Pre-computed by analysis — no string-based symbol re-resolution needed.
     let is_rune = ctx.is_mutable_rune_target(bind.id);
+
+    // Function bindings: bind:prop={(get_fn), (set_fn)} via SequenceExpression.
+    // bind:this has its own SequenceExpression handling below; bind:group disallows it.
+    if bind.name != "this" && bind.expression_span.is_some() {
+        let is_seq = ctx.parsed.attr_exprs.get(&bind.id)
+            .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::SequenceExpression(_)));
+        if is_seq {
+            let expr = get_attr_expr(ctx, bind.id);
+            let oxc_ast::ast::Expression::SequenceExpression(seq) = expr else { unreachable!() };
+            let seq = seq.unbox();
+            let mut exprs = seq.expressions.into_iter();
+            let get_fn = exprs.next().expect("SequenceExpression must have getter");
+            let set_fn = exprs.next().expect("SequenceExpression must have setter");
+
+            let stmt = match bind.name.as_str() {
+                "value" if tag_name == "select" => ctx.b.call_stmt("$.bind_select_value", [
+                    Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+                "value" => ctx.b.call_stmt("$.bind_value", [
+                    Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+                "checked" => ctx.b.call_stmt("$.bind_checked", [
+                    Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+                "files" => ctx.b.call_stmt("$.bind_files", [
+                    Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+                "innerHTML" | "innerText" | "textContent" => ctx.b.call_stmt("$.bind_content_editable", [
+                    Arg::Str(bind.name.clone()), Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+                _ => ctx.b.call_stmt("$.bind_value", [
+                    Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                ]),
+            };
+            return Some(BindPlacement::AfterUpdate(stmt));
+        }
+    }
 
     let var_name = if bind.shorthand {
         bind.name.clone()
@@ -503,13 +617,34 @@ fn gen_bind_directive<'a>(
         }
         "group" => {
             ctx.needs_binding_group = true;
-            let getter = build_binding_getter(ctx, &var_name, is_rune);
-            let setter = build_binding_setter(ctx, var_name, is_rune);
+            let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
+
+            // Check if element has a dynamic value attribute — wrap getter in thunk
+            let group_getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
+                // Consume the value attribute's transformed expression for the thunk
+                let val_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&val_attr_id) {
+                    ctx.b.clone_expr(expr)
+                } else {
+                    ctx.b.str_expr("")
+                };
+                // () => { val_expr; return getter; }
+                let val_stmt = ctx.b.expr_stmt(val_expr);
+                let getter_expr = if is_rune {
+                    ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+                } else {
+                    ctx.b.rid_expr(&var_name)
+                };
+                let return_stmt = ctx.b.return_stmt(getter_expr);
+                ctx.b.arrow_block_expr(ctx.b.no_params(), vec![val_stmt, return_stmt])
+            } else {
+                build_binding_getter(ctx, &var_name, is_rune)
+            };
+
             ctx.b.call_stmt("$.bind_group", [
                 Arg::Ident("binding_group"),
                 Arg::Expr(ctx.b.empty_array_expr()),
                 Arg::Ident(el_name),
-                Arg::Expr(getter),
+                Arg::Expr(group_getter),
                 Arg::Expr(setter),
             ])
         }
@@ -750,6 +885,13 @@ fn gen_bind_directive<'a>(
         }
     };
 
+    // Wrap in $.effect() when element has use: directive (deferral)
+    if has_use_directive && bind.name != "this" {
+        let effect_body = ctx.b.arrow_expr(ctx.b.no_params(), [stmt]);
+        let effect_stmt = ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
+        return Some(BindPlacement::Init(effect_stmt));
+    }
+
     Some(BindPlacement::AfterUpdate(stmt))
 }
 
@@ -817,7 +959,8 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::Shorthand(name_alloc));
             }
             Attribute::BindDirective(bind) => {
-                if let Some(placement) = gen_bind_directive(ctx, bind, el_name, &el.name) {
+                let has_use = el.attributes.iter().any(|a| matches!(a, Attribute::UseDirective(_)));
+                if let Some(placement) = gen_bind_directive(ctx, bind, el_name, &el.name, has_use) {
                     match placement {
                         BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                         BindPlacement::Init(stmt) => init.push(stmt),

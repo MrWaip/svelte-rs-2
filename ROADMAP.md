@@ -171,12 +171,14 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] `{#snippet}` — parameter destructuring: array/object patterns with defaults → per-field `$.derived()` wrappers
 
 ### 2c — Bind directives
-- [ ] `bind:property={get, set}` — function bindings (Svelte 5)
+- [x] `bind:property={get, set}` — function bindings (Svelte 5) ✅
+- [x] `bind:group` — value attribute `__value` pattern for elements with `bind:group` ✅
+- [x] `bind:group` — value attribute dependency: wrap getter to include value expression ✅
+- [x] Bind directive deferral with `use:` — wrap non-`bind:this` directives in `$.effect()` when parent has `UseDirective` ✅
+- [x] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen ✅
+- [x] `$state(array/object)` — wrap inner value in `$.proxy()` for mutated $state signals ✅
 - [ ] `bind:group` — index array from `parent_each_blocks` for keyed each blocks (currently hardcoded empty array)
-- [ ] `bind:group` — value attribute dependency: when element has `value` attr, wrap getter to include it
-- [ ] Bind directive deferral with `use:` — wrap non-`bind:this` directives in `$.effect()` when parent has `UseDirective`
 - [ ] Bind directive async/blockers — `$.run_after_blockers()` wrapping for async bind expressions
-- [ ] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen
 
 ### 2d — Actions & attachments
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`)
@@ -233,7 +235,7 @@ Ref: `RegularElement.js` lines 583–725, `shared/element.js`
 
 ### 2k — Form element special handling
 - [ ] `$.remove_textarea_child(el)` — called for `<textarea>` with spread, `bind:value`, or dynamic value
-- [ ] `__value` property — hidden internal property for `<option>`, `<select>`, `<input type="checkbox">` with `bind:group`
+- [x] `__value` property — hidden internal property for `<input type="checkbox">` with `bind:group` ✅ (option/select not yet)
 - [ ] `$.init_select(el)` — initialize select element for value tracking
 - [ ] `$.select_option(el, value)` — sync select option when value changes dynamically
 - [ ] `customizable_select` — rich HTML content in `<select>`/`<option>`/`<optgroup>` → `$.customizable_select()` wrapper
@@ -523,3 +525,14 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 - Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
 - `has_await` detection in expression metadata + `$.async()` wrapping for if/each/html/await/key blocks
 - Requires: `ExpressionInfo.has_await`, `has_blockers()`, analysis infrastructure for dependency tracking
+
+### Experimental async bindings (Tier 2c)
+- `$.run_after_blockers()` wrapping for async bind expressions
+- Requires: async infrastructure from Tier 2b
+
+### bind:group each-block indexes (Tier 2c)
+- `parent_each_blocks` analysis: walk upward from bind:group to collect each blocks whose declarations are referenced in the binding expression
+- Index array: for each parent each block, pass `index` (non-keyed) or `$.get(index)` (keyed)
+- `contains_group_binding` flag: force `uses_index = true` on each blocks that contribute to a bind:group
+- `binding_group_name` deduplication: shared group names when bind expressions resolve to the same bindings
+- Currently hardcoded `[]` — sufficient for `bind:group={rootVar}` patterns

@@ -1525,3 +1525,47 @@ fn store_deep_mutation() {
 fn store_deep_update() {
     assert_compiler("store_deep_update");
 }
+
+// ---------------------------------------------------------------------------
+// Tier 2c — Bind Directive Edge Cases
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn bind_function_value() {
+    assert_compiler("bind_function_value");
+}
+
+#[rstest]
+fn bind_function_checked() {
+    assert_compiler("bind_function_checked");
+}
+
+#[rstest]
+fn bind_use_deferral() {
+    assert_compiler("bind_use_deferral");
+}
+
+#[rstest]
+fn bind_contenteditable_flag() {
+    assert_compiler("bind_contenteditable_flag");
+}
+
+#[rstest]
+fn bind_group_each() {
+    assert_compiler("bind_group_each");
+}
+
+#[rstest]
+fn bind_group_keyed_each() {
+    assert_compiler("bind_group_keyed_each");
+}
+
+#[rstest]
+fn bind_group_nested_each() {
+    assert_compiler("bind_group_nested_each");
+}
+
+#[rstest]
+fn bind_group_value_attr() {
+    assert_compiler("bind_group_value_attr");
+}
