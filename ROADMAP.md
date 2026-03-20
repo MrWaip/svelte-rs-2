@@ -152,6 +152,34 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ---
 
+## Tier 1.1 — Experimental Async (`experimental.async`)
+
+Theme: all features gated behind `experimental.async`. Requires analysis infrastructure (`ExpressionInfo.has_await`, `has_blockers()`, blocker tracking).
+
+### Infrastructure
+- [ ] `ExpressionInfo.has_await` — detect `await` in expression metadata
+- [ ] `has_blockers()` — analysis infrastructure for dependency tracking
+- [ ] Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
+
+### Template blocks
+- [ ] `{#await}` — `has_blockers` / `$.async()` wrapping for experimental async mode
+- [ ] `$.async()` wrapping for if/each/html/key blocks with `has_await` expressions
+- [ ] `{await expr}` experimental template syntax (Svelte 5.36+)
+
+### Bind directives
+- [ ] `$.run_after_blockers()` wrapping for async bind expressions
+
+### Actions, attachments & transitions
+- [ ] `use:action` with `await` expression — `run_after_blockers`
+- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
+- [ ] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
+- [ ] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
+
+### Special elements
+- [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
+
+---
+
 ## Tier 2 — Remaining Edge Cases
 
 Edge cases and missing features discovered during porting. Grouped by feature area.
@@ -166,7 +194,6 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [x] `{@debug}` — works in if/each contexts with proper `$.get()` wrapping for each-block vars
 - [x] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
 - [x] `$.add_svelte_meta()` — dev-mode block wrapping for if/each/await/key blocks
-- [ ] `{#await}` — `has_blockers` / `$.async()` wrapping for experimental async mode
 - [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression
 - [ ] `{#snippet}` — parameter destructuring: array/object patterns with defaults → per-field `$.derived()` wrappers
 
@@ -178,14 +205,9 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [x] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen ✅
 - [x] `$state(array/object)` — wrap inner value in `$.proxy()` for mutated $state signals ✅
 - [ ] `bind:group` — index array from `parent_each_blocks` for keyed each blocks (currently hardcoded empty array)
-- [ ] Bind directive async/blockers — `$.run_after_blockers()` wrapping for async bind expressions
 
 ### 2d — Actions & attachments
-- [ ] `use:action` with `await` expression (requires `run_after_blockers`)
 - [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
-- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
-- [ ] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
-- [ ] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
 
 ### 2e — Special elements
 - [x] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
@@ -195,7 +217,6 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [x] `<svelte:head>` — `filename` parameter for correct hash (already correct)
 - [x] `<svelte:boundary>` — `@const` duplication into hoisted snippets
 - [x] `<svelte:boundary>` — import reactivity: imported identifiers in boundary attrs generate getters
-- [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
 - [ ] `<svelte:boundary>` — dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
 - [ ] `<svelte:element>` — dynamic `xmlns` attribute for runtime namespace switching
@@ -206,7 +227,6 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 
 ### 2g — Compiler infrastructure
 - [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
-- [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
 
 ### 2h — Custom Elements
 - [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
@@ -520,15 +540,6 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 ---
 
 ## Deferred
-
-### Experimental async (Tier 2b)
-- Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
-- `has_await` detection in expression metadata + `$.async()` wrapping for if/each/html/await/key blocks
-- Requires: `ExpressionInfo.has_await`, `has_blockers()`, analysis infrastructure for dependency tracking
-
-### Experimental async bindings (Tier 2c)
-- `$.run_after_blockers()` wrapping for async bind expressions
-- Requires: async infrastructure from Tier 2b
 
 ### bind:group each-block indexes (Tier 2c)
 - `parent_each_blocks` analysis: walk upward from bind:group to collect each blocks whose declarations are referenced in the binding expression
