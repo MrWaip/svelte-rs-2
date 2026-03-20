@@ -10,7 +10,7 @@ use crate::context::Ctx;
 
 use super::attributes::{process_attr, process_attrs_spread, process_class_attribute_and_directives, process_style_directives};
 use super::each_block::gen_each_block;
-use super::expression::{build_concat, emit_trailing_next};
+use super::expression::{build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo};
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -105,11 +105,19 @@ pub(crate) fn process_element<'a>(
             init.push(ctx.b.var_stmt(&text_name, child_call));
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
 
+            // Check if the expression needs call memoization (has_call + reactive refs)
+            let has_call = text_content_needs_memo(&items[0], ctx);
+
             let expr = build_concat(ctx, &items[0]);
-            update.push(ctx.b.call_stmt(
-                "$.set_text",
-                [Arg::Ident(&text_name), Arg::Expr(expr)],
-            ));
+            if has_call {
+                // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
+                emit_memoized_text_effect(ctx, &text_name, expr, init);
+            } else {
+                update.push(ctx.b.call_stmt(
+                    "$.set_text",
+                    [Arg::Ident(&text_name), Arg::Expr(expr)],
+                ));
+            }
         }
 
         ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
