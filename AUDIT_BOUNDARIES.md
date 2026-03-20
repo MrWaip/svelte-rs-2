@@ -9,15 +9,7 @@
 
 ### ~~1.1 + 1.2 Custom Element Config Parsing — added `ParsedCeConfig`/`CePropConfig`/`CeShadowMode` to `svelte_js`, `parse_ce_config()` in analyze's `parse_js` pass, extend expr pre-parsed into `ParsedExprs.ce_extend_expr`. Codegen reads structured data, zero OXC re-parsing.~~
 
-### 1.3 Script Codegen parse_expression
-
-- **Pattern**: Expression re-parsing helper in script transform
-- **Class**: 1
-- **Where**: `crates/svelte_codegen_client/src/script.rs:1192-1204`
-- **Occurrence count**: 1
-- **What is aggregated**: Defensive fallback for expressions that should have been pre-parsed
-- **Proposed type**: Audit callers; construct AST directly via Builder instead of string→parse round-trip
-- **Target layer**: analyze / codegen refactor
+### ~~1.3 Script Codegen parse_expression — added `is_simple_default` to `PropInfo`, `prop_default_exprs` to `ParsedExprs`. Default expressions pre-parsed in `parse_js`, consumed by script codegen and CE setter. Deleted standalone `parse_expression` helper. Also eliminated hidden OXC re-parse in `is_simple_expression()` call within `analyze_props`.~~
 
 > **Root cause summary:** All three Class 1 violations stem from custom element config not being parsed during the parser→analyze pipeline. Fixing CE config parsing eliminates violations 1.1 and 1.2; 1.3 needs caller audit.
 
@@ -167,7 +159,7 @@
 
 | Class | Count | Severity | Fix effort |
 |---|---|---|---|
-| **1 — Full Re-parse** | 3 | Critical | Medium (CE config parsing pipeline) |
+| **1 — Full Re-parse** | ~~3~~ 0 | ~~Critical~~ Done | ~~Medium (CE config parsing pipeline)~~ |
 | **2 — String Re-parsing** | 3 (1 significant) | High | Medium (await binding AST restructure) |
 | **3 — AST Re-traversal** | 7 | Medium | Low (add accessors/flags to analyze) |
 | **4 — Derived Flags** | 2 | Medium | Low (add accessor methods) |

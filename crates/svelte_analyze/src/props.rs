@@ -44,8 +44,7 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 }
             }
 
-            let is_lazy_default = p.default_text.as_ref()
-                .is_some_and(|text| !svelte_js::is_simple_expression(text));
+            let is_lazy_default = p.default_span.is_some() && !p.is_simple_default;
 
             PropAnalysis {
                 local_name: p.local_name.to_string(),
