@@ -43,25 +43,7 @@
 
 ## Class 2: String Re-parsing
 
-### 2.1 Await Block Destructured Binding
-
-- **Pattern**: `gen_destructured_callback` — determines array/object destructuring via string inspection
-- **Class**: 2
-- **Where**: `crates/svelte_codegen_client/src/template/await_block.rs:88-120`
-- **Occurrence count**: 1
-- **What is aggregated**: Destructure kind (`[` vs `{`), binding names, aliases, defaults — all extracted from source text via `starts_with('[')`, `split(',')`, `split('=')`, `split_once(':')`, `trim()`, `&pattern[1..pattern.len()-1]`
-- **Proposed type**: Parser should produce structured AST:
-  ```
-  enum AwaitBindingPattern {
-      Simple(Atom),
-      Destructured {
-          kind: DestructureKind, // Array | Object
-          bindings: Vec<DestructuredBinding>,
-      },
-  }
-  struct DestructuredBinding { name: Atom, alias: Option<Atom>, default_value: Option<Span> }
-  ```
-- **Target layer**: parser
+### ~~2.1 Await Block Destructured Binding — added `AwaitBindingInfo`/`DestructureKind` to `svelte_js`, `AwaitBindingData` side table in analyze, OXC-parsed in `parse_js` pass, codegen reads structured data directly~~
 
 ### 2.2 Directive Name Dot-Splitting
 

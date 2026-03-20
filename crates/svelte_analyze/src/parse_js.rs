@@ -266,6 +266,18 @@ fn walk_node<'a>(
         Node::AwaitBlock(block) => {
             let source = component.source_text(block.expression_span);
             parse_expr(alloc, source, block.expression_span.start, block.id, typescript, data, parsed, diags);
+
+            if let Some(val_span) = block.value_span {
+                let binding_text = component.source_text(val_span);
+                let info = svelte_js::parse_await_binding(binding_text);
+                data.await_bindings.values.insert(block.id, info);
+            }
+            if let Some(err_span) = block.error_span {
+                let binding_text = component.source_text(err_span);
+                let info = svelte_js::parse_await_binding(binding_text);
+                data.await_bindings.errors.insert(block.id, info);
+            }
+
             if let Some(ref p) = block.pending {
                 walk_fragment(alloc, p, component, typescript, data, parsed, diags);
             }

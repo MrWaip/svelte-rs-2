@@ -19,8 +19,8 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData, FragmentItem,
-    FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
+    AnalysisData, AwaitBindingData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags,
+    FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
