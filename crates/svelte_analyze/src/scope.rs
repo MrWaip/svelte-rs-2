@@ -32,6 +32,7 @@ pub struct ComponentScoping {
     store_syms: FxHashMap<SymbolId, String>,
     known_values: FxHashMap<SymbolId, String>,
     snippet_param_syms: FxHashSet<SymbolId>,
+    snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
     /// FragmentKey → ScopeId for scope-introducing fragments (IfBlock branches, KeyBlock, etc.)
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
@@ -54,6 +55,7 @@ impl ComponentScoping {
             store_syms: FxHashMap::default(),
             known_values: FxHashMap::default(),
             snippet_param_syms: FxHashSet::default(),
+            snippet_name_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
@@ -210,6 +212,10 @@ impl ComponentScoping {
         self.snippet_param_syms.insert(sym_id);
     }
 
+    pub fn mark_snippet_name(&mut self, sym_id: SymbolId) {
+        self.snippet_name_syms.insert(sym_id);
+    }
+
     pub fn mark_each_block_var(&mut self, sym_id: SymbolId) {
         self.each_block_syms.insert(sym_id);
     }
@@ -241,8 +247,23 @@ impl ComponentScoping {
         self.snippet_param_syms.contains(&sym_id)
     }
 
+    pub fn is_snippet_name(&self, sym_id: SymbolId) -> bool {
+        self.snippet_name_syms.contains(&sym_id)
+    }
+
     pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
         self.each_block_syms.contains(&sym_id)
+    }
+
+    /// A binding is "normal" if it's a regular const/let/function — not a rune, prop,
+    /// snippet param, each var, or store subscription.
+    pub fn is_normal_binding(&self, sym_id: SymbolId) -> bool {
+        !self.is_rune(sym_id)
+            && !self.is_prop_source(sym_id)
+            && self.prop_non_source_name(sym_id).is_none()
+            && !self.is_snippet_param(sym_id)
+            && !self.is_each_block_var(sym_id)
+            && !self.is_store(sym_id)
     }
 
     pub(crate) fn set_fragment_scope(&mut self, key: FragmentKey, scope_id: ScopeId) {
@@ -400,6 +421,9 @@ fn walk_template_scopes(
                 }
             }
             Node::SnippetBlock(block) => {
+                // Snippet name is a normal binding in the parent scope
+                let name_sym = scoping.add_binding(current_scope, &block.name);
+                scoping.mark_snippet_name(name_sym);
                 // Create a child scope for snippet params — they shadow outer bindings.
                 let snippet_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, snippet_scope);
