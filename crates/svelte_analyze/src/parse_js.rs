@@ -118,6 +118,7 @@ fn parse_concat_parts<'a>(
         has_side_effects: false,
         has_call: false,
         has_state_rune: false,
+        has_store_member_mutation: false,
     };
     data.attr_expressions.insert(attr_id, merged);
 }
@@ -257,6 +258,7 @@ fn walk_node<'a>(
                         has_side_effects: false,
                         has_call: false,
                         has_state_rune: false,
+                        has_store_member_mutation: false,
                     });
                     parsed.exprs.insert(tag.id, init_expr);
                     data.const_tags.names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());

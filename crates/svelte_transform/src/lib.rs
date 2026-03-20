@@ -18,6 +18,7 @@ use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
 use svelte_ast::{
     Attribute, Component, Fragment, Node, NodeId,
 };
+use svelte_js::RuneKind;
 
 
 /// Transform all parsed template expressions in-place.
@@ -311,27 +312,70 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
             return;
         }
 
-        // UpdateExpression: leaf-like, handle before walk
+        // --- Pre-walk: UpdateExpression ---
         if let Expression::UpdateExpression(upd) = it {
+            let is_increment = upd.operator == oxc_syntax::operator::UpdateOperator::Increment;
+
+            // Identifier target: rune or store update
             if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
                 let name = id.name.as_str();
+
+                // Store update: $count++ → $.update_store(count, $count())
+                if self.ctx.analysis.scoping.is_store_ref(name) {
+                    let base_name = &name[1..];
+                    *it = rune_refs::make_store_update(
+                        self.ctx.alloc, base_name, name, upd.prefix, is_increment,
+                    );
+                    return;
+                }
+
+                // Rune update
                 if let Some(sym_id) = self.ctx.analysis.scoping.find_binding(self.scope, name) {
                     if self.ctx.analysis.scoping.rune_kind(sym_id).is_some()
                         && self.ctx.analysis.scoping.is_mutated(sym_id)
                     {
-                        let is_increment =
-                            upd.operator == oxc_syntax::operator::UpdateOperator::Increment;
                         *it = rune_refs::make_rune_update(
-                            self.ctx.alloc,
-                            name,
-                            upd.prefix,
-                            is_increment,
+                            self.ctx.alloc, name, upd.prefix, is_increment,
                         );
                         return;
                     }
                 }
             }
+
+            // Deep store update: $store.count++ → $.store_mutate(store, ...)
+            if let Some(root_name) = extract_member_root_store_simple(&upd.argument, &self.ctx.analysis.scoping) {
+                let root_name = root_name.to_string();
+                let base_name = root_name[1..].to_string();
+                let alloc = self.ctx.alloc;
+                walk_simple_target_member_objects(self, &mut upd.argument);
+                replace_simple_target_root(&mut upd.argument, rune_refs::make_untrack(alloc, &root_name));
+                // Swap out the entire UpdateExpression to break the borrow on `upd`
+                let placeholder = rune_refs::make_rune_get(alloc, "");
+                let mutation = std::mem::replace(it, placeholder);
+                let untracked = rune_refs::make_untrack(alloc, &root_name);
+                *it = rune_refs::make_store_mutate(alloc, &base_name, mutation, untracked);
+                return;
+            }
+
             return;
+        }
+
+        // --- Pre-walk: deep store assignment ($store.field = val) ---
+        if let Expression::AssignmentExpression(assign) = it {
+            if let Some(root_name) = extract_member_root_store_assign(&assign.left, &self.ctx.analysis.scoping) {
+                let root_name = root_name.to_string();
+                let base_name = root_name[1..].to_string();
+                let alloc = self.ctx.alloc;
+                self.visit_expression(&mut assign.right);
+                walk_target_member_objects(self, &mut assign.left);
+                replace_target_root(&mut assign.left, rune_refs::make_untrack(alloc, &root_name));
+                // Swap out the entire AssignmentExpression to break the borrow on `assign`
+                let placeholder = rune_refs::make_rune_get(alloc, "");
+                let mutation = std::mem::replace(it, placeholder);
+                let untracked = rune_refs::make_untrack(alloc, &root_name);
+                *it = rune_refs::make_store_mutate(alloc, &base_name, mutation, untracked);
+                return;
+            }
         }
 
         // CallExpression: $state.eager(val) → $.eager(() => val), $effect.pending() → $.eager($.pending)
@@ -369,19 +413,49 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
         // Walk all children (covers every expression type automatically)
         walk_expression(self, it);
 
-        // Post-walk: AssignmentExpression LHS rune → $.set()
+        // --- Post-walk: AssignmentExpression with identifier LHS ---
         if let Expression::AssignmentExpression(assign) = it {
             if let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left {
                 let name = id.name.as_str();
+                let alloc = self.ctx.alloc;
+                let operator = assign.operator;
+
+                // Store assignment: $count = 5 → $.store_set(count, 5)
+                // Store compound: $count += 1 → $.store_set(count, $count() + 1)
+                if self.ctx.analysis.scoping.is_store_ref(name) {
+                    let base_name = &name[1..];
+                    let right = std::mem::replace(
+                        &mut assign.right,
+                        rune_refs::make_rune_get(alloc, ""),
+                    );
+                    let value = if operator.is_assign() {
+                        right
+                    } else {
+                        let current = rune_refs::make_thunk_call(alloc, name);
+                        rune_refs::build_compound_value(alloc, operator, current, right)
+                    };
+                    *it = rune_refs::make_store_set(alloc, base_name, value);
+                    return;
+                }
+
+                // Rune assignment/compound
                 if let Some(sym_id) = self.ctx.analysis.scoping.find_binding(self.scope, name) {
-                    if self.ctx.analysis.scoping.rune_kind(sym_id).is_some()
-                        && self.ctx.analysis.scoping.is_mutated(sym_id)
-                    {
-                        let right = std::mem::replace(
-                            &mut assign.right,
-                            rune_refs::make_rune_get(self.ctx.alloc, ""),
-                        );
-                        *it = rune_refs::make_rune_set(self.ctx.alloc, name, right, false);
+                    if let Some(kind) = self.ctx.analysis.scoping.rune_kind(sym_id) {
+                        if self.ctx.analysis.scoping.is_mutated(sym_id) {
+                            let right = std::mem::replace(
+                                &mut assign.right,
+                                rune_refs::make_rune_get(alloc, ""),
+                            );
+                            let value = if operator.is_assign() {
+                                right
+                            } else {
+                                let left_read = rune_refs::make_rune_get(alloc, name);
+                                rune_refs::build_compound_value(alloc, operator, left_read, right)
+                            };
+                            let needs_proxy = kind != RuneKind::StateRaw
+                                && rune_refs::should_proxy(&value);
+                            *it = rune_refs::make_rune_set(alloc, name, value, needs_proxy);
+                        }
                     }
                 }
             }
@@ -395,4 +469,114 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
         walk_arrow_function_expression(self, it);
         self.scope = parent_scope;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Deep store mutation helpers
+// ---------------------------------------------------------------------------
+
+use svelte_analyze::scope::ComponentScoping;
+
+/// Check if an AssignmentTarget is a member expression with a store ref root.
+fn extract_member_root_store_assign<'b>(
+    target: &'b AssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> Option<&'b str> {
+    match target {
+        AssignmentTarget::StaticMemberExpression(m) => {
+            let name = rune_refs::find_expr_root_name(&m.object)?;
+            scoping.is_store_ref(name).then_some(name)
+        }
+        AssignmentTarget::ComputedMemberExpression(m) => {
+            let name = rune_refs::find_expr_root_name(&m.object)?;
+            scoping.is_store_ref(name).then_some(name)
+        }
+        _ => None,
+    }
+}
+
+/// Check if a SimpleAssignmentTarget is a member expression with a store ref root.
+fn extract_member_root_store_simple<'b>(
+    target: &'b SimpleAssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> Option<&'b str> {
+    match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            let name = rune_refs::find_expr_root_name(&m.object)?;
+            scoping.is_store_ref(name).then_some(name)
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            let name = rune_refs::find_expr_root_name(&m.object)?;
+            scoping.is_store_ref(name).then_some(name)
+        }
+        _ => None,
+    }
+}
+
+/// Walk and transform computed member expression objects in an AssignmentTarget chain,
+/// skipping the root identifier.
+fn walk_target_member_objects<'a>(
+    visitor: &mut ExprTransformer<'a, '_, '_>,
+    target: &mut AssignmentTarget<'a>,
+) {
+    match target {
+        AssignmentTarget::StaticMemberExpression(m) => {
+            walk_expr_member_objects(visitor, &mut m.object);
+        }
+        AssignmentTarget::ComputedMemberExpression(m) => {
+            // Transform the computed expression itself
+            visitor.visit_expression(&mut m.expression);
+            walk_expr_member_objects(visitor, &mut m.object);
+        }
+        _ => {}
+    }
+}
+
+/// Walk and transform computed member expression objects in a SimpleAssignmentTarget chain.
+fn walk_simple_target_member_objects<'a>(
+    visitor: &mut ExprTransformer<'a, '_, '_>,
+    target: &mut SimpleAssignmentTarget<'a>,
+) {
+    match target {
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            walk_expr_member_objects(visitor, &mut m.object);
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            visitor.visit_expression(&mut m.expression);
+            walk_expr_member_objects(visitor, &mut m.object);
+        }
+        _ => {}
+    }
+}
+
+/// Recursively walk member chain objects (Expression side), transforming computed
+/// properties but NOT the root identifier.
+fn walk_expr_member_objects<'a>(
+    visitor: &mut ExprTransformer<'a, '_, '_>,
+    expr: &mut Expression<'a>,
+) {
+    match expr {
+        Expression::StaticMemberExpression(m) => {
+            if !matches!(m.object, Expression::Identifier(_)) {
+                walk_expr_member_objects(visitor, &mut m.object);
+            }
+        }
+        Expression::ComputedMemberExpression(m) => {
+            visitor.visit_expression(&mut m.expression);
+            if !matches!(m.object, Expression::Identifier(_)) {
+                walk_expr_member_objects(visitor, &mut m.object);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replace the root identifier in an AssignmentTarget member chain with a replacement expression.
+fn replace_target_root<'a>(target: &mut AssignmentTarget<'a>, replacement: Expression<'a>) {
+    rune_refs::replace_expr_root_in_assign_target(target, replacement);
+}
+
+/// Replace the root identifier in a SimpleAssignmentTarget member chain.
+fn replace_simple_target_root<'a>(target: &mut SimpleAssignmentTarget<'a>, replacement: Expression<'a>) {
+    rune_refs::replace_expr_root_in_simple_target(target, replacement);
 }

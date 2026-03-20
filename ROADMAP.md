@@ -137,18 +137,18 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ### 1a — `ModuleCompileOptions`
 - [ ] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
 
-### 1b — Template expression transforms (`svelte_transform`)
+### 1b — Template expression transforms (`svelte_transform`) ✅
 
-`svelte_transform` handles reads correctly but is missing **mutation transforms** for stores and compound rune assignments in template expressions (event handlers, expression tags, directives).
-
-- [ ] `$store = val` in template — `$.store_set(store, val)` (AssignmentExpression with store target)
-- [ ] `$store += val` in template — `$.store_set(store, $store() + val)` (compound assignment with store target)
-- [ ] `$store++` / `$store--` in template — `$.update_store()` / `$.update_pre_store()` (UpdateExpression with store target)
-- [ ] `$store.field = val` in template — `$.store_mutate()` (deep mutation through MemberExpression)
-- [ ] Rune compound assignment in template — `state_var += val` → `$.set(name, $.get(name) + val)` (currently `$.set()` without expanding operator)
-- [ ] `$store` deep mutation in script — `$.store_mutate(store, mutation, $.untrack(store))` for `$store.field = value`, `$store[key] = value` etc. (Ref: `Program.js:57–92`)
-
-Ref: `Program.js:44–102` (transform table), `svelte_transform/src/lib.rs:255–391`
+- [x] `$store = val` in template — `$.store_set(store, val)`
+- [x] `$store += val` in template — `$.store_set(store, $store() + val)`
+- [x] `$store++` / `$store--` in template — `$.update_store()` / `$.update_pre_store()`
+- [x] `$store.field = val` in template — `$.store_mutate()`
+- [x] `$store.count++` in template — `$.store_mutate()` (deep update)
+- [x] Rune compound assignment in template — `state_var += val` → `$.set(name, $.get(name) + val)`
+- [x] Rune logical compound — `state_var &&= other` → `$.set(name, $.get(name) && other, true)`
+- [x] `$store` deep mutation in script — `$.store_mutate(store, mutation, $.untrack(store))`
+- [x] `$.push/$.pop` for components with deep store mutations (`needs_context` detection)
+- [x] `collect_references` fix: walk member chains in UpdateExpression/AssignmentExpression targets
 
 ---
 
