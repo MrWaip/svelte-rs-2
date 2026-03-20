@@ -4,7 +4,7 @@
 //! Only owned data is returned.
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan as _, SourceType};
 
@@ -237,6 +237,151 @@ pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
 
     // Fallback: treat as simple identifier
     AwaitBindingInfo::Simple(trimmed.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Custom element config parsing
+// ---------------------------------------------------------------------------
+
+/// Shadow root mode for custom elements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CeShadowMode {
+    Open,
+    None,
+}
+
+/// Single prop definition within a custom element config.
+#[derive(Debug, Clone)]
+pub struct CePropConfig {
+    pub name: String,
+    pub attribute: Option<String>,
+    pub reflect: bool,
+    pub prop_type: Option<String>,
+}
+
+/// Parsed custom element config from `<svelte:options customElement={{ ... }}>`.
+#[derive(Debug, Clone)]
+pub struct ParsedCeConfig {
+    pub tag: Option<String>,
+    pub shadow: CeShadowMode,
+    /// Ordered list of prop definitions, preserving config order.
+    pub props: Vec<CePropConfig>,
+    /// Span of the `extend` expression value (absolute, within original source).
+    pub extend_span: Option<Span>,
+}
+
+/// Parse a custom element config object expression via OXC.
+///
+/// `source` is the raw expression text (e.g., `{ tag: "my-el", shadow: "open", props: {...} }`).
+/// `offset` is the byte offset of `source` within the original .svelte file,
+/// used to adjust `extend` span to absolute coordinates.
+pub fn parse_ce_config(source: &str, offset: u32) -> ParsedCeConfig {
+    let alloc = Allocator::default();
+    let wrapped = format!("var x = {};", source);
+    let result = OxcParser::new(&alloc, &wrapped, SourceType::default()).parse();
+
+    let prefix_len: u32 = 8; // "var x = "
+
+    let mut config = ParsedCeConfig {
+        tag: None,
+        shadow: CeShadowMode::Open,
+        props: Vec::new(),
+        extend_span: None,
+    };
+
+    if !result.errors.is_empty() {
+        return config;
+    }
+
+    let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first() else {
+        return config;
+    };
+    let Some(declarator) = decl.declarations.first() else {
+        return config;
+    };
+    let Some(Expression::ObjectExpression(obj)) = &declarator.init else {
+        return config;
+    };
+
+    for prop_kind in &obj.properties {
+        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
+        let key_name = match &prop.key {
+            PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+            _ => continue,
+        };
+
+        match key_name {
+            "tag" => {
+                if let Expression::StringLiteral(lit) = &prop.value {
+                    config.tag = Some(lit.value.to_string());
+                }
+            }
+            "shadow" => {
+                if let Expression::StringLiteral(lit) = &prop.value {
+                    if lit.value.as_str() == "none" {
+                        config.shadow = CeShadowMode::None;
+                    }
+                }
+            }
+            "props" => {
+                if let Expression::ObjectExpression(props_obj) = &prop.value {
+                    for prop_entry in &props_obj.properties {
+                        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else { continue };
+                        let prop_name = match &entry.key {
+                            PropertyKey::StaticIdentifier(id) => id.name.to_string(),
+                            _ => continue,
+                        };
+                        let mut prop_cfg = CePropConfig {
+                            name: prop_name,
+                            attribute: None,
+                            reflect: false,
+                            prop_type: None,
+                        };
+                        if let Expression::ObjectExpression(def_obj) = &entry.value {
+                            for def_prop in &def_obj.properties {
+                                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else { continue };
+                                let dk = match &dp.key {
+                                    PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+                                    _ => continue,
+                                };
+                                match dk {
+                                    "attribute" => {
+                                        if let Expression::StringLiteral(lit) = &dp.value {
+                                            prop_cfg.attribute = Some(lit.value.to_string());
+                                        }
+                                    }
+                                    "reflect" => {
+                                        if let Expression::BooleanLiteral(lit) = &dp.value {
+                                            prop_cfg.reflect = lit.value;
+                                        }
+                                    }
+                                    "type" => {
+                                        if let Expression::StringLiteral(lit) = &dp.value {
+                                            prop_cfg.prop_type = Some(lit.value.to_string());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        config.props.push(prop_cfg);
+                    }
+                }
+            }
+            "extend" => {
+                let ext_start = prop.value.span().start;
+                let ext_end = prop.value.span().end;
+                // Adjust from wrapped-string coordinates to original source coordinates
+                config.extend_span = Some(Span::new(
+                    ext_start - prefix_len + offset,
+                    ext_end - prefix_len + offset,
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    config
 }
 
 // ---------------------------------------------------------------------------
