@@ -268,6 +268,22 @@ Ref: `RegularElement.js` lines 166–202, 470–725
 
 Ref: `RegularElement.js` lines 280–284
 
+### 2m — EachBlock edge cases
+- [ ] Fallback (`{:else}`) codegen — 6th argument to `$.each()`: `($$anchor) => fallback_fragment`
+- [ ] `EACH_INDEX_REACTIVE` flag (value 2) — set when keyed block has index variable; index becomes signal, read via `$.get(i)`
+- [ ] Key function index parameter — include index in key arrow `(item, i) => key_expr` when key expression references the index variable
+- [ ] Destructuring context — `{#each items as { x, y }}` → per-field `$.derived_safe_equal()` wrappers inside render function
+- [ ] Collection ID (scope shadowing) — when context variable shadows outer scope binding, store array in `$$array` and pass as extra render_fn arg
+- [ ] Store invalidation — `$.invalidate_store($$stores, 'name')` when collection expression uses `$store` subscription
+- [ ] Flag refinement: `EACH_ITEM_REACTIVE` — check dependency scope depth (skip bindings from nested functions); detect store subscriptions separately
+- [ ] Flag refinement: `EACH_ITEM_IMMUTABLE` — only set in runes mode without store subscriptions (currently always set as default)
+- [ ] `bind:group` + user-declared index + `contains_group_binding`: use generated `$$index` as param, alias user name via `let user_name = $$index` inside body
+- [ ] `bind:group` + keyed each: `$.get($$index)` wrapping for keyed each blocks with user-declared index
+- [ ] `binding_group_name` deduplication: shared group names when bind expressions resolve to the same bindings
+- [ ] Nested each blocks: `bind:group` expression propagates through multiple levels
+
+Ref: `EachBlock.js` lines 45–110 (flags), 139–288 (context/index), 293–354 (key/fallback/async)
+
 ---
 
 ## Tier 3 — CSS Scoping
@@ -541,12 +557,3 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 ---
 
 ## Deferred
-
-### bind:group each-block indexes (Tier 2c)
-- ~~`parent_each_blocks` analysis: walk upward from bind:group to collect each blocks whose declarations are referenced in the binding expression~~ ✅
-- ~~`contains_group_binding` flag: force `uses_index = true` on each blocks that contribute to a bind:group~~ ✅
-- ~~Index array: pass `$$index` for parent each blocks~~ ✅
-- User-declared index + `contains_group_binding`: use generated `$$index` as param, alias user name via `let user_name = $$index` inside body
-- Index array: `$.get($$index)` wrapping for keyed each blocks with user-declared index
-- `binding_group_name` deduplication: shared group names when bind expressions resolve to the same bindings
-- Nested each blocks: expression propagates through multiple levels
