@@ -145,8 +145,8 @@ Theme: remove TypeScript type annotations from compiled output.
 
 | # | Feature | Phases | Description |
 |---|---------|--------|-------------|
-| 1 | Strip type annotations | S | Remove type annotations, interfaces, type aliases from `<script>` output |
-| 2 | Strip from expressions | T | Remove type assertions, `as` casts, generics from template expressions |
+| 1 | ~~Strip type annotations~~ | S | ~~Remove type annotations, interfaces, type aliases from `<script>` output~~ |
+| 2 | ~~Strip from expressions~~ | T | ~~Remove type assertions, `as` casts, generics from template expressions~~ |
 
 ---
 
