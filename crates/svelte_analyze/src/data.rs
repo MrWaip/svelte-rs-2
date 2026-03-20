@@ -248,6 +248,11 @@ pub struct BindSemanticsData {
     /// bind:group directive → NodeId of the value attribute on the same element (if any).
     /// Used to build the getter thunk that evaluates the value expression.
     pub(crate) bind_group_value_attr: FxHashMap<NodeId, NodeId>,
+    /// bind:group directive → ancestor each block NodeIds whose context vars
+    /// appear in the binding expression (inner-to-outer order).
+    pub(crate) parent_each_blocks: FxHashMap<NodeId, Vec<NodeId>>,
+    /// Each blocks that need a generated `$$index` parameter for group binding.
+    pub(crate) contains_group_binding: FxHashSet<NodeId>,
 }
 
 impl BindSemanticsData {
@@ -258,6 +263,8 @@ impl BindSemanticsData {
             bind_each_context: FxHashMap::default(),
             has_bind_group: FxHashSet::default(),
             bind_group_value_attr: FxHashMap::default(),
+            parent_each_blocks: FxHashMap::default(),
+            contains_group_binding: FxHashSet::default(),
         }
     }
 
@@ -279,6 +286,14 @@ impl BindSemanticsData {
 
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
         self.bind_group_value_attr.get(&id).copied()
+    }
+
+    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
+        self.parent_each_blocks.get(&id)
+    }
+
+    pub fn contains_group_binding(&self, id: NodeId) -> bool {
+        self.contains_group_binding.contains(&id)
     }
 }
 

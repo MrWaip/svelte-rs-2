@@ -438,6 +438,30 @@ impl<'a> Builder<'a> {
         Expression::AssignmentExpression(self.alloc(assign))
     }
 
+    /// Build assignment from a pre-built AssignmentTarget and right-hand expression.
+    pub fn assign_expr_raw(&self, left: AssignmentTarget<'a>, right: Expression<'a>) -> Expression<'a> {
+        let assign =
+            self.ast.assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);
+        Expression::AssignmentExpression(self.alloc(assign))
+    }
+
+    /// Convert an expression to an AssignmentTarget.
+    /// Supports identifiers and static member expressions.
+    pub fn expr_to_assignment_target(&self, expr: Expression<'a>) -> AssignmentTarget<'a> {
+        match expr {
+            Expression::Identifier(id) => {
+                AssignmentTarget::AssignmentTargetIdentifier(id)
+            }
+            Expression::StaticMemberExpression(m) => {
+                AssignmentTarget::StaticMemberExpression(m)
+            }
+            Expression::ComputedMemberExpression(m) => {
+                AssignmentTarget::ComputedMemberExpression(m)
+            }
+            _ => panic!("cannot convert expression to assignment target"),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Functions & arrows
     // -----------------------------------------------------------------------

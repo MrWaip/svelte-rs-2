@@ -205,7 +205,7 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [x] Bind directive deferral with `use:` — wrap non-`bind:this` directives in `$.effect()` when parent has `UseDirective` ✅
 - [x] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen ✅
 - [x] `$state(array/object)` — wrap inner value in `$.proxy()` for mutated $state signals ✅
-- [ ] `bind:group` — index array from `parent_each_blocks` for keyed each blocks (currently hardcoded empty array)
+- [x] `bind:group` — index array from `parent_each_blocks` when expression references each-block vars ✅
 
 ### 2d — Actions & attachments
 - [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
@@ -543,8 +543,10 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 ## Deferred
 
 ### bind:group each-block indexes (Tier 2c)
-- `parent_each_blocks` analysis: walk upward from bind:group to collect each blocks whose declarations are referenced in the binding expression
-- Index array: for each parent each block, pass `index` (non-keyed) or `$.get(index)` (keyed)
-- `contains_group_binding` flag: force `uses_index = true` on each blocks that contribute to a bind:group
+- ~~`parent_each_blocks` analysis: walk upward from bind:group to collect each blocks whose declarations are referenced in the binding expression~~ ✅
+- ~~`contains_group_binding` flag: force `uses_index = true` on each blocks that contribute to a bind:group~~ ✅
+- ~~Index array: pass `$$index` for parent each blocks~~ ✅
+- User-declared index + `contains_group_binding`: use generated `$$index` as param, alias user name via `let user_name = $$index` inside body
+- Index array: `$.get($$index)` wrapping for keyed each blocks with user-declared index
 - `binding_group_name` deduplication: shared group names when bind expressions resolve to the same bindings
-- Currently hardcoded `[]` — sufficient for `bind:group={rootVar}` patterns
+- Nested each blocks: expression propagates through multiple levels
