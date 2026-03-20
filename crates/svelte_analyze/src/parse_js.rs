@@ -190,8 +190,25 @@ fn walk_node<'a>(
         Node::RenderTag(tag) => {
             let source = component.source_text(tag.expression_span);
             parse_expr(alloc, source, tag.expression_span.start, tag.id, typescript, data, parsed, diags);
-            // Store per-argument has_call flags and identifier names before transform
+
+            // Unwrap ChainExpression → CallExpression, recording the chain flag.
+            // OXC parses `fn?.()` as ChainExpression { expression: CallExpression }.
+            if matches!(parsed.exprs.get(&tag.id), Some(Expression::ChainExpression(_))) {
+                data.render_tag_is_chain.insert(tag.id);
+                if let Some(Expression::ChainExpression(chain)) = parsed.exprs.remove(&tag.id) {
+                    if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
+                        parsed.exprs.insert(tag.id, Expression::CallExpression(call));
+                    }
+                }
+            }
+
+            // Store per-argument has_call flags, identifier names, and callee name
             if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.id) {
+                // Extract callee identifier name for dynamic detection
+                if let Expression::Identifier(ident) = &call.callee {
+                    data.render_tag_callee_name.insert(tag.id, ident.name.to_string());
+                }
+
                 let flags: Vec<bool> = call.arguments.iter().map(|arg| {
                     svelte_js::expression_has_call(arg.to_expression())
                 }).collect();

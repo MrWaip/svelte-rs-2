@@ -74,6 +74,7 @@ pub fn analyze_with_options<'a>(
     known_values::collect_known_values(component, &mut data);
     props::analyze_props(&mut data);
     resolve_render_tag_prop_sources(&mut data);
+    resolve_render_tag_dynamic(&mut data);
     lower::lower(component, &mut data);
 
     // Single composite walk: reactivity + elseif + element flags + hoistable snippets
@@ -171,6 +172,30 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
             })
         }).collect();
         data.render_tag_prop_sources.insert(node_id, resolved);
+    }
+}
+
+/// Determine which render tags have dynamic callees and which are getter-type.
+/// Must run after `resolve_render_tag_prop_sources` (which runs after `props`).
+fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
+    // Collect all render tag IDs from arg_has_call (populated for every render tag).
+    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().copied().collect();
+
+    for node_id in all_ids {
+        let is_dynamic = match data.render_tag_callee_sym.get(&node_id) {
+            Some(&sym_id) => {
+                let normal = data.scoping.is_normal_binding(sym_id);
+                if !normal && (data.scoping.is_prop_source(sym_id) || data.scoping.is_snippet_param(sym_id)) {
+                    data.render_tag_callee_is_getter.insert(node_id);
+                }
+                !normal
+            }
+            // No sym: non-Identifier callee or unresolved binding — always dynamic.
+            None => true,
+        };
+        if is_dynamic {
+            data.render_tag_dynamic.insert(node_id);
+        }
     }
 }
 

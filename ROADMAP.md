@@ -71,6 +71,8 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `has_call` memoization — `onclick={getHandler()}` → `$.derived(getHandler)` + `$.get(event_handler)`
 - [x] Component prop memoization — `has_call` and non-simple+dynamic expressions wrapped in `$.derived`/`$.get`
 - [x] Render tag arg memoization — `{@render fn(getArg())}` → `$.derived`/`$.get`
+- [x] Render tag dynamic callee — `{@render show(args)}` where `show` is prop/state → `$.snippet(node, () => show, ...)`
+- [x] Render tag optional chaining — `{@render fn?.()}` → `fn?.(anchor)` or `$.snippet(node, () => fn ?? $.noop, ...)`
 - [x] `on:event` — legacy event directive (Svelte 4)
 
 ### Bind directives
@@ -347,8 +349,8 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
 
 ### Render tag (Tier 1d)
-- [ ] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
-- [ ] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
+- [x] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
+- [x] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
 
 ### `{@html expr}` (Tier 2)
 - [ ] `is_controlled` optimization (single child → innerHTML)
