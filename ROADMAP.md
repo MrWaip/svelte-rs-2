@@ -59,7 +59,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `style:prop` directive (shorthand, expression, string, concat, `|important`)
 - [x] `class` object/array syntax (Svelte 5)
 - [x] `{#await promise}` — async blocks (full form, short then/catch, no bindings, destructured, pending only)
-- [x] `{@debug vars}` — dev-mode debugger (partial: 3/5 tests, 2 blocked on `$.add_svelte_meta`/`$.tag_proxy`)
+- [x] `{@debug vars}` — dev-mode debugger (all contexts: root, if, each)
 
 ### Event handling
 - [x] Svelte 5 event attributes — `onclick={handler}` → `$.delegated()` for delegatable events
@@ -132,10 +132,23 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ---
 
-## Tier 1 — Module Compilation (remaining)
+## Tier 1 — Core Gaps
 
 ### 1a — `ModuleCompileOptions`
 - [ ] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
+
+### 1b — Template expression transforms (`svelte_transform`)
+
+`svelte_transform` handles reads correctly but is missing **mutation transforms** for stores and compound rune assignments in template expressions (event handlers, expression tags, directives).
+
+- [ ] `$store = val` in template — `$.store_set(store, val)` (AssignmentExpression with store target)
+- [ ] `$store += val` in template — `$.store_set(store, $store() + val)` (compound assignment with store target)
+- [ ] `$store++` / `$store--` in template — `$.update_store()` / `$.update_pre_store()` (UpdateExpression with store target)
+- [ ] `$store.field = val` in template — `$.store_mutate()` (deep mutation through MemberExpression)
+- [ ] Rune compound assignment in template — `state_var += val` → `$.set(name, $.get(name) + val)` (currently `$.set()` without expanding operator)
+- [ ] `$store` deep mutation in script — `$.store_mutate(store, mutation, $.untrack(store))` for `$store.field = value`, `$store[key] = value` etc. (Ref: `Program.js:57–92`)
+
+Ref: `Program.js:44–102` (transform table), `svelte_transform/src/lib.rs:255–391`
 
 ---
 
@@ -146,22 +159,31 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 ### 2a — Runes & script
 - [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations
 
-### 2b —Template tags
-- [ ] `{@html}` — `is_controlled` optimization (single child → innerHTML)
-- [ ] `{@html}` — `is_svg` / `is_mathml` namespace flags
-- [ ] `{@const}` — dev mode `$.tag()` wrapping
-- [ ] `{@debug}` — `debug_in_if`, `debug_in_each` tests: blocked on `$.add_svelte_meta` + `$.tag_proxy`/`$.get(item)`
+### 2b — Template tags
+- [x] `{@html}` — `is_controlled` optimization (single child → innerHTML)
+- [x] `{@html}` — `is_svg` / `is_mathml` namespace flags
+- [x] `{@const}` — dev mode `$.tag()` wrapping + eager `$.get()` for init errors
+- [x] `{@debug}` — works in if/each contexts with proper `$.get()` wrapping for each-block vars
+- [x] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
+- [x] `$.add_svelte_meta()` — dev-mode block wrapping for if/each/await/key blocks
 - [ ] `{#await}` — `has_blockers` / `$.async()` wrapping for experimental async mode
 - [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression
-- [ ] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
+- [ ] `{#snippet}` — parameter destructuring: array/object patterns with defaults → per-field `$.derived()` wrappers
 
 ### 2c — Bind directives
 - [ ] `bind:property={get, set}` — function bindings (Svelte 5)
+- [ ] `bind:group` — index array from `parent_each_blocks` for keyed each blocks (currently hardcoded empty array)
+- [ ] `bind:group` — value attribute dependency: when element has `value` attr, wrap getter to include it
+- [ ] Bind directive deferral with `use:` — wrap non-`bind:this` directives in `$.effect()` when parent has `UseDirective`
+- [ ] Bind directive async/blockers — `$.run_after_blockers()` wrapping for async bind expressions
+- [ ] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen
 
 ### 2d — Actions & attachments
 - [ ] `use:action` with `await` expression (requires `run_after_blockers`)
 - [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
 - [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
+- [ ] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
+- [ ] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
 
 ### 2e — Special elements
 - [x] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
@@ -174,6 +196,7 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
 - [ ] `<svelte:boundary>` — dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
+- [ ] `<svelte:element>` — dynamic `xmlns` attribute for runtime namespace switching
 - [x] `bind:this` — SequenceExpression custom getter/setter
 
 ### 2f — CSS
@@ -193,6 +216,34 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`
 - [ ] SvelteDocument/SvelteBody routing: events on special elements → `init` not `after_update`
 - [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers
+
+### 2j — Element attribute edge cases
+- [ ] `muted` attribute — direct property assignment (`el.muted = value`) instead of `$.set_attribute`
+- [ ] `checked` attribute — `$.set_checked(el, value)` instead of generic attribute
+- [ ] `selected` attribute — `$.set_selected(el, value)` instead of generic attribute
+- [ ] `defaultValue` — `$.set_default_value(el, value)` when static `value` attr present
+- [ ] `defaultChecked` — `$.set_default_checked(el, value)` when static `checked=true` present
+- [ ] `xlink:*` attributes — `$.set_xlink_attribute(el, name, value)` for SVG xlink namespace
+- [ ] DOM properties — `is_dom_property()` check → direct assignment `el[name] = value` instead of setAttribute
+- [ ] `$.set_custom_element_data(el, name, value)` — attribute setting for custom elements (non-idempotent, needs `$.template_effect`)
+- [ ] `autofocus` — `$.autofocus(el, value)` instead of generic attribute
+- [ ] `dir` attribute — Chromium workaround: re-assign `el.dir = el.dir` after text content update
+
+Ref: `RegularElement.js` lines 583–725, `shared/element.js`
+
+### 2k — Form element special handling
+- [ ] `$.remove_textarea_child(el)` — called for `<textarea>` with spread, `bind:value`, or dynamic value
+- [ ] `__value` property — hidden internal property for `<option>`, `<select>`, `<input type="checkbox">` with `bind:group`
+- [ ] `$.init_select(el)` — initialize select element for value tracking
+- [ ] `$.select_option(el, value)` — sync select option when value changes dynamically
+- [ ] `customizable_select` — rich HTML content in `<select>`/`<option>`/`<optgroup>` → `$.customizable_select()` wrapper
+
+Ref: `RegularElement.js` lines 166–202, 470–725
+
+### 2l — Event replay
+- [ ] `$.replay_events(el)` — re-trigger queued load/error events for `<img>`, `<video>`, `<audio>`, `<source>`, etc. when element has spread, `use:`, or `onload`/`onerror` attribute
+
+Ref: `RegularElement.js` lines 280–284
 
 ---
 
@@ -309,8 +360,14 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 - [ ] `$host()` must have zero arguments (`rune_invalid_arguments`)
 - [ ] `$host()` only in custom element context (`host_invalid_placement`)
 - [ ] `$host()` not in `<script module>`
-- [ ] Assignment to `const`, imports, `$derived` runes. Ref: `2-analyze/visitors/AssignmentExpression.js`
+- [ ] `constant_assignment` — error on assignment/update to `const`, imports, `$derived`/`$derived.by` variables (Ref: `2-analyze/visitors/shared/utils.js:validate_no_const_assignment`)
+- [ ] `constant_binding` — error on `bind:` to `const`/import bindings
+- [ ] `each_item_invalid_assignment` — error on assignment to `{#each}` iteration variable
+- [ ] `snippet_parameter_assignment` — error on assignment to snippet parameter
+- [ ] `state_field_invalid_assignment` — error on assignment to class state field before its declaration in constructor
 - [ ] Module: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions
+- [ ] `store_invalid_scoped_subscription` — `$store` in nested scope (e.g., function inside instance script)
+- [ ] `store_invalid_subscription_module` — `$store` in non-`.svelte` files (module compilation)
 
 ### 5c — Elements & special elements
 
@@ -394,12 +451,12 @@ Single visitor: BinaryExpression
 Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
 
 ### 6f — Dev: `$.add_svelte_meta()` block wrapping
-- [ ] IfBlock — `$.add_svelte_meta(() => $.if(...), 'if', ComponentName, line, col)`
-- [ ] EachBlock — same pattern
-- [ ] AwaitBlock — same pattern
+- [x] IfBlock — `$.add_svelte_meta(() => $.if(...), 'if', ComponentName, line, col)`
+- [x] EachBlock — same pattern
+- [x] AwaitBlock — same pattern
+- [x] KeyBlock — same pattern
 
-Unblocks: remaining `{@debug}` tests (`$.add_svelte_meta` wrapping).
-Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js`
+Implemented in Tier 2b. Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js`
 
 ### 6g — Dev: ownership validation
 - [ ] `$.create_ownership_validator($$props)` setup in component body
@@ -457,3 +514,12 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 
 ### 7i — `createEventDispatcher`
 - [ ] Runtime only, no compiler changes
+
+---
+
+## Deferred
+
+### Experimental async (Tier 2b)
+- Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
+- `has_await` detection in expression metadata + `$.async()` wrapping for if/each/html/await/key blocks
+- Requires: `ExpressionInfo.has_await`, `has_blockers()`, analysis infrastructure for dependency tracking

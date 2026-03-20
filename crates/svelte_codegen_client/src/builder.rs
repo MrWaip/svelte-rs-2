@@ -261,6 +261,26 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
+    /// `var [a, b] = init;` — array destructuring var declaration.
+    pub fn var_array_destruct_stmt(&self, names: &[String], init: Expression<'a>) -> Statement<'a> {
+        let elements: Vec<_> = names.iter().map(|name| {
+            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
+            Some(pattern)
+        }).collect();
+        let array_pattern = self.ast.array_pattern(SPAN, self.ast.vec_from_iter(elements), NONE);
+        let pattern = ast::BindingPattern::ArrayPattern(self.alloc(array_pattern));
+        let decl = self.ast.variable_declarator(
+            SPAN, VariableDeclarationKind::Var, pattern, NONE, Some(init), false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Var,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     /// `var { a, b } = init;` — object destructuring var declaration.
     pub fn var_object_destruct_stmt(&self, names: &[String], init: Expression<'a>) -> Statement<'a> {
         let properties: Vec<_> = names.iter().map(|name| {

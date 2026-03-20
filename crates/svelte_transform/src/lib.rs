@@ -179,7 +179,14 @@ fn walk_node<'a>(
                 walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }
-        Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
+        Node::DebugTag(tag) => {
+            for i in 0..tag.identifiers.len() {
+                if let Some(expr) = parsed.debug_tag_exprs.get_mut(&(tag.id, i)) {
+                    transform_expr(ctx, expr, scope);
+                }
+            }
+        }
+        Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 

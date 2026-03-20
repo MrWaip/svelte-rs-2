@@ -22,6 +22,8 @@ pub struct ParsedExprs<'a> {
     pub key_exprs: FxHashMap<NodeId, Expression<'a>>,
     /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
     pub script_program: Option<oxc_ast::ast::Program<'a>>,
+    /// DebugTag identifier expressions: (debug_tag_id, identifier_index) → transformed expression.
+    pub debug_tag_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -32,6 +34,7 @@ impl<'a> ParsedExprs<'a> {
             concat_part_exprs: FxHashMap::default(),
             key_exprs: FxHashMap::default(),
             script_program: None,
+            debug_tag_exprs: FxHashMap::default(),
         }
     }
 }

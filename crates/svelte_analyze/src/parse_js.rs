@@ -289,7 +289,19 @@ fn walk_node<'a>(
             walk_attrs(alloc, &b.attributes, component, typescript, data, parsed, diags);
             walk_fragment(alloc, &b.fragment, component, typescript, data, parsed, diags);
         }
-        Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
+        Node::DebugTag(tag) => {
+            for (i, span) in tag.identifiers.iter().enumerate() {
+                let name = component.source_text(*span);
+                let arena_name: &'a str = alloc.alloc_str(name);
+                match svelte_js::analyze_expression_with_alloc(alloc, arena_name, span.start, typescript) {
+                    Ok((_info, expr)) => {
+                        parsed.debug_tag_exprs.insert((tag.id, i), expr);
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+        Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 

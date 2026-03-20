@@ -99,8 +99,9 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
             // space placeholder for the text node
             html.push(' ');
         }
-        ContentStrategy::SingleBlock(FragmentItem::EachBlock(_)) => {
-            // Controlled each block: no <!> anchor in template
+        ContentStrategy::SingleBlock(FragmentItem::EachBlock(_))
+        | ContentStrategy::SingleBlock(FragmentItem::HtmlTag(_)) => {
+            // Controlled block: element itself is the anchor, no <!> needed
         }
         ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Mixed { .. } => {
             html.push_str(&fragment_html(ctx, child_key));

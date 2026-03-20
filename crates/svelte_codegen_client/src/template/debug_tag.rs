@@ -25,10 +25,13 @@ pub(crate) fn emit_debug_tags<'a>(
         let tag = ctx.debug_tag(id);
         let identifiers = tag.identifiers.clone();
 
-        let props: Vec<ObjProp<'a>> = identifiers.iter().map(|span| {
+        let props: Vec<ObjProp<'a>> = identifiers.iter().enumerate().map(|(i, span)| {
             let name = ctx.component.source_text(*span);
             let name_alloc: &str = ctx.b.alloc_str(name);
-            let snapshot = ctx.b.call_expr("$.snapshot", [Arg::Ident(name_alloc)]);
+            // Use pre-transformed expression (with $.get() wrapping for each-block vars)
+            let ident_expr = ctx.parsed.debug_tag_exprs.remove(&(id, i))
+                .unwrap_or_else(|| ctx.b.rid_expr(name_alloc));
+            let snapshot = ctx.b.call_expr("$.snapshot", [Arg::Expr(ident_expr)]);
             ObjProp::KeyValue(name_alloc, snapshot)
         }).collect();
 

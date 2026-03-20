@@ -110,7 +110,7 @@ pub(crate) fn traverse_items<'a>(
                         }
                         FragmentItem::EachBlock(id) => gen_each_block(ctx, *id, anchor, false, init),
                         FragmentItem::RenderTag(id) => gen_render_tag(ctx, *id, anchor, init),
-                        FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, init),
+                        FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, false, init),
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
                         FragmentItem::SvelteElement(id) => super::svelte_element::gen_svelte_element(ctx, *id, anchor, init),
                         FragmentItem::SvelteBoundary(id) => super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init),

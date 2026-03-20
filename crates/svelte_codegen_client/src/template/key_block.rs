@@ -17,13 +17,15 @@ pub(crate) fn gen_key_block<'a>(
     anchor: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let span_start = ctx.key_block(id).span.start;
     let key_thunk = super::expression::build_node_thunk(ctx, id);
 
     let body = gen_fragment(ctx, FragmentKey::KeyBlockBody(id));
     let body_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
 
-    stmts.push(ctx.b.call_stmt(
+    let key_call = ctx.b.call_expr(
         "$.key",
         [Arg::Expr(anchor), Arg::Expr(key_thunk), Arg::Expr(body_fn)],
-    ));
+    );
+    stmts.push(super::add_svelte_meta(ctx, key_call, span_start, "key"));
 }

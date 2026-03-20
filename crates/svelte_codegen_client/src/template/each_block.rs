@@ -29,6 +29,7 @@ pub(crate) fn gen_each_block<'a>(
     let block = ctx.each_block(block_id);
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
+    let span_start = block.span.start;
     let context_name = ctx.each_context_name(block_id);
 
     // Compute flags
@@ -82,10 +83,10 @@ pub(crate) fn gen_each_block<'a>(
     let frag_fn = if let Some(ref idx) = index_name {
         ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
     } else {
-        ctx.b.arrow_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
+        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
     };
 
-    body.push(ctx.b.call_stmt(
+    let each_call = ctx.b.call_expr(
         "$.each",
         [
             Arg::Expr(anchor),
@@ -94,5 +95,6 @@ pub(crate) fn gen_each_block<'a>(
             Arg::Expr(key_fn),
             Arg::Expr(frag_fn),
         ],
-    ));
+    );
+    body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
 }

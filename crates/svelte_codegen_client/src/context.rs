@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
-use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_transform::TransformData;
 
@@ -138,6 +138,7 @@ impl<'a> Ctx<'a> {
     pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(id, "each block", Node::as_each_block) }
     pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(id, "snippet block", Node::as_snippet_block) }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(id, "render tag", Node::as_render_tag) }
+    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock { self.get_node(id, "key block", Node::as_key_block) }
     pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(id, "svelte element", Node::as_svelte_element) }
     pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(id, "svelte boundary", Node::as_svelte_boundary) }
     pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.get_node(id, "await block", Node::as_await_block) }
