@@ -69,9 +69,11 @@ pub(crate) fn process_attr<'a>(
                     (raw_event_name.to_string(), false)
                 };
 
+                let expr_offset = a.expression_span.start;
                 let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
                 let val = get_attr_expr(ctx, attr_id);
                 let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
+                let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
                 let passive = svelte_js::is_passive_event(&event_name);
                 let delegated = !capture && svelte_js::is_delegatable_event(&event_name);
@@ -1063,6 +1065,94 @@ pub(crate) fn build_event_handler_s5<'a>(
     ctx.b.function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)])
 }
 
+/// In dev mode, convert arrow event handlers to named functions and wrap `$inspect.trace()`.
+/// Reference: `events.js` `build_event()` lines 66-76.
+/// `expr_offset` is the byte offset of the expression in the component source.
+fn dev_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>, event_name: &str, expr_offset: u32) -> Expression<'a> {
+    if !ctx.dev {
+        return handler;
+    }
+
+    let Expression::ArrowFunctionExpression(arrow) = handler else {
+        return handler;
+    };
+    let arrow = arrow.unbox();
+
+    // Convert arrow body to block statements
+    let mut body = arrow.body.unbox();
+    let mut stmts: Vec<Statement<'a>> = body.statements.drain(..).collect();
+
+    // Check for $inspect.trace() as first statement
+    let has_trace = stmts.first().is_some_and(|s| {
+        if let Statement::ExpressionStatement(es) = s {
+            is_inspect_trace_call(&es.expression)
+        } else {
+            false
+        }
+    });
+
+    if has_trace {
+        // Remove the trace statement
+        let trace_stmt = stmts.remove(0);
+        let Statement::ExpressionStatement(es) = trace_stmt else { unreachable!() };
+        let es = es.unbox();
+        let Expression::CallExpression(call) = es.expression else { unreachable!() };
+        let mut call = call.unbox();
+
+        // Extract explicit label or generate auto-label
+        let label_expr = if !call.arguments.is_empty() {
+            let mut dummy = oxc_ast::ast::Argument::from(ctx.b.cheap_expr());
+            std::mem::swap(&mut call.arguments[0], &mut dummy);
+            dummy.into_expression()
+        } else {
+            let (line, col) = crate::script::compute_line_col(ctx.source, expr_offset + arrow.span.start);
+            let sanitized = crate::script::sanitize_location(ctx.filename);
+            let label = format!("trace ({sanitized}:{line}:{col})");
+            ctx.b.str_expr(&label)
+        };
+        let label_thunk = ctx.b.thunk(label_expr);
+
+        let body_thunk = if arrow.r#async {
+            ctx.b.async_thunk_block(stmts)
+        } else {
+            ctx.b.thunk_block(stmts)
+        };
+
+        let trace_call = ctx.b.call_expr("$.trace", [
+            Arg::Expr(label_thunk),
+            Arg::Expr(body_thunk),
+        ]);
+        let return_expr = if arrow.r#async {
+            ctx.b.await_expr(trace_call)
+        } else {
+            trace_call
+        };
+        stmts = vec![ctx.b.return_stmt(return_expr)];
+        ctx.has_tracing = true;
+    }
+
+    ctx.b.named_function_expr(
+        event_name,
+        arrow.params.unbox(),
+        stmts,
+        arrow.r#async,
+    )
+}
+
+/// Check if an expression is `$inspect.trace(...)`.
+fn is_inspect_trace_call(expr: &Expression) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        if let Expression::StaticMemberExpression(member) = &call.callee {
+            if member.property.name.as_str() == "trace" {
+                if let Expression::Identifier(id) = &member.object {
+                    return id.name.as_str() == "$inspect";
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Build event handler for legacy on:directive (non-dev mode).
 /// Reference: `events.js` `build_event_handler()`.
 pub(crate) fn build_legacy_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>) -> Expression<'a> {
@@ -1154,6 +1244,7 @@ pub(crate) fn gen_event_attr_on<'a>(
     raw_event_name: &str,
     target: &str,
     stmts: &mut Vec<Statement<'a>>,
+    expr_offset: u32,
 ) {
     let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
         (base.to_string(), true)
@@ -1164,10 +1255,11 @@ pub(crate) fn gen_event_attr_on<'a>(
     let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
     let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
     let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
+    let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
     let passive = svelte_js::is_passive_event(&event_name);
     let mut args: Vec<Arg<'a, '_>> = vec![
-        Arg::Str(event_name),
+        Arg::Str(event_name.clone()),
         Arg::Ident(target),
         Arg::Expr(handler),
     ];

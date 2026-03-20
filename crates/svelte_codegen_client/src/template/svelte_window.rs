@@ -32,7 +32,7 @@ pub(crate) fn gen_svelte_window<'a>(
             Attribute::ExpressionAttribute(ea) => {
                 if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
-                    gen_event_attr_on(ctx, attr_id, event_name, "$.window", stmts);
+                    gen_event_attr_on(ctx, attr_id, event_name, "$.window", stmts, ea.expression_span.start);
                 }
             }
             Attribute::BindDirective(bind) => {

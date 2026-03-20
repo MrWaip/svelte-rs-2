@@ -566,6 +566,35 @@ impl<'a> Builder<'a> {
         )))
     }
 
+    /// Create a named function expression: `function name(params) { body }`
+    pub fn named_function_expr(
+        &self,
+        name: &str,
+        params: FormalParameters<'a>,
+        body: Vec<Statement<'a>>,
+        is_async: bool,
+    ) -> Expression<'a> {
+        let body = self.ast.alloc_function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter(body),
+        );
+        let id = self.ast.binding_identifier(SPAN, self.ast.atom(name));
+        Expression::FunctionExpression(self.alloc(self.ast.function(
+            SPAN,
+            FunctionType::FunctionExpression,
+            Some(id),
+            false,
+            is_async,
+            false,
+            NONE,
+            NONE,
+            params,
+            NONE,
+            Some(body),
+        )))
+    }
+
     /// Create params with a rest element: `...name`
     pub fn rest_params(&self, name: &str) -> FormalParameters<'a> {
         let atom = self.ast.atom(name);
