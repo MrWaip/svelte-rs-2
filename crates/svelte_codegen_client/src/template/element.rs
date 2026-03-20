@@ -52,13 +52,14 @@ pub(crate) fn process_element<'a>(
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
     } else {
         let el = ctx.element(el_id);
+        let has_use_directive = el.attributes.iter().any(|a| matches!(a, svelte_ast::Attribute::UseDirective(_)));
         let attr_dynamic: Vec<_> = el.attributes.iter()
             .map(|attr| ctx.is_dynamic_attr(attr.id()))
             .collect();
         let el = ctx.element(el_id);
         let tag = el.name.clone();
         for (i, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_name, &tag, attr_dynamic[i], init, update, &mut directive_init, &mut directive_after_update);
+            process_attr(ctx, attr, el_name, el_id, &tag, attr_dynamic[i], has_use_directive, init, update, &mut directive_init, &mut directive_after_update);
         }
     }
 
@@ -71,6 +72,10 @@ pub(crate) fn process_element<'a>(
     process_style_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // --- Children ---
+    let prev_bound_contenteditable = ctx.bound_contenteditable;
+    if ctx.is_bound_contenteditable(el_id) {
+        ctx.bound_contenteditable = true;
+    }
     let has_state = ctx.has_dynamic_children(&child_key);
     match ct {
         ContentStrategy::Empty | ContentStrategy::Static(_) => {}
@@ -104,20 +109,30 @@ pub(crate) fn process_element<'a>(
                 ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
             };
             init.push(ctx.b.var_stmt(&text_name, child_call));
-            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-
-            // Check if the expression needs call memoization (has_call + reactive refs)
-            let has_call = text_content_needs_memo(&items[0], ctx);
 
             let expr = build_concat(ctx, &items[0]);
-            if has_call {
-                // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
-                emit_memoized_text_effect(ctx, &text_name, expr, init);
-            } else {
-                update.push(ctx.b.call_stmt(
-                    "$.set_text",
-                    [Arg::Ident(&text_name), Arg::Expr(expr)],
+            if ctx.bound_contenteditable {
+                // bound_contenteditable: nodeValue= in init instead of $.set_text() in update
+                init.push(ctx.b.assign_stmt(
+                    crate::builder::AssignLeft::StaticMember(
+                        ctx.b.static_member(ctx.b.rid_expr(&text_name), "nodeValue"),
+                    ),
+                    expr,
                 ));
+                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+            } else {
+                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                // Check if the expression needs call memoization (has_call + reactive refs)
+                let has_call = text_content_needs_memo(&items[0], ctx);
+                if has_call {
+                    // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
+                    emit_memoized_text_effect(ctx, &text_name, expr, init);
+                } else {
+                    update.push(ctx.b.call_stmt(
+                        "$.set_text",
+                        [Arg::Ident(&text_name), Arg::Expr(expr)],
+                    ));
+                }
             }
         }
 
@@ -164,6 +179,8 @@ pub(crate) fn process_element<'a>(
             update.extend(child_update);
         }
     }
+
+    ctx.bound_contenteditable = prev_bound_contenteditable;
 
     // --- Merge directive statements after children (matching Svelte's element_state merge) ---
     init.extend(directive_init);

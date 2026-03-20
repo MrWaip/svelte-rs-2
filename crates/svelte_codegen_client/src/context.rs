@@ -76,6 +76,9 @@ pub struct Ctx<'a> {
 
     // -- Bind group --
     pub needs_binding_group: bool,
+    /// Set while processing children of a contenteditable element with bind:innerHTML/innerText/textContent.
+    /// Text nodes use `nodeValue=` init instead of `$.set_text()` update.
+    pub bound_contenteditable: bool,
     /// Snippet param names for the currently generating snippet body.
     pub snippet_param_names: Vec<String>,
 
@@ -122,6 +125,7 @@ impl<'a> Ctx<'a> {
             index,
             dev,
             needs_binding_group: false,
+            bound_contenteditable: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
             source,
@@ -208,6 +212,9 @@ impl<'a> Ctx<'a> {
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.analysis.element_flags.is_dynamic_attr(id) }
     pub fn static_class(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_class(id) }
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_style(id) }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.analysis.element_flags.is_bound_contenteditable(id) }
+    pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis.bind_semantics.has_bind_group(id) }
+    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis.bind_semantics.bind_group_value_attr(id) }
 
     // -- Snippet shortcuts --
 

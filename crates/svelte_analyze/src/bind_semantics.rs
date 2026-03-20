@@ -219,4 +219,49 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         }
     }
 
+    fn leave_element(
+        &mut self,
+        el: &Element,
+        _scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        // Detect bind:group → mark element and find value attribute
+        let bind_group = el.attributes.iter().find_map(|a| {
+            if let Attribute::BindDirective(bd) = a {
+                if bd.name == "group" { return Some(bd); }
+            }
+            None
+        });
+        if let Some(bg) = bind_group {
+            data.bind_semantics.has_bind_group.insert(el.id);
+            // Find the value attribute on the same element (for getter thunk wrapping)
+            if let Some(val_attr) = el.attributes.iter().find(|a| {
+                matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
+            }) {
+                data.bind_semantics.bind_group_value_attr.insert(bg.id, val_attr.id());
+            }
+        }
+
+        // Detect contenteditable + bind:innerHTML|innerText|textContent combination.
+        // Text children of such elements use nodeValue= init instead of $.set_text() update.
+        let has_contenteditable = el.attributes.iter().any(|a| {
+            match a {
+                Attribute::BooleanAttribute(ba) => ba.name == "contenteditable",
+                Attribute::StringAttribute(sa) if sa.name == "contenteditable" => {
+                    let val = self.source[sa.value_span.start as usize..sa.value_span.end as usize].trim();
+                    val == "true"
+                }
+                _ => false,
+            }
+        });
+        if !has_contenteditable { return; }
+
+        let has_content_bind = el.attributes.iter().any(|a| {
+            matches!(a, Attribute::BindDirective(bd) if matches!(bd.name.as_str(), "innerHTML" | "innerText" | "textContent"))
+        });
+        if has_content_bind {
+            data.element_flags.bound_contenteditable.insert(el.id);
+        }
+    }
+
 }

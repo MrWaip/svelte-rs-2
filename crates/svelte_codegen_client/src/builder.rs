@@ -202,6 +202,26 @@ impl<'a> Builder<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Let)
     }
 
+    /// `var name;` — uninitialized var declaration.
+    pub fn var_uninit_stmt(&self, name: &str) -> Statement<'a> {
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+        let decl = self.ast.variable_declarator(
+            SPAN,
+            VariableDeclarationKind::Var,
+            pattern,
+            NONE,
+            None,
+            false,
+        );
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Var,
+            self.ast.vec_from_array([decl]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     /// `let name;` — uninitialized variable declaration.
     pub fn let_stmt(&self, name: &str) -> Statement<'a> {
         let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(name));

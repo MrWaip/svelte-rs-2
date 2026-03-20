@@ -1763,6 +1763,17 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                                 self.b.num_expr(0.0),
                             );
                             call.arguments.push(void_zero.into());
+                        } else if kind == RuneKind::State {
+                            // Wrap proxyable args (arrays/objects) in $.proxy()
+                            let needs_proxy = call.arguments[0].as_expression()
+                                .is_some_and(|e| Self::should_proxy(e));
+                            if needs_proxy {
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                std::mem::swap(&mut call.arguments[0], &mut dummy);
+                                let inner = dummy.into_expression();
+                                let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
+                                call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
+                            }
                         }
 
                         let state_expr = Expression::CallExpression(call);

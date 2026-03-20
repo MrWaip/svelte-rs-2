@@ -85,6 +85,9 @@ pub struct ElementFlags {
     pub(crate) needs_var: FxHashSet<NodeId>,
     pub(crate) needs_ref: FxHashSet<NodeId>,
     pub(crate) dynamic_attrs: FxHashSet<NodeId>,
+    /// Elements with both `contenteditable="true"` and `bind:innerHTML|innerText|textContent`.
+    /// Text children use `nodeValue=` init instead of `$.set_text()` update.
+    pub(crate) bound_contenteditable: FxHashSet<NodeId>,
 }
 
 impl ElementFlags {
@@ -101,6 +104,7 @@ impl ElementFlags {
             needs_var: FxHashSet::default(),
             needs_ref: FxHashSet::default(),
             dynamic_attrs: FxHashSet::default(),
+            bound_contenteditable: FxHashSet::default(),
         }
     }
 
@@ -115,6 +119,7 @@ impl ElementFlags {
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.dynamic_attrs.contains(&id) }
     pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(&id).map(|s| s.as_str()) }
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
 }
 
 /// Fragment lowering results and content classification.
@@ -237,6 +242,12 @@ pub struct BindSemanticsData {
     /// Pre-computed each-block variable names referenced in bind:this expressions.
     /// Key: BindDirective NodeId. Value: names of each-block vars used in the expression.
     pub(crate) bind_each_context: FxHashMap<NodeId, Vec<String>>,
+    /// Elements that have a `bind:group` directive.
+    /// Their `value` attribute uses the `__value` pattern instead of `$.set_value`.
+    pub(crate) has_bind_group: FxHashSet<NodeId>,
+    /// bind:group directive → NodeId of the value attribute on the same element (if any).
+    /// Used to build the getter thunk that evaluates the value expression.
+    pub(crate) bind_group_value_attr: FxHashMap<NodeId, NodeId>,
 }
 
 impl BindSemanticsData {
@@ -245,6 +256,8 @@ impl BindSemanticsData {
             mutable_rune_targets: FxHashSet::default(),
             prop_source_nodes: FxHashSet::default(),
             bind_each_context: FxHashMap::default(),
+            has_bind_group: FxHashSet::default(),
+            bind_group_value_attr: FxHashMap::default(),
         }
     }
 
@@ -258,6 +271,14 @@ impl BindSemanticsData {
 
     pub fn each_context(&self, id: NodeId) -> Option<&Vec<String>> {
         self.bind_each_context.get(&id)
+    }
+
+    pub fn has_bind_group(&self, id: NodeId) -> bool {
+        self.has_bind_group.contains(&id)
+    }
+
+    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
+        self.bind_group_value_attr.get(&id).copied()
     }
 }
 
