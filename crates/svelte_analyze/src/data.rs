@@ -24,6 +24,8 @@ pub struct ParsedExprs<'a> {
     pub script_program: Option<oxc_ast::ast::Program<'a>>,
     /// DebugTag identifier expressions: (debug_tag_id, identifier_index) → transformed expression.
     pub debug_tag_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
+    /// Pre-parsed custom element `extend` expression. Consumed by codegen via `Option::take()`.
+    pub ce_extend_expr: Option<Expression<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -35,6 +37,7 @@ impl<'a> ParsedExprs<'a> {
             key_exprs: FxHashMap::default(),
             script_program: None,
             debug_tag_exprs: FxHashMap::default(),
+            ce_extend_expr: None,
         }
     }
 }
@@ -399,6 +402,8 @@ pub struct AnalysisData {
     /// Whether this component is compiled as a custom element.
     /// When true, all props become prop sources with getter/setter exports.
     pub custom_element: bool,
+    /// Parsed custom element config (from object expression form).
+    pub ce_config: Option<svelte_js::ParsedCeConfig>,
 }
 
 impl AnalysisData {
@@ -433,6 +438,7 @@ impl AnalysisData {
             bind_semantics: BindSemanticsData::new(),
             import_syms: FxHashSet::default(),
             custom_element: false,
+            ce_config: None,
         }
     }
 }
