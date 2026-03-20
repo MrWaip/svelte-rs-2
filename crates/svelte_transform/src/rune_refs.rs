@@ -82,6 +82,51 @@ pub fn make_props_access<'a>(alloc: &'a Allocator, prop_name: &str) -> Expressio
     ))
 }
 
+/// Build `$.eager(() => expr)` — wrap the argument in a thunk and call $.eager.
+/// Applies unthunk optimization: `() => fn()` → `fn` when fn is a zero-arg call to an identifier.
+pub fn make_eager_thunk<'a>(alloc: &'a Allocator, arg: Expression<'a>) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    let callee = make_dollar_member(&ast, "eager");
+    let thunked = make_thunk(&ast, arg);
+    ast.expression_call(SPAN, callee, NONE, ast.vec1(Argument::from(thunked)), false)
+}
+
+/// Build `$.eager($.pending)` — thunk-optimized form of `$.eager(() => $.pending())`.
+pub fn make_eager_pending<'a>(alloc: &'a Allocator) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    let eager_callee = make_dollar_member(&ast, "eager");
+    // $.pending (identifier, not call — thunk optimization of () => $.pending())
+    let pending_ref = make_dollar_member(&ast, "pending");
+    ast.expression_call(SPAN, eager_callee, NONE, ast.vec1(Argument::from(pending_ref)), false)
+}
+
+/// Build `() => expr`, with unthunk optimization for zero-arg calls to identifiers.
+fn make_thunk<'a>(ast: &AstBuilder<'a>, expr: Expression<'a>) -> Expression<'a> {
+    // Optimize `() => fn()` → `fn` when fn is a zero-arg call to an identifier/member
+    if let Expression::CallExpression(call) = &expr {
+        if call.arguments.is_empty()
+            && !call.optional
+            && matches!(&call.callee, Expression::Identifier(_) | Expression::StaticMemberExpression(_))
+        {
+            // Return just the callee
+            if let Expression::CallExpression(call) = expr {
+                return call.unbox().callee;
+            }
+        }
+    }
+    // Build `() => expr` — expression-body arrow function
+    let params = ast.alloc_formal_parameters(
+        SPAN,
+        FormalParameterKind::ArrowFormalParameters,
+        ast.vec(),
+        NONE,
+    );
+    let body = ast.alloc(ast.function_body(SPAN, ast.vec(), ast.vec1(
+        ast.statement_expression(SPAN, expr),
+    )));
+    ast.expression_arrow_function(SPAN, true, false, NONE, params, NONE, body)
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

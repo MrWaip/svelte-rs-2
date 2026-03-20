@@ -325,6 +325,38 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
             return;
         }
 
+        // CallExpression: $state.eager(val) → $.eager(() => val), $effect.pending() → $.eager($.pending)
+        if let Expression::CallExpression(call) = it {
+            if let Expression::StaticMemberExpression(member) = &call.callee {
+                if let Expression::Identifier(obj) = &member.object {
+                    match (obj.name.as_str(), member.property.name.as_str()) {
+                        ("$state", "eager") => {
+                            // Walk the argument first so inner rune refs are transformed
+                            for arg in call.arguments.iter_mut() {
+                                if let Some(expr) = arg.as_expression_mut() {
+                                    self.visit_expression(expr);
+                                }
+                            }
+                            // Replace: $state.eager(val) → $.eager(() => val)
+                            if let Expression::CallExpression(call) = std::mem::replace(it, rune_refs::make_eager_pending(self.ctx.alloc)) {
+                                let mut call = call.unbox();
+                                if !call.arguments.is_empty() {
+                                    let arg = call.arguments.remove(0).into_expression();
+                                    *it = rune_refs::make_eager_thunk(self.ctx.alloc, arg);
+                                }
+                            }
+                            return;
+                        }
+                        ("$effect", "pending") => {
+                            *it = rune_refs::make_eager_pending(self.ctx.alloc);
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         // Walk all children (covers every expression type automatically)
         walk_expression(self, it);
 

@@ -79,6 +79,26 @@ pub(crate) fn gen_if_block<'a>(
         None
     };
 
+    // 2b. Pre-compute has_call memoization for each branch condition.
+    // When a condition has a function call AND reactive references, wrap in $.derived.
+    let mut derived_names: Vec<Option<String>> = Vec::new();
+    for branch in branches.iter() {
+        let info = ctx.expression(branch.block_id);
+        let needs_memo = info.map_or(false, |e| {
+            e.has_call && e.references.iter().any(|r| r.symbol_id.is_some())
+        });
+        if needs_memo {
+            let expr = get_node_expr(ctx, branch.block_id);
+            let thunk = ctx.b.thunk(expr);
+            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+            let name = ctx.gen_ident("d");
+            stmts.push(ctx.b.var_stmt(&name, derived));
+            derived_names.push(Some(name));
+        } else {
+            derived_names.push(None);
+        }
+    }
+
     // 3. Build the if/else-if/else chain (bottom-up)
     let num_branches = branches.len();
 
@@ -89,7 +109,11 @@ pub(crate) fn gen_if_block<'a>(
 
     // Build from last branch to first
     for i in (0..num_branches).rev() {
-        let test = get_node_expr(ctx, branches[i].block_id);
+        let test = if let Some(ref derived_name) = derived_names[i] {
+            ctx.b.call_expr("$.get", [Arg::Ident(derived_name)])
+        } else {
+            get_node_expr(ctx, branches[i].block_id)
+        };
         let render_args: Vec<Arg<'a, '_>> = if i == 0 {
             // First branch: no second argument
             vec![Arg::Ident(&branch_names[i])]
