@@ -44,6 +44,8 @@ pub(crate) trait TemplateVisitor {
     fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after element children have been walked. Use for bottom-up computations.
     fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
+    /// Called after each block body has been walked. Use with `visit_each_block` for stack-based context.
+    fn leave_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {}
     /// Called after snippet block body has been walked. Use with `visit_snippet_block` for stack-based context.
     fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
 }
@@ -103,6 +105,7 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
                 if let Some(fb) = &block.fallback {
                     walk_template(fb, data, scope, visitor);
                 }
+                visitor.leave_each_block(block, scope, body_scope, data);
             }
             Node::SnippetBlock(block) => {
                 let body_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
@@ -254,6 +257,9 @@ macro_rules! delegate_visitor_methods {
         }
         fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.leave_element(el, scope, data);)+
+        }
+        fn leave_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {
+            $(self.$idx.leave_each_block(block, parent_scope, body_scope, data);)+
         }
         fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
             $(self.$idx.leave_snippet_block(block, scope, data);)+

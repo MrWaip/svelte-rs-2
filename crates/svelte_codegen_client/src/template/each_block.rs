@@ -56,7 +56,13 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_ANIMATED;
     }
 
-    let index_name = ctx.each_index_name(block_id);
+    let needs_group_index = ctx.contains_group_binding(block_id);
+    let index_name = ctx.each_index_name(block_id)
+        .or_else(|| needs_group_index.then(|| {
+            let name = ctx.gen_ident("$$index");
+            ctx.group_index_names.insert(block_id, name.clone());
+            name
+        }));
 
     // Pre-computed by analysis — no string-based symbol re-resolution.
     let is_prop_source = ctx.is_prop_source_node(block_id);

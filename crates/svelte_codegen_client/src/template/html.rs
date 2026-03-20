@@ -55,6 +55,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
                     if a.name == "class" && (has_class_directives || has_class_attribute) {
                         continue;
                     }
+                    // bind:group uses __value pattern — value attr is set in JS, not template
+                    if a.name == "value" && ctx.has_bind_group(el.id) {
+                        continue;
+                    }
                     write!(
                         html,
                         " {}=\"{}\"",

@@ -56,6 +56,20 @@ pub(crate) fn process_attr<'a>(
     };
 
     match attr {
+        Attribute::StringAttribute(a) if a.name == "value" && ctx.has_bind_group(el_id) => {
+            // bind:group + static value: emit el.value = el.__value = "val"
+            let val_text = ctx.component.source_text(a.value_span);
+            let val_expr = ctx.b.str_expr(val_text);
+            let __value_assign = ctx.b.assign_expr(
+                AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(el_name), "__value")),
+                val_expr,
+            );
+            let value_assign = ctx.b.assign_expr(
+                AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(el_name), "value")),
+                __value_assign,
+            );
+            init.push(ctx.b.expr_stmt(value_assign));
+        }
         Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {
             // Static — already in template HTML
         }
@@ -458,6 +472,16 @@ pub(crate) fn build_binding_setter_silent<'a>(ctx: &mut Ctx<'a>, var: String, is
     ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
 }
 
+/// Build binding setter from a pre-transformed expression:
+/// `($$value) => transformed_expr = $$value`.
+/// Used for bind:group when the expression references each-block vars
+/// (the expression already has $.get() applied by the transform phase).
+fn build_binding_setter_from_expr<'a>(ctx: &mut Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
+    let target = ctx.b.expr_to_assignment_target(expr);
+    let assign = ctx.b.assign_expr_raw(target, ctx.b.rid_expr("$$value"));
+    ctx.b.arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(assign)])
+}
+
 /// Emit the `__value` cache pattern for `value` attributes on elements with `bind:group`.
 ///
 /// Produces:
@@ -617,32 +641,64 @@ fn gen_bind_directive<'a>(
         }
         "group" => {
             ctx.needs_binding_group = true;
-            let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
 
-            // Check if element has a dynamic value attribute — wrap getter in thunk
-            let group_getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
-                // Consume the value attribute's transformed expression for the thunk
-                let val_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&val_attr_id) {
+            let has_each_var = ctx.parent_each_blocks(bind.id).is_some();
+
+            // Getter and setter: when the expression references each-block vars,
+            // use the pre-transformed expression (has $.get() applied).
+            let (group_getter, setter) = if has_each_var {
+                let getter_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&bind.id) {
                     ctx.b.clone_expr(expr)
-                } else {
-                    ctx.b.str_expr("")
-                };
-                // () => { val_expr; return getter; }
-                let val_stmt = ctx.b.expr_stmt(val_expr);
-                let getter_expr = if is_rune {
-                    ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
                 } else {
                     ctx.b.rid_expr(&var_name)
                 };
-                let return_stmt = ctx.b.return_stmt(getter_expr);
-                ctx.b.arrow_block_expr(ctx.b.no_params(), vec![val_stmt, return_stmt])
+                let setter_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&bind.id) {
+                    ctx.b.clone_expr(expr)
+                } else {
+                    ctx.b.rid_expr(&var_name)
+                };
+                let getter = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_expr)]);
+                let setter = build_binding_setter_from_expr(ctx, setter_expr);
+                (getter, setter)
             } else {
-                build_binding_getter(ctx, &var_name, is_rune)
+                let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
+                // Check if element has a dynamic value attribute — wrap getter in thunk
+                let group_getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
+                    let val_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&val_attr_id) {
+                        ctx.b.clone_expr(expr)
+                    } else {
+                        ctx.b.str_expr("")
+                    };
+                    let val_stmt = ctx.b.expr_stmt(val_expr);
+                    let getter_expr = if is_rune {
+                        ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])
+                    } else {
+                        ctx.b.rid_expr(&var_name)
+                    };
+                    let return_stmt = ctx.b.return_stmt(getter_expr);
+                    ctx.b.arrow_block_expr(ctx.b.no_params(), vec![val_stmt, return_stmt])
+                } else {
+                    build_binding_getter(ctx, &var_name, is_rune)
+                };
+                (group_getter, setter)
+            };
+
+            // Build index array from ancestor each blocks whose vars appear in the expression
+            let index_array = if let Some(parent_eaches) = ctx.parent_each_blocks(bind.id) {
+                let indexes: Vec<_> = parent_eaches.iter().map(|&each_id| {
+                    let idx_name = ctx.each_index_name(each_id)
+                        .or_else(|| ctx.group_index_names.get(&each_id).cloned())
+                        .unwrap_or_else(|| panic!("missing index name for each block {:?}", each_id));
+                    ctx.b.rid_expr(&idx_name)
+                }).collect();
+                ctx.b.array_expr(indexes)
+            } else {
+                ctx.b.empty_array_expr()
             };
 
             ctx.b.call_stmt("$.bind_group", [
                 Arg::Ident("binding_group"),
-                Arg::Expr(ctx.b.empty_array_expr()),
+                Arg::Expr(index_array),
                 Arg::Ident(el_name),
                 Arg::Expr(group_getter),
                 Arg::Expr(setter),

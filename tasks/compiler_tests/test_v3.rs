@@ -1569,3 +1569,13 @@ fn bind_group_nested_each() {
 fn bind_group_value_attr() {
     assert_compiler("bind_group_value_attr");
 }
+
+#[rstest]
+fn bind_group_each_var() {
+    assert_compiler("bind_group_each_var");
+}
+
+#[rstest]
+fn bind_group_each_var_keyed() {
+    assert_compiler("bind_group_each_var_keyed");
+}

@@ -76,6 +76,9 @@ pub struct Ctx<'a> {
 
     // -- Bind group --
     pub needs_binding_group: bool,
+    /// Generated $$index names for each blocks with contains_group_binding
+    /// (populated during each_block codegen, consumed by bind_group codegen).
+    pub group_index_names: FxHashMap<NodeId, String>,
     /// Set while processing children of a contenteditable element with bind:innerHTML/innerText/textContent.
     /// Text nodes use `nodeValue=` init instead of `$.set_text()` update.
     pub bound_contenteditable: bool,
@@ -125,6 +128,7 @@ impl<'a> Ctx<'a> {
             index,
             dev,
             needs_binding_group: false,
+            group_index_names: FxHashMap::default(),
             bound_contenteditable: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
@@ -215,6 +219,8 @@ impl<'a> Ctx<'a> {
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.analysis.element_flags.is_bound_contenteditable(id) }
     pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis.bind_semantics.has_bind_group(id) }
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis.bind_semantics.bind_group_value_attr(id) }
+    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> { self.analysis.bind_semantics.parent_each_blocks(id) }
+    pub fn contains_group_binding(&self, id: NodeId) -> bool { self.analysis.bind_semantics.contains_group_binding(id) }
 
     // -- Snippet shortcuts --
 

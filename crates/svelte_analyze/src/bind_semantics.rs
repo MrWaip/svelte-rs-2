@@ -11,11 +11,14 @@ use crate::walker::TemplateVisitor;
 /// symbol classifications from source text via string-based lookups.
 pub(crate) struct BindSemanticsVisitor<'s> {
     source: &'s str,
+    /// Stack of ancestor each blocks (inner = top). Used to find which
+    /// each blocks' context vars appear in bind:group expressions.
+    each_block_stack: Vec<(svelte_ast::NodeId, ScopeId)>,
 }
 
 impl<'s> BindSemanticsVisitor<'s> {
     pub(crate) fn new(source: &'s str) -> Self {
-        Self { source }
+        Self { source, each_block_stack: Vec::new() }
     }
 
     /// Check whether `name` resolves to a mutable rune at root scope.
@@ -210,13 +213,24 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         &mut self,
         block: &EachBlock,
         _parent_scope: ScopeId,
-        _body_scope: ScopeId,
+        body_scope: ScopeId,
         data: &mut AnalysisData,
     ) {
         let text = self.source[block.expression_span.start as usize..block.expression_span.end as usize].trim();
         if Self::is_prop_source(text, data) {
             data.bind_semantics.prop_source_nodes.insert(block.id);
         }
+        self.each_block_stack.push((block.id, body_scope));
+    }
+
+    fn leave_each_block(
+        &mut self,
+        _block: &EachBlock,
+        _parent_scope: ScopeId,
+        _body_scope: ScopeId,
+        _data: &mut AnalysisData,
+    ) {
+        self.each_block_stack.pop();
     }
 
     fn leave_element(
@@ -239,6 +253,30 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                 matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
             }) {
                 data.bind_semantics.bind_group_value_attr.insert(bg.id, val_attr.id());
+            }
+
+            // Walk ancestor each blocks to find which ones declare vars
+            // referenced in the bind:group expression
+            if let Some(expr_span) = bg.expression_span {
+                let expr_text = self.source[expr_span.start as usize..expr_span.end as usize].trim();
+                let idents = Self::extract_identifiers(expr_text);
+                let mut parent_eaches = Vec::new();
+                for &(each_id, body_scope) in self.each_block_stack.iter().rev() {
+                    let has_match = idents.iter().any(|name| {
+                        data.scoping.find_binding(body_scope, name)
+                            .is_some_and(|sym| {
+                                data.scoping.is_each_block_var(sym)
+                                    && data.scoping.symbol_scope_id(sym) == body_scope
+                            })
+                    });
+                    if has_match {
+                        parent_eaches.push(each_id);
+                        data.bind_semantics.contains_group_binding.insert(each_id);
+                    }
+                }
+                if !parent_eaches.is_empty() {
+                    data.bind_semantics.parent_each_blocks.insert(bg.id, parent_eaches);
+                }
             }
         }
 
