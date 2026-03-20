@@ -329,9 +329,11 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [ ] Validation: must be first statement in function body (`inspect_trace_invalid_placement`)
 - [ ] Validation: cannot be in generator function (`inspect_trace_generator`)
 - [ ] Validation: 0-1 arguments (`rune_invalid_arguments_length`)
-- [ ] `$inspect.trace()` in template event handlers (onclick, etc.)
-- [ ] Full `get_function_label`: CallExpression parent → `callee(...)`, Property parent → key name
-- [ ] Filename in location label (requires plumbing `CompileOptions.filename` to script codegen)
+- [x] `$inspect.trace()` in template event handlers (onclick, etc.)
+- [x] Full `get_function_label`: CallExpression parent → `callee(...)`, Property parent → key name
+- [x] Filename in location label (requires plumbing `CompileOptions.filename` to script codegen)
+- [x] Dev-mode arrow→named function conversion for event handlers
+- [x] `$.add_locations` wrapping for `$.from_html` in dev mode
 
 ### $props.id() (Tier 1)
 - [ ] Validation: duplicate `$props.id()` declarations (`props_duplicate`)

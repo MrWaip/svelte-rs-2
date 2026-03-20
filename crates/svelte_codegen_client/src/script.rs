@@ -8,7 +8,7 @@ use oxc_ast::{NONE, ast::{
 }};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
-use oxc_span::SourceType;
+use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
 use svelte_analyze::{ComponentScoping, PropsAnalysis};
@@ -43,6 +43,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
     let component_source = &ctx.component.source;
     let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
 
+    let filename = ctx.filename;
+
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
         return transform_program(
@@ -53,6 +55,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
             dev,
             component_source,
             script_content_start,
+            filename,
         );
     }
 
@@ -70,6 +73,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
         dev,
         component_source,
         script_content_start,
+        filename,
     )
 }
 
@@ -91,6 +95,7 @@ pub fn transform_module_script<'a>(
         false,
         source,
         0,
+        "(unknown)",
     );
     (imports, body)
 }
@@ -106,6 +111,7 @@ fn transform_script_text<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
+    filename: &str,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -137,6 +143,7 @@ fn transform_script_text<'a>(
         has_tracing: false,
         component_source,
         script_content_start,
+        filename,
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
@@ -174,6 +181,7 @@ fn transform_program<'a>(
     dev: bool,
     component_source: &str,
     script_content_start: u32,
+    filename: &str,
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
@@ -199,6 +207,7 @@ fn transform_program<'a>(
         has_tracing: false,
         component_source,
         script_content_start,
+        filename,
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
@@ -294,6 +303,8 @@ struct ScriptTransformer<'b, 'a> {
     component_source: &'b str,
     /// Byte offset of script content within the full component source.
     script_content_start: u32,
+    /// Filename from CompileOptions (used in trace labels).
+    filename: &'b str,
     /// Captured variable name for arrow functions (from VariableDeclarator).
     next_arrow_name: Option<String>,
     /// Counter for generating unique variable names (tmp, $$array_0, etc.).
@@ -1221,8 +1232,14 @@ fn is_inspect_trace_call(expr: &Expression) -> bool {
     false
 }
 
+/// Sanitize a filename for use in trace labels by inserting a zero-width space
+/// after each `/` to prevent devtools from treating it as a clickable link.
+pub(crate) fn sanitize_location(filename: &str) -> String {
+    filename.replace('/', "/\u{200b}")
+}
+
 /// Compute 1-based line and column from source text and byte offset.
-fn compute_line_col(source: &str, offset: u32) -> (usize, usize) {
+pub(crate) fn compute_line_col(source: &str, offset: u32) -> (usize, usize) {
     let offset = offset as usize;
     let bytes = source.as_bytes();
     let mut line = 1;
@@ -1284,7 +1301,9 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             node.return_type = None;
             node.this_param = None;
         }
-        let name = node.id.as_ref().map(|id| id.name.to_string());
+        let name = node.id.as_ref()
+            .map(|id| id.name.to_string())
+            .or_else(|| self.next_arrow_name.take());
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
@@ -1359,7 +1378,8 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             let func_name = info.name.as_deref().unwrap_or("trace");
             let full_offset = self.script_content_start + info.span_start;
             let (line, col) = compute_line_col(self.component_source, full_offset);
-            let label = format!("{func_name} ((unknown):{line}:{col})");
+            let sanitized = sanitize_location(self.filename);
+            let label = format!("{func_name} ({sanitized}:{line}:{col})");
             self.b.str_expr(&label)
         };
         let label_thunk = self.b.thunk(label_expr);
@@ -1544,6 +1564,20 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         if self.is_ts {
             node.type_arguments = None;
         }
+        // Capture callee text for arrow/function arguments (used by $inspect.trace auto-label).
+        // e.g. foo(() => { $inspect.trace(); }) → label "foo(...)"
+        let has_fn_arg = node.arguments.iter().any(|arg| {
+            matches!(arg, oxc_ast::ast::Argument::ArrowFunctionExpression(_)
+                | oxc_ast::ast::Argument::FunctionExpression(_))
+        });
+        if has_fn_arg {
+            let start = (self.script_content_start + node.callee.span().start) as usize;
+            let end = (self.script_content_start + node.callee.span().end) as usize;
+            if end <= self.component_source.len() {
+                let callee_text = &self.component_source[start..end];
+                self.next_arrow_name = Some(format!("{callee_text}(...)"));
+            }
+        }
     }
 
     fn enter_new_expression(
@@ -1604,6 +1638,24 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             node.accessibility = None;
             node.r#override = false;
             node.definite = false;
+        }
+    }
+
+    fn enter_object_property(
+        &mut self,
+        node: &mut oxc_ast::ast::ObjectProperty<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        // Capture property key name for arrow/function values (used by $inspect.trace auto-label).
+        // e.g. { handler: () => { $inspect.trace(); } } → label "handler"
+        if !node.computed {
+            let is_fn_value = matches!(&node.value,
+                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_));
+            if is_fn_value || node.method {
+                if let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &node.key {
+                    self.next_arrow_name = Some(id.name.to_string());
+                }
+            }
         }
     }
 

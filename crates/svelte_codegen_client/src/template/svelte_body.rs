@@ -29,7 +29,7 @@ pub(crate) fn gen_svelte_body<'a>(
             Attribute::ExpressionAttribute(ea) => {
                 if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
-                    gen_event_attr_on(ctx, attr_id, event_name, "$.document.body", stmts);
+                    gen_event_attr_on(ctx, attr_id, event_name, "$.document.body", stmts, ea.expression_span.start);
                 }
             }
             Attribute::UseDirective(ud) => {
