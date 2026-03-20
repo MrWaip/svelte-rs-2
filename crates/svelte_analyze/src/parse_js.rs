@@ -39,6 +39,24 @@ pub fn parse_js<'a>(
         }
     }
 
+    // Pre-parse prop default expressions so codegen doesn't re-parse them
+    if let Some(ref script_info) = data.script {
+        if let Some(ref props_decl) = script_info.props_declaration {
+            for prop in &props_decl.props {
+                if let Some(span) = prop.default_span {
+                    let src = component.source_text(span);
+                    let arena_src: &'a str = alloc.alloc_str(src);
+                    match svelte_js::analyze_expression_with_alloc(alloc, arena_src, span.start, typescript) {
+                        Ok((_info, expr)) => parsed.prop_default_exprs.push(Some(expr)),
+                        Err(diag) => { diags.push(diag); parsed.prop_default_exprs.push(None); }
+                    }
+                } else {
+                    parsed.prop_default_exprs.push(None);
+                }
+            }
+        }
+    }
+
     walk_fragment(alloc, &component.fragment, component, typescript, data, parsed, diags);
 
     // Parse custom element config expression (if present)
