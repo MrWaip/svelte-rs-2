@@ -16,8 +16,8 @@ use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source, filename);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
@@ -211,16 +211,16 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     ));
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
-    if has_tracing {
+    if has_tracing || ctx.has_tracing {
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
     if ctx.dev {
-        // App[$.FILENAME] = "(unknown)"
+        // App[$.FILENAME] = "filename"
         let left = AssignLeft::ComputedMember(b.computed_member(
             b.rid_expr(ctx.name),
             b.static_member_expr(b.rid_expr("$"), "FILENAME"),
         ));
-        let right = b.str_expr("(unknown)");
+        let right = b.str_expr(ctx.filename);
         program_body.push(b.assign_stmt(left, right));
     }
     program_body.push(import_svelte);

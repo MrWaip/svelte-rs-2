@@ -32,7 +32,7 @@ pub(crate) fn gen_svelte_document<'a>(
             Attribute::ExpressionAttribute(ea) => {
                 if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
-                    gen_event_attr_on(ctx, attr_id, event_name, "$.document", stmts);
+                    gen_event_attr_on(ctx, attr_id, event_name, "$.document", stmts, ea.expression_span.start);
                 }
             }
             Attribute::BindDirective(bind) => {

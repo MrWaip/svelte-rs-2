@@ -26,6 +26,9 @@ fn assert_compiler(case: &str) {
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;
         }
+        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
+            opts.filename = filename.to_string();
+        }
     }
     let result = compile(&input, &opts);
     let js = result
@@ -1305,6 +1308,26 @@ fn inspect_trace_prod_strip() {
 #[rstest]
 fn inspect_trace_arrow() {
     assert_compiler("inspect_trace_arrow");
+}
+
+#[rstest]
+fn inspect_trace_filename() {
+    assert_compiler("inspect_trace_filename");
+}
+
+#[rstest]
+fn inspect_trace_callback() {
+    assert_compiler("inspect_trace_callback");
+}
+
+#[rstest]
+fn inspect_trace_property() {
+    assert_compiler("inspect_trace_property");
+}
+
+#[rstest]
+fn inspect_trace_template_handler() {
+    assert_compiler("inspect_trace_template_handler");
 }
 
 // ---------------------------------------------------------------------------

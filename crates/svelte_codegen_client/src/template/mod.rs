@@ -23,10 +23,10 @@ pub(crate) mod svelte_window;
 pub(crate) mod title_element;
 pub(crate) mod traverse;
 
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
-use svelte_ast::NodeId;
+use svelte_ast::{Node, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -275,11 +275,15 @@ fn emit_single_element<'a>(
 ) {
     let el = ctx.element(el_id);
     let html = element_html(ctx, el);
-    let from_html = if needs_import_node(&html) {
+    let mut from_html = if needs_import_node(&html) {
         ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
     } else {
         ctx.b.call_expr("$.from_html", [Arg::Expr(ctx.b.template_str_expr(&html))])
     };
+    if ctx.dev {
+        let locs = build_element_locations(ctx, el_id);
+        from_html = wrap_add_locations(ctx, from_html, locs);
+    }
     let tpl_stmt = ctx.b.var_stmt(tpl_name, from_html);
 
     let el_name_str = ctx.element(el_id).name.clone();
@@ -403,19 +407,21 @@ fn emit_mixed<'a>(
 
     let html = fragment_html(ctx, key);
     let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
-    let make_tpl_stmt = |ctx: &mut Ctx<'a>| {
-        ctx.b.var_stmt(
-            tpl_name,
-            ctx.b.call_expr(
-                "$.from_html",
-                [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
-            ),
-        )
+    let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
+        let mut from_html = ctx.b.call_expr(
+            "$.from_html",
+            [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
+        );
+        if ctx.dev {
+            let locs = build_fragment_element_locations(ctx, key);
+            from_html = wrap_add_locations(ctx, from_html, locs);
+        }
+        ctx.b.var_stmt(tpl_name, from_html)
     };
 
     if is_root {
         // Root: template BEFORE children (top-down)
-        hoisted.push(make_tpl_stmt(ctx));
+        hoisted.push(make_tpl_stmt(ctx, key));
     }
 
     let frag = ctx.gen_ident("fragment");
@@ -437,7 +443,7 @@ fn emit_mixed<'a>(
 
     if !is_root {
         // Non-root: template AFTER children (bottom-up)
-        hoisted.push(make_tpl_stmt(ctx));
+        hoisted.push(make_tpl_stmt(ctx, key));
     }
 
     emit_trailing_next(ctx, trailing, &mut init);
@@ -448,4 +454,66 @@ fn emit_mixed<'a>(
         "$.append",
         [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Dev-mode: $.add_locations wrapping
+// ---------------------------------------------------------------------------
+
+/// Wrap a `$.from_html(...)` expression with `$.add_locations(expr, App[$.FILENAME], locs)`.
+fn wrap_add_locations<'a>(ctx: &mut Ctx<'a>, from_html: Expression<'a>, locs: Expression<'a>) -> Expression<'a> {
+    let filename_member = ctx.b.computed_member_expr(
+        ctx.b.rid_expr(ctx.name),
+        ctx.b.static_member_expr(ctx.b.rid_expr("$"), "FILENAME"),
+    );
+    ctx.b.call_expr("$.add_locations", [
+        Arg::Expr(from_html),
+        Arg::Expr(filename_member),
+        Arg::Expr(locs),
+    ])
+}
+
+/// Build element location arrays for a single element template.
+fn build_element_locations<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Expression<'a> {
+    let el = ctx.element(el_id);
+    let loc = build_single_element_loc(ctx, el.span.start, &el.fragment);
+    ctx.b.array_expr([loc])
+}
+
+/// Build `[line, col]` or `[line, col, [children...]]` for one element.
+fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &svelte_ast::Fragment) -> Expression<'a> {
+    let (line, col) = crate::script::compute_line_col(ctx.source, span_start);
+    let mut inner: Vec<Arg<'a, '_>> = vec![Arg::Num(line as f64), Arg::Num(col as f64)];
+
+    let child_locs = build_child_element_locs(ctx, fragment);
+    if !child_locs.is_empty() {
+        let child_array = ctx.b.array_from_args(child_locs.into_iter().map(Arg::Expr).collect::<Vec<_>>());
+        inner.push(Arg::Expr(child_array));
+    }
+
+    ctx.b.array_from_args(inner)
+}
+
+/// Recursively collect location arrays for child elements in a fragment.
+fn build_child_element_locs<'a>(ctx: &mut Ctx<'a>, fragment: &svelte_ast::Fragment) -> Vec<Expression<'a>> {
+    let mut locs = Vec::new();
+    for node in &fragment.nodes {
+        if let Node::Element(el) = node {
+            locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
+        }
+    }
+    locs
+}
+
+/// Build element location arrays for a mixed fragment's elements.
+fn build_fragment_element_locations<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Expression<'a> {
+    let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
+    let mut locs: Vec<Expression<'a>> = Vec::new();
+    for item in &items {
+        if let FragmentItem::Element(el_id) = item {
+            let el = ctx.element(*el_id);
+            locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
+        }
+    }
+    ctx.b.array_from_args(locs.into_iter().map(Arg::Expr).collect::<Vec<_>>())
 }

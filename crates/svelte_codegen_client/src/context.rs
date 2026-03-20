@@ -87,6 +87,10 @@ pub struct Ctx<'a> {
 
     /// Original component source text (for re-parsing expression spans in codegen).
     pub source: &'a str,
+    /// Filename from CompileOptions (used in trace labels and $.FILENAME).
+    pub filename: &'a str,
+    /// Whether any $inspect.trace() was found in template expressions (triggers tracing import).
+    pub has_tracing: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -100,9 +104,11 @@ impl<'a> Ctx<'a> {
         name: &str,
         dev: bool,
         source: &'a str,
+        filename: &str,
     ) -> Self {
         let index = NodeIndex::build(&component.fragment);
         let name = allocator.alloc_str(name);
+        let filename = allocator.alloc_str(filename);
 
         Self {
             b: Builder::new(allocator),
@@ -119,6 +125,8 @@ impl<'a> Ctx<'a> {
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
             source,
+            filename,
+            has_tracing: false,
         }
     }
 
