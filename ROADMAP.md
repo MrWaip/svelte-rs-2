@@ -132,55 +132,218 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ---
 
-## Tier 1b — Module Compilation (remaining)
+## Tier 1 — Module Compilation (remaining)
 
-| # | Item | Description |
-|---|------|-------------|
-| 1 | `ModuleCompileOptions` | Subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace` |
-| 2 | Validation | Disallow `$props()`, `$bindable()` in modules. Disallow `$store` auto-subscriptions |
+- [ ] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
 
 ---
 
-## Tier 1c — Strip TypeScript
+## Tier 2 — Strip TypeScript
 
 Theme: remove TypeScript type annotations from compiled output.
 
-| # | Feature | Phases | Description |
-|---|---------|--------|-------------|
-| 1 | ~~Strip type annotations~~ | S | ~~Remove type annotations, interfaces, type aliases from `<script>` output~~ |
-| 2 | ~~Strip from expressions~~ | T | ~~Remove type assertions, `as` casts, generics from template expressions~~ |
+- [ ] ~~Strip type annotations~~ (S) — ~~remove type annotations, interfaces, type aliases from `<script>` output~~
+- [ ] ~~Strip from expressions~~ (T) — ~~remove type assertions, `as` casts, generics from template expressions~~
 
 ---
 
-## Tier 6 — CSS Scoping
+## Tier 3 — Remaining Edge Cases
+
+Edge cases and missing features discovered during porting. Grouped by feature area.
+
+### Runes & script
+- [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations
+
+### Template tags
+- [ ] `{@html}` — `is_controlled` optimization (single child → innerHTML)
+- [ ] `{@html}` — `is_svg` / `is_mathml` namespace flags
+- [ ] `{@const}` — dev mode `$.tag()` wrapping
+- [ ] `{@debug}` — `debug_in_if`, `debug_in_each` tests: blocked on `$.add_svelte_meta` + `$.tag_proxy`/`$.get(item)`
+- [ ] `{#await}` — `has_blockers` / `$.async()` wrapping for experimental async mode
+- [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression
+- [ ] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
+
+### Bind directives
+- [ ] `bind:property={get, set}` — function bindings (Svelte 5)
+
+### Actions & attachments
+- [ ] `use:action` with `await` expression (requires `run_after_blockers`)
+- [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
+- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
+
+### Special elements
+- [ ] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
+- [ ] `<svelte:element>` inside `{#if}` block
+- [ ] `<svelte:element>` with `class:` directives
+- [ ] `<svelte:element>` with `style:` directives
+- [ ] `<svelte:head>` — `filename` parameter for correct hash (currently `"(unknown)"`)
+- [ ] `<svelte:boundary>` — `@const` duplication into hoisted snippets
+- [ ] `<svelte:boundary>` — import reactivity: imported identifiers in boundary attrs should generate getters (`has_state`)
+- [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
+- [ ] `<svelte:boundary>` — dev mode: snippet wrapping with `$.wrap_snippet`
+- [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
+- [ ] `bind:this` — SequenceExpression custom getter/setter (rarely used)
+
+### CSS
+- [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
+
+### Compiler infrastructure
+- [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
+- [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
+
+### Custom Elements
+- [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
+- [ ] Shadow DOM custom `ObjectExpression` (non-literal config)
+- [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations (reference compiler bug — see GOTCHAS.md #9)
+- [ ] Auto-detect boolean type from prop default literal value (in CE props config)
+
+### Legacy `on:directive`
+- [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`
+- [ ] SvelteDocument/SvelteBody routing: events on special elements → `init` not `after_update`
+- [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers
+
+---
+
+## Tier 4 — CSS Scoping
 
 Theme: scoped CSS compilation — largest standalone workstream, new `svelte_css` subsystem.
 
-| # | Feature | Phases | Description |
-|---|---------|--------|-------------|
-| 1 | Component CSS hash | A | Deterministic hash from source/filename, stored on `AnalysisData` |
-| 2 | Scoped selector transformation | New module | Parse CSS, transform selectors to add `.svelte-HASH` suffix |
-| 3 | `:global()` modifier | New module | Skip scoping for `:global(selector)` and `:global { ... }` blocks |
-| 4 | CSS hash injection | T | Add `class="svelte-HASH"` to template elements that match scoped selectors |
-| 5 | `--css-var={expr}` custom properties | P, T | Static: `$.set_style(el, "--var", value)`. Dynamic: `$.css_props(el, { "--var": value })` |
-| 6 | Keyframe scoping | New module | Mangle `@keyframes name` → `@keyframes name-HASH`. `-global-` prefix skips scoping (e.g., `@keyframes -global-fade` → `@keyframes fade`) |
-| 7 | CSS pruning/tree-shaking | New module | Remove rules whose selectors don't match any template element |
-| 8 | Nested `<style>` elements | P | No scoping, emit as global rules |
+Pipeline: parse → hash → analyze → prune → transform → inject into template.
+Ref: `1-parse/read/style.js`, `2-analyze/css/`, `3-transform/css/index.js`
+
+### 4.0 — Research: выбор CSS-стека
+- [ ] Оценить варианты: OXC css parser (`oxc_css`), `lightningcss`, `cssparser` (Servo), свой парсер
+- [ ] Критерии: полнота CSS3 selectors, `:global()` / nesting (`&`), доступ к AST для мутаций (scoping, pruning), source map support, размер зависимости, lifetime ergonomics
+- [ ] Проверить можно ли переиспользовать существующий парсер и надстроить metadata enrichment, или проще свой мини-парсер (Svelte парсит только selectors + at-rules, declarations хранит как строки)
+- [ ] Решение зафиксировать в ADR или комментарием в этом разделе
+
+### 4a — CSS AST & parser (new crate `svelte_css`)
+- [ ] CSS AST types: `StyleSheet`, `Rule`, `Atrule`, `SelectorList`, `ComplexSelector`, `RelativeSelector`, `SimpleSelector` variants (type, class, id, attribute, pseudo-class, pseudo-element, combinator, nesting `&`)
+- [ ] Parse `<style>` content into CSS AST — selectors, declarations, at-rules (`@media`, `@keyframes`, etc.)
+- [ ] Nested rules support (CSS nesting with `&`)
+
+Ref: `1-parse/read/style.js` (~638 lines), `types/css.d.ts` (~201 lines)
+
+### 4b — CSS hash computation
+- [ ] Deterministic hash from `filename` (preferred) or CSS content (fallback)
+- [ ] Format: `svelte-{hash}` (e.g., `svelte-a1b2c3d4`)
+- [ ] Store on `AnalysisData.css.hash`
+- [ ] Support custom `cssHash` option
+
+Ref: `2-analyze/index.js` lines 536–548, `validate-options.js` line 73
+
+### 4c — CSS analysis: global/local classification
+- [ ] Walk CSS AST, enrich selector metadata: `is_global`, `is_global_like`
+- [ ] `:global(selector)` — contents unscoped
+- [ ] `:global { ... }` — entire block unscoped
+- [ ] `:global` bare (no args) — everything after is unscoped
+- [ ] `:global` in pseudo-classes (`:is()`, `:has()`, `:where()`, `:not()`)
+- [ ] `is_global_like` for `:root`, `:host`, `::view-transition-*`
+- [ ] Collect keyframe names (skip `-global-` prefixed)
+- [ ] Validation: invalid `:global()` placement
+
+Ref: `2-analyze/css/css-analyze.js` (~332 lines)
+
+### 4d — CSS pruning: selector → template matching
+- [ ] Backward selector matching against template elements
+- [ ] Combinator traversal: descendant (` `), child (`>`), adjacent (`+`), general sibling (`~`)
+- [ ] Mark `element.metadata.scoped = true` for matched elements
+- [ ] Mark `selector.metadata.used = true` for matched selectors
+- [ ] Handle `:has()`, `:not()`, `:is()`, `:where()` argument matching
+- [ ] Conservative matching for components and snippets
+
+Ref: `2-analyze/css/css-prune.js` (~1248 lines) — самый большой файл в CSS pipeline
+
+### 4e — CSS transformation: scoping & output
+- [ ] Append `.svelte-HASH` class to scoped selectors (first bump, rest via `:where()`)
+- [ ] Remove `:global()` / `:global` syntax from output
+- [ ] Scope `@keyframes name` → `@keyframes svelte-HASH-name`
+- [ ] Patch `animation` / `animation-name` property values
+- [ ] Prune unused rules (comment out in dev, remove in prod)
+- [ ] Unwrap `:global { ... }` blocks
+- [ ] Minification in prod mode (whitespace removal)
+- [ ] CSS source map generation
+
+Ref: `3-transform/css/index.js` (~480 lines)
+
+### 4f — Template hash injection
+- [ ] For scoped elements, add `class="svelte-HASH"` in template codegen
+- [ ] Pass hash to `$.attribute_effect()` runtime call
+- [ ] `css: 'injected'` — embed CSS in JS, runtime injects `<style>` tag
+- [ ] `css: 'external'` — extract CSS to separate file
+
+Ref: `3-transform/client/visitors/shared/element.js` lines 93–95
+
+### 4g — CSS custom properties
+- [ ] `--css-var={expr}` on elements — static: `$.set_style(el, "--var", value)`, dynamic: effect wrapping
+- [ ] `<Component --css-var={expr}>` — `$.css_props()` wrapper element injection
+- [ ] Nested `<style>` elements — no scoping, emit as global rules
 
 ---
 
-## Tier 7 — Validation & Diagnostics
+## Tier 5 — Validation & Diagnostics
 
 Theme: developer experience — errors, warnings, and diagnostic infrastructure.
 
-### Validation (**V**)
+### 5a — Infrastructure setup
 
-| Feature | Description | Ref |
-|---------|-------------|-----|
-| Bind directive validation | Validate binding vs element compatibility (e.g., `bind:checked` only on checkbox/radio) | `2-analyze/visitors/BindDirective.js` |
-| Assignment validation | Error on assignments to `const`, imports, `$derived` runes | `2-analyze/visitors/AssignmentExpression.js` |
-| Rune argument validation | Validate rune call signatures (e.g., `$state()` takes 0-1 args) | `2-analyze/visitors/CallExpression.js` |
-| Directive placement validation | `transition:` not on components, `animate:` only in keyed each | `2-analyze/visitors/Component.js` |
+Текущее состояние: `svelte_diagnostics` имеет ~25 error-вариантов в `DiagnosticKind`, severity только Error, нет warnings. `validate()` в `svelte_analyze` — пустая заглушка.
+
+- [ ] Extend `DiagnosticKind` with warning variants (~39 кодов в reference: `warnings.js`)
+- [ ] Parameterized messages — поддержка `%placeholder%` подстановки в сообщениях
+- [ ] `<!-- svelte-ignore -->` parsing — извлечение кодов из HTML-комментариев (runes: comma-separated, legacy: space-separated)
+- [ ] Legacy code migration map (e.g., `empty-block` → `block_empty`)
+- [ ] Ignore stack + ignore map — `push_ignore(codes)` / `pop_ignore()` / `is_ignored(node, code)` threading через analysis walk
+- [ ] Warning filter — поддержка `warningFilter` из `CompileOptions`
+- [ ] Unused selector warnings — `css-warn.js` pattern (зависит от Tier 4d)
+
+Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js` (ignore stack), `reference/compiler/utils/extract_svelte_ignore.js`
+
+### Runes & script
+
+- [ ] `$state()` takes 0-1 args (`rune_invalid_arguments`). Ref: `2-analyze/visitors/CallExpression.js`
+- [ ] `$state.frozen` → `$state.raw` rename validation
+- [ ] `$derived` / `$derived.by` argument validation
+- [ ] `$inspect` argument count (requires 1+ args)
+- [ ] `$inspect().with(callback)` argument count
+- [ ] `$inspect.trace()` must be first statement in function body (`inspect_trace_invalid_placement`)
+- [ ] `$inspect.trace()` cannot be in generator function (`inspect_trace_generator`)
+- [ ] `$inspect.trace()` 0-1 arguments (`rune_invalid_arguments_length`)
+- [ ] `$props.id()` duplicate declarations (`props_duplicate`)
+- [ ] `$props.id(arg)` no arguments allowed (`rune_invalid_arguments`)
+- [ ] `$props.id()` wrong placement — inside function, module script (`props_id_invalid_placement`)
+- [ ] `$props.id()` destructuring pattern (`const { x } = $props.id()`)
+- [ ] `$props.id()` reassignment (`constant_assignment`)
+- [ ] `$host()` must have zero arguments (`rune_invalid_arguments`)
+- [ ] `$host()` only in custom element context (`host_invalid_placement`)
+- [ ] `$host()` not in `<script module>`
+- [ ] Assignment to `const`, imports, `$derived` runes. Ref: `2-analyze/visitors/AssignmentExpression.js`
+- [ ] Module: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions
+
+### Elements & special elements
+
+- [ ] Void elements: error if void element has children
+- [ ] `<svelte:window>` — only at root level, no children, no spread attrs, only one per component
+- [ ] `<svelte:document>` — only at root level, no children, no spread attrs, only one per component
+- [ ] `<svelte:body>` — only event attrs/directives, no children, only at root level, only one per component
+- [ ] `<svelte:head>` — only at root level, no attributes allowed
+- [ ] `<title>` in `<svelte:head>` — no attributes (`title_illegal_attribute`), children must be Text or ExpressionTag only (`title_invalid_content`)
+- [ ] `<svelte:boundary>` — reject non-`onerror`/`failed`/`pending` attrs, reject string/boolean values
+- [ ] `custom_element_props_identifier` warning when `$props()` used without CE props config
+
+### Directives
+
+- [ ] `bind:` vs element compatibility (e.g., `bind:checked` only on checkbox/radio). Ref: `2-analyze/visitors/BindDirective.js`
+- [ ] `transition:` not on components. Ref: `2-analyze/visitors/Component.js`
+- [ ] `transition:` duplicate directives on same element
+- [ ] `transition:` + `in:`/`out:` conflicting on same element
+- [ ] `animate:` only inside keyed `{#each}` blocks
+- [ ] `animate:` duplicate directives on same element
+
+### Template blocks
+
+- [ ] `{@const}` placement validation
+- [ ] `{#await}` duplicate `{:then}` or `{:catch}` clauses
 
 ### A11y warnings (~40 checks)
 - Missing `alt` on `<img>`, `<area>`, `<input type="image">`
@@ -200,14 +363,9 @@ Theme: developer experience — errors, warnings, and diagnostic infrastructure.
 - `extract_svelte_ignore()` + `is_ignored(node, 'rule')` check
 - **Ref**: `reference/compiler/phases/2-analyze/index.js`
 
-### Ownership validation (dev mode)
-- `$.create_ownership_validator($$props)` — detect invalid mutations of bound props
-- `svelte-ignore ownership_invalid_binding` suppression
-- **Ref**: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
-
 ---
 
-## Tier 8 — Compiler Infrastructure
+## Tier 6 — Compiler Infrastructure
 
 Theme: compiler options, source maps, dev mode support.
 
@@ -215,243 +373,78 @@ Theme: compiler options, source maps, dev mode support.
 
 `CompileOptions` and `ModuleCompileOptions` types defined in `svelte_compiler::options`. Piped through pipeline; `component_name()` derives name from `filename`. Behavioral changes (dev mode, css injection, etc.) are deferred.
 
-The reference compiler accepts these options:
+### 6a — `discloseVersion` option
+- [ ] `import {} from 'svelte/internal/disclose-version'` when `discloseVersion: true`
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `dev` | `boolean` | Enable runtime checks, `$inspect`, `{@debug}`, ownership validation, `$.apply()` wrapping |
-| `css` | `'injected' \| 'external'` | CSS handling mode |
-| `generate` | `'client' \| 'server' \| false` | Output target |
-| `filename` | `string` | Source filename for diagnostics and CSS hash |
-| `rootDir` | `string` | Root directory for relative paths |
-| `name` | `string` | Component class name |
-| `namespace` | `'html' \| 'svg' \| 'mathml'` | Element namespace |
-| `runes` | `boolean \| undefined` | Force runes mode on/off |
-| `preserveComments` | `boolean` | Keep HTML comments in output |
-| `preserveWhitespace` | `boolean` | Keep whitespace as typed |
-| `discloseVersion` | `boolean` | Expose Svelte version in `window.__svelte.v` |
-| `hmr` | `boolean` | Hot module replacement support |
-| `sourcemap` | `object` | Initial source map for preprocessing |
-| `warningFilter` | `function` | Custom warning filter |
+### 6b — `preserveComments` option
+- [ ] Keep HTML comments in template output (`push_comment()` in fragment codegen)
 
-### Source maps
-- JS source map generation (via magic-string in reference, needs equivalent in Rust)
-- CSS source map generation
-- Merged preprocessor source maps
+### 6c — Dev: `$.tag()` / `$.tag_proxy()` rune tagging
+- [ ] `$state` — `$.tag($.proxy(val), "name")` / `$.tag($.state(val), "name")` in VariableDeclaration
+- [ ] `$derived` — `$.tag($.derived(...), "name")` in VariableDeclaration
+- [ ] Class fields — `$.tag(val, "Class.field")` in ClassBody, AssignmentExpression
+- [ ] `$bindable` — `$.tag_proxy($.proxy(val), "name")` for bindable props
+- [ ] Snippets — `$.tag(snip, "snippetName")` in SnippetBlock
+- [ ] `{@const}` — `$.tag()` wrapping in ConstTag
 
-### Dev mode (`dev: true`)
-Gates these features:
-- `$inspect()` / `$inspect.trace()` rune transforms
-- `{@debug}` tag codegen
-- `$.apply()` wrapping for better stack traces
-- Ownership validation (`$.create_ownership_validator`)
-- Snippet wrapping (`$.wrap_snippet`)
-- Component naming for devtools
+Unblocks: remaining `{@debug}` tests (`$.tag_proxy`/`$.get(item)`)
+
+### 6d — Dev: strict equality transforms
+- [ ] `===` / `!==` → `$.strict_equals(left, right)` / `$.strict_equals(left, right, false)`
+- [ ] `==` / `!=` → `$.equals(left, right)` / `$.equals(left, right, false)`
+
+Single visitor: BinaryExpression
+
+### 6e — Dev: `$.apply()` + event handler naming
+- [ ] Arrow→named function: `(e) => handler` → `function click() { ... }` for event handlers
+- [ ] `$.apply()` wrapping: `$.apply(thunk, this, args, ComponentName, [line, col])` for location tracking
+
+Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
+
+### 6f — Dev: `$.add_svelte_meta()` block wrapping
+- [ ] IfBlock — `$.add_svelte_meta(() => $.if(...), 'if', ComponentName, line, col)`
+- [ ] EachBlock — same pattern
+- [ ] AwaitBlock — same pattern
+
+Unblocks: remaining `{@debug}` tests (`$.add_svelte_meta` wrapping).
+Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js`
+
+### 6g — Dev: ownership validation
+- [ ] `$.create_ownership_validator($$props)` setup in component body
+- [ ] Mutation wrapping: assignments/updates → `$$ownership_validator.mutation(prop, path, val, line, col)`
+- [ ] `ownership_invalid_binding` suppression via `svelte-ignore`
+
+Ref: `reference/compiler/phases/3-transform/client/visitors/shared/component.js`
+
+### 6h — Dev: runtime validations (batch)
+- [ ] `$.validate_store(ref, name)` — store subscription validation
+- [ ] `$.validate_dynamic_element_tag()` / `$.validate_void_dynamic_element()` — svelte:element checks
+- [ ] `console.log(…)` → `console.log(...$.log_if_contains_state('log', ...args))` — console state logging
+- [ ] `await expr` → `await $.track_reactivity_loss(expr)` — await reactivity loss tracking
+- [ ] `$.rest_props($$props, seen, restName)` — pass name as dev-only 3rd arg
+
+### 6i — Source maps
+- [ ] JS source maps — map generated JS back to `.svelte` source
+- [ ] CSS source maps — map scoped CSS back to source `<style>`
+- [ ] Preprocessor merge — merge incoming preprocessor source maps
+
+### 6j — HMR (low priority)
+- [ ] `$.hmr()` wrapper — wrap component export for hot reload
+- [ ] `import.meta.hot.accept()` + `$.cleanup_styles()`
+- [ ] Custom element guard — `if (customElements.get(tag) == null)` conditional registration
 
 ---
 
----
-
-## Tier 10 — Legacy Svelte 4 (Lowest Priority)
+## Tier 7 — Legacy Svelte 4 (Lowest Priority)
 
 Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrating codebases.
 
-| Feature | Svelte 5 replacement | Transform | Phases |
-|---------|----------------------|-----------|--------|
-| `<slot>` + `let:` | `{#snippet}` + `{@render}` | `$.slot(...)` | P, A, T |
-| `<svelte:component this={X}>` | `<X />` with capitalized variable | `$.component(...)` | P, A, T |
-| `<svelte:self>` | Import component directly | Recursive ref | P, T |
-| `<svelte:fragment>` | `{#snippet}` | Fragment wrapper | P, T |
-| `export let` (props) | `$props()` | Different script transform | S |
-| `$:` reactive assignments | `$derived` / `$effect` | Labeled statement → `$.derived`/`$.effect` | S |
-| `$$props` / `$$restProps` / `$$slots` | `$props()` with rest | Runtime vars | S, T |
-| `beforeUpdate` / `afterUpdate` | `$effect.pre` / `$effect` | `$.legacy_pre_effect` / `$.user_effect` | S |
-| `createEventDispatcher` | Callback props | Runtime only, no compiler changes | — |
-
----
-
-## Just Runtime (No Compiler Changes Needed)
-
-These are imported from `svelte` and used as regular function calls. The compiler passes them through unchanged:
-
-- **Lifecycle**: `onMount()`, `onDestroy()`
-- **Scheduling**: `tick()`, `flushSync()`, `settled()`
-- **Context**: `setContext()`, `getContext()`, `hasContext()`, `getAllContexts()`, `createContext()`
-- **Mounting**: `mount()`, `unmount()`, `hydrate()`
-- **Utilities**: `untrack()`, `createRawSnippet()`, `getAbortSignal()`, `fork()` (experimental async)
-- **Stores**: `writable()`, `readable()`, `derived()`, `readonly()`, `get()` — from `svelte/store`
-- **Motion**: `Spring`, `Tween` (v5.8+ class-based), `tweened()`, `spring()` (deprecated) — from `svelte/motion`
-- **Easing**: `linear`, `cubicInOut`, `elasticOut`, etc. — from `svelte/easing`
-- **Transitions**: `fade`, `fly`, `slide`, `scale`, `blur`, `draw`, `crossfade` — from `svelte/transition` (runtime; compiler only needs directive support)
-- **Animation**: `flip` — from `svelte/animate`
-- **Events**: `on()` — from `svelte/events` (programmatic event attachment)
-- **Attachments**: `createAttachmentKey()`, `fromAction()` — from `svelte/attachments`
-- **Reactive collections**: `SvelteMap`, `SvelteSet`, `SvelteDate`, `SvelteURL`, `SvelteURLSearchParams`, `MediaQuery`, `createSubscriber` — from `svelte/reactivity`
-- **Reactive window**: `innerWidth`, `innerHeight`, `scrollX`, `scrollY`, `online`, `devicePixelRatio` — from `svelte/reactivity/window` (reactive window property accessors)
-
----
-
-## Architectural Notes
-
-- **OXC** — JS expression parsing/scoping, only `Span` stored in AST
-- **Side tables** (`AnalysisData`) — no AST mutations
-- **Analyze**: composite visitor (tuple `TemplateVisitor`) — single tree walk for all passes
-- **Codegen**: direct recursion, no visitor pattern
-- **Scope system NOT needed** for Tiers 1-5 (runes mode). Current approach (OXC + side tables) is sufficient
-- Each feature: test case → expected output via reference compiler → `cargo test`
-
----
-
-## Deferred
-
-Items discovered during porting but not critical for the feature to work. Grouped by parent feature, sorted by tier.
-
-### Void elements (Tier 0)
-- [ ] Validation: emit error if void element has children (requires parser-level check for content between void open tags)
-
-### Runes (Tier 1)
-- [x] `$state` / `$state.raw` destructuring support in script codegen
-- [x] `$state` / `$state.raw` class field support
-- [ ] `$state.frozen` → `$state.raw` rename validation
-- [x] `$state.eager(val)` — experimental async, requires `experimental.async` flag
-- [x] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
-
-### $host() (Tier 1)
-- [ ] Validation: `$host()` must have zero arguments (`rune_invalid_arguments`)
-- [ ] Validation: `$host()` only in custom element component instances (`host_invalid_placement`)
-- [ ] Validation: `$host()` not in `<script module>` context
-- [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations (Tier 9 dependency)
-
-### $inspect (Tier 1)
-- [ ] `$inspect().with(callback)` argument count validation
-- [ ] `$inspect` argument count validation (requires 1+ args)
-- [x] Dev-mode boilerplate: `$.FILENAME`, `$.check_target()`, `$.legacy_api()`, `$.push($$props, true, App)` — needed for full reference parity in dev builds
-
-### $inspect.trace() (Tier 1)
-- [ ] Validation: must be first statement in function body (`inspect_trace_invalid_placement`)
-- [ ] Validation: cannot be in generator function (`inspect_trace_generator`)
-- [ ] Validation: 0-1 arguments (`rune_invalid_arguments_length`)
-- [x] `$inspect.trace()` in template event handlers (onclick, etc.)
-- [x] Full `get_function_label`: CallExpression parent → `callee(...)`, Property parent → key name
-- [x] Filename in location label (requires plumbing `CompileOptions.filename` to script codegen)
-- [x] Dev-mode arrow→named function conversion for event handlers
-- [x] `$.add_locations` wrapping for `$.from_html` in dev mode
-
-### $props.id() (Tier 1)
-- [ ] Validation: duplicate `$props.id()` declarations (`props_duplicate`)
-- [ ] Validation: arguments passed to `$props.id(arg)` (`rune_invalid_arguments`)
-- [ ] Validation: wrong placement (inside function, module script) (`props_id_invalid_placement`)
-- [ ] Validation: destructuring pattern `const { x } = $props.id()`
-- [ ] Validation: reassignment to the binding (`constant_assignment`)
-
-### Module compilation (Tier 1b)
-- [x] `ModuleCompileOptions` type — subset of `CompileOptions`
-- [ ] Validation: disallow `$props()`, `$bindable()`, `$store` auto-subscriptions in modules
-
-### Render tag (Tier 1d)
-- [x] Dynamic snippet callee: `{@render show(args)}` where `show` is `$state`/prop → `$.snippet(node, () => show, ...)` instead of direct call. Requires `metadata.dynamic` flag in analysis (`binding.kind !== 'normal'`)
-- [x] Optional chaining: `{@render fn?.()}` → `$.noop` fallback when fn is nullish
-
-### `{@html expr}` (Tier 2)
-- [ ] `is_controlled` optimization (single child → innerHTML)
-- [ ] `is_svg` / `is_mathml` namespace flags
-
-### `{@const}` (Tier 2)
-- [ ] Dev mode `$.tag()` wrapping
-- [ ] Placement validation
-
-### `{@debug vars}` (Tier 2)
-- [ ] `debug_in_if`, `debug_in_each` compiler tests: blocked on `$.add_svelte_meta` (if/each dev wrapping) and `$.tag_proxy`/`$.get(item)` (each var dev wrapping). Basic/empty/single tests pass.
-
-### `{#await}` (Tier 2)
-- [ ] `has_blockers` / `$.async()` wrapping for experimental async mode
-- [ ] Dev-mode `$.apply()` wrapping for await expression
-- [ ] Array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
-- [ ] Validation: duplicate `{:then}` or `{:catch}` clauses
-
-### Bind directives (Tier 3)
-- [ ] `bind:property={get, set}` — function bindings (Svelte 5)
-
-### `use:action` (Tier 4)
-- [ ] `use:action` with `await` expression (requires `run_after_blockers`)
-
-### Transitions (Tier 4)
-- [ ] Validation: duplicate transition directives on same element
-- [ ] Validation: conflicting `transition:` + `in:`/`out:` on same element
-
-### Animate (Tier 4)
-- [ ] Validation: `animate:` only valid inside keyed `{#each}` blocks
-- [ ] Validation: duplicate `animate:` directives on same element
-
-### `{@attach}` (Tier 4)
-- [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
-- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
-
-### `<svelte:options>` (Tier 5)
-- [x] `customElement` object form: full parsing of `tag`, `shadow`, `props`, `extend` properties (expression span re-parsed in codegen)
-- [ ] `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
-
-### `<svelte:element>` (Tier 5)
-- [ ] `svelte:element` inside `{#if}` block
-- [ ] `svelte:element` with `class:` directives
-- [ ] `svelte:element` with `style:` directives
-
-### `<svelte:window>` (Tier 5)
-- [ ] Validation: only allowed at root level (not nested)
-- [ ] Validation: no children allowed (diagnostic)
-- [ ] Validation: no spread attributes, only event/bind directives
-- [ ] Validation: only one `<svelte:window>` per component
-
-### `<svelte:document>` (Tier 5)
-- [ ] Validation: only allowed at root level (not nested)
-- [ ] Validation: no children allowed (diagnostic)
-- [ ] Validation: no spread attributes, only event/bind directives
-- [ ] Validation: only one `<svelte:document>` per component
-
-### `<svelte:head>` (Tier 5)
-- [ ] Validation: only allowed at root level
-- [ ] Validation: no attributes allowed (diagnostic)
-- [ ] `filename` parameter for `compile()` to produce correct hash (currently uses `"(unknown)"` default)
-
-### `<title>` in `<svelte:head>` (Tier 5)
-- [ ] Validation: `<title>` cannot have attributes (`title_illegal_attribute`)
-- [ ] Validation: `<title>` children must be Text or ExpressionTag only (`title_invalid_content`)
-
-### `<svelte:body>` (Tier 5)
-- [ ] Validation: only event attributes and directives allowed (reject non-event attrs, spreads)
-- [ ] Validation: no children allowed (`disallow_children`)
-- [ ] Validation: only allowed at root level (not nested)
-- [ ] Validation: only one `<svelte:body>` per component
-
-### `<svelte:boundary>` (Tier 5)
-- [ ] Attribute validation: reject non-`onerror`/`failed`/`pending` attrs (`svelte_boundary_invalid_attribute`)
-- [ ] Attribute value validation: reject string/boolean values (`svelte_boundary_invalid_attribute_value`)
-- [ ] `@const` duplication into hoisted snippets (reference compiler duplicates const tags inside `failed`/`pending` snippets)
-- [ ] Import reactivity: imported identifiers used in boundary attributes should generate getters (`has_state`)
-- [ ] `experimental.async` handling for const tag scoping changes
-- [ ] Dev mode: snippet wrapping with `$.wrap_snippet`
-- [ ] Handler wrapping for snippet params used as event handlers (`function(...$$args) { reset()?.apply(this, $$args) }`)
-
-### Component `bind:this` (Tier 5)
-- [ ] SequenceExpression custom getter/setter: `bind:this={() => get(), (v) => set(v)}` — rarely used, needs expression visitor in codegen
-
-### CSS (Tier 6)
-- [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
-
-### Compiler infrastructure (Tier 8)
-- [ ] HMR support — `$.hmr()` wrapper, `import.meta.hot.accept()`
-- [ ] `fragments: 'tree'` option — alternative DOM fragment strategy
-- [ ] `{await expr}` experimental template syntax (Svelte 5.36+, requires `experimental.async`)
-
-### Custom Elements (Tier 9)
-- [ ] `$host()` validation: zero args (`rune_invalid_arguments`), custom element context only (`host_invalid_placement`), not in `<script module>`
-- [ ] `custom_element_props_identifier` warning when `$props()` used without CE props config
-- [ ] HMR conditional registration: `if (customElements.get(tag) == null)`
-- [ ] Shadow DOM custom `ObjectExpression` (non-literal config)
-- [ ] `$.push`/`$.pop` lifecycle for `$host()` mutations (reference compiler bug — see GOTCHAS.md #9)
-- [ ] Auto-detect boolean type from prop default literal value (in CE props config)
-
-### `on:directive` legacy (Tier 10)
-- [ ] Call memoization: `on:click={getHandler()}` → `$.derived(() => getHandler())` + `$.get()`. Needs `ExpressionMetadata.has_call` in analysis
-- [ ] SvelteDocument/SvelteBody routing: events on special elements should go to `init` not `after_update`. Blocked on Tier 5
-- [ ] Dev-mode `$.apply()` wrapping for imported identifier handlers. Blocked on `dev` compiler option
+- [ ] `<slot>` + `let:` (P, A, T) — `$.slot(...)`. Svelte 5: `{#snippet}` + `{@render}`
+- [ ] `<svelte:component this={X}>` (P, A, T) — `$.component(...)`. Svelte 5: `<X />` with capitalized variable
+- [ ] `<svelte:self>` (P, T) — recursive ref. Svelte 5: import component directly
+- [ ] `<svelte:fragment>` (P, T) — fragment wrapper. Svelte 5: `{#snippet}`
+- [ ] `export let` props (S) — different script transform. Svelte 5: `$props()`
+- [ ] `$:` reactive assignments (S) — labeled statement → `$.derived`/`$.effect`. Svelte 5: `$derived` / `$effect`
+- [ ] `$$props` / `$$restProps` / `$$slots` (S, T) — runtime vars. Svelte 5: `$props()` with rest
+- [ ] `beforeUpdate` / `afterUpdate` (S) — `$.legacy_pre_effect` / `$.user_effect`. Svelte 5: `$effect.pre` / `$effect`
+- [ ] `createEventDispatcher` — runtime only, no compiler changes
