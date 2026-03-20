@@ -242,7 +242,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
 /// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
 /// Applies rune transforms but produces a plain ES module (no component wrapping).
-pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &AnalysisData) -> String {
+pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &AnalysisData, dev: bool) -> String {
+    let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
     let arena_source: &str = alloc.alloc_str(source);
     let (imports, body) = script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
 

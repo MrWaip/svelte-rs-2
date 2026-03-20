@@ -136,7 +136,8 @@ pub fn analyze_with_options<'a>(
 ///
 /// Only parses JS, builds scopes, and detects runes. No template, no props,
 /// no fragment classification — modules are pure JS with rune transforms.
-pub fn analyze_module(source: &str, is_ts: bool) -> (AnalysisData, Vec<Diagnostic>) {
+pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>) {
+    let _ = dev; // reserved for future dev-mode analysis (e.g. $inspect.trace labels)
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 

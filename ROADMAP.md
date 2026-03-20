@@ -134,8 +134,9 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ## Tier 1 — Core Gaps
 
-### 1a — `ModuleCompileOptions`
-- [ ] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
+### 1a — `ModuleCompileOptions` ✅
+- [x] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
+- [x] `compile_module` wires options through pipeline: `dev` → analyze/codegen, `generate: false` → analysis-only, `filename` → TypeScript detection
 
 ### 1b — Template expression transforms (`svelte_transform`) ✅
 

@@ -52,12 +52,24 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
 /// Compile a standalone `.svelte.js`/`.svelte.ts` module to client-side JavaScript.
 /// Applies rune transforms ($state, $derived, $effect, etc.) without component wrapping.
-pub fn compile_module(source: &str, _options: &ModuleCompileOptions) -> CompileResult {
+pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileResult {
+    let is_ts = options.filename.ends_with(".ts");
+    let dev = options.dev;
+
+    // Analysis-only mode: skip codegen entirely
+    if options.generate == GenerateMode::False {
+        let (_, diagnostics) = svelte_analyze::analyze_module(source, is_ts, dev);
+        return CompileResult {
+            js: None,
+            diagnostics,
+        };
+    }
+
     let js_alloc = oxc_allocator::Allocator::default();
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, analyze_diags) = svelte_analyze::analyze_module(source, false);
-        let js = svelte_codegen_client::generate_module(&js_alloc, source, false, &analysis);
+        let (analysis, analyze_diags) = svelte_analyze::analyze_module(source, is_ts, dev);
+        let js = svelte_codegen_client::generate_module(&js_alloc, source, is_ts, &analysis, dev);
         (js, analyze_diags)
     }));
 
@@ -147,5 +159,44 @@ export default function App($$anchor) {
         let result = compile("<div>", &CompileOptions::default());
         assert!(!result.diagnostics.is_empty());
         // Even with parse errors, best-effort codegen may produce output
+    }
+
+    #[test]
+    fn module_generate_false_returns_no_js() {
+        let opts = ModuleCompileOptions {
+            generate: GenerateMode::False,
+            ..Default::default()
+        };
+        let result = compile_module("let x = $state(0);", &opts);
+        assert!(result.js.is_none());
+    }
+
+    #[test]
+    fn module_dev_flag_passed_through() {
+        let opts = ModuleCompileOptions {
+            dev: true,
+            ..Default::default()
+        };
+        let result = compile_module("let x = $state(0);", &opts);
+        // dev doesn't change output yet, but must not panic
+        assert!(result.js.is_some());
+    }
+
+    #[test]
+    fn module_typescript_from_filename() {
+        let opts = ModuleCompileOptions {
+            filename: "lib.svelte.ts".to_string(),
+            ..Default::default()
+        };
+        let source = "let x: number = $state(0);";
+        let result = compile_module(source, &opts);
+        assert!(result.js.is_some());
+        assert!(result.diagnostics.is_empty(), "TS source should parse without errors");
+    }
+
+    #[test]
+    fn module_default_options_still_work() {
+        let result = compile_module("let x = $state(0);", &ModuleCompileOptions::default());
+        assert!(result.js.is_some());
     }
 }
