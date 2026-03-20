@@ -7,25 +7,7 @@
 
 ## Class 1: Full Re-parse in Codegen
 
-### 1.1 Custom Element Config Parsing
-
-- **Pattern**: `parse_ce_expression` — re-parses custom element config with OXC
-- **Class**: 1
-- **Where**: `crates/svelte_codegen_client/src/custom_element.rs:39-141`
-- **Occurrence count**: 1
-- **What is aggregated**: Custom element config object (`{ tag, shadow, props, extend }`) extracted from `CustomElementConfig::Expression` span by creating a new `oxc_allocator::Allocator` + `oxc_parser::Parser::new()` at codegen time
-- **Proposed type**: Pre-parse in `parse_js` pass; store structured `ParsedCeConfig { tag, shadow, props, extend_expr }` in `ParsedExprs` or `AnalysisData`
-- **Target layer**: analyze
-
-### 1.2 Builder::parse_expression
-
-- **Pattern**: Generic re-parse fallback in builder
-- **Class**: 1
-- **Where**: `crates/svelte_codegen_client/src/builder.rs:914-924`, called from `custom_element.rs:192`
-- **Occurrence count**: 2 call sites
-- **What is aggregated**: JS expressions stored as string slices (e.g., `extend_source` from CE config) re-parsed to OXC `Expression`
-- **Proposed type**: Extract `extend` field as pre-parsed `Expression<'a>` during CE config parsing
-- **Target layer**: analyze
+### ~~1.1 + 1.2 Custom Element Config Parsing — added `ParsedCeConfig`/`CePropConfig`/`CeShadowMode` to `svelte_js`, `parse_ce_config()` in analyze's `parse_js` pass, extend expr pre-parsed into `ParsedExprs.ce_extend_expr`. Codegen reads structured data, zero OXC re-parsing.~~
 
 ### 1.3 Script Codegen parse_expression
 

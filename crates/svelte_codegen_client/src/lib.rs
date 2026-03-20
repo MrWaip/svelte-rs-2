@@ -231,11 +231,11 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     // Custom element wrapping: customElements.define(tag, $.create_custom_element(App, ...))
     if let Some(ce_config) = component.options.as_ref().and_then(|o| o.custom_element.as_ref()) {
-        let ce_stmts = custom_element::gen_custom_element(&ctx, ce_config);
+        let ce_stmts = custom_element::gen_custom_element(&mut ctx, ce_config);
         program_body.extend(ce_stmts);
     }
 
-    let program = b.program(program_body);
+    let program = ctx.b.program(program_body);
 
     Codegen::default().build(&program).code
 }

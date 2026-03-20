@@ -40,6 +40,25 @@ pub fn parse_js<'a>(
     }
 
     walk_fragment(alloc, &component.fragment, component, typescript, data, parsed, diags);
+
+    // Parse custom element config expression (if present)
+    if let Some(svelte_ast::CustomElementConfig::Expression(span)) =
+        component.options.as_ref().and_then(|o| o.custom_element.as_ref())
+    {
+        let ce_source = component.source_text(*span);
+        let config = svelte_js::parse_ce_config(ce_source, span.start);
+
+        if let Some(ext_span) = config.extend_span {
+            let ext_src = component.source_text(ext_span);
+            let arena_src: &'a str = alloc.alloc_str(ext_src);
+            match svelte_js::analyze_expression_with_alloc(alloc, arena_src, ext_span.start, typescript) {
+                Ok((_info, expr)) => { parsed.ce_extend_expr = Some(expr); }
+                Err(diag) => diags.push(diag),
+            }
+        }
+
+        data.ce_config = Some(config);
+    }
 }
 
 /// Parse an expression into the shared allocator, storing both metadata and AST.
