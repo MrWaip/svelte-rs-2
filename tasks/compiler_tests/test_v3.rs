@@ -1310,5 +1310,36 @@ fn debug_single() {
     assert_compiler("debug_single");
 }
 
+// ---------------------------------------------------------------------------
+// TypeScript stripping tests
+// ---------------------------------------------------------------------------
 
+#[rstest]
+fn ts_strip_expression_tag() {
+    assert_compiler("ts_strip_expression_tag");
+}
 
+#[rstest]
+fn ts_strip_satisfies() {
+    assert_compiler("ts_strip_satisfies");
+}
+
+#[rstest]
+fn ts_strip_non_null() {
+    assert_compiler("ts_strip_non_null");
+}
+
+#[rstest]
+fn ts_strip_const_tag() {
+    assert_compiler("ts_strip_const_tag");
+}
+
+#[rstest]
+fn ts_strip_attribute() {
+    assert_compiler("ts_strip_attribute");
+}
+
+#[rstest]
+fn ts_strip_script_types() {
+    assert_compiler("ts_strip_script_types");
+}
