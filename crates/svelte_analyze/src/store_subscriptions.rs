@@ -49,6 +49,24 @@ pub fn detect_store_subscriptions(data: &mut AnalysisData) {
         }
         data.scoping.mark_store(sym_id, name);
     }
+
+    // $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations
+    if !data.needs_context {
+        let has_deep = data.expressions.values().any(|i| i.has_store_member_mutation)
+            || data.attr_expressions.values().any(|i| i.has_store_member_mutation);
+        if has_deep {
+            data.needs_context = true;
+        }
+    }
+
+    // Also check script-level deep mutations
+    if !data.needs_context {
+        if let Some(script) = &data.script {
+            if script.has_store_member_mutations {
+                data.needs_context = true;
+            }
+        }
+    }
 }
 
 fn collect_store_candidate(name: &str, candidates: &mut Vec<String>) {

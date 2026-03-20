@@ -32,6 +32,10 @@ pub struct ExpressionInfo {
     pub has_call: bool,
     /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
     pub has_state_rune: bool,
+    /// Set when the expression contains a deep mutation on a `$`-prefixed identifier
+    /// (e.g., `$store.field = val` or `$store.count++`). Used to determine if component
+    /// needs `$.push/$.pop` for `$.store_mutate` support.
+    pub has_store_member_mutation: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +105,9 @@ pub struct ScriptInfo {
     /// Base names of `$`-prefixed identifiers found in the script body
     /// (e.g. `"count"` for `$count`). Used to detect store subscriptions.
     pub store_candidates: Vec<CompactString>,
+    /// True when script contains deep mutations on `$`-prefixed identifiers
+    /// (e.g., `$store.field = val`). Triggers `$.push/$.pop` for `$.store_mutate`.
+    pub has_store_member_mutations: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -379,7 +386,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
         }
     }
 
-    ScriptInfo { declarations, props_declaration, exports, has_effects, has_class_state_fields, store_candidates: Vec::new() }
+    ScriptInfo { declarations, props_declaration, exports, has_effects, has_class_state_fields, store_candidates: Vec::new(), has_store_member_mutations: false }
 }
 
 /// Enrich ScriptInfo from OXC's unresolved references in one pass.
@@ -700,6 +707,15 @@ pub fn analyze_script_with_alloc<'a>(
     // $effect → has_effects; $count (non-rune) → store candidate.
     enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
+    // Detect deep store mutations in script body (e.g., $store.field = val)
+    script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
+        if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
+            has_deep_store_mutation(&es.expression)
+        } else {
+            false
+        }
+    });
+
     let scoping = sem.semantic.into_scoping();
 
     Ok((script_info, scoping, program))
@@ -836,12 +852,15 @@ fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo
     let has_state_rune = expression_has_rune(expr, RuneKind::EffectPending)
         || expression_has_rune(expr, RuneKind::StateEager);
 
+    let has_store_member_mutation = has_deep_store_mutation(expr);
+
     ExpressionInfo {
         kind,
         references,
         has_side_effects,
         has_call,
         has_state_rune,
+        has_store_member_mutation,
     }
 }
 
@@ -891,6 +910,64 @@ fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
     }
 }
 
+/// Check if expression contains a deep mutation on a $-prefixed identifier
+/// (e.g., `$store.field = val` or `$store.count++`).
+fn has_deep_store_mutation(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::AssignmentExpression(assign) => {
+            let has_store_member_lhs = match &assign.left {
+                oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => {
+                    member_root_is_store(&m.object)
+                }
+                oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => {
+                    member_root_is_store(&m.object)
+                }
+                _ => false,
+            };
+            has_store_member_lhs || has_deep_store_mutation(&assign.right)
+        }
+        Expression::UpdateExpression(upd) => {
+            match &upd.argument {
+                oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(m) => {
+                    member_root_is_store(&m.object)
+                }
+                oxc_ast::ast::SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+                    member_root_is_store(&m.object)
+                }
+                _ => false,
+            }
+        }
+        Expression::ArrowFunctionExpression(arrow) => {
+            arrow.body.statements.iter().any(|stmt| {
+                if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
+                    has_deep_store_mutation(&es.expression)
+                } else {
+                    false
+                }
+            })
+        }
+        Expression::SequenceExpression(seq) => {
+            seq.expressions.iter().any(|e| has_deep_store_mutation(e))
+        }
+        Expression::ConditionalExpression(c) => {
+            has_deep_store_mutation(&c.test)
+                || has_deep_store_mutation(&c.consequent)
+                || has_deep_store_mutation(&c.alternate)
+        }
+        _ => false,
+    }
+}
+
+/// Check if the root of a member expression chain is a $-prefixed identifier.
+fn member_root_is_store(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::Identifier(id) => id.name.starts_with('$') && id.name.len() > 1,
+        Expression::StaticMemberExpression(m) => member_root_is_store(&m.object),
+        Expression::ComputedMemberExpression(m) => member_root_is_store(&m.object),
+        _ => false,
+    }
+}
+
 fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Reference>) {
     match expr {
         Expression::Identifier(ident) => {
@@ -905,17 +982,27 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
             });
         }
         Expression::AssignmentExpression(assign) => {
-            // LHS is write, RHS is read
-            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(ident) = &assign.left {
-                refs.push(Reference {
-                    name: compact(&ident.name),
-                    span: Span::new(
-                        ident.span.start + offset,
-                        ident.span.end + offset,
-                    ),
-                    flags: ReferenceFlags::Write,
-                    symbol_id: None,
-                });
+            // LHS: collect write reference from identifier or read reference from member chain root
+            match &assign.left {
+                oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(ident) => {
+                    refs.push(Reference {
+                        name: compact(&ident.name),
+                        span: Span::new(
+                            ident.span.start + offset,
+                            ident.span.end + offset,
+                        ),
+                        flags: ReferenceFlags::Write,
+                        symbol_id: None,
+                    });
+                }
+                oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => {
+                    collect_references(&m.object, offset, refs);
+                }
+                oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => {
+                    collect_references(&m.object, offset, refs);
+                    collect_references(&m.expression, offset, refs);
+                }
+                _ => {}
             }
             collect_references(&assign.right, offset, refs);
         }
@@ -931,15 +1018,24 @@ fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Referen
             collect_references(&un.argument, offset, refs);
         }
         Expression::UpdateExpression(upd) => {
-            if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) =
-                &upd.argument
-            {
-                refs.push(Reference {
-                    name: compact(&ident.name),
-                    span: Span::new(ident.span.start + offset, ident.span.end + offset),
-                    flags: ReferenceFlags::Write,
-                    symbol_id: None,
-                });
+            match &upd.argument {
+                oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
+                    refs.push(Reference {
+                        name: compact(&ident.name),
+                        span: Span::new(ident.span.start + offset, ident.span.end + offset),
+                        flags: ReferenceFlags::Write,
+                        symbol_id: None,
+                    });
+                }
+                // Walk member chain to collect root identifier (e.g., $store in $store.count++)
+                oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(m) => {
+                    collect_references(&m.object, offset, refs);
+                }
+                oxc_ast::ast::SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+                    collect_references(&m.object, offset, refs);
+                    collect_references(&m.expression, offset, refs);
+                }
+                _ => {}
             }
         }
         Expression::CallExpression(call) => {

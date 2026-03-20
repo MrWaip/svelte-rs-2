@@ -1495,3 +1495,33 @@ fn debug_in_if() {
 fn debug_in_each() {
     assert_compiler("debug_in_each");
 }
+
+#[rstest]
+fn rune_compound_template() {
+    assert_compiler("rune_compound_template");
+}
+
+#[rstest]
+fn store_assign_template() {
+    assert_compiler("store_assign_template");
+}
+
+#[rstest]
+fn store_compound_template() {
+    assert_compiler("store_compound_template");
+}
+
+#[rstest]
+fn store_update_template() {
+    assert_compiler("store_update_template");
+}
+
+#[rstest]
+fn store_deep_mutation() {
+    assert_compiler("store_deep_mutation");
+}
+
+#[rstest]
+fn store_deep_update() {
+    assert_compiler("store_deep_update");
+}

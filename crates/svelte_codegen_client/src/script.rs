@@ -399,6 +399,36 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         true
     }
 
+    /// Walk an AssignmentTarget member chain to find root store ref.
+    fn extract_assign_member_store_root<'t>(&self, target: &'t oxc_ast::ast::AssignmentTarget<'a>) -> Option<&'t str> {
+        match target {
+            oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => {
+                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
+                self.component_scoping.is_store_ref(name).then_some(name)
+            }
+            oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => {
+                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
+                self.component_scoping.is_store_ref(name).then_some(name)
+            }
+            _ => None,
+        }
+    }
+
+    /// Walk a SimpleAssignmentTarget member chain to find root store ref.
+    fn extract_simple_member_store_root<'t>(&self, target: &'t oxc_ast::ast::SimpleAssignmentTarget<'a>) -> Option<&'t str> {
+        match target {
+            oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(m) => {
+                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
+                self.component_scoping.is_store_ref(name).then_some(name)
+            }
+            oxc_ast::ast::SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
+                self.component_scoping.is_store_ref(name).then_some(name)
+            }
+            _ => None,
+        }
+    }
+
     fn is_props_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
         decl.declarations.iter().any(|d| {
             if let oxc_ast::ast::BindingPattern::ObjectPattern(_) = &d.id {
@@ -2108,6 +2138,22 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 }
             }
         }
+
+        // Deep store mutation: $store.field = val → $.store_mutate(store, ...)
+        if let Some(root_name) = self.extract_assign_member_store_root(&assign.left) {
+            let root_name = root_name.to_string();
+            let base_name = root_name[1..].to_string();
+            let alloc = self.b.ast.allocator;
+            // Replace root identifier in the member chain with $.untrack($store)
+            svelte_transform::rune_refs::replace_expr_root_in_assign_target(
+                &mut assign.left,
+                svelte_transform::rune_refs::make_untrack(alloc, &root_name),
+            );
+            // Take modified assignment as the mutation expression
+            let mutation = self.b.move_expr(node);
+            let untracked = svelte_transform::rune_refs::make_untrack(alloc, &root_name);
+            *node = svelte_transform::rune_refs::make_store_mutate(alloc, &base_name, mutation, untracked);
+        }
     }
 
     fn transform_update(&self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
@@ -2157,6 +2203,20 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     return;
                 }
             }
+        }
+
+        // Deep store update: $store.count++ → $.store_mutate(store, ...)
+        if let Some(root_name) = self.extract_simple_member_store_root(&upd.argument) {
+            let root_name = root_name.to_string();
+            let base_name = root_name[1..].to_string();
+            let alloc = self.b.ast.allocator;
+            svelte_transform::rune_refs::replace_expr_root_in_simple_target(
+                &mut upd.argument,
+                svelte_transform::rune_refs::make_untrack(alloc, &root_name),
+            );
+            let mutation = self.b.move_expr(node);
+            let untracked = svelte_transform::rune_refs::make_untrack(alloc, &root_name);
+            *node = svelte_transform::rune_refs::make_store_mutate(alloc, &base_name, mutation, untracked);
         }
     }
 }
