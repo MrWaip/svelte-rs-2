@@ -30,6 +30,8 @@ pub struct ExpressionInfo {
     pub references: Vec<Reference>,
     pub has_side_effects: bool,
     pub has_call: bool,
+    /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
+    pub has_state_rune: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +132,8 @@ pub enum RuneKind {
     EffectTracking,
     Props,
     Bindable,
+    StateEager,
+    EffectPending,
     Inspect,
     Host,
     PropsId,
@@ -829,11 +833,15 @@ fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo
 
     let has_call = expression_has_call(expr);
 
+    let has_state_rune = expression_has_rune(expr, RuneKind::EffectPending)
+        || expression_has_rune(expr, RuneKind::StateEager);
+
     ExpressionInfo {
         kind,
         references,
         has_side_effects,
         has_call,
+        has_state_rune,
     }
 }
 
@@ -859,6 +867,26 @@ pub fn expression_has_call(expr: &Expression<'_>) -> bool {
         Expression::SequenceExpression(s) => s.expressions.iter().any(|e| expression_has_call(e)),
         // Function boundaries are opaque
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        _ => false,
+    }
+}
+
+/// Check if the expression (or any sub-expression) contains a call to a specific rune.
+fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
+    match expr {
+        Expression::CallExpression(_) => detect_rune(expr) == Some(target),
+        Expression::ConditionalExpression(c) => {
+            expression_has_rune(&c.test, target)
+                || expression_has_rune(&c.consequent, target)
+                || expression_has_rune(&c.alternate, target)
+        }
+        Expression::BinaryExpression(b) => {
+            expression_has_rune(&b.left, target) || expression_has_rune(&b.right, target)
+        }
+        Expression::LogicalExpression(l) => {
+            expression_has_rune(&l.left, target) || expression_has_rune(&l.right, target)
+        }
+        Expression::SequenceExpression(s) => s.expressions.iter().any(|e| expression_has_rune(e, target)),
         _ => false,
     }
 }
@@ -1138,7 +1166,9 @@ fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
                     return match (obj.name.as_str(), prop) {
                         ("$derived", "by") => Some(RuneKind::DerivedBy),
                         ("$state", "raw") => Some(RuneKind::StateRaw),
+                        ("$state", "eager") => Some(RuneKind::StateEager),
                         ("$effect", "tracking") => Some(RuneKind::EffectTracking),
+                        ("$effect", "pending") => Some(RuneKind::EffectPending),
                         ("$props", "id") => Some(RuneKind::PropsId),
                         _ => None,
                     };

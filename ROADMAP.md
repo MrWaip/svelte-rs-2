@@ -311,8 +311,8 @@ Items discovered during porting but not critical for the feature to work. Groupe
 - [x] `$state` / `$state.raw` destructuring support in script codegen
 - [x] `$state` / `$state.raw` class field support
 - [ ] `$state.frozen` → `$state.raw` rename validation
-- [ ] `$state.eager(val)` — experimental async, requires `experimental.async` flag
-- [ ] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
+- [x] `$state.eager(val)` — experimental async, requires `experimental.async` flag
+- [x] `$effect.pending()` — requires `<svelte:boundary>` (Tier 5)
 
 ### $host() (Tier 1)
 - [ ] Validation: `$host()` must have zero arguments (`rune_invalid_arguments`)

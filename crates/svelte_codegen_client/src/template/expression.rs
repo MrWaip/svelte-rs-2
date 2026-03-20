@@ -221,6 +221,53 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     }
 }
 
+/// Check if a text content expression needs call memoization.
+/// Requires `has_call` AND references to resolved bindings (not just rune names).
+pub(crate) fn text_content_needs_memo(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
+    if let FragmentItem::TextConcat { parts, .. } = item {
+        return parts.iter().any(|p| {
+            if let LoweredTextPart::Expr(id) = p {
+                let info = ctx.expression(*id);
+                let has_call = info.map_or(false, |e| e.has_call);
+                // Only memoize when there are references that resolve to actual bindings
+                let has_resolved_refs = info.map_or(false, |e|
+                    e.references.iter().any(|r| r.symbol_id.is_some())
+                );
+                has_call && has_resolved_refs
+            } else {
+                false
+            }
+        });
+    }
+    false
+}
+
+/// Emit memoized template_effect for text with `has_call` expressions:
+/// `$.template_effect(($0) => $.set_text(text, $0), [() => expr])`
+pub(crate) fn emit_memoized_text_effect<'a>(
+    ctx: &mut Ctx<'a>,
+    text_name: &str,
+    expr: Expression<'a>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    // Build the lazy getter: [() => expr]
+    let thunk = ctx.b.thunk(expr);
+    let getter_array = ctx.b.array_expr([thunk]);
+
+    // Build the callback: ($0) => $.set_text(text, $0)
+    let params = ctx.b.params(["$0"]);
+    let set_text = ctx.b.call_stmt(
+        "$.set_text",
+        [Arg::Ident(text_name), Arg::Ident("$0")],
+    );
+    let callback = ctx.b.arrow_expr(params, [set_text]);
+
+    body.push(ctx.b.call_stmt(
+        "$.template_effect",
+        [Arg::Expr(callback), Arg::Expr(getter_array)],
+    ));
+}
+
 pub(crate) fn parts_are_dynamic(parts: &[LoweredTextPart], ctx: &Ctx<'_>) -> bool {
     parts.iter().any(|p| {
         if let LoweredTextPart::Expr(id) = p {
