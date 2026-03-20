@@ -238,6 +238,26 @@ impl EachBlockData {
     pub fn body_uses_index(&self, id: NodeId) -> bool { self.body_uses_index.contains(&id) }
 }
 
+/// Await block binding patterns, parsed via OXC in the `parse_js` pass.
+pub struct AwaitBindingData {
+    /// Then binding info, keyed by AwaitBlock NodeId.
+    pub(crate) values: FxHashMap<NodeId, svelte_js::AwaitBindingInfo>,
+    /// Catch binding info, keyed by AwaitBlock NodeId.
+    pub(crate) errors: FxHashMap<NodeId, svelte_js::AwaitBindingInfo>,
+}
+
+impl AwaitBindingData {
+    pub fn new() -> Self {
+        Self {
+            values: FxHashMap::default(),
+            errors: FxHashMap::default(),
+        }
+    }
+
+    pub fn value(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> { self.values.get(&id) }
+    pub fn error(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> { self.errors.get(&id) }
+}
+
 /// Pre-computed bind/directive semantics for codegen.
 ///
 /// Eliminates string-based symbol re-resolution in codegen: instead of
@@ -370,6 +390,8 @@ pub struct AnalysisData {
     /// Render tags whose callee is a getter function (prop-source or snippet param).
     /// These pass the callee directly to `$.snippet` instead of wrapping in a thunk.
     pub render_tag_callee_is_getter: FxHashSet<NodeId>,
+    /// Await block binding patterns (then/catch), parsed via OXC.
+    pub await_bindings: AwaitBindingData,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
     pub bind_semantics: BindSemanticsData,
     /// Pre-computed import SymbolIds from root scope (O(1) lookup in codegen).
@@ -407,6 +429,7 @@ impl AnalysisData {
             render_tag_is_chain: FxHashSet::default(),
             render_tag_dynamic: FxHashSet::default(),
             render_tag_callee_is_getter: FxHashSet::default(),
+            await_bindings: AwaitBindingData::new(),
             bind_semantics: BindSemanticsData::new(),
             import_syms: FxHashSet::default(),
             custom_element: false,

@@ -193,6 +193,12 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
     }
+    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> {
+        self.analysis.await_bindings.value(id)
+    }
+    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> {
+        self.analysis.await_bindings.error(id)
+    }
     pub fn is_import_sym(&self, sym_id: oxc_semantic::SymbolId) -> bool {
         self.analysis.import_syms.contains(&sym_id)
     }

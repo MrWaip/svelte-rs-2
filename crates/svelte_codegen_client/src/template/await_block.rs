@@ -4,6 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
+use svelte_js::{AwaitBindingInfo, DestructureKind};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -25,8 +26,6 @@ pub(crate) fn gen_await_block<'a>(
     let has_pending = block.pending.is_some();
     let has_then = block.then.is_some();
     let has_catch = block.catch.is_some();
-    let value_span = block.value_span;
-    let error_span = block.error_span;
     let span_start = block.span.start;
 
     // Expression thunk: () => promise (visit expression first for correct scope order)
@@ -35,7 +34,8 @@ pub(crate) fn gen_await_block<'a>(
     // Then callback (generated before pending to match reference compiler ordering)
     let then_fn = if has_then {
         let then_key = FragmentKey::AwaitThen(block_id);
-        gen_await_callback(ctx, then_key, value_span)
+        let value_binding = ctx.await_value_binding(block_id).cloned();
+        gen_await_callback(ctx, then_key, value_binding.as_ref())
     } else if has_catch {
         ctx.b.void_zero_expr()
     } else {
@@ -45,7 +45,8 @@ pub(crate) fn gen_await_block<'a>(
     // Catch callback
     let catch_fn = if has_catch {
         let catch_key = FragmentKey::AwaitCatch(block_id);
-        gen_await_callback(ctx, catch_key, error_span)
+        let error_binding = ctx.await_error_binding(block_id).cloned();
+        gen_await_callback(ctx, catch_key, error_binding.as_ref())
     } else {
         ctx.b.null_expr()
     };
@@ -81,61 +82,46 @@ pub(crate) fn gen_await_block<'a>(
 fn gen_await_callback<'a>(
     ctx: &mut Ctx<'a>,
     fragment_key: FragmentKey,
-    binding_span: Option<svelte_span::Span>,
+    binding: Option<&AwaitBindingInfo>,
 ) -> Expression<'a> {
     let frag_body = gen_fragment(ctx, fragment_key);
 
-    if let Some(span) = binding_span {
-        let binding_text = ctx.component.source_text(span).to_string();
-        let trimmed = binding_text.trim();
-
-        if trimmed.starts_with('{') || trimmed.starts_with('[') {
-            gen_destructured_callback(ctx, trimmed, frag_body)
-        } else {
-            ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", trimmed]), frag_body)
+    match binding {
+        Some(AwaitBindingInfo::Simple(name)) => {
+            ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", name]), frag_body)
         }
-    } else {
-        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body)
+        Some(AwaitBindingInfo::Destructured { kind, names }) => {
+            gen_destructured_callback(ctx, *kind, names, frag_body)
+        }
+        None => {
+            ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body)
+        }
     }
 }
 
 /// Generate callback for destructured bindings.
 fn gen_destructured_callback<'a>(
     ctx: &mut Ctx<'a>,
-    pattern: &str,
+    kind: DestructureKind,
+    names: &[String],
     frag_body: Vec<Statement<'a>>,
 ) -> Expression<'a> {
-    let is_array = pattern.starts_with('[');
-    let inner = &pattern[1..pattern.len()-1];
-    let names: Vec<String> = inner.split(',')
-        .filter_map(|s| {
-            let s = s.split('=').next().unwrap_or("").trim();
-            let s = if let Some((_key, alias)) = s.split_once(':') {
-                alias.trim()
-            } else {
-                s
-            };
-            if s.is_empty() { None } else { Some(s.to_string()) }
-        })
-        .collect();
-
     let mut declarations: Vec<Statement<'a>> = Vec::new();
 
     // var $$value = $.derived(() => { var [a, b] / { name, age } = $.get($$source); return { a, b / name, age }; });
     let get_source = ctx.b.call_expr("$.get", [Arg::Ident("$$source")]);
-    let destruct_stmt = if is_array {
-        ctx.b.var_array_destruct_stmt(&names, get_source)
-    } else {
-        ctx.b.var_object_destruct_stmt(&names, get_source)
+    let destruct_stmt = match kind {
+        DestructureKind::Array => ctx.b.var_array_destruct_stmt(names, get_source),
+        DestructureKind::Object => ctx.b.var_object_destruct_stmt(names, get_source),
     };
-    let return_obj = ctx.b.shorthand_object_expr(&names);
+    let return_obj = ctx.b.shorthand_object_expr(names);
     let return_stmt = ctx.b.return_stmt(return_obj);
     let derived_fn = ctx.b.thunk_block(vec![destruct_stmt, return_stmt]);
     let derived_call = ctx.b.call_expr("$.derived", [Arg::Expr(derived_fn)]);
     declarations.push(ctx.b.var_stmt("$$value", derived_call));
 
     // var name = $.derived(() => $.get($$value).name);
-    for name in &names {
+    for name in names {
         let get_value = ctx.b.call_expr("$.get", [Arg::Ident("$$value")]);
         let member = ctx.b.static_member_expr(get_value, name);
         let getter_fn = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(member)]);

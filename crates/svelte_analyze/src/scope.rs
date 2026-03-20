@@ -530,8 +530,8 @@ fn walk_template_scopes(
                         let then_scope = scoping.add_child_scope(current_scope);
                         scoping.set_node_scope(block.id, then_scope);
                         let binding_text = component.source_text(val_span);
-                        for name in svelte_js::parse_snippet_params(binding_text) {
-                            scoping.add_binding(then_scope, &name);
+                        for name in svelte_js::parse_await_binding(binding_text).names() {
+                            scoping.add_binding(then_scope, name);
                         }
                         walk_template_scopes(t, component, scoping, then_scope, const_tag_names, snippet_params, each_blocks);
                     } else {
@@ -545,8 +545,8 @@ fn walk_template_scopes(
                         let catch_scope = scoping.add_child_scope(current_scope);
                         scoping.set_await_catch_scope(block.id, catch_scope);
                         let binding_text = component.source_text(err_span);
-                        for name in svelte_js::parse_snippet_params(binding_text) {
-                            scoping.add_binding(catch_scope, &name);
+                        for name in svelte_js::parse_await_binding(binding_text).names() {
+                            scoping.add_binding(catch_scope, name);
                         }
                         walk_template_scopes(c, component, scoping, catch_scope, const_tag_names, snippet_params, each_blocks);
                     } else {
