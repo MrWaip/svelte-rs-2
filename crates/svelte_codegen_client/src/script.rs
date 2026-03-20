@@ -47,11 +47,17 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
     if let Some(program) = ctx.parsed.script_program.take() {
+        // Clone default expressions for the transformer; originals stay for CE setter in lib.rs
+        let prop_defaults: Vec<Option<Expression<'a>>> = ctx.parsed.prop_default_exprs
+            .iter()
+            .map(|opt| opt.as_ref().map(|e| ctx.b.clone_expr(e)))
+            .collect();
         return transform_program(
             allocator,
             program,
             component_scoping,
             props,
+            prop_defaults,
             dev,
             component_source,
             script_content_start,
@@ -147,6 +153,7 @@ fn transform_script_text<'a>(
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
+        prop_default_exprs: Vec::new(),
     };
 
     let empty_scoping = Scoping::default();
@@ -178,6 +185,7 @@ fn transform_program<'a>(
     mut program: Program<'a>,
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
+    prop_default_exprs: Vec<Option<Expression<'a>>>,
     dev: bool,
     component_source: &str,
     script_content_start: u32,
@@ -211,6 +219,7 @@ fn transform_program<'a>(
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
+        prop_default_exprs,
     };
 
     let empty_scoping = Scoping::default();
@@ -312,6 +321,8 @@ struct ScriptTransformer<'b, 'a> {
     /// Stack of class state field info for nested classes. Each entry maps
     /// the backing private name (e.g. "#count") to its rune kind.
     class_state_stack: Vec<ClassStateInfo>,
+    /// Pre-parsed prop default expressions, indexed by prop position.
+    prop_default_exprs: Vec<Option<Expression<'a>>>,
 }
 
 struct ClassStateField {
@@ -460,7 +471,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         })
     }
 
-    fn gen_props_statements(&self) -> Vec<Statement<'a>> {
+    fn gen_props_statements(&mut self) -> Vec<Statement<'a>> {
         let Some(props_gen) = &self.props_gen else {
             return vec![];
         };
@@ -472,7 +483,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             "$$legacy".to_string(),
         ];
 
-        for prop in &props_gen.props {
+        for (i, prop) in props_gen.props.iter().enumerate() {
             seen_names.push(prop.prop_name.clone());
 
             if prop.is_rest {
@@ -506,15 +517,19 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 Arg::Str(prop.prop_name.clone()),
             ];
 
-            if let Some(default_text) = &prop.default_text {
+            if prop.default_text.is_some() {
                 if prop.is_lazy_default {
                     flags |= PROPS_IS_LAZY_INITIAL;
                 }
 
                 args.push(Arg::Num(flags as f64));
 
-                // Parse default expression
-                let default_expr = parse_expression(self.b, default_text);
+                // Use pre-parsed expression when available, fallback to parse for test path
+                let default_expr = if let Some(expr) = self.prop_default_exprs.get_mut(i).and_then(|e| e.take()) {
+                    expr
+                } else {
+                    self.b.parse_expression(prop.default_text.as_deref().unwrap())
+                };
                 // Wrap $bindable() defaults in $.proxy() when needed
                 let default_expr = if prop.is_bindable && Self::should_proxy(&default_expr) {
                     self.b.call_expr("$.proxy", [Arg::Expr(default_expr)])
@@ -1185,20 +1200,6 @@ fn wrap_derived_thunks<'a>(
                     }
                 }
             }
-        }
-    }
-}
-
-fn parse_expression<'a>(b: &Builder<'a>, text: &str) -> Expression<'a> {
-    let alloc = b.ast.allocator;
-    // Allocate text in the arena so it lives long enough for OXC parsing
-    let arena_text: &'a str = alloc.alloc_str(text);
-    match OxcParser::new(alloc, arena_text, SourceType::default()).parse_expression() {
-        Ok(expr) => expr,
-        Err(_) => {
-            debug_assert!(false, "codegen: failed to parse expression: {text}");
-            eprintln!("[svelte-rs] warning: failed to parse expression in script codegen: {text}");
-            b.str_expr(text)
         }
     }
 }

@@ -26,6 +26,9 @@ pub struct ParsedExprs<'a> {
     pub debug_tag_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
     /// Pre-parsed custom element `extend` expression. Consumed by codegen via `Option::take()`.
     pub ce_extend_expr: Option<Expression<'a>>,
+    /// Pre-parsed prop default expressions, indexed by prop position in PropsDeclaration.
+    /// Consumed by codegen via clone/take.
+    pub prop_default_exprs: Vec<Option<Expression<'a>>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -38,6 +41,7 @@ impl<'a> ParsedExprs<'a> {
             script_program: None,
             debug_tag_exprs: FxHashMap::default(),
             ce_extend_expr: None,
+            prop_default_exprs: Vec::new(),
         }
     }
 }
