@@ -2,7 +2,9 @@ use rustc_hash::FxHashSet;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{NONE, ast::{
-    ArrowFunctionExpression, Expression, FunctionBody, Program, Statement, VariableDeclarator,
+    ArrowFunctionExpression, ClassElement, Expression, FunctionBody,
+    ImportDeclarationSpecifier, MethodDefinitionType, Program,
+    PropertyDefinitionType, Statement, VariableDeclarator,
 }};
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
@@ -130,6 +132,7 @@ fn transform_script_text<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports,
         dev,
+        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         component_source,
@@ -153,18 +156,9 @@ fn transform_script_text<'a>(
     let mut body = vec![];
 
     for stmt in program.body {
-        if matches!(
-            stmt,
-            Statement::TSTypeAliasDeclaration(_)
-                | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_)
-        ) {
-            continue;
-        }
-        if matches!(stmt, Statement::ImportDeclaration(_)) {
-            imports.push(stmt);
-        } else {
-            body.push(stmt);
+        match &stmt {
+            Statement::ImportDeclaration(_) => imports.push(stmt),
+            _ => body.push(stmt),
         }
     }
 
@@ -183,6 +177,9 @@ fn transform_program<'a>(
 ) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
     let b = Builder::new(allocator);
 
+    // Detect TypeScript from the program's source_type
+    let is_ts = program.source_type.is_typescript();
+
     // Re-run SemanticBuilder to get fresh scoping matching current AST state
     let sem = SemanticBuilder::new().build(&program);
     let scoping = sem.semantic.into_scoping();
@@ -197,6 +194,7 @@ fn transform_program<'a>(
         derived_pending: FxHashSet::default(),
         strip_exports: true,
         dev,
+        is_ts,
         function_info_stack: Vec::new(),
         has_tracing: false,
         component_source,
@@ -219,18 +217,9 @@ fn transform_program<'a>(
     let mut body = vec![];
 
     for stmt in program.body {
-        if matches!(
-            stmt,
-            Statement::TSTypeAliasDeclaration(_)
-                | Statement::TSInterfaceDeclaration(_)
-                | Statement::TSEnumDeclaration(_)
-        ) {
-            continue;
-        }
-        if matches!(stmt, Statement::ImportDeclaration(_)) {
-            imports.push(stmt);
-        } else {
-            body.push(stmt);
+        match &stmt {
+            Statement::ImportDeclaration(_) => imports.push(stmt),
+            _ => body.push(stmt),
         }
     }
 
@@ -295,6 +284,8 @@ struct ScriptTransformer<'b, 'a> {
     strip_exports: bool,
     /// Whether dev-mode transforms are enabled ($inspect → $.inspect).
     dev: bool,
+    /// Whether the script uses TypeScript (strip type annotations during traverse).
+    is_ts: bool,
     /// Stack tracking enclosing functions for $inspect.trace() context.
     function_info_stack: Vec<FunctionInfo>,
     /// Whether any $inspect.trace() was found (dev mode), triggers tracing import.
@@ -1262,6 +1253,20 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::ClassBody<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.body.retain(|member| match member {
+                ClassElement::PropertyDefinition(prop) => {
+                    !prop.declare
+                        && prop.r#type != PropertyDefinitionType::TSAbstractPropertyDefinition
+                }
+                ClassElement::MethodDefinition(method) => {
+                    method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                }
+                ClassElement::TSIndexSignature(_) => false,
+                _ => true,
+            });
+        }
+
         let Some(info) = self.class_state_stack.pop() else { return };
         if info.fields.is_empty() {
             return;
@@ -1274,6 +1279,11 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::Function<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.return_type = None;
+            node.this_param = None;
+        }
         let name = node.id.as_ref().map(|id| id.name.to_string());
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
@@ -1295,6 +1305,10 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.return_type = None;
+        }
         let name = self.next_arrow_name.take();
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
@@ -1380,6 +1394,48 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        // Strip TypeScript declarations and type-only imports/exports
+        if self.is_ts {
+            // Remove individual type specifiers from imports/exports
+            for stmt in stmts.iter_mut() {
+                match stmt {
+                    Statement::ImportDeclaration(import) => {
+                        if let Some(specs) = &mut import.specifiers {
+                            specs.retain(|spec| {
+                                !matches!(spec, ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
+                            });
+                        }
+                    }
+                    Statement::ExportNamedDeclaration(export) if export.declaration.is_none() => {
+                        export.specifiers.retain(|spec| !spec.export_kind.is_type());
+                    }
+                    _ => {}
+                }
+            }
+
+            // Remove entire TS-only statements
+            stmts.retain(|stmt| match stmt {
+                Statement::TSTypeAliasDeclaration(_)
+                | Statement::TSInterfaceDeclaration(_)
+                | Statement::TSModuleDeclaration(_)
+                | Statement::TSEnumDeclaration(_) => false,
+                Statement::VariableDeclaration(decl) if decl.declare => false,
+                Statement::FunctionDeclaration(func) if func.declare => false,
+                Statement::ClassDeclaration(class) if class.declare => false,
+                Statement::ImportDeclaration(import) if import.import_kind.is_type() => false,
+                Statement::ExportNamedDeclaration(export) if export.export_kind.is_type() => false,
+                Statement::ExportAllDeclaration(export) if export.export_kind.is_type() => false,
+                // Remove imports/exports left with no specifiers after type-specifier filtering
+                Statement::ImportDeclaration(import) => {
+                    import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
+                }
+                Statement::ExportNamedDeclaration(export) => {
+                    export.declaration.is_some() || !export.specifiers.is_empty()
+                }
+                _ => true,
+            });
+        }
+
         // Strip `export` keyword: ExportNamedDeclaration → inner declaration
         // (only for component scripts; module compilation preserves exports)
         if self.strip_exports {
@@ -1457,11 +1513,121 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         }
     }
 
+    fn enter_formal_parameter(
+        &mut self,
+        node: &mut oxc_ast::ast::FormalParameter<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.readonly = false;
+            node.r#override = false;
+        }
+    }
+
+    fn enter_catch_parameter(
+        &mut self,
+        node: &mut oxc_ast::ast::CatchParameter<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+        }
+    }
+
+    fn enter_call_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::CallExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_new_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::NewExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_tagged_template_expression(
+        &mut self,
+        node: &mut oxc_ast::ast::TaggedTemplateExpression<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_arguments = None;
+        }
+    }
+
+    fn enter_class(
+        &mut self,
+        node: &mut oxc_ast::ast::Class<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_parameters = None;
+            node.super_type_arguments = None;
+            node.implements.clear();
+            node.r#abstract = false;
+        }
+    }
+
+    fn enter_property_definition(
+        &mut self,
+        node: &mut oxc_ast::ast::PropertyDefinition<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.readonly = false;
+            node.r#override = false;
+            node.optional = false;
+            node.definite = false;
+        }
+    }
+
+    fn enter_accessor_property(
+        &mut self,
+        node: &mut oxc_ast::ast::AccessorProperty<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.accessibility = None;
+            node.r#override = false;
+            node.definite = false;
+        }
+    }
+
+    fn enter_method_definition(
+        &mut self,
+        node: &mut oxc_ast::ast::MethodDefinition<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if self.is_ts {
+            node.accessibility = None;
+            node.r#override = false;
+            node.optional = false;
+        }
+    }
+
     fn enter_variable_declarator(
         &mut self,
         node: &mut VariableDeclarator<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
+        if self.is_ts {
+            node.type_annotation = None;
+            node.definite = false;
+        }
         // Capture variable name for arrow functions (used by $inspect.trace auto-label)
         if let Some(Expression::ArrowFunctionExpression(_)) = &node.init {
             if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &node.id {
@@ -1557,6 +1723,29 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
+        // Strip TS expression wrappers (as, satisfies, non-null, type assertion, instantiation)
+        if self.is_ts {
+            loop {
+                match node {
+                    Expression::TSAsExpression(_)
+                    | Expression::TSSatisfiesExpression(_)
+                    | Expression::TSNonNullExpression(_)
+                    | Expression::TSTypeAssertion(_)
+                    | Expression::TSInstantiationExpression(_) => {
+                        let inner = match self.b.move_expr(node) {
+                            Expression::TSAsExpression(ts) => ts.unbox().expression,
+                            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
+                            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
+                            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
+                            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
+                            _ => unreachable!(),
+                        };
+                        *node = inner;
+                    }
+                    _ => break,
+                }
+            }
+        }
         match node {
             Expression::AssignmentExpression(_) => {
                 self.transform_assignment(node, ctx);
