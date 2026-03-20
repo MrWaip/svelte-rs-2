@@ -164,17 +164,17 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
 
 ### 2e — Special elements
-- [ ] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
-- [ ] `<svelte:element>` inside `{#if}` block
-- [ ] `<svelte:element>` with `class:` directives
-- [ ] `<svelte:element>` with `style:` directives
-- [ ] `<svelte:head>` — `filename` parameter for correct hash (currently `"(unknown)"`)
-- [ ] `<svelte:boundary>` — `@const` duplication into hoisted snippets
-- [ ] `<svelte:boundary>` — import reactivity: imported identifiers in boundary attrs should generate getters (`has_state`)
+- [x] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
+- [x] `<svelte:element>` inside `{#if}` block
+- [x] `<svelte:element>` with `class:` directives
+- [x] `<svelte:element>` with `style:` directives
+- [x] `<svelte:head>` — `filename` parameter for correct hash (already correct)
+- [x] `<svelte:boundary>` — `@const` duplication into hoisted snippets
+- [x] `<svelte:boundary>` — import reactivity: imported identifiers in boundary attrs generate getters
 - [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
 - [ ] `<svelte:boundary>` — dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
-- [ ] `bind:this` — SequenceExpression custom getter/setter (rarely used)
+- [x] `bind:this` — SequenceExpression custom getter/setter
 
 ### 2f — CSS
 - [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection

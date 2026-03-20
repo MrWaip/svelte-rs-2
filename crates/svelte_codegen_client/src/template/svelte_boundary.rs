@@ -14,6 +14,39 @@ use super::expression::get_attr_expr;
 use super::gen_fragment;
 use super::snippet::gen_snippet_block;
 
+/// Build `const name = $.derived(() => expr)` statements from pre-cloned expressions.
+/// Used to duplicate @const tags into boundary snippet bodies.
+fn build_const_tag_stmts_from_cloned<'a>(
+    ctx: &mut Ctx<'a>,
+    entries: &mut Vec<(NodeId, Vec<String>, Expression<'a>)>,
+) -> Vec<Statement<'a>> {
+    let mut stmts = Vec::new();
+    // Drain to take ownership of expressions
+    for (cid, names, init_expr) in entries.drain(..) {
+        if names.len() == 1 {
+            let thunk = ctx.b.thunk(init_expr);
+            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+            stmts.push(ctx.b.const_stmt(&names[0], derived));
+        } else if names.len() > 1 {
+            let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&cid)
+                .expect("destructured const tag must have tmp_name from transform");
+            let tmp_name: &str = ctx.b.alloc_str(tmp_name);
+
+            let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
+
+            let props: Vec<ObjProp<'a>> = names.iter()
+                .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
+                .collect();
+            let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
+
+            let thunk = ctx.b.arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+            stmts.push(ctx.b.const_stmt(tmp_name, derived));
+        }
+    }
+    stmts
+}
+
 /// Generate `$.boundary(node, props, ($$anchor) => { ... })`.
 pub(crate) fn gen_svelte_boundary<'a>(
     ctx: &mut Ctx<'a>,
@@ -62,43 +95,66 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // Build props object
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-    // Add attribute props (onerror, failed, pending as attributes)
+    // Add attribute props (onerror, failed, pending as attributes).
+    // Imports use getters (ES module live bindings), same as state.
     for (name, attr_id, is_dynamic) in &attr_infos {
         let key = ctx.b.alloc_str(name);
         let expr = get_attr_expr(ctx, *attr_id);
-        if *is_dynamic {
+        let is_import = ctx.analysis.attr_expression(*attr_id)
+            .and_then(|info| info.references.first())
+            .and_then(|r| r.symbol_id)
+            .is_some_and(|sym| ctx.is_import_sym(sym));
+        if *is_dynamic || is_import {
             props.push(ObjProp::Getter(key, expr));
         } else {
             props.push(ObjProp::KeyValue(key, expr));
         }
     }
 
-    // Generate hoisted snippet declarations + add named ones to props
-    let mut hoisted_stmts: Vec<Statement<'a>> = Vec::new();
-    for (snippet_id, prop_name) in &hoisted_snippet_ids {
-        // Generate const tags that need to be duplicated into snippets
-        // (The reference compiler duplicates @const tags into hoisted snippets)
-        let boundary = ctx.svelte_boundary(id);
-        let const_tag_ids: Vec<NodeId> = boundary
-            .fragment
-            .nodes
-            .iter()
-            .filter_map(|n| {
-                if let svelte_ast::Node::ConstTag(tag) = n {
-                    Some(tag.id)
-                } else {
-                    None
+    // Clone const tag expressions BEFORE body generation consumes the originals.
+    // The reference compiler duplicates @const tags into each hoisted snippet.
+    let const_tag_ids: Vec<NodeId> = ctx
+        .const_tags_for_fragment(&FragmentKey::SvelteBoundaryBody(id))
+        .cloned()
+        .unwrap_or_default();
+    let has_const_tags = !const_tag_ids.is_empty();
+
+    // For each snippet, we need a fresh copy of the const tag expressions.
+    // Clone N copies (one per snippet) before the body generation consumes originals.
+    let snippet_count = hoisted_snippet_ids.len();
+    let mut cloned_exprs: Vec<Vec<(NodeId, Vec<String>, Expression<'a>)>> = Vec::new();
+    if has_const_tags && snippet_count > 0 {
+        // Collect info and clone expressions for each snippet
+        let mut infos: Vec<(NodeId, Vec<String>)> = Vec::new();
+        for &cid in &const_tag_ids {
+            let names = ctx.const_tag_names(cid).cloned().unwrap_or_default();
+            infos.push((cid, names));
+        }
+
+        for _ in 0..snippet_count {
+            let mut set: Vec<(NodeId, Vec<String>, Expression<'a>)> = Vec::new();
+            for (cid, names) in &infos {
+                // Clone from the parsed expr cache (not removing — just borrowing and cloning)
+                if let Some(expr) = ctx.parsed.exprs.get(cid) {
+                    let cloned = ctx.b.clone_expr(expr);
+                    set.push((*cid, names.clone(), cloned));
                 }
-            })
-            .collect();
+            }
+            cloned_exprs.push(set);
+        }
+    }
 
-        let snippet_stmt = gen_snippet_block(ctx, *snippet_id);
+    // Generate hoisted snippet declarations FIRST (ordering matters for ident numbering).
+    // Snippets use cloned const tag expressions; the body uses originals.
+    let mut hoisted_stmts: Vec<Statement<'a>> = Vec::new();
+    for (i, (snippet_id, prop_name)) in hoisted_snippet_ids.iter().enumerate() {
+        let const_tag_stmts = if has_const_tags && i < cloned_exprs.len() {
+            build_const_tag_stmts_from_cloned(ctx, &mut cloned_exprs[i])
+        } else {
+            vec![]
+        };
 
-        // If there are const tags, inject their declarations into the snippet body.
-        // The reference compiler duplicates const tags into each hoisted snippet.
-        // For now we skip this duplication — it's a deferred item.
-        let _ = const_tag_ids;
-
+        let snippet_stmt = gen_snippet_block(ctx, *snippet_id, const_tag_stmts);
         hoisted_stmts.push(snippet_stmt);
 
         if let Some(name) = prop_name {
@@ -107,8 +163,11 @@ pub(crate) fn gen_svelte_boundary<'a>(
         }
     }
 
-    // Generate body fragment (excludes SnippetBlock and ConstTag children,
-    // which are handled separately by gen_fragment through the lowered fragment)
+    // TODO(Tier 2e): experimental.async — const tag scoping differs when async mode is enabled
+    // TODO(Tier 6c): dev mode — $.wrap_snippet for snippet wrapping
+    // TODO(Tier 6c): dev mode — handler wrapping for snippet params as event handlers
+
+    // Generate body fragment (consumes const tag expressions via emit_const_tags)
     let body_stmts = gen_fragment(ctx, FragmentKey::SvelteBoundaryBody(id));
 
     let props_expr = ctx.b.object_expr(props);

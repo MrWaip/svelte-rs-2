@@ -673,6 +673,57 @@ fn gen_bind_directive<'a>(
 
         // --- bind:this ---
         "this" => {
+            // SequenceExpression: bind:this={(getter_expr), (setter_expr)}
+            // Reference: build_bind_this in shared/utils.js
+            if let Some(span) = bind.expression_span {
+                let expr = get_attr_expr(ctx, bind.id);
+                if let Expression::SequenceExpression(seq) = expr {
+                    let seq = seq.unbox();
+                    let mut exprs = seq.expressions.into_iter();
+                    let get_expr = exprs.next().expect("SequenceExpression must have getter");
+                    let set_expr = exprs.next().expect("SequenceExpression must have setter");
+
+                    // Unwrap getter arrow: drop params, keep body
+                    let get_arrow = if let Expression::ArrowFunctionExpression(arrow) = get_expr {
+                        let arrow = arrow.unbox();
+                        let body_stmts: Vec<_> = arrow.body.unbox().statements.into_iter().collect();
+                        ctx.b.arrow_expr(ctx.b.no_params(), body_stmts)
+                    } else {
+                        get_expr
+                    };
+
+                    // Unwrap setter arrow: keep first param or add `_`, keep body
+                    let set_arrow = if let Expression::ArrowFunctionExpression(arrow) = set_expr {
+                        let arrow = arrow.unbox();
+                        let body_stmts: Vec<_> = arrow.body.unbox().statements.into_iter().collect();
+                        let first_param = arrow.params.unbox().items.into_iter().next();
+                        let params = if let Some(param) = first_param {
+                            let mut items = ctx.b.ast.vec();
+                            items.push(param);
+                            ctx.b.ast.formal_parameters(
+                                oxc_span::SPAN,
+                                oxc_ast::ast::FormalParameterKind::ArrowFormalParameters,
+                                items,
+                                oxc_ast::NONE,
+                            )
+                        } else {
+                            ctx.b.params(["_"])
+                        };
+                        ctx.b.arrow_expr(params, body_stmts)
+                    } else {
+                        set_expr
+                    };
+
+                    let stmt = ctx.b.call_stmt("$.bind_this", [
+                        Arg::Ident(el_name), Arg::Expr(set_arrow), Arg::Expr(get_arrow),
+                    ]);
+                    return Some(BindPlacement::Init(stmt));
+                }
+                // Not a SequenceExpression — fall through to normal bind:this below,
+                // but we already consumed the expression. Re-parse it.
+                let _ = span; // expression was consumed, re-get below
+            }
+
             // svelte:element uses proxy flag because the element type is unknown at compile time
             let setter = if tag_name.is_empty() && is_rune {
                 let body = ctx.b.call_expr("$.set", [
@@ -774,7 +825,8 @@ pub(crate) fn process_attrs_spread<'a>(
                 }
                 continue;
             }
-            Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => continue,
+            Attribute::ClassDirective(_) => continue,
+        Attribute::StyleDirective(_) => continue,
             Attribute::UseDirective(_) => continue,
             // LEGACY(svelte4): on:directive handled separately
             Attribute::OnDirectiveLegacy(_) => continue,
@@ -784,12 +836,122 @@ pub(crate) fn process_attrs_spread<'a>(
         }
     }
 
+    // Collect style directives into [$.STYLE] computed property
+    let style_dirs: Vec<_> = el.attributes.iter()
+        .filter_map(|a| match a {
+            Attribute::StyleDirective(sd) => Some(sd),
+            _ => None,
+        })
+        .collect();
+
+    if !style_dirs.is_empty() {
+        use svelte_ast::StyleDirectiveValue;
+
+        // Add `style: ""` for the static style base
+        let style_key = ctx.b.alloc_str("style");
+        props.push(ObjProp::KeyValue(style_key, ctx.b.str_expr("")));
+
+        // Build style directives object
+        let mut style_props: Vec<ObjProp<'a>> = Vec::new();
+        for sd in &style_dirs {
+            let name = &sd.name;
+            match &sd.value {
+                StyleDirectiveValue::Shorthand => {
+                    style_props.push(build_directive_prop(ctx, sd.id, name, ctx.b.rid_expr(name), true));
+                }
+                StyleDirectiveValue::Expression(span) => {
+                    let parsed = get_attr_expr(ctx, sd.id);
+                    let expr_text = ctx.component.source_text(*span).trim();
+                    let same_name = expr_text == name.as_str();
+                    style_props.push(build_directive_prop(ctx, sd.id, name, parsed, same_name));
+                }
+                StyleDirectiveValue::String(s) => {
+                    let name_alloc = ctx.b.alloc_str(name);
+                    style_props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(s)));
+                }
+                StyleDirectiveValue::Concatenation(parts) => {
+                    let name_alloc = ctx.b.alloc_str(name);
+                    let expr = build_style_concat(ctx, sd.id, parts);
+                    style_props.push(ObjProp::KeyValue(name_alloc, expr));
+                }
+            }
+        }
+
+        let style_obj = ctx.b.object_expr(style_props);
+        let style_key_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "STYLE");
+        props.push(ObjProp::Computed(style_key_expr, style_obj));
+    }
+
     // $.attribute_effect(el, () => ({...})) — skip if no renderable properties
     if !props.is_empty() {
         let obj = ctx.b.object_expr(props);
         let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
         init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
     }
+}
+
+// ---------------------------------------------------------------------------
+// svelte:element class/style directive helpers
+// ---------------------------------------------------------------------------
+
+/// Generate `$.set_class(el, 0, "", null, {}, { name: expr, ... })` for class directives
+/// on `<svelte:element>`. Flag 0 = no static class (element type unknown at compile time).
+pub(crate) fn process_svelte_element_class_directives<'a>(
+    ctx: &mut Ctx<'a>,
+    el: &Element,
+    el_name: &str,
+    init: &mut Vec<Statement<'a>>,
+) {
+    let class_dirs: Vec<_> = el.attributes.iter()
+        .filter_map(|a| match a {
+            Attribute::ClassDirective(cd) => Some(cd),
+            _ => None,
+        })
+        .collect();
+
+    if class_dirs.is_empty() {
+        return;
+    }
+
+    let mut props: Vec<ObjProp<'a>> = Vec::new();
+    for cd in &class_dirs {
+        let name = &cd.name;
+        let (expr, same_name) = if cd.expression_span.is_some() {
+            let parsed = get_attr_expr(ctx, cd.id);
+            let same = cd.expression_span
+                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
+                .unwrap_or(false);
+            (parsed, same)
+        } else {
+            (ctx.b.rid_expr(name), true)
+        };
+        props.push(build_directive_prop(ctx, cd.id, name, expr, same_name));
+    }
+
+    let dir_obj = ctx.b.object_expr(props);
+    let set_class_call = ctx.b.call_stmt(
+        "$.set_class",
+        [
+            Arg::Ident(el_name),
+            Arg::Num(0.0),
+            Arg::Str("".into()),
+            Arg::Expr(ctx.b.null_expr()),
+            Arg::Expr(ctx.b.object_expr(vec![])),
+            Arg::Expr(dir_obj),
+        ],
+    );
+    init.push(set_class_call);
+}
+
+/// Style directives on `<svelte:element>` are handled by `process_attrs_spread` via [$.STYLE] computed property.
+/// This function is a no-op — style directives are already collected in the spread path.
+pub(crate) fn process_svelte_element_style_directives<'a>(
+    _ctx: &mut Ctx<'a>,
+    _el: &Element,
+    _el_name: &str,
+    _init: &mut Vec<Statement<'a>>,
+) {
+    // Style directives are collected directly inside process_attrs_spread
 }
 
 // ---------------------------------------------------------------------------

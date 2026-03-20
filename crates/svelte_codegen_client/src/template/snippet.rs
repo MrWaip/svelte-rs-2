@@ -10,7 +10,14 @@ use crate::context::Ctx;
 use super::gen_fragment;
 
 /// Generate a `const name = ($$anchor, param1 = $.noop, ...) => { ... }` statement.
-pub(crate) fn gen_snippet_block<'a>(ctx: &mut Ctx<'a>, id: NodeId) -> Statement<'a> {
+///
+/// `prepend_stmts` are injected before the fragment body (e.g., duplicated @const tags
+/// from boundary parents).
+pub(crate) fn gen_snippet_block<'a>(
+    ctx: &mut Ctx<'a>,
+    id: NodeId,
+    prepend_stmts: Vec<Statement<'a>>,
+) -> Statement<'a> {
     let block = ctx.snippet_block(id);
     let name = block.name.clone();
 
@@ -30,7 +37,10 @@ pub(crate) fn gen_snippet_block<'a>(ctx: &mut Ctx<'a>, id: NodeId) -> Statement<
     ctx.snippet_param_names = saved_params;
 
     let params = build_snippet_params(ctx, &param_names);
-    let arrow = ctx.b.arrow(params, body_stmts);
+
+    let mut all_stmts = prepend_stmts;
+    all_stmts.extend(body_stmts);
+    let arrow = ctx.b.arrow(params, all_stmts);
 
     ctx.b.const_stmt(&name, oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow)))
 }
