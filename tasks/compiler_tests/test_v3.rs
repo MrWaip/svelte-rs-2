@@ -94,6 +94,21 @@ fn state_raw() {
 }
 
 #[rstest]
+fn state_eager_basic() {
+    assert_compiler("state_eager_basic");
+}
+
+#[rstest]
+fn state_eager_reactive() {
+    assert_compiler("state_eager_reactive");
+}
+
+#[rstest]
+fn state_eager_template() {
+    assert_compiler("state_eager_template");
+}
+
+#[rstest]
 fn state_snapshot_basic() {
     assert_compiler("state_snapshot_basic");
 }
@@ -316,6 +331,21 @@ fn effect_root_cleanup() {
 #[rstest]
 fn effect_tracking() {
     assert_compiler("effect_tracking");
+}
+
+#[rstest]
+fn effect_pending_basic() {
+    assert_compiler("effect_pending_basic");
+}
+
+#[rstest]
+fn effect_pending_if() {
+    assert_compiler("effect_pending_if");
+}
+
+#[rstest]
+fn effect_pending_var() {
+    assert_compiler("effect_pending_var");
 }
 
 #[rstest]

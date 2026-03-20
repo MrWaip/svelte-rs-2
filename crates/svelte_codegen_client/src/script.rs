@@ -1714,6 +1714,16 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                         node.init = Some(value);
                     }
                 }
+                RuneKind::StateEager => {
+                    // $state.eager(expr) → $.eager(() => expr)
+                    let arg = call.arguments.remove(0).into_expression();
+                    node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]));
+                }
+                RuneKind::EffectPending => {
+                    // $effect.pending() → $.eager($.pending)
+                    let pending_call = self.b.call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+                    node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]));
+                }
                 _ => {
                     // Other rune kinds — put back the call unchanged
                     node.init = Some(Expression::CallExpression(call));
@@ -1764,6 +1774,26 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                             "$$host",
                         );
                         return;
+                    }
+                }
+
+                // $state.eager(expr) → $.eager(() => expr)
+                if let Expression::StaticMemberExpression(member) = &call.callee {
+                    if let Expression::Identifier(obj) = &member.object {
+                        match (obj.name.as_str(), member.property.name.as_str()) {
+                            ("$state", "eager") => {
+                                let Expression::CallExpression(mut call) = self.b.move_expr(node) else { unreachable!() };
+                                let arg = call.arguments.remove(0).into_expression();
+                                *node = self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]);
+                                return;
+                            }
+                            ("$effect", "pending") => {
+                                let pending_call = self.b.call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+                                *node = self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]);
+                                return;
+                            }
+                            _ => {}
+                        }
                     }
                 }
 

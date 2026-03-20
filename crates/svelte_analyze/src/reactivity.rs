@@ -16,6 +16,9 @@ impl ReactivityVisitor {
         data: &AnalysisData,
     ) -> bool {
         if let Some(info) = data.expressions.get(node_id) {
+            if info.has_state_rune {
+                return true;
+            }
             return info.references.iter().any(|r| {
                 // Store subscriptions ($count) are always dynamic
                 if data.scoping.is_store_ref(&r.name) {
