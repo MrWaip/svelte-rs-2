@@ -1461,3 +1461,37 @@ fn boundary_imported_handler() {
 fn bind_this_sequence() {
     assert_compiler("bind_this_sequence");
 }
+
+// ---------------------------------------------------------------------------
+// Tier 2b — Template Tags
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn await_array_destructured() {
+    assert_compiler("await_array_destructured");
+}
+
+#[rstest]
+fn html_tag_controlled() {
+    assert_compiler("html_tag_controlled");
+}
+
+#[rstest]
+fn html_tag_svg() {
+    assert_compiler("html_tag_svg");
+}
+
+#[rstest]
+fn const_tag_dev() {
+    assert_compiler("const_tag_dev");
+}
+
+#[rstest]
+fn debug_in_if() {
+    assert_compiler("debug_in_if");
+}
+
+#[rstest]
+fn debug_in_each() {
+    assert_compiler("debug_in_each");
+}

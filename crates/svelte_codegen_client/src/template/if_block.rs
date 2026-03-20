@@ -129,9 +129,11 @@ pub(crate) fn gen_if_block<'a>(
     let render_body_stmt = else_clause.unwrap();
     let render_fn = ctx.b.arrow(ctx.b.params(["$$render"]), [render_body_stmt]);
 
-    // 4. Single $.if() call
+    // 4. Single $.if() call, wrapped with add_svelte_meta in dev mode
+    let span_start = ctx.if_block(block_id).span.start;
     let args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor), Arg::Arrow(render_fn)];
-    stmts.push(ctx.b.call_stmt("$.if", args));
+    let if_call = ctx.b.call_expr("$.if", args);
+    stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
 
     stmts
 }

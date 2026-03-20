@@ -27,7 +27,21 @@ pub(crate) fn emit_const_tags<'a>(
             // Simple identifier: const name = $.derived(() => init_expr)
             let thunk = ctx.b.thunk(init_expr);
             let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-            stmts.push(ctx.b.const_stmt(&names[0], derived));
+
+            // Dev mode: wrap with $.tag(derived, "name") + eager $.get() to catch init errors
+            let final_expr = if ctx.dev {
+                let name_str = ctx.b.alloc_str(&names[0]);
+                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::Str(name_str.to_string())])
+            } else {
+                derived
+            };
+
+            stmts.push(ctx.b.const_stmt(&names[0], final_expr));
+
+            if ctx.dev {
+                let name_str = ctx.b.alloc_str(&names[0]);
+                stmts.push(ctx.b.call_stmt("$.get", [Arg::Ident(name_str)]));
+            }
         } else if names.len() > 1 {
             // Destructured: const tmp = $.derived(() => { const {a, b} = init; return {a, b}; })
             let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&id)
@@ -43,7 +57,15 @@ pub(crate) fn emit_const_tags<'a>(
 
             let thunk = ctx.b.arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
             let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-            stmts.push(ctx.b.const_stmt(tmp_name, derived));
+
+            // Dev mode: wrap with $.tag(derived, "[@const]")
+            let final_expr = if ctx.dev {
+                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::Str("[@const]".to_string())])
+            } else {
+                derived
+            };
+
+            stmts.push(ctx.b.const_stmt(tmp_name, final_expr));
         }
     }
 }

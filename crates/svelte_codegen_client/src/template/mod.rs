@@ -33,6 +33,34 @@ use crate::context::Ctx;
 
 use element::process_element;
 
+use crate::script::compute_line_col;
+
+/// Wrap a block expression with `$.add_svelte_meta` in dev mode.
+///
+/// In production: returns `ctx.b.expr_stmt(expression)`.
+/// In dev: returns `$.add_svelte_meta(() => expr, type, ComponentName, line, col)`.
+pub(crate) fn add_svelte_meta<'a>(
+    ctx: &Ctx<'a>,
+    expression: Expression<'a>,
+    span_start: u32,
+    block_type: &str,
+) -> Statement<'a> {
+    if !ctx.dev {
+        return ctx.b.expr_stmt(expression);
+    }
+
+    let (line, col) = compute_line_col(ctx.source, span_start);
+
+    let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
+    ctx.b.call_stmt("$.add_svelte_meta", [
+        Arg::Expr(thunk),
+        Arg::Str(block_type.to_string()),
+        Arg::Ident(ctx.name),
+        Arg::Num(line as f64),
+        Arg::Num(col as f64),
+    ])
+}
+
 /// Return the appropriate `$.from_*` function for the component's namespace.
 fn from_template_fn(ctx: &Ctx) -> &'static str {
     use svelte_ast::Namespace;
@@ -377,7 +405,7 @@ fn emit_single_block<'a>(
             gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
         FragmentItem::HtmlTag(id) => {
-            gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), body);
+            gen_html_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
         FragmentItem::KeyBlock(id) => {
             gen_key_block(ctx, *id, ctx.b.rid_expr(&node), body);

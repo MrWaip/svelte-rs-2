@@ -11,6 +11,7 @@ use crate::context::Ctx;
 use super::attributes::{process_attr, process_attrs_spread, process_class_attribute_and_directives, process_style_directives};
 use super::each_block::gen_each_block;
 use super::expression::{build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo};
+use super::html_tag::gen_html_tag;
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -123,6 +124,12 @@ pub(crate) fn process_element<'a>(
         ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
             // Controlled each block: element itself is the anchor, no $.child() traversal
             gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
+            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+        }
+
+        ContentStrategy::SingleBlock(FragmentItem::HtmlTag(id)) => {
+            // Controlled html tag: element itself is the anchor
+            gen_html_tag(ctx, id, ctx.b.rid_expr(el_name), true, init);
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }
 
