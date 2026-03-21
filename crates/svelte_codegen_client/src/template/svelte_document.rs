@@ -7,9 +7,8 @@ use svelte_ast::{Attribute, NodeId};
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::{
-    build_binding_setter_silent, gen_event_attr_on, gen_legacy_event_on,
-};
+use super::bind::build_binding_setter_silent;
+use super::events::{gen_event_attr_on, gen_legacy_event_on};
 
 /// Generate event listeners and bindings for `<svelte:document>`.
 ///
