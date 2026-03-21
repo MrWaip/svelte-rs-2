@@ -225,6 +225,16 @@ fn walk_node<'a>(
                 }
             }
 
+            // Pre-parse destructuring context via OXC so codegen doesn't re-parse
+            let ctx_source = component.source_text(block.context_span);
+            let ctx_trimmed = ctx_source.trim();
+            if ctx_trimmed.starts_with('{') || ctx_trimmed.starts_with('[') {
+                let arena_ctx: &'a str = alloc.alloc_str(ctx_source);
+                if let Some(binding) = svelte_js::parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                    parsed.each_context_bindings.insert(block.id, binding);
+                }
+            }
+
             // Track expression keys before walking body to detect body_uses_index
             let expr_keys_before: rustc_hash::FxHashSet<NodeId> =
                 data.expressions.keys().copied().collect();
