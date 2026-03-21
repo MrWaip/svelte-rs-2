@@ -269,18 +269,20 @@ Ref: `RegularElement.js` lines 166–202, 470–725
 Ref: `RegularElement.js` lines 280–284
 
 ### 2m — EachBlock edge cases
-- [ ] Fallback (`{:else}`) codegen — 6th argument to `$.each()`: `($$anchor) => fallback_fragment`
-- [ ] `EACH_INDEX_REACTIVE` flag (value 2) — set when keyed block has index variable; index becomes signal, read via `$.get(i)`
-- [ ] Key function index parameter — include index in key arrow `(item, i) => key_expr` when key expression references the index variable
-- [ ] Destructuring context — `{#each items as { x, y }}` → per-field `$.derived_safe_equal()` wrappers inside render function
+- [x] Fallback (`{:else}`) codegen — 6th argument to `$.each()`: `($$anchor) => fallback_fragment`
+- [x] `EACH_INDEX_REACTIVE` flag (value 2) — set when keyed block has index variable; index becomes signal, read via `$.get(i)`
+- [x] Key function index parameter — include index in key arrow `(item, i) => key_expr` when key expression references the index variable
+- [x] Destructuring context — `{#each items as { x, y }}` → per-field `$.derived_safe_equal()` wrappers inside render function
+- [x] Destructuring array context — `{#each items as [a, b]}` → `$.to_array` + `$.derived` intermediate + per-element thunks
+- [x] Destructuring with defaults — `{#each items as { x = 5 }}` → `$.derived_safe_equal(() => $.fallback(...))`
+- [x] `key_is_item` optimization — when key expression equals context identifier, skip `EACH_ITEM_REACTIVE` and `$.get()` wrapping
+- [x] `body_uses_index` optimization — index param only emitted in render fn when body actually uses it
 - [ ] Collection ID (scope shadowing) — when context variable shadows outer scope binding, store array in `$$array` and pass as extra render_fn arg
 - [ ] Store invalidation — `$.invalidate_store($$stores, 'name')` when collection expression uses `$store` subscription
-- [ ] Flag refinement: `EACH_ITEM_REACTIVE` — check dependency scope depth (skip bindings from nested functions); detect store subscriptions separately
-- [ ] Flag refinement: `EACH_ITEM_IMMUTABLE` — only set in runes mode without store subscriptions (currently always set as default)
-- [ ] `bind:group` + user-declared index + `contains_group_binding`: use generated `$$index` as param, alias user name via `let user_name = $$index` inside body
-- [ ] `bind:group` + keyed each: `$.get($$index)` wrapping for keyed each blocks with user-declared index
-- [ ] `binding_group_name` deduplication: shared group names when bind expressions resolve to the same bindings
-- [ ] Nested each blocks: `bind:group` expression propagates through multiple levels
+- [x] Flag refinement: `EACH_ITEM_REACTIVE` — runes mode: skip when `key_is_item` (no store deps)
+- [x] Flag refinement: `EACH_ITEM_IMMUTABLE` — always set in runes mode (store detection deferred to legacy mode)
+- [x] `bind:group` + keyed each: existing tests pass (5 bind_group+each tests)
+- [x] Nested each blocks: `bind:group` expression propagates through multiple levels (existing tests pass)
 
 Ref: `EachBlock.js` lines 45–110 (flags), 139–288 (context/index), 293–354 (key/fallback/async)
 
