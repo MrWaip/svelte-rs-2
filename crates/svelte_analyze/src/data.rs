@@ -458,6 +458,14 @@ impl AnalysisData {
     pub fn render_tag_is_dynamic(&self, id: NodeId) -> bool { self.render_tag_dynamic.contains(&id) }
     pub fn render_tag_callee_is_getter(&self, id: NodeId) -> bool { self.render_tag_callee_is_getter.contains(&id) }
 
+    /// Component attribute needs `$.derived()` memoization:
+    /// has a function call, OR is a non-simple dynamic expression.
+    pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
+        self.attr_expressions.get(&attr_id).is_some_and(|e|
+            e.has_call || (!e.kind.is_simple() && self.element_flags.is_dynamic_attr(attr_id))
+        )
+    }
+
     /// Expression has a function call AND references to resolved bindings — needs `$.derived` wrapping.
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expressions.get(&id).is_some_and(|e|
