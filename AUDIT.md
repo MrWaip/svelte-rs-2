@@ -102,20 +102,16 @@ Generated: 2026-03-21
 
 ## Class 3: AST Re-traversal in Codegen
 
-### #9 — Class attribute + class directives collection
+### ~~#9 — Class attribute + class directives collection~~ ✅
 
-- **Pattern**: class attr lookup + directive collection double traversal
-- **Class**: 3
-- **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:220` (`.find()` for class attr)
-  - `crates/svelte_codegen_client/src/template/attributes.rs:240` (`.filter_map()` for class directives)
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1102` (`.filter_map()` duplicate for svelte:element)
-- **Occurrence count**: 3 (2 collection passes + 1 duplicate in svelte:element path)
-- **What is aggregated**: `el.attributes` traversed to find class expression attribute, then again to collect class directive NodeIds
-- **Proposed type**: `ClassOutputInfo { class_attr_id: Option<NodeId>, directive_ids: Vec<NodeId> }` stored per element in analyze
-- **Target layer**: analyze
-- **Note**: `has_class_attribute()`, `has_class_directives()`, `has_dynamic_class_directives()` accessors already exist but only return bools — the actual NodeIds still require re-traversal
+- ~~**Pattern**: class attr lookup + directive collection double traversal~~
+- ~~**Class**: 3~~
+- ~~**Complexity**: M~~
+- ~~**Where**:~~
+  - ~~`crates/svelte_codegen_client/src/template/attributes.rs:220` (`.find()` for class attr)~~
+  - ~~`crates/svelte_codegen_client/src/template/attributes.rs:240` (`.filter_map()` for class directives)~~
+  - ~~`crates/svelte_codegen_client/src/template/attributes.rs:1102` (`.filter_map()` duplicate for svelte:element)~~
+- **Resolution**: `ClassDirectiveInfo` struct + `class_attr_id`/`class_directive_info` maps in `ElementFlags`, populated by `ElementFlagsVisitor` (including `visit_svelte_element` for `<svelte:element>`). `has_class_directives` and `has_class_attribute` sets replaced with map-based `contains_key` accessors. Codegen uses `ctx.class_attr_id()` / `ctx.class_directive_info()` — no AST re-traversal.
 
 ### #10 — Component attribute lookup re-traversal
 
