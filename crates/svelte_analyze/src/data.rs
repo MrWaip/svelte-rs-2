@@ -458,6 +458,13 @@ impl AnalysisData {
     pub fn render_tag_is_dynamic(&self, id: NodeId) -> bool { self.render_tag_dynamic.contains(&id) }
     pub fn render_tag_callee_is_getter(&self, id: NodeId) -> bool { self.render_tag_callee_is_getter.contains(&id) }
 
+    /// Expression has a function call AND references to resolved bindings — needs `$.derived` wrapping.
+    pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
+        self.expressions.get(&id).is_some_and(|e|
+            e.has_call && e.references.iter().any(|r| r.symbol_id.is_some())
+        )
+    }
+
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
     pub fn known_value(&self, name: &str) -> Option<&str> {
         let root = self.scoping.root_scope_id();
