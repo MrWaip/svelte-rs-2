@@ -196,6 +196,12 @@ impl ElementFlags {
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
+    /// Whether class attribute handling needs state (dynamic class attr or dynamic class directives).
+    pub fn class_needs_state(&self, element_id: NodeId) -> bool {
+        let class_attr_dynamic = self.class_attr_id.get(&element_id)
+            .is_some_and(|&attr_id| self.dynamic_attrs.contains(&attr_id));
+        class_attr_dynamic || self.has_dynamic_class_directives.contains(&element_id)
+    }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(&id).map_or(&[], |v| v.as_slice())

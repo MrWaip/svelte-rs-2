@@ -163,6 +163,7 @@ Generated: 2026-03-21
 - **What is aggregated**: `class_attr_is_dynamic || directives_are_dynamic` → `has_state`, then 4-way branching on has_directives x has_state
 - **Proposed type**: accessor `fn class_needs_state(&self, element_id: NodeId) -> bool` in analyze
 - **Target layer**: analyze
+- **Migrated**: `class_needs_state()` accessor in `ElementFlags` (`svelte_analyze/src/data.rs`), combines `class_attr_id` + `dynamic_attrs` + `has_dynamic_class_directives`. Codegen uses `ctx.class_needs_state(el.id)` — eliminated local `class_attr_is_dynamic` and `directives_are_dynamic`.
 
 ### #16 — Render tag callee routing (borderline)
 
