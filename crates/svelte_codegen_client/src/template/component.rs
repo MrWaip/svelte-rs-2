@@ -16,7 +16,7 @@ use super::gen_fragment;
 enum AttrKind<'a> {
     String { name: &'a str, value_span: Span },
     Boolean { name: &'a str },
-    Expression { name: &'a str, attr_id: NodeId, shorthand: bool, has_call: bool, is_non_simple: bool },
+    Expression { name: &'a str, attr_id: NodeId, shorthand: bool },
     Concatenation { name: &'a str, attr_id: NodeId },
     Shorthand { attr_id: NodeId },
     BindThis { bind_id: NodeId, expression_span: Option<Span>, shorthand: bool, name: String },
@@ -46,15 +46,10 @@ pub(crate) fn gen_component<'a>(
                 name: &a.name,
             },
             Attribute::ExpressionAttribute(a) => {
-                let expr_info = ctx.analysis.attr_expression(a.id);
-                let has_call = expr_info.map_or(false, |e| e.has_call);
-                let is_non_simple = expr_info.map_or(false, |e| !e.kind.is_simple());
                 AttrKind::Expression {
                     name: &a.name,
                     attr_id: a.id,
                     shorthand: a.shorthand,
-                    has_call,
-                    is_non_simple,
                 }
             }
             Attribute::ConcatenationAttribute(a) => AttrKind::Concatenation {
@@ -96,8 +91,8 @@ pub(crate) fn gen_component<'a>(
                 let key = ctx.b.alloc_str(name);
                 props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
             }
-            AttrKind::Expression { name, attr_id, shorthand, has_call, is_non_simple } => {
-                let needs_memo = has_call || (is_non_simple && is_dynamic);
+            AttrKind::Expression { name, attr_id, shorthand } => {
+                let needs_memo = ctx.analysis.component_attr_needs_memo(attr_id);
                 let key = ctx.b.alloc_str(name);
                 if needs_memo {
                     let memo_name = format!("${memo_counter}");
