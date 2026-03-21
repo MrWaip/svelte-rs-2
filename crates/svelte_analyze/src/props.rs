@@ -56,6 +56,7 @@ pub fn analyze_props(data: &mut AnalysisData) {
                 is_lazy_default,
                 is_prop_source,
                 is_mutated,
+                is_reserved: p.prop_name.starts_with("$$"),
             }
         })
         .collect::<Vec<PropAnalysis>>();
