@@ -145,25 +145,12 @@ Generated: 2026-03-21
 
 ## Class 4: Derived Flags Without a Name
 
-### #14 — Event handler delegation routing
+### ~~#14 — Event handler delegation routing~~ ✅ migrated
 
 - **Pattern**: event delegation vs direct binding decision
 - **Class**: 4
 - **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:95-98`
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1358-1375`
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1609-1627`
-- **Occurrence count**: 3
-- **What is aggregated**: `!capture && is_delegatable_event(name)` → delegated vs direct, then nested `capture || passive` for arg building
-- **Proposed type**:
-  ```rust
-  enum EventHandlerMode {
-      Delegated { passive: bool },
-      Direct { capture: bool, passive: bool },
-  }
-  ```
-- **Target layer**: analyze
+- **Migrated**: `EventHandlerMode` enum in `svelte_analyze/src/data.rs`, computed in `ElementFlagsVisitor`, consumed via `ctx.event_handler_mode()` in codegen. `gen_event_attr_on` (global elements) left as-is — always Direct, no delegation decision.
 
 ### #15 — Class directive dynamic state
 
