@@ -560,8 +560,8 @@ pub struct BindDirective {
 #[derive(Clone)]
 pub struct UseDirective {
     pub id: NodeId,
-    /// Directive name (e.g., "tooltip" in `use:tooltip`, "a.b" in `use:a.b`).
-    pub name: String,
+    /// Directive name span (e.g., "tooltip" in `use:tooltip`, "a.b" in `use:a.b`).
+    pub name: Span,
     /// Span of the argument expression. None if no expression (`use:name`).
     pub expression_span: Option<Span>,
 }
@@ -593,8 +593,8 @@ pub enum TransitionDirection {
 #[derive(Clone)]
 pub struct TransitionDirective {
     pub id: NodeId,
-    /// Transition function name (e.g., "fade", "fly", "custom.fn").
-    pub name: String,
+    /// Transition function name span (e.g., "fade", "fly", "custom.fn").
+    pub name: Span,
     /// Span of the argument expression. None if no expression.
     pub expression_span: Option<Span>,
     /// Modifiers like "local", "global".
@@ -607,8 +607,8 @@ pub struct TransitionDirective {
 #[derive(Clone)]
 pub struct AnimateDirective {
     pub id: NodeId,
-    /// Directive name (e.g., "flip" in `animate:flip`, "custom.fn" in `animate:custom.fn`).
-    pub name: String,
+    /// Directive name span (e.g., "flip" in `animate:flip`, "custom.fn" in `animate:custom.fn`).
+    pub name: Span,
     /// Span of the argument expression. None if no expression (`animate:name`).
     pub expression_span: Option<Span>,
 }
