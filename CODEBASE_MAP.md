@@ -114,44 +114,26 @@ struct NodeIdAllocator  // используется только внутри п
 
 ---
 
-### `svelte_types`
-`crates/svelte_types/src/lib.rs`
-Shared domain types (`ExpressionInfo`, `RuneKind`, `ParsedExprs`, `JsParseResult`, etc.) и OXC parsing utilities.
-
-```rust
-// Публичный API
-fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic>
-fn analyze_script_with_scoping(source, offset, typescript) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>>
-
-struct ExpressionInfo {
-    kind: ExpressionKind,
-    references: Vec<Reference>,
-    has_side_effects: bool,
-}
-enum ExpressionKind {
-    Identifier(String), Literal, CallExpression { callee: String },
-    MemberExpression, ArrowFunction, Assignment, Other,
-}
-struct Reference { name: String, span: Span, flags: ReferenceFlags, symbol_id: Option<SymbolId> }
-enum ReferenceFlags { Read, Write, ReadWrite }
-// symbol_id populated by resolve_references pass in svelte_analyze
-
-struct ScriptInfo { declarations: Vec<DeclarationInfo>, props_declaration: Option<PropsDeclaration> }
-struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune: Option<RuneKind> }
-enum DeclarationKind { Let, Const, Var, Function }
-enum RuneKind { State, Derived, Effect, Props, Bindable, Inspect, Host }
-```
-
----
-
 ### `svelte_parser`
 `crates/svelte_parser/src/lib.rs`
 
+Shared domain types (`RuneKind`, `ScriptInfo`, `ParsedExprs`, `JsParseResult`, etc.) и parser + JS pre-parsing.
+
 ```rust
+// Публичный API
+fn parse_with_js<'a>(alloc: &'a Allocator, source: &str) -> (Component, JsParseResult<'a>, Vec<Diagnostic>)
 Parser::new(source: &str).parse() -> (Component, Vec<Diagnostic>)
+
+// Shared types (types.rs)
+struct ScriptInfo { declarations, props_declaration, exports, has_effects, has_class_state_fields, store_candidates, ... }
+struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune: Option<RuneKind>, rune_init_refs }
+enum DeclarationKind { Let, Const, Var, Function }
+enum RuneKind { State, StateRaw, Derived, DerivedBy, Effect, EffectTracking, Props, Bindable, StateEager, EffectPending, Inspect, Host, PropsId }
+struct ParsedExprs<'a> { exprs, attr_exprs, concat_part_exprs, key_exprs, script_program, ... }
+struct JsParseResult<'a> { parsed: ParsedExprs, const_tag_names, await_values, script_info, ... }
 ```
 
-Внутри: `scanner/mod.rs` + `scanner/token.rs`.
+Внутри: `scanner/mod.rs` + `scanner/token.rs`, `parse_js.rs`.
 
 ---
 
@@ -160,15 +142,25 @@ Parser::new(source: &str).parse() -> (Component, Vec<Diagnostic>)
 
 ```rust
 // Публичный API
-fn analyze<'a>(alloc: &'a Allocator, component: &Component) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+fn analyze<'a>(component: &Component, js_result: JsParseResult<'a>) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+fn analyze_with_options<'a>(component, js_result, custom_element: bool) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>)
 
 // Re-exports из data.rs:
 pub use data::{
-    AnalysisData, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, FragmentData,
-    FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
+    AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind,
+    EventHandlerMode, ExpressionInfo, ExpressionKind, LoweredTextPart, ConstTagData, ContentStrategy,
+    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs,
+    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
+
+// Expression analysis types (defined in data.rs, created in js_analyze.rs)
+struct ExpressionInfo { kind: ExpressionKind, references: Vec<Reference>, has_side_effects, has_call, has_state_rune, has_store_member_mutation }
+enum ExpressionKind { Identifier(CompactString), Literal, CallExpression { callee }, MemberExpression, ArrowFunction, Assignment, Other }
+struct Reference { name, span, flags: ReferenceFlags, symbol_id: Option<SymbolId> }  // pub(crate) fields
+enum ReferenceFlags { Read, Write, ReadWrite }
 ```
 
 **11 passes** (порядок важен, composite walk is 5 visitors):
@@ -207,11 +199,16 @@ struct IdentGen { /* counters: HashMap<String, u32> */ }
 **Ключевые типы** (`data.rs`):
 ```rust
 // Parsed OXC Expression ASTs — separate from AnalysisData to avoid lifetime propagation
+// Defined in svelte_parser/types.rs, re-exported from svelte_analyze
 struct ParsedExprs<'a> {
     exprs: FxHashMap<NodeId, Expression<'a>>,                        // template expressions
-    attr_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,          // attribute expressions
-    concat_part_exprs: FxHashMap<(NodeId, usize, usize), Expression<'a>>, // concat parts
+    attr_exprs: FxHashMap<NodeId, Expression<'a>>,                   // attribute expressions
+    concat_part_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,   // concat parts
+    key_exprs: FxHashMap<NodeId, Expression<'a>>,                    // each-block keys
     script_program: Option<Program<'a>>,                             // consumed by codegen
+    each_context_bindings: FxHashMap<NodeId, EachContextBinding<'a>>, // destructuring
+    directive_name_exprs: FxHashMap<NodeId, Expression<'a>>,         // use:/transition:/animate:
+    // + offset maps for analyze to extract ExpressionInfo
 }
 
 enum FragmentKey {
@@ -280,22 +277,31 @@ struct BindSemanticsData {
 struct AnalysisData {
     // Flat fields:
     expressions: FxHashMap<NodeId, ExpressionInfo>,
-    attr_expressions: FxHashMap<(NodeId, usize), ExpressionInfo>,
+    attr_expressions: FxHashMap<NodeId, ExpressionInfo>,
     script: Option<ScriptInfo>,
     scoping: ComponentScoping,
     dynamic_nodes: FxHashSet<NodeId>,
-    known_values: FxHashMap<String, String>,
     alt_is_elseif: FxHashSet<NodeId>,
     props: Option<PropsAnalysis>,
+    props_id: Option<String>,
     exports: Vec<ExportInfo>,
     needs_context: bool,
-    store_subscriptions: FxHashSet<String>,
+    has_class_state_fields: bool,
+    custom_element: bool,
+    ce_config: Option<ParsedCeConfig>,
+    import_syms: FxHashSet<SymbolId>,
+    // Render tag side tables:
+    render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
+    render_tag_callee_mode: FxHashMap<NodeId, RenderTagCalleeMode>,
     // Sub-structs:
     element_flags: ElementFlags,
     fragments: FragmentData,
     snippets: SnippetData,
     const_tags: ConstTagData,
     debug_tags: DebugTagData,
+    each_blocks: EachBlockData,
+    await_bindings: AwaitBindingData,
     bind_semantics: BindSemanticsData,
 }
 
@@ -303,11 +309,13 @@ struct AnalysisData {
 // data.is_dynamic(id) -> bool
 // data.is_elseif_alt(id) -> bool
 // data.expression(id) -> Option<&ExpressionInfo>
-// data.attr_expression(id, idx) -> Option<&ExpressionInfo>
-// data.known_value(name) -> Option<&String>
-// data.is_rune(name) -> bool
-// data.is_mutable_rune(name) -> bool
-// data.rune_kind(name) -> Option<RuneKind>
+// data.attr_expression(id) -> Option<&ExpressionInfo>
+// data.attr_is_import(attr_id) -> bool
+// data.needs_expr_memoization(id) -> bool
+// data.component_attr_needs_memo(attr_id) -> bool
+// data.known_value(name) -> Option<&str>
+// data.render_tag_callee_mode(id) -> RenderTagCalleeMode
+// data.render_tag_prop_sources(id) -> Option<&[Option<SymbolId>]>
 ```
 
 ---
@@ -443,17 +451,19 @@ svelte_span
   ↑
 svelte_diagnostics
   ↑
-svelte_ast ← svelte_types
-  ↑              ↑
-svelte_parser  svelte_analyze
-  ↑              ↑
-         svelte_transform
-                 ↑
-         svelte_codegen_client
-                 ↑
-          svelte_compiler
-                 ↑
-          wasm_compiler
+svelte_ast
+  ↑
+svelte_parser
+  ↑
+svelte_analyze
+  ↑
+svelte_transform
+  ↑
+svelte_codegen_client
+  ↑
+svelte_compiler
+  ↑
+wasm_compiler
 ```
 
 ## Ключевые инварианты

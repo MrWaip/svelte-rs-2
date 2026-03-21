@@ -27,15 +27,15 @@
               │           │(Phase 2: 11p) │                │
               │           └──┬─────────┬──┘                │
               │              │         │                   │
-   ┌──────────▼──────────┐   │    ┌────▼───────────────────▼───┐
-   │     svelte_ast      │◄──┘    │         svelte_types          │
-   │  (Template AST)     │        │  (Shared types + OXC utils) │
-   └──────────┬──────────┘        └──────┬─────────────────────┘
-              │                          │
-   ┌──────────▼──────────┐    ┌─────────▼──────────┐
+   ┌──────────▼──────────┐   │
+   │     svelte_ast      │◄──┘
+   │  (Template AST)     │
+   └──────────┬──────────┘
+              │
+   ┌──────────▼──────────┐    ┌────────────────────┐
    │    svelte_span      │    │  svelte_diagnostics │
    │  (Span, NodeId)     │    │  (Error reporting)  │
-   └─────────────────────┘    └─────────────────────┘
+   └─────────────────────┘    └────────────────────┘
 ```
 
 ## Compilation Pipeline (Data Flow)
@@ -218,7 +218,7 @@
 
 | Rule | Why |
 |------|-----|
-| OXC as direct dependency | OXC types flow through `ParsedExprs<'a>` from parser to codegen; `svelte_types` provides shared domain types and OXC parsing utilities |
+| OXC as direct dependency | OXC types flow through `ParsedExprs<'a>` from parser to codegen; `svelte_parser` provides shared domain types |
 | AST is immutable after parsing | All analysis → side tables (`AnalysisData`, keyed by `NodeId`) |
 | Spans for JS in AST, re-parse in codegen | No JS subtree copying between phases |
 | `FxHashMap` everywhere | Faster hashing for integer keys (NodeId, SymbolId) |
