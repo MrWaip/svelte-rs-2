@@ -136,6 +136,13 @@ fn transform_script_text<'a>(
 
     let props_gen = props.map(|pa| PropsGenInfo::from_analysis(pa));
 
+    let prop_default_exprs: Vec<Option<Expression<'a>>> = match &props_gen {
+        Some(pg) => pg.props.iter().map(|prop| {
+            prop.default_text.as_deref().map(|text| b.parse_expression(text))
+        }).collect(),
+        None => Vec::new(),
+    };
+
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
@@ -153,7 +160,7 @@ fn transform_script_text<'a>(
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
-        prop_default_exprs: Vec::new(),
+        prop_default_exprs,
     };
 
     let empty_scoping = Scoping::default();
@@ -526,12 +533,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
                 args.push(Arg::Num(flags as f64));
 
-                // Use pre-parsed expression when available, fallback to parse for test path
-                let default_expr = if let Some(expr) = self.prop_default_exprs.get_mut(i).and_then(|e| e.take()) {
-                    expr
-                } else {
-                    self.b.parse_expression(prop.default_text.as_deref().unwrap())
-                };
+                let default_expr = self.prop_default_exprs.get_mut(i)
+                    .and_then(|e| e.take())
+                    .unwrap_or_else(|| panic!("prop_default_exprs missing for prop {}", prop.local_name));
                 // Wrap $bindable() defaults in $.proxy() when needed
                 let default_expr = if prop.is_bindable && Self::should_proxy(&default_expr) {
                     self.b.call_expr("$.proxy", [Arg::Expr(default_expr)])
