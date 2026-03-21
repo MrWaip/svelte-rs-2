@@ -29,7 +29,6 @@ pub(crate) fn gen_each_block<'a>(
     let block = ctx.each_block(block_id);
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
-    let context_span = block.context_span;
     let span_start = block.span.start;
     let has_key = block.key_span.is_some();
     let has_index = block.index_span.is_some();
@@ -37,15 +36,7 @@ pub(crate) fn gen_each_block<'a>(
     let is_destructured = ctx.each_is_destructured(block_id);
     let context_name = ctx.each_context_name(block_id);
 
-    // key_is_item: key expression equals context identifier (both simple identifiers)
-    let key_is_item = block.key_span.map_or(false, |key_span| {
-        let key_text = ctx.component.source_text(key_span).trim();
-        let ctx_text = ctx.component.source_text(context_span).trim();
-        key_text == ctx_text
-            && !ctx_text.starts_with('{')
-            && !ctx_text.starts_with('[')
-            && is_simple_identifier(key_text)
-    });
+    let key_is_item = ctx.each_key_is_item(block_id);
 
     // Compute flags
     let mut flags: u32 = 0;
@@ -165,10 +156,6 @@ pub(crate) fn gen_each_block<'a>(
 
     let each_call = ctx.b.call_expr("$.each", each_args);
     body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
-}
-
-fn is_simple_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }
 
 /// Generate destructuring declarations for `{#each items as { name, value }}` patterns.
