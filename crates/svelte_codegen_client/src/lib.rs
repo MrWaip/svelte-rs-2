@@ -123,7 +123,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         if has_ce_props {
             if let Some(ref props_analysis) = ctx.analysis.props {
                 for (i, prop) in props_analysis.props.iter().enumerate() {
-                    if prop.is_rest || prop.prop_name.starts_with("$$") {
+                    if prop.is_rest || prop.is_reserved {
                         continue;
                     }
                     let key: &str = ctx.b.alloc_str(&prop.prop_name);

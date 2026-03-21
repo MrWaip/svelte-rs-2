@@ -71,18 +71,19 @@ Generated: 2026-03-21
   - `each_block.rs:105` — prop source identifier name
   - `each_block.rs:186` — context pattern text
 
-### #7 — Prop name $$ prefix check
+### ~~#7 — Prop name $$ prefix check~~ ✅
 
-- **Pattern**: reserved prop name prefix check
-- **Class**: 2
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/lib.rs:126` (`prop.prop_name.starts_with("$$")`)
-  - `crates/svelte_codegen_client/src/custom_element.rs:119` (same)
-- **Occurrence count**: 2
-- **What is aggregated**: `starts_with("$$")` string check on prop name
-- **Proposed type**: accessor `fn is_reserved_prop(&self) -> bool` on `PropAnalysis`, or filter reserved props out in analyze
-- **Target layer**: analyze
+- ~~**Pattern**: reserved prop name prefix check~~
+- ~~**Class**: 2~~
+- ~~**Complexity**: S~~
+- ~~**Where**:~~
+  - ~~`crates/svelte_codegen_client/src/lib.rs:126` (`prop.prop_name.starts_with("$$")`)~~
+  - ~~`crates/svelte_codegen_client/src/custom_element.rs:119` (same)~~
+- ~~**Occurrence count**: 2~~
+- ~~**What is aggregated**: `starts_with("$$")` string check on prop name~~
+- ~~**Proposed type**: accessor `fn is_reserved_prop(&self) -> bool` on `PropAnalysis`, or filter reserved props out in analyze~~
+- ~~**Target layer**: analyze~~
+- **Resolution**: `is_reserved: bool` field added to `PropAnalysis`, computed in `analyze_props()`
 
 ### #8 — HTML video tag detection
 
