@@ -2,27 +2,14 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ContentStrategy, FragmentKey};
+use svelte_analyze::{ComponentPropKind, ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
-use svelte_span::Span;
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
-
-/// Collected attribute info from the immutable Component borrow.
-enum AttrKind<'a> {
-    String { name: &'a str, value_span: Span },
-    Boolean { name: &'a str },
-    Expression { name: &'a str, attr_id: NodeId, shorthand: bool },
-    Concatenation { name: &'a str, attr_id: NodeId },
-    Shorthand { attr_id: NodeId },
-    BindThis { bind_id: NodeId },
-    Spread,
-    Skip,
-}
 
 /// Generate `ComponentName($$anchor, { props })` call.
 pub(crate) fn gen_component<'a>(
@@ -34,63 +21,30 @@ pub(crate) fn gen_component<'a>(
     let cn = ctx.component_node(id);
     let name: &str = &cn.name;
 
-    // Collect attribute info while borrowing ctx immutably
-    let attr_infos: Vec<(AttrKind<'_>, bool)> = cn.attributes.iter().map(|attr| {
-        let is_dynamic = ctx.is_dynamic_attr(attr.id());
-        let kind = match attr {
-            Attribute::StringAttribute(a) => AttrKind::String {
-                name: &a.name,
-                value_span: a.value_span,
-            },
-            Attribute::BooleanAttribute(a) => AttrKind::Boolean {
-                name: &a.name,
-            },
-            Attribute::ExpressionAttribute(a) => {
-                AttrKind::Expression {
-                    name: &a.name,
-                    attr_id: a.id,
-                    shorthand: a.shorthand,
-                }
-            }
-            Attribute::ConcatenationAttribute(a) => AttrKind::Concatenation {
-                name: &a.name,
-                attr_id: a.id,
-            },
-            Attribute::SpreadAttribute(_) => AttrKind::Spread,
-            Attribute::Shorthand(a) => AttrKind::Shorthand {
-                attr_id: a.id,
-            },
-            Attribute::BindDirective(b) if b.name == "this" => AttrKind::BindThis {
-                bind_id: b.id,
-            },
-            Attribute::BindDirective(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_)
-            | Attribute::UseDirective(_) | Attribute::OnDirectiveLegacy(_)
-            | Attribute::TransitionDirective(_)
-            | Attribute::AnimateDirective(_)
-            | Attribute::AttachTag(_) => AttrKind::Skip,
-        };
-        (kind, is_dynamic)
-    }).collect();
+    // Snapshot pre-classified props to release immutable borrow before mutable ctx usage
+    let prop_infos: Vec<_> = ctx.component_props(id)
+        .iter()
+        .map(|p| (p.kind.clone(), p.is_dynamic))
+        .collect();
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
     let mut bind_this_info: Option<NodeId> = None;
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
 
-    for (kind, is_dynamic) in attr_infos {
+    for (kind, is_dynamic) in prop_infos {
         match kind {
-            AttrKind::String { name, value_span } => {
+            ComponentPropKind::String { name, value_span } => {
                 let value_text = ctx.component.source_text(value_span);
-                let key = ctx.b.alloc_str(name);
+                let key = ctx.b.alloc_str(&name);
                 props.push(ObjProp::KeyValue(key, ctx.b.str_expr(value_text)));
             }
-            AttrKind::Boolean { name } => {
-                let key = ctx.b.alloc_str(name);
+            ComponentPropKind::Boolean { name } => {
+                let key = ctx.b.alloc_str(&name);
                 props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
             }
-            AttrKind::Expression { name, attr_id, shorthand } => {
-                let needs_memo = ctx.analysis.component_attr_needs_memo(attr_id);
-                let key = ctx.b.alloc_str(name);
+            ComponentPropKind::Expression { name, attr_id, shorthand, needs_memo } => {
+                let key = ctx.b.alloc_str(&name);
                 if needs_memo {
                     let memo_name = format!("${memo_counter}");
                     memo_counter += 1;
@@ -112,30 +66,17 @@ pub(crate) fn gen_component<'a>(
                     }
                 }
             }
-            AttrKind::Concatenation { name, attr_id } => {
-                let key = ctx.b.alloc_str(name);
-                // Re-borrow to access concatenation parts
-                let cn = ctx.component_node(id);
-                let concat_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
-                if let Some(Attribute::ConcatenationAttribute(a)) = concat_attr {
-                    let val = build_attr_concat(ctx, attr_id, &a.parts);
-                    if is_dynamic {
-                        props.push(ObjProp::Getter(key, val));
-                    } else {
-                        props.push(ObjProp::KeyValue(key, val));
-                    }
+            ComponentPropKind::Concatenation { name, attr_id, parts } => {
+                let key = ctx.b.alloc_str(&name);
+                let val = build_attr_concat(ctx, attr_id, &parts);
+                if is_dynamic {
+                    props.push(ObjProp::Getter(key, val));
+                } else {
+                    props.push(ObjProp::KeyValue(key, val));
                 }
             }
-            AttrKind::Shorthand { attr_id } => {
-                // Re-borrow to get the shorthand name
-                let cn = ctx.component_node(id);
-                let shorthand_attr = cn.attributes.iter().find(|a| a.id() == attr_id);
-                let name_text = if let Some(Attribute::Shorthand(a)) = shorthand_attr {
-                    ctx.component.source_text(a.expression_span).trim().to_string()
-                } else {
-                    unreachable!()
-                };
-                let key = ctx.b.alloc_str(&name_text);
+            ComponentPropKind::Shorthand { attr_id, name } => {
+                let key = ctx.b.alloc_str(&name);
                 let expr = get_attr_expr(ctx, attr_id);
                 if is_dynamic {
                     props.push(ObjProp::Getter(key, expr));
@@ -143,10 +84,10 @@ pub(crate) fn gen_component<'a>(
                     props.push(ObjProp::Shorthand(key));
                 }
             }
-            AttrKind::BindThis { bind_id } => {
+            ComponentPropKind::BindThis { bind_id } => {
                 bind_this_info = Some(bind_id);
             }
-            AttrKind::Spread | AttrKind::Skip => {}
+            ComponentPropKind::Spread => {}
         }
     }
 

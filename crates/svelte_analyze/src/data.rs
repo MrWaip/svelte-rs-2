@@ -1,7 +1,8 @@
 use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
-use svelte_ast::NodeId;
+use svelte_ast::{ConcatPart, NodeId};
 use svelte_js::{ExpressionInfo, ScriptInfo};
+use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
 
@@ -92,6 +93,31 @@ pub struct ClassDirectiveInfo {
     pub has_expression: bool,
 }
 
+/// Pre-classified component attribute for codegen consumption.
+#[derive(Clone)]
+pub struct ComponentPropInfo {
+    pub kind: ComponentPropKind,
+    pub is_dynamic: bool,
+}
+
+#[derive(Clone)]
+pub enum ComponentPropKind {
+    /// `name="value"` — static string
+    String { name: String, value_span: Span },
+    /// `name` — boolean attribute
+    Boolean { name: String },
+    /// `name={expr}` — expression (possibly shorthand, possibly memoized)
+    Expression { name: String, attr_id: NodeId, shorthand: bool, needs_memo: bool },
+    /// `name="text{expr}text"` — template concatenation
+    Concatenation { name: String, attr_id: NodeId, parts: Vec<ConcatPart> },
+    /// `{name}` — shorthand
+    Shorthand { attr_id: NodeId, name: String },
+    /// `bind:this={expr}`
+    BindThis { bind_id: NodeId },
+    /// `{...spread}` — tracked but skipped in prop building
+    Spread,
+}
+
 /// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
 pub struct ElementFlags {
     pub(crate) has_spread: FxHashSet<NodeId>,
@@ -115,6 +141,8 @@ pub struct ElementFlags {
     /// Attribute/directive whose expression is a simple identifier matching the name
     /// (e.g., `class:foo={foo}`, `style:color={color}`). Enables property shorthand in output.
     pub(crate) expression_shorthand: FxHashSet<NodeId>,
+    /// Pre-classified component attributes for codegen (avoids two-pass pattern).
+    pub(crate) component_props: FxHashMap<NodeId, Vec<ComponentPropInfo>>,
 }
 
 impl ElementFlags {
@@ -135,6 +163,7 @@ impl ElementFlags {
             has_use_directive: FxHashSet::default(),
             has_dynamic_class_directives: FxHashSet::default(),
             expression_shorthand: FxHashSet::default(),
+            component_props: FxHashMap::default(),
         }
     }
 
@@ -155,6 +184,9 @@ impl ElementFlags {
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
+    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
+        self.component_props.get(&id).map_or(&[], |v| v.as_slice())
+    }
 }
 
 /// Fragment lowering results and content classification.
