@@ -10,7 +10,7 @@ pub(crate) mod js_analyze;
 mod known_values;
 mod lower;
 mod needs_var;
-mod parse_js;
+mod analyze_semantic;
 mod props;
 mod reactivity;
 mod resolve_references;
@@ -63,7 +63,7 @@ pub fn analyze_with_options<'a>(
     js_analyze::compute_render_tag_args(&parsed, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
-    parse_js::register_arrow_scopes(component, &mut data, &parsed);
+    analyze_semantic::register_arrow_scopes(component, &mut data, &parsed);
     data.import_syms = data.scoping.collect_import_syms();
     resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
@@ -156,14 +156,9 @@ pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Ve
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
-    let alloc = oxc_allocator::Allocator::default();
-    let arena_source = alloc.alloc_str(source);
-    match svelte_parser::parse_script_with_alloc(&alloc, arena_source, 0, is_ts) {
-        Ok(program) => {
-            let mut script_info = svelte_parser::script_info::extract_script_info(&program, 0, source);
-            let sem = oxc_semantic::SemanticBuilder::new().build(&program);
-            js_analyze::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-            data.scoping = scope::ComponentScoping::from_scoping(sem.semantic.into_scoping());
+    match svelte_parser::parse_module(source, is_ts) {
+        Ok((script_info, scoping)) => {
+            data.scoping = scope::ComponentScoping::from_scoping(scoping);
 
             // Mark runes from script declarations
             for decl in &script_info.declarations {
