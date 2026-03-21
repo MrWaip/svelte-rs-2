@@ -227,13 +227,7 @@ pub(crate) fn text_content_needs_memo(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
     if let FragmentItem::TextConcat { parts, .. } = item {
         return parts.iter().any(|p| {
             if let LoweredTextPart::Expr(id) = p {
-                let info = ctx.expression(*id);
-                let has_call = info.map_or(false, |e| e.has_call);
-                // Only memoize when there are references that resolve to actual bindings
-                let has_resolved_refs = info.map_or(false, |e|
-                    e.references.iter().any(|r| r.symbol_id.is_some())
-                );
-                has_call && has_resolved_refs
+                ctx.analysis.needs_expr_memoization(*id)
             } else {
                 false
             }
