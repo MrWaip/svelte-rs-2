@@ -222,22 +222,6 @@ fn assert_consequent_content_type(
     assert_eq!(*actual, expected);
 }
 
-fn assert_alternate_content_type(
-    data: &AnalysisData,
-    component: &Component,
-    test_text: &str,
-    expected: ContentStrategy,
-) {
-    let block = find_if_block(&component.fragment, component, test_text)
-        .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
-    let actual = data
-        .fragments
-        .content_types
-        .get(&FragmentKey::IfAlternate(block.id))
-        .unwrap_or_else(|| panic!("no alternate content type for IfBlock '{test_text}'"));
-    assert_eq!(*actual, expected);
-}
-
 fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
     let lf = data
         .fragments
@@ -432,4 +416,68 @@ fn each_block_index_is_dynamic() {
         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
     );
     assert_dynamic_tag(&data, &c, "i");
+}
+
+// ---------------------------------------------------------------------------
+// extract_expression_info tests
+// ---------------------------------------------------------------------------
+
+mod expression_info_tests {
+    use oxc_allocator::Allocator;
+    use oxc_parser::Parser as OxcParser;
+    use oxc_span::SourceType;
+    use compact_str::CompactString;
+    use svelte_diagnostics::Diagnostic;
+    use svelte_span::Span;
+    use svelte_types::{ExpressionInfo, ExpressionKind, ReferenceFlags};
+    use crate::js_analyze::extract_expression_info;
+
+    fn compact(s: &str) -> CompactString { CompactString::from(s) }
+
+    fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic> {
+        let allocator = Allocator::default();
+        let parser = OxcParser::new(&allocator, source, SourceType::default());
+        let expr = parser
+            .parse_expression()
+            .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
+        let info = extract_expression_info(&expr, offset);
+        Ok(info)
+    }
+
+    #[test]
+    fn analyze_simple_identifier() {
+        let info = analyze_expression("count", 0).unwrap();
+        assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
+        assert_eq!(info.references.len(), 1);
+        assert_eq!(info.references[0].name, "count");
+    }
+
+    #[test]
+    fn analyze_binary_expression() {
+        let info = analyze_expression("count + 1", 0).unwrap();
+        assert_eq!(info.references.len(), 1);
+        assert_eq!(info.references[0].name, "count");
+    }
+
+    #[test]
+    fn analyze_call_expression() {
+        let info = analyze_expression("foo(a, b)", 0).unwrap();
+        assert!(matches!(info.kind, ExpressionKind::CallExpression { .. }));
+        assert_eq!(info.references.len(), 3);
+        assert!(info.has_side_effects);
+    }
+
+    #[test]
+    fn analyze_assignment() {
+        let info = analyze_expression("count = 10", 0).unwrap();
+        assert_eq!(info.kind, ExpressionKind::Assignment);
+        assert!(info.references.iter().any(|r| r.name == "count" && matches!(r.flags, ReferenceFlags::Write)));
+    }
+
+    #[test]
+    fn analyze_with_offset() {
+        let info = analyze_expression("x", 100).unwrap();
+        assert_eq!(info.references[0].span.start, 100);
+        assert_eq!(info.references[0].span.end, 101);
+    }
 }

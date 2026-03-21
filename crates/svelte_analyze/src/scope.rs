@@ -354,7 +354,7 @@ impl ComponentScoping {
 ///
 /// The `Scoping` is already initialized by `parse_js` (via `analyze_script_with_scoping`),
 /// so this pass only marks runes and walks the template to add each-block scopes.
-pub fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::markers::ScopingBuilt {
+pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> crate::markers::ScopingBuilt {
     // Mark runes from script declarations
     if let Some(script_info) = &data.script {
         for decl in &script_info.declarations {

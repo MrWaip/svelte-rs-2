@@ -34,7 +34,7 @@ pub(crate) fn analyze_script(
     parsed: &ParsedExprs<'_>,
     component: &Component,
     data: &mut AnalysisData,
-    typescript: bool,
+    _typescript: bool,
     script_content_span: Option<svelte_span::Span>,
 ) {
     let Some(ref program) = parsed.script_program else { return };

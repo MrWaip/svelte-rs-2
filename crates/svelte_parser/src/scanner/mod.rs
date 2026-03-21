@@ -1354,6 +1354,7 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         let start_collection_pos = self.current;
+        #[allow(unused_assignments)]
         let mut end_collection_pos = start_collection_pos;
 
         while !self.is_at_end() {
@@ -1555,7 +1556,6 @@ impl<'a> Scanner<'a> {
 
                     if self.is_at_end() { break; }
 
-                    let kw_start = self.current;
                     let kw = self.identifier();
 
                     if (kw == "then" || kw == "catch") && self.peek().is_some_and(|c| c.is_ascii_whitespace() || c == '}') {
