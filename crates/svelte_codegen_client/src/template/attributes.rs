@@ -1016,7 +1016,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::Shorthand(name_alloc));
             }
             Attribute::BindDirective(bind) => {
-                let has_use = el.attributes.iter().any(|a| matches!(a, Attribute::UseDirective(_)));
+                let has_use = ctx.has_use_directive(el.id);
                 if let Some(placement) = gen_bind_directive(ctx, bind, el_name, &el.name, has_use) {
                     match placement {
                         BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),

@@ -52,7 +52,7 @@ pub(crate) fn process_element<'a>(
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
     } else {
         let el = ctx.element(el_id);
-        let has_use_directive = el.attributes.iter().any(|a| matches!(a, svelte_ast::Attribute::UseDirective(_)));
+        let has_use_directive = ctx.has_use_directive(el_id);
         let attr_dynamic: Vec<_> = el.attributes.iter()
             .map(|attr| ctx.is_dynamic_attr(attr.id()))
             .collect();
