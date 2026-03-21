@@ -3,7 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
-use svelte_ast::{Attribute, Node, NodeId};
+use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -61,14 +61,7 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_IS_CONTROLLED;
     }
 
-    // animate: can only appear on elements that are the sole child of a keyed each block
-    if has_key && block.body.nodes.iter().any(|node| {
-        if let Node::Element(el) = node {
-            el.attributes.iter().any(|a| matches!(a, Attribute::AnimateDirective(_)))
-        } else {
-            false
-        }
-    }) {
+    if has_key && ctx.each_has_animate(block_id) {
         flags |= EACH_IS_ANIMATED;
     }
 
