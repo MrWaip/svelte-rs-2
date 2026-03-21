@@ -1,10 +1,10 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
 use oxc_semantic::ScopeId;
-use svelte_ast::{Attribute, Element, SvelteElement};
+use svelte_ast::{Attribute, ComponentNode, Element, SvelteElement};
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, ClassDirectiveInfo};
+use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -66,6 +66,53 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             _ => {}
         }
+    }
+
+    fn visit_component_attribute(
+        &mut self,
+        attr: &Attribute,
+        cn: &ComponentNode,
+        _scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        let kind = match attr {
+            Attribute::StringAttribute(a) => ComponentPropKind::String {
+                name: a.name.clone(),
+                value_span: a.value_span,
+            },
+            Attribute::BooleanAttribute(a) => ComponentPropKind::Boolean {
+                name: a.name.clone(),
+            },
+            Attribute::ExpressionAttribute(a) => {
+                let needs_memo = data.component_attr_needs_memo(a.id);
+                ComponentPropKind::Expression {
+                    name: a.name.clone(),
+                    attr_id: a.id,
+                    shorthand: a.shorthand,
+                    needs_memo,
+                }
+            }
+            Attribute::ConcatenationAttribute(a) => ComponentPropKind::Concatenation {
+                name: a.name.clone(),
+                attr_id: a.id,
+                parts: a.parts.clone(),
+            },
+            Attribute::Shorthand(a) => {
+                let name = self.source_text(a.expression_span).trim().to_string();
+                ComponentPropKind::Shorthand { attr_id: a.id, name }
+            }
+            Attribute::SpreadAttribute(_) => ComponentPropKind::Spread,
+            Attribute::BindDirective(b) if b.name == "this" => {
+                ComponentPropKind::BindThis { bind_id: b.id }
+            }
+            // Directives that don't become props
+            _ => return,
+        };
+        let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());
+        data.element_flags.component_props
+            .entry(cn.id)
+            .or_default()
+            .push(ComponentPropInfo { kind, is_dynamic });
     }
 
     /// SvelteElement attributes aren't dispatched through visit_attribute
