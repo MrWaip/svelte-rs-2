@@ -79,11 +79,10 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) => {
             if let Some(raw_event_name) = a.event_name.as_deref() {
-                let (event_name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw_event_name) {
-                    (base.to_string(), true)
-                } else {
-                    (raw_event_name.to_string(), false)
-                };
+                let mode = ctx.event_handler_mode(attr_id)
+                    .unwrap_or_else(|| panic!("missing event_handler_mode for attr {:?}", attr_id));
+                let event_name = svelte_js::strip_capture_event(raw_event_name)
+                    .unwrap_or(raw_event_name).to_string();
 
                 let expr_offset = a.expression_span.start;
                 let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
@@ -91,36 +90,36 @@ pub(crate) fn process_attr<'a>(
                 let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
                 let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
-                let passive = svelte_js::is_passive_event(&event_name);
-                let delegated = !capture && svelte_js::is_delegatable_event(&event_name);
-
-                if delegated {
-                    let mut args: Vec<Arg<'a, '_>> = vec![
-                        Arg::Str(event_name.clone()),
-                        Arg::Ident(el_name),
-                        Arg::Expr(handler),
-                    ];
-                    if passive {
-                        args.push(Arg::Expr(ctx.b.void_zero_expr()));
-                        args.push(Arg::Bool(true));
+                match mode {
+                    svelte_analyze::EventHandlerMode::Delegated { passive } => {
+                        let mut args: Vec<Arg<'a, '_>> = vec![
+                            Arg::Str(event_name.clone()),
+                            Arg::Ident(el_name),
+                            Arg::Expr(handler),
+                        ];
+                        if passive {
+                            args.push(Arg::Expr(ctx.b.void_zero_expr()));
+                            args.push(Arg::Bool(true));
+                        }
+                        after_update.push(ctx.b.call_stmt("$.delegated", args));
+                        if !ctx.delegated_events.contains(&event_name) {
+                            ctx.delegated_events.push(event_name);
+                        }
                     }
-                    after_update.push(ctx.b.call_stmt("$.delegated", args));
-                    if !ctx.delegated_events.contains(&event_name) {
-                        ctx.delegated_events.push(event_name);
+                    svelte_analyze::EventHandlerMode::Direct { capture, passive } => {
+                        let mut args: Vec<Arg<'a, '_>> = vec![
+                            Arg::Str(event_name),
+                            Arg::Ident(el_name),
+                            Arg::Expr(handler),
+                        ];
+                        if capture || passive {
+                            args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
+                        }
+                        if passive {
+                            args.push(Arg::Bool(true));
+                        }
+                        after_update.push(ctx.b.call_stmt("$.event", args));
                     }
-                } else {
-                    let mut args: Vec<Arg<'a, '_>> = vec![
-                        Arg::Str(event_name),
-                        Arg::Ident(el_name),
-                        Arg::Expr(handler),
-                    ];
-                    if capture || passive {
-                        args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
-                    }
-                    if passive {
-                        args.push(Arg::Bool(true));
-                    }
-                    after_update.push(ctx.b.call_stmt("$.event", args));
                 }
                 return;
             }

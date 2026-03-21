@@ -4,7 +4,7 @@ use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, ComponentNode, Element, SvelteElement};
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind};
+use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -63,6 +63,21 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::ExpressionAttribute(ea) if ea.name == "value" && el.name == "input" => {
                 data.element_flags.needs_input_defaults.insert(el.id);
+            }
+            Attribute::ExpressionAttribute(ea) if ea.event_name.is_some() => {
+                let raw = ea.event_name.as_deref().unwrap();
+                let (name, capture) = if let Some(base) = svelte_js::strip_capture_event(raw) {
+                    (base, true)
+                } else {
+                    (raw, false)
+                };
+                let passive = svelte_js::is_passive_event(name);
+                let mode = if !capture && svelte_js::is_delegatable_event(name) {
+                    EventHandlerMode::Delegated { passive }
+                } else {
+                    EventHandlerMode::Direct { capture, passive }
+                };
+                data.element_flags.event_handler_mode.insert(ea.id, mode);
             }
             Attribute::UseDirective(_) => {
                 data.element_flags.has_use_directive.insert(el.id);
