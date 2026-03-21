@@ -85,11 +85,18 @@ pub enum FragmentKey {
 // Grouped sub-structures
 // ---------------------------------------------------------------------------
 
+/// Pre-collected class directive data for codegen (avoids re-traversal).
+pub struct ClassDirectiveInfo {
+    pub id: NodeId,
+    pub name: String,
+    pub has_expression: bool,
+}
+
 /// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
 pub struct ElementFlags {
     pub(crate) has_spread: FxHashSet<NodeId>,
-    pub(crate) has_class_directives: FxHashSet<NodeId>,
-    pub(crate) has_class_attribute: FxHashSet<NodeId>,
+    pub(crate) class_attr_id: FxHashMap<NodeId, NodeId>,
+    pub(crate) class_directive_info: FxHashMap<NodeId, Vec<ClassDirectiveInfo>>,
     pub(crate) needs_clsx: FxHashSet<NodeId>,
     /// Pre-extracted static class attribute value (avoids span→string conversion in codegen).
     pub(crate) static_class: FxHashMap<NodeId, String>,
@@ -114,8 +121,8 @@ impl ElementFlags {
     pub fn new() -> Self {
         Self {
             has_spread: FxHashSet::default(),
-            has_class_directives: FxHashSet::default(),
-            has_class_attribute: FxHashSet::default(),
+            class_attr_id: FxHashMap::default(),
+            class_directive_info: FxHashMap::default(),
             needs_clsx: FxHashSet::default(),
             static_class: FxHashMap::default(),
             has_style_directives: FxHashSet::default(),
@@ -132,8 +139,10 @@ impl ElementFlags {
     }
 
     pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
-    pub fn has_class_directives(&self, id: NodeId) -> bool { self.has_class_directives.contains(&id) }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.has_class_attribute.contains(&id) }
+    pub fn has_class_directives(&self, id: NodeId) -> bool { self.class_directive_info.contains_key(&id) }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.class_attr_id.contains_key(&id) }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.class_attr_id.get(&id).copied() }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.class_directive_info.get(&id).map(|v| v.as_slice()) }
     pub fn needs_clsx(&self, id: NodeId) -> bool { self.needs_clsx.contains(&id) }
     pub fn has_style_directives(&self, id: NodeId) -> bool { self.has_style_directives.contains(&id) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
