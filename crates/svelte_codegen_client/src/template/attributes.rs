@@ -215,11 +215,8 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class value ---
     let (class_value, class_attr_is_dynamic) = if has_class_attr {
-        // Find the class expression attribute
-        let class_attr = el.attributes.iter()
-            .find(|a| matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "class"))
-            .expect("has_class_attribute set but no ExpressionAttribute with name=class");
-        let class_attr_id = class_attr.id();
+        let class_attr_id = ctx.class_attr_id(el.id)
+            .expect("has_class_attribute set but no class attr id");
 
         let mut expr = get_attr_expr(ctx, class_attr_id);
         if ctx.needs_clsx(class_attr_id) {
@@ -236,23 +233,22 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class directives object ---
     let directives_obj = if has_class_dirs {
-        let class_dirs: Vec<_> = el.attributes.iter()
-            .filter_map(|a| match a {
-                Attribute::ClassDirective(cd) => Some(cd),
-                _ => None,
-            })
+        // Snapshot directive info to release the immutable borrow on ctx before the mutable loop.
+        let dir_snapshot: Vec<_> = ctx.class_directive_info(el.id)
+            .expect("has_class_directives set but no directive info")
+            .iter()
+            .map(|cd| (cd.id, cd.name.clone(), cd.has_expression))
             .collect();
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for cd in &class_dirs {
-            let name = &cd.name;
-            let (expr, same_name) = if cd.expression_span.is_some() {
-                let parsed = get_attr_expr(ctx, cd.id);
-                (parsed, ctx.is_expression_shorthand(cd.id))
+        for (id, name, has_expression) in &dir_snapshot {
+            let (expr, same_name) = if *has_expression {
+                let parsed = get_attr_expr(ctx, *id);
+                (parsed, ctx.is_expression_shorthand(*id))
             } else {
                 (ctx.b.rid_expr(name), true)
             };
-            props.push(build_directive_prop(ctx, cd.id, name, expr, same_name));
+            props.push(build_directive_prop(ctx, *id, name, expr, same_name));
         }
         Some(ctx.b.object_expr(props))
     } else {
@@ -1092,27 +1088,20 @@ pub(crate) fn process_svelte_element_class_directives<'a>(
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
-    let class_dirs: Vec<_> = el.attributes.iter()
-        .filter_map(|a| match a {
-            Attribute::ClassDirective(cd) => Some(cd),
-            _ => None,
-        })
-        .collect();
-
-    if class_dirs.is_empty() {
-        return;
-    }
+    let dir_snapshot: Vec<_> = match ctx.class_directive_info(el.id) {
+        Some(dirs) => dirs.iter().map(|cd| (cd.id, cd.name.clone(), cd.has_expression)).collect(),
+        None => return,
+    };
 
     let mut props: Vec<ObjProp<'a>> = Vec::new();
-    for cd in &class_dirs {
-        let name = &cd.name;
-        let (expr, same_name) = if cd.expression_span.is_some() {
-            let parsed = get_attr_expr(ctx, cd.id);
-            (parsed, ctx.is_expression_shorthand(cd.id))
+    for (id, name, has_expression) in &dir_snapshot {
+        let (expr, same_name) = if *has_expression {
+            let parsed = get_attr_expr(ctx, *id);
+            (parsed, ctx.is_expression_shorthand(*id))
         } else {
             (ctx.b.rid_expr(name), true)
         };
-        props.push(build_directive_prop(ctx, cd.id, name, expr, same_name));
+        props.push(build_directive_prop(ctx, *id, name, expr, same_name));
     }
 
     let dir_obj = ctx.b.object_expr(props);
