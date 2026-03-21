@@ -20,6 +20,10 @@ use svelte_diagnostics::Diagnostic;
 pub mod js_parse;
 mod parse_js;
 pub mod scanner;
+pub mod types;
+
+// Re-export all shared types for convenience
+pub use types::*;
 
 // Re-export parsing functions used by svelte_analyze
 pub use js_parse::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
@@ -33,11 +37,11 @@ pub fn parse_with_js<'a>(
     source: &str,
 ) -> (
     svelte_ast::Component,
-    svelte_types::JsParseResult<'a>,
+    crate::types::JsParseResult<'a>,
     Vec<Diagnostic>,
 ) {
     let (component, mut diagnostics) = Parser::new(source).parse();
-    let mut js_result = svelte_types::JsParseResult::new();
+    let mut js_result = crate::types::JsParseResult::new();
     parse_js::parse_js(alloc, &component, &mut js_result, &mut diagnostics);
     (component, js_result, diagnostics)
 }

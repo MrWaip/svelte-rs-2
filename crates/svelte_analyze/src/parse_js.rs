@@ -1,7 +1,7 @@
 use oxc_ast::ast::{ArrowFunctionExpression, BindingPattern, Expression, FormalParameters};
 use oxc_ast_visit::Visit;
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
-use svelte_types::ParsedExprs;
+use svelte_parser::ParsedExprs;
 
 use crate::data::{AnalysisData, FragmentKey};
 use crate::scope::{ComponentScoping, ScopeId};

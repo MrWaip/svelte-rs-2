@@ -13,7 +13,7 @@ use oxc_traverse::{Traverse, TraverseCtx, traverse_mut};
 
 use svelte_analyze::{ComponentScoping, PropsAnalysis};
 use svelte_ast::ScriptLanguage;
-use svelte_types::RuneKind;
+use svelte_parser::RuneKind;
 
 use crate::builder::{Arg, Builder};
 use crate::context::Ctx;

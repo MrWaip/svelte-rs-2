@@ -1,11 +1,11 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
-use svelte_types::{ExpressionInfo, ScriptInfo};
+use svelte_parser::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
 
-pub use svelte_types::ParsedExprs;
+pub use svelte_parser::ParsedExprs;
 
 // ---------------------------------------------------------------------------
 // FragmentKey — typed key for lowered_fragments and content_types
@@ -315,9 +315,9 @@ impl EachBlockData {
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
 pub struct AwaitBindingData {
     /// Then binding info, keyed by AwaitBlock NodeId.
-    pub(crate) values: FxHashMap<NodeId, svelte_types::AwaitBindingInfo>,
+    pub(crate) values: FxHashMap<NodeId, svelte_parser::AwaitBindingInfo>,
     /// Catch binding info, keyed by AwaitBlock NodeId.
-    pub(crate) errors: FxHashMap<NodeId, svelte_types::AwaitBindingInfo>,
+    pub(crate) errors: FxHashMap<NodeId, svelte_parser::AwaitBindingInfo>,
 }
 
 impl AwaitBindingData {
@@ -328,8 +328,8 @@ impl AwaitBindingData {
         }
     }
 
-    pub fn value(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> { self.values.get(&id) }
-    pub fn error(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> { self.errors.get(&id) }
+    pub fn value(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.values.get(&id) }
+    pub fn error(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.errors.get(&id) }
 }
 
 /// Pre-computed bind/directive semantics for codegen.
@@ -426,7 +426,7 @@ pub struct AnalysisData {
     /// Binding name from `const id = $props.id()`.
     pub props_id: Option<String>,
     /// Exported names from `export const/function/class` or `export { ... }`.
-    pub exports: Vec<svelte_types::ExportInfo>,
+    pub exports: Vec<svelte_parser::ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
     /// Script contains class declarations with `$state`/`$state.raw` fields.
@@ -472,7 +472,7 @@ pub struct AnalysisData {
     /// When true, all props become prop sources with getter/setter exports.
     pub custom_element: bool,
     /// Parsed custom element config (from object expression form).
-    pub ce_config: Option<svelte_types::ParsedCeConfig>,
+    pub ce_config: Option<svelte_parser::ParsedCeConfig>,
 }
 
 impl AnalysisData {

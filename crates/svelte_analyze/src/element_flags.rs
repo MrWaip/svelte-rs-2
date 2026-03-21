@@ -66,13 +66,13 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::ExpressionAttribute(ea) if ea.event_name.is_some() => {
                 let raw = ea.event_name.as_deref().unwrap();
-                let (name, capture) = if let Some(base) = svelte_types::strip_capture_event(raw) {
+                let (name, capture) = if let Some(base) = svelte_parser::strip_capture_event(raw) {
                     (base, true)
                 } else {
                     (raw, false)
                 };
-                let passive = svelte_types::is_passive_event(name);
-                let mode = if !capture && svelte_types::is_delegatable_event(name) {
+                let passive = svelte_parser::is_passive_event(name);
+                let mode = if !capture && svelte_parser::is_delegatable_event(name) {
                     EventHandlerMode::Delegated { passive }
                 } else {
                     EventHandlerMode::Direct { capture, passive }

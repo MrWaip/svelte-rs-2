@@ -243,6 +243,9 @@ pub struct JsParseResult<'a> {
     pub script_content_span: Option<Span>,
     /// Whether the script block uses TypeScript.
     pub typescript: bool,
+    /// Pre-extracted script metadata (declarations, props, exports).
+    /// Populated by parser from the script Program AST.
+    pub script_info: Option<ScriptInfo>,
 }
 
 impl<'a> JsParseResult<'a> {
@@ -260,6 +263,7 @@ impl<'a> JsParseResult<'a> {
             snippet_param_names: FxHashMap::default(),
             script_content_span: None,
             typescript: false,
+            script_info: None,
         }
     }
 }
