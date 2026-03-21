@@ -213,7 +213,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
     }
 
     // --- Build class value ---
-    let (class_value, class_attr_is_dynamic) = if has_class_attr {
+    let class_value = if has_class_attr {
         let class_attr_id = ctx.class_attr_id(el.id)
             .expect("has_class_attribute set but no class attr id");
 
@@ -222,12 +222,11 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             expr = ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
         }
 
-        let is_dynamic = ctx.is_dynamic_attr(class_attr_id);
-        (expr, is_dynamic)
+        expr
     } else {
         // No class expression attribute — use static class or empty string
         let static_class = ctx.static_class(el.id).unwrap_or("");
-        (ctx.b.str_expr(static_class), false)
+        ctx.b.str_expr(static_class)
     };
 
     // --- Build class directives object ---
@@ -254,9 +253,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         None
     };
 
-    let directives_are_dynamic = ctx.has_dynamic_class_directives(el.id);
-
-    let has_state = class_attr_is_dynamic || directives_are_dynamic;
+    let has_state = ctx.class_needs_state(el.id);
 
     // --- Generate $.set_class() call ---
     if let Some(dir_obj) = directives_obj {
