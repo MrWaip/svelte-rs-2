@@ -8,11 +8,14 @@ use svelte_ast::{is_void, Attribute, Element};
 use crate::context::Ctx;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
-pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
+/// Returns `(html, needs_import_node)` — the flag is true when the fragment
+/// contains a `<video>` element (which requires `importNode` instead of `cloneNode`).
+pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
     let Some(lf) = ctx.analysis.fragments.lowered(&key) else {
-        return String::new();
+        return (String::new(), false);
     };
     let mut html = String::new();
+    let mut import_node = false;
     for item in &lf.items {
         match item {
             FragmentItem::TextConcat { parts, has_expr } => {
@@ -29,21 +32,25 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> String {
             }
             FragmentItem::Element(id) => {
                 let el = ctx.element(*id);
-                html.push_str(&element_html(ctx, el));
+                let (el_html, el_import) = element_html(ctx, el);
+                html.push_str(&el_html);
+                import_node |= el_import;
             }
             FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::AwaitBlock(_) | FragmentItem::TitleElement(_) => html.push_str("<!>"),
         }
     }
-    html
+    (html, import_node)
 }
 
 /// Build the HTML string for a single element (opening tag + attrs + children + closing tag).
-pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
+/// Returns `(html, needs_import_node)` — true when this element or any descendant is `<video>`.
+pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     let has_spread = ctx.has_spread(el.id);
     let has_class_directives = ctx.has_class_directives(el.id);
     let has_class_attribute = ctx.has_class_attribute(el.id);
 
     let mut html = String::new();
+    let mut import_node = el.name == "video";
     write!(html, "<{}", el.name).unwrap();
 
     // When spread attrs are present, skip all attributes from HTML template
@@ -77,14 +84,14 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
 
     if is_void(&el.name) {
         html.push_str("/>");
-        return html;
+        return (html, import_node);
     }
     html.push('>');
 
     // noscript content is stripped in the template
     if el.name == "noscript" {
         write!(html, "</{}>", el.name).unwrap();
-        return html;
+        return (html, import_node);
     }
 
     let child_key = FragmentKey::Element(el.id);
@@ -108,10 +115,12 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> String {
             // Controlled block: element itself is the anchor, no <!> needed
         }
         ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Mixed { .. } => {
-            html.push_str(&fragment_html(ctx, child_key));
+            let (child_html, child_import) = fragment_html(ctx, child_key);
+            html.push_str(&child_html);
+            import_node |= child_import;
         }
     }
 
     write!(html, "</{}>", el.name).unwrap();
-    html
+    (html, import_node)
 }
