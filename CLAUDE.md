@@ -112,14 +112,29 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 
 ## Code style
 
-### Architecture boundaries
+### Architecture boundaries — STRICT ENFORCEMENT
 
-- OXC types (`Expression<'a>`, `Program<'a>`) never appear in cross-crate public API, except within `svelte_codegen_client` (which is an OXC consumer by design). `svelte_js` is the facade for analysis; codegen uses OXC AST directly via `Builder`.
-- AST is immutable after parsing. Analysis results go into side tables (`AnalysisData`, keyed by `NodeId`).
-- AST stores `Span` for JS expressions. `ParsedExprs<'a>` caches parsed OXC `Expression<'a>` ASTs (populated in `parse_js`, consumed in transform/codegen). No JS subtree copying between phases.
+**Before proposing or writing code, verify it goes in the correct layer. Never take a shortcut by placing logic in the wrong crate.**
+
+Layers and their responsibilities:
+- `svelte_parser` — produces immutable AST. Owns JS expression pre-parsing (`parse_js` → `ParsedExprs`).
+- `svelte_analyze` — single-pass composite visitor. Owns ALL derived data, classifications, flags, precomputation → `AnalysisData` side tables (keyed by `NodeId`).
+- `svelte_codegen_client` — consumes AST + AnalysisData + ParsedExprs to produce JS output. Owns only JS output construction logic.
+
+Boundary rules:
+1. **Immutable AST** — AST is immutable after parsing. Derived data goes into `AnalysisData`, never into AST nodes.
+2. **Analysis owns classification** — any derived data, classification, flag, or precomputation belongs in `svelte_analyze`. If codegen would need to re-traverse AST nodes to collect/classify data, that data must be computed in analyze instead.
+3. **JS parsing in parser** — JS expression parsing belongs in `svelte_parser` (`parse_js`), not in analyze or codegen.
+4. **SymbolId over strings** — all identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level, extend `ComponentScoping` — do not fall back to string sets.
+5. **OXC containment** — OXC types (`Expression<'a>`, `Program<'a>`) never appear in cross-crate public API, except within `svelte_codegen_client`. `svelte_js` is the facade for analysis; codegen uses OXC AST directly via `Builder`.
+6. **No codegen data caching** — codegen-internal enums/structs that cache or duplicate AST data to avoid re-lookups are a smell. The classification belongs in `AnalysisData`.
+7. **Correct over minimal** — never propose a "simple" or "minimal" fix in the wrong layer when a correct architectural approach exists. If unsure which layer owns the logic, ask.
+
+Additional rules:
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
 - Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
-- All identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level (e.g., arrow function parameters inside template expressions), extend `ComponentScoping` to cover it — do not fall back to string sets. OXC and `ComponentScoping` share the same `SymbolId` space for script-level bindings, so `SymbolId` from OXC can be used directly with `ComponentScoping` methods without name round-tripping.
+- AST stores `Span` for JS expressions. `ParsedExprs<'a>` caches parsed OXC `Expression<'a>` ASTs (populated in `parse_js`, consumed in transform/codegen). No JS subtree copying between phases.
+- OXC and `ComponentScoping` share the same `SymbolId` space for script-level bindings, so `SymbolId` from OXC can be used directly with `ComponentScoping` methods without name round-tripping.
 
 ### Naming
 

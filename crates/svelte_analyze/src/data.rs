@@ -118,6 +118,31 @@ pub enum ComponentPropKind {
     Spread,
 }
 
+/// Pre-computed render tag callee routing mode.
+///
+/// Replaces three separate bool flags (`is_dynamic`, `is_chain`, `callee_is_getter`)
+/// with a single enum that codegen can `match` on directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderTagCalleeMode {
+    /// callee(anchor, ...args) — normal binding, regular call
+    Direct,
+    /// callee?.(anchor, ...args) — normal binding, optional chain
+    Chain,
+    /// $.snippet(anchor, thunk(callee), ...args) — non-normal binding
+    DynamicRegular,
+    /// $.snippet(anchor, () => callee ?? $.noop, ...args) — non-normal + optional chain
+    DynamicChain,
+}
+
+impl RenderTagCalleeMode {
+    pub fn is_dynamic(self) -> bool {
+        matches!(self, Self::DynamicRegular | Self::DynamicChain)
+    }
+    pub fn is_chain(self) -> bool {
+        matches!(self, Self::Chain | Self::DynamicChain)
+    }
+}
+
 /// Pre-computed event handler delegation vs direct binding decision.
 #[derive(Debug, Clone, Copy)]
 pub enum EventHandlerMode {
@@ -480,13 +505,11 @@ pub struct AnalysisData {
     pub(crate) render_tag_callee_name: FxHashMap<NodeId, String>,
     /// Callee SymbolId for render tags (resolved during resolve_references).
     pub(crate) render_tag_callee_sym: FxHashMap<NodeId, SymbolId>,
-    /// Render tags whose expression was a ChainExpression (`{@render fn?.()}`).
-    pub render_tag_is_chain: FxHashSet<NodeId>,
-    /// Dynamic render tags — callee is a non-normal binding (prop, state, snippet param, etc.).
-    pub render_tag_dynamic: FxHashSet<NodeId>,
-    /// Render tags whose callee is a getter function (prop-source or snippet param).
-    /// These pass the callee directly to `$.snippet` instead of wrapping in a thunk.
-    pub render_tag_callee_is_getter: FxHashSet<NodeId>,
+    /// Intermediate: render tags with ChainExpression callee (`{@render fn?.()}`).
+    /// Consumed by `resolve_render_tag_dynamic` to compute `render_tag_callee_mode`.
+    pub(crate) render_tag_is_chain: FxHashSet<NodeId>,
+    /// Pre-computed render tag callee routing (replaces separate is_dynamic/is_chain/is_getter flags).
+    pub render_tag_callee_mode: FxHashMap<NodeId, RenderTagCalleeMode>,
     /// Await block binding patterns (then/catch), parsed via OXC.
     pub await_bindings: AwaitBindingData,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
@@ -526,8 +549,7 @@ impl AnalysisData {
             render_tag_callee_name: FxHashMap::default(),
             render_tag_callee_sym: FxHashMap::default(),
             render_tag_is_chain: FxHashSet::default(),
-            render_tag_dynamic: FxHashSet::default(),
-            render_tag_callee_is_getter: FxHashSet::default(),
+            render_tag_callee_mode: FxHashMap::default(),
             await_bindings: AwaitBindingData::new(),
             bind_semantics: BindSemanticsData::new(),
             import_syms: FxHashSet::default(),
@@ -544,9 +566,9 @@ impl AnalysisData {
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
     pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
-    pub fn render_tag_is_chain(&self, id: NodeId) -> bool { self.render_tag_is_chain.contains(&id) }
-    pub fn render_tag_is_dynamic(&self, id: NodeId) -> bool { self.render_tag_dynamic.contains(&id) }
-    pub fn render_tag_callee_is_getter(&self, id: NodeId) -> bool { self.render_tag_callee_is_getter.contains(&id) }
+    pub fn render_tag_callee_mode(&self, id: NodeId) -> RenderTagCalleeMode {
+        self.render_tag_callee_mode.get(&id).copied().unwrap_or(RenderTagCalleeMode::Direct)
+    }
 
     /// Component attribute needs `$.derived()` memoization:
     /// has a function call, OR is a non-simple dynamic expression.

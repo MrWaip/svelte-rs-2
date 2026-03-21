@@ -21,7 +21,8 @@ pub(crate) mod walker;
 pub use data::{
     AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind,
     EventHandlerMode, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags,
-    FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
+    FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis,
+    RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
@@ -177,27 +178,28 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
     }
 }
 
-/// Determine which render tags have dynamic callees and which are getter-type.
+/// Compute `RenderTagCalleeMode` for each render tag.
 /// Must run after `resolve_render_tag_prop_sources` (which runs after `props`).
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
-    // Collect all render tag IDs from arg_has_call (populated for every render tag).
+    use crate::data::RenderTagCalleeMode;
+
     let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().copied().collect();
 
     for node_id in all_ids {
         let is_dynamic = match data.render_tag_callee_sym.get(&node_id) {
-            Some(&sym_id) => {
-                let normal = data.scoping.is_normal_binding(sym_id);
-                if !normal && (data.scoping.is_prop_source(sym_id) || data.scoping.is_snippet_param(sym_id)) {
-                    data.render_tag_callee_is_getter.insert(node_id);
-                }
-                !normal
-            }
+            Some(&sym_id) => !data.scoping.is_normal_binding(sym_id),
             // No sym: non-Identifier callee or unresolved binding — always dynamic.
             None => true,
         };
-        if is_dynamic {
-            data.render_tag_dynamic.insert(node_id);
-        }
+        let is_chain = data.render_tag_is_chain.contains(&node_id);
+
+        let mode = match (is_dynamic, is_chain) {
+            (true, true) => RenderTagCalleeMode::DynamicChain,
+            (true, false) => RenderTagCalleeMode::DynamicRegular,
+            (false, true) => RenderTagCalleeMode::Chain,
+            (false, false) => RenderTagCalleeMode::Direct,
+        };
+        data.render_tag_callee_mode.insert(node_id, mode);
     }
 }
 

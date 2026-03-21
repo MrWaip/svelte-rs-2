@@ -361,7 +361,7 @@ fn emit_single_block<'a>(
     // RenderTag / ComponentNode / TitleElement: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
-        FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_is_dynamic(*id) => {
+        FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
             if !is_root { ctx.gen_ident("fragment"); }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
