@@ -1,0 +1,288 @@
+# Phase Boundary Audit
+
+Generated: 2026-03-21
+
+---
+
+## Class 1: Full Re-parse in Codegen
+
+### #1 — Each block destructuring default re-parse
+
+- **Pattern**: destructuring default value re-parse
+- **Class**: 1
+- **Complexity**: L
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/each_block.rs:264-320` (`extract_default_value` + `parse_inline_expr`)
+  - `crates/svelte_codegen_client/src/template/each_block.rs:185-241` (caller: `gen_each_block`)
+- **Occurrence count**: 1 (single call site, but covers all each blocks with destructuring defaults)
+- **What is aggregated**: `starts_with('[')` / `starts_with('{')` syntax detection, `find('=')` default extraction, `rfind(':')` alias extraction, depth-tracking comma split, then `oxc_parser::Parser::new()` to re-parse the extracted default value string
+- **Proposed type**: AST type in `svelte_ast` — parser delivers structured destructuring:
+  ```rust
+  struct EachContext {
+      kind: DestructureKind, // Array | Object
+      bindings: Vec<DestructuredBinding>,
+  }
+  struct DestructuredBinding {
+      name: CompactStr,
+      alias: Option<CompactStr>,
+      default_value: Option<Span>, // parsed in parse_js pass
+  }
+  ```
+- **Target layer**: parser (new AST structure) + parse_js (pre-parse default values)
+
+### #2 — Bind directive setter/getter construction
+
+- **Pattern**: bind setter/getter format-and-reparse
+- **Class**: 1
+- **Complexity**: M
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/component.rs:261-273` (`format!("{expr_text} = $$value")` → `ctx.b.parse_expression()`)
+- **Occurrence count**: 1
+- **What is aggregated**: expression text extracted from span, formatted into assignment string `"{expr} = $$value"`, then re-parsed via OXC
+- **Proposed type**: transform/analyze builds the setter `AssignmentExpression` directly from the pre-parsed bind expression, no string round-trip. `ParsedExprs` stores `bind_setter_expr(id)` and `bind_getter_expr(id)`
+- **Target layer**: analyze (build assignment expression in parse_js pass)
+
+### #3 — Props default value fallback re-parse
+
+- **Pattern**: prop default fallback re-parse
+- **Class**: 1
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/script.rs:533` (`self.b.parse_expression(prop.default_text...)`)
+- **Occurrence count**: 1
+- **What is aggregated**: fallback path when `prop_default_exprs` not populated — re-parses from `default_text` string
+- **Proposed type**: accessor `fn prop_default_expr(&self, prop_id) -> Option<Expression>` — ensure `parse_js` covers all prop default cases, remove fallback
+- **Target layer**: analyze (ensure complete coverage in parse_js)
+
+---
+
+## Class 2: String Re-parsing
+
+### #4 — Directive name dot-notation splitting
+
+- **Pattern**: legacy on:directive dot-path splitting
+- **Class**: 2
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1300-1309` (`name.split('.').collect()`)
+- **Occurrence count**: 1
+- **What is aggregated**: directive name span → source text → `split('.')` → member expression chain
+- **Proposed type**: parser delivers `Vec<CompactStr>` name parts on `OnDirectiveLegacy`, or pre-builds the member expression in parse_js
+- **Target layer**: parser (structured name parts)
+
+### #5 — Each block key_is_item detection
+
+- **Pattern**: key-equals-context string comparison
+- **Class**: 2
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/each_block.rs:41-48` (`starts_with('{')`, `starts_with('[')`, text comparison)
+- **Occurrence count**: 1
+- **What is aggregated**: context text trimmed, checked for destructuring prefix, key text compared to context text via string equality
+- **Proposed type**: accessor `fn each_key_is_item(&self, block_id: NodeId) -> bool` pre-computed in analyze
+- **Target layer**: analyze
+
+### #6 — Expression text shorthand detection
+
+- **Pattern**: shorthand detection via trimmed source text comparison
+- **Class**: 2
+- **Complexity**: M
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:253, 360, 977, 1011, 1061, 1119` (`source_text(span).trim() == name`)
+  - `crates/svelte_codegen_client/src/template/component.rs:137, 189` (same pattern)
+  - `crates/svelte_codegen_client/src/template/each_block.rs:42-43, 105, 186` (same pattern)
+- **Occurrence count**: 10+
+- **What is aggregated**: `ctx.component.source_text(span).trim()` compared to attribute/directive name to detect shorthand syntax (`class:foo` where expression equals name)
+- **Proposed type**: bool flag `is_shorthand` on directives/attributes, computed in parser (parser knows if expression text matches name)
+- **Target layer**: parser (set `is_shorthand: bool` during parsing)
+
+### #7 — Prop name $$ prefix check
+
+- **Pattern**: reserved prop name prefix check
+- **Class**: 2
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/lib.rs:126` (`prop.prop_name.starts_with("$$")`)
+  - `crates/svelte_codegen_client/src/custom_element.rs:119` (same)
+- **Occurrence count**: 2
+- **What is aggregated**: `starts_with("$$")` string check on prop name
+- **Proposed type**: accessor `fn is_reserved_prop(&self) -> bool` on `PropAnalysis`, or filter reserved props out in analyze
+- **Target layer**: analyze
+
+### #8 — HTML video tag detection
+
+- **Pattern**: `<video>` substring search in template HTML
+- **Class**: 2
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/mod.rs:90-92` (`html.contains("<video")`)
+- **Occurrence count**: 1
+- **What is aggregated**: searches generated HTML string for `<video` to determine `importNode` flag
+- **Proposed type**: accessor `fn needs_import_node(&self, fragment_id) -> bool` pre-computed during codegen template assembly or analyze
+- **Target layer**: codegen refactor (track during template HTML assembly, not post-hoc string search)
+
+---
+
+## Class 3: AST Re-traversal in Codegen
+
+### #9 — Class attribute + class directives collection
+
+- **Pattern**: class attr lookup + directive collection double traversal
+- **Class**: 3
+- **Complexity**: M
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:220` (`.find()` for class attr)
+  - `crates/svelte_codegen_client/src/template/attributes.rs:240` (`.filter_map()` for class directives)
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1102` (`.filter_map()` duplicate for svelte:element)
+- **Occurrence count**: 3 (2 collection passes + 1 duplicate in svelte:element path)
+- **What is aggregated**: `el.attributes` traversed to find class expression attribute, then again to collect class directive NodeIds
+- **Proposed type**: `ClassOutputInfo { class_attr_id: Option<NodeId>, directive_ids: Vec<NodeId> }` stored per element in analyze
+- **Target layer**: analyze
+- **Note**: `has_class_attribute()`, `has_class_directives()`, `has_dynamic_class_directives()` accessors already exist but only return bools — the actual NodeIds still require re-traversal
+
+### #10 — Component attribute lookup re-traversal
+
+- **Pattern**: component attribute re-lookup by NodeId
+- **Class**: 3
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/component.rs:122` (`.find(|a| a.id() == attr_id)`)
+  - `crates/svelte_codegen_client/src/template/component.rs:135` (`.find(|a| a.id() == attr_id)`)
+- **Occurrence count**: 2
+- **What is aggregated**: after collecting AttrKind metadata in first pass, re-traverses `cn.attributes` to look up the same attribute by ID
+- **Proposed type**: store needed attribute data (parts, expression_span) directly in `AttrKind` enum during first pass — codegen-internal refactor
+- **Target layer**: codegen refactor
+
+### #11 — Style directives in spread context
+
+- **Pattern**: style directive extraction in spread path
+- **Class**: 3
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1037` (`.filter_map()`)
+- **Occurrence count**: 1
+- **What is aggregated**: `el.attributes` traversed to collect style directives during spread processing
+- **Proposed type**: accessor `fn style_directive_ids(&self, element_id) -> &[NodeId]` in analyze
+- **Target layer**: analyze
+
+### #12 — Each block animate directive detection
+
+- **Pattern**: nested traversal for animate directive existence
+- **Class**: 3
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/each_block.rs:74-76` (`nodes.iter().any()` + `el.attributes.iter().any()`)
+- **Occurrence count**: 1
+- **What is aggregated**: nested iteration over each body nodes → element attributes to check for AnimateDirective
+- **Proposed type**: accessor `fn has_animate_in_body(&self, each_block_id: NodeId) -> bool` in analyze
+- **Target layer**: analyze
+
+### #13 — OnDirective modifiers repeated traversal
+
+- **Pattern**: on:directive modifiers multi-pass
+- **Class**: 3
+- **Complexity**: M
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1351-1359` (`.any()` + `.find_map()`)
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1571-1578` (duplicate pattern)
+- **Occurrence count**: 2 (same pattern in `emit_on_directive_legacy` and `emit_on_directive_element`)
+- **What is aggregated**: `od.modifiers` iterated 4+ times per directive for: prevent_default, stop_propagation, self, trusted, once, capture, passive/nonpassive
+- **Proposed type**:
+  ```rust
+  struct OnDirectiveModifiers {
+      has_prevent_default: bool,
+      has_stop_propagation: bool,
+      has_self: bool,
+      has_trusted: bool,
+      has_once: bool,
+      has_capture: bool,
+      passive: Option<bool>, // Some(true)=passive, Some(false)=nonpassive, None=unset
+  }
+  ```
+- **Target layer**: analyze (pre-compute per directive during analysis pass)
+
+---
+
+## Class 4: Derived Flags Without a Name
+
+### #14 — Event handler delegation routing
+
+- **Pattern**: event delegation vs direct binding decision
+- **Class**: 4
+- **Complexity**: M
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:95-98`
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1358-1375`
+  - `crates/svelte_codegen_client/src/template/attributes.rs:1609-1627`
+- **Occurrence count**: 3
+- **What is aggregated**: `!capture && is_delegatable_event(name)` → delegated vs direct, then nested `capture || passive` for arg building
+- **Proposed type**:
+  ```rust
+  enum EventHandlerMode {
+      Delegated { passive: bool },
+      Direct { capture: bool, passive: bool },
+  }
+  ```
+- **Target layer**: analyze
+
+### #15 — Class directive dynamic state
+
+- **Pattern**: class attr dynamic + directives dynamic combined decision
+- **Class**: 4
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/attributes.rs:266-314`
+- **Occurrence count**: 1
+- **What is aggregated**: `class_attr_is_dynamic || directives_are_dynamic` → `has_state`, then 4-way branching on has_directives x has_state
+- **Proposed type**: accessor `fn class_needs_state(&self, element_id: NodeId) -> bool` in analyze
+- **Target layer**: analyze
+
+### #16 — Render tag callee routing (borderline)
+
+- **Pattern**: render tag callee mode decision
+- **Class**: 4
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/render_tag.rs:24-110`
+- **Occurrence count**: 1
+- **What is aggregated**: `is_dynamic`, `is_chain`, `callee_is_getter` — three separate accessor calls
+- **Proposed type**: enum `RenderTagMode { Dynamic, Chain, Direct }` — but single use site, low priority
+- **Target layer**: analyze (low priority)
+
+### #17 — Boundary attribute is_import deep chain (borderline)
+
+- **Pattern**: boundary attr import symbol resolution
+- **Class**: 4
+- **Complexity**: S
+- **Where**:
+  - `crates/svelte_codegen_client/src/template/svelte_boundary.rs:100-111`
+- **Occurrence count**: 1
+- **What is aggregated**: `ctx.analysis.attr_expression(id).and_then(|info| info.references.first()).and_then(|r| r.symbol_id).is_some_and(|sym| ctx.is_import_sym(sym))` — deep chaining into AnalysisData
+- **Proposed type**: accessor `fn attr_is_import(&self, attr_id: NodeId) -> bool`
+- **Target layer**: analyze (low priority)
+
+---
+
+## Already Migrated
+
+~~#3.1 — use directive existence check via `has_use_directive()` accessor~~
+
+~~#3.4 — class directive dynamic check via `has_dynamic_class_directives()` accessor~~
+
+~~#4.1 — expression memoization via `needs_expr_memoization()` accessor~~
+
+~~#4.2 — component attribute memoization via `component_attr_needs_memo()` accessor~~
+
+---
+
+## Good Examples
+
+| Where | Why it's good |
+|---|---|
+| `template/expression.rs:gen_expression_tag` | Retrieves pre-parsed expression via `ctx.parsed.exprs.remove(&id)` — zero re-parsing |
+| `template/debug_tag.rs:emit_debug_tags` | Uses `ctx.parsed.debug_tag_exprs.remove(&(id, i))` — pre-parsed, no analysis logic |
+| `template/each_block.rs:gen_each_block` (key expr) | Uses `ctx.parsed.key_exprs.remove(&block_id)` — pre-parsed key expression |
+| `template/if_block.rs:gen_if_block` (memo) | Uses single `needs_expr_memoization()` accessor — flat match, no flag combination |
+| `template/element.rs:has_class_attribute` | Boolean accessor from analyze — no AST traversal in codegen |
+| `script.rs:gen_script` | Takes pre-parsed `ctx.parsed.script_program` — correct phase boundary |
+| `template/render_tag.rs` (accessors) | Each flag comes from a dedicated accessor — no recomputation, just borderline on combination |
