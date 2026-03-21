@@ -54,6 +54,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             Attribute::ExpressionAttribute(ea) if ea.name == "value" && el.name == "input" => {
                 data.element_flags.needs_input_defaults.insert(el.id);
             }
+            Attribute::UseDirective(_) => {
+                data.element_flags.has_use_directive.insert(el.id);
+            }
             _ => {}
         }
     }
