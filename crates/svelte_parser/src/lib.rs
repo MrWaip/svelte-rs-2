@@ -1138,7 +1138,7 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::UseDirective(UseDirective {
                         id: self.ids.next(),
-                        name: ud.name_span.source_text(self.source).to_string(),
+                        name: ud.name_span,
                         expression_span,
                     }));
                 }
@@ -1169,7 +1169,7 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::TransitionDirective(TransitionDirective {
                         id: self.ids.next(),
-                        name: td.name_span.source_text(self.source).to_string(),
+                        name: td.name_span,
                         expression_span,
                         modifiers: td.modifiers.iter().map(|m| m.source_text(self.source).to_string()).collect(),
                         direction,
@@ -1183,7 +1183,7 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::AnimateDirective(AnimateDirective {
                         id: self.ids.next(),
-                        name: ad.name_span.source_text(self.source).to_string(),
+                        name: ad.name_span,
                         expression_span,
                     }));
                 }
