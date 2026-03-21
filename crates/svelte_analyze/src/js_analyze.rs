@@ -295,7 +295,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
 /// Check if the expression (or any sub-expression) contains a call to a specific rune.
 fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
     match expr {
-        Expression::CallExpression(_) => svelte_parser::parse_js::detect_rune(expr) == Some(target),
+        Expression::CallExpression(_) => svelte_parser::script_info::detect_rune(expr) == Some(target),
         Expression::ConditionalExpression(c) => {
             expression_has_rune(&c.test, target)
                 || expression_has_rune(&c.consequent, target)
@@ -547,7 +547,7 @@ fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32,
 pub(crate) fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
     for key in scoping.root_unresolved_references().keys() {
         let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::parse_js::is_rune_name(name) {
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::script_info::is_rune_name(name) {
             info.store_candidates.push(CompactString::from(&name[1..]));
         }
     }

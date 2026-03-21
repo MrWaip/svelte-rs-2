@@ -160,7 +160,7 @@ pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Ve
     let arena_source = alloc.alloc_str(source);
     match svelte_parser::parse_script_with_alloc(&alloc, arena_source, 0, is_ts) {
         Ok(program) => {
-            let mut script_info = svelte_parser::parse_js::extract_script_info(&program, 0, source);
+            let mut script_info = svelte_parser::script_info::extract_script_info(&program, 0, source);
             let sem = oxc_semantic::SemanticBuilder::new().build(&program);
             js_analyze::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
             data.scoping = scope::ComponentScoping::from_scoping(sem.semantic.into_scoping());

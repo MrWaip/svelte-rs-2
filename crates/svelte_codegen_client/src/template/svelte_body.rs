@@ -6,7 +6,7 @@ use svelte_ast::{Attribute, NodeId};
 
 use crate::context::Ctx;
 
-use super::attributes::{gen_event_attr_on, gen_legacy_event_on, gen_use_directive_on};
+use super::events::{gen_event_attr_on, gen_legacy_event_on, gen_use_directive_on};
 
 /// Generate event listeners and actions for `<svelte:body>`.
 ///
