@@ -83,10 +83,7 @@ pub(crate) fn gen_if_block<'a>(
     // When a condition has a function call AND reactive references, wrap in $.derived.
     let mut derived_names: Vec<Option<String>> = Vec::new();
     for branch in branches.iter() {
-        let info = ctx.expression(branch.block_id);
-        let needs_memo = info.map_or(false, |e| {
-            e.has_call && e.references.iter().any(|r| r.symbol_id.is_some())
-        });
+        let needs_memo = ctx.analysis.needs_expr_memoization(branch.block_id);
         if needs_memo {
             let expr = get_node_expr(ctx, branch.block_id);
             let thunk = ctx.b.thunk(expr);
