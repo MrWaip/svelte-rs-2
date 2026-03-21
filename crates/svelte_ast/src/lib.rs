@@ -578,6 +578,70 @@ pub struct OnDirectiveLegacy {
     pub modifiers: Vec<String>,
 }
 
+impl OnDirectiveLegacy {
+    pub fn parsed_modifiers(&self) -> OnDirectiveModifiers {
+        OnDirectiveModifiers::from_modifiers(&self.modifiers)
+    }
+}
+
+/// LEGACY(svelte4): Pre-classified modifier flags for on:directive.
+pub struct OnDirectiveModifiers {
+    pub stop_propagation: bool,
+    pub stop_immediate_propagation: bool,
+    pub prevent_default: bool,
+    pub self_: bool,
+    pub trusted: bool,
+    pub once: bool,
+    pub capture: bool,
+    /// `Some(true)` = passive, `Some(false)` = nonpassive, `None` = unset.
+    pub passive: Option<bool>,
+}
+
+impl OnDirectiveModifiers {
+    pub fn from_modifiers(modifiers: &[String]) -> Self {
+        let mut result = Self {
+            stop_propagation: false,
+            stop_immediate_propagation: false,
+            prevent_default: false,
+            self_: false,
+            trusted: false,
+            once: false,
+            capture: false,
+            passive: None,
+        };
+        for m in modifiers {
+            match m.as_str() {
+                "stopPropagation" => result.stop_propagation = true,
+                "stopImmediatePropagation" => result.stop_immediate_propagation = true,
+                "preventDefault" => result.prevent_default = true,
+                "self" => result.self_ = true,
+                "trusted" => result.trusted = true,
+                "once" => result.once = true,
+                "capture" => result.capture = true,
+                "passive" => result.passive = Some(true),
+                "nonpassive" => result.passive = Some(false),
+                _ => {}
+            }
+        }
+        result
+    }
+
+    /// Ordered handler wrapper modifiers that are active.
+    /// Order matches Svelte reference (stopPropagation → once).
+    pub fn handler_wrappers(&self) -> impl Iterator<Item = &'static str> {
+        [
+            (self.stop_propagation, "stopPropagation"),
+            (self.stop_immediate_propagation, "stopImmediatePropagation"),
+            (self.prevent_default, "preventDefault"),
+            (self.self_, "self"),
+            (self.trusted, "trusted"),
+            (self.once, "once"),
+        ]
+        .into_iter()
+        .filter_map(|(active, name)| active.then_some(name))
+    }
+}
+
 /// Direction of a transition directive.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TransitionDirection {
