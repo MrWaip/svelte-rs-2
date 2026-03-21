@@ -217,6 +217,7 @@ impl<'a> Ctx<'a> {
     pub fn has_class_attribute(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_attribute(id) }
     pub fn needs_clsx(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_clsx(id) }
     pub fn has_style_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_style_directives(id) }
+    pub fn style_directives(&self, id: NodeId) -> &[svelte_ast::StyleDirective] { self.analysis.element_flags.style_directives(id) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_input_defaults(id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_var(id) }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.analysis.element_flags.is_dynamic_attr(id) }
