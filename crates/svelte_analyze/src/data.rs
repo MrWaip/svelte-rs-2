@@ -95,6 +95,7 @@ pub struct ElementFlags {
     /// Elements with both `contenteditable="true"` and `bind:innerHTML|innerText|textContent`.
     /// Text children use `nodeValue=` init instead of `$.set_text()` update.
     pub(crate) bound_contenteditable: FxHashSet<NodeId>,
+    pub(crate) has_use_directive: FxHashSet<NodeId>,
 }
 
 impl ElementFlags {
@@ -112,6 +113,7 @@ impl ElementFlags {
             needs_ref: FxHashSet::default(),
             dynamic_attrs: FxHashSet::default(),
             bound_contenteditable: FxHashSet::default(),
+            has_use_directive: FxHashSet::default(),
         }
     }
 
@@ -127,6 +129,7 @@ impl ElementFlags {
     pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(&id).map(|s| s.as_str()) }
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
+    pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
 }
 
 /// Fragment lowering results and content classification.
