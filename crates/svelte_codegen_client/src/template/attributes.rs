@@ -81,7 +81,7 @@ pub(crate) fn process_attr<'a>(
             if let Some(raw_event_name) = a.event_name.as_deref() {
                 let mode = ctx.event_handler_mode(attr_id)
                     .unwrap_or_else(|| panic!("missing event_handler_mode for attr {:?}", attr_id));
-                let event_name = svelte_parser::strip_capture_event(raw_event_name)
+                let event_name = svelte_analyze::strip_capture_event(raw_event_name)
                     .unwrap_or(raw_event_name).to_string();
 
                 let expr_offset = a.expression_span.start;
@@ -1524,7 +1524,7 @@ pub(crate) fn gen_event_attr_on<'a>(
     stmts: &mut Vec<Statement<'a>>,
     expr_offset: u32,
 ) {
-    let (event_name, capture) = if let Some(base) = svelte_parser::strip_capture_event(raw_event_name) {
+    let (event_name, capture) = if let Some(base) = svelte_analyze::strip_capture_event(raw_event_name) {
         (base.to_string(), true)
     } else {
         (raw_event_name.to_string(), false)
@@ -1535,7 +1535,7 @@ pub(crate) fn gen_event_attr_on<'a>(
     let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
-    let passive = svelte_parser::is_passive_event(&event_name);
+    let passive = svelte_analyze::is_passive_event(&event_name);
     let mut args: Vec<Arg<'a, '_>> = vec![
         Arg::Str(event_name.clone()),
         Arg::Ident(target),

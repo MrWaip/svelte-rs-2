@@ -434,7 +434,7 @@ fn walk_template_scopes(
                     if let Some(key_span) = block.key_span {
                         let key_text = component.source_text(key_span).trim();
                         let ctx_trimmed = context_text.trim();
-                        if key_text == ctx_trimmed && is_simple_identifier(key_text) {
+                        if key_text == ctx_trimmed && crate::utils::is_simple_identifier(key_text) {
                             scoping.mark_each_non_reactive(ctx_sym);
                             each_blocks.key_is_item.insert(block.id);
                         }
@@ -575,9 +575,6 @@ fn walk_template_scopes(
     }
 }
 
-fn is_simple_identifier(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-}
 
 /// Extract binding names and default status from a destructuring pattern.
 /// Handles `{ a, b = 5 }` and `[a, b]` patterns.
@@ -645,7 +642,7 @@ fn process_destructured_binding(part: &str, result: &mut Vec<(String, bool)>) {
         name_part
     };
 
-    if is_simple_identifier(name_part) {
+    if crate::utils::is_simple_identifier(name_part) {
         result.push((name_part.to_string(), has_default));
     }
 }

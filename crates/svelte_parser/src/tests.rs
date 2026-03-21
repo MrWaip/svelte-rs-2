@@ -810,7 +810,7 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::js_parse::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
         // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
         assert!(!program.body.is_empty());
     }
@@ -819,7 +819,7 @@ mod js_parse_tests {
     fn parse_const_declaration_simple() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("doubled = item * 2");
-        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("doubled")]);
     }
 
@@ -827,7 +827,7 @@ mod js_parse_tests {
     fn parse_const_declaration_destructuring() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("{a, b} = obj");
-        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a"), compact("b")]);
     }
 
@@ -835,7 +835,7 @@ mod js_parse_tests {
     fn parse_const_declaration_multiple_equals() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("a = b === c");
-        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a")]);
     }
 
@@ -844,7 +844,7 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::js_parse::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
         assert!(!program.body.is_empty());
     }
 }

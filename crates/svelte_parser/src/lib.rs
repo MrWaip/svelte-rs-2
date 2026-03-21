@@ -17,8 +17,7 @@ use svelte_ast::{
 
 use svelte_diagnostics::Diagnostic;
 
-pub mod js_parse;
-mod parse_js;
+pub mod parse_js;
 pub mod scanner;
 pub mod types;
 
@@ -26,7 +25,7 @@ pub mod types;
 pub use types::*;
 
 // Re-export parsing functions used by svelte_analyze
-pub use js_parse::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
+pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
 
 /// Parse a Svelte source file and all embedded JS expressions.
 ///
