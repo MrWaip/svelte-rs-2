@@ -1,6 +1,6 @@
 use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
-use svelte_ast::{ConcatPart, NodeId};
+use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_js::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
@@ -126,7 +126,7 @@ pub struct ElementFlags {
     pub(crate) needs_clsx: FxHashSet<NodeId>,
     /// Pre-extracted static class attribute value (avoids span→string conversion in codegen).
     pub(crate) static_class: FxHashMap<NodeId, String>,
-    pub(crate) has_style_directives: FxHashSet<NodeId>,
+    pub(crate) style_directives: FxHashMap<NodeId, Vec<StyleDirective>>,
     /// Pre-extracted static style attribute value (avoids span→string conversion in codegen).
     pub(crate) static_style: FxHashMap<NodeId, String>,
     pub(crate) needs_input_defaults: FxHashSet<NodeId>,
@@ -153,7 +153,7 @@ impl ElementFlags {
             class_directive_info: FxHashMap::default(),
             needs_clsx: FxHashSet::default(),
             static_class: FxHashMap::default(),
-            has_style_directives: FxHashSet::default(),
+            style_directives: FxHashMap::default(),
             static_style: FxHashMap::default(),
             needs_input_defaults: FxHashSet::default(),
             needs_var: FxHashSet::default(),
@@ -173,7 +173,8 @@ impl ElementFlags {
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.class_attr_id.get(&id).copied() }
     pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.class_directive_info.get(&id).map(|v| v.as_slice()) }
     pub fn needs_clsx(&self, id: NodeId) -> bool { self.needs_clsx.contains(&id) }
-    pub fn has_style_directives(&self, id: NodeId) -> bool { self.has_style_directives.contains(&id) }
+    pub fn has_style_directives(&self, id: NodeId) -> bool { self.style_directives.contains_key(&id) }
+    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] { self.style_directives.get(&id).map_or(&[], |v| v.as_slice()) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
     pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }

@@ -117,17 +117,12 @@ Generated: 2026-03-21
 
 - **Resolution**: `ComponentPropInfo` / `ComponentPropKind` in `ElementFlags`, populated by `ElementFlagsVisitor::visit_component_attribute`. Codegen snapshots `ctx.component_props(id)` — no `AttrKind` enum, no two-pass pattern, no `.find()` re-traversal. `needs_memo`, concatenation parts, and shorthand name are pre-computed in analyze.
 
-### #11 — Style directives in spread context
+### ~~#11 — Style directives in spread context~~ ✅
 
 - **Pattern**: style directive extraction in spread path
 - **Class**: 3
 - **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1037` (`.filter_map()`)
-- **Occurrence count**: 1
-- **What is aggregated**: `el.attributes` traversed to collect style directives during spread processing
-- **Proposed type**: accessor `fn style_directive_ids(&self, element_id) -> &[NodeId]` in analyze
-- **Target layer**: analyze
+- **Resolution**: `style_directives: FxHashMap<NodeId, Vec<StyleDirective>>` in `ElementFlags`, populated by `ElementFlagsVisitor`. Codegen uses `ctx.style_directives(id)` — no `.filter_map()` re-traversal in either `process_style_directives()` or `process_attrs_spread()`.
 
 ### #12 — Each block animate directive detection
 
