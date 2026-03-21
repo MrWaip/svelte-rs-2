@@ -564,6 +564,14 @@ impl AnalysisData {
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
+    /// Whether the attribute's expression references an imported symbol (first reference).
+    /// Import identifiers may be live bindings — codegen needs getters/wrapping.
+    pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
+        self.attr_expressions.get(&attr_id)
+            .and_then(|info| info.references.first())
+            .and_then(|r| r.symbol_id)
+            .is_some_and(|sym| self.import_syms.contains(&sym))
+    }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
     pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
     pub fn render_tag_callee_mode(&self, id: NodeId) -> RenderTagCalleeMode {
