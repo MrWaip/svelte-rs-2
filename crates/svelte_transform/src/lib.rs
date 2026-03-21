@@ -288,8 +288,10 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
             if !is_root {
                 if self.ctx.analysis.scoping.is_arrow_param(sym_id)
                     || self.ctx.analysis.scoping.is_snippet_name(sym_id)
+                    || self.ctx.analysis.scoping.is_each_non_reactive(sym_id)
                 {
-                    // Arrow function parameter or template snippet name — leave as-is
+                    // Arrow function parameter, template snippet name, or
+                    // each-block var with key_is_item optimization — leave as-is
                 } else if self.ctx.analysis.scoping.is_snippet_param(sym_id) {
                     *it = rune_refs::make_thunk_call(self.ctx.alloc, name);
                 } else {

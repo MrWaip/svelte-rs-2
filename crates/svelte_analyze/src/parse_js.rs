@@ -174,13 +174,42 @@ fn walk_node<'a>(
                 let key_source = component.source_text(key_span);
                 let arena_source: &'a str = alloc.alloc_str(key_source);
                 match svelte_js::analyze_expression_with_alloc(alloc, arena_source, key_span.start, typescript) {
-                    Ok((_info, expr)) => {
+                    Ok((info, expr)) => {
+                        // Check if key expression references the index variable
+                        if let Some(idx_span) = block.index_span {
+                            let idx_name = component.source_text(idx_span);
+                            if info.references.iter().any(|r| r.name.as_str() == idx_name) {
+                                data.each_blocks.key_uses_index.insert(block.id);
+                            }
+                        }
                         parsed.key_exprs.insert(block.id, expr);
                     }
                     Err(diag) => diags.push(diag),
                 }
             }
+
+            // Track expression keys before walking body to detect body_uses_index
+            let expr_keys_before: rustc_hash::FxHashSet<NodeId> =
+                data.expressions.keys().copied().collect();
+            let attr_keys_before: rustc_hash::FxHashSet<NodeId> =
+                data.attr_expressions.keys().copied().collect();
+
             walk_fragment(alloc, &block.body, component, typescript, data, parsed, diags);
+
+            // Check if any body expression references the index variable
+            if let Some(idx_span) = block.index_span {
+                let idx_name = component.source_text(idx_span);
+                let body_uses_idx = data.expressions.iter()
+                    .filter(|(k, _)| !expr_keys_before.contains(k))
+                    .any(|(_, info)| info.references.iter().any(|r| r.name.as_str() == idx_name))
+                || data.attr_expressions.iter()
+                    .filter(|(k, _)| !attr_keys_before.contains(k))
+                    .any(|(_, info)| info.references.iter().any(|r| r.name.as_str() == idx_name));
+                if body_uses_idx {
+                    data.each_blocks.body_uses_index.insert(block.id);
+                }
+            }
+
             if let Some(fb) = &block.fallback {
                 walk_fragment(alloc, fb, component, typescript, data, parsed, diags);
             }
