@@ -249,10 +249,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             let name = &cd.name;
             let (expr, same_name) = if cd.expression_span.is_some() {
                 let parsed = get_attr_expr(ctx, cd.id);
-                let same = cd.expression_span
-                    .map(|span| ctx.component.source_text(span).trim() == name.as_str())
-                    .unwrap_or(false);
-                (parsed, same)
+                (parsed, ctx.is_expression_shorthand(cd.id))
             } else {
                 (ctx.b.rid_expr(name), true)
             };
@@ -355,10 +352,9 @@ pub(crate) fn process_style_directives<'a>(
                 let expr = ctx.b.rid_expr(name);
                 target.push(build_directive_prop(ctx, sd.id, name, expr, true));
             }
-            StyleDirectiveValue::Expression(span) => {
+            StyleDirectiveValue::Expression(_) => {
                 let parsed = get_attr_expr(ctx, sd.id);
-                let expr_text = ctx.component.source_text(*span).trim();
-                let same_name = expr_text == name.as_str();
+                let same_name = ctx.is_expression_shorthand(sd.id);
                 target.push(build_directive_prop(ctx, sd.id, name, parsed, same_name));
             }
             StyleDirectiveValue::String(s) => {
@@ -974,8 +970,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(&val)));
             }
             Attribute::ExpressionAttribute(a) => {
-                let expr_text = ctx.component.source_text(a.expression_span).trim();
-                if a.name == expr_text {
+                if ctx.is_expression_shorthand(attr_id) {
                     // Property shorthand: name matches expression
                     let name_alloc = ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::Shorthand(name_alloc));
@@ -1056,10 +1051,9 @@ pub(crate) fn process_attrs_spread<'a>(
                 StyleDirectiveValue::Shorthand => {
                     style_props.push(build_directive_prop(ctx, sd.id, name, ctx.b.rid_expr(name), true));
                 }
-                StyleDirectiveValue::Expression(span) => {
+                StyleDirectiveValue::Expression(_) => {
                     let parsed = get_attr_expr(ctx, sd.id);
-                    let expr_text = ctx.component.source_text(*span).trim();
-                    let same_name = expr_text == name.as_str();
+                    let same_name = ctx.is_expression_shorthand(sd.id);
                     style_props.push(build_directive_prop(ctx, sd.id, name, parsed, same_name));
                 }
                 StyleDirectiveValue::String(s) => {
@@ -1115,10 +1109,7 @@ pub(crate) fn process_svelte_element_class_directives<'a>(
         let name = &cd.name;
         let (expr, same_name) = if cd.expression_span.is_some() {
             let parsed = get_attr_expr(ctx, cd.id);
-            let same = cd.expression_span
-                .map(|span| ctx.component.source_text(span).trim() == name.as_str())
-                .unwrap_or(false);
-            (parsed, same)
+            (parsed, ctx.is_expression_shorthand(cd.id))
         } else {
             (ctx.b.rid_expr(name), true)
         };

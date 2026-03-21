@@ -401,6 +401,12 @@ fn walk_attrs<'a>(
             Attribute::ExpressionAttribute(a) => {
                 let source = component.source_text(a.expression_span);
                 parse_attr_expr(alloc, source, a.expression_span.start, attr_id, typescript, data, parsed, diags);
+                // Detect semantic shorthand: expression is a simple identifier matching attr name
+                if let Some(Expression::Identifier(ident)) = parsed.attr_exprs.get(&attr_id) {
+                    if ident.name.as_str() == a.name {
+                        data.element_flags.expression_shorthand.insert(attr_id);
+                    }
+                }
                 // class={[...]} or class={{...}} or class={x} need clsx to resolve
                 if a.name == "class" {
                     if let Some(expr) = parsed.attr_exprs.get(&attr_id) {
@@ -423,6 +429,11 @@ fn walk_attrs<'a>(
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
                     parse_attr_expr(alloc, source, span.start, attr_id, typescript, data, parsed, diags);
+                    if let Some(Expression::Identifier(ident)) = parsed.attr_exprs.get(&attr_id) {
+                        if ident.name.as_str() == a.name {
+                            data.element_flags.expression_shorthand.insert(attr_id);
+                        }
+                    }
                 }
             }
             Attribute::StyleDirective(a) => {
@@ -431,6 +442,11 @@ fn walk_attrs<'a>(
                     StyleDirectiveValue::Expression(span) => {
                         let source = component.source_text(*span);
                         parse_attr_expr(alloc, source, span.start, attr_id, typescript, data, parsed, diags);
+                        if let Some(Expression::Identifier(ident)) = parsed.attr_exprs.get(&attr_id) {
+                            if ident.name.as_str() == a.name {
+                                data.element_flags.expression_shorthand.insert(attr_id);
+                            }
+                        }
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         parse_concat_parts(alloc, parts, attr_id, component, typescript, data, parsed, diags);

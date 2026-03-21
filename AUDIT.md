@@ -78,19 +78,19 @@ Generated: 2026-03-21
 - **Proposed type**: accessor `fn each_key_is_item(&self, block_id: NodeId) -> bool` — `parse_js` уже парсит key и context через OXC. Проверка: key — `IdentifierReference`, context — `BindingIdentifier`, имена совпадают. Если context — destructuring (`BindingPatternKind::Object/Array`), результат всегда `false`.
 - **Target layer**: analyze (parse_js pass)
 
-### #6 — Expression text shorthand detection
+### #6 — Expression text shorthand detection ✅
 
+- **Status**: DONE — `expression_shorthand` flag in `ElementFlags`, computed in `parse_js`, 5 codegen occurrences replaced
 - **Pattern**: shorthand detection via trimmed source text comparison
 - **Class**: 2
 - **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:253, 360, 977, 1011, 1061, 1119` (`source_text(span).trim() == name`)
-  - `crates/svelte_codegen_client/src/template/component.rs:137, 189` (same pattern)
-  - `crates/svelte_codegen_client/src/template/each_block.rs:42-43, 105, 186` (same pattern)
-- **Occurrence count**: 10+
-- **What is aggregated**: `ctx.component.source_text(span).trim()` compared to attribute/directive name to detect shorthand syntax (`class:foo` where expression equals name)
-- **Proposed type**: bool flag `is_shorthand` per directive/attribute — `parse_js` проверяет: выражение является `Expression::Identifier(ident)` и `ident.name == attr_name`. Результат сохраняется в side table, codegen читает через accessor `fn is_shorthand_attr(&self, attr_id: NodeId) -> bool`.
-- **Target layer**: analyze (parse_js pass)
+- **Remaining `source_text()` uses** (NOT shorthand detection — identifier name extraction, out of scope):
+  - `attributes.rs:1011` — `Shorthand` attribute name extraction
+  - `component.rs:137` — Shorthand attribute name extraction for component props
+  - `component.rs:189` — bind:this variable name extraction
+  - `each_block.rs:42-43` — key_is_item check (finding #5)
+  - `each_block.rs:105` — prop source identifier name
+  - `each_block.rs:186` — context pattern text
 
 ### #7 — Prop name $$ prefix check
 
