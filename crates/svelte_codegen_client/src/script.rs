@@ -411,30 +411,32 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     }
 
     /// Walk an AssignmentTarget member chain to find root store ref.
-    fn extract_assign_member_store_root<'t>(&self, target: &'t oxc_ast::ast::AssignmentTarget<'a>) -> Option<&'t str> {
+    /// Returns `(dollar_name, base_name)` — e.g. `("$count", "count")`.
+    fn extract_assign_member_store_root<'t>(&self, target: &'t oxc_ast::ast::AssignmentTarget<'a>) -> Option<(&'t str, &'t str)> {
         match target {
             oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => {
                 let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.is_store_ref(name).then_some(name)
+                self.component_scoping.store_base_name(name).map(|base| (name, base))
             }
             oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => {
                 let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.is_store_ref(name).then_some(name)
+                self.component_scoping.store_base_name(name).map(|base| (name, base))
             }
             _ => None,
         }
     }
 
     /// Walk a SimpleAssignmentTarget member chain to find root store ref.
-    fn extract_simple_member_store_root<'t>(&self, target: &'t oxc_ast::ast::SimpleAssignmentTarget<'a>) -> Option<&'t str> {
+    /// Returns `(dollar_name, base_name)` — e.g. `("$count", "count")`.
+    fn extract_simple_member_store_root<'t>(&self, target: &'t oxc_ast::ast::SimpleAssignmentTarget<'a>) -> Option<(&'t str, &'t str)> {
         match target {
             oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(m) => {
                 let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.is_store_ref(name).then_some(name)
+                self.component_scoping.store_base_name(name).map(|base| (name, base))
             }
             oxc_ast::ast::SimpleAssignmentTarget::ComputedMemberExpression(m) => {
                 let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.is_store_ref(name).then_some(name)
+                self.component_scoping.store_base_name(name).map(|base| (name, base))
             }
             _ => None,
         }
@@ -2100,8 +2102,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // Store subscription assignment: $count = val → $.store_set(count, val)
             // Compound: $count += val → $.store_set(count, $count() + val)
             let id_name = id.name.as_str();
-            if self.component_scoping.is_store_ref(id_name) {
-                let base_name: &str = self.b.alloc_str(&id_name[1..]);
+            if let Some(base) = self.component_scoping.store_base_name(id_name) {
+                let base_name: &str = self.b.alloc_str(base);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let right = self.b.move_expr(&mut assign.right);
 
@@ -2152,9 +2154,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
 
         // Deep store mutation: $store.field = val → $.store_mutate(store, ...)
-        if let Some(root_name) = self.extract_assign_member_store_root(&assign.left) {
+        if let Some((root_name, base)) = self.extract_assign_member_store_root(&assign.left) {
             let root_name = root_name.to_string();
-            let base_name = root_name[1..].to_string();
+            let base_name = base.to_string();
             let alloc = self.b.ast.allocator;
             // Replace root identifier in the member chain with $.untrack($store)
             svelte_transform::rune_refs::replace_expr_root_in_assign_target(
@@ -2190,8 +2192,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
             // ++$count → $.update_pre_store(count, $count())
             // $count-- → $.update_store(count, $count(), -1)
             let id_name = id.name.as_str();
-            if self.component_scoping.is_store_ref(id_name) {
-                let base_name: &str = self.b.alloc_str(&id_name[1..]);
+            if let Some(base) = self.component_scoping.store_base_name(id_name) {
+                let base_name: &str = self.b.alloc_str(base);
                 let dollar_name: &str = self.b.alloc_str(id_name);
                 let fn_name = if upd.prefix { "$.update_pre_store" } else { "$.update_store" };
                 let thunk_call = self.b.call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
@@ -2218,9 +2220,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
 
         // Deep store update: $store.count++ → $.store_mutate(store, ...)
-        if let Some(root_name) = self.extract_simple_member_store_root(&upd.argument) {
+        if let Some((root_name, base)) = self.extract_simple_member_store_root(&upd.argument) {
             let root_name = root_name.to_string();
-            let base_name = root_name[1..].to_string();
+            let base_name = base.to_string();
             let alloc = self.b.ast.allocator;
             svelte_transform::rune_refs::replace_expr_root_in_simple_target(
                 &mut upd.argument,
