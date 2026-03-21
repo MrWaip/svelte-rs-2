@@ -63,7 +63,7 @@ impl<'s> BindSemanticsVisitor<'s> {
             return;
         };
 
-        if svelte_parser::is_simple_identifier(expr_text) {
+        if crate::utils::is_simple_identifier(expr_text) {
             return; // simple identifiers don't need each-block context
         }
 

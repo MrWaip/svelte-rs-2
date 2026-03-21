@@ -8,7 +8,6 @@ use oxc_ast::ast::Expression;
 use svelte_span::Span;
 use svelte_parser::{
     ExpressionInfo, ExpressionKind, Reference, ReferenceFlags, RuneKind, ScriptInfo,
-    expression_has_call,
 };
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
@@ -296,7 +295,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
 /// Check if the expression (or any sub-expression) contains a call to a specific rune.
 fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
     match expr {
-        Expression::CallExpression(_) => svelte_parser::js_parse::detect_rune(expr) == Some(target),
+        Expression::CallExpression(_) => svelte_parser::parse_js::detect_rune(expr) == Some(target),
         Expression::ConditionalExpression(c) => {
             expression_has_rune(&c.test, target)
                 || expression_has_rune(&c.consequent, target)
@@ -548,9 +547,35 @@ fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32,
 pub(crate) fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
     for key in scoping.root_unresolved_references().keys() {
         let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::js_parse::is_rune_name(name) {
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::parse_js::is_rune_name(name) {
             info.store_candidates.push(CompactString::from(&name[1..]));
         }
+    }
+}
+
+pub(crate) fn expression_has_call(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::CallExpression(_) => true,
+        Expression::ConditionalExpression(c) => {
+            expression_has_call(&c.test)
+                || expression_has_call(&c.consequent)
+                || expression_has_call(&c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            expression_has_call(&b.left) || expression_has_call(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            expression_has_call(&l.left) || expression_has_call(&l.right)
+        }
+        Expression::StaticMemberExpression(m) => expression_has_call(&m.object),
+        Expression::ComputedMemberExpression(m) => {
+            expression_has_call(&m.object) || expression_has_call(&m.expression)
+        }
+        Expression::UnaryExpression(u) => expression_has_call(&u.argument),
+        Expression::SequenceExpression(s) => s.expressions.iter().any(|e| expression_has_call(e)),
+        // Function boundaries are opaque
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        _ => false,
     }
 }
 
