@@ -436,6 +436,7 @@ fn walk_template_scopes(
                         let ctx_trimmed = context_text.trim();
                         if key_text == ctx_trimmed && is_simple_identifier(key_text) {
                             scoping.mark_each_non_reactive(ctx_sym);
+                            each_blocks.key_is_item.insert(block.id);
                         }
                     }
                 }
