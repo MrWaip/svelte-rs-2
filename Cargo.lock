@@ -1073,7 +1073,6 @@ dependencies = [
  "svelte_diagnostics",
  "svelte_parser",
  "svelte_span",
- "svelte_types",
 ]
 
 [[package]]
@@ -1098,9 +1097,9 @@ dependencies = [
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
+ "svelte_parser",
  "svelte_span",
  "svelte_transform",
- "svelte_types",
 ]
 
 [[package]]
@@ -1141,7 +1140,6 @@ dependencies = [
  "svelte_ast",
  "svelte_diagnostics",
  "svelte_span",
- "svelte_types",
 ]
 
 [[package]]
@@ -1163,21 +1161,7 @@ dependencies = [
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
- "svelte_span",
- "svelte_types",
-]
-
-[[package]]
-name = "svelte_types"
-version = "0.1.0"
-dependencies = [
- "compact_str",
- "oxc_ast",
- "oxc_semantic",
- "oxc_span",
- "rustc-hash",
- "svelte_ast",
- "svelte_diagnostics",
+ "svelte_parser",
  "svelte_span",
 ]
 

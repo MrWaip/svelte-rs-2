@@ -1,4 +1,4 @@
-use svelte_types::RuneKind;
+use svelte_parser::RuneKind;
 
 use crate::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 

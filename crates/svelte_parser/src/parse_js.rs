@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, NodeId, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
-use svelte_types::JsParseResult;
+use crate::types::JsParseResult;
 
 pub(crate) fn parse_js<'a>(
     alloc: &'a Allocator,
@@ -23,6 +23,32 @@ pub(crate) fn parse_js<'a>(
             typescript,
         ) {
             Ok(program) => {
+                let offset = script.content_span.start;
+                let script_info =
+                    crate::js_parse::extract_script_info(&program, offset, source);
+
+                // Parse prop default expressions into the shared allocator
+                if let Some(ref props_decl) = script_info.props_declaration {
+                    for prop in &props_decl.props {
+                        if let Some(span) = prop.default_span {
+                            let src = component.source_text(span);
+                            let arena_src: &'a str = alloc.alloc_str(src);
+                            match crate::js_parse::parse_expression_with_alloc(
+                                alloc, arena_src, span.start, typescript,
+                            ) {
+                                Ok(expr) => result.parsed.prop_default_exprs.push(Some(expr)),
+                                Err(diag) => {
+                                    diags.push(diag);
+                                    result.parsed.prop_default_exprs.push(None);
+                                }
+                            }
+                        } else {
+                            result.parsed.prop_default_exprs.push(None);
+                        }
+                    }
+                }
+
+                result.script_info = Some(script_info);
                 result.parsed.script_program = Some(program);
                 result.script_content_span = Some(script.content_span);
             }

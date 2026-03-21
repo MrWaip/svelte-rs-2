@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
-use svelte_types::ExpressionInfo;
+use svelte_parser::ExpressionInfo;
 use svelte_transform::TransformData;
 
 use crate::builder::Builder;
@@ -193,10 +193,10 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
     }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> {
+    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
         self.analysis.await_bindings.value(id)
     }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> {
+    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
         self.analysis.await_bindings.error(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {

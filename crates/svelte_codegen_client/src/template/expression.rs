@@ -5,7 +5,7 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{LoweredTextPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
-use svelte_types::ExpressionKind;
+use svelte_parser::ExpressionKind;
 
 use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;

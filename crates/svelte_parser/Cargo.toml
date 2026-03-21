@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 svelte_span = { path = "../svelte_span" }
 svelte_ast = { path = "../svelte_ast" }
-svelte_types = { path = "../svelte_types" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }

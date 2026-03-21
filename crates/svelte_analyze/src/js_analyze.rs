@@ -5,22 +5,13 @@
 
 use compact_str::CompactString;
 use oxc_ast::ast::Expression;
-use oxc_span::GetSpan as _;
-use rustc_hash::FxHashSet;
 use svelte_span::Span;
-use svelte_types::{
-    DeclarationInfo, DeclarationKind, ExportInfo, ExpressionInfo, ExpressionKind, PropInfo,
-    PropsDeclaration, Reference, ReferenceFlags, RuneKind, ScriptInfo, expression_has_call,
-    extract_all_binding_names, is_simple_expr,
+use svelte_parser::{
+    ExpressionInfo, ExpressionKind, Reference, ReferenceFlags, RuneKind, ScriptInfo,
+    expression_has_call,
 };
 
-// ---------------------------------------------------------------------------
-// Expression analysis
-// ---------------------------------------------------------------------------
-
-use oxc_allocator::Allocator;
 use svelte_ast::{Component, Fragment, Node, NodeId};
-use svelte_diagnostics::Diagnostic;
 
 use crate::data::{AnalysisData, ParsedExprs};
 use crate::scope::ComponentScoping;
@@ -29,27 +20,20 @@ use crate::scope::ComponentScoping;
 // Entry-point functions (called from analyze pipeline)
 // ---------------------------------------------------------------------------
 
-/// Extract ScriptInfo + build Scoping from the pre-parsed script Program.
+/// Enrich pre-extracted ScriptInfo with semantic data and build Scoping.
+/// `script_info` comes from `JsParseResult` (extracted by parser).
 pub(crate) fn analyze_script(
     parsed: &ParsedExprs<'_>,
-    component: &Component,
     data: &mut AnalysisData,
-    _typescript: bool,
-    script_content_span: Option<svelte_span::Span>,
+    mut script_info: ScriptInfo,
 ) {
     let Some(ref program) = parsed.script_program else { return };
-    let Some(span) = script_content_span else { return };
-
-    let offset = span.start;
-    let source = component.source_text(span);
-
-    let mut info = extract_script_info(program, offset, source);
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
-    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut info);
+    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     // Detect deep store mutations in script body
-    info.has_store_member_mutations = program.body.iter().any(|stmt| {
+    script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
         if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
             has_deep_store_mutation(&es.expression)
         } else {
@@ -57,37 +41,11 @@ pub(crate) fn analyze_script(
         }
     });
 
-    data.exports = std::mem::take(&mut info.exports);
-    data.needs_context = info.has_effects || info.has_class_state_fields;
-    data.has_class_state_fields = info.has_class_state_fields;
+    data.exports = std::mem::take(&mut script_info.exports);
+    data.needs_context = script_info.has_effects || script_info.has_class_state_fields;
+    data.has_class_state_fields = script_info.has_class_state_fields;
     data.scoping = ComponentScoping::from_scoping(sem.semantic.into_scoping());
-    data.script = Some(info);
-}
-
-/// Parse prop default expressions into the shared allocator.
-/// Must be called after `analyze_script` (needs `data.script`).
-pub(crate) fn parse_prop_defaults<'a>(
-    alloc: &'a Allocator,
-    component: &Component,
-    data: &AnalysisData,
-    parsed: &mut ParsedExprs<'a>,
-    typescript: bool,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let Some(ref script_info) = data.script else { return };
-    let Some(ref props_decl) = script_info.props_declaration else { return };
-    for prop in &props_decl.props {
-        if let Some(span) = prop.default_span {
-            let src = component.source_text(span);
-            let arena_src: &'a str = alloc.alloc_str(src);
-            match svelte_parser::js_parse::parse_expression_with_alloc(alloc, arena_src, span.start, typescript) {
-                Ok(expr) => parsed.prop_default_exprs.push(Some(expr)),
-                Err(diag) => { diags.push(diag); parsed.prop_default_exprs.push(None); }
-            }
-        } else {
-            parsed.prop_default_exprs.push(None);
-        }
-    }
+    data.script = Some(script_info);
 }
 
 /// Extract ExpressionInfo for all parsed template and attribute expressions.
@@ -338,7 +296,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
 /// Check if the expression (or any sub-expression) contains a call to a specific rune.
 fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
     match expr {
-        Expression::CallExpression(_) => detect_rune(expr) == Some(target),
+        Expression::CallExpression(_) => svelte_parser::js_parse::detect_rune(expr) == Some(target),
         Expression::ConditionalExpression(c) => {
             expression_has_rune(&c.test, target)
                 || expression_has_rune(&c.consequent, target)
@@ -585,518 +543,14 @@ fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32,
     }
 }
 
-// ---------------------------------------------------------------------------
-// Script analysis
-// ---------------------------------------------------------------------------
-
-pub(crate) fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
-    let mut declarations = Vec::new();
-    let mut props_declaration = None;
-    let mut exports = Vec::new();
-    let mut has_effects = false;
-    let mut has_class_state_fields = false;
-
-    for stmt in &program.body {
-        use oxc_ast::ast::Statement;
-
-        match stmt {
-            Statement::ExportNamedDeclaration(export) => {
-                // `export { x, y as z }` form
-                for spec in &export.specifiers {
-                    let local = CompactString::from(spec.local.name().as_str());
-                    let exported = CompactString::from(spec.exported.name().as_str());
-                    let alias = if local != exported { Some(exported) } else { None };
-                    exports.push(ExportInfo { name: local, alias });
-                }
-                // `export const/function/class ...` form
-                if let Some(decl) = &export.declaration {
-                    collect_export_names_from_declaration(decl, &mut exports);
-                    collect_declarations_from_declaration(decl, offset, source, &mut declarations, &mut props_declaration);
-                }
-            }
-            Statement::VariableDeclaration(decl) => {
-                collect_var_declarations(decl, offset, source, &mut declarations, &mut props_declaration);
-            }
-            Statement::FunctionDeclaration(func) => {
-                collect_func_declaration(func, offset, &mut declarations);
-            }
-            Statement::ExpressionStatement(es) => {
-                // $effect(fn) and $effect.pre(fn) need context (push/pop).
-                // $effect.tracking() does NOT — it's a pure read.
-                if is_effect_call(&es.expression) {
-                    has_effects = true;
-                }
-            }
-            Statement::ClassDeclaration(class) => {
-                if has_class_state_runes(&class.body) {
-                    has_class_state_fields = true;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    ScriptInfo { declarations, props_declaration, exports, has_effects, has_class_state_fields, store_candidates: Vec::new(), has_store_member_mutations: false }
-}
-
 /// Enrich ScriptInfo from OXC's unresolved references in one pass.
 /// Detects store candidates ($count etc) from unresolved `$`-prefixed references.
 pub(crate) fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
     for key in scoping.root_unresolved_references().keys() {
         let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::js_parse::is_rune_name(name) {
             info.store_candidates.push(CompactString::from(&name[1..]));
         }
     }
 }
 
-fn collect_export_names_from_declaration(
-    decl: &oxc_ast::ast::Declaration<'_>,
-    exports: &mut Vec<ExportInfo>,
-) {
-    match decl {
-        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
-            for declarator in &var_decl.declarations {
-                if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id {
-                    exports.push(ExportInfo { name: CompactString::from(ident.name.as_str()), alias: None });
-                }
-            }
-        }
-        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
-            if let Some(ident) = &func.id {
-                exports.push(ExportInfo { name: CompactString::from(ident.name.as_str()), alias: None });
-            }
-        }
-        oxc_ast::ast::Declaration::ClassDeclaration(cls) => {
-            if let Some(ident) = &cls.id {
-                exports.push(ExportInfo { name: CompactString::from(ident.name.as_str()), alias: None });
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_declarations_from_declaration(
-    decl: &oxc_ast::ast::Declaration<'_>,
-    offset: u32,
-    source: &str,
-    declarations: &mut Vec<DeclarationInfo>,
-    props_declaration: &mut Option<PropsDeclaration>,
-) {
-    match decl {
-        oxc_ast::ast::Declaration::VariableDeclaration(var_decl) => {
-            collect_var_declarations(var_decl, offset, source, declarations, props_declaration);
-        }
-        oxc_ast::ast::Declaration::FunctionDeclaration(func) => {
-            collect_func_declaration(func, offset, declarations);
-        }
-        _ => {}
-    }
-}
-
-fn collect_func_declaration(
-    func: &oxc_ast::ast::Function<'_>,
-    offset: u32,
-    declarations: &mut Vec<DeclarationInfo>,
-) {
-    if let Some(ident) = &func.id {
-        declarations.push(DeclarationInfo {
-            name: CompactString::from(ident.name.as_str()),
-            span: Span::new(ident.span.start + offset, ident.span.end + offset),
-            kind: DeclarationKind::Function,
-            init_span: None,
-            is_rune: None,
-            rune_init_refs: vec![],
-        });
-    }
-}
-
-fn collect_var_declarations(
-    decl: &oxc_ast::ast::VariableDeclaration<'_>,
-    offset: u32,
-    source: &str,
-    declarations: &mut Vec<DeclarationInfo>,
-    props_declaration: &mut Option<PropsDeclaration>,
-) {
-    let kind = match decl.kind {
-        oxc_ast::ast::VariableDeclarationKind::Let => DeclarationKind::Let,
-        oxc_ast::ast::VariableDeclarationKind::Const => DeclarationKind::Const,
-        oxc_ast::ast::VariableDeclarationKind::Var => DeclarationKind::Var,
-        _ => DeclarationKind::Var,
-    };
-
-    for declarator in &decl.declarations {
-        match &declarator.id {
-            oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
-                let name = CompactString::from(ident.name.as_str());
-                let decl_span = Span::new(
-                    ident.span.start + offset,
-                    ident.span.end + offset,
-                );
-
-                let (init_span, is_rune, rune_init_refs) = if let Some(init) = &declarator.init {
-                    let init_sp = Span::new(
-                        init.span().start + offset,
-                        init.span().end + offset,
-                    );
-                    let rune = detect_rune(init);
-                    let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
-                        collect_derived_refs(init)
-                    } else {
-                        vec![]
-                    };
-                    (Some(init_sp), rune, refs)
-                } else {
-                    (None, None, vec![])
-                };
-
-                declarations.push(DeclarationInfo {
-                    name,
-                    span: decl_span,
-                    kind,
-                    init_span,
-                    is_rune,
-                    rune_init_refs,
-                });
-            }
-            oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
-                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
-
-                if rune == Some(RuneKind::Props) {
-                    let mut props = Vec::new();
-
-                    for prop in &obj_pat.properties {
-                        let key_name = extract_property_key_name(&prop.key);
-                        let Some(key_name) = key_name else { continue };
-
-                        let local_name = extract_binding_name(&prop.value);
-                        let local_name = local_name.unwrap_or_else(|| key_name.clone());
-
-                        let (default_span, default_text, is_bindable, is_simple_default) = extract_prop_default(&prop.value, offset, source);
-
-                        let decl_span = Span::new(
-                            prop.span.start + offset,
-                            prop.span.end + offset,
-                        );
-
-                        declarations.push(DeclarationInfo {
-                            name: local_name.clone(),
-                            span: decl_span,
-                            kind,
-                            init_span: None,
-                            is_rune: Some(RuneKind::Props),
-                            rune_init_refs: vec![],
-                        });
-
-                        props.push(PropInfo {
-                            local_name,
-                            prop_name: key_name,
-                            default_span,
-                            default_text,
-                            is_bindable,
-                            is_rest: false,
-                            is_simple_default,
-                        });
-                    }
-
-                    if let Some(rest) = &obj_pat.rest {
-                        if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &rest.argument {
-                            let rest_name = CompactString::from(ident.name.as_str());
-                            let decl_span = Span::new(
-                                ident.span.start + offset,
-                                ident.span.end + offset,
-                            );
-                            declarations.push(DeclarationInfo {
-                                name: rest_name.clone(),
-                                span: decl_span,
-                                kind,
-                                init_span: None,
-                                is_rune: Some(RuneKind::Props),
-                                rune_init_refs: vec![],
-                            });
-                            props.push(PropInfo {
-                                local_name: rest_name.clone(),
-                                prop_name: rest_name,
-                                default_span: None,
-                                default_text: None,
-                                is_bindable: false,
-                                is_rest: true,
-                                is_simple_default: true,
-                            });
-                        }
-                    }
-
-                    *props_declaration = Some(PropsDeclaration { props });
-                } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
-                    // Destructured $state/$state.raw: register each leaf binding.
-                    // Use StateRaw for analysis so all bindings are considered dynamic
-                    // (proxied values are always reactive, even if the binding isn't mutated).
-                    let mut names = Vec::new();
-                    extract_all_binding_names(&declarator.id, &mut names);
-                    for name in names {
-                        let decl_span = Span::new(
-                            declarator.span.start + offset,
-                            declarator.span.end + offset,
-                        );
-                        declarations.push(DeclarationInfo {
-                            name,
-                            span: decl_span,
-                            kind,
-                            init_span: None,
-                            is_rune: Some(RuneKind::StateRaw),
-                            rune_init_refs: vec![],
-                        });
-                    }
-                }
-            }
-            oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
-                // Destructured $state/$state.raw: register each leaf binding.
-                // Use StateRaw so all bindings are considered dynamic in analysis.
-                let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
-                if let Some(rune_kind) = rune {
-                    if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
-                        let mut names = Vec::new();
-                        extract_all_binding_names(&declarator.id, &mut names);
-                        for name in names {
-                            let decl_span = Span::new(
-                                declarator.span.start + offset,
-                                declarator.span.end + offset,
-                            );
-                            declarations.push(DeclarationInfo {
-                                name,
-                                span: decl_span,
-                                kind,
-                                init_span: None,
-                                is_rune: Some(RuneKind::StateRaw),
-                                rune_init_refs: vec![],
-                            });
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<CompactString> {
-    match key {
-        oxc_ast::ast::PropertyKey::StaticIdentifier(ident) => Some(CompactString::from(ident.name.as_str())),
-        oxc_ast::ast::PropertyKey::StringLiteral(s) => Some(CompactString::from(s.value.as_str())),
-        _ => None,
-    }
-}
-
-fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<CompactString> {
-    match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => Some(CompactString::from(ident.name.as_str())),
-        oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-            extract_binding_name(&assign.left)
-        }
-        _ => None,
-    }
-}
-
-/// Extract default span, default text, bindable flag, and simplicity flag from a prop's binding pattern.
-fn extract_prop_default(pattern: &oxc_ast::ast::BindingPattern<'_>, offset: u32, source: &str) -> (Option<Span>, Option<String>, bool, bool) {
-    if let oxc_ast::ast::BindingPattern::AssignmentPattern(assign) = pattern {
-        let right = &assign.right;
-        // Check if default is $bindable(expr) or $bindable()
-        if let Expression::CallExpression(call) = right {
-            if let Expression::Identifier(ident) = &call.callee {
-                if ident.name.as_str() == "$bindable" {
-                    let (default_span, default_text, is_simple) = if let Some(arg) = call.arguments.first() {
-                        let sp = arg.span();
-                        let text = &source[sp.start as usize..sp.end as usize];
-                        let expr = arg.as_expression().expect("argument should be expression");
-                        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), is_simple_expr(expr))
-                    } else {
-                        (None, None, true)
-                    };
-                    return (default_span, default_text, true, is_simple);
-                }
-            }
-        }
-        let sp = right.span();
-        let text = &source[sp.start as usize..sp.end as usize];
-        let is_simple = is_simple_expr(right);
-        (Some(Span::new(sp.start + offset, sp.end + offset)), Some(text.to_string()), false, is_simple)
-    } else {
-        (None, None, false, true)
-    }
-}
-
-/// Returns true for `$effect(fn)` and `$effect.pre(fn)` calls — these need
-/// `$.push`/`$.pop` context wrapping. Does NOT match `$effect.tracking()`.
-fn is_effect_call(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-/// Check if a class body contains any PropertyDefinition with $state/$state.raw initializer,
-/// or constructor assignments like `this.x = $state(...)`.
-fn has_class_state_runes(body: &oxc_ast::ast::ClassBody<'_>) -> bool {
-    for element in &body.body {
-        match element {
-            oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
-                if let Some(value) = &prop.value {
-                    if let Some(kind) = detect_rune(value) {
-                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
-                    if let Some(body) = &method.value.body {
-                        for stmt in &body.statements {
-                            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-                                if let Expression::AssignmentExpression(assign) = &es.expression {
-                                    if let Some(kind) = detect_rune(&assign.right) {
-                                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(ident) => {
-                return match ident.name.as_str() {
-                    "$state" => Some(RuneKind::State),
-                    "$derived" => Some(RuneKind::Derived),
-                    "$effect" => Some(RuneKind::Effect),
-                    "$props" => Some(RuneKind::Props),
-                    "$bindable" => Some(RuneKind::Bindable),
-                    "$inspect" => Some(RuneKind::Inspect),
-                    "$host" => Some(RuneKind::Host),
-                    _ => None,
-                };
-            }
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    let prop = member.property.name.as_str();
-                    return match (obj.name.as_str(), prop) {
-                        ("$derived", "by") => Some(RuneKind::DerivedBy),
-                        ("$state", "raw") => Some(RuneKind::StateRaw),
-                        ("$state", "eager") => Some(RuneKind::StateEager),
-                        ("$effect", "tracking") => Some(RuneKind::EffectTracking),
-                        ("$effect", "pending") => Some(RuneKind::EffectPending),
-                        ("$props", "id") => Some(RuneKind::PropsId),
-                        _ => None,
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Collect identifier references from a $derived/$derived.by call's argument.
-/// Returns deduplicated list — avoids redundant `is_dynamic_by_id` lookups.
-fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
-    let Expression::CallExpression(call) = expr else {
-        return vec![];
-    };
-    if call.arguments.is_empty() {
-        return vec![];
-    }
-    let Some(arg_expr) = call.arguments[0].as_expression() else {
-        return vec![];
-    };
-    let mut refs = Vec::new();
-    collect_idents_recursive(arg_expr, &mut refs);
-    let mut seen = FxHashSet::default();
-    refs.retain(|r| seen.insert(r.clone()));
-    refs
-}
-
-/// Check if a `$`-prefixed name is a known rune (not a store candidate).
-fn is_rune_name(name: &str) -> bool {
-    matches!(name, "$state" | "$derived" | "$effect" | "$props" | "$bindable" | "$inspect" | "$host")
-}
-
-fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {
-    use oxc_ast::ast::Expression::*;
-    match expr {
-        Identifier(id) => {
-            let name = id.name.as_str();
-            if !name.starts_with('$') {
-                refs.push(CompactString::from(name));
-            }
-        }
-        BinaryExpression(bin) => {
-            collect_idents_recursive(&bin.left, refs);
-            collect_idents_recursive(&bin.right, refs);
-        }
-        CallExpression(call) => {
-            collect_idents_recursive(&call.callee, refs);
-            for arg in &call.arguments {
-                if let Some(e) = arg.as_expression() {
-                    collect_idents_recursive(e, refs);
-                }
-            }
-        }
-        ArrowFunctionExpression(arrow) => {
-            // Collect refs from arrow body — skip params
-            for stmt in &arrow.body.statements {
-                match stmt {
-                    oxc_ast::ast::Statement::ExpressionStatement(es) => {
-                        collect_idents_recursive(&es.expression, refs);
-                    }
-                    oxc_ast::ast::Statement::ReturnStatement(ret) => {
-                        if let Some(arg) = &ret.argument {
-                            collect_idents_recursive(arg, refs);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        UnaryExpression(unary) => {
-            collect_idents_recursive(&unary.argument, refs);
-        }
-        ConditionalExpression(cond) => {
-            collect_idents_recursive(&cond.test, refs);
-            collect_idents_recursive(&cond.consequent, refs);
-            collect_idents_recursive(&cond.alternate, refs);
-        }
-        LogicalExpression(log) => {
-            collect_idents_recursive(&log.left, refs);
-            collect_idents_recursive(&log.right, refs);
-        }
-        StaticMemberExpression(m) => {
-            collect_idents_recursive(&m.object, refs);
-        }
-        ComputedMemberExpression(m) => {
-            collect_idents_recursive(&m.object, refs);
-            collect_idents_recursive(&m.expression, refs);
-        }
-        _ => {}
-    }
-}

@@ -120,7 +120,7 @@ fn analyze_source(source: &str) -> (Component, AnalysisData) {
     let alloc = oxc_allocator::Allocator::default();
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
     assert!(parse_diags.is_empty(), "unexpected parse diagnostics: {parse_diags:?}");
-    let (data, _parsed, diags) = analyze(&alloc, &component, js_result);
+    let (data, _parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)
 }
@@ -429,7 +429,7 @@ mod expression_info_tests {
     use compact_str::CompactString;
     use svelte_diagnostics::Diagnostic;
     use svelte_span::Span;
-    use svelte_types::{ExpressionInfo, ExpressionKind, ReferenceFlags};
+    use svelte_parser::{ExpressionInfo, ExpressionKind, ReferenceFlags};
     use crate::js_analyze::extract_expression_info;
 
     fn compact(s: &str) -> CompactString { CompactString::from(s) }
