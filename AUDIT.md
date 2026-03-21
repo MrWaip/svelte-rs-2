@@ -10,25 +10,21 @@ Generated: 2026-03-21
 
 - **Pattern**: destructuring default value re-parse
 - **Class**: 1
-- **Complexity**: L
+- **Complexity**: M
 - **Where**:
   - `crates/svelte_codegen_client/src/template/each_block.rs:264-320` (`extract_default_value` + `parse_inline_expr`)
   - `crates/svelte_codegen_client/src/template/each_block.rs:185-241` (caller: `gen_each_block`)
 - **Occurrence count**: 1 (single call site, but covers all each blocks with destructuring defaults)
 - **What is aggregated**: `starts_with('[')` / `starts_with('{')` syntax detection, `find('=')` default extraction, `rfind(':')` alias extraction, depth-tracking comma split, then `oxc_parser::Parser::new()` to re-parse the extracted default value string
-- **Proposed type**: AST type in `svelte_ast` — parser delivers structured destructuring:
+- **Proposed type**: `parse_js` phase walks the OXC `BindingPattern` AST of the each context expression and extracts structured data into a side table:
   ```rust
-  struct EachContext {
-      kind: DestructureKind, // Array | Object
-      bindings: Vec<DestructuredBinding>,
-  }
-  struct DestructuredBinding {
-      name: CompactStr,
-      alias: Option<CompactStr>,
-      default_value: Option<Span>, // parsed in parse_js pass
+  struct EachContextInfo {
+      bindings_with_defaults: Vec<(CompactStr, ExprId)>,
+      // ExprId → pre-parsed default value expression in ParsedExprs
   }
   ```
-- **Target layer**: parser (new AST structure) + parse_js (pre-parse default values)
+  OXC already parses destructuring — `parse_js` just needs to walk `BindingPatternKind::{Object,Array}` and collect `BindingRestElement`/`AssignmentPattern` nodes with their `.right` default expressions. Codegen retrieves ready expressions, no string ops.
+- **Target layer**: analyze (parse_js pass — walk OXC destructuring AST, store defaults in `ParsedExprs`)
 
 ### #2 — Bind directive setter/getter construction
 
@@ -79,8 +75,8 @@ Generated: 2026-03-21
   - `crates/svelte_codegen_client/src/template/each_block.rs:41-48` (`starts_with('{')`, `starts_with('[')`, text comparison)
 - **Occurrence count**: 1
 - **What is aggregated**: context text trimmed, checked for destructuring prefix, key text compared to context text via string equality
-- **Proposed type**: accessor `fn each_key_is_item(&self, block_id: NodeId) -> bool` pre-computed in analyze
-- **Target layer**: analyze
+- **Proposed type**: accessor `fn each_key_is_item(&self, block_id: NodeId) -> bool` — `parse_js` уже парсит key и context через OXC. Проверка: key — `IdentifierReference`, context — `BindingIdentifier`, имена совпадают. Если context — destructuring (`BindingPatternKind::Object/Array`), результат всегда `false`.
+- **Target layer**: analyze (parse_js pass)
 
 ### #6 — Expression text shorthand detection
 
@@ -93,8 +89,8 @@ Generated: 2026-03-21
   - `crates/svelte_codegen_client/src/template/each_block.rs:42-43, 105, 186` (same pattern)
 - **Occurrence count**: 10+
 - **What is aggregated**: `ctx.component.source_text(span).trim()` compared to attribute/directive name to detect shorthand syntax (`class:foo` where expression equals name)
-- **Proposed type**: bool flag `is_shorthand` on directives/attributes, computed in parser (parser knows if expression text matches name)
-- **Target layer**: parser (set `is_shorthand: bool` during parsing)
+- **Proposed type**: bool flag `is_shorthand` per directive/attribute — `parse_js` проверяет: выражение является `Expression::Identifier(ident)` и `ident.name == attr_name`. Результат сохраняется в side table, codegen читает через accessor `fn is_shorthand_attr(&self, attr_id: NodeId) -> bool`.
+- **Target layer**: analyze (parse_js pass)
 
 ### #7 — Prop name $$ prefix check
 
