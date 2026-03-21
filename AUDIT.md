@@ -137,29 +137,9 @@ Generated: 2026-03-21
 - **Target layer**: analyze
 - **Resolution**: `has_animate: FxHashSet<NodeId>` in `EachBlockData`, populated in `walk_template_scopes()`. Codegen uses `ctx.each_has_animate(block_id)` — no nested traversal.
 
-### #13 — OnDirective modifiers repeated traversal
+### ~~#13 — OnDirective modifiers repeated traversal~~ ✅
 
-- **Pattern**: on:directive modifiers multi-pass
-- **Class**: 3
-- **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1351-1359` (`.any()` + `.find_map()`)
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1571-1578` (duplicate pattern)
-- **Occurrence count**: 2 (same pattern in `emit_on_directive_legacy` and `emit_on_directive_element`)
-- **What is aggregated**: `od.modifiers` iterated 4+ times per directive for: prevent_default, stop_propagation, self, trusted, once, capture, passive/nonpassive
-- **Proposed type**:
-  ```rust
-  struct OnDirectiveModifiers {
-      has_prevent_default: bool,
-      has_stop_propagation: bool,
-      has_self: bool,
-      has_trusted: bool,
-      has_once: bool,
-      has_capture: bool,
-      passive: Option<bool>, // Some(true)=passive, Some(false)=nonpassive, None=unset
-  }
-  ```
-- **Target layer**: analyze (pre-compute per directive during analysis pass)
+- **Migrated**: `OnDirectiveModifiers` struct in `svelte_ast` with `from_modifiers()` + `handler_wrappers()` iterator. Both `gen_on_directive_legacy` and `gen_legacy_event_on` call `od.parsed_modifiers()` once — single pass, zero duplication.
 
 ---
 
