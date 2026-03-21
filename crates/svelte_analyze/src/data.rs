@@ -238,6 +238,8 @@ pub struct EachBlockData {
     pub(crate) is_destructured: FxHashSet<NodeId>,
     /// Body expressions reference the index variable (needs index param in render fn).
     pub(crate) body_uses_index: FxHashSet<NodeId>,
+    /// Key expression is the same simple identifier as the context variable.
+    pub(crate) key_is_item: FxHashSet<NodeId>,
 }
 
 impl EachBlockData {
@@ -248,6 +250,7 @@ impl EachBlockData {
             key_uses_index: FxHashSet::default(),
             is_destructured: FxHashSet::default(),
             body_uses_index: FxHashSet::default(),
+            key_is_item: FxHashSet::default(),
         }
     }
 
@@ -262,6 +265,7 @@ impl EachBlockData {
     pub fn key_uses_index(&self, id: NodeId) -> bool { self.key_uses_index.contains(&id) }
     pub fn is_destructured(&self, id: NodeId) -> bool { self.is_destructured.contains(&id) }
     pub fn body_uses_index(&self, id: NodeId) -> bool { self.body_uses_index.contains(&id) }
+    pub fn key_is_item(&self, id: NodeId) -> bool { self.key_is_item.contains(&id) }
 }
 
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.

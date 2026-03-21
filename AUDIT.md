@@ -53,17 +53,9 @@ Generated: 2026-03-21
 
 ~~Pre-parsed directive name expressions via OXC in `parse_js`. Stored in `ParsedExprs::directive_name_exprs`, consumed by codegen via `remove()`. `build_directive_name_expr` deleted.~~
 
-### #5 — Each block key_is_item detection
+### ~~#5 — Each block key_is_item detection~~ ✅
 
-- **Pattern**: key-equals-context string comparison
-- **Class**: 2
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/each_block.rs:41-48` (`starts_with('{')`, `starts_with('[')`, text comparison)
-- **Occurrence count**: 1
-- **What is aggregated**: context text trimmed, checked for destructuring prefix, key text compared to context text via string equality
-- **Proposed type**: accessor `fn each_key_is_item(&self, block_id: NodeId) -> bool` — `parse_js` уже парсит key и context через OXC. Проверка: key — `IdentifierReference`, context — `BindingIdentifier`, имена совпадают. Если context — destructuring (`BindingPatternKind::Object/Array`), результат всегда `false`.
-- **Target layer**: analyze (parse_js pass)
+~~Stored as `EachBlockData::key_is_item: FxHashSet<NodeId>` in scope building (already computed for `mark_each_non_reactive`). Codegen reads via `ctx.each_key_is_item(block_id)`. Local `is_simple_identifier` in `each_block.rs` deleted.~~
 
 ### #6 — Expression text shorthand detection ✅
 
@@ -75,7 +67,7 @@ Generated: 2026-03-21
   - `attributes.rs:1011` — `Shorthand` attribute name extraction
   - `component.rs:137` — Shorthand attribute name extraction for component props
   - `component.rs:189` — bind:this variable name extraction
-  - `each_block.rs:42-43` — key_is_item check (finding #5)
+  - ~~`each_block.rs:42-43` — key_is_item check (finding #5)~~ ✅ migrated
   - `each_block.rs:105` — prop source identifier name
   - `each_block.rs:186` — context pattern text
 
