@@ -206,6 +206,12 @@ impl DebugTagData {
 pub struct EachBlockData {
     pub(crate) context_names: FxHashMap<NodeId, String>,
     pub(crate) index_names: FxHashMap<NodeId, String>,
+    /// Key expression references the index variable (needs index param in key arrow).
+    pub(crate) key_uses_index: FxHashSet<NodeId>,
+    /// Context is a destructuring pattern (`{ name, value }` or `[a, b]`).
+    pub(crate) is_destructured: FxHashSet<NodeId>,
+    /// Body expressions reference the index variable (needs index param in render fn).
+    pub(crate) body_uses_index: FxHashSet<NodeId>,
 }
 
 impl EachBlockData {
@@ -213,6 +219,9 @@ impl EachBlockData {
         Self {
             context_names: FxHashMap::default(),
             index_names: FxHashMap::default(),
+            key_uses_index: FxHashSet::default(),
+            is_destructured: FxHashSet::default(),
+            body_uses_index: FxHashSet::default(),
         }
     }
 
@@ -223,6 +232,10 @@ impl EachBlockData {
     pub fn index_name(&self, id: NodeId) -> Option<&str> {
         self.index_names.get(&id).map(|s| s.as_str())
     }
+
+    pub fn key_uses_index(&self, id: NodeId) -> bool { self.key_uses_index.contains(&id) }
+    pub fn is_destructured(&self, id: NodeId) -> bool { self.is_destructured.contains(&id) }
+    pub fn body_uses_index(&self, id: NodeId) -> bool { self.body_uses_index.contains(&id) }
 }
 
 /// Pre-computed bind/directive semantics for codegen.

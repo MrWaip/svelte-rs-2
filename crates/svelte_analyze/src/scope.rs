@@ -34,6 +34,8 @@ pub struct ComponentScoping {
     snippet_param_syms: FxHashSet<SymbolId>,
     snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
+    /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization).
+    each_non_reactive_syms: FxHashSet<SymbolId>,
     /// FragmentKey → ScopeId for scope-introducing fragments (IfBlock branches, KeyBlock, etc.)
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
     /// SymbolId → parent ConstTag NodeId for destructured const bindings
@@ -57,6 +59,7 @@ impl ComponentScoping {
             snippet_param_syms: FxHashSet::default(),
             snippet_name_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
+            each_non_reactive_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
             arrow_scopes: FxHashMap::default(),
@@ -220,6 +223,11 @@ impl ComponentScoping {
         self.each_block_syms.insert(sym_id);
     }
 
+    /// Mark each-block var as non-reactive (key_is_item optimization — no `$.get()` wrapping).
+    pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
+        self.each_non_reactive_syms.insert(sym_id);
+    }
+
     // -- SymbolId-keyed classification: read --
 
     pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
@@ -253,6 +261,11 @@ impl ComponentScoping {
 
     pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
         self.each_block_syms.contains(&sym_id)
+    }
+
+    /// Each-block var that does NOT need `$.get()` (key_is_item optimization in runes mode).
+    pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
+        self.each_non_reactive_syms.contains(&sym_id)
     }
 
     /// A binding is "normal" if it's a regular const/let/function — not a rune, prop,
@@ -383,11 +396,42 @@ fn walk_template_scopes(
                 let child_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, child_scope);
 
-                // Add context variable binding and store name in side table
-                let context_name = component.source_text(block.context_span);
-                let ctx_sym = scoping.add_binding(child_scope, context_name);
-                scoping.mark_each_block_var(ctx_sym);
-                each_blocks.context_names.insert(block.id, context_name.to_string());
+                let context_text = component.source_text(block.context_span);
+                let is_destructured = context_text.starts_with('{') || context_text.starts_with('[');
+
+                if is_destructured {
+                    // Destructured context: use $$item as internal name
+                    let ctx_sym = scoping.add_binding(child_scope, "$$item");
+                    scoping.mark_each_block_var(ctx_sym);
+                    each_blocks.context_names.insert(block.id, "$$item".to_string());
+                    each_blocks.is_destructured.insert(block.id);
+
+                    // Extract binding names from pattern and register in scope
+                    let bindings = extract_destructuring_bindings(context_text);
+                    for (name, has_default) in &bindings {
+                        let sym = scoping.add_binding(child_scope, name);
+                        if *has_default {
+                            // With default → $.derived_safe_equal → $.get() read
+                            // Leave unmarked (non-root falls through to $.get() in transform)
+                        } else {
+                            // Without default → thunk → name() call
+                            scoping.mark_snippet_param(sym);
+                        }
+                    }
+                } else {
+                    let ctx_sym = scoping.add_binding(child_scope, context_text);
+                    scoping.mark_each_block_var(ctx_sym);
+                    each_blocks.context_names.insert(block.id, context_text.to_string());
+
+                    // key_is_item optimization: context var doesn't need $.get()
+                    if let Some(key_span) = block.key_span {
+                        let key_text = component.source_text(key_span).trim();
+                        let ctx_trimmed = context_text.trim();
+                        if key_text == ctx_trimmed && is_simple_identifier(key_text) {
+                            scoping.mark_each_non_reactive(ctx_sym);
+                        }
+                    }
+                }
 
                 // Add optional index variable binding and store name in side table
                 if let Some(idx_span) = block.index_span {
@@ -513,5 +557,80 @@ fn walk_template_scopes(
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
             Node::ExpressionTag(_) | Node::Text(_) | Node::Comment(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::DebugTag(_) | Node::Error(_) => {}
         }
+    }
+}
+
+fn is_simple_identifier(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+}
+
+/// Extract binding names and default status from a destructuring pattern.
+/// Handles `{ a, b = 5 }` and `[a, b]` patterns.
+pub fn extract_destructuring_bindings(pattern: &str) -> Vec<(String, bool)> {
+    let s = pattern.trim();
+    let inner = if s.starts_with('{') && s.ends_with('}') {
+        &s[1..s.len() - 1]
+    } else if s.starts_with('[') && s.ends_with(']') {
+        &s[1..s.len() - 1]
+    } else {
+        return vec![];
+    };
+
+    let mut result = Vec::new();
+    let mut depth = 0i32;
+    let mut current = String::new();
+
+    for ch in inner.chars() {
+        match ch {
+            '{' | '[' | '(' => { depth += 1; current.push(ch); }
+            '}' | ']' | ')' => { depth -= 1; current.push(ch); }
+            ',' if depth == 0 => {
+                process_destructured_binding(&current, &mut result);
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.is_empty() {
+        process_destructured_binding(&current, &mut result);
+    }
+
+    result
+}
+
+fn process_destructured_binding(part: &str, result: &mut Vec<(String, bool)>) {
+    let part = part.trim();
+    if part.is_empty() { return; }
+
+    // Find first '=' at depth 0
+    let mut depth = 0i32;
+    let mut eq_pos = None;
+    for (i, ch) in part.char_indices() {
+        match ch {
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => depth -= 1,
+            '=' if depth == 0 => { eq_pos = Some(i); break; }
+            _ => {}
+        }
+    }
+
+    let (name_part, has_default) = if let Some(pos) = eq_pos {
+        (&part[..pos], true)
+    } else {
+        (part, false)
+    };
+
+    let name_part = name_part.trim();
+    // Handle rest (...)
+    let name_part = name_part.strip_prefix("...").unwrap_or(name_part);
+    // Handle rename (prop: alias)
+    let name_part = if let Some(idx) = name_part.rfind(':') {
+        name_part[idx + 1..].trim()
+    } else {
+        name_part
+    };
+
+    if is_simple_identifier(name_part) {
+        result.push((name_part.to_string(), has_default));
     }
 }

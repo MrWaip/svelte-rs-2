@@ -1579,3 +1579,38 @@ fn bind_group_each_var() {
 fn bind_group_each_var_keyed() {
     assert_compiler("bind_group_each_var_keyed");
 }
+
+#[rstest]
+fn each_fallback() {
+    assert_compiler("each_fallback");
+}
+
+#[rstest]
+fn each_keyed_index() {
+    assert_compiler("each_keyed_index");
+}
+
+#[rstest]
+fn each_key_uses_index() {
+    assert_compiler("each_key_uses_index");
+}
+
+#[rstest]
+fn each_key_is_item() {
+    assert_compiler("each_key_is_item");
+}
+
+#[rstest]
+fn each_destructured_obj() {
+    assert_compiler("each_destructured_obj");
+}
+
+#[rstest]
+fn each_destructured_default() {
+    assert_compiler("each_destructured_default");
+}
+
+#[rstest]
+fn each_destructured_array() {
+    assert_compiler("each_destructured_array");
+}
