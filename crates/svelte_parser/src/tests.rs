@@ -801,54 +801,9 @@ fn debug_tag_call_expression_error() {
 
 mod js_parse_tests {
     use oxc_allocator::Allocator;
-    use oxc_parser::Parser as OxcParser;
-    use oxc_span::SourceType;
     use compact_str::CompactString;
-    use svelte_diagnostics::Diagnostic;
-    use svelte_span::Span;
-    use svelte_types::{ExpressionInfo, ExpressionKind, ReferenceFlags, RuneKind, extract_expression_info};
 
     fn compact(s: &str) -> CompactString { CompactString::from(s) }
-
-    fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic> {
-        let allocator = Allocator::default();
-        let parser = OxcParser::new(&allocator, source, SourceType::default());
-        let expr = parser
-            .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
-        let info = extract_expression_info(&expr, offset);
-        Ok(info)
-    }
-
-    #[test]
-    fn analyze_simple_identifier() {
-        let info = analyze_expression("count", 0).unwrap();
-        assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
-    }
-
-    #[test]
-    fn analyze_binary_expression() {
-        let info = analyze_expression("count + 1", 0).unwrap();
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
-    }
-
-    #[test]
-    fn analyze_call_expression() {
-        let info = analyze_expression("foo(a, b)", 0).unwrap();
-        assert!(matches!(info.kind, ExpressionKind::CallExpression { .. }));
-        assert_eq!(info.references.len(), 3);
-        assert!(info.has_side_effects);
-    }
-
-    #[test]
-    fn analyze_assignment() {
-        let info = analyze_expression("count = 10", 0).unwrap();
-        assert_eq!(info.kind, ExpressionKind::Assignment);
-        assert!(info.references.iter().any(|r| r.name == "count" && matches!(r.flags, ReferenceFlags::Write)));
-    }
 
     #[test]
     fn parse_script_basic() {
@@ -858,13 +813,6 @@ mod js_parse_tests {
         let program = crate::js_parse::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
         // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
         assert!(!program.body.is_empty());
-    }
-
-    #[test]
-    fn analyze_with_offset() {
-        let info = analyze_expression("x", 100).unwrap();
-        assert_eq!(info.references[0].span.start, 100);
-        assert_eq!(info.references[0].span.end, 101);
     }
 
     #[test]

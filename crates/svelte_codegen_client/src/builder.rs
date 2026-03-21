@@ -21,6 +21,7 @@ pub enum Arg<'a, 'short> {
     Str(String),
     Num(f64),
     Ident(&'short str),
+    #[allow(dead_code)]
     IdentRef(IdentifierReference<'a>),
     Expr(Expression<'a>),
     Arrow(ArrowFunctionExpression<'a>),
@@ -1289,13 +1290,6 @@ impl<'a> Builder<'a> {
     pub fn public_key(&self, name: &str) -> ast::PropertyKey<'a> {
         ast::PropertyKey::StaticIdentifier(
             self.alloc(self.ast.identifier_name(SPAN, self.ast.atom(name))),
-        )
-    }
-
-    /// Create a `PropertyKey` from a private identifier name.
-    pub fn private_key(&self, name: &str) -> ast::PropertyKey<'a> {
-        ast::PropertyKey::PrivateIdentifier(
-            self.alloc(self.private_identifier(name)),
         )
     }
 
