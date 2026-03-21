@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
-use svelte_parser::ExpressionInfo;
+use svelte_analyze::ExpressionInfo;
 use svelte_transform::TransformData;
 
 use crate::builder::Builder;

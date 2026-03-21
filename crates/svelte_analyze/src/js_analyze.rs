@@ -6,13 +6,13 @@
 use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use svelte_span::Span;
-use svelte_parser::{
-    ExpressionInfo, ExpressionKind, Reference, ReferenceFlags, RuneKind, ScriptInfo,
-};
+use svelte_parser::{RuneKind, ScriptInfo};
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 
-use crate::data::{AnalysisData, ParsedExprs};
+use crate::data::{
+    AnalysisData, ExpressionInfo, ExpressionKind, ParsedExprs, Reference, ReferenceFlags,
+};
 use crate::scope::ComponentScoping;
 
 // ---------------------------------------------------------------------------
