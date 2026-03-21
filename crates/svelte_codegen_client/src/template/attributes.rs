@@ -323,14 +323,7 @@ pub(crate) fn process_style_directives<'a>(
         return;
     }
 
-    let style_dirs: Vec<_> = el
-        .attributes
-        .iter()
-        .filter_map(|a| match a {
-            Attribute::StyleDirective(sd) => Some(sd),
-            _ => None,
-        })
-        .collect();
+    let style_dirs = ctx.style_directives(el.id).to_vec();
 
     // Read precomputed static style value
     let static_style = ctx.static_style(el.id).unwrap_or("").to_string();
@@ -1024,12 +1017,7 @@ pub(crate) fn process_attrs_spread<'a>(
     }
 
     // Collect style directives into [$.STYLE] computed property
-    let style_dirs: Vec<_> = el.attributes.iter()
-        .filter_map(|a| match a {
-            Attribute::StyleDirective(sd) => Some(sd),
-            _ => None,
-        })
-        .collect();
+    let style_dirs = ctx.style_directives(el.id).to_vec();
 
     if !style_dirs.is_empty() {
         use svelte_ast::StyleDirectiveValue;
