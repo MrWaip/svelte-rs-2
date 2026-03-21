@@ -329,12 +329,19 @@ impl ComponentScoping {
 
     /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
     pub fn is_store_ref(&self, name: &str) -> bool {
+        self.store_base_name(name).is_some()
+    }
+
+    /// Returns the base name (without `$` prefix) if this is a store reference.
+    pub fn store_base_name<'n>(&self, name: &'n str) -> Option<&'n str> {
         if name.starts_with('$') && name.len() > 1 {
             let base = &name[1..];
             let root = self.root_scope_id();
-            return self.find_binding(root, base).is_some_and(|sym| self.is_store(sym));
+            if self.find_binding(root, base).is_some_and(|sym| self.is_store(sym)) {
+                return Some(base);
+            }
         }
-        false
+        None
     }
 
 }
