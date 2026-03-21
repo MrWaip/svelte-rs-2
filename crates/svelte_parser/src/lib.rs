@@ -59,6 +59,9 @@ struct EachBlockEntry {
     context_span: Span,
     index_span: Option<Span>,
     key_span: Option<Span>,
+    /// Body children, set when `{:else}` switches to fallback collection.
+    body_children: Option<Vec<Node>>,
+    in_fallback: bool,
 }
 
 struct SnippetBlockEntry {
@@ -236,6 +239,8 @@ impl<'a> Parser<'a> {
                         context_span: each.context_span,
                         index_span: each.index_span,
                         key_span: each.key_span,
+                        body_children: None,
+                        in_fallback: false,
                     }));
                     children_stack.push(vec![]); // body children
                 }
@@ -538,19 +543,24 @@ impl<'a> Parser<'a> {
             }));
             children_stack.push(vec![]);
         } else {
-            // {:else}
-            let valid = entry_stack.last().is_some_and(|e| matches!(e, StackEntry::IfBlock(_)));
-            if !valid {
-                self.recover(Diagnostic::no_if_block_for_else(span));
-                children_stack.push(consequent_children);
-                return;
+            // {:else} — can appear in IfBlock or EachBlock
+            match entry_stack.last_mut() {
+                Some(StackEntry::IfBlock(ref mut ib)) => {
+                    ib.consequent = Some(consequent_children);
+                    ib.in_alternate = true;
+                    ib.span = ib.span.merge(&span);
+                    children_stack.push(vec![]);
+                }
+                Some(StackEntry::EachBlock(ref mut eb)) => {
+                    eb.body_children = Some(consequent_children);
+                    eb.in_fallback = true;
+                    children_stack.push(vec![]);
+                }
+                _ => {
+                    self.recover(Diagnostic::no_if_block_for_else(span));
+                    children_stack.push(consequent_children);
+                }
             }
-            let entry = entry_stack.last_mut().unwrap();
-            let StackEntry::IfBlock(ref mut ib) = entry else { unreachable!() };
-            ib.consequent = Some(consequent_children);
-            ib.in_alternate = true;
-            ib.span = ib.span.merge(&span);
-            children_stack.push(vec![]);
         }
     }
 
@@ -570,8 +580,16 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        let body_children = pop_children(children_stack);
+        let last_children = pop_children(children_stack);
         let merged_span = eb.span.merge(&span);
+
+        // If {:else} was encountered, body_children were saved and last_children are fallback
+        let (body_children, fallback) = if eb.in_fallback {
+            let body = eb.body_children.unwrap_or_default();
+            (body, Some(Fragment::new(last_children)))
+        } else {
+            (last_children, None)
+        };
 
         let node = Node::EachBlock(EachBlock {
             id: self.ids.next(),
@@ -581,7 +599,7 @@ impl<'a> Parser<'a> {
             index_span: eb.index_span,
             key_span: eb.key_span,
             body: Fragment::new(body_children),
-            fallback: None,
+            fallback,
         });
 
         push_child(children_stack, node);
@@ -821,8 +839,15 @@ impl<'a> Parser<'a> {
             }
             StackEntry::EachBlock(eb) => {
                 self.recover(Diagnostic::unclosed_node(eb.span));
-                let body_children = pop_children(children_stack);
+                let last_children = pop_children(children_stack);
                 let merged_span = eb.span.merge(&eof_span);
+
+                let (body_children, fallback) = if eb.in_fallback {
+                    let body = eb.body_children.unwrap_or_default();
+                    (body, Some(Fragment::new(last_children)))
+                } else {
+                    (last_children, None)
+                };
 
                 let node = Node::EachBlock(EachBlock {
                     id: self.ids.next(),
@@ -832,7 +857,7 @@ impl<'a> Parser<'a> {
                     index_span: eb.index_span,
                     key_span: eb.key_span,
                     body: Fragment::new(body_children),
-                    fallback: None,
+                    fallback,
                 });
 
                 push_child(children_stack, node);
