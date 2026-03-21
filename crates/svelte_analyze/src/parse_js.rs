@@ -489,6 +489,11 @@ fn walk_attrs<'a>(
                     let source = component.source_text(span);
                     parse_attr_expr(alloc, source, span.start, attr_id, typescript, data, parsed, diags);
                 }
+                let name_src = component.source_text(a.name);
+                let arena_src: &'a str = alloc.alloc_str(name_src);
+                if let Ok((_info, expr)) = svelte_js::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                    parsed.directive_name_exprs.insert(a.id, expr);
+                }
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
             // LEGACY(svelte4): on:directive — parse expression if present
@@ -503,11 +508,21 @@ fn walk_attrs<'a>(
                     let source = component.source_text(span);
                     parse_attr_expr(alloc, source, span.start, attr_id, typescript, data, parsed, diags);
                 }
+                let name_src = component.source_text(a.name);
+                let arena_src: &'a str = alloc.alloc_str(name_src);
+                if let Ok((_info, expr)) = svelte_js::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                    parsed.directive_name_exprs.insert(a.id, expr);
+                }
             }
             Attribute::AnimateDirective(a) => {
                 if let Some(span) = a.expression_span {
                     let source = component.source_text(span);
                     parse_attr_expr(alloc, source, span.start, attr_id, typescript, data, parsed, diags);
+                }
+                let name_src = component.source_text(a.name);
+                let arena_src: &'a str = alloc.alloc_str(name_src);
+                if let Ok((_info, expr)) = svelte_js::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                    parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
             Attribute::AttachTag(a) => {
