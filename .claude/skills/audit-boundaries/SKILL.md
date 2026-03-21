@@ -126,11 +126,19 @@ Mark places where codegen CORRECTLY consumes data — takes a ready structure fr
 
 **Example 3:** `emit_debug_tags` — takes `debug_tags_for_fragment`, pre-transformed expressions from `ctx.parsed.debug_tag_exprs`, assembles output. Zero analysis logic.
 
-## Output Format
+## Output
+
+Write the report to **`AUDIT.md`** in the project root.
+
+### Format
 
 For each found violation:
 - **Pattern**: short name (e.g. "manual reactivity mode detection")
 - **Class**: 1-4 (from above)
+- **Complexity**: S / M / L — migration effort estimate:
+  - **S** (small) — single accessor or bool, 1-2 files touched, no new types
+  - **M** (medium) — new enum or struct, 3-4 files, straightforward data flow
+  - **L** (large) — parser changes, new AST types, 5+ files, or tricky edge cases
 - **Where**: file:lines (all occurrences)
 - **Occurrence count**: across the codebase
 - **What is aggregated**: list the flags/checks being combined
