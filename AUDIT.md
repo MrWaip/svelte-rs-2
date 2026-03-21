@@ -113,18 +113,9 @@ Generated: 2026-03-21
   - ~~`crates/svelte_codegen_client/src/template/attributes.rs:1102` (`.filter_map()` duplicate for svelte:element)~~
 - **Resolution**: `ClassDirectiveInfo` struct + `class_attr_id`/`class_directive_info` maps in `ElementFlags`, populated by `ElementFlagsVisitor` (including `visit_svelte_element` for `<svelte:element>`). `has_class_directives` and `has_class_attribute` sets replaced with map-based `contains_key` accessors. Codegen uses `ctx.class_attr_id()` / `ctx.class_directive_info()` — no AST re-traversal.
 
-### #10 — Component attribute lookup re-traversal
+### ~~#10 — Component attribute lookup re-traversal~~
 
-- **Pattern**: component attribute re-lookup by NodeId
-- **Class**: 3
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/component.rs:122` (`.find(|a| a.id() == attr_id)`)
-  - `crates/svelte_codegen_client/src/template/component.rs:135` (`.find(|a| a.id() == attr_id)`)
-- **Occurrence count**: 2
-- **What is aggregated**: after collecting AttrKind metadata in first pass, re-traverses `cn.attributes` to look up the same attribute by ID
-- **Proposed type**: store needed attribute data (parts, expression_span) directly in `AttrKind` enum during first pass — codegen-internal refactor
-- **Target layer**: codegen refactor
+- **Resolution**: `ComponentPropInfo` / `ComponentPropKind` in `ElementFlags`, populated by `ElementFlagsVisitor::visit_component_attribute`. Codegen snapshots `ctx.component_props(id)` — no `AttrKind` enum, no two-pass pattern, no `.find()` re-traversal. `needs_memo`, concatenation parts, and shorthand name are pre-computed in analyze.
 
 ### #11 — Style directives in spread context
 
