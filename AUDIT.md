@@ -124,7 +124,7 @@ Generated: 2026-03-21
 - **Complexity**: S
 - **Resolution**: `style_directives: FxHashMap<NodeId, Vec<StyleDirective>>` in `ElementFlags`, populated by `ElementFlagsVisitor`. Codegen uses `ctx.style_directives(id)` — no `.filter_map()` re-traversal in either `process_style_directives()` or `process_attrs_spread()`.
 
-### #12 — Each block animate directive detection
+### #12 — Each block animate directive detection ✅ MIGRATED
 
 - **Pattern**: nested traversal for animate directive existence
 - **Class**: 3
@@ -135,6 +135,7 @@ Generated: 2026-03-21
 - **What is aggregated**: nested iteration over each body nodes → element attributes to check for AnimateDirective
 - **Proposed type**: accessor `fn has_animate_in_body(&self, each_block_id: NodeId) -> bool` in analyze
 - **Target layer**: analyze
+- **Resolution**: `has_animate: FxHashSet<NodeId>` in `EachBlockData`, populated in `walk_template_scopes()`. Codegen uses `ctx.each_has_animate(block_id)` — no nested traversal.
 
 ### #13 — OnDirective modifiers repeated traversal
 

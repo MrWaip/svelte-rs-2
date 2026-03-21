@@ -282,6 +282,8 @@ pub struct EachBlockData {
     pub(crate) body_uses_index: FxHashSet<NodeId>,
     /// Key expression is the same simple identifier as the context variable.
     pub(crate) key_is_item: FxHashSet<NodeId>,
+    /// Body contains an element with an `animate:` directive.
+    pub(crate) has_animate: FxHashSet<NodeId>,
 }
 
 impl EachBlockData {
@@ -293,6 +295,7 @@ impl EachBlockData {
             is_destructured: FxHashSet::default(),
             body_uses_index: FxHashSet::default(),
             key_is_item: FxHashSet::default(),
+            has_animate: FxHashSet::default(),
         }
     }
 
@@ -308,6 +311,7 @@ impl EachBlockData {
     pub fn is_destructured(&self, id: NodeId) -> bool { self.is_destructured.contains(&id) }
     pub fn body_uses_index(&self, id: NodeId) -> bool { self.body_uses_index.contains(&id) }
     pub fn key_is_item(&self, id: NodeId) -> bool { self.key_is_item.contains(&id) }
+    pub fn has_animate(&self, id: NodeId) -> bool { self.has_animate.contains(&id) }
 }
 
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
