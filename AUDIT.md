@@ -162,21 +162,11 @@ Migrated: `RenderTagCalleeMode` enum in analyze replaces three separate bool fla
 Codegen uses `match mode` instead of `if is_dynamic / else if is_chain / else`.
 Removed unused `_callee_is_getter` param from `build_dynamic_callee`.
 
-### #17 — Boundary attribute is_import deep chain (borderline)
-
-- **Pattern**: boundary attr import symbol resolution
-- **Class**: 4
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/svelte_boundary.rs:100-111`
-- **Occurrence count**: 1
-- **What is aggregated**: `ctx.analysis.attr_expression(id).and_then(|info| info.references.first()).and_then(|r| r.symbol_id).is_some_and(|sym| ctx.is_import_sym(sym))` — deep chaining into AnalysisData
-- **Proposed type**: accessor `fn attr_is_import(&self, attr_id: NodeId) -> bool`
-- **Target layer**: analyze (low priority)
-
 ---
 
 ## Already Migrated
+
+~~#17 — Boundary attribute is_import deep chain → `attr_is_import()` accessor on AnalysisData~~
 
 ~~#3.1 — use directive existence check via `has_use_directive()` accessor~~
 

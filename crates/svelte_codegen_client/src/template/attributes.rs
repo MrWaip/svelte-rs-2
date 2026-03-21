@@ -1334,10 +1334,7 @@ pub(crate) fn build_event_handler_s5<'a>(
         Expression::Identifier(_) => {
             // Non-import identifiers are stable references — no wrapping needed.
             // Import identifiers may be live bindings, so they need derived+get wrapping.
-            let is_import = ctx.analysis.attr_expression(attr_id)
-                .and_then(|info| info.references.first())
-                .and_then(|r| r.symbol_id)
-                .is_some_and(|sym| ctx.is_import_sym(sym));
+            let is_import = ctx.attr_is_import(attr_id);
             if !is_import {
                 return handler;
             }
