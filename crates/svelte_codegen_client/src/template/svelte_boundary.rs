@@ -100,10 +100,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
     for (name, attr_id, is_dynamic) in &attr_infos {
         let key = ctx.b.alloc_str(name);
         let expr = get_attr_expr(ctx, *attr_id);
-        let is_import = ctx.analysis.attr_expression(*attr_id)
-            .and_then(|info| info.references.first())
-            .and_then(|r| r.symbol_id)
-            .is_some_and(|sym| ctx.is_import_sym(sym));
+        let is_import = ctx.attr_is_import(*attr_id);
         if *is_dynamic || is_import {
             props.push(ObjProp::Getter(key, expr));
         } else {

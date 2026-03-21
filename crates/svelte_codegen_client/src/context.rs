@@ -199,8 +199,8 @@ impl<'a> Ctx<'a> {
     pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> {
         self.analysis.await_bindings.error(id)
     }
-    pub fn is_import_sym(&self, sym_id: oxc_semantic::SymbolId) -> bool {
-        self.analysis.import_syms.contains(&sym_id)
+    pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
+        self.analysis.attr_is_import(attr_id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
