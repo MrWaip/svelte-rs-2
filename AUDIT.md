@@ -8,7 +8,7 @@ Generated: 2026-03-21
 
 ### #1 — Each block destructuring default re-parse
 
-- **Pattern**: destructuring default value re-parse
+- **Pattern**: destructuring default value re-parse ✅
 - **Class**: 1
 - **Complexity**: M
 - **Where**:
@@ -26,29 +26,24 @@ Generated: 2026-03-21
   OXC already parses destructuring — `parse_js` just needs to walk `BindingPatternKind::{Object,Array}` and collect `BindingRestElement`/`AssignmentPattern` nodes with their `.right` default expressions. Codegen retrieves ready expressions, no string ops.
 - **Target layer**: analyze (parse_js pass — walk OXC destructuring AST, store defaults in `ParsedExprs`)
 
-### #2 — Bind directive setter/getter construction
+### ~~#2 — Bind directive setter/getter construction~~ ✅ PARTIALLY MIGRATED
 
 - **Pattern**: bind setter/getter format-and-reparse
 - **Class**: 1
 - **Complexity**: M
 - **Where**:
-  - `crates/svelte_codegen_client/src/template/component.rs:261-273` (`format!("{expr_text} = $$value")` → `ctx.b.parse_expression()`)
-- **Occurrence count**: 1
-- **What is aggregated**: expression text extracted from span, formatted into assignment string `"{expr} = $$value"`, then re-parsed via OXC
-- **Proposed type**: transform/analyze builds the setter `AssignmentExpression` directly from the pre-parsed bind expression, no string round-trip. `ParsedExprs` stores `bind_setter_expr(id)` and `bind_getter_expr(id)`
-- **Target layer**: analyze (build assignment expression in parse_js pass)
+  - `crates/svelte_codegen_client/src/template/component.rs`
+- **Migration**: Simplified `AttrKind::BindThis` from 4 fields to 1 (`bind_id`). Expression text extracted on-demand from AST instead of pre-collected. Identifier path (simple `bind:this={name}`) fully uses pre-computed analysis (`is_mutable_rune_target`). Member expression path (`bind:this={obj.prop}`) still re-parses from source — unavoidable because reactive transforms (`$.get(i)`) conflict with bind:this parameter shadowing.
+- **Remaining**: member expression setter/getter still uses `parse_expression` (2 calls). Full elimination requires storing raw (pre-transform) expressions separately in `ParsedExprs`.
 
-### #3 — Props default value fallback re-parse
+### ~~#3 — Props default value fallback re-parse~~ ✅ MIGRATED
 
 - **Pattern**: prop default fallback re-parse
 - **Class**: 1
 - **Complexity**: S
 - **Where**:
-  - `crates/svelte_codegen_client/src/script.rs:533` (`self.b.parse_expression(prop.default_text...)`)
-- **Occurrence count**: 1
-- **What is aggregated**: fallback path when `prop_default_exprs` not populated — re-parses from `default_text` string
-- **Proposed type**: accessor `fn prop_default_expr(&self, prop_id) -> Option<Expression>` — ensure `parse_js` covers all prop default cases, remove fallback
-- **Target layer**: analyze (ensure complete coverage in parse_js)
+  - `crates/svelte_codegen_client/src/script.rs` (`transform_script_text`)
+- **Migration**: `transform_script_text` now pre-parses all prop defaults via `Builder::parse_expression` before creating `ScriptTransformer`, mirroring what `parse_js` does for the full pipeline path. Fallback removed — all paths now use pre-parsed expressions.
 
 ---
 
