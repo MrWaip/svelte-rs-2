@@ -116,7 +116,7 @@ struct NodeIdAllocator  // используется только внутри п
 
 ### `svelte_types`
 `crates/svelte_types/src/lib.rs`
-OXC facade — все OXC lifetime'ы замкнуты внутри функций.
+Shared domain types (`ExpressionInfo`, `RuneKind`, `ParsedExprs`, `JsParseResult`, etc.) и OXC parsing utilities.
 
 ```rust
 // Публичный API

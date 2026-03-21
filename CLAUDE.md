@@ -17,7 +17,7 @@ When writing or modifying any test in `svelte_parser`, apply `/test-pattern` aut
 
 ### svelte_analyze tests
 
-Tests live in `crates/svelte_analyze/tests/`. Each test parses a `.svelte` snippet, runs `analyze()`, and asserts on `AnalysisData` fields. Follow `/test-pattern` for helpers and structure.
+Tests live in `crates/svelte_analyze/src/tests.rs`. Each test parses a `.svelte` snippet via `parse_with_js()`, runs `analyze()`, and asserts on `AnalysisData` fields. Follow `/test-pattern` for helpers and structure.
 
 ### svelte_codegen_client tests
 
@@ -74,7 +74,8 @@ Codegen (`svelte_codegen_client`) uses direct recursion — no visitor pattern. 
 | Feature area | Svelte reference | Our crate |
 |---|---|---|
 | AST types | `reference/compiler/types/template.d.ts` | `svelte_ast/src/lib.rs` |
-| Parser | `reference/compiler/phases/1-parse/` | `svelte_parser/src/lib.rs` |
+| Shared types + OXC utils | — | `svelte_types/src/lib.rs` |
+| Parser + JS pre-parsing | `reference/compiler/phases/1-parse/` | `svelte_parser/src/lib.rs`, `svelte_parser/src/parse_js.rs` |
 | Analysis | `reference/compiler/phases/2-analyze/visitors/` | `svelte_analyze/src/` |
 | Expression transform | `reference/compiler/phases/3-transform/client/visitors/` (rune rewrites) | `svelte_transform/src/lib.rs` |
 | Client codegen entry | `reference/compiler/phases/3-transform/client/transform-client.js` | `svelte_codegen_client/src/lib.rs` |
@@ -117,8 +118,9 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 **Before proposing or writing code, verify it goes in the correct layer. Never take a shortcut by placing logic in the wrong crate.**
 
 Layers and their responsibilities:
-- `svelte_parser` — produces immutable AST. Owns JS expression pre-parsing (`parse_js` → `ParsedExprs`).
-- `svelte_analyze` — single-pass composite visitor. Owns ALL derived data, classifications, flags, precomputation → `AnalysisData` side tables (keyed by `NodeId`).
+- `svelte_types` — shared domain types (`ExpressionInfo`, `RuneKind`, `ParsedExprs`, `JsParseResult`, etc.) and OXC parsing utilities. Leaf crate, depended on by all others.
+- `svelte_parser` — produces immutable AST. Owns JS expression pre-parsing (`parse_js` → `JsParseResult`). Entry point: `parse_with_js(&alloc, source) → (Component, JsParseResult, Diagnostics)`.
+- `svelte_analyze` — single-pass composite visitor. Owns ALL derived data, classifications, flags, precomputation → `AnalysisData` side tables (keyed by `NodeId`). Entry point: `analyze(&component, js_result) → (AnalysisData, ParsedExprs, Diagnostics)`.
 - `svelte_codegen_client` — consumes AST + AnalysisData + ParsedExprs to produce JS output. Owns only JS output construction logic.
 
 Boundary rules:
@@ -126,14 +128,14 @@ Boundary rules:
 2. **Analysis owns classification** — any derived data, classification, flag, or precomputation belongs in `svelte_analyze`. If codegen would need to re-traverse AST nodes to collect/classify data, that data must be computed in analyze instead.
 3. **JS parsing in parser** — JS expression parsing belongs in `svelte_parser` (`parse_js`), not in analyze or codegen.
 4. **SymbolId over strings** — all identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level, extend `ComponentScoping` — do not fall back to string sets.
-5. **OXC containment** — OXC types (`Expression<'a>`, `Program<'a>`) never appear in cross-crate public API, except within `svelte_codegen_client`. `svelte_types` is the facade for analysis; codegen uses OXC AST directly via `Builder`.
+5. **OXC as direct dependency** — OXC types (`Expression<'a>`, `Program<'a>`) are used directly across crates. `svelte_types` provides shared domain types and OXC parsing utilities; `ParsedExprs<'a>` carries OXC ASTs from parser through analyze/transform to codegen.
 6. **No codegen data caching** — codegen-internal enums/structs that cache or duplicate AST data to avoid re-lookups are a smell. The classification belongs in `AnalysisData`.
 7. **Correct over minimal** — never propose a "simple" or "minimal" fix in the wrong layer when a correct architectural approach exists. If unsure which layer owns the logic, ask.
 
 Additional rules:
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.
 - Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
-- AST stores `Span` for JS expressions. `ParsedExprs<'a>` caches parsed OXC `Expression<'a>` ASTs (populated in `parse_js`, consumed in transform/codegen). No JS subtree copying between phases.
+- AST stores `Span` for JS expressions. `ParsedExprs<'a>` (defined in `svelte_types`) caches parsed OXC `Expression<'a>` ASTs (populated in `svelte_parser::parse_js`, consumed in transform/codegen). No JS subtree copying between phases.
 - OXC and `ComponentScoping` share the same `SymbolId` space for script-level bindings, so `SymbolId` from OXC can be used directly with `ComponentScoping` methods without name round-tripping.
 
 ### Naming
