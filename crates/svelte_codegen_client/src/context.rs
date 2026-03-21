@@ -255,5 +255,6 @@ impl<'a> Ctx<'a> {
     pub fn each_is_destructured(&self, id: NodeId) -> bool { self.analysis.each_blocks.is_destructured(id) }
     pub fn each_body_uses_index(&self, id: NodeId) -> bool { self.analysis.each_blocks.body_uses_index(id) }
     pub fn each_key_is_item(&self, id: NodeId) -> bool { self.analysis.each_blocks.key_is_item(id) }
+    pub fn each_has_animate(&self, id: NodeId) -> bool { self.analysis.each_blocks.has_animate(id) }
 
 }

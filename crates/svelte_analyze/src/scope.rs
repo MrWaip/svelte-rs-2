@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
 
-use svelte_ast::{Component, Fragment, Node, NodeId};
+use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
 use svelte_js::RuneKind;
 
 use crate::data::{AnalysisData, EachBlockData, FragmentKey};
@@ -447,6 +447,17 @@ fn walk_template_scopes(
                     let idx_sym = scoping.add_binding(child_scope, idx_name);
                     scoping.mark_each_block_var(idx_sym);
                     each_blocks.index_names.insert(block.id, idx_name.to_string());
+                }
+
+                // Detect animate: directive on direct child elements
+                if block.body.nodes.iter().any(|node| {
+                    if let Node::Element(el) = node {
+                        el.attributes.iter().any(|a| matches!(a, Attribute::AnimateDirective(_)))
+                    } else {
+                        false
+                    }
+                }) {
+                    each_blocks.has_animate.insert(block.id);
                 }
 
                 walk_template_scopes(&block.body, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
