@@ -1,11 +1,63 @@
+use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
-use svelte_parser::{ExpressionInfo, ScriptInfo};
+use svelte_parser::ScriptInfo;
 use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
 
 pub use svelte_parser::ParsedExprs;
+
+// ---------------------------------------------------------------------------
+// Expression analysis types (created in js_analyze, stored in AnalysisData)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct ExpressionInfo {
+    pub kind: ExpressionKind,
+    pub references: Vec<Reference>,
+    pub has_side_effects: bool,
+    pub has_call: bool,
+    /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
+    pub has_state_rune: bool,
+    /// Set when the expression contains a deep mutation on a `$`-prefixed identifier
+    /// (e.g., `$store.field = val` or `$store.count++`). Used to determine if component
+    /// needs `$.push/$.pop` for `$.store_mutate` support.
+    pub has_store_member_mutation: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Reference {
+    pub(crate) name: CompactString,
+    pub(crate) span: Span,
+    pub(crate) flags: ReferenceFlags,
+    /// Resolved after `resolve_references` pass. `None` for globals/unresolved.
+    pub(crate) symbol_id: Option<SymbolId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceFlags {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExpressionKind {
+    Identifier(CompactString),
+    Literal,
+    CallExpression { callee: CompactString },
+    MemberExpression,
+    ArrowFunction,
+    Assignment,
+    Other,
+}
+
+impl ExpressionKind {
+    pub fn is_simple(&self) -> bool {
+        matches!(self, Self::Identifier(_) | Self::MemberExpression)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // FragmentKey — typed key for lowered_fragments and content_types

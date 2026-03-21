@@ -429,7 +429,7 @@ mod expression_info_tests {
     use compact_str::CompactString;
     use svelte_diagnostics::Diagnostic;
     use svelte_span::Span;
-    use svelte_parser::{ExpressionInfo, ExpressionKind, ReferenceFlags};
+    use crate::data::{ExpressionInfo, ExpressionKind, ReferenceFlags};
     use crate::js_analyze::extract_expression_info;
 
     fn compact(s: &str) -> CompactString { CompactString::from(s) }
