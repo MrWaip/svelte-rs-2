@@ -19,7 +19,7 @@
 
 ### ~~2.1 Await Block Destructured Binding — added `AwaitBindingInfo`/`DestructureKind` to `svelte_js`, `AwaitBindingData` side table in analyze, OXC-parsed in `parse_js` pass, codegen reads structured data directly~~
 
-### 2.2 Directive Name Dot-Splitting
+### ~~2.2 Directive Name Dot-Splitting — changed `name: String` → `name: Span` in UseDirective, TransitionDirective, AnimateDirective AST types; parser stores span directly; `build_directive_name_expr` reads source text from span~~
 
 - **Pattern**: `build_directive_name_expr` — splits `"a.b.c"` into member expression chain
 - **Class**: 2
