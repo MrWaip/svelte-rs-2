@@ -4,7 +4,7 @@ pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
-use svelte_js::RuneKind;
+use svelte_types::RuneKind;
 
 use crate::data::{AnalysisData, EachBlockData, FragmentKey};
 
@@ -67,9 +67,9 @@ impl ComponentScoping {
     }
 
     /// Create an empty scoping (no script block).
-    /// Parses an empty source via `svelte_js` to get a valid root scope from OXC.
+    /// Parses an empty source via `svelte_types` to get a valid root scope from OXC.
     pub fn empty() -> Self {
-        let (_info, scoping) = svelte_js::analyze_script_with_scoping("", 0, false)
+        let (_info, scoping) = svelte_types::analyze_script_with_scoping("", 0, false)
             .expect("empty script should parse");
         Self::from_scoping(scoping)
     }
@@ -492,7 +492,7 @@ fn walk_template_scopes(
                 scoping.set_node_scope(block.id, snippet_scope);
                 // Compute params inline (eliminates separate register_snippet_params walk)
                 let params = if let Some(span) = block.params_span {
-                    svelte_js::parse_snippet_params(component.source_text(span))
+                    svelte_types::parse_snippet_params(component.source_text(span))
                 } else {
                     Vec::new()
                 };
@@ -549,7 +549,7 @@ fn walk_template_scopes(
                         let then_scope = scoping.add_child_scope(current_scope);
                         scoping.set_node_scope(block.id, then_scope);
                         let binding_text = component.source_text(val_span);
-                        for name in svelte_js::parse_await_binding(binding_text).names() {
+                        for name in svelte_types::parse_await_binding(binding_text).names() {
                             scoping.add_binding(then_scope, name);
                         }
                         walk_template_scopes(t, component, scoping, then_scope, const_tag_names, snippet_params, each_blocks);
@@ -564,7 +564,7 @@ fn walk_template_scopes(
                         let catch_scope = scoping.add_child_scope(current_scope);
                         scoping.set_await_catch_scope(block.id, catch_scope);
                         let binding_text = component.source_text(err_span);
-                        for name in svelte_js::parse_await_binding(binding_text).names() {
+                        for name in svelte_types::parse_await_binding(binding_text).names() {
                             scoping.add_binding(catch_scope, name);
                         }
                         walk_template_scopes(c, component, scoping, catch_scope, const_tag_names, snippet_params, each_blocks);

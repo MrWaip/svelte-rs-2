@@ -18,7 +18,7 @@ use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
 use svelte_ast::{
     Attribute, Component, Fragment, Node, NodeId,
 };
-use svelte_js::RuneKind;
+use svelte_types::RuneKind;
 
 
 /// Transform all parsed template expressions in-place.

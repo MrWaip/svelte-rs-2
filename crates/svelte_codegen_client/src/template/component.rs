@@ -164,7 +164,7 @@ fn build_bind_this_call<'a>(
         return value;
     };
 
-    if svelte_js::is_simple_identifier(&var_name) {
+    if svelte_types::is_simple_identifier(&var_name) {
         let is_rune = ctx.is_mutable_rune_target(bind_id);
         let expr_text = ctx.b.alloc_str(&var_name);
 

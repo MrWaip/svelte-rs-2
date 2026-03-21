@@ -162,7 +162,7 @@ Implement codegen in the corresponding `svelte_codegen_client` module (see navig
 Key differences from Svelte:
 - Direct recursive functions, not AST walker (zimmerframe)
 - `AnalysisData` side tables, not mutated AST metadata
-- Store `Span`, re-parse in codegen via `svelte_js` — not stored expressions
+- Store `Span`, re-parse in codegen via `svelte_types` — not stored expressions
 
 ### Step 8: Verify & Finalize
 

@@ -27,46 +27,46 @@ pub use data::{
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
 
-use oxc_allocator::Allocator;
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
+use svelte_types::JsParseResult;
 
 /// Run all analysis passes over a parsed component.
 ///
-/// `alloc` is a shared OXC allocator for storing parsed Expression ASTs.
-/// The caller owns the allocator; the returned `ParsedExprs<'a>` borrows from it.
+/// `js_result` contains pre-parsed JS expression ASTs and metadata
+/// (produced by `svelte_parser::parse_with_js()`).
 ///
 /// Pass order:
-/// 1. parse_js      — parse JS expressions + script block (stores ASTs in ParsedExprs)
+/// 1. ingest_js_result — move JS parse data into AnalysisData side tables
 /// 2. build_scoping — build unified scope tree (script + template)
-/// 3. resolve_references — resolve template refs to SymbolId, register mutations
-/// 4. store_subscriptions — detect $store subscriptions
-/// 5. known_values  — evaluate const declarations with literal initializers
-/// 6. props         — analyze $props() destructuring
-/// 7. lower         — trim whitespace, group text+expressions
-/// 8. composite walk — reactivity + elseif + element flags + hoistable snippets
-/// 9. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
-/// 10. needs_var    — compute elements needing DOM variable
-/// 11. validate     — semantic checks
+/// 3. register_arrow_scopes — register arrow function parameter scopes
+/// 4. resolve_references — resolve template refs to SymbolId, register mutations
+/// 5. store_subscriptions — detect $store subscriptions
+/// 6. known_values  — evaluate const declarations with literal initializers
+/// 7. props         — analyze $props() destructuring
+/// 8. lower         — trim whitespace, group text+expressions
+/// 9. composite walk — reactivity + elseif + element flags + hoistable snippets
+/// 10. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
+/// 11. needs_var    — compute elements needing DOM variable
+/// 12. validate     — semantic checks
 pub fn analyze<'a>(
-    alloc: &'a Allocator,
     component: &Component,
+    js_result: JsParseResult<'a>,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
-    analyze_with_options(alloc, component, false)
+    analyze_with_options(component, js_result, false)
 }
 
 /// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
-    alloc: &'a Allocator,
     component: &Component,
+    js_result: JsParseResult<'a>,
     custom_element: bool,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
     let mut data = AnalysisData::new();
     data.custom_element = custom_element;
-    let mut parsed = ParsedExprs::new();
     let mut diags = Vec::new();
 
-    parse_js::parse_js(alloc, component, &mut data, &mut parsed, &mut diags);
+    let parsed = ingest_js_result(js_result, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
     parse_js::register_arrow_scopes(component, &mut data, &parsed);
@@ -134,6 +134,36 @@ pub fn analyze_with_options<'a>(
     (data, parsed, diags)
 }
 
+/// Move data from `JsParseResult` into `AnalysisData` side tables,
+/// returning the `ParsedExprs` (with OXC ASTs) for later consumption.
+fn ingest_js_result<'a>(
+    js_result: JsParseResult<'a>,
+    data: &mut AnalysisData,
+) -> ParsedExprs<'a> {
+    data.expressions = js_result.expressions;
+    data.attr_expressions = js_result.attr_expressions;
+    data.script = js_result.script;
+    data.exports = js_result.exports;
+    data.needs_context = js_result.needs_context;
+    data.has_class_state_fields = js_result.has_class_state_fields;
+    if let Some(scoping) = js_result.scoping {
+        data.scoping = scope::ComponentScoping::from_scoping(scoping);
+    }
+    data.each_blocks.key_uses_index = js_result.each_key_uses_index;
+    data.each_blocks.body_uses_index = js_result.each_body_uses_index;
+    data.const_tags.names = js_result.const_tag_names;
+    data.await_bindings.values = js_result.await_values;
+    data.await_bindings.errors = js_result.await_errors;
+    data.render_tag_is_chain = js_result.render_tag_is_chain;
+    data.render_tag_callee_name = js_result.render_tag_callee_name;
+    data.render_tag_arg_has_call = js_result.render_tag_arg_has_call;
+    data.render_tag_arg_idents = js_result.render_tag_arg_idents;
+    data.element_flags.expression_shorthand = js_result.expression_shorthand;
+    data.element_flags.needs_clsx = js_result.needs_clsx;
+    data.ce_config = js_result.ce_config;
+    js_result.parsed
+}
+
 /// Simplified analysis for standalone `.svelte.js`/`.svelte.ts` modules.
 ///
 /// Only parses JS, builds scopes, and detects runes. No template, no props,
@@ -143,7 +173,7 @@ pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Ve
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
-    match svelte_js::analyze_script_with_scoping(source, 0, is_ts) {
+    match svelte_types::analyze_script_with_scoping(source, 0, is_ts) {
         Ok((script_info, scoping)) => {
             data.scoping = scope::ComponentScoping::from_scoping(scoping);
 
@@ -330,8 +360,9 @@ mod tests {
 
     fn analyze_source(source: &str) -> (Component, AnalysisData) {
         let alloc = oxc_allocator::Allocator::default();
-        let (component, _) = Parser::new(source).parse();
-        let (data, _parsed, diags) = analyze(&alloc, &component);
+        let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+        assert!(parse_diags.is_empty(), "unexpected parse diagnostics: {parse_diags:?}");
+        let (data, _parsed, diags) = analyze(&component, js_result);
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         (component, data)
     }

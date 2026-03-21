@@ -61,7 +61,7 @@ Work in 6 phases. Each phase must end with `just test-all` passing. **Do NOT pro
 3. Define `JsParseResult<'a>` in `svelte_analyze::data` (temporarily — it may move later)
    - Include `ParsedExprs<'a>` and all metadata tables that `parse_js` currently writes to `AnalysisData`
    - Keep `AnalysisData` fields that are populated by analysis passes (reactivity, content_types, etc.)
-4. Add `svelte_js` as a dependency of `svelte_parser` in Cargo.toml
+4. Add `svelte_types` as a dependency of `svelte_parser` in Cargo.toml
 5. Add OXC dependencies to `svelte_parser`: `oxc_allocator`, `oxc_ast`, `oxc_semantic`, `oxc_span`
 6. Create `svelte_parser/src/parse_js.rs` — for now just re-export or empty module
 7. Add a new public function in `svelte_parser`:
@@ -143,14 +143,14 @@ Work in 6 phases. Each phase must end with `just test-all` passing. **Do NOT pro
 ## Dependency changes
 
 **svelte_parser gains:**
-- `svelte_js` (OXC facade)
+- `svelte_types` (OXC facade)
 - `oxc_allocator`, `oxc_ast`, `oxc_semantic`, `oxc_span`
 - `svelte_analyze` (for `ParsedExprs`, `JsParseResult` types) — OR these types move to a shared location
 
 **Circular dependency risk:** `svelte_parser` → `svelte_analyze` (for types) and `svelte_analyze` → `svelte_parser` (for tests). This is a problem. Solutions:
 1. **Preferred:** Move `ParsedExprs`, `JsParseResult`, `ExpressionInfo` types to `svelte_ast` or a new `svelte_types` crate
-2. **Alternative:** Move them to `svelte_js` (which both parser and analyze already depend on)
-3. **Simplest:** Move them to `svelte_js` since it already defines `ExpressionInfo` and `ScriptInfo`
+2. **Alternative:** Move them to `svelte_types` (which both parser and analyze already depend on)
+3. **Simplest:** Move them to `svelte_types` since it already defines `ExpressionInfo` and `ScriptInfo`
 
 Evaluate this during Phase 1 and pick the option that minimizes crate changes.
 

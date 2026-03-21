@@ -28,7 +28,7 @@ pub fn detect_store_subscriptions(data: &mut AnalysisData) {
         }
     }
 
-    // Script body references (from svelte_js store_candidates)
+    // Script body references (from svelte_types store_candidates)
     if let Some(script) = &data.script {
         for name in &script.store_candidates {
             candidates.push(name.to_string());

@@ -126,7 +126,7 @@ Boundary rules:
 2. **Analysis owns classification** — any derived data, classification, flag, or precomputation belongs in `svelte_analyze`. If codegen would need to re-traverse AST nodes to collect/classify data, that data must be computed in analyze instead.
 3. **JS parsing in parser** — JS expression parsing belongs in `svelte_parser` (`parse_js`), not in analyze or codegen.
 4. **SymbolId over strings** — all identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level, extend `ComponentScoping` — do not fall back to string sets.
-5. **OXC containment** — OXC types (`Expression<'a>`, `Program<'a>`) never appear in cross-crate public API, except within `svelte_codegen_client`. `svelte_js` is the facade for analysis; codegen uses OXC AST directly via `Builder`.
+5. **OXC containment** — OXC types (`Expression<'a>`, `Program<'a>`) never appear in cross-crate public API, except within `svelte_codegen_client`. `svelte_types` is the facade for analysis; codegen uses OXC AST directly via `Builder`.
 6. **No codegen data caching** — codegen-internal enums/structs that cache or duplicate AST data to avoid re-lookups are a smell. The classification belongs in `AnalysisData`.
 7. **Correct over minimal** — never propose a "simple" or "minimal" fix in the wrong layer when a correct architectural approach exists. If unsure which layer owns the logic, ask.
 
@@ -152,3 +152,29 @@ Additional rules:
 - `unwrap_or_else(|| panic!(...))` only for internal invariants, never for user errors. User errors → `Diagnostic`.
 - Repeating `match` patterns on an enum → extract into a method on that enum.
 - Comments answer "why", never describe what the line does.
+
+### Phase boundaries: fat analyze, dumb codegen
+
+Each compiler phase has a strict responsibility. When adding new features, place logic in the correct phase:
+
+- **Parser** (`svelte_parser`) — returns structured data. If a new AST node contains JS, the parser must deliver it parsed (via `svelte_types`), not as a raw Span for downstream re-parsing. Never introduce a Span-only field that forces analyze or codegen to parse text.
+- **Analyze** (`svelte_analyze`) — answers semantic questions. If codegen needs to decide between output modes based on 2+ flags, analyze should pre-compute that decision and expose it as an enum or accessor. Codegen should never dig deeper than one method call into `AnalysisData`.
+- **Codegen** (`svelte_codegen_client`) — flat mapper. Match on enums, format output. Zero decision logic. No `oxc_parser::Parser::new()`, no `starts_with('{')` heuristics, no multi-pass traversal of `el.attributes` to collect information.
+
+**Red flags in codegen** (do not introduce):
+- `oxc_parser::Parser::new()` — re-parsing in codegen means parser missed structure
+- `starts_with('[')`, `split(',')`, `split_once(':')` — string parsing means AST lost structure
+- `.iter().find(...)` + `.iter().filter_map(...)` + `.iter().any(...)` on the same collection — repeated traversal means analyze should provide a summary
+- `ctx.analysis.foo(id).and_then(|x| x.bar.first()).and_then(|r| r.baz).is_some_and(|s| ...)` — deep chaining means analyze should expose an accessor
+- `let needs_X = flag_a || (flag_b && flag_c)` combining 2+ analysis flags — means analyze should pre-compute the decision
+
+**Green flags in codegen** (this is what we want):
+```rust
+// Single accessor call → flat match
+match ctx.attr_output_mode(id) {
+    AttrOutputMode::Static => { ... }
+    AttrOutputMode::DynamicGetter => { ... }
+}
+```
+
+When in doubt, run `/audit-boundaries` to check for violations, then `/migrate-boundary #N` to fix them.

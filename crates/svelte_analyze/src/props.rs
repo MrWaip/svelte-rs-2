@@ -1,4 +1,4 @@
-use svelte_js::RuneKind;
+use svelte_types::RuneKind;
 
 use crate::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 

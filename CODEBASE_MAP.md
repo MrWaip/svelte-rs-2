@@ -114,8 +114,8 @@ struct NodeIdAllocator  // используется только внутри п
 
 ---
 
-### `svelte_js`
-`crates/svelte_js/src/lib.rs`
+### `svelte_types`
+`crates/svelte_types/src/lib.rs`
 OXC facade — все OXC lifetime'ы замкнуты внутри функций.
 
 ```rust
@@ -443,7 +443,7 @@ svelte_span
   ↑
 svelte_diagnostics
   ↑
-svelte_ast ← svelte_js
+svelte_ast ← svelte_types
   ↑              ↑
 svelte_parser  svelte_analyze
   ↑              ↑

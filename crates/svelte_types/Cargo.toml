@@ -1,10 +1,11 @@
 [package]
-name = "svelte_js"
+name = "svelte_types"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 svelte_span = { path = "../svelte_span" }
+svelte_ast = { path = "../svelte_ast" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }

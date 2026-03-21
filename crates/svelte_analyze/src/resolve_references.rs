@@ -34,8 +34,8 @@ fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == svelte_js::ReferenceFlags::Write
-                || r.flags == svelte_js::ReferenceFlags::ReadWrite
+            if r.flags == svelte_types::ReferenceFlags::Write
+                || r.flags == svelte_types::ReferenceFlags::ReadWrite
             {
                 data.scoping
                     .register_template_reference(sym_id, OxcReferenceFlags::Write);
@@ -56,8 +56,8 @@ fn resolve_attr_refs(
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == svelte_js::ReferenceFlags::Write
-                || r.flags == svelte_js::ReferenceFlags::ReadWrite
+            if r.flags == svelte_types::ReferenceFlags::Write
+                || r.flags == svelte_types::ReferenceFlags::ReadWrite
             {
                 data.scoping
                     .register_template_reference(sym_id, OxcReferenceFlags::Write);

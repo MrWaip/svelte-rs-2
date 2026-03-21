@@ -16,7 +16,22 @@ use svelte_ast::{
 
 use svelte_diagnostics::Diagnostic;
 
+mod parse_js;
 pub mod scanner;
+
+/// Parse a Svelte source file and all embedded JS expressions.
+///
+/// Returns the parsed component AST, JS parse results (expression metadata + ASTs),
+/// and any diagnostics from both the Svelte parser and JS expression parsing.
+pub fn parse_with_js<'a>(
+    alloc: &'a oxc_allocator::Allocator,
+    source: &str,
+) -> (svelte_ast::Component, svelte_types::JsParseResult<'a>, Vec<Diagnostic>) {
+    let (component, mut diagnostics) = Parser::new(source).parse();
+    let mut js_result = svelte_types::JsParseResult::new();
+    parse_js::parse_js(alloc, &component, &mut js_result, &mut diagnostics);
+    (component, js_result, diagnostics)
+}
 
 // ---------------------------------------------------------------------------
 // Stack entry — stores partial data while we parse nested structures
