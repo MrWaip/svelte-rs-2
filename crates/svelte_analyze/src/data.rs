@@ -96,6 +96,7 @@ pub struct ElementFlags {
     /// Text children use `nodeValue=` init instead of `$.set_text()` update.
     pub(crate) bound_contenteditable: FxHashSet<NodeId>,
     pub(crate) has_use_directive: FxHashSet<NodeId>,
+    pub(crate) has_dynamic_class_directives: FxHashSet<NodeId>,
 }
 
 impl ElementFlags {
@@ -114,6 +115,7 @@ impl ElementFlags {
             dynamic_attrs: FxHashSet::default(),
             bound_contenteditable: FxHashSet::default(),
             has_use_directive: FxHashSet::default(),
+            has_dynamic_class_directives: FxHashSet::default(),
         }
     }
 
@@ -130,6 +132,7 @@ impl ElementFlags {
     pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
+    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
 }
 
 /// Fragment lowering results and content classification.

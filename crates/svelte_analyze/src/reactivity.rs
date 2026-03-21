@@ -74,6 +74,9 @@ impl TemplateVisitor for ReactivityVisitor {
         if attr_is_dynamic(attr, data) {
             data.element_flags.dynamic_attrs.insert(attr_id);
             data.element_flags.needs_ref.insert(el.id);
+            if matches!(attr, Attribute::ClassDirective(_)) {
+                data.element_flags.has_dynamic_class_directives.insert(el.id);
+            }
         }
     }
 

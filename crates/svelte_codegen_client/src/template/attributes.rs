@@ -263,10 +263,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         None
     };
 
-    // --- Determine if any directive is dynamic ---
-    let directives_are_dynamic = has_class_dirs && el.attributes.iter().any(|a| {
-        matches!(a, Attribute::ClassDirective(_)) && ctx.is_dynamic_attr(a.id())
-    });
+    let directives_are_dynamic = ctx.has_dynamic_class_directives(el.id);
 
     let has_state = class_attr_is_dynamic || directives_are_dynamic;
 
