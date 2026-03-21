@@ -68,10 +68,7 @@ impl ComponentScoping {
 
     /// Create an empty scoping (no script block).
     pub fn empty() -> Self {
-        let alloc = oxc_allocator::Allocator::default();
-        let result = oxc_parser::Parser::new(&alloc, "", oxc_span::SourceType::default()).parse();
-        let sem = oxc_semantic::SemanticBuilder::new().build(&result.program);
-        Self::from_scoping(sem.semantic.into_scoping())
+        Self::from_scoping(Scoping::default())
     }
 
     // -- Scope management --

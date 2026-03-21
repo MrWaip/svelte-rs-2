@@ -562,3 +562,14 @@ fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>
         _ => {}
     }
 }
+
+/// Enrich ScriptInfo from OXC's unresolved references.
+/// Detects store candidates (`$count` etc.) from unresolved `$`-prefixed references.
+pub fn enrich_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
+    for key in scoping.root_unresolved_references().keys() {
+        let name = key.as_str();
+        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+            info.store_candidates.push(CompactString::from(&name[1..]));
+        }
+    }
+}

@@ -29,7 +29,7 @@ pub(crate) fn analyze_script(
     let Some(ref program) = parsed.script_program else { return };
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
-    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+    svelte_parser::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     // Detect deep store mutations in script body
     script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
@@ -539,17 +539,6 @@ fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32,
             }
         }
         _ => {}
-    }
-}
-
-/// Enrich ScriptInfo from OXC's unresolved references in one pass.
-/// Detects store candidates ($count etc) from unresolved `$`-prefixed references.
-pub(crate) fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
-    for key in scoping.root_unresolved_references().keys() {
-        let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::script_info::is_rune_name(name) {
-            info.store_candidates.push(CompactString::from(&name[1..]));
-        }
     }
 }
 

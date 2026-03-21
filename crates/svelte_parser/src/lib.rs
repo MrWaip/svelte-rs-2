@@ -27,6 +27,23 @@ pub use types::*;
 // Re-export parsing functions used by svelte_analyze
 pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
 
+/// Parse a standalone `.svelte.js`/`.svelte.ts` module.
+///
+/// Returns `(ScriptInfo, Scoping)` or diagnostics on parse failure.
+/// The caller (svelte_analyze) uses these to build scoping and detect runes.
+pub fn parse_module(
+    source: &str,
+    is_ts: bool,
+) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>> {
+    let alloc = oxc_allocator::Allocator::default();
+    let arena_source = alloc.alloc_str(source);
+    let program = parse_js::parse_script_with_alloc(&alloc, arena_source, 0, is_ts)?;
+    let mut info = script_info::extract_script_info(&program, 0, source);
+    let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+    script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut info);
+    Ok((info, sem.semantic.into_scoping()))
+}
+
 /// Parse a Svelte source file and all embedded JS expressions.
 ///
 /// Returns the parsed component AST, JS parse results (expression metadata + ASTs),
