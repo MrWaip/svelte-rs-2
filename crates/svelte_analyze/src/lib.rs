@@ -20,7 +20,7 @@ pub(crate) mod walker;
 
 pub use data::{
     AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind,
-    LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags,
+    EventHandlerMode, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags,
     FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis, SnippetData,
 };
 pub use ident_gen::IdentGen;

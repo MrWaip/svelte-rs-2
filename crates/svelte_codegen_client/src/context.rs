@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
+use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_js::ExpressionInfo;
 use svelte_transform::TransformData;
@@ -230,6 +230,7 @@ impl<'a> Ctx<'a> {
     pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.analysis.element_flags.class_directive_info(id) }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.analysis.element_flags.is_expression_shorthand(id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] { self.analysis.element_flags.component_props(id) }
+    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> { self.analysis.element_flags.event_handler_mode(attr_id) }
     pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis.bind_semantics.has_bind_group(id) }
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis.bind_semantics.bind_group_value_attr(id) }
     pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> { self.analysis.bind_semantics.parent_each_blocks(id) }
