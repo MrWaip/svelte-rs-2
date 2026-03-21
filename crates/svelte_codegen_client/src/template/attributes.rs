@@ -1294,38 +1294,23 @@ fn gen_on_directive_legacy<'a>(
     };
 
     // --- Apply modifier wrappers (order matches Svelte reference) ---
+    let mods = od.parsed_modifiers();
     let mut wrapped = handler;
-    for modifier in &[
-        "stopPropagation",
-        "stopImmediatePropagation",
-        "preventDefault",
-        "self",
-        "trusted",
-        "once",
-    ] {
-        if od.modifiers.iter().any(|m| m == modifier) {
-            let fn_name = format!("$.{}", modifier);
-            wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
-        }
+    for wrapper in mods.handler_wrappers() {
+        let fn_name = format!("$.{}", wrapper);
+        wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
     // --- Build $.event() call ---
-    let capture = od.modifiers.iter().any(|m| m == "capture");
-    let passive = od.modifiers.iter().find_map(|m| match m.as_str() {
-        "passive" => Some(true),
-        "nonpassive" => Some(false),
-        _ => None,
-    });
-
     let mut args: Vec<Arg<'a, '_>> = vec![
         Arg::Str(od.name.clone()),
         Arg::Ident(el_name),
         Arg::Expr(wrapped),
     ];
-    if capture || passive.is_some() {
-        args.push(Arg::Bool(capture));
+    if mods.capture || mods.passive.is_some() {
+        args.push(Arg::Bool(mods.capture));
     }
-    if let Some(p) = passive {
+    if let Some(p) = mods.passive {
         args.push(Arg::Bool(p));
     }
 
@@ -1514,37 +1499,22 @@ pub(crate) fn gen_legacy_event_on<'a>(
         build_legacy_event_handler(ctx, expr)
     };
 
+    let mods = od.parsed_modifiers();
     let mut wrapped = handler;
-    for modifier in &[
-        "stopPropagation",
-        "stopImmediatePropagation",
-        "preventDefault",
-        "self",
-        "trusted",
-        "once",
-    ] {
-        if od.modifiers.iter().any(|m| m == modifier) {
-            let fn_name = format!("$.{}", modifier);
-            wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
-        }
+    for wrapper in mods.handler_wrappers() {
+        let fn_name = format!("$.{}", wrapper);
+        wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
-
-    let capture = od.modifiers.iter().any(|m| m == "capture");
-    let passive = od.modifiers.iter().find_map(|m| match m.as_str() {
-        "passive" => Some(true),
-        "nonpassive" => Some(false),
-        _ => None,
-    });
 
     let mut args: Vec<Arg<'a, '_>> = vec![
         Arg::Str(od.name.clone()),
         Arg::Ident(target),
         Arg::Expr(wrapped),
     ];
-    if capture || passive.is_some() {
-        args.push(Arg::Bool(capture));
+    if mods.capture || mods.passive.is_some() {
+        args.push(Arg::Bool(mods.capture));
     }
-    if let Some(p) = passive {
+    if let Some(p) = mods.passive {
         args.push(Arg::Bool(p));
     }
 
