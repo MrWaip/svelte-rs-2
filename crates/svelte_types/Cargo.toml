@@ -7,14 +7,8 @@ edition = "2021"
 svelte_span = { path = "../svelte_span" }
 svelte_ast = { path = "../svelte_ast" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
-oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
-oxc_parser = { workspace = true }
 oxc_semantic = { workspace = true }
 oxc_span = { workspace = true }
-oxc_syntax = { workspace = true }
 compact_str = { workspace = true }
 rustc-hash = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }

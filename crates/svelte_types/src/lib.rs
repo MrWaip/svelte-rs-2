@@ -3,17 +3,14 @@
 //! Leaf crate providing domain types (`ExpressionInfo`, `RuneKind`, `ScriptInfo`, etc.)
 //! and OXC parsing helpers used across parser, analyze, transform, and codegen.
 
-use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
-use oxc_parser::Parser as OxcParser;
-use oxc_span::{GetSpan as _, SourceType};
+use oxc_ast::ast::Expression;
+use oxc_span::GetSpan as _;
 
 use compact_str::CompactString;
 use oxc_semantic::SymbolId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId;
 use svelte_span::Span;
-use svelte_diagnostics::Diagnostic;
 
 /// Convert OXC Atom to CompactString without intermediate String allocation.
 #[inline]
@@ -300,95 +297,6 @@ pub struct EachBindingEntry<'a> {
     pub default_expr: Option<Expression<'a>>,
 }
 
-/// Parse an each-block destructuring context pattern via OXC into a caller-provided allocator.
-///
-/// Wraps as `var PATTERN = x;`, parses via OXC, walks `BindingPattern` to extract
-/// binding names, property keys, and default expressions.
-pub fn parse_each_context_with_alloc<'a>(
-    alloc: &'a Allocator,
-    source: &'a str,
-    typescript: bool,
-) -> Option<EachContextBinding<'a>> {
-    let trimmed = source.trim();
-    let wrapped_owned = format!("var {} = x;", trimmed);
-    let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
-
-    let src_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-    let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
-
-    if !result.errors.is_empty() {
-        return None;
-    }
-
-    let program = result.program;
-    let stmt = program.body.into_iter().next()?;
-    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
-        return None;
-    };
-    let declarator = var_decl.declarations.remove(0);
-
-    match declarator.id {
-        oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
-            let mut bindings = Vec::new();
-            for prop in obj.unbox().properties {
-                let key_name = match &prop.key {
-                    PropertyKey::StaticIdentifier(id) => Some(compact(&id.name)),
-                    _ => None,
-                };
-                // Walk the value pattern for name + default
-                match prop.value {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        let name = compact(&id.name);
-                        // Shorthand: key == name
-                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
-                        bindings.push(EachBindingEntry { name, key_name: key, default_expr: None });
-                    }
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                        let assign = assign.unbox();
-                        let name = match assign.left {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => compact(&id.name),
-                            _ => continue,
-                        };
-                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
-                        bindings.push(EachBindingEntry { name, key_name: key, default_expr: Some(assign.right) });
-                    }
-                    _ => continue,
-                }
-            }
-            Some(EachContextBinding { is_array: false, bindings })
-        }
-        oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
-            let mut bindings = Vec::new();
-            for elem in arr.unbox().elements.into_iter().flatten() {
-                match elem {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        bindings.push(EachBindingEntry {
-                            name: compact(&id.name),
-                            key_name: None,
-                            default_expr: None,
-                        });
-                    }
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                        let assign = assign.unbox();
-                        let name = match assign.left {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => compact(&id.name),
-                            _ => continue,
-                        };
-                        bindings.push(EachBindingEntry { name, key_name: None, default_expr: Some(assign.right) });
-                    }
-                    _ => continue,
-                }
-            }
-            Some(EachContextBinding { is_array: true, bindings })
-        }
-        _ => None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Await binding info
 // ---------------------------------------------------------------------------
@@ -422,60 +330,6 @@ impl AwaitBindingInfo {
     }
 }
 
-/// Parse an await binding pattern via OXC.
-///
-/// Wraps the text as `var PATTERN = x;` and inspects the parsed `BindingPattern`
-/// to determine if it's a simple identifier, object destructuring, or array destructuring.
-pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
-    let trimmed = text.trim();
-
-    let alloc = Allocator::default();
-    let source = format!("var {} = x;", trimmed);
-    let result = OxcParser::new(&alloc, &source, SourceType::default()).parse();
-
-    if result.errors.is_empty() {
-        if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first() {
-            if let Some(declarator) = decl.declarations.first() {
-                match &declarator.id {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        return AwaitBindingInfo::Simple(id.name.to_string());
-                    }
-                    oxc_ast::ast::BindingPattern::ObjectPattern(_) => {
-                        let mut names = Vec::new();
-                        extract_all_binding_names(&declarator.id, &mut names);
-                        return AwaitBindingInfo::Destructured {
-                            kind: DestructureKind::Object,
-                            names: names.into_iter().map(|n| n.to_string()).collect(),
-                        };
-                    }
-                    oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
-                        let mut names = Vec::new();
-                        extract_all_binding_names(&declarator.id, &mut names);
-                        return AwaitBindingInfo::Destructured {
-                            kind: DestructureKind::Array,
-                            names: names.into_iter().map(|n| n.to_string()).collect(),
-                        };
-                    }
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                        let mut names = Vec::new();
-                        extract_all_binding_names(&assign.left, &mut names);
-                        if names.len() == 1 {
-                            return AwaitBindingInfo::Simple(names[0].to_string());
-                        }
-                        return AwaitBindingInfo::Destructured {
-                            kind: DestructureKind::Object,
-                            names: names.into_iter().map(|n| n.to_string()).collect(),
-                        };
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback: treat as simple identifier
-    AwaitBindingInfo::Simple(trimmed.to_string())
-}
-
 // ---------------------------------------------------------------------------
 // Custom element config parsing
 // ---------------------------------------------------------------------------
@@ -507,212 +361,7 @@ pub struct ParsedCeConfig {
     pub extend_span: Option<Span>,
 }
 
-/// Parse a custom element config object expression via OXC.
-///
-/// `source` is the raw expression text (e.g., `{ tag: "my-el", shadow: "open", props: {...} }`).
-/// `offset` is the byte offset of `source` within the original .svelte file,
-/// used to adjust `extend` span to absolute coordinates.
-pub fn parse_ce_config(source: &str, offset: u32) -> ParsedCeConfig {
-    let alloc = Allocator::default();
-    let wrapped = format!("var x = {};", source);
-    let result = OxcParser::new(&alloc, &wrapped, SourceType::default()).parse();
-
-    let prefix_len: u32 = 8; // "var x = "
-
-    let mut config = ParsedCeConfig {
-        tag: None,
-        shadow: CeShadowMode::Open,
-        props: Vec::new(),
-        extend_span: None,
-    };
-
-    if !result.errors.is_empty() {
-        return config;
-    }
-
-    let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first() else {
-        return config;
-    };
-    let Some(declarator) = decl.declarations.first() else {
-        return config;
-    };
-    let Some(Expression::ObjectExpression(obj)) = &declarator.init else {
-        return config;
-    };
-
-    for prop_kind in &obj.properties {
-        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
-        let key_name = match &prop.key {
-            PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-            _ => continue,
-        };
-
-        match key_name {
-            "tag" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    config.tag = Some(lit.value.to_string());
-                }
-            }
-            "shadow" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    if lit.value.as_str() == "none" {
-                        config.shadow = CeShadowMode::None;
-                    }
-                }
-            }
-            "props" => {
-                if let Expression::ObjectExpression(props_obj) = &prop.value {
-                    for prop_entry in &props_obj.properties {
-                        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else { continue };
-                        let prop_name = match &entry.key {
-                            PropertyKey::StaticIdentifier(id) => id.name.to_string(),
-                            _ => continue,
-                        };
-                        let mut prop_cfg = CePropConfig {
-                            name: prop_name,
-                            attribute: None,
-                            reflect: false,
-                            prop_type: None,
-                        };
-                        if let Expression::ObjectExpression(def_obj) = &entry.value {
-                            for def_prop in &def_obj.properties {
-                                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else { continue };
-                                let dk = match &dp.key {
-                                    PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-                                    _ => continue,
-                                };
-                                match dk {
-                                    "attribute" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.attribute = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    "reflect" => {
-                                        if let Expression::BooleanLiteral(lit) = &dp.value {
-                                            prop_cfg.reflect = lit.value;
-                                        }
-                                    }
-                                    "type" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.prop_type = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        config.props.push(prop_cfg);
-                    }
-                }
-            }
-            "extend" => {
-                let ext_start = prop.value.span().start;
-                let ext_end = prop.value.span().end;
-                // Adjust from wrapped-string coordinates to original source coordinates
-                config.extend_span = Some(Span::new(
-                    ext_start - prefix_len + offset,
-                    ext_end - prefix_len + offset,
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    config
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Parse snippet parameter names from the raw params text (e.g. `"a, b"` or `"{ name }, count"`).
-///
-/// Uses OXC to parse `function f(PARAMS) {}` so destructuring patterns and default
-/// values with commas are handled correctly. Falls back to a simple comma split on
-/// parse failure.
-pub fn parse_snippet_params(params_text: &str) -> Vec<String> {
-    let alloc = Allocator::default();
-    let source = format!("function f({}) {{}}", params_text);
-    let result = OxcParser::new(&alloc, &source, SourceType::default()).parse();
-
-    if result.errors.is_empty() {
-        if let Some(oxc_ast::ast::Statement::FunctionDeclaration(func)) = result.program.body.first() {
-            let mut names: Vec<CompactString> = Vec::new();
-            for param in &func.params.items {
-                extract_all_binding_names(&param.pattern, &mut names);
-            }
-            if let Some(rest) = &func.params.rest {
-                extract_all_binding_names(&rest.rest.argument, &mut names);
-            }
-            return names.iter().map(|n| n.to_string()).collect();
-        }
-    }
-
-    // Fallback: simple comma split for trivial cases (should rarely trigger)
-    params_text
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
-
-/// Parse a `{@const name = expr}` declaration via OXC.
-///
-/// `source` is the raw declaration text (e.g. `"doubled = item * 2"` or `"{a, b} = obj"`).
-/// `offset` is `declaration_span.start` in the original .svelte file.
-///
-/// Returns binding names, references from the init expression, and the init `Expression` AST.
-pub fn parse_const_declaration_with_alloc<'a>(
-    alloc: &'a Allocator,
-    source: &'a str,
-    offset: u32,
-    typescript: bool,
-) -> Result<(Vec<CompactString>, Vec<Reference>, Expression<'a>), Diagnostic> {
-    // Wrap as "const {source};" so OXC can parse it as a full statement
-    let wrapped_owned = format!("const {};", source);
-    let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
-    let prefix_len: u32 = 6; // "const "
-
-    let src_type = if typescript {
-        SourceType::default().with_typescript(true).with_module(true)
-    } else {
-        SourceType::default()
-    };
-    let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
-
-    if !result.errors.is_empty() {
-        return Err(Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)));
-    }
-
-    let program = result.program;
-    let stmt = program.body.into_iter().next()
-        .ok_or_else(|| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
-
-    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
-        return Err(Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)));
-    };
-
-    let mut declarator = var_decl.declarations.remove(0);
-
-    let mut names = Vec::new();
-    extract_all_binding_names(&declarator.id, &mut names);
-
-    let mut init = declarator.init.take()
-        .ok_or_else(|| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
-
-    if typescript {
-        strip_ts_expression(&mut init, alloc);
-    }
-
-    // OXC spans are relative to the wrapped string; adjust by subtracting the prefix
-    let ref_offset = offset.wrapping_sub(prefix_len);
-    let mut references = Vec::new();
-    collect_references(&init, ref_offset, &mut references);
-
-    Ok((names, references, init))
-}
-
-fn extract_all_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, names: &mut Vec<CompactString>) {
+pub fn extract_all_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, names: &mut Vec<CompactString>) {
     use oxc_ast::ast::BindingPattern;
     match pattern {
         BindingPattern::BindingIdentifier(id) => names.push(compact(&id.name)),
@@ -736,59 +385,7 @@ fn extract_all_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, names: 
     }
 }
 
-/// Parse a JS expression into a provided allocator, returning both metadata and AST.
-///
-/// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
-/// Use this when you need to keep the parsed AST for later transformation/codegen.
-pub fn analyze_expression_with_alloc<'a>(
-    alloc: &'a Allocator,
-    source: &'a str,
-    offset: u32,
-    typescript: bool,
-) -> Result<(ExpressionInfo, Expression<'a>), Diagnostic> {
-    let src_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-    let parser = OxcParser::new(alloc, source, src_type);
-    let mut expr = parser
-        .parse_expression()
-        .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
-    if typescript {
-        strip_ts_expression(&mut expr, alloc);
-    }
-    let info = extract_expression_info(&expr, offset);
-    Ok((info, expr))
-}
-
-/// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.
-/// Handles: TSAsExpression, TSSatisfiesExpression, TSNonNullExpression,
-///          TSTypeAssertion, TSInstantiationExpression.
-fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
-    use std::cell::Cell;
-    let dummy = || Expression::NullLiteral(oxc_allocator::Box::new_in(
-        oxc_ast::ast::NullLiteral { span: oxc_span::SPAN, node_id: Cell::new(oxc_syntax::node::NodeId::DUMMY) },
-        alloc,
-    ));
-    // Unwrap top-level TS wrappers (may be nested, e.g. `x as T satisfies U`)
-    loop {
-        let inner = match std::mem::replace(expr, dummy()) {
-            Expression::TSAsExpression(ts) => ts.unbox().expression,
-            Expression::TSSatisfiesExpression(ts) => ts.unbox().expression,
-            Expression::TSNonNullExpression(ts) => ts.unbox().expression,
-            Expression::TSTypeAssertion(ts) => ts.unbox().expression,
-            Expression::TSInstantiationExpression(ts) => ts.unbox().expression,
-            other => {
-                *expr = other;
-                break;
-            }
-        };
-        *expr = inner;
-    }
-}
-
-fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
+pub fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source: &str) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
@@ -840,7 +437,7 @@ fn extract_script_info(program: &oxc_ast::ast::Program<'_>, offset: u32, source:
 
 /// Enrich ScriptInfo from OXC's unresolved references in one pass.
 /// Detects store candidates ($count etc) from unresolved `$`-prefixed references.
-fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
+pub fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
     for key in scoping.root_unresolved_references().keys() {
         let name = key.as_str();
         if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
@@ -1078,114 +675,7 @@ fn collect_var_declarations(
     }
 }
 
-/// Parse a `<script>` block once and return both owned analysis info and OXC Scoping.
-///
-/// This avoids double-parsing: the single OXC parse produces both the `ScriptInfo`
-/// (declarations, props) and the `Scoping` (symbol table + scope tree for semantic analysis).
-pub fn analyze_script_with_scoping(
-    source: &str,
-    offset: u32,
-    typescript: bool,
-) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>> {
-    let allocator = Allocator::default();
-    let source_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-
-    let parser = OxcParser::new(&allocator, source, source_type);
-    let result = parser.parse();
-
-    if !result.errors.is_empty() {
-        return Err(result
-            .errors
-            .iter()
-            .map(|_| {
-                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-            })
-            .collect());
-    }
-
-    let program = &result.program;
-
-    // Extract ScriptInfo by walking the AST
-    let mut script_info = extract_script_info(program, offset, source);
-
-    // Build semantic analysis and extract Scoping
-    let sem = oxc_semantic::SemanticBuilder::new().build(program);
-
-    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-
-    let scoping = sem.semantic.into_scoping();
-
-    Ok((script_info, scoping))
-}
-
-/// Parse a `<script>` block once in a caller-provided allocator and return
-/// analysis info, scoping, and the live `Program` AST.
-///
-/// The returned `Program<'a>` is reused by codegen, eliminating double-parsing.
-pub fn analyze_script_with_alloc<'a>(
-    alloc: &'a Allocator,
-    source: &'a str,
-    offset: u32,
-    typescript: bool,
-) -> Result<(ScriptInfo, oxc_semantic::Scoping, oxc_ast::ast::Program<'a>), Vec<Diagnostic>> {
-    let source_type = if typescript {
-        SourceType::mjs().with_typescript(true)
-    } else {
-        SourceType::mjs()
-    };
-
-    let result = OxcParser::new(alloc, source, source_type).parse();
-
-    if !result.errors.is_empty() {
-        return Err(result
-            .errors
-            .iter()
-            .map(|_| {
-                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-            })
-            .collect());
-    }
-
-    let program = result.program;
-    let mut script_info = extract_script_info(&program, offset, source);
-    let sem = oxc_semantic::SemanticBuilder::new().build(&program);
-
-    // Extract has_effects + store_candidates from unresolved references in one pass.
-    // $effect → has_effects; $count (non-rune) → store candidate.
-    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-
-    // Detect deep store mutations in script body (e.g., $store.field = val)
-    script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
-        if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-            has_deep_store_mutation(&es.expression)
-        } else {
-            false
-        }
-    });
-
-    let scoping = sem.semantic.into_scoping();
-
-    Ok((script_info, scoping, program))
-}
-
-/// Check if an expression text represents a "simple" expression that can be
-/// eagerly evaluated (no side effects). Matches Svelte's `is_simple_expression()`.
-///
-/// Simple expressions: literals, identifiers, functions, and combinations of
-/// binary/logical/conditional expressions composed of simples.
-pub fn is_simple_expression(text: &str) -> bool {
-    let alloc = Allocator::default();
-    let Ok(expr) = OxcParser::new(&alloc, text, SourceType::default()).parse_expression() else {
-        return false;
-    };
-    is_simple_expr(&expr)
-}
-
-fn is_simple_expr(expr: &Expression<'_>) -> bool {
+pub fn is_simple_expr(expr: &Expression<'_>) -> bool {
     match expr {
         Expression::NumericLiteral(_)
         | Expression::StringLiteral(_)
@@ -1266,7 +756,7 @@ pub fn is_passive_event(name: &str) -> bool {
 // Internals
 // ---------------------------------------------------------------------------
 
-fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
+pub fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
     let kind = match expr {
         Expression::Identifier(ident) => ExpressionKind::Identifier(compact(&ident.name)),
         Expression::NumericLiteral(_)
@@ -1363,7 +853,7 @@ fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
 
 /// Check if expression contains a deep mutation on a $-prefixed identifier
 /// (e.g., `$store.field = val` or `$store.count++`).
-fn has_deep_store_mutation(expr: &Expression<'_>) -> bool {
+pub fn has_deep_store_mutation(expr: &Expression<'_>) -> bool {
     match expr {
         Expression::AssignmentExpression(assign) => {
             let has_store_member_lhs = match &assign.left {
@@ -1419,7 +909,7 @@ fn member_root_is_store(expr: &Expression<'_>) -> bool {
     }
 }
 
-fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Reference>) {
+pub fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Reference>) {
     match expr {
         Expression::Identifier(ident) => {
             refs.push(Reference {
@@ -1812,6 +1302,3 @@ fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>
         _ => {}
     }
 }
-
-#[cfg(test)]
-mod tests;

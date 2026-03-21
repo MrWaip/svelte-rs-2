@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 svelte_ast = { path = "../svelte_ast" }
 svelte_types = { path = "../svelte_types" }
+svelte_parser = { path = "../svelte_parser" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 svelte_span = { path = "../svelte_span" }
 oxc_ast = { workspace = true }
@@ -17,4 +18,3 @@ rustc-hash = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 oxc_allocator = { workspace = true }
-svelte_parser = { path = "../svelte_parser" }

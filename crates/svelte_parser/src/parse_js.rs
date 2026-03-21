@@ -16,7 +16,7 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match svelte_types::analyze_script_with_alloc(
+        match crate::js_parse::analyze_script_with_alloc(
             alloc,
             arena_source,
             script.content_span.start,
@@ -41,7 +41,7 @@ pub(crate) fn parse_js<'a>(
                 if let Some(span) = prop.default_span {
                     let src = component.source_text(span);
                     let arena_src: &'a str = alloc.alloc_str(src);
-                    match svelte_types::analyze_expression_with_alloc(alloc, arena_src, span.start, typescript) {
+                    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, span.start, typescript) {
                         Ok((_info, expr)) => result.parsed.prop_default_exprs.push(Some(expr)),
                         Err(diag) => { diags.push(diag); result.parsed.prop_default_exprs.push(None); }
                     }
@@ -59,12 +59,12 @@ pub(crate) fn parse_js<'a>(
         component.options.as_ref().and_then(|o| o.custom_element.as_ref())
     {
         let ce_source = component.source_text(*span);
-        let config = svelte_types::parse_ce_config(ce_source, span.start);
+        let config = crate::js_parse::parse_ce_config(ce_source, span.start);
 
         if let Some(ext_span) = config.extend_span {
             let ext_src = component.source_text(ext_span);
             let arena_src: &'a str = alloc.alloc_str(ext_src);
-            match svelte_types::analyze_expression_with_alloc(alloc, arena_src, ext_span.start, typescript) {
+            match crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, ext_span.start, typescript) {
                 Ok((_info, expr)) => { result.parsed.ce_extend_expr = Some(expr); }
                 Err(diag) => diags.push(diag),
             }
@@ -85,7 +85,7 @@ fn parse_expr<'a>(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena_source: &'a str = alloc.alloc_str(source);
-    match svelte_types::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
+    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
         Ok((info, expr)) => {
             result.expressions.insert(node_id, info);
             result.parsed.exprs.insert(node_id, expr);
@@ -105,7 +105,7 @@ fn parse_attr_expr<'a>(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena_source: &'a str = alloc.alloc_str(source);
-    match svelte_types::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
+    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
         Ok((info, expr)) => {
             result.attr_expressions.insert(attr_id, info);
             result.parsed.attr_exprs.insert(attr_id, expr);
@@ -130,7 +130,7 @@ fn parse_concat_parts<'a>(
         if let ConcatPart::Dynamic(span) = part {
             let source = component.source_text(*span);
             let arena_source: &'a str = alloc.alloc_str(source);
-            match svelte_types::analyze_expression_with_alloc(alloc, arena_source, span.start, typescript) {
+            match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, span.start, typescript) {
                 Ok((info, expr)) => {
                     all_refs.extend(info.references);
                     result.parsed.concat_part_exprs.insert((attr_id, dyn_idx), expr);
@@ -199,7 +199,7 @@ fn walk_node<'a>(
             if let Some(key_span) = block.key_span {
                 let key_source = component.source_text(key_span);
                 let arena_source: &'a str = alloc.alloc_str(key_source);
-                match svelte_types::analyze_expression_with_alloc(alloc, arena_source, key_span.start, typescript) {
+                match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, key_span.start, typescript) {
                     Ok((info, expr)) => {
                         if let Some(idx_span) = block.index_span {
                             let idx_name = component.source_text(idx_span);
@@ -218,7 +218,7 @@ fn walk_node<'a>(
             let ctx_trimmed = ctx_source.trim();
             if ctx_trimmed.starts_with('{') || ctx_trimmed.starts_with('[') {
                 let arena_ctx: &'a str = alloc.alloc_str(ctx_source);
-                if let Some(binding) = svelte_types::parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                if let Some(binding) = crate::js_parse::parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
                     result.parsed.each_context_bindings.insert(block.id, binding);
                 }
             }
@@ -302,12 +302,12 @@ fn walk_node<'a>(
 
             if let Some(val_span) = block.value_span {
                 let binding_text = component.source_text(val_span);
-                let info = svelte_types::parse_await_binding(binding_text);
+                let info = crate::js_parse::parse_await_binding(binding_text);
                 result.await_values.insert(block.id, info);
             }
             if let Some(err_span) = block.error_span {
                 let binding_text = component.source_text(err_span);
-                let info = svelte_types::parse_await_binding(binding_text);
+                let info = crate::js_parse::parse_await_binding(binding_text);
                 result.await_errors.insert(block.id, info);
             }
 
@@ -324,7 +324,7 @@ fn walk_node<'a>(
         Node::ConstTag(tag) => {
             let decl_text = component.source_text(tag.declaration_span);
             let arena_source: &'a str = alloc.alloc_str(decl_text);
-            match svelte_types::parse_const_declaration_with_alloc(alloc, arena_source, tag.declaration_span.start, typescript) {
+            match crate::js_parse::parse_const_declaration_with_alloc(alloc, arena_source, tag.declaration_span.start, typescript) {
                 Ok((names, references, init_expr)) => {
                     result.expressions.insert(tag.id, ExpressionInfo {
                         kind: ExpressionKind::Other,
@@ -368,7 +368,7 @@ fn walk_node<'a>(
             for (i, span) in tag.identifiers.iter().enumerate() {
                 let name = component.source_text(*span);
                 let arena_name: &'a str = alloc.alloc_str(name);
-                match svelte_types::analyze_expression_with_alloc(alloc, arena_name, span.start, typescript) {
+                match crate::js_parse::analyze_expression_with_alloc(alloc, arena_name, span.start, typescript) {
                     Ok((_info, expr)) => {
                         result.parsed.debug_tag_exprs.insert((tag.id, i), expr);
                     }
@@ -474,7 +474,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = svelte_types::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
@@ -493,7 +493,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = svelte_types::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
@@ -504,7 +504,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = svelte_types::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
