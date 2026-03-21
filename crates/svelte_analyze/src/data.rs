@@ -97,6 +97,9 @@ pub struct ElementFlags {
     pub(crate) bound_contenteditable: FxHashSet<NodeId>,
     pub(crate) has_use_directive: FxHashSet<NodeId>,
     pub(crate) has_dynamic_class_directives: FxHashSet<NodeId>,
+    /// Attribute/directive whose expression is a simple identifier matching the name
+    /// (e.g., `class:foo={foo}`, `style:color={color}`). Enables property shorthand in output.
+    pub(crate) expression_shorthand: FxHashSet<NodeId>,
 }
 
 impl ElementFlags {
@@ -116,6 +119,7 @@ impl ElementFlags {
             bound_contenteditable: FxHashSet::default(),
             has_use_directive: FxHashSet::default(),
             has_dynamic_class_directives: FxHashSet::default(),
+            expression_shorthand: FxHashSet::default(),
         }
     }
 
@@ -133,6 +137,7 @@ impl ElementFlags {
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
 }
 
 /// Fragment lowering results and content classification.
