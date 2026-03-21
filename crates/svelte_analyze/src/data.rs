@@ -118,6 +118,15 @@ pub enum ComponentPropKind {
     Spread,
 }
 
+/// Pre-computed event handler delegation vs direct binding decision.
+#[derive(Debug, Clone, Copy)]
+pub enum EventHandlerMode {
+    /// Event uses delegation: `$.delegated(name, el, handler, [void 0, true])`
+    Delegated { passive: bool },
+    /// Event uses direct binding: `$.event(name, el, handler, [capture?, passive?])`
+    Direct { capture: bool, passive: bool },
+}
+
 /// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
 pub struct ElementFlags {
     pub(crate) has_spread: FxHashSet<NodeId>,
@@ -143,6 +152,8 @@ pub struct ElementFlags {
     pub(crate) expression_shorthand: FxHashSet<NodeId>,
     /// Pre-classified component attributes for codegen (avoids two-pass pattern).
     pub(crate) component_props: FxHashMap<NodeId, Vec<ComponentPropInfo>>,
+    /// Pre-computed event handler delegation routing (avoids on-the-fly decision in codegen).
+    pub(crate) event_handler_mode: FxHashMap<NodeId, EventHandlerMode>,
 }
 
 impl ElementFlags {
@@ -164,6 +175,7 @@ impl ElementFlags {
             has_dynamic_class_directives: FxHashSet::default(),
             expression_shorthand: FxHashSet::default(),
             component_props: FxHashMap::default(),
+            event_handler_mode: FxHashMap::default(),
         }
     }
 
@@ -187,6 +199,9 @@ impl ElementFlags {
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(&id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
+        self.event_handler_mode.get(&attr_id).copied()
     }
 }
 
