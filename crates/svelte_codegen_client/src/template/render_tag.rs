@@ -3,6 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 use oxc_span::GetSpan;
 
+use svelte_analyze::RenderTagCalleeMode;
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -21,9 +22,7 @@ pub(crate) fn gen_render_tag<'a>(
     let tag = ctx.render_tag(id);
     let full_source = ctx.component.source_text(tag.expression_span);
 
-    let is_dynamic = ctx.analysis.render_tag_is_dynamic(id);
-    let is_chain = ctx.analysis.render_tag_is_chain(id);
-    let callee_is_getter = ctx.analysis.render_tag_callee_is_getter(id);
+    let mode = ctx.analysis.render_tag_callee_mode(id);
 
     // Pre-computed per-argument has_call flags
     let arg_has_call = ctx.analysis.render_tag_arg_has_call(id)
@@ -83,30 +82,30 @@ pub(crate) fn gen_render_tag<'a>(
         }
     }
 
-    let final_stmt = if is_dynamic {
-        // Dynamic callee: $.snippet(anchor, callee_getter, ...args)
-        // Use the already-transformed callee expression from the AST:
-        // - Prop-source: show → show() (by transform), thunk → show (by unthunk)
-        // - Snippet param: inner → inner() (by transform), thunk → inner (by unthunk)
-        // - $state: show → $.get(show) (by transform), thunk → () => $.get(show)
-        let callee_arg = build_dynamic_callee(ctx, callee_expr, is_chain, callee_is_getter);
+    let final_stmt = match mode {
+        RenderTagCalleeMode::DynamicRegular | RenderTagCalleeMode::DynamicChain => {
+            // Dynamic callee: $.snippet(anchor, callee_getter, ...args)
+            let callee_arg = build_dynamic_callee(ctx, callee_expr, mode.is_chain());
 
-        let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
-        snippet_args.extend(arg_thunks);
+            let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
+            snippet_args.extend(arg_thunks);
 
-        ctx.b.call_stmt("$.snippet", snippet_args)
-    } else if is_chain {
-        // Non-dynamic optional: callee?.(anchor, ...args)
-        let callee_expr = ctx.b.rid_expr(callee_text);
-        let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
-        all_args.extend(arg_thunks);
-        let call_expr = ctx.b.maybe_call_expr(callee_expr, all_args);
-        ctx.b.expr_stmt(call_expr)
-    } else {
-        // Non-dynamic regular: callee(anchor, ...args)
-        let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
-        all_args.extend(arg_thunks);
-        ctx.b.call_stmt(callee_text, all_args)
+            ctx.b.call_stmt("$.snippet", snippet_args)
+        }
+        RenderTagCalleeMode::Chain => {
+            // Non-dynamic optional: callee?.(anchor, ...args)
+            let callee_expr = ctx.b.rid_expr(callee_text);
+            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+            all_args.extend(arg_thunks);
+            let call_expr = ctx.b.maybe_call_expr(callee_expr, all_args);
+            ctx.b.expr_stmt(call_expr)
+        }
+        RenderTagCalleeMode::Direct => {
+            // Non-dynamic regular: callee(anchor, ...args)
+            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+            all_args.extend(arg_thunks);
+            ctx.b.call_stmt(callee_text, all_args)
+        }
     };
 
     if memo_stmts.is_empty() {
@@ -127,7 +126,6 @@ fn build_dynamic_callee<'a>(
     ctx: &mut Ctx<'a>,
     callee_expr: Expression<'a>,
     is_chain: bool,
-    _callee_is_getter: bool,
 ) -> Expression<'a> {
     if is_chain {
         // Optional: () => callee_expr ?? $.noop
