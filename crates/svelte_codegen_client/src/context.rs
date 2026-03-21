@@ -225,6 +225,7 @@ impl<'a> Ctx<'a> {
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.analysis.element_flags.is_bound_contenteditable(id) }
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.analysis.element_flags.has_use_directive(id) }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_dynamic_class_directives(id) }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.analysis.element_flags.is_expression_shorthand(id) }
     pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis.bind_semantics.has_bind_group(id) }
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis.bind_semantics.bind_group_value_attr(id) }
     pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> { self.analysis.bind_semantics.parent_each_blocks(id) }
