@@ -49,17 +49,9 @@ Generated: 2026-03-21
 
 ## Class 2: String Re-parsing
 
-### #4 — Directive name dot-notation splitting
+### ~~#4 — Directive name dot-notation splitting~~ ✅
 
-- **Pattern**: legacy on:directive dot-path splitting
-- **Class**: 2
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:1300-1309` (`name.split('.').collect()`)
-- **Occurrence count**: 1
-- **What is aggregated**: directive name span → source text → `split('.')` → member expression chain
-- **Proposed type**: parser delivers `Vec<CompactStr>` name parts on `OnDirectiveLegacy`, or pre-builds the member expression in parse_js
-- **Target layer**: parser (structured name parts)
+~~Pre-parsed directive name expressions via OXC in `parse_js`. Stored in `ParsedExprs::directive_name_exprs`, consumed by codegen via `remove()`. `build_directive_name_expr` deleted.~~
 
 ### #5 — Each block key_is_item detection
 

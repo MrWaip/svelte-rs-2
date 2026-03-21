@@ -32,6 +32,9 @@ pub struct ParsedExprs<'a> {
     /// Pre-parsed each-block destructuring context bindings, keyed by EachBlock NodeId.
     /// Consumed by codegen via `remove()`.
     pub each_context_bindings: FxHashMap<NodeId, svelte_js::EachContextBinding<'a>>,
+    /// Pre-parsed directive name expressions (use:, transition:, animate:).
+    /// Keyed by directive NodeId. Consumed by codegen via `remove()`.
+    pub directive_name_exprs: FxHashMap<NodeId, Expression<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -46,6 +49,7 @@ impl<'a> ParsedExprs<'a> {
             ce_extend_expr: None,
             prop_default_exprs: Vec::new(),
             each_context_bindings: FxHashMap::default(),
+            directive_name_exprs: FxHashMap::default(),
         }
     }
 }
