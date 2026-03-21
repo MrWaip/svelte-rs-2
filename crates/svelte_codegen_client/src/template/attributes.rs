@@ -3,7 +3,6 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_ast::{Attribute, Element, NodeId};
-use svelte_span::Span;
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
@@ -1175,8 +1174,7 @@ fn gen_use_directive<'a>(
         ctx.b.params(["$$node"])
     };
 
-    // Build directive name expression (handles dotted names like "a.b")
-    let name_expr = build_directive_name_expr(ctx, ud.name);
+    let name_expr = ctx.parsed.directive_name_exprs.remove(&ud.id).unwrap();
 
     // Build optional call: name?.($$node) or name?.($$node, $$action_arg)
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$node")];
@@ -1242,7 +1240,7 @@ fn gen_transition_directive<'a>(
         svelte_ast::TransitionDirection::Out => flags |= 2,
     }
 
-    let name_expr = build_directive_name_expr(ctx, td.name);
+    let name_expr = ctx.parsed.directive_name_exprs.remove(&td.id).unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -1269,7 +1267,7 @@ fn gen_animate_directive<'a>(
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
-    let name_expr = build_directive_name_expr(ctx, ad.name);
+    let name_expr = ctx.parsed.directive_name_exprs.remove(&ad.id).unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -1286,17 +1284,6 @@ fn gen_animate_directive<'a>(
     }
 
     after_update.push(ctx.b.call_stmt("$.animation", args));
-}
-
-/// Build a directive name like "a.b.c" into a member expression chain.
-fn build_directive_name_expr<'a>(ctx: &Ctx<'a>, name_span: Span) -> Expression<'a> {
-    let name = ctx.component.source_text(name_span);
-    let parts: Vec<&str> = name.split('.').collect();
-    let mut expr = ctx.b.rid_expr(parts[0]);
-    for part in &parts[1..] {
-        expr = ctx.b.static_member_expr(expr, part);
-    }
-    expr
 }
 
 // LEGACY(svelte4): on:directive codegen
