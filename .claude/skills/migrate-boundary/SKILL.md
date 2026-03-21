@@ -10,7 +10,17 @@ Lift a phase boundary violation from codegen/transform into parser or analyze.
 
 ## Step 1: Locate the audit
 
-Read `AUDIT.md` from the project root. If the file does not exist, stop and tell the user to run the audit prompt first.
+Read **`AUDIT.md`** from the project root. If the file does not exist, stop and tell the user to run `/audit-boundaries` first.
+
+## Step 1.5: Decide parallelism from complexity
+
+Each finding in `AUDIT.md` has a **Complexity** label (S/M/L). Use it to decide execution strategy:
+
+- **S** (small) — can run in parallel with other S findings. Launch one agent per S finding, up to 3 concurrent.
+- **M** (medium) — run sequentially, one at a time. May run in parallel with S findings.
+- **L** (large) — run alone. No other findings in parallel.
+
+When `$ARGUMENTS` = `all`: group S findings into a parallel batch, then run M findings sequentially, then L findings sequentially.
 
 ## Step 2: Understand the current state
 
@@ -48,6 +58,9 @@ Show the full type definition (if any) and where it lives.
 ### Data flow
 - Order of changes: upstream type → computation → codegen consumer
 - List files in modification order
+
+### Cleanup after implementation
+- Update `AUDIT.md`: mark finding with ~~strikethrough~~ and a one-line note (see Step 6)
 
 **Present the plan and wait for approval before writing any code.**
 
