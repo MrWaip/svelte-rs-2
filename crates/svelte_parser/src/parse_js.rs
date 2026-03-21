@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, NodeId, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
-use svelte_types::{ExpressionInfo, ExpressionKind, JsParseResult};
+use svelte_types::JsParseResult;
 
 pub(crate) fn parse_js<'a>(
     alloc: &'a Allocator,
@@ -16,40 +16,19 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match crate::js_parse::analyze_script_with_alloc(
+        match crate::js_parse::parse_script_with_alloc(
             alloc,
             arena_source,
             script.content_span.start,
             typescript,
         ) {
-            Ok((mut info, scoping, program)) => {
-                result.exports = std::mem::take(&mut info.exports);
-                result.needs_context = info.has_effects || info.has_class_state_fields;
-                result.has_class_state_fields = info.has_class_state_fields;
-                result.script = Some(info);
-                result.scoping = Some(scoping);
+            Ok(program) => {
                 result.parsed.script_program = Some(program);
+                result.script_content_span = Some(script.content_span);
             }
             Err(errs) => diags.extend(errs),
         }
-    }
-
-    // Pre-parse prop default expressions so codegen doesn't re-parse them
-    if let Some(ref script_info) = result.script {
-        if let Some(ref props_decl) = script_info.props_declaration {
-            for prop in &props_decl.props {
-                if let Some(span) = prop.default_span {
-                    let src = component.source_text(span);
-                    let arena_src: &'a str = alloc.alloc_str(src);
-                    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, span.start, typescript) {
-                        Ok((_info, expr)) => result.parsed.prop_default_exprs.push(Some(expr)),
-                        Err(diag) => { diags.push(diag); result.parsed.prop_default_exprs.push(None); }
-                    }
-                } else {
-                    result.parsed.prop_default_exprs.push(None);
-                }
-            }
-        }
+        result.typescript = typescript;
     }
 
     walk_fragment(alloc, &component.fragment, component, typescript, result, diags);
@@ -64,8 +43,8 @@ pub(crate) fn parse_js<'a>(
         if let Some(ext_span) = config.extend_span {
             let ext_src = component.source_text(ext_span);
             let arena_src: &'a str = alloc.alloc_str(ext_src);
-            match crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, ext_span.start, typescript) {
-                Ok((_info, expr)) => { result.parsed.ce_extend_expr = Some(expr); }
+            match crate::js_parse::parse_expression_with_alloc(alloc, arena_src, ext_span.start, typescript) {
+                Ok(expr) => { result.parsed.ce_extend_expr = Some(expr); }
                 Err(diag) => diags.push(diag),
             }
         }
@@ -74,7 +53,7 @@ pub(crate) fn parse_js<'a>(
     }
 }
 
-/// Parse an expression into the shared allocator, storing both metadata and AST.
+/// Parse an expression into the shared allocator, storing AST and offset.
 fn parse_expr<'a>(
     alloc: &'a Allocator,
     source: &str,
@@ -85,16 +64,16 @@ fn parse_expr<'a>(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena_source: &'a str = alloc.alloc_str(source);
-    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
-        Ok((info, expr)) => {
-            result.expressions.insert(node_id, info);
+    match crate::js_parse::parse_expression_with_alloc(alloc, arena_source, offset, typescript) {
+        Ok(expr) => {
             result.parsed.exprs.insert(node_id, expr);
+            result.parsed.expr_offsets.insert(node_id, offset);
         }
         Err(diag) => diags.push(diag),
     }
 }
 
-/// Parse an attribute expression into the shared allocator.
+/// Parse an attribute expression into the shared allocator, storing AST and offset.
 fn parse_attr_expr<'a>(
     alloc: &'a Allocator,
     source: &str,
@@ -105,10 +84,10 @@ fn parse_attr_expr<'a>(
     diags: &mut Vec<Diagnostic>,
 ) {
     let arena_source: &'a str = alloc.alloc_str(source);
-    match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, offset, typescript) {
-        Ok((info, expr)) => {
-            result.attr_expressions.insert(attr_id, info);
+    match crate::js_parse::parse_expression_with_alloc(alloc, arena_source, offset, typescript) {
+        Ok(expr) => {
             result.parsed.attr_exprs.insert(attr_id, expr);
+            result.parsed.attr_expr_offsets.insert(attr_id, offset);
         }
         Err(diag) => diags.push(diag),
     }
@@ -124,31 +103,21 @@ fn parse_concat_parts<'a>(
     result: &mut JsParseResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut all_refs = Vec::new();
     let mut dyn_idx = 0usize;
     for part in parts {
         if let ConcatPart::Dynamic(span) = part {
             let source = component.source_text(*span);
             let arena_source: &'a str = alloc.alloc_str(source);
-            match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, span.start, typescript) {
-                Ok((info, expr)) => {
-                    all_refs.extend(info.references);
+            match crate::js_parse::parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
+                Ok(expr) => {
                     result.parsed.concat_part_exprs.insert((attr_id, dyn_idx), expr);
+                    result.parsed.concat_part_offsets.insert((attr_id, dyn_idx), span.start);
                 }
                 Err(diag) => diags.push(diag),
             }
             dyn_idx += 1;
         }
     }
-    let merged = ExpressionInfo {
-        kind: ExpressionKind::Other,
-        references: all_refs,
-        has_side_effects: false,
-        has_call: false,
-        has_state_rune: false,
-        has_store_member_mutation: false,
-    };
-    result.attr_expressions.insert(attr_id, merged);
 }
 
 fn walk_fragment<'a>(
@@ -199,15 +168,10 @@ fn walk_node<'a>(
             if let Some(key_span) = block.key_span {
                 let key_source = component.source_text(key_span);
                 let arena_source: &'a str = alloc.alloc_str(key_source);
-                match crate::js_parse::analyze_expression_with_alloc(alloc, arena_source, key_span.start, typescript) {
-                    Ok((info, expr)) => {
-                        if let Some(idx_span) = block.index_span {
-                            let idx_name = component.source_text(idx_span);
-                            if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                                result.each_key_uses_index.insert(block.id);
-                            }
-                        }
+                match crate::js_parse::parse_expression_with_alloc(alloc, arena_source, key_span.start, typescript) {
+                    Ok(expr) => {
                         result.parsed.key_exprs.insert(block.id, expr);
+                        result.parsed.key_expr_offsets.insert(block.id, key_span.start);
                     }
                     Err(diag) => diags.push(diag),
                 }
@@ -223,33 +187,18 @@ fn walk_node<'a>(
                 }
             }
 
-            // Track expression keys before walking body to detect body_uses_index
-            let expr_keys_before: rustc_hash::FxHashSet<NodeId> =
-                result.expressions.keys().copied().collect();
-            let attr_keys_before: rustc_hash::FxHashSet<NodeId> =
-                result.attr_expressions.keys().copied().collect();
-
             walk_fragment(alloc, &block.body, component, typescript, result, diags);
-
-            // Check if any body expression references the index variable
-            if let Some(idx_span) = block.index_span {
-                let idx_name = component.source_text(idx_span);
-                let body_uses_idx = result.expressions.iter()
-                    .filter(|(k, _)| !expr_keys_before.contains(k))
-                    .any(|(_, info)| info.references.iter().any(|r| r.name.as_str() == idx_name))
-                || result.attr_expressions.iter()
-                    .filter(|(k, _)| !attr_keys_before.contains(k))
-                    .any(|(_, info)| info.references.iter().any(|r| r.name.as_str() == idx_name));
-                if body_uses_idx {
-                    result.each_body_uses_index.insert(block.id);
-                }
-            }
 
             if let Some(fb) = &block.fallback {
                 walk_fragment(alloc, fb, component, typescript, result, diags);
             }
         }
         Node::SnippetBlock(block) => {
+            // Pre-compute snippet param names for scope building
+            if let Some(span) = block.params_span {
+                let params = crate::js_parse::parse_snippet_params(component.source_text(span));
+                result.snippet_param_names.insert(block.id, params);
+            }
             walk_fragment(alloc, &block.body, component, typescript, result, diags);
         }
         Node::RenderTag(tag) => {
@@ -266,25 +215,11 @@ fn walk_node<'a>(
                 }
             }
 
-            // Store per-argument has_call flags, identifier names, and callee name
+            // Store callee name (arg metadata is computed in analyze)
             if let Some(Expression::CallExpression(call)) = result.parsed.exprs.get(&tag.id) {
                 if let Expression::Identifier(ident) = &call.callee {
                     result.render_tag_callee_name.insert(tag.id, ident.name.to_string());
                 }
-
-                let flags: Vec<bool> = call.arguments.iter().map(|arg| {
-                    svelte_types::expression_has_call(arg.to_expression())
-                }).collect();
-                result.render_tag_arg_has_call.insert(tag.id, flags);
-
-                let idents: Vec<Option<String>> = call.arguments.iter().map(|arg| {
-                    if let Expression::Identifier(id) = arg.to_expression() {
-                        Some(id.name.to_string())
-                    } else {
-                        None
-                    }
-                }).collect();
-                result.render_tag_arg_idents.insert(tag.id, idents);
             }
         }
         Node::HtmlTag(tag) => {
@@ -325,16 +260,11 @@ fn walk_node<'a>(
             let decl_text = component.source_text(tag.declaration_span);
             let arena_source: &'a str = alloc.alloc_str(decl_text);
             match crate::js_parse::parse_const_declaration_with_alloc(alloc, arena_source, tag.declaration_span.start, typescript) {
-                Ok((names, references, init_expr)) => {
-                    result.expressions.insert(tag.id, ExpressionInfo {
-                        kind: ExpressionKind::Other,
-                        references,
-                        has_side_effects: false,
-                        has_call: false,
-                        has_state_rune: false,
-                        has_store_member_mutation: false,
-                    });
+                Ok((names, init_expr)) => {
+                    // Store the offset adjusted for the "const " prefix that was wrapped around the source
+                    let ref_offset = tag.declaration_span.start.wrapping_sub(6);
                     result.parsed.exprs.insert(tag.id, init_expr);
+                    result.parsed.expr_offsets.insert(tag.id, ref_offset);
                     result.const_tag_names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());
                 }
                 Err(diag) => diags.push(diag),
@@ -368,8 +298,8 @@ fn walk_node<'a>(
             for (i, span) in tag.identifiers.iter().enumerate() {
                 let name = component.source_text(*span);
                 let arena_name: &'a str = alloc.alloc_str(name);
-                match crate::js_parse::analyze_expression_with_alloc(alloc, arena_name, span.start, typescript) {
-                    Ok((_info, expr)) => {
+                match crate::js_parse::parse_expression_with_alloc(alloc, arena_name, span.start, typescript) {
+                    Ok(expr) => {
                         result.parsed.debug_tag_exprs.insert((tag.id, i), expr);
                     }
                     Err(_) => {}
@@ -474,7 +404,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok(expr) = crate::js_parse::parse_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
@@ -493,7 +423,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok(expr) = crate::js_parse::parse_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }
@@ -504,7 +434,7 @@ fn walk_attrs<'a>(
                 }
                 let name_src = component.source_text(a.name);
                 let arena_src: &'a str = alloc.alloc_str(name_src);
-                if let Ok((_info, expr)) = crate::js_parse::analyze_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
+                if let Ok(expr) = crate::js_parse::parse_expression_with_alloc(alloc, arena_src, a.name.start, typescript) {
                     result.parsed.directive_name_exprs.insert(a.id, expr);
                 }
             }

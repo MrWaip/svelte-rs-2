@@ -851,15 +851,13 @@ mod js_parse_tests {
     }
 
     #[test]
-    fn analyze_script_basic() {
-        let (info, _scoping) = crate::js_parse::analyze_script_with_scoping(
-            "let count = $state(0); const name = 'test';", 0, false
-        ).unwrap();
-        assert_eq!(info.declarations.len(), 2);
-        assert_eq!(info.declarations[0].name, "count");
-        assert_eq!(info.declarations[0].is_rune, Some(RuneKind::State));
-        assert_eq!(info.declarations[1].name, "name");
-        assert_eq!(info.declarations[1].is_rune, None);
+    fn parse_script_basic() {
+        let alloc = Allocator::default();
+        let source = "let count = $state(0); const name = 'test';";
+        let arena_source = alloc.alloc_str(source);
+        let program = crate::js_parse::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
+        assert!(!program.body.is_empty());
     }
 
     #[test]
@@ -873,44 +871,32 @@ mod js_parse_tests {
     fn parse_const_declaration_simple() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("doubled = item * 2");
-        let (names, refs, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("doubled")]);
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].name, "item");
-        assert_eq!(refs[0].span.start, 20);
     }
 
     #[test]
     fn parse_const_declaration_destructuring() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("{a, b} = obj");
-        let (names, refs, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a"), compact("b")]);
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].name, "obj");
     }
 
     #[test]
     fn parse_const_declaration_multiple_equals() {
         let alloc = Allocator::default();
         let source = alloc.alloc_str("a = b === c");
-        let (names, refs, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
+        let (names, _expr) = crate::js_parse::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a")]);
-        assert_eq!(refs.len(), 2);
-        assert!(refs.iter().any(|r| r.name == "b"));
-        assert!(refs.iter().any(|r| r.name == "c"));
     }
 
     #[test]
-    fn analyze_script_exports() {
-        let (info, _) = crate::js_parse::analyze_script_with_scoping(
-            "export const PI = 3.14; export function greet(name) { return name; }",
-            0, false
-        ).unwrap();
-        assert_eq!(info.exports.len(), 2);
-        assert_eq!(info.exports[0].name, "PI");
-        assert_eq!(info.exports[1].name, "greet");
-        assert!(info.declarations.iter().any(|d| d.name == "PI"));
-        assert!(info.declarations.iter().any(|d| d.name == "greet"));
+    fn parse_script_exports() {
+        let alloc = Allocator::default();
+        let source = "export const PI = 3.14; export function greet(name) { return name; }";
+        let arena_source = alloc.alloc_str(source);
+        let program = crate::js_parse::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        assert!(!program.body.is_empty());
     }
 }

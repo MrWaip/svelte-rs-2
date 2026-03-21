@@ -2,8 +2,8 @@
 //!
 //! These functions create `OxcParser` internally to parse JS expressions,
 //! destructuring patterns, script blocks, and other constructs that the
-//! Svelte template parser encounters. Semantic helpers (reference collection,
-//! expression info extraction) remain in `svelte_types`.
+//! Svelte template parser encounters. Analysis (ExpressionInfo, ScriptInfo)
+//! is extracted later by `svelte_analyze`.
 
 use std::cell::Cell;
 
@@ -18,7 +18,7 @@ use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 use svelte_types::{
     AwaitBindingInfo, CePropConfig, CeShadowMode, DestructureKind, EachBindingEntry,
-    EachContextBinding, ExpressionInfo, ParsedCeConfig, Reference, ScriptInfo,
+    EachContextBinding, ParsedCeConfig,
 };
 
 /// Parse an each-block destructuring context pattern via OXC into a caller-provided allocator.
@@ -335,17 +335,16 @@ pub fn parse_snippet_params(params_text: &str) -> Vec<String> {
 /// `source` is the raw declaration text (e.g. `"doubled = item * 2"` or `"{a, b} = obj"`).
 /// `offset` is `declaration_span.start` in the original .svelte file.
 ///
-/// Returns binding names, references from the init expression, and the init `Expression` AST.
+/// Returns binding names and the init `Expression` AST (no references — analyze extracts those).
 pub fn parse_const_declaration_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<(Vec<CompactString>, Vec<Reference>, Expression<'a>), Diagnostic> {
+) -> Result<(Vec<CompactString>, Expression<'a>), Diagnostic> {
     // Wrap as "const {source};" so OXC can parse it as a full statement
     let wrapped_owned = format!("const {};", source);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
-    let prefix_len: u32 = 6; // "const "
 
     let src_type = if typescript {
         SourceType::default()
@@ -388,24 +387,19 @@ pub fn parse_const_declaration_with_alloc<'a>(
         strip_ts_expression(&mut init, alloc);
     }
 
-    // OXC spans are relative to the wrapped string; adjust by subtracting the prefix
-    let ref_offset = offset.wrapping_sub(prefix_len);
-    let mut references = Vec::new();
-    svelte_types::collect_references(&init, ref_offset, &mut references);
-
-    Ok((names, references, init))
+    Ok((names, init))
 }
 
-/// Parse a JS expression into a provided allocator, returning both metadata and AST.
+/// Parse a JS expression into a provided allocator, returning only the AST.
 ///
 /// The `Expression<'a>` lives in the provided allocator (not destroyed after call).
-/// Use this when you need to keep the parsed AST for later transformation/codegen.
-pub fn analyze_expression_with_alloc<'a>(
+/// Expression metadata (ExpressionInfo) is extracted later by analyze.
+pub fn parse_expression_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<(ExpressionInfo, Expression<'a>), Diagnostic> {
+) -> Result<Expression<'a>, Diagnostic> {
     let src_type = if typescript {
         SourceType::default().with_typescript(true)
     } else {
@@ -418,8 +412,7 @@ pub fn analyze_expression_with_alloc<'a>(
     if typescript {
         strip_ts_expression(&mut expr, alloc);
     }
-    let info = svelte_types::extract_expression_info(&expr, offset);
-    Ok((info, expr))
+    Ok(expr)
 }
 
 /// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.
@@ -452,58 +445,17 @@ fn strip_ts_expression<'a>(expr: &mut Expression<'a>, alloc: &'a Allocator) {
     }
 }
 
-/// Parse a `<script>` block once and return both owned analysis info and OXC Scoping.
+
+/// Parse a `<script>` block once in a caller-provided allocator.
 ///
-/// This avoids double-parsing: the single OXC parse produces both the `ScriptInfo`
-/// (declarations, props) and the `Scoping` (symbol table + scope tree for semantic analysis).
-pub fn analyze_script_with_scoping(
-    source: &str,
-    offset: u32,
-    typescript: bool,
-) -> Result<(ScriptInfo, oxc_semantic::Scoping), Vec<Diagnostic>> {
-    let allocator = Allocator::default();
-    let source_type = if typescript {
-        SourceType::default().with_typescript(true)
-    } else {
-        SourceType::default()
-    };
-
-    let parser = OxcParser::new(&allocator, source, source_type);
-    let result = parser.parse();
-
-    if !result.errors.is_empty() {
-        return Err(result
-            .errors
-            .iter()
-            .map(|_| {
-                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-            })
-            .collect());
-    }
-
-    let program = &result.program;
-
-    let mut script_info = svelte_types::extract_script_info(program, offset, source);
-
-    let sem = oxc_semantic::SemanticBuilder::new().build(program);
-
-    svelte_types::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-
-    let scoping = sem.semantic.into_scoping();
-
-    Ok((script_info, scoping))
-}
-
-/// Parse a `<script>` block once in a caller-provided allocator and return
-/// analysis info, scoping, and the live `Program` AST.
-///
-/// The returned `Program<'a>` is reused by codegen, eliminating double-parsing.
-pub fn analyze_script_with_alloc<'a>(
+/// Returns only the `Program<'a>` AST. Script metadata (ScriptInfo, Scoping)
+/// is extracted later by analyze.
+pub fn parse_script_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<(ScriptInfo, oxc_semantic::Scoping, oxc_ast::ast::Program<'a>), Vec<Diagnostic>> {
+) -> Result<oxc_ast::ast::Program<'a>, Vec<Diagnostic>> {
     let source_type = if typescript {
         SourceType::mjs().with_typescript(true)
     } else {
@@ -522,26 +474,7 @@ pub fn analyze_script_with_alloc<'a>(
             .collect());
     }
 
-    let program = result.program;
-    let mut script_info = svelte_types::extract_script_info(&program, offset, source);
-    let sem = oxc_semantic::SemanticBuilder::new().build(&program);
-
-    // Extract has_effects + store_candidates from unresolved references in one pass.
-    // $effect -> has_effects; $count (non-rune) -> store candidate.
-    svelte_types::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-
-    // Detect deep store mutations in script body (e.g., $store.field = val)
-    script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
-        if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-            svelte_types::has_deep_store_mutation(&es.expression)
-        } else {
-            false
-        }
-    });
-
-    let scoping = sem.semantic.into_scoping();
-
-    Ok((script_info, scoping, program))
+    Ok(result.program)
 }
 
 /// Check if an expression text represents a "simple" expression that can be

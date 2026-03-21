@@ -6,6 +6,7 @@ mod element_flags;
 mod elseif;
 mod hoistable;
 pub mod ident_gen;
+pub(crate) mod js_analyze;
 mod known_values;
 mod lower;
 mod needs_var;
@@ -27,37 +28,23 @@ pub use data::{
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
 
+use oxc_allocator::Allocator;
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 use svelte_types::JsParseResult;
 
 /// Run all analysis passes over a parsed component.
-///
-/// `js_result` contains pre-parsed JS expression ASTs and metadata
-/// (produced by `svelte_parser::parse_with_js()`).
-///
-/// Pass order:
-/// 1. ingest_js_result — move JS parse data into AnalysisData side tables
-/// 2. build_scoping — build unified scope tree (script + template)
-/// 3. register_arrow_scopes — register arrow function parameter scopes
-/// 4. resolve_references — resolve template refs to SymbolId, register mutations
-/// 5. store_subscriptions — detect $store subscriptions
-/// 6. known_values  — evaluate const declarations with literal initializers
-/// 7. props         — analyze $props() destructuring
-/// 8. lower         — trim whitespace, group text+expressions
-/// 9. composite walk — reactivity + elseif + element flags + hoistable snippets
-/// 10. classify_and_mark_dynamic — content types + fragment dynamism (single HashMap pass)
-/// 11. needs_var    — compute elements needing DOM variable
-/// 12. validate     — semantic checks
 pub fn analyze<'a>(
+    alloc: &'a Allocator,
     component: &Component,
     js_result: JsParseResult<'a>,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
-    analyze_with_options(component, js_result, false)
+    analyze_with_options(alloc, component, js_result, false)
 }
 
 /// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
+    alloc: &'a Allocator,
     component: &Component,
     js_result: JsParseResult<'a>,
     custom_element: bool,
@@ -66,7 +53,16 @@ pub fn analyze_with_options<'a>(
     data.custom_element = custom_element;
     let mut diags = Vec::new();
 
-    let parsed = ingest_js_result(js_result, &mut data);
+    let typescript = js_result.typescript;
+    let script_content_span = js_result.script_content_span;
+    let mut parsed = ingest_js_result(js_result, &mut data);
+
+    // JS analysis passes (before scoping)
+    js_analyze::analyze_script(&parsed, component, &mut data, typescript, script_content_span);
+    js_analyze::parse_prop_defaults(alloc, component, &data, &mut parsed, typescript, &mut diags);
+    js_analyze::extract_all_expressions(&parsed, &mut data);
+    js_analyze::compute_each_index_usage(&parsed, component, &mut data);
+    js_analyze::compute_render_tag_args(&parsed, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
     parse_js::register_arrow_scopes(component, &mut data, &parsed);
@@ -134,33 +130,22 @@ pub fn analyze_with_options<'a>(
     (data, parsed, diags)
 }
 
-/// Move data from `JsParseResult` into `AnalysisData` side tables,
-/// returning the `ParsedExprs` (with OXC ASTs) for later consumption.
+/// Move structural parse data from `JsParseResult` into `AnalysisData` side tables.
+/// Analysis metadata (ExpressionInfo, ScriptInfo, Scoping) is computed separately
+/// by `js_analyze` passes.
 fn ingest_js_result<'a>(
     js_result: JsParseResult<'a>,
     data: &mut AnalysisData,
 ) -> ParsedExprs<'a> {
-    data.expressions = js_result.expressions;
-    data.attr_expressions = js_result.attr_expressions;
-    data.script = js_result.script;
-    data.exports = js_result.exports;
-    data.needs_context = js_result.needs_context;
-    data.has_class_state_fields = js_result.has_class_state_fields;
-    if let Some(scoping) = js_result.scoping {
-        data.scoping = scope::ComponentScoping::from_scoping(scoping);
-    }
-    data.each_blocks.key_uses_index = js_result.each_key_uses_index;
-    data.each_blocks.body_uses_index = js_result.each_body_uses_index;
+    data.render_tag_is_chain = js_result.render_tag_is_chain;
+    data.render_tag_callee_name = js_result.render_tag_callee_name;
+    data.element_flags.expression_shorthand = js_result.expression_shorthand;
+    data.element_flags.needs_clsx = js_result.needs_clsx;
     data.const_tags.names = js_result.const_tag_names;
     data.await_bindings.values = js_result.await_values;
     data.await_bindings.errors = js_result.await_errors;
-    data.render_tag_is_chain = js_result.render_tag_is_chain;
-    data.render_tag_callee_name = js_result.render_tag_callee_name;
-    data.render_tag_arg_has_call = js_result.render_tag_arg_has_call;
-    data.render_tag_arg_idents = js_result.render_tag_arg_idents;
-    data.element_flags.expression_shorthand = js_result.expression_shorthand;
-    data.element_flags.needs_clsx = js_result.needs_clsx;
     data.ce_config = js_result.ce_config;
+    data.snippets.params = js_result.snippet_param_names;
     js_result.parsed
 }
 
@@ -173,9 +158,14 @@ pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Ve
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
-    match svelte_parser::analyze_script_with_scoping(source, 0, is_ts) {
-        Ok((script_info, scoping)) => {
-            data.scoping = scope::ComponentScoping::from_scoping(scoping);
+    let alloc = Allocator::default();
+    let arena_source = alloc.alloc_str(source);
+    match svelte_parser::parse_script_with_alloc(&alloc, arena_source, 0, is_ts) {
+        Ok(program) => {
+            let mut script_info = js_analyze::extract_script_info(&program, 0, source);
+            let sem = oxc_semantic::SemanticBuilder::new().build(&program);
+            js_analyze::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+            data.scoping = scope::ComponentScoping::from_scoping(sem.semantic.into_scoping());
 
             // Mark runes from script declarations
             for decl in &script_info.declarations {
