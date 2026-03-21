@@ -29,6 +29,9 @@ pub struct ParsedExprs<'a> {
     /// Pre-parsed prop default expressions, indexed by prop position in PropsDeclaration.
     /// Consumed by codegen via clone/take.
     pub prop_default_exprs: Vec<Option<Expression<'a>>>,
+    /// Pre-parsed each-block destructuring context bindings, keyed by EachBlock NodeId.
+    /// Consumed by codegen via `remove()`.
+    pub each_context_bindings: FxHashMap<NodeId, svelte_js::EachContextBinding<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -42,6 +45,7 @@ impl<'a> ParsedExprs<'a> {
             debug_tag_exprs: FxHashMap::default(),
             ce_extend_expr: None,
             prop_default_exprs: Vec::new(),
+            each_context_bindings: FxHashMap::default(),
         }
     }
 }

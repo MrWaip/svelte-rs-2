@@ -573,7 +573,7 @@ fn is_simple_identifier(s: &str) -> bool {
 
 /// Extract binding names and default status from a destructuring pattern.
 /// Handles `{ a, b = 5 }` and `[a, b]` patterns.
-pub fn extract_destructuring_bindings(pattern: &str) -> Vec<(String, bool)> {
+pub(crate) fn extract_destructuring_bindings(pattern: &str) -> Vec<(String, bool)> {
     let s = pattern.trim();
     let inner = if s.starts_with('{') && s.ends_with('}') {
         &s[1..s.len() - 1]

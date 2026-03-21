@@ -181,141 +181,64 @@ fn gen_destructuring_declarations<'a>(
     block_id: NodeId,
     item_reactive: bool,
 ) -> Vec<Statement<'a>> {
-    let block = ctx.each_block(block_id);
-    let pattern_text = ctx.component.source_text(block.context_span);
-    let pattern_trimmed = pattern_text.trim();
-    let is_array = pattern_trimmed.starts_with('[');
+    let binding = ctx.parsed.each_context_bindings.remove(&block_id)
+        .expect("destructured each block must have parsed context");
 
-    let bindings = svelte_analyze::scope::extract_destructuring_bindings(pattern_text);
     let mut decls = Vec::new();
 
-    if is_array {
-        // Array destructuring: intermediate $$array derived
-        let count = bindings.len();
+    if binding.is_array {
+        let count = binding.bindings.len();
         let array_name = ctx.gen_ident("$$array");
 
-        // $.get($$item) or $$item
         let item_access = if item_reactive {
             ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
         } else {
             ctx.b.rid_expr("$$item")
         };
 
-        // $.to_array($.get($$item), N)
         let to_array = ctx.b.call_expr("$.to_array", [
             Arg::Expr(item_access),
             Arg::Num(count as f64),
         ]);
 
-        // var $$array = $.derived(() => $.to_array(...))
         let thunk = ctx.b.thunk(to_array);
         let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
         decls.push(ctx.b.var_stmt(&array_name, derived));
 
-        // Per-element thunks: let key = () => $.get($$array)[0]
-        for (i, (name, _has_default)) in bindings.iter().enumerate() {
+        for (i, entry) in binding.bindings.into_iter().enumerate() {
             let get_array = ctx.b.call_expr("$.get", [Arg::Ident(&array_name)]);
             let index_expr = ctx.b.num_expr(i as f64);
             let access = ctx.b.computed_member_expr(get_array, index_expr);
             let thunk = ctx.b.thunk(access);
-            decls.push(ctx.b.let_init_stmt(name, thunk));
+            decls.push(ctx.b.let_init_stmt(&entry.name, thunk));
         }
     } else {
-        // Object destructuring
-        for (name, has_default) in &bindings {
-            // $.get($$item) or $$item
+        for entry in binding.bindings {
             let item_access = if item_reactive {
                 ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
             } else {
                 ctx.b.rid_expr("$$item")
             };
 
-            // $.get($$item).name
-            let member = ctx.b.static_member_expr(item_access, name);
+            // Use property key for member access (falls back to name for shorthand)
+            let prop_name = entry.key_name.as_ref().unwrap_or(&entry.name);
+            let member = ctx.b.static_member_expr(item_access, prop_name);
 
-            if *has_default {
-                // Extract default value text from pattern
-                let default_text = extract_default_value(pattern_text, name);
-
-                // $.fallback($.get($$item).name, default)
-                let default_expr = parse_inline_expr(ctx, &default_text);
+            if let Some(default_expr) = entry.default_expr {
                 let fallback = ctx.b.call_expr("$.fallback", [
                     Arg::Expr(member),
                     Arg::Expr(default_expr),
                 ]);
 
-                // $.derived_safe_equal(() => $.fallback(...))
                 let thunk = ctx.b.thunk(fallback);
                 let derived = ctx.b.call_expr("$.derived_safe_equal", [Arg::Expr(thunk)]);
-                decls.push(ctx.b.let_init_stmt(name, derived));
+                decls.push(ctx.b.let_init_stmt(&entry.name, derived));
             } else {
-                // let name = () => $.get($$item).name
                 let thunk = ctx.b.thunk(member);
-                decls.push(ctx.b.let_init_stmt(name, thunk));
+                decls.push(ctx.b.let_init_stmt(&entry.name, thunk));
             }
         }
     }
 
     decls
-}
-
-/// Extract the default value text for a named field from a destructuring pattern.
-/// E.g., from `{ name, value = 'N/A' }`, extract `'N/A'` for field `value`.
-fn extract_default_value(pattern: &str, field_name: &str) -> String {
-    let s = pattern.trim();
-    let inner = if s.starts_with('{') && s.ends_with('}') {
-        &s[1..s.len() - 1]
-    } else if s.starts_with('[') && s.ends_with(']') {
-        &s[1..s.len() - 1]
-    } else {
-        return String::new();
-    };
-
-    // Split by commas at depth 0
-    let mut depth = 0i32;
-    let mut current = String::new();
-    let mut parts = Vec::new();
-
-    for ch in inner.chars() {
-        match ch {
-            '{' | '[' | '(' => { depth += 1; current.push(ch); }
-            '}' | ']' | ')' => { depth -= 1; current.push(ch); }
-            ',' if depth == 0 => {
-                parts.push(std::mem::take(&mut current));
-            }
-            _ => current.push(ch),
-        }
-    }
-    if !current.is_empty() {
-        parts.push(current);
-    }
-
-    for part in &parts {
-        let part = part.trim();
-        // Find field name followed by '='
-        if let Some(eq_idx) = part.find('=') {
-            let name_part = part[..eq_idx].trim();
-            // Handle rename: `prop: alias = default`
-            let name_part = if let Some(colon_idx) = name_part.rfind(':') {
-                name_part[colon_idx + 1..].trim()
-            } else {
-                name_part
-            };
-            if name_part == field_name {
-                return part[eq_idx + 1..].trim().to_string();
-            }
-        }
-    }
-
-    String::new()
-}
-
-/// Parse a short inline expression string using the OXC parser available in builder.
-fn parse_inline_expr<'a>(ctx: &mut Ctx<'a>, source: &str) -> Expression<'a> {
-    let arena_source = ctx.b.alloc_str(source);
-    let parser = oxc_parser::Parser::new(ctx.b.ast.allocator, arena_source, oxc_span::SourceType::default());
-    match parser.parse_expression() {
-        Ok(expr) => expr,
-        Err(_) => ctx.b.str_expr(source),
-    }
 }
