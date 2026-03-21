@@ -152,30 +152,15 @@ Generated: 2026-03-21
 - **Complexity**: M
 - **Migrated**: `EventHandlerMode` enum in `svelte_analyze/src/data.rs`, computed in `ElementFlagsVisitor`, consumed via `ctx.event_handler_mode()` in codegen. `gen_event_attr_on` (global elements) left as-is — always Direct, no delegation decision.
 
-### #15 — Class directive dynamic state
+### ~~#15 — Class directive dynamic state~~ ✅
 
-- **Pattern**: class attr dynamic + directives dynamic combined decision
-- **Class**: 4
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/attributes.rs:266-314`
-- **Occurrence count**: 1
-- **What is aggregated**: `class_attr_is_dynamic || directives_are_dynamic` → `has_state`, then 4-way branching on has_directives x has_state
-- **Proposed type**: accessor `fn class_needs_state(&self, element_id: NodeId) -> bool` in analyze
-- **Target layer**: analyze
-- **Migrated**: `class_needs_state()` accessor in `ElementFlags` (`svelte_analyze/src/data.rs`), combines `class_attr_id` + `dynamic_attrs` + `has_dynamic_class_directives`. Codegen uses `ctx.class_needs_state(el.id)` — eliminated local `class_attr_is_dynamic` and `directives_are_dynamic`.
+~~`class_needs_state()` accessor in `ElementFlags`, combines `class_attr_id` + `dynamic_attrs` + `has_dynamic_class_directives`. Codegen uses `ctx.class_needs_state(el.id)` — eliminated local `class_attr_is_dynamic` and `directives_are_dynamic`.~~
 
-### #16 — Render tag callee routing (borderline)
+### ~~#16 — Render tag callee routing~~ ✅
 
-- **Pattern**: render tag callee mode decision
-- **Class**: 4
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/render_tag.rs:24-110`
-- **Occurrence count**: 1
-- **What is aggregated**: `is_dynamic`, `is_chain`, `callee_is_getter` — three separate accessor calls
-- **Proposed type**: enum `RenderTagMode { Dynamic, Chain, Direct }` — but single use site, low priority
-- **Target layer**: analyze (low priority)
+Migrated: `RenderTagCalleeMode` enum in analyze replaces three separate bool flags.
+Codegen uses `match mode` instead of `if is_dynamic / else if is_chain / else`.
+Removed unused `_callee_is_getter` param from `build_dynamic_callee`.
 
 ### #17 — Boundary attribute is_import deep chain (borderline)
 
