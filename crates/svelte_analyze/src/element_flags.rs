@@ -43,8 +43,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         has_expression: cd.expression_span.is_some(),
                     });
             }
-            Attribute::StyleDirective(_) => {
-                data.element_flags.has_style_directives.insert(el.id);
+            Attribute::StyleDirective(sd) => {
+                data.element_flags.style_directives
+                    .entry(el.id)
+                    .or_default()
+                    .push(sd.clone());
             }
             Attribute::ExpressionAttribute(ea) if ea.name == "class" => {
                 data.element_flags.class_attr_id.insert(el.id, ea.id);
@@ -124,15 +127,24 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         data: &mut AnalysisData,
     ) {
         for attr in &el.attributes {
-            if let Attribute::ClassDirective(cd) = attr {
-                data.element_flags.class_directive_info
-                    .entry(el.id)
-                    .or_default()
-                    .push(ClassDirectiveInfo {
-                        id: cd.id,
-                        name: cd.name.clone(),
-                        has_expression: cd.expression_span.is_some(),
-                    });
+            match attr {
+                Attribute::ClassDirective(cd) => {
+                    data.element_flags.class_directive_info
+                        .entry(el.id)
+                        .or_default()
+                        .push(ClassDirectiveInfo {
+                            id: cd.id,
+                            name: cd.name.clone(),
+                            has_expression: cd.expression_span.is_some(),
+                        });
+                }
+                Attribute::StyleDirective(sd) => {
+                    data.element_flags.style_directives
+                        .entry(el.id)
+                        .or_default()
+                        .push(sd.clone());
+                }
+                _ => {}
             }
         }
     }
