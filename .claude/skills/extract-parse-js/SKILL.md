@@ -143,7 +143,7 @@ Work in 6 phases. Each phase must end with `just test-all` passing. **Do NOT pro
 ## Dependency changes
 
 **svelte_parser gains:**
-- `svelte_types` (OXC facade)
+- `svelte_types` (shared types + OXC utils)
 - `oxc_allocator`, `oxc_ast`, `oxc_semantic`, `oxc_span`
 - `svelte_analyze` (for `ParsedExprs`, `JsParseResult` types) — OR these types move to a shared location
 

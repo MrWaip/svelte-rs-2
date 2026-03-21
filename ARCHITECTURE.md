@@ -29,7 +29,7 @@
               │              │         │                   │
    ┌──────────▼──────────┐   │    ┌────▼───────────────────▼───┐
    │     svelte_ast      │◄──┘    │         svelte_types          │
-   │  (Template AST)     │        │  (OXC facade — JS parsing) │
+   │  (Template AST)     │        │  (Shared types + OXC utils) │
    └──────────┬──────────┘        └──────┬─────────────────────┘
               │                          │
    ┌──────────▼──────────┐    ┌─────────▼──────────┐
@@ -218,7 +218,7 @@
 
 | Rule | Why |
 |------|-----|
-| OXC types never in public API | `svelte_types` is the only OXC facade; no lifetime leakage |
+| OXC as direct dependency | OXC types flow through `ParsedExprs<'a>` from parser to codegen; `svelte_types` provides shared domain types and OXC parsing utilities |
 | AST is immutable after parsing | All analysis → side tables (`AnalysisData`, keyed by `NodeId`) |
 | Spans for JS in AST, re-parse in codegen | No JS subtree copying between phases |
 | `FxHashMap` everywhere | Faster hashing for integer keys (NodeId, SymbolId) |
