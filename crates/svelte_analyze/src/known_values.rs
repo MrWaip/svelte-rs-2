@@ -1,5 +1,5 @@
 use svelte_ast::Component;
-use svelte_js::DeclarationKind;
+use svelte_types::DeclarationKind;
 
 use crate::data::AnalysisData;
 
@@ -25,7 +25,7 @@ pub fn collect_known_values(component: &Component, data: &mut AnalysisData) {
         let is_mutated = sym_id.map_or(false, |id| data.scoping.is_mutated(id));
 
         // Only unmutated $state can be folded; other runes ($props etc.) are always dynamic
-        let is_foldable_rune = rune_kind == Some(svelte_js::RuneKind::State) && !is_mutated;
+        let is_foldable_rune = rune_kind == Some(svelte_types::RuneKind::State) && !is_mutated;
 
         if rune_kind.is_some() && !is_foldable_rune {
             continue;

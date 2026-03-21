@@ -1,6 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::CustomElementConfig;
-use svelte_js::{CePropConfig, CeShadowMode, ParsedCeConfig};
+use svelte_types::{CePropConfig, CeShadowMode, ParsedCeConfig};
 
 use crate::builder::{Arg, ObjProp};
 use crate::context::Ctx;

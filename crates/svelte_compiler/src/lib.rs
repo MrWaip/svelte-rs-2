@@ -13,13 +13,13 @@ pub struct CompileResult {
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let name = options.component_name();
-    let (component, mut diagnostics) = svelte_parser::Parser::new(source).parse();
 
     let js_alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut ident_gen = svelte_analyze::IdentGen::new();
-        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze_with_options(&js_alloc, &component, options.custom_element);
+        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze_with_options(&component, js_result, options.custom_element);
         let transform_data = svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen);
         let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name, options.dev, source, &options.filename);
         (js, analyze_diags)

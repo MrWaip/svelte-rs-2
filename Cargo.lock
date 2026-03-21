@@ -1069,9 +1069,9 @@ dependencies = [
  "rustc-hash",
  "svelte_ast",
  "svelte_diagnostics",
- "svelte_js",
  "svelte_parser",
  "svelte_span",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1096,9 +1096,9 @@ dependencies = [
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
- "svelte_js",
  "svelte_span",
  "svelte_transform",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1124,30 +1124,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "svelte_js"
-version = "0.1.0"
-dependencies = [
- "compact_str",
- "oxc_allocator",
- "oxc_ast",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_syntax",
- "pretty_assertions",
- "rustc-hash",
- "svelte_diagnostics",
- "svelte_span",
-]
-
-[[package]]
 name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_semantic",
+ "oxc_span",
  "pretty_assertions",
+ "rustc-hash",
  "svelte_ast",
  "svelte_diagnostics",
  "svelte_span",
+ "svelte_types",
 ]
 
 [[package]]
@@ -1169,7 +1158,25 @@ dependencies = [
  "rustc-hash",
  "svelte_analyze",
  "svelte_ast",
- "svelte_js",
+ "svelte_span",
+ "svelte_types",
+]
+
+[[package]]
+name = "svelte_types"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_syntax",
+ "pretty_assertions",
+ "rustc-hash",
+ "svelte_ast",
+ "svelte_diagnostics",
  "svelte_span",
 ]
 

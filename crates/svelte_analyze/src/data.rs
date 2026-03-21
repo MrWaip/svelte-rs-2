@@ -1,59 +1,11 @@
-use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
-use svelte_js::{ExpressionInfo, ScriptInfo};
+use svelte_types::{ExpressionInfo, ScriptInfo};
 use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
 
-// ---------------------------------------------------------------------------
-// ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
-// ---------------------------------------------------------------------------
-
-/// Parsed JS expression ASTs, stored in a shared OXC allocator.
-/// Separate from AnalysisData to avoid lifetime propagation.
-pub struct ParsedExprs<'a> {
-    /// Template expressions: ExpressionTag, IfBlock test, EachBlock expr, RenderTag, HtmlTag.
-    pub exprs: FxHashMap<NodeId, Expression<'a>>,
-    /// Attribute expressions, keyed by attribute NodeId.
-    pub attr_exprs: FxHashMap<NodeId, Expression<'a>>,
-    /// ConcatenationAttribute dynamic parts: (attr_id, part_index).
-    pub concat_part_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
-    /// EachBlock key expressions: keyed by EachBlock NodeId.
-    pub key_exprs: FxHashMap<NodeId, Expression<'a>>,
-    /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
-    pub script_program: Option<oxc_ast::ast::Program<'a>>,
-    /// DebugTag identifier expressions: (debug_tag_id, identifier_index) → transformed expression.
-    pub debug_tag_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
-    /// Pre-parsed custom element `extend` expression. Consumed by codegen via `Option::take()`.
-    pub ce_extend_expr: Option<Expression<'a>>,
-    /// Pre-parsed prop default expressions, indexed by prop position in PropsDeclaration.
-    /// Consumed by codegen via clone/take.
-    pub prop_default_exprs: Vec<Option<Expression<'a>>>,
-    /// Pre-parsed each-block destructuring context bindings, keyed by EachBlock NodeId.
-    /// Consumed by codegen via `remove()`.
-    pub each_context_bindings: FxHashMap<NodeId, svelte_js::EachContextBinding<'a>>,
-    /// Pre-parsed directive name expressions (use:, transition:, animate:).
-    /// Keyed by directive NodeId. Consumed by codegen via `remove()`.
-    pub directive_name_exprs: FxHashMap<NodeId, Expression<'a>>,
-}
-
-impl<'a> ParsedExprs<'a> {
-    pub fn new() -> Self {
-        Self {
-            exprs: FxHashMap::default(),
-            attr_exprs: FxHashMap::default(),
-            concat_part_exprs: FxHashMap::default(),
-            key_exprs: FxHashMap::default(),
-            script_program: None,
-            debug_tag_exprs: FxHashMap::default(),
-            ce_extend_expr: None,
-            prop_default_exprs: Vec::new(),
-            each_context_bindings: FxHashMap::default(),
-            directive_name_exprs: FxHashMap::default(),
-        }
-    }
-}
+pub use svelte_types::ParsedExprs;
 
 // ---------------------------------------------------------------------------
 // FragmentKey — typed key for lowered_fragments and content_types
@@ -363,9 +315,9 @@ impl EachBlockData {
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
 pub struct AwaitBindingData {
     /// Then binding info, keyed by AwaitBlock NodeId.
-    pub(crate) values: FxHashMap<NodeId, svelte_js::AwaitBindingInfo>,
+    pub(crate) values: FxHashMap<NodeId, svelte_types::AwaitBindingInfo>,
     /// Catch binding info, keyed by AwaitBlock NodeId.
-    pub(crate) errors: FxHashMap<NodeId, svelte_js::AwaitBindingInfo>,
+    pub(crate) errors: FxHashMap<NodeId, svelte_types::AwaitBindingInfo>,
 }
 
 impl AwaitBindingData {
@@ -376,8 +328,8 @@ impl AwaitBindingData {
         }
     }
 
-    pub fn value(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> { self.values.get(&id) }
-    pub fn error(&self, id: NodeId) -> Option<&svelte_js::AwaitBindingInfo> { self.errors.get(&id) }
+    pub fn value(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> { self.values.get(&id) }
+    pub fn error(&self, id: NodeId) -> Option<&svelte_types::AwaitBindingInfo> { self.errors.get(&id) }
 }
 
 /// Pre-computed bind/directive semantics for codegen.
@@ -474,7 +426,7 @@ pub struct AnalysisData {
     /// Binding name from `const id = $props.id()`.
     pub props_id: Option<String>,
     /// Exported names from `export const/function/class` or `export { ... }`.
-    pub exports: Vec<svelte_js::ExportInfo>,
+    pub exports: Vec<svelte_types::ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
     /// Script contains class declarations with `$state`/`$state.raw` fields.
@@ -520,7 +472,7 @@ pub struct AnalysisData {
     /// When true, all props become prop sources with getter/setter exports.
     pub custom_element: bool,
     /// Parsed custom element config (from object expression form).
-    pub ce_config: Option<svelte_js::ParsedCeConfig>,
+    pub ce_config: Option<svelte_types::ParsedCeConfig>,
 }
 
 impl AnalysisData {

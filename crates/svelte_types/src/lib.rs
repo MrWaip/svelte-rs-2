@@ -1,7 +1,7 @@
-//! OXC facade for JavaScript analysis.
+//! Shared types and OXC utilities for the Svelte compiler.
 //!
-//! All OXC allocator lifetimes are contained within function calls.
-//! Only owned data is returned.
+//! Leaf crate providing domain types (`ExpressionInfo`, `RuneKind`, `ScriptInfo`, etc.)
+//! and OXC parsing helpers used across parser, analyze, transform, and codegen.
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
@@ -10,7 +10,8 @@ use oxc_span::{GetSpan as _, SourceType};
 
 use compact_str::CompactString;
 use oxc_semantic::SymbolId;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
+use svelte_ast::NodeId;
 use svelte_span::Span;
 use svelte_diagnostics::Diagnostic;
 
@@ -152,6 +153,130 @@ pub enum RuneKind {
 impl RuneKind {
     pub fn is_derived(&self) -> bool {
         matches!(self, RuneKind::Derived | RuneKind::DerivedBy)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
+// ---------------------------------------------------------------------------
+
+/// Parsed JS expression ASTs, stored in a shared OXC allocator.
+/// Separate from AnalysisData to avoid lifetime propagation.
+pub struct ParsedExprs<'a> {
+    /// Template expressions: ExpressionTag, IfBlock test, EachBlock expr, RenderTag, HtmlTag.
+    pub exprs: FxHashMap<NodeId, Expression<'a>>,
+    /// Attribute expressions, keyed by attribute NodeId.
+    pub attr_exprs: FxHashMap<NodeId, Expression<'a>>,
+    /// ConcatenationAttribute dynamic parts: (attr_id, part_index).
+    pub concat_part_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
+    /// EachBlock key expressions: keyed by EachBlock NodeId.
+    pub key_exprs: FxHashMap<NodeId, Expression<'a>>,
+    /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
+    pub script_program: Option<oxc_ast::ast::Program<'a>>,
+    /// DebugTag identifier expressions: (debug_tag_id, identifier_index) → transformed expression.
+    pub debug_tag_exprs: FxHashMap<(NodeId, usize), Expression<'a>>,
+    /// Pre-parsed custom element `extend` expression. Consumed by codegen via `Option::take()`.
+    pub ce_extend_expr: Option<Expression<'a>>,
+    /// Pre-parsed prop default expressions, indexed by prop position in PropsDeclaration.
+    /// Consumed by codegen via clone/take.
+    pub prop_default_exprs: Vec<Option<Expression<'a>>>,
+    /// Pre-parsed each-block destructuring context bindings, keyed by EachBlock NodeId.
+    /// Consumed by codegen via `remove()`.
+    pub each_context_bindings: FxHashMap<NodeId, EachContextBinding<'a>>,
+    /// Pre-parsed directive name expressions (use:, transition:, animate:).
+    /// Keyed by directive NodeId. Consumed by codegen via `remove()`.
+    pub directive_name_exprs: FxHashMap<NodeId, Expression<'a>>,
+}
+
+impl<'a> ParsedExprs<'a> {
+    pub fn new() -> Self {
+        Self {
+            exprs: FxHashMap::default(),
+            attr_exprs: FxHashMap::default(),
+            concat_part_exprs: FxHashMap::default(),
+            key_exprs: FxHashMap::default(),
+            script_program: None,
+            debug_tag_exprs: FxHashMap::default(),
+            ce_extend_expr: None,
+            prop_default_exprs: Vec::new(),
+            each_context_bindings: FxHashMap::default(),
+            directive_name_exprs: FxHashMap::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JsParseResult — intermediate JS parsing results passed from parser to analyze
+// ---------------------------------------------------------------------------
+
+/// All data produced by JS expression parsing.
+/// Created by `svelte_parser::parse_with_js()`, consumed by `svelte_analyze::analyze()`.
+pub struct JsParseResult<'a> {
+    pub parsed: ParsedExprs<'a>,
+    /// Expression metadata (ExpressionInfo) for template expressions.
+    pub expressions: FxHashMap<NodeId, ExpressionInfo>,
+    /// Expression metadata for attribute expressions.
+    pub attr_expressions: FxHashMap<NodeId, ExpressionInfo>,
+    /// Parsed script info.
+    pub script: Option<ScriptInfo>,
+    /// Exported names from script.
+    pub exports: Vec<ExportInfo>,
+    /// Component needs runtime context (has $effect calls or class state fields).
+    pub needs_context: bool,
+    /// Script contains class declarations with $state/$state.raw fields.
+    pub has_class_state_fields: bool,
+    /// Raw OXC scoping from script parsing, before ComponentScoping is built.
+    pub scoping: Option<oxc_semantic::Scoping>,
+    /// Each blocks where key expression uses the index variable.
+    pub each_key_uses_index: FxHashSet<NodeId>,
+    /// Each blocks where body expressions use the index variable.
+    pub each_body_uses_index: FxHashSet<NodeId>,
+    /// Const tag declared binding names.
+    pub const_tag_names: FxHashMap<NodeId, Vec<String>>,
+    /// Await block then-binding patterns.
+    pub await_values: FxHashMap<NodeId, AwaitBindingInfo>,
+    /// Await block catch-binding patterns.
+    pub await_errors: FxHashMap<NodeId, AwaitBindingInfo>,
+    /// Render tags with ChainExpression callee.
+    pub render_tag_is_chain: FxHashSet<NodeId>,
+    /// Callee identifier name for render tags.
+    pub render_tag_callee_name: FxHashMap<NodeId, String>,
+    /// Per-argument has_call flags for render tag expressions.
+    pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    /// Per-argument identifier name (if the arg is a plain identifier).
+    pub render_tag_arg_idents: FxHashMap<NodeId, Vec<Option<String>>>,
+    /// Attribute/directive whose expression is a simple identifier matching the name.
+    pub expression_shorthand: FxHashSet<NodeId>,
+    /// class={expr} attributes that need clsx resolution.
+    pub needs_clsx: FxHashSet<NodeId>,
+    /// Parsed custom element config.
+    pub ce_config: Option<ParsedCeConfig>,
+}
+
+impl<'a> JsParseResult<'a> {
+    pub fn new() -> Self {
+        Self {
+            parsed: ParsedExprs::new(),
+            expressions: FxHashMap::default(),
+            attr_expressions: FxHashMap::default(),
+            script: None,
+            exports: Vec::new(),
+            needs_context: false,
+            has_class_state_fields: false,
+            scoping: None,
+            each_key_uses_index: FxHashSet::default(),
+            each_body_uses_index: FxHashSet::default(),
+            const_tag_names: FxHashMap::default(),
+            await_values: FxHashMap::default(),
+            await_errors: FxHashMap::default(),
+            render_tag_is_chain: FxHashSet::default(),
+            render_tag_callee_name: FxHashMap::default(),
+            render_tag_arg_has_call: FxHashMap::default(),
+            render_tag_arg_idents: FxHashMap::default(),
+            expression_shorthand: FxHashSet::default(),
+            needs_clsx: FxHashSet::default(),
+            ce_config: None,
+        }
     }
 }
 

@@ -63,7 +63,7 @@ impl<'s> BindSemanticsVisitor<'s> {
             return;
         };
 
-        if svelte_js::is_simple_identifier(expr_text) {
+        if svelte_types::is_simple_identifier(expr_text) {
             return; // simple identifiers don't need each-block context
         }
 
@@ -91,7 +91,7 @@ impl<'s> BindSemanticsVisitor<'s> {
 
         // Non-shorthand: use pre-resolved SymbolId from attr_expressions
         let Some(info) = data.attr_expressions.get(&dir.id) else { return };
-        if !matches!(info.kind, svelte_js::ExpressionKind::Identifier(_)) { return }
+        if !matches!(info.kind, svelte_types::ExpressionKind::Identifier(_)) { return }
 
         if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {
             if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
