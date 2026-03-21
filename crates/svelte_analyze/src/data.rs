@@ -625,6 +625,8 @@ pub struct PropAnalysis {
     pub is_prop_source: bool,
     /// Prop's rune symbol is mutated (reassigned somewhere in script/template).
     pub is_mutated: bool,
+    /// Prop name starts with `$$` — reserved, excluded from CE accessors.
+    pub is_reserved: bool,
 }
 
 // ---------------------------------------------------------------------------

@@ -116,7 +116,7 @@ fn build_props_metadata<'a>(
     // Second: emit remaining component props not already in CE config
     if let Some(ref props_analysis) = ctx.analysis.props {
         for prop in &props_analysis.props {
-            if prop.is_rest || prop.prop_name.starts_with("$$") {
+            if prop.is_rest || prop.is_reserved {
                 continue;
             }
             let key = &prop.prop_name;
