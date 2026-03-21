@@ -173,7 +173,7 @@ pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Ve
     let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
-    match svelte_types::analyze_script_with_scoping(source, 0, is_ts) {
+    match svelte_parser::analyze_script_with_scoping(source, 0, is_ts) {
         Ok((script_info, scoping)) => {
             data.scoping = scope::ComponentScoping::from_scoping(scoping);
 

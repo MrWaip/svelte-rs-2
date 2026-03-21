@@ -1127,10 +1127,13 @@ dependencies = [
 name = "svelte_parser"
 version = "0.1.0"
 dependencies = [
+ "compact_str",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_parser",
  "oxc_semantic",
  "oxc_span",
+ "oxc_syntax",
  "pretty_assertions",
  "rustc-hash",
  "svelte_ast",
@@ -1167,13 +1170,9 @@ name = "svelte_types"
 version = "0.1.0"
 dependencies = [
  "compact_str",
- "oxc_allocator",
  "oxc_ast",
- "oxc_parser",
  "oxc_semantic",
  "oxc_span",
- "oxc_syntax",
- "pretty_assertions",
  "rustc-hash",
  "svelte_ast",
  "svelte_diagnostics",
