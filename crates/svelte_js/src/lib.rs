@@ -156,6 +156,115 @@ impl RuneKind {
 }
 
 // ---------------------------------------------------------------------------
+// Each context binding info
+// ---------------------------------------------------------------------------
+
+/// Parsed destructuring context for `{#each items as { name, value }}` or `[a, b]`.
+pub struct EachContextBinding<'a> {
+    pub is_array: bool,
+    pub bindings: Vec<EachBindingEntry<'a>>,
+}
+
+/// Single entry in a parsed destructuring context pattern.
+pub struct EachBindingEntry<'a> {
+    /// Binding name (alias if renamed, e.g. `alias` for `{ prop: alias }`).
+    pub name: CompactString,
+    /// Property key for object patterns (None = shorthand, i.e. `name == key_name`).
+    pub key_name: Option<CompactString>,
+    /// Pre-parsed default expression (e.g. `'N/A'` for `{ value = 'N/A' }`).
+    pub default_expr: Option<Expression<'a>>,
+}
+
+/// Parse an each-block destructuring context pattern via OXC into a caller-provided allocator.
+///
+/// Wraps as `var PATTERN = x;`, parses via OXC, walks `BindingPattern` to extract
+/// binding names, property keys, and default expressions.
+pub fn parse_each_context_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    typescript: bool,
+) -> Option<EachContextBinding<'a>> {
+    let trimmed = source.trim();
+    let wrapped_owned = format!("var {} = x;", trimmed);
+    let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
+
+    let src_type = if typescript {
+        SourceType::default().with_typescript(true)
+    } else {
+        SourceType::default()
+    };
+    let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
+
+    if !result.errors.is_empty() {
+        return None;
+    }
+
+    let program = result.program;
+    let stmt = program.body.into_iter().next()?;
+    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
+        return None;
+    };
+    let declarator = var_decl.declarations.remove(0);
+
+    match declarator.id {
+        oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
+            let mut bindings = Vec::new();
+            for prop in obj.unbox().properties {
+                let key_name = match &prop.key {
+                    PropertyKey::StaticIdentifier(id) => Some(compact(&id.name)),
+                    _ => None,
+                };
+                // Walk the value pattern for name + default
+                match prop.value {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                        let name = compact(&id.name);
+                        // Shorthand: key == name
+                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
+                        bindings.push(EachBindingEntry { name, key_name: key, default_expr: None });
+                    }
+                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                        let assign = assign.unbox();
+                        let name = match assign.left {
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => compact(&id.name),
+                            _ => continue,
+                        };
+                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
+                        bindings.push(EachBindingEntry { name, key_name: key, default_expr: Some(assign.right) });
+                    }
+                    _ => continue,
+                }
+            }
+            Some(EachContextBinding { is_array: false, bindings })
+        }
+        oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
+            let mut bindings = Vec::new();
+            for elem in arr.unbox().elements.into_iter().flatten() {
+                match elem {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                        bindings.push(EachBindingEntry {
+                            name: compact(&id.name),
+                            key_name: None,
+                            default_expr: None,
+                        });
+                    }
+                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                        let assign = assign.unbox();
+                        let name = match assign.left {
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => compact(&id.name),
+                            _ => continue,
+                        };
+                        bindings.push(EachBindingEntry { name, key_name: None, default_expr: Some(assign.right) });
+                    }
+                    _ => continue,
+                }
+            }
+            Some(EachContextBinding { is_array: true, bindings })
+        }
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Await binding info
 // ---------------------------------------------------------------------------
 
