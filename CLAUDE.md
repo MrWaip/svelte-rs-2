@@ -121,6 +121,32 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 - Sub-struct fields in `AnalysisData` (`ElementFlags`, `FragmentData`, etc.) are `pub(crate)` — use accessor methods from outside `svelte_analyze`. In codegen, prefer `Ctx` shortcuts over chained access through `ctx.analysis.sub_struct.method()`.
 - All identifier lookups must go through `SymbolId`. `FxHashSet<String>` and `FxHashMap<String, _>` must never be keyed by identifier names. The only acceptable use of name strings is in JS output generation (building string literals, property names for emitted code). If `SymbolId` is not available for a given scope level (e.g., arrow function parameters inside template expressions), extend `ComponentScoping` to cover it — do not fall back to string sets. OXC and `ComponentScoping` share the same `SymbolId` space for script-level bindings, so `SymbolId` from OXC can be used directly with `ComponentScoping` methods without name round-tripping.
 
+### Phase boundaries: fat analyze, dumb codegen
+
+Each compiler phase has a strict responsibility. When adding new features, place logic in the correct phase:
+
+- **Parser** (`svelte_parser`) — returns structured data. If a new AST node contains JS, the parser must deliver it parsed (via `svelte_js`), not as a raw Span for downstream re-parsing. Never introduce a Span-only field that forces analyze or codegen to parse text.
+- **Analyze** (`svelte_analyze`) — answers semantic questions. If codegen needs to decide between output modes based on 2+ flags, analyze should pre-compute that decision and expose it as an enum or accessor. Codegen should never dig deeper than one method call into `AnalysisData`.
+- **Codegen** (`svelte_codegen_client`) — flat mapper. Match on enums, format output. Zero decision logic. No `oxc_parser::Parser::new()`, no `starts_with('{')` heuristics, no multi-pass traversal of `el.attributes` to collect information.
+
+**Red flags in codegen** (do not introduce):
+- `oxc_parser::Parser::new()` — re-parsing in codegen means parser missed structure
+- `starts_with('[')`, `split(',')`, `split_once(':')` — string parsing means AST lost structure
+- `.iter().find(...)` + `.iter().filter_map(...)` + `.iter().any(...)` on the same collection — repeated traversal means analyze should provide a summary
+- `ctx.analysis.foo(id).and_then(|x| x.bar.first()).and_then(|r| r.baz).is_some_and(|s| ...)` — deep chaining means analyze should expose an accessor
+- `let needs_X = flag_a || (flag_b && flag_c)` combining 2+ analysis flags — means analyze should pre-compute the decision
+
+**Green flags in codegen** (this is what we want):
+```rust
+// Single accessor call → flat match
+match ctx.attr_output_mode(id) {
+    AttrOutputMode::Static => { ... }
+    AttrOutputMode::DynamicGetter => { ... }
+}
+```
+
+When in doubt, run `/audit-boundaries` to check for violations, then `/migrate-boundary #N` to fix them.
+
 ### Naming
 
 - `gen_*` — creates and returns statements.
