@@ -85,12 +85,6 @@ use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
 
-/// Check if template HTML needs `importNode` (flag bit 2).
-/// `<video>` requires `importNode` instead of `cloneNode`.
-fn needs_import_node(html: &str) -> bool {
-    html.contains("<video")
-}
-
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -312,9 +306,9 @@ fn emit_single_element<'a>(
     body: &mut Vec<Statement<'a>>,
 ) {
     let el = ctx.element(el_id);
-    let html = element_html(ctx, el);
+    let (html, import_node) = element_html(ctx, el);
     let from_fn = from_template_fn(ctx);
-    let mut from_html = if needs_import_node(&html) {
+    let mut from_html = if import_node {
         ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
     } else {
         ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html))])
@@ -447,8 +441,8 @@ fn emit_mixed<'a>(
         body.push(ctx.b.call_stmt("$.next", []));
     }
 
-    let html = fragment_html(ctx, key);
-    let flags = if needs_import_node(&html) { 3.0 } else { 1.0 };
+    let (html, import_node) = fragment_html(ctx, key);
+    let flags = if import_node { 3.0 } else { 1.0 };
     let from_fn = from_template_fn(ctx);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
         let mut from_html = ctx.b.call_expr(
