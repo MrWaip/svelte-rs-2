@@ -17,12 +17,12 @@ use svelte_ast::{
 
 use svelte_diagnostics::Diagnostic;
 
-pub(crate) mod js_parse;
+pub mod js_parse;
 mod parse_js;
 pub mod scanner;
 
 // Re-export parsing functions used by svelte_analyze
-pub use js_parse::{analyze_script_with_scoping, parse_snippet_params, parse_await_binding};
+pub use js_parse::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
 
 /// Parse a Svelte source file and all embedded JS expressions.
 ///

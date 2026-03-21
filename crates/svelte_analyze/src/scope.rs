@@ -67,11 +67,11 @@ impl ComponentScoping {
     }
 
     /// Create an empty scoping (no script block).
-    /// Parses an empty source via `svelte_types` to get a valid root scope from OXC.
     pub fn empty() -> Self {
-        let (_info, scoping) = svelte_parser::analyze_script_with_scoping("", 0, false)
-            .expect("empty script should parse");
-        Self::from_scoping(scoping)
+        let alloc = oxc_allocator::Allocator::default();
+        let result = oxc_parser::Parser::new(&alloc, "", oxc_span::SourceType::default()).parse();
+        let sem = oxc_semantic::SemanticBuilder::new().build(&result.program);
+        Self::from_scoping(sem.semantic.into_scoping())
     }
 
     // -- Scope management --
@@ -490,17 +490,13 @@ fn walk_template_scopes(
                 // Create a child scope for snippet params — they shadow outer bindings.
                 let snippet_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, snippet_scope);
-                // Compute params inline (eliminates separate register_snippet_params walk)
-                let params = if let Some(span) = block.params_span {
-                    svelte_parser::parse_snippet_params(component.source_text(span))
-                } else {
-                    Vec::new()
-                };
-                for param in &params {
-                    let sym_id = scoping.add_binding(snippet_scope, param);
-                    scoping.mark_snippet_param(sym_id);
+                // Read pre-computed params (populated by parser)
+                if let Some(params) = snippet_params.get(&block.id) {
+                    for param in params {
+                        let sym_id = scoping.add_binding(snippet_scope, param);
+                        scoping.mark_snippet_param(sym_id);
+                    }
                 }
-                snippet_params.insert(block.id, params);
                 walk_template_scopes(&block.body, component, scoping, snippet_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::KeyBlock(block) => {

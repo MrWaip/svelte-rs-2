@@ -120,7 +120,7 @@ fn analyze_source(source: &str) -> (Component, AnalysisData) {
     let alloc = oxc_allocator::Allocator::default();
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
     assert!(parse_diags.is_empty(), "unexpected parse diagnostics: {parse_diags:?}");
-    let (data, _parsed, diags) = analyze(&component, js_result);
+    let (data, _parsed, diags) = analyze(&alloc, &component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)
 }
