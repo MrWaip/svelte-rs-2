@@ -85,17 +85,18 @@ Generated: 2026-03-21
 - ~~**Target layer**: analyze~~
 - **Resolution**: `is_reserved: bool` field added to `PropAnalysis`, computed in `analyze_props()`
 
-### #8 — HTML video tag detection
+### ~~#8 — HTML video tag detection~~ ✅
 
-- **Pattern**: `<video>` substring search in template HTML
-- **Class**: 2
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/mod.rs:90-92` (`html.contains("<video")`)
-- **Occurrence count**: 1
-- **What is aggregated**: searches generated HTML string for `<video` to determine `importNode` flag
-- **Proposed type**: accessor `fn needs_import_node(&self, fragment_id) -> bool` pre-computed during codegen template assembly or analyze
-- **Target layer**: codegen refactor (track during template HTML assembly, not post-hoc string search)
+- ~~**Pattern**: `<video>` substring search in template HTML~~
+- ~~**Class**: 2~~
+- ~~**Complexity**: S~~
+- ~~**Where**:~~
+  - ~~`crates/svelte_codegen_client/src/template/mod.rs:90-92` (`html.contains("<video")`)~~
+- ~~**Occurrence count**: 1~~
+- ~~**What is aggregated**: searches generated HTML string for `<video` to determine `importNode` flag~~
+- ~~**Proposed type**: accessor `fn needs_import_node(&self, fragment_id) -> bool` pre-computed during codegen template assembly or analyze~~
+- ~~**Target layer**: codegen refactor (track during template HTML assembly, not post-hoc string search)~~
+- **Resolution**: `element_html()` and `fragment_html()` return `(String, bool)` — the flag is set when `el.name == "video"` and OR-propagated upward through recursive calls. `needs_import_node()` deleted.
 
 ---
 
