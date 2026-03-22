@@ -51,6 +51,31 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
+fn head_with_special_elements() {
+    assert_compiler("head_with_special_elements");
+}
+
+#[rstest]
+fn head_with_snippets() {
+    assert_compiler("head_with_snippets");
+}
+
+#[rstest]
+fn push_binding_group_order() {
+    assert_compiler("push_binding_group_order");
+}
+
+#[rstest]
+fn head_position_with_body() {
+    assert_compiler("head_position_with_body");
+}
+
+#[rstest]
+fn special_elements_all() {
+    assert_compiler("special_elements_all");
+}
+
+#[rstest]
 fn empty() {
     assert_compiler("empty");
 }
