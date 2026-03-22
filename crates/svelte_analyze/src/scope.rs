@@ -42,6 +42,9 @@ pub struct ComponentScoping {
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
     /// Arrow function span.start → child ScopeId (for arrow params inside JS expressions)
     arrow_scopes: FxHashMap<u32, ScopeId>,
+    /// Pre-computed set of dynamic rune symbols (populated by `precompute_dynamic_cache`).
+    /// When `Some`, `is_dynamic_by_id` uses O(1) lookup instead of recursive walk.
+    dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
 }
 
 impl ComponentScoping {
@@ -73,6 +76,7 @@ impl ComponentScoping {
             fragment_scopes: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
             arrow_scopes: FxHashMap::default(),
+            dynamic_sym_cache: None,
         }
     }
 
@@ -171,11 +175,23 @@ impl ComponentScoping {
     // -- Convenience: SymbolId-based dynamism check --
 
     /// Check if a symbol is dynamic (by SymbolId, without name resolution).
+    /// After `precompute_dynamic_cache()`, rune checks are O(1) set lookups.
     pub fn is_dynamic_by_id(&self, sym_id: SymbolId) -> bool {
-        self.is_dynamic_by_id_inner(sym_id, 0)
+        if let Some(cache) = &self.dynamic_sym_cache {
+            // Cached path: rune dynamism pre-computed, scope check is O(1)
+            if cache.contains(&sym_id) {
+                return true;
+            }
+            // Non-rune symbol: dynamic iff declared in non-root scope
+            if !self.runes.contains_key(&sym_id) {
+                return self.symbol_scope_id(sym_id) != self.root_scope_id();
+            }
+            return false;
+        }
+        self.is_dynamic_by_id_uncached(sym_id, 0)
     }
 
-    fn is_dynamic_by_id_inner(&self, sym_id: SymbolId, depth: u8) -> bool {
+    fn is_dynamic_by_id_uncached(&self, sym_id: SymbolId, depth: u8) -> bool {
         if depth > 16 {
             return true;
         }
@@ -187,12 +203,61 @@ impl ComponentScoping {
                 if rune.derived_deps.is_empty() {
                     return true; // deps unknown (e.g. $derived.by) — assume dynamic
                 }
-                return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_inner(dep, depth + 1));
+                return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_uncached(dep, depth + 1));
             }
             return true;
         }
         // Non-root-scope binding (each block context/index) is always dynamic
         self.symbol_scope_id(sym_id) != self.root_scope_id()
+    }
+
+    /// Pre-compute dynamic status for all rune symbols with memoization.
+    /// After this call, `is_dynamic_by_id` uses O(1) lookups for runes.
+    pub fn precompute_dynamic_cache(&mut self) {
+        let mut memo: FxHashMap<SymbolId, bool> = FxHashMap::default();
+        let rune_ids: Vec<SymbolId> = self.runes.keys().copied().collect();
+        for sym_id in rune_ids {
+            self.compute_dynamic_memoized(sym_id, &mut memo, 0);
+        }
+        let dynamic_set = memo.into_iter()
+            .filter(|(_, is_dyn)| *is_dyn)
+            .map(|(sym, _)| sym)
+            .collect();
+        self.dynamic_sym_cache = Some(dynamic_set);
+    }
+
+    fn compute_dynamic_memoized(
+        &self,
+        sym_id: SymbolId,
+        memo: &mut FxHashMap<SymbolId, bool>,
+        depth: u8,
+    ) -> bool {
+        if let Some(&cached) = memo.get(&sym_id) {
+            return cached;
+        }
+        if depth > 16 {
+            memo.insert(sym_id, true);
+            return true;
+        }
+        let result = if let Some(rune) = self.runes.get(&sym_id) {
+            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) {
+                false
+            } else if rune.kind.is_derived() {
+                if rune.derived_deps.is_empty() {
+                    true
+                } else {
+                    // Collect deps to avoid borrow conflict with &self
+                    let deps: Vec<SymbolId> = rune.derived_deps.clone();
+                    deps.iter().any(|&dep| self.compute_dynamic_memoized(dep, memo, depth + 1))
+                }
+            } else {
+                true
+            }
+        } else {
+            self.symbol_scope_id(sym_id) != self.root_scope_id()
+        };
+        memo.insert(sym_id, result);
+        result
     }
 
     // -- SymbolId-keyed classification: write --

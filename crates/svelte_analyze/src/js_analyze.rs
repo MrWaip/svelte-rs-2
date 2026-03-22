@@ -8,7 +8,7 @@ use oxc_ast::ast::Expression;
 use svelte_span::Span;
 use svelte_parser::{RuneKind, ScriptInfo};
 
-use svelte_ast::{Component, Fragment, Node, NodeId};
+use svelte_ast::NodeId;
 
 use crate::data::{
     AnalysisData, ExpressionInfo, ExpressionKind, ParsedExprs, Reference, ReferenceFlags,
@@ -88,121 +88,6 @@ pub(crate) fn extract_all_expressions(
         };
         data.attr_expressions.insert(attr_id, merged);
     }
-}
-
-/// Compute each-block key/body index usage from expression references.
-/// Must be called after `extract_all_expressions`.
-pub(crate) fn compute_each_index_usage(
-    parsed: &ParsedExprs<'_>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    walk_each_index(&component.fragment, component, parsed, data);
-}
-
-fn walk_each_index(
-    fragment: &Fragment,
-    component: &Component,
-    parsed: &ParsedExprs<'_>,
-    data: &mut AnalysisData,
-) {
-    for node in &fragment.nodes {
-        match node {
-            Node::EachBlock(block) => {
-                if let Some(idx_span) = block.index_span {
-                    let idx_name = component.source_text(idx_span);
-                    // Check if key expression references the index
-                    if let Some(key_expr) = parsed.key_exprs.get(&block.id) {
-                        let offset = parsed.key_expr_offsets.get(&block.id).copied().unwrap_or(0);
-                        let info = extract_expression_info(key_expr, offset);
-                        if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                            data.each_blocks.key_uses_index.insert(block.id);
-                        }
-                    }
-                    // Check if body expressions reference the index
-                    let body_uses_idx = check_fragment_uses_name(&block.body, idx_name, data);
-                    if body_uses_idx {
-                        data.each_blocks.body_uses_index.insert(block.id);
-                    }
-                }
-                walk_each_index(&block.body, component, parsed, data);
-                if let Some(ref fb) = block.fallback {
-                    walk_each_index(fb, component, parsed, data);
-                }
-            }
-            Node::Element(el) => walk_each_index(&el.fragment, component, parsed, data),
-            Node::ComponentNode(cn) => walk_each_index(&cn.fragment, component, parsed, data),
-            Node::IfBlock(b) => {
-                walk_each_index(&b.consequent, component, parsed, data);
-                if let Some(ref alt) = b.alternate {
-                    walk_each_index(alt, component, parsed, data);
-                }
-            }
-            Node::SnippetBlock(b) => walk_each_index(&b.body, component, parsed, data),
-            Node::KeyBlock(b) => walk_each_index(&b.fragment, component, parsed, data),
-            Node::SvelteHead(h) => walk_each_index(&h.fragment, component, parsed, data),
-            Node::SvelteElement(e) => walk_each_index(&e.fragment, component, parsed, data),
-            Node::SvelteBoundary(b) => walk_each_index(&b.fragment, component, parsed, data),
-            Node::AwaitBlock(b) => {
-                if let Some(ref p) = b.pending { walk_each_index(p, component, parsed, data); }
-                if let Some(ref t) = b.then { walk_each_index(t, component, parsed, data); }
-                if let Some(ref c) = b.catch { walk_each_index(c, component, parsed, data); }
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Check if any expression in a fragment references a given name.
-fn check_fragment_uses_name(fragment: &Fragment, name: &str, data: &AnalysisData) -> bool {
-    for node in &fragment.nodes {
-        let refs_match = |id: NodeId| -> bool {
-            data.expressions.get(&id)
-                .is_some_and(|info| info.references.iter().any(|r| r.name.as_str() == name))
-        };
-        let attr_refs_match = |attrs: &[svelte_ast::Attribute]| -> bool {
-            attrs.iter().any(|a| {
-                data.attr_expressions.get(&a.id())
-                    .is_some_and(|info| info.references.iter().any(|r| r.name.as_str() == name))
-            })
-        };
-        match node {
-            Node::ExpressionTag(t) if refs_match(t.id) => return true,
-            Node::Element(el) => {
-                if attr_refs_match(&el.attributes) { return true; }
-                if check_fragment_uses_name(&el.fragment, name, data) { return true; }
-            }
-            Node::ComponentNode(cn) => {
-                if attr_refs_match(&cn.attributes) { return true; }
-                if check_fragment_uses_name(&cn.fragment, name, data) { return true; }
-            }
-            Node::IfBlock(b) => {
-                if refs_match(b.id) { return true; }
-                if check_fragment_uses_name(&b.consequent, name, data) { return true; }
-                if let Some(ref alt) = b.alternate {
-                    if check_fragment_uses_name(alt, name, data) { return true; }
-                }
-            }
-            Node::EachBlock(b) => {
-                if refs_match(b.id) { return true; }
-                if check_fragment_uses_name(&b.body, name, data) { return true; }
-            }
-            Node::RenderTag(t) if refs_match(t.id) => return true,
-            Node::HtmlTag(t) if refs_match(t.id) => return true,
-            Node::KeyBlock(b) => {
-                if refs_match(b.id) { return true; }
-                if check_fragment_uses_name(&b.fragment, name, data) { return true; }
-            }
-            Node::ConstTag(t) if refs_match(t.id) => return true,
-            Node::SvelteElement(e) => {
-                if !e.static_tag && refs_match(e.id) { return true; }
-                if attr_refs_match(&e.attributes) { return true; }
-                if check_fragment_uses_name(&e.fragment, name, data) { return true; }
-            }
-            _ => {}
-        }
-    }
-    false
 }
 
 /// Compute render tag argument metadata from parsed CallExpressions.

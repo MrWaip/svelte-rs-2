@@ -7,11 +7,10 @@ mod elseif;
 mod hoistable;
 pub mod ident_gen;
 pub(crate) mod js_analyze;
-mod known_values;
 mod lower;
 mod needs_var;
 mod analyze_semantic;
-mod props;
+mod post_resolve;
 mod reactivity;
 mod resolve_references;
 pub mod scope;
@@ -60,18 +59,16 @@ pub fn analyze_with_options<'a>(
         .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
     data.scoping = ComponentScoping::new(script_scoping);
     js_analyze::extract_all_expressions(&parsed, &mut data);
-    js_analyze::compute_each_index_usage(&parsed, component, &mut data);
     js_analyze::compute_render_tag_args(&parsed, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
-    analyze_semantic::register_arrow_scopes(component, &mut data, &parsed);
+    analyze_semantic::compute_js_metadata(component, &mut data, &parsed);
     data.import_syms = data.scoping.collect_import_syms();
     resolve_references::resolve_references(component, &mut data, scoping_built);
-    store_subscriptions::detect_store_subscriptions(&mut data);
-    known_values::collect_known_values(component, &mut data);
-    props::analyze_props(&mut data);
+    post_resolve::run_post_resolve_passes(component, &mut data);
     resolve_render_tag_prop_sources(&mut data);
     resolve_render_tag_dynamic(&mut data);
+    data.scoping.precompute_dynamic_cache();
     lower::lower(component, &mut data);
 
     // Single composite walk: reactivity + elseif + element flags + hoistable snippets
