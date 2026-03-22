@@ -1,21 +1,13 @@
 use crate::data::{AnalysisData, LoweredTextPart, ContentStrategy, FragmentItem};
 
 /// Classify all fragments and mark which ones have dynamic children.
-/// Single pass over `lowered_fragments` instead of two separate traversals.
 pub fn classify_and_mark_dynamic(data: &mut AnalysisData) {
     let dynamic_nodes = &data.dynamic_nodes;
-    let results: Vec<_> = data
-        .fragments
-        .lowered
-        .iter()
-        .map(|(&key, lf)| {
-            let cs = classify_items(&lf.items);
-            let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, dynamic_nodes));
-            (key, cs, has_dynamic)
-        })
-        .collect();
-
-    for (key, cs, has_dynamic) in results {
+    let keys: Vec<_> = data.fragments.lowered.keys().copied().collect();
+    for key in keys {
+        let lf = &data.fragments.lowered[&key];
+        let cs = classify_items(&lf.items);
+        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, dynamic_nodes));
         data.fragments.content_types.insert(key, cs);
         if has_dynamic {
             data.fragments.has_dynamic_children.insert(key);
