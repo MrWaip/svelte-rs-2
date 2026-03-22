@@ -188,6 +188,6 @@ If a test fails after 3 attempts, stop and report what you tried. Do NOT fix oth
 
 **Benchmark** (only if the feature adds new syntax — new AST node types, block types, directive types):
 1. Add the construct to `tasks/generate_benchmark/src/main.rs`
-2. Generate new `big_vN.svelte`: `just generate-benchmark big_vN`
-3. Verify: `cargo bench -p benchmark -- --test`
-4. Do NOT modify previous `big_vN.svelte` files
+2. Increment the version: rename the existing `big_vN.svelte` default in `justfile`, `tasks/benchmark/compare.mjs`, and `tasks/generate_benchmark/src/main.rs` to `big_v(N+1)`
+3. Delete the old `big_vN.svelte` file from `tasks/benchmark/benches/compiler/`
+4. Generate: `just generate-benchmark`
