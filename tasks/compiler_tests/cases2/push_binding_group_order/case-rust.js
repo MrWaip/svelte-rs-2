@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
 var root = $.from_html(`<input type="radio"/> <input type="radio"/> <p> </p>`, 1);
 export default function App($$anchor, $$props) {
-	const binding_group = [];
 	$.push($$props, true);
+	const binding_group = [];
 	let value = $.prop($$props, "value", 11, "");
 	let group = $.state($.proxy([]));
 	var fragment = root();
