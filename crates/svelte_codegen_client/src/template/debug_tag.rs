@@ -7,16 +7,12 @@ use crate::context::Ctx;
 
 /// Emit `$.template_effect(() => { console.log({...}); debugger; })` for each DebugTag.
 ///
-/// Only emits when `ctx.dev` is true.
+/// Emitted in both dev and non-dev modes (Svelte always generates debug output).
 pub(crate) fn emit_debug_tags<'a>(
     ctx: &mut Ctx<'a>,
     key: FragmentKey,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    if !ctx.dev {
-        return;
-    }
-
     let Some(ids) = ctx.debug_tags_for_fragment(&key).cloned() else {
         return;
     };

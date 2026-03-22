@@ -5,8 +5,8 @@ export default function App($$anchor) {
 	function handleScroll() {
 		$.update(count);
 	}
-	$.event("scroll", $.window, handleScroll);
 	var div = root();
+	$.event("scroll", $.window, handleScroll);
 	var text = $.child(div);
 	$.reset(div);
 	$.template_effect(() => $.set_text(text, `Count: ${$.get(count) ?? ""}`));
