@@ -4,13 +4,14 @@
 //! utilities, and populates `JsParseResult` with parsed expressions and metadata.
 
 use oxc_allocator::Allocator;
+use oxc_ast::ast::Expression;
 
 use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
-    parse_ce_config, parse_const_declaration_with_alloc, parse_expression_with_alloc,
-    parse_script_with_alloc,
+    parse_const_declaration_with_alloc, parse_each_context_with_alloc,
+    parse_expression_with_alloc, parse_script_with_alloc,
 };
 use crate::types::JsParseResult;
 
@@ -44,13 +45,31 @@ pub(crate) fn parse_js<'a>(
     {
         parse_span(alloc, component, *span, typescript, result, diags);
 
-        // Discover extend_span via temporary parse so we can parse that expression separately
-        let ce_source = component.source_text(*span);
-        let config = parse_ce_config(ce_source, span.start);
-        if let Some(ext_span) = config.extend_span {
+        // Navigate the already-parsed ObjectExpression to find `extend` property span
+        if let Some(ext_span) = find_ce_extend_span(result, span.start) {
             parse_span(alloc, component, ext_span, typescript, result, diags);
         }
     }
+}
+
+/// Find the `extend` property span inside an already-parsed CE config ObjectExpression.
+/// OXC spans are relative to the expression start, so we adjust by `offset`.
+fn find_ce_extend_span(result: &JsParseResult<'_>, offset: u32) -> Option<svelte_span::Span> {
+    use oxc_ast::ast::{ObjectPropertyKind, PropertyKey};
+    use oxc_span::GetSpan as _;
+
+    let expr = result.parsed.exprs.get(&offset)?;
+    let Expression::ObjectExpression(obj) = expr else { return None };
+    for prop_kind in &obj.properties {
+        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
+        if let PropertyKey::StaticIdentifier(id) = &prop.key {
+            if id.name.as_str() == "extend" {
+                let s = prop.value.span();
+                return Some(svelte_span::Span::new(s.start + offset, s.end + offset));
+            }
+        }
+    }
+    None
 }
 
 /// Parse an expression and store it by source offset.
@@ -114,6 +133,15 @@ fn walk_node<'a>(
             parse_span(alloc, component, block.expression_span, typescript, result, diags);
             if let Some(key_span) = block.key_span {
                 parse_span(alloc, component, key_span, typescript, result, diags);
+            }
+
+            // Pre-parse destructured context pattern so codegen doesn't need to
+            let ctx_text = component.source_text(block.context_span);
+            if ctx_text.starts_with('{') || ctx_text.starts_with('[') {
+                let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
+                if let Some(binding) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                    result.parsed.each_contexts.insert(block.context_span.start, binding);
+                }
             }
 
             walk_fragment(alloc, &block.body, component, typescript, result, diags);

@@ -10,16 +10,16 @@ use std::cell::Cell;
 
 use compact_str::CompactString;
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
+use oxc_ast::ast::{Expression, PropertyKey};
 use oxc_parser::Parser as OxcParser;
-use oxc_span::{GetSpan as _, SourceType};
+use oxc_span::SourceType;
 use oxc_syntax::node::NodeId;
 
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
 use crate::types::{
-    AwaitBindingInfo, CePropConfig, CeShadowMode, DestructureKind, EachBindingEntry,
-    EachContextBinding, ParsedCeConfig,
+    AwaitBindingInfo, DestructureKind, EachBindingEntry,
+    EachContextBinding,
 };
 
 // ===========================================================================
@@ -146,7 +146,7 @@ pub fn parse_const_declaration_with_alloc<'a>(
 ///
 /// Wraps as `var PATTERN = x;`, parses via OXC, walks `BindingPattern` to extract
 /// binding names, property keys, and default expressions.
-pub fn parse_each_context_with_alloc<'a>(
+pub(crate) fn parse_each_context_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     typescript: bool,
@@ -297,126 +297,6 @@ pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
     AwaitBindingInfo::Simple(trimmed.to_string())
 }
 
-/// Parse a custom element config object expression via OXC.
-///
-/// `source` is the raw expression text (e.g., `{ tag: "my-el", shadow: "open", props: {...} }`).
-/// `offset` is the byte offset of `source` within the original .svelte file,
-/// used to adjust `extend` span to absolute coordinates.
-pub(crate) fn parse_ce_config(source: &str, offset: u32) -> ParsedCeConfig {
-    let alloc = Allocator::default();
-    let wrapped = format!("var x = {};", source);
-    let result = OxcParser::new(&alloc, &wrapped, SourceType::default()).parse();
-
-    let prefix_len: u32 = 8; // "var x = "
-
-    let mut config = ParsedCeConfig {
-        tag: None,
-        shadow: CeShadowMode::Open,
-        props: Vec::new(),
-        extend_span: None,
-    };
-
-    if !result.errors.is_empty() {
-        return config;
-    }
-
-    let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first()
-    else {
-        return config;
-    };
-    let Some(declarator) = decl.declarations.first() else {
-        return config;
-    };
-    let Some(Expression::ObjectExpression(obj)) = &declarator.init else {
-        return config;
-    };
-
-    for prop_kind in &obj.properties {
-        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else {
-            continue;
-        };
-        let key_name = match &prop.key {
-            PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-            _ => continue,
-        };
-
-        match key_name {
-            "tag" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    config.tag = Some(lit.value.to_string());
-                }
-            }
-            "shadow" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    if lit.value.as_str() == "none" {
-                        config.shadow = CeShadowMode::None;
-                    }
-                }
-            }
-            "props" => {
-                if let Expression::ObjectExpression(props_obj) = &prop.value {
-                    for prop_entry in &props_obj.properties {
-                        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else {
-                            continue;
-                        };
-                        let prop_name = match &entry.key {
-                            PropertyKey::StaticIdentifier(id) => id.name.to_string(),
-                            _ => continue,
-                        };
-                        let mut prop_cfg = CePropConfig {
-                            name: prop_name,
-                            attribute: None,
-                            reflect: false,
-                            prop_type: None,
-                        };
-                        if let Expression::ObjectExpression(def_obj) = &entry.value {
-                            for def_prop in &def_obj.properties {
-                                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else {
-                                    continue;
-                                };
-                                let dk = match &dp.key {
-                                    PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-                                    _ => continue,
-                                };
-                                match dk {
-                                    "attribute" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.attribute = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    "reflect" => {
-                                        if let Expression::BooleanLiteral(lit) = &dp.value {
-                                            prop_cfg.reflect = lit.value;
-                                        }
-                                    }
-                                    "type" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.prop_type = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        config.props.push(prop_cfg);
-                    }
-                }
-            }
-            "extend" => {
-                let ext_start = prop.value.span().start;
-                let ext_end = prop.value.span().end;
-                // Adjust from wrapped-string coordinates to original source coordinates
-                config.extend_span = Some(Span::new(
-                    ext_start - prefix_len + offset,
-                    ext_end - prefix_len + offset,
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    config
-}
 
 /// Parse snippet parameter names from the raw params text (e.g. `"a, b"` or `"{ name }, count"`).
 ///
