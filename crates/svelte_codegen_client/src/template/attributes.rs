@@ -138,6 +138,11 @@ pub(crate) fn process_attr<'a>(
                     "$.set_value",
                     [Arg::Ident(el_name), Arg::Expr(val)],
                 ));
+            } else if a.name == "style" {
+                target.push(ctx.b.call_stmt(
+                    "$.set_style",
+                    [Arg::Ident(el_name), Arg::Expr(val)],
+                ));
             } else {
                 target.push(ctx.b.call_stmt(
                     "$.set_attribute",
@@ -151,14 +156,21 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ConcatenationAttribute(a) => {
             let val = build_attr_concat(ctx, attr_id, &a.parts);
-            target.push(ctx.b.call_stmt(
-                "$.set_attribute",
-                [
-                    Arg::Ident(el_name),
-                    Arg::Str(a.name.clone()),
-                    Arg::Expr(val),
-                ],
-            ));
+            if a.name == "style" {
+                target.push(ctx.b.call_stmt(
+                    "$.set_style",
+                    [Arg::Ident(el_name), Arg::Expr(val)],
+                ));
+            } else {
+                target.push(ctx.b.call_stmt(
+                    "$.set_attribute",
+                    [
+                        Arg::Ident(el_name),
+                        Arg::Str(a.name.clone()),
+                        Arg::Expr(val),
+                    ],
+                ));
+            }
         }
         Attribute::Shorthand(a) => {
             let val = get_attr_expr(ctx, attr_id);
