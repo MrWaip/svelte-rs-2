@@ -10,7 +10,7 @@ pub(crate) mod js_analyze;
 mod known_values;
 mod lower;
 mod needs_var;
-mod parse_js;
+mod analyze_semantic;
 mod props;
 mod reactivity;
 mod resolve_references;
@@ -22,9 +22,9 @@ pub(crate) mod walker;
 
 pub use data::{
     AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind,
-    EventHandlerMode, LoweredTextPart, ConstTagData, ContentStrategy, DebugTagData, ElementFlags,
-    FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs, PropAnalysis, PropsAnalysis,
-    RenderTagCalleeMode, SnippetData,
+    EventHandlerMode, ExpressionInfo, ExpressionKind, LoweredTextPart, ConstTagData, ContentStrategy,
+    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs,
+    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
@@ -48,22 +48,23 @@ pub fn analyze_with_options<'a>(
     js_result: JsParseResult<'a>,
     custom_element: bool,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
-    let mut data = AnalysisData::new();
-    data.custom_element = custom_element;
     let mut diags = Vec::new();
+
+    let mut data = AnalysisData::new_empty();
+    data.custom_element = custom_element;
 
     let (parsed, script_info) = ingest_js_result(js_result, &mut data);
 
-    // JS analysis passes (before scoping)
-    if let Some(script_info) = script_info {
-        js_analyze::analyze_script(&parsed, &mut data, script_info);
-    }
+    // JS analysis: enrich script info and extract OXC Scoping
+    let script_scoping = script_info
+        .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
+    data.scoping = ComponentScoping::new(script_scoping);
     js_analyze::extract_all_expressions(&parsed, &mut data);
     js_analyze::compute_each_index_usage(&parsed, component, &mut data);
     js_analyze::compute_render_tag_args(&parsed, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
-    parse_js::register_arrow_scopes(component, &mut data, &parsed);
+    analyze_semantic::register_arrow_scopes(component, &mut data, &parsed);
     data.import_syms = data.scoping.collect_import_syms();
     resolve_references::resolve_references(component, &mut data, scoping_built);
     store_subscriptions::detect_store_subscriptions(&mut data);
@@ -153,17 +154,12 @@ fn ingest_js_result<'a>(
 /// no fragment classification — modules are pure JS with rune transforms.
 pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>) {
     let _ = dev; // reserved for future dev-mode analysis (e.g. $inspect.trace labels)
-    let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
-    let alloc = oxc_allocator::Allocator::default();
-    let arena_source = alloc.alloc_str(source);
-    match svelte_parser::parse_script_with_alloc(&alloc, arena_source, 0, is_ts) {
-        Ok(program) => {
-            let mut script_info = svelte_parser::parse_js::extract_script_info(&program, 0, source);
-            let sem = oxc_semantic::SemanticBuilder::new().build(&program);
-            js_analyze::enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-            data.scoping = scope::ComponentScoping::from_scoping(sem.semantic.into_scoping());
+    let mut data = AnalysisData::new_empty();
+    match svelte_parser::parse_module(source, is_ts) {
+        Ok((script_info, scoping)) => {
+            data.scoping = scope::ComponentScoping::new(Some(scoping));
 
             // Mark runes from script declarations
             for decl in &script_info.declarations {

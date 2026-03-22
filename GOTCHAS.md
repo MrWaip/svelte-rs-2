@@ -20,10 +20,10 @@
 What each pass reads and writes:
 
 ```
-parse_js           reads: component (source spans)
+parse_js           reads: component (source spans), JsParseResult (from parser)
                    writes: data.expressions, data.attr_expressions, data.script
                            data.const_tags.names, data.const_tags.by_fragment
-                           parsed.exprs, parsed.attr_exprs, parsed.script_program
+                           (ParsedExprs populated by parser in parse_with_js)
 
 build_scoping      reads: component, data.script
                    writes: data.scoping (ComponentScoping with unified scope tree)

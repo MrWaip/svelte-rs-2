@@ -2,11 +2,14 @@
 
 pub(crate) mod attributes;
 pub(crate) mod await_block;
+pub(crate) mod bind;
+
 pub(crate) mod component;
 pub(crate) mod const_tag;
 pub(crate) mod debug_tag;
 pub(crate) mod each_block;
 pub(crate) mod element;
+pub(crate) mod events;
 pub(crate) mod expression;
 pub(crate) mod html;
 pub(crate) mod if_block;
