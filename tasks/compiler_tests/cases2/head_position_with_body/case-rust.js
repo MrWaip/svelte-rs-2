@@ -6,7 +6,7 @@ export default function App($$anchor) {
 	var p = root();
 	$.head("q2w0q4", ($$anchor) => {
 		$.effect(() => {
-			$.document.title = "Page" ?? "";
+			$.document.title = "Page";
 		});
 	});
 	$.event("click", $.document.body, handleClick);
