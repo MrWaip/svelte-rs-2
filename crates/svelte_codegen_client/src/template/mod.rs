@@ -132,36 +132,49 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     emit_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
 
-    // Generate svelte:window events/bindings — go to init (before template)
+    // Collect special element IDs before template init
     let svelte_window_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_window().map(|w| w.id))
         .collect();
-    for id in svelte_window_ids {
-        svelte_window::gen_svelte_window(ctx, id, &mut body);
-    }
-
-    // Generate svelte:document events/bindings — go to init (before template)
     let svelte_document_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_document().map(|d| d.id))
         .collect();
-    for id in svelte_document_ids {
-        svelte_document::gen_svelte_document(ctx, id, &mut body);
-    }
-
-    // Generate svelte:body events/actions — go to init (before template)
     let svelte_body_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_body().map(|b| b.id))
         .collect();
-    for id in svelte_body_ids {
-        svelte_body::gen_svelte_body(ctx, id, &mut body);
-    }
-
-    // Collect SvelteHead IDs — $.head() calls are generated after main template init
     let svelte_head_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_head().map(|h| h.id))
         .collect();
 
+    // Template init first (Svelte reference unshifts var decl to init[0])
+    let pre_len = body.len();
     emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
+
+    // Special element events/bindings: inserted right after the template root var
+    // init but before child processing and $.append (matches Svelte reference order).
+    let mut special_body: Vec<Statement<'a>> = Vec::new();
+    for id in svelte_window_ids {
+        svelte_window::gen_svelte_window(ctx, id, &mut special_body);
+    }
+    for id in svelte_document_ids {
+        svelte_document::gen_svelte_document(ctx, id, &mut special_body);
+    }
+    for id in svelte_body_ids {
+        svelte_body::gen_svelte_body(ctx, id, &mut special_body);
+    }
+    if !special_body.is_empty() {
+        if body.len() > pre_len + 1 {
+            // Content strategy added statements — insert after the first one
+            // (e.g., after `var div = root()`) but before child processing
+            let insert_pos = pre_len + 1;
+            let tail: Vec<_> = body.drain(insert_pos..).collect();
+            body.extend(special_body);
+            body.extend(tail);
+        } else {
+            // No content or single statement — just append
+            body.extend(special_body);
+        }
+    }
 
     // Generate $.head() calls for <svelte:head> nodes.
     // In the Svelte reference, hoisted nodes are visited first and push to init[],

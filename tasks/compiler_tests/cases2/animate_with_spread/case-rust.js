@@ -19,6 +19,7 @@ export default function App($$anchor, $$props) {
 		var text = $.child(p, true);
 		$.reset(p);
 		$.template_effect(() => $.set_text(text, $.get(item).name));
+		$.animation(p, () => flip, null);
 		$.append($$anchor, p);
 	});
 	$.append($$anchor, fragment);

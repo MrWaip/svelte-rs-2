@@ -5,7 +5,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.element(node, () => tag, false, ($$element, $$anchor) => {
-		$.attribute_effect($$element, () => ({ class: "my-class" }));
+		$.set_class($$element, 0, "my-class");
 		var text = $.text();
 		text.nodeValue = "Content: hello";
 		$.append($$anchor, text);
