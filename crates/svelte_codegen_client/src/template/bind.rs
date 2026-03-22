@@ -177,7 +177,7 @@ pub(crate) fn gen_bind_directive<'a>(
                     Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
                 ]),
                 "innerHTML" | "innerText" | "textContent" => ctx.b.call_stmt("$.bind_content_editable", [
-                    Arg::Str(bind.name.clone()), Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
+                    Arg::StrRef(&bind.name), Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
                 ]),
                 _ => ctx.b.call_stmt("$.bind_value", [
                     Arg::Ident(el_name), Arg::Expr(get_fn), Arg::Expr(set_fn),
@@ -292,7 +292,7 @@ pub(crate) fn gen_bind_directive<'a>(
             let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("indeterminate".into()), Arg::Str("change".into()),
+                Arg::StrRef("indeterminate"), Arg::StrRef("change"),
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
             ])
         }
@@ -300,7 +300,7 @@ pub(crate) fn gen_bind_directive<'a>(
             let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("open".into()), Arg::Str("toggle".into()),
+                Arg::StrRef("open"), Arg::StrRef("toggle"),
                 Arg::Ident(el_name), Arg::Expr(setter), Arg::Expr(getter),
             ])
         }
@@ -310,7 +310,7 @@ pub(crate) fn gen_bind_directive<'a>(
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_content_editable", [
-                Arg::Str(bind.name.clone()), Arg::Ident(el_name),
+                Arg::StrRef(&bind.name), Arg::Ident(el_name),
                 Arg::Expr(getter), Arg::Expr(setter),
             ])
         }
@@ -319,7 +319,7 @@ pub(crate) fn gen_bind_directive<'a>(
         "clientWidth" | "clientHeight" | "offsetWidth" | "offsetHeight" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_element_size", [
-                Arg::Ident(el_name), Arg::Str(bind.name.clone()), Arg::Expr(setter),
+                Arg::Ident(el_name), Arg::StrRef(&bind.name), Arg::Expr(setter),
             ])
         }
 
@@ -327,7 +327,7 @@ pub(crate) fn gen_bind_directive<'a>(
         "contentRect" | "contentBoxSize" | "borderBoxSize" | "devicePixelContentBoxSize" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_resize_observer", [
-                Arg::Ident(el_name), Arg::Str(bind.name.clone()), Arg::Expr(setter),
+                Arg::Ident(el_name), Arg::StrRef(&bind.name), Arg::Expr(setter),
             ])
         }
 
@@ -398,35 +398,35 @@ pub(crate) fn gen_bind_directive<'a>(
         "duration" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("duration".into()), Arg::Str("durationchange".into()),
+                Arg::StrRef("duration"), Arg::StrRef("durationchange"),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "videoWidth" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("videoWidth".into()), Arg::Str("resize".into()),
+                Arg::StrRef("videoWidth"), Arg::StrRef("resize"),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "videoHeight" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("videoHeight".into()), Arg::Str("resize".into()),
+                Arg::StrRef("videoHeight"), Arg::StrRef("resize"),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "naturalWidth" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("naturalWidth".into()), Arg::Str("load".into()),
+                Arg::StrRef("naturalWidth"), Arg::StrRef("load"),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }
         "naturalHeight" => {
             let setter = build_binding_setter(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("naturalHeight".into()), Arg::Str("load".into()),
+                Arg::StrRef("naturalHeight"), Arg::StrRef("load"),
                 Arg::Ident(el_name), Arg::Expr(setter),
             ])
         }

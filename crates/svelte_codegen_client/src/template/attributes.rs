@@ -98,7 +98,7 @@ pub(crate) fn process_attr<'a>(
                 match mode {
                     svelte_analyze::EventHandlerMode::Delegated { passive } => {
                         let mut args: Vec<Arg<'a, '_>> = vec![
-                            Arg::Str(event_name.clone()),
+                            Arg::StrRef(&event_name),
                             Arg::Ident(el_name),
                             Arg::Expr(handler),
                         ];
@@ -107,9 +107,7 @@ pub(crate) fn process_attr<'a>(
                             args.push(Arg::Bool(true));
                         }
                         after_update.push(ctx.b.call_stmt("$.delegated", args));
-                        if !ctx.delegated_events.contains(&event_name) {
-                            ctx.delegated_events.push(event_name);
-                        }
+                        ctx.add_delegated_event(event_name);
                     }
                     svelte_analyze::EventHandlerMode::Direct { capture, passive } => {
                         let mut args: Vec<Arg<'a, '_>> = vec![
@@ -148,7 +146,7 @@ pub(crate) fn process_attr<'a>(
                     "$.set_attribute",
                     [
                         Arg::Ident(el_name),
-                        Arg::Str(a.name.clone()),
+                        Arg::StrRef(&a.name),
                         Arg::Expr(val),
                     ],
                 ));
@@ -166,7 +164,7 @@ pub(crate) fn process_attr<'a>(
                     "$.set_attribute",
                     [
                         Arg::Ident(el_name),
-                        Arg::Str(a.name.clone()),
+                        Arg::StrRef(&a.name),
                         Arg::Expr(val),
                     ],
                 ));
@@ -588,7 +586,7 @@ pub(crate) fn process_svelte_element_class_directives<'a>(
         [
             Arg::Ident(el_name),
             Arg::Num(0.0),
-            Arg::Str("".into()),
+            Arg::StrRef(""),
             Arg::Expr(ctx.b.null_expr()),
             Arg::Expr(ctx.b.object_expr(vec![])),
             Arg::Expr(dir_obj),

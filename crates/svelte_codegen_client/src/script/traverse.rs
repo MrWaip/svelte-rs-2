@@ -635,7 +635,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                                 oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
                                 _ => "state",
                             };
-                            Some(self.b.call_expr("$.tag", [Arg::Expr(state_expr), Arg::Str(var_name.to_string())]))
+                            Some(self.b.call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(var_name)]))
                         } else {
                             Some(state_expr)
                         };
