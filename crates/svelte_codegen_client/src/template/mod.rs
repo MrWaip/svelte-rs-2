@@ -145,8 +145,8 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
         hoistable_snippets.push(snippet::gen_snippet_block(ctx, id, vec![]));
     }
 
-    let mut hoisted = Vec::new();
-    let mut body = Vec::new();
+    let mut hoisted = Vec::with_capacity(4);
+    let mut body = Vec::with_capacity(8);
 
     emit_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
@@ -197,12 +197,12 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
 
-    let mut body: Vec<Statement<'a>> = Vec::new();
+    let mut body: Vec<Statement<'a>> = Vec::with_capacity(8);
 
     emit_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
 
-    let mut sub_hoisted = Vec::new();
+    let mut sub_hoisted = Vec::with_capacity(2);
     emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
     ctx.module_hoisted.extend(sub_hoisted);
 
@@ -335,18 +335,18 @@ fn emit_single_element<'a>(
         // Root: template BEFORE children (top-down)
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
-        let mut init = Vec::new();
-        let mut update = Vec::new();
-        let mut after_update = Vec::new();
+        let mut init = Vec::with_capacity(8);
+        let mut update = Vec::with_capacity(4);
+        let mut after_update = Vec::with_capacity(4);
         process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
         body.extend(init);
         emit_template_effect(ctx, update, body);
         body.extend(after_update);
     } else {
         // Non-root: template AFTER children (bottom-up)
-        let mut init = Vec::new();
-        let mut update = Vec::new();
-        let mut after_update = Vec::new();
+        let mut init = Vec::with_capacity(8);
+        let mut update = Vec::with_capacity(4);
+        let mut after_update = Vec::with_capacity(4);
         process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));

@@ -1,5 +1,16 @@
+use std::fmt::Write;
+
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
+
+/// Build `prefix_N` without `format!()` overhead.
+fn build_name(prefix: &str, n: u32) -> CompactString {
+    let mut buf = CompactString::with_capacity(prefix.len() + 4);
+    buf.push_str(prefix);
+    buf.push('_');
+    let _ = write!(buf, "{}", n);
+    buf
+}
 
 /// Shared unique identifier generator. Produces `prefix`, `prefix_1`, `prefix_2`, etc.
 /// Checks generated names against a `conflicts` set (script-level identifiers).
@@ -34,13 +45,13 @@ impl IdentGen {
         let mut name = if *count == 0 {
             CompactString::from(prefix)
         } else {
-            CompactString::from(format!("{}_{}", prefix, count))
+            build_name(prefix, *count)
         };
         *count += 1;
 
         while self.conflicts.contains(name.as_str()) {
             let c = self.counters.get_mut(prefix).unwrap();
-            name = CompactString::from(format!("{}_{}", prefix, c));
+            name = build_name(prefix, *c);
             *c += 1;
         }
 
