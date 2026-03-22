@@ -13,7 +13,6 @@ use svelte_ast::{Component, Fragment, Node, NodeId};
 use crate::data::{
     AnalysisData, ExpressionInfo, ExpressionKind, ParsedExprs, Reference, ReferenceFlags,
 };
-use crate::scope::ComponentScoping;
 
 // ---------------------------------------------------------------------------
 // Entry-point functions (called from analyze pipeline)
@@ -21,12 +20,13 @@ use crate::scope::ComponentScoping;
 
 /// Enrich pre-extracted ScriptInfo with semantic data and build Scoping.
 /// `script_info` comes from `JsParseResult` (extracted by parser).
+/// Returns the OXC Scoping for the script block.
 pub(crate) fn analyze_script(
     parsed: &ParsedExprs<'_>,
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
-) {
-    let Some(ref program) = parsed.script_program else { return };
+) -> Option<oxc_semantic::Scoping> {
+    let Some(ref program) = parsed.script_program else { return None };
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
     svelte_parser::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
@@ -43,8 +43,8 @@ pub(crate) fn analyze_script(
     data.exports = std::mem::take(&mut script_info.exports);
     data.needs_context = script_info.has_effects || script_info.has_class_state_fields;
     data.has_class_state_fields = script_info.has_class_state_fields;
-    data.scoping = ComponentScoping::from_scoping(sem.semantic.into_scoping());
     data.script = Some(script_info);
+    Some(sem.semantic.into_scoping())
 }
 
 /// Extract ExpressionInfo for all parsed template and attribute expressions.
