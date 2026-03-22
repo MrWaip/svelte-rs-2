@@ -24,7 +24,7 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
                     html.push(' ');
                 } else {
                     for part in parts {
-                        if let LoweredTextPart::Text(t) = part {
+                        if let Some(t) = part.text_value(&ctx.component.source) {
                             html.push_str(t);
                         }
                     }

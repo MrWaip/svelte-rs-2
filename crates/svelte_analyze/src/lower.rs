@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use svelte_ast::{Component, Fragment, Node};
+use svelte_span::Span;
 
 use crate::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
 
@@ -198,12 +199,20 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
                 let prev = if fi > 0 { Some(&nodes[filtered[fi - 1]]) } else { None };
                 let next = if fi + 1 < len { Some(&nodes[filtered[fi + 1]]) } else { None };
 
-                let data = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
+                let trimmed = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
 
-                prev_text_ends_ws = ends_with_ws(&data);
+                prev_text_ends_ws = ends_with_ws(&trimmed);
 
-                if !data.is_empty() {
-                    concat.push(LoweredTextPart::Text(data.into_owned()));
+                if !trimmed.is_empty() {
+                    let part = match trimmed {
+                        Cow::Borrowed(s) => {
+                            // Compute span from pointer offset into source
+                            let offset = s.as_ptr() as usize - component.source.as_ptr() as usize;
+                            LoweredTextPart::TextSpan(Span::new(offset as u32, (offset + s.len()) as u32))
+                        }
+                        Cow::Owned(s) => LoweredTextPart::TextOwned(s),
+                    };
+                    concat.push(part);
                 }
             }
             Node::ExpressionTag(tag) => {
@@ -442,13 +451,13 @@ mod tests {
         )
     }
 
-    fn collect_text_parts(items: &[FragmentItem]) -> Vec<String> {
+    fn collect_text_parts(items: &[FragmentItem], source: &str) -> Vec<String> {
         let mut out = Vec::new();
         for item in items {
             if let FragmentItem::TextConcat { parts, .. } = item {
                 for part in parts {
-                    if let LoweredTextPart::Text(s) = part {
-                        out.push(s.clone());
+                    if let Some(s) = part.text_value(source) {
+                        out.push(s.to_string());
                     }
                 }
             }
@@ -460,7 +469,7 @@ mod tests {
     fn trim_leading_and_trailing() {
         let src = "\n  hello  \n";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -468,7 +477,7 @@ mod tests {
     fn preserve_internal_newlines() {
         let src = "hello\n  world";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello\n  world"]);
     }
 
@@ -476,7 +485,7 @@ mod tests {
     fn tabs_and_crlf() {
         let src = "\r\n\thello\r\n";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -495,7 +504,7 @@ mod tests {
             expr_node(1),
             text_node(2, 6, src.len() as u32),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  hello"]);
     }
 
@@ -506,7 +515,7 @@ mod tests {
             text_node(1, 0, 8),
             expr_node(2),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello  \n"]);
     }
 
@@ -517,7 +526,7 @@ mod tests {
             text_node(1, 0, 1),
             text_node(2, 1, 2),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert!(texts.is_empty());
     }
 
@@ -525,7 +534,7 @@ mod tests {
     fn ws_between_non_expr_nodes_collapses_to_space() {
         let src = "hello\n\n  world";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello\n\n  world"]);
     }
 
@@ -537,7 +546,7 @@ mod tests {
             text_node(2, 3, 7),
             expr_node(3),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  \n"]);
     }
 
@@ -549,7 +558,7 @@ mod tests {
             text_node(2, 6, 16),
             text_node(3, 16, 18),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  hello ", "x"]);
     }
 

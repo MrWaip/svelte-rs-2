@@ -745,10 +745,28 @@ impl LoweredFragment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredTextPart {
-    /// Static text content (possibly trimmed).
-    Text(String),
+    /// Unmodified text — reference source via span (zero-alloc).
+    TextSpan(svelte_span::Span),
+    /// Trimmed/modified text that differs from source (heap-allocated).
+    TextOwned(String),
     /// Expression tag node id.
     Expr(NodeId),
+}
+
+impl LoweredTextPart {
+    /// Get text value, resolving spans against source.
+    pub fn text_value<'a>(&'a self, source: &'a str) -> Option<&'a str> {
+        match self {
+            LoweredTextPart::TextSpan(span) => Some(span.source_text(source)),
+            LoweredTextPart::TextOwned(s) => Some(s.as_str()),
+            LoweredTextPart::Expr(_) => None,
+        }
+    }
+
+    /// Returns true if this is a text part (span or owned).
+    pub fn is_text(&self) -> bool {
+        matches!(self, LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_))
+    }
 }
 
 // ---------------------------------------------------------------------------

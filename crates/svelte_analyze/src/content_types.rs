@@ -9,15 +9,17 @@ use crate::walker::TemplateVisitor;
 ///
 /// Must be LAST in the composite tuple: reads `dynamic_nodes` and `needs_ref`
 /// populated by ReactivityVisitor earlier in the same walk.
-pub(crate) struct ContentAndVarVisitor;
+pub(crate) struct ContentAndVarVisitor<'s> {
+    pub source: &'s str,
+}
 
-impl TemplateVisitor for ContentAndVarVisitor {
+impl TemplateVisitor for ContentAndVarVisitor<'_> {
     fn leave_element(&mut self, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
         let key = FragmentKey::Element(el.id);
 
         // Compute content_type + has_dynamic for this element's fragment
         if let Some(lf) = data.fragments.lowered.get(&key) {
-            let cs = classify_items(&lf.items);
+            let cs = classify_items(&lf.items, self.source);
             let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
             data.fragments.content_types.insert(key, cs);
             if has_dynamic {
@@ -34,14 +36,14 @@ impl TemplateVisitor for ContentAndVarVisitor {
 
 /// Classify non-element fragments after the composite walk completes.
 /// Element fragments are already classified by ContentAndVarVisitor::leave_element.
-pub fn classify_remaining_fragments(data: &mut AnalysisData) {
+pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
     let keys: Vec<_> = data.fragments.lowered.keys()
         .filter(|k| !matches!(k, FragmentKey::Element(_)))
         .copied()
         .collect();
     for key in keys {
         let lf = &data.fragments.lowered[&key];
-        let cs = classify_items(&lf.items);
+        let cs = classify_items(&lf.items, source);
         let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
         data.fragments.content_types.insert(key, cs);
         if has_dynamic {
@@ -120,7 +122,7 @@ fn item_is_dynamic(
     }
 }
 
-fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
+fn classify_items(items: &[FragmentItem], source: &str) -> ContentStrategy {
     if items.is_empty() {
         return ContentStrategy::Empty;
     }
@@ -170,7 +172,8 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
     } else if has_static_text {
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
             parts.iter().map(|p| match p {
-                LoweredTextPart::Text(t) => t.as_str(),
+                LoweredTextPart::TextSpan(span) => span.source_text(&source),
+                LoweredTextPart::TextOwned(t) => t.as_str(),
                 LoweredTextPart::Expr(_) => "",
             }).collect::<String>()
         } else {
