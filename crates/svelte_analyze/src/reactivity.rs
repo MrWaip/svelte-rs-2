@@ -15,7 +15,7 @@ impl ReactivityVisitor {
         node_id: &NodeId,
         data: &AnalysisData,
     ) -> bool {
-        if let Some(info) = data.expressions.get(node_id) {
+        if let Some(info) = data.expressions.get(*node_id) {
             if info.has_state_rune {
                 return true;
             }
@@ -155,7 +155,7 @@ fn component_attr_is_dynamic(
     ) {
         return false;
     }
-    if let Some(info) = data.attr_expressions.get(&attr.id()) {
+    if let Some(info) = data.attr_expressions.get(attr.id()) {
         return info.references.iter().any(|r| {
             if let Some(sym_id) = r.symbol_id {
                 let root = data.scoping.root_scope_id();
@@ -185,7 +185,7 @@ fn attr_is_dynamic(
     ) {
         return false;
     }
-    if let Some(info) = data.attr_expressions.get(&attr.id()) {
+    if let Some(info) = data.attr_expressions.get(attr.id()) {
         return info.references.iter().any(|r| {
             let Some(sym_id) = r.symbol_id else { return false; };
             // Non-source props are always dynamic (accessed as $$props.name)

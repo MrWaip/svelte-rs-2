@@ -5,6 +5,7 @@
 
 use compact_str::CompactString;
 use oxc_ast::ast::Expression;
+use smallvec::SmallVec;
 use svelte_span::Span;
 use crate::script_types::{RuneKind, ScriptInfo};
 
@@ -401,7 +402,7 @@ fn insert_concat_expr_info(
     attr_id: NodeId,
     parts: &[ConcatPart],
 ) {
-    let mut all_refs = Vec::new();
+    let mut all_refs = SmallVec::new();
     for part in parts {
         if let ConcatPart::Dynamic(span) = part {
             if let Some(expr) = parsed.exprs.get(&span.start) {
@@ -786,7 +787,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
         _ => ExpressionKind::Other,
     };
 
-    let mut references = Vec::new();
+    let mut references = SmallVec::new();
     collect_references(expr, offset, &mut references);
 
     let has_side_effects = matches!(
@@ -891,7 +892,7 @@ fn member_root_is_store(expr: &Expression<'_>) -> bool {
     }
 }
 
-pub(crate) fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut Vec<Reference>) {
+pub(crate) fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut SmallVec<[Reference; 2]>) {
     match expr {
         Expression::Identifier(ident) => {
             refs.push(Reference {
@@ -1031,7 +1032,7 @@ pub(crate) fn collect_references(expr: &Expression<'_>, offset: u32, refs: &mut 
     }
 }
 
-fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32, refs: &mut Vec<Reference>) {
+fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32, refs: &mut SmallVec<[Reference; 2]>) {
     use oxc_ast::ast::Statement;
     match stmt {
         Statement::ExpressionStatement(es) => collect_references(&es.expression, offset, refs),

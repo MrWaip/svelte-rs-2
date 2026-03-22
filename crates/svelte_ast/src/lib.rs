@@ -24,16 +24,19 @@ pub struct Component {
     pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
     pub source: String,
+    /// Total number of NodeId values allocated during parsing.
+    pub node_count: u32,
 }
 
 impl Component {
-    pub fn new(source: String, fragment: Fragment, script: Option<Script>, css: Option<RawBlock>) -> Self {
+    pub fn new(source: String, fragment: Fragment, script: Option<Script>, css: Option<RawBlock>, node_count: u32) -> Self {
         Self {
             fragment,
             script,
             css,
             options: None,
             source,
+            node_count,
         }
     }
 

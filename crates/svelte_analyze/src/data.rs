@@ -1,8 +1,10 @@
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
+use smallvec::SmallVec;
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
+use crate::node_table::{NodeBitSet, NodeTable};
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::script_types::{ExportInfo, ScriptInfo};
 
@@ -15,7 +17,7 @@ pub use svelte_parser::ParsedExprs;
 #[derive(Debug, Clone)]
 pub struct ExpressionInfo {
     pub kind: ExpressionKind,
-    pub references: Vec<Reference>,
+    pub references: SmallVec<[Reference; 2]>,
     pub has_side_effects: bool,
     pub has_call: bool,
     /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
@@ -158,85 +160,85 @@ pub enum EventHandlerMode {
 
 /// Per-element flags populated by ElementFlagsVisitor, reactivity, and needs_var passes.
 pub struct ElementFlags {
-    pub(crate) has_spread: FxHashSet<NodeId>,
-    pub(crate) class_attr_id: FxHashMap<NodeId, NodeId>,
-    pub(crate) class_directive_info: FxHashMap<NodeId, Vec<ClassDirectiveInfo>>,
-    pub(crate) needs_clsx: FxHashSet<NodeId>,
+    pub(crate) has_spread: NodeBitSet,
+    pub(crate) class_attr_id: NodeTable<NodeId>,
+    pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
+    pub(crate) needs_clsx: NodeBitSet,
     /// Pre-extracted static class attribute value (avoids span→string conversion in codegen).
-    pub(crate) static_class: FxHashMap<NodeId, String>,
-    pub(crate) style_directives: FxHashMap<NodeId, Vec<StyleDirective>>,
+    pub(crate) static_class: NodeTable<String>,
+    pub(crate) style_directives: NodeTable<Vec<StyleDirective>>,
     /// Pre-extracted static style attribute value (avoids span→string conversion in codegen).
-    pub(crate) static_style: FxHashMap<NodeId, String>,
-    pub(crate) needs_input_defaults: FxHashSet<NodeId>,
-    pub(crate) needs_var: FxHashSet<NodeId>,
-    pub(crate) needs_ref: FxHashSet<NodeId>,
-    pub(crate) dynamic_attrs: FxHashSet<NodeId>,
+    pub(crate) static_style: NodeTable<String>,
+    pub(crate) needs_input_defaults: NodeBitSet,
+    pub(crate) needs_var: NodeBitSet,
+    pub(crate) needs_ref: NodeBitSet,
+    pub(crate) dynamic_attrs: NodeBitSet,
     /// Elements with both `contenteditable="true"` and `bind:innerHTML|innerText|textContent`.
     /// Text children use `nodeValue=` init instead of `$.set_text()` update.
-    pub(crate) bound_contenteditable: FxHashSet<NodeId>,
-    pub(crate) has_use_directive: FxHashSet<NodeId>,
-    pub(crate) has_dynamic_class_directives: FxHashSet<NodeId>,
+    pub(crate) bound_contenteditable: NodeBitSet,
+    pub(crate) has_use_directive: NodeBitSet,
+    pub(crate) has_dynamic_class_directives: NodeBitSet,
     /// Attribute/directive whose expression is a simple identifier matching the name
     /// (e.g., `class:foo={foo}`, `style:color={color}`). Enables property shorthand in output.
-    pub(crate) expression_shorthand: FxHashSet<NodeId>,
+    pub(crate) expression_shorthand: NodeBitSet,
     /// Pre-classified component attributes for codegen (avoids two-pass pattern).
-    pub(crate) component_props: FxHashMap<NodeId, Vec<ComponentPropInfo>>,
+    pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
     /// Pre-computed event handler delegation routing (avoids on-the-fly decision in codegen).
-    pub(crate) event_handler_mode: FxHashMap<NodeId, EventHandlerMode>,
+    pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
 }
 
 impl ElementFlags {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            has_spread: FxHashSet::default(),
-            class_attr_id: FxHashMap::default(),
-            class_directive_info: FxHashMap::default(),
-            needs_clsx: FxHashSet::default(),
-            static_class: FxHashMap::default(),
-            style_directives: FxHashMap::default(),
-            static_style: FxHashMap::default(),
-            needs_input_defaults: FxHashSet::default(),
-            needs_var: FxHashSet::default(),
-            needs_ref: FxHashSet::default(),
-            dynamic_attrs: FxHashSet::default(),
-            bound_contenteditable: FxHashSet::default(),
-            has_use_directive: FxHashSet::default(),
-            has_dynamic_class_directives: FxHashSet::default(),
-            expression_shorthand: FxHashSet::default(),
-            component_props: FxHashMap::default(),
-            event_handler_mode: FxHashMap::default(),
+            has_spread: NodeBitSet::new(node_count),
+            class_attr_id: NodeTable::new(node_count),
+            class_directive_info: NodeTable::new(node_count),
+            needs_clsx: NodeBitSet::new(node_count),
+            static_class: NodeTable::new(node_count),
+            style_directives: NodeTable::new(node_count),
+            static_style: NodeTable::new(node_count),
+            needs_input_defaults: NodeBitSet::new(node_count),
+            needs_var: NodeBitSet::new(node_count),
+            needs_ref: NodeBitSet::new(node_count),
+            dynamic_attrs: NodeBitSet::new(node_count),
+            bound_contenteditable: NodeBitSet::new(node_count),
+            has_use_directive: NodeBitSet::new(node_count),
+            has_dynamic_class_directives: NodeBitSet::new(node_count),
+            expression_shorthand: NodeBitSet::new(node_count),
+            component_props: NodeTable::new(node_count),
+            event_handler_mode: NodeTable::new(node_count),
         }
     }
 
     pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
-    pub fn has_class_directives(&self, id: NodeId) -> bool { self.class_directive_info.contains_key(&id) }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.class_attr_id.contains_key(&id) }
-    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.class_attr_id.get(&id).copied() }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.class_directive_info.get(&id).map(|v| v.as_slice()) }
+    pub fn has_class_directives(&self, id: NodeId) -> bool { self.class_directive_info.contains_key(id) }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.class_attr_id.contains_key(id) }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.class_attr_id.get(id).copied() }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.class_directive_info.get(id).map(|v| v.as_slice()) }
     pub fn needs_clsx(&self, id: NodeId) -> bool { self.needs_clsx.contains(&id) }
-    pub fn has_style_directives(&self, id: NodeId) -> bool { self.style_directives.contains_key(&id) }
-    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] { self.style_directives.get(&id).map_or(&[], |v| v.as_slice()) }
+    pub fn has_style_directives(&self, id: NodeId) -> bool { self.style_directives.contains_key(id) }
+    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] { self.style_directives.get(id).map_or(&[], |v| v.as_slice()) }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
     pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
     pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.dynamic_attrs.contains(&id) }
-    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(&id).map(|s| s.as_str()) }
-    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(&id).map(|s| s.as_str()) }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(id).map(|s| s.as_str()) }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(id).map(|s| s.as_str()) }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
     pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
     /// Whether class attribute handling needs state (dynamic class attr or dynamic class directives).
     pub fn class_needs_state(&self, element_id: NodeId) -> bool {
-        let class_attr_dynamic = self.class_attr_id.get(&element_id)
+        let class_attr_dynamic = self.class_attr_id.get(element_id)
             .is_some_and(|&attr_id| self.dynamic_attrs.contains(&attr_id));
         class_attr_dynamic || self.has_dynamic_class_directives.contains(&element_id)
     }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
-        self.component_props.get(&id).map_or(&[], |v| v.as_slice())
+        self.component_props.get(id).map_or(&[], |v| v.as_slice())
     }
     pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
-        self.event_handler_mode.get(&attr_id).copied()
+        self.event_handler_mode.get(attr_id).copied()
     }
 }
 
@@ -271,37 +273,37 @@ impl FragmentData {
 
 /// Snippet analysis: parameter names and hoistability.
 pub struct SnippetData {
-    pub(crate) params: FxHashMap<NodeId, Vec<String>>,
-    pub(crate) hoistable: FxHashSet<NodeId>,
+    pub(crate) params: NodeTable<Vec<String>>,
+    pub(crate) hoistable: NodeBitSet,
 }
 
 impl SnippetData {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            params: FxHashMap::default(),
-            hoistable: FxHashSet::default(),
+            params: NodeTable::new(node_count),
+            hoistable: NodeBitSet::new(node_count),
         }
     }
 
-    pub fn params(&self, id: NodeId) -> Option<&Vec<String>> { self.params.get(&id) }
+    pub fn params(&self, id: NodeId) -> Option<&Vec<String>> { self.params.get(id) }
     pub fn is_hoistable(&self, id: NodeId) -> bool { self.hoistable.contains(&id) }
 }
 
 /// ConstTag analysis: declared names and per-fragment grouping.
 pub struct ConstTagData {
-    pub(crate) names: FxHashMap<NodeId, Vec<String>>,
+    pub(crate) names: NodeTable<Vec<String>>,
     pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
 }
 
 impl ConstTagData {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            names: FxHashMap::default(),
+            names: NodeTable::new(node_count),
             by_fragment: FxHashMap::default(),
         }
     }
 
-    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(&id) }
+    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(id) }
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
@@ -337,39 +339,39 @@ impl TitleElementData {
 
 /// Each-block context/index names, extracted from source text during scope building.
 pub struct EachBlockData {
-    pub(crate) context_names: FxHashMap<NodeId, String>,
-    pub(crate) index_names: FxHashMap<NodeId, String>,
+    pub(crate) context_names: NodeTable<String>,
+    pub(crate) index_names: NodeTable<String>,
     /// Key expression references the index variable (needs index param in key arrow).
-    pub(crate) key_uses_index: FxHashSet<NodeId>,
+    pub(crate) key_uses_index: NodeBitSet,
     /// Context is a destructuring pattern (`{ name, value }` or `[a, b]`).
-    pub(crate) is_destructured: FxHashSet<NodeId>,
+    pub(crate) is_destructured: NodeBitSet,
     /// Body expressions reference the index variable (needs index param in render fn).
-    pub(crate) body_uses_index: FxHashSet<NodeId>,
+    pub(crate) body_uses_index: NodeBitSet,
     /// Key expression is the same simple identifier as the context variable.
-    pub(crate) key_is_item: FxHashSet<NodeId>,
+    pub(crate) key_is_item: NodeBitSet,
     /// Body contains an element with an `animate:` directive.
-    pub(crate) has_animate: FxHashSet<NodeId>,
+    pub(crate) has_animate: NodeBitSet,
 }
 
 impl EachBlockData {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            context_names: FxHashMap::default(),
-            index_names: FxHashMap::default(),
-            key_uses_index: FxHashSet::default(),
-            is_destructured: FxHashSet::default(),
-            body_uses_index: FxHashSet::default(),
-            key_is_item: FxHashSet::default(),
-            has_animate: FxHashSet::default(),
+            context_names: NodeTable::new(node_count),
+            index_names: NodeTable::new(node_count),
+            key_uses_index: NodeBitSet::new(node_count),
+            is_destructured: NodeBitSet::new(node_count),
+            body_uses_index: NodeBitSet::new(node_count),
+            key_is_item: NodeBitSet::new(node_count),
+            has_animate: NodeBitSet::new(node_count),
         }
     }
 
     pub fn context_name(&self, id: NodeId) -> Option<&str> {
-        self.context_names.get(&id).map(|s| s.as_str())
+        self.context_names.get(id).map(|s| s.as_str())
     }
 
     pub fn index_name(&self, id: NodeId) -> Option<&str> {
-        self.index_names.get(&id).map(|s| s.as_str())
+        self.index_names.get(id).map(|s| s.as_str())
     }
 
     pub fn key_uses_index(&self, id: NodeId) -> bool { self.key_uses_index.contains(&id) }
@@ -382,21 +384,21 @@ impl EachBlockData {
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
 pub struct AwaitBindingData {
     /// Then binding info, keyed by AwaitBlock NodeId.
-    pub(crate) values: FxHashMap<NodeId, svelte_parser::AwaitBindingInfo>,
+    pub(crate) values: NodeTable<svelte_parser::AwaitBindingInfo>,
     /// Catch binding info, keyed by AwaitBlock NodeId.
-    pub(crate) errors: FxHashMap<NodeId, svelte_parser::AwaitBindingInfo>,
+    pub(crate) errors: NodeTable<svelte_parser::AwaitBindingInfo>,
 }
 
 impl AwaitBindingData {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            values: FxHashMap::default(),
-            errors: FxHashMap::default(),
+            values: NodeTable::new(node_count),
+            errors: NodeTable::new(node_count),
         }
     }
 
-    pub fn value(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.values.get(&id) }
-    pub fn error(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.errors.get(&id) }
+    pub fn value(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.values.get(id) }
+    pub fn error(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.errors.get(id) }
 }
 
 /// Pre-computed bind/directive semantics for codegen.
@@ -408,37 +410,37 @@ pub struct BindSemanticsData {
     /// Bind directives / class directives / style directives whose target
     /// is a mutable rune (needs `$.get()`/`$.set()` instead of plain access).
     /// Key: directive NodeId.
-    pub(crate) mutable_rune_targets: FxHashSet<NodeId>,
+    pub(crate) mutable_rune_targets: NodeBitSet,
     /// Nodes whose expression resolves to a prop source
     /// (each_block collection, render_tag argument identifiers).
     /// Key: EachBlock NodeId or RenderTag argument NodeId.
-    pub(crate) prop_source_nodes: FxHashSet<NodeId>,
+    pub(crate) prop_source_nodes: NodeBitSet,
     /// Pre-computed each-block variable names referenced in bind:this expressions.
     /// Key: BindDirective NodeId. Value: names of each-block vars used in the expression.
-    pub(crate) bind_each_context: FxHashMap<NodeId, Vec<String>>,
+    pub(crate) bind_each_context: NodeTable<Vec<String>>,
     /// Elements that have a `bind:group` directive.
     /// Their `value` attribute uses the `__value` pattern instead of `$.set_value`.
-    pub(crate) has_bind_group: FxHashSet<NodeId>,
+    pub(crate) has_bind_group: NodeBitSet,
     /// bind:group directive → NodeId of the value attribute on the same element (if any).
     /// Used to build the getter thunk that evaluates the value expression.
-    pub(crate) bind_group_value_attr: FxHashMap<NodeId, NodeId>,
+    pub(crate) bind_group_value_attr: NodeTable<NodeId>,
     /// bind:group directive → ancestor each block NodeIds whose context vars
     /// appear in the binding expression (inner-to-outer order).
-    pub(crate) parent_each_blocks: FxHashMap<NodeId, Vec<NodeId>>,
+    pub(crate) parent_each_blocks: NodeTable<Vec<NodeId>>,
     /// Each blocks that need a generated `$$index` parameter for group binding.
-    pub(crate) contains_group_binding: FxHashSet<NodeId>,
+    pub(crate) contains_group_binding: NodeBitSet,
 }
 
 impl BindSemanticsData {
-    pub fn new() -> Self {
+    pub fn new(node_count: u32) -> Self {
         Self {
-            mutable_rune_targets: FxHashSet::default(),
-            prop_source_nodes: FxHashSet::default(),
-            bind_each_context: FxHashMap::default(),
-            has_bind_group: FxHashSet::default(),
-            bind_group_value_attr: FxHashMap::default(),
-            parent_each_blocks: FxHashMap::default(),
-            contains_group_binding: FxHashSet::default(),
+            mutable_rune_targets: NodeBitSet::new(node_count),
+            prop_source_nodes: NodeBitSet::new(node_count),
+            bind_each_context: NodeTable::new(node_count),
+            has_bind_group: NodeBitSet::new(node_count),
+            bind_group_value_attr: NodeTable::new(node_count),
+            parent_each_blocks: NodeTable::new(node_count),
+            contains_group_binding: NodeBitSet::new(node_count),
         }
     }
 
@@ -451,7 +453,7 @@ impl BindSemanticsData {
     }
 
     pub fn each_context(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.bind_each_context.get(&id)
+        self.bind_each_context.get(id)
     }
 
     pub fn has_bind_group(&self, id: NodeId) -> bool {
@@ -459,11 +461,11 @@ impl BindSemanticsData {
     }
 
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
-        self.bind_group_value_attr.get(&id).copied()
+        self.bind_group_value_attr.get(id).copied()
     }
 
     pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
-        self.parent_each_blocks.get(&id)
+        self.parent_each_blocks.get(id)
     }
 
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
@@ -477,17 +479,17 @@ impl BindSemanticsData {
 
 pub struct AnalysisData {
     /// Parsed JS metadata for ExpressionTag nodes (and IfBlock/EachBlock test expressions).
-    pub expressions: FxHashMap<NodeId, ExpressionInfo>,
+    pub expressions: NodeTable<ExpressionInfo>,
     /// Parsed JS metadata for attribute expressions, keyed by attribute NodeId.
-    pub attr_expressions: FxHashMap<NodeId, ExpressionInfo>,
+    pub attr_expressions: NodeTable<ExpressionInfo>,
     /// Parsed script block declarations.
     pub script: Option<ScriptInfo>,
     /// Unified scope tree for script + template (oxc-based).
     pub scoping: ComponentScoping,
     /// Nodes (ExpressionTag / IfBlock / EachBlock) that reference rune symbols.
-    pub dynamic_nodes: FxHashSet<NodeId>,
+    pub dynamic_nodes: NodeBitSet,
     /// NodeIds of IfBlocks whose alternate is an elseif (single IfBlock with elseif: true).
-    pub alt_is_elseif: FxHashSet<NodeId>,
+    pub alt_is_elseif: NodeBitSet,
     /// Props analysis (from $props() destructuring).
     pub props: Option<PropsAnalysis>,
     /// Binding name from `const id = $props.id()`.
@@ -515,27 +517,27 @@ pub struct AnalysisData {
     /// Each-block context/index names.
     pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
-    pub render_tag_arg_has_call: FxHashMap<NodeId, Vec<bool>>,
+    pub render_tag_arg_has_call: NodeTable<Vec<bool>>,
     /// Intermediate: per-argument identifier name (if the arg is a plain identifier).
     /// Consumed by `resolve_render_tag_prop_sources` after props analysis.
-    pub(crate) render_tag_arg_idents: FxHashMap<NodeId, Vec<Option<String>>>,
+    pub(crate) render_tag_arg_idents: NodeTable<Vec<Option<String>>>,
     /// Per-argument prop-source SymbolId for render tags.
     /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
-    pub render_tag_prop_sources: FxHashMap<NodeId, Vec<Option<SymbolId>>>,
+    pub render_tag_prop_sources: NodeTable<Vec<Option<SymbolId>>>,
     /// Callee identifier name for render tags (only set when callee is an Identifier).
-    pub(crate) render_tag_callee_name: FxHashMap<NodeId, String>,
+    pub(crate) render_tag_callee_name: NodeTable<String>,
     /// Callee SymbolId for render tags (resolved during resolve_references).
-    pub(crate) render_tag_callee_sym: FxHashMap<NodeId, SymbolId>,
+    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     /// Intermediate: render tags with ChainExpression callee (`{@render fn?.()}`).
     /// Consumed by `resolve_render_tag_dynamic` to compute `render_tag_callee_mode`.
-    pub(crate) render_tag_is_chain: FxHashSet<NodeId>,
+    pub(crate) render_tag_is_chain: NodeBitSet,
     /// Pre-computed render tag callee routing (replaces separate is_dynamic/is_chain/is_getter flags).
-    pub render_tag_callee_mode: FxHashMap<NodeId, RenderTagCalleeMode>,
+    pub render_tag_callee_mode: NodeTable<RenderTagCalleeMode>,
     /// Source offsets for template node expressions (NodeId → span.start).
     /// Populated during extract_all_expressions, consumed by codegen for O(1) ParsedExprs lookup.
-    pub node_expr_offsets: FxHashMap<NodeId, u32>,
+    pub node_expr_offsets: NodeTable<u32>,
     /// Source offsets for attribute expressions (NodeId → span.start).
-    pub attr_expr_offsets: FxHashMap<NodeId, u32>,
+    pub attr_expr_offsets: NodeTable<u32>,
     /// Await block binding patterns (then/catch), parsed via OXC.
     pub await_bindings: AwaitBindingData,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
@@ -558,37 +560,37 @@ pub struct AnalysisData {
 impl AnalysisData {
     /// Create AnalysisData with all fields defaulted.
     /// `scoping` is left uninitialized — caller must assign it before use.
-    pub(crate) fn new_empty() -> Self {
+    pub(crate) fn new_empty(node_count: u32) -> Self {
         Self {
-            expressions: FxHashMap::default(),
-            attr_expressions: FxHashMap::default(),
+            expressions: NodeTable::new(node_count),
+            attr_expressions: NodeTable::new(node_count),
             script: None,
             scoping: ComponentScoping::new(None),
-            dynamic_nodes: FxHashSet::default(),
-            alt_is_elseif: FxHashSet::default(),
+            dynamic_nodes: NodeBitSet::new(node_count),
+            alt_is_elseif: NodeBitSet::new(node_count),
             props: None,
             props_id: None,
             exports: Vec::new(),
             needs_context: false,
             has_class_state_fields: false,
-            element_flags: ElementFlags::new(),
+            element_flags: ElementFlags::new(node_count),
             fragments: FragmentData::new(),
-            snippets: SnippetData::new(),
-            const_tags: ConstTagData::new(),
+            snippets: SnippetData::new(node_count),
+            const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
-            each_blocks: EachBlockData::new(),
-            render_tag_arg_has_call: FxHashMap::default(),
-            render_tag_arg_idents: FxHashMap::default(),
-            render_tag_prop_sources: FxHashMap::default(),
-            render_tag_callee_name: FxHashMap::default(),
-            render_tag_callee_sym: FxHashMap::default(),
-            render_tag_is_chain: FxHashSet::default(),
-            render_tag_callee_mode: FxHashMap::default(),
-            node_expr_offsets: FxHashMap::default(),
-            attr_expr_offsets: FxHashMap::default(),
-            await_bindings: AwaitBindingData::new(),
-            bind_semantics: BindSemanticsData::new(),
+            each_blocks: EachBlockData::new(node_count),
+            render_tag_arg_has_call: NodeTable::new(node_count),
+            render_tag_arg_idents: NodeTable::new(node_count),
+            render_tag_prop_sources: NodeTable::new(node_count),
+            render_tag_callee_name: NodeTable::new(node_count),
+            render_tag_callee_sym: NodeTable::new(node_count),
+            render_tag_is_chain: NodeBitSet::new(node_count),
+            render_tag_callee_mode: NodeTable::new(node_count),
+            node_expr_offsets: NodeTable::new(node_count),
+            attr_expr_offsets: NodeTable::new(node_count),
+            await_bindings: AwaitBindingData::new(node_count),
+            bind_semantics: BindSemanticsData::new(node_count),
             import_syms: FxHashSet::default(),
             custom_element: false,
             ce_config: None,
@@ -601,39 +603,39 @@ impl AnalysisData {
 impl AnalysisData {
     pub fn is_dynamic(&self, id: NodeId) -> bool { self.dynamic_nodes.contains(&id) }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
-    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
+    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(id) }
+    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(id) }
     pub fn node_expr_offset(&self, id: NodeId) -> u32 {
-        *self.node_expr_offsets.get(&id).unwrap_or_else(|| panic!("no expr offset for node {:?}", id))
+        *self.node_expr_offsets.get(id).unwrap_or_else(|| panic!("no expr offset for node {:?}", id))
     }
     pub fn attr_expr_offset(&self, id: NodeId) -> u32 {
-        *self.attr_expr_offsets.get(&id).unwrap_or_else(|| panic!("no expr offset for attr {:?}", id))
+        *self.attr_expr_offsets.get(id).unwrap_or_else(|| panic!("no expr offset for attr {:?}", id))
     }
     /// Whether the attribute's expression references an imported symbol (first reference).
     /// Import identifiers may be live bindings — codegen needs getters/wrapping.
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(&attr_id)
+        self.attr_expressions.get(attr_id)
             .and_then(|info| info.references.first())
             .and_then(|r| r.symbol_id)
             .is_some_and(|sym| self.import_syms.contains(&sym))
     }
-    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(&id).map(|v| v.as_slice()) }
-    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(&id).map(|v| v.as_slice()) }
+    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(id).map(|v| v.as_slice()) }
+    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(id).map(|v| v.as_slice()) }
     pub fn render_tag_callee_mode(&self, id: NodeId) -> RenderTagCalleeMode {
-        self.render_tag_callee_mode.get(&id).copied().unwrap_or(RenderTagCalleeMode::Direct)
+        self.render_tag_callee_mode.get(id).copied().unwrap_or(RenderTagCalleeMode::Direct)
     }
 
     /// Component attribute needs `$.derived()` memoization:
     /// has a function call, OR is a non-simple dynamic expression.
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(&attr_id).is_some_and(|e|
+        self.attr_expressions.get(attr_id).is_some_and(|e|
             e.has_call || (!e.kind.is_simple() && self.element_flags.is_dynamic_attr(attr_id))
         )
     }
 
     /// Expression has a function call AND references to resolved bindings — needs `$.derived` wrapping.
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expressions.get(&id).is_some_and(|e|
+        self.expressions.get(id).is_some_and(|e|
             e.has_call && e.references.iter().any(|r| r.symbol_id.is_some())
         )
     }

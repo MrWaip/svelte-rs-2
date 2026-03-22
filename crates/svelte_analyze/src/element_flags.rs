@@ -35,8 +35,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::ClassDirective(cd) => {
                 data.element_flags.class_directive_info
-                    .entry(el.id)
-                    .or_default()
+                    .get_or_default(el.id)
                     .push(ClassDirectiveInfo {
                         id: cd.id,
                         name: cd.name.clone(),
@@ -45,8 +44,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::StyleDirective(sd) => {
                 data.element_flags.style_directives
-                    .entry(el.id)
-                    .or_default()
+                    .get_or_default(el.id)
                     .push(sd.clone());
             }
             Attribute::ExpressionAttribute(ea) if ea.name == "class" => {
@@ -128,8 +126,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         };
         let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());
         data.element_flags.component_props
-            .entry(cn.id)
-            .or_default()
+            .get_or_default(cn.id)
             .push(ComponentPropInfo { kind, is_dynamic });
     }
 
@@ -145,8 +142,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             match attr {
                 Attribute::ClassDirective(cd) => {
                     data.element_flags.class_directive_info
-                        .entry(el.id)
-                        .or_default()
+                        .get_or_default(el.id)
                         .push(ClassDirectiveInfo {
                             id: cd.id,
                             name: cd.name.clone(),
@@ -155,8 +151,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 }
                 Attribute::StyleDirective(sd) => {
                     data.element_flags.style_directives
-                        .entry(el.id)
-                        .or_default()
+                        .get_or_default(el.id)
                         .push(sd.clone());
                 }
                 _ => {}

@@ -418,8 +418,9 @@ impl<'a> Parser<'a> {
             content_span: cd.content_span,
         });
 
+        let node_count = self.ids.current();
         let mut component =
-            Component::new(self.source.to_string(), Fragment::new(roots), script, css);
+            Component::new(self.source.to_string(), Fragment::new(roots), script, css, node_count);
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 
