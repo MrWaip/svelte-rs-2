@@ -30,7 +30,9 @@ pub(crate) fn gen_render_tag<'a>(
         .unwrap_or_default();
 
     // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
-    let expr = ctx.parsed.exprs.remove(&id)
+    let tag = ctx.render_tag(id);
+    let offset = tag.expression_span.start;
+    let expr = ctx.parsed.exprs.remove(&offset)
         .expect("render tag expression should be pre-parsed");
 
     let Expression::CallExpression(call) = expr else {

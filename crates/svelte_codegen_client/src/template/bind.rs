@@ -152,7 +152,8 @@ pub(crate) fn gen_bind_directive<'a>(
     // Function bindings: bind:prop={(get_fn), (set_fn)} via SequenceExpression.
     // bind:this has its own SequenceExpression handling below; bind:group disallows it.
     if bind.name != "this" && bind.expression_span.is_some() {
-        let is_seq = ctx.parsed.attr_exprs.get(&bind.id)
+        let bind_offset = bind.expression_span.unwrap().start;
+        let is_seq = ctx.parsed.exprs.get(&bind_offset)
             .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::SequenceExpression(_)));
         if is_seq {
             let expr = get_attr_expr(ctx, bind.id);
@@ -225,16 +226,13 @@ pub(crate) fn gen_bind_directive<'a>(
             // Getter and setter: when the expression references each-block vars,
             // use the pre-transformed expression (has $.get() applied).
             let (group_getter, setter) = if has_each_var {
-                let getter_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&bind.id) {
-                    ctx.b.clone_expr(expr)
-                } else {
-                    ctx.b.rid_expr(&var_name)
-                };
-                let setter_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&bind.id) {
-                    ctx.b.clone_expr(expr)
-                } else {
-                    ctx.b.rid_expr(&var_name)
-                };
+                let bind_off = bind.expression_span.map(|s| s.start);
+                let getter_expr = bind_off.and_then(|o| ctx.parsed.exprs.get(&o))
+                    .map(|expr| ctx.b.clone_expr(expr))
+                    .unwrap_or_else(|| ctx.b.rid_expr(&var_name));
+                let setter_expr = bind_off.and_then(|o| ctx.parsed.exprs.get(&o))
+                    .map(|expr| ctx.b.clone_expr(expr))
+                    .unwrap_or_else(|| ctx.b.rid_expr(&var_name));
                 let getter = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(getter_expr)]);
                 let setter = build_binding_setter_from_expr(ctx, setter_expr);
                 (getter, setter)
@@ -242,11 +240,10 @@ pub(crate) fn gen_bind_directive<'a>(
                 let setter = build_binding_setter(ctx, var_name.clone(), is_rune);
                 // Check if element has a dynamic value attribute — wrap getter in thunk
                 let group_getter = if let Some(val_attr_id) = ctx.bind_group_value_attr(bind.id) {
-                    let val_expr = if let Some(expr) = ctx.parsed.attr_exprs.get(&val_attr_id) {
-                        ctx.b.clone_expr(expr)
-                    } else {
-                        ctx.b.str_expr("")
-                    };
+                    let val_off = ctx.attr_expr_offset(val_attr_id);
+                    let val_expr = ctx.parsed.exprs.get(&val_off)
+                        .map(|expr| ctx.b.clone_expr(expr))
+                        .unwrap_or_else(|| ctx.b.str_expr(""));
                     let val_stmt = ctx.b.expr_stmt(val_expr);
                     let getter_expr = if is_rune {
                         ctx.b.call_expr("$.get", [Arg::Ident(&var_name)])

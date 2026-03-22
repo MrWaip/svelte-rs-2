@@ -16,9 +16,9 @@ use oxc_ast_visit::VisitMut;
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
 use svelte_ast::{
-    Attribute, Component, Fragment, Node, NodeId,
+    Attribute, Component, ConcatPart, Fragment, Node,
 };
-use svelte_parser::RuneKind;
+use svelte_analyze::RuneKind;
 
 
 /// Transform all parsed template expressions in-place.
@@ -84,7 +84,7 @@ fn walk_node<'a>(
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope);
+            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
         }
         Node::Element(el) => {
             transform_attrs(ctx, &el.attributes, parsed, scope);
@@ -95,7 +95,7 @@ fn walk_node<'a>(
             walk_fragment(ctx, &cn.fragment, component, parsed, scope);
         }
         Node::IfBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope);
+            transform_expr_at(ctx, block.test_span.start, parsed, scope);
             let cons_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
             walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
@@ -104,7 +104,7 @@ fn walk_node<'a>(
             }
         }
         Node::EachBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope);
+            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
 
             // Each block body uses child scope (context + index vars)
             let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
@@ -120,13 +120,14 @@ fn walk_node<'a>(
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope);
+            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
         }
         Node::HtmlTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope);
+            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
         }
         Node::ConstTag(tag) => {
-            transform_node_expr(ctx, tag.id, parsed, scope);
+            let ref_offset = tag.declaration_span.start.wrapping_sub(6);
+            transform_expr_at(ctx, ref_offset, parsed, scope);
 
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {
@@ -135,7 +136,7 @@ fn walk_node<'a>(
             }
         }
         Node::KeyBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope);
+            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
             let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
             walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
         }
@@ -145,7 +146,7 @@ fn walk_node<'a>(
         }
         Node::SvelteElement(el) => {
             if !el.static_tag {
-                transform_node_expr(ctx, el.id, parsed, scope);
+                transform_expr_at(ctx, el.tag_span.start, parsed, scope);
             }
             transform_attrs(ctx, &el.attributes, parsed, scope);
             let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
@@ -166,7 +167,7 @@ fn walk_node<'a>(
             walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
-            transform_node_expr(ctx, block.id, parsed, scope);
+            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
             if let Some(ref p) = block.pending {
                 let pending_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
@@ -181,24 +182,22 @@ fn walk_node<'a>(
             }
         }
         Node::DebugTag(tag) => {
-            for i in 0..tag.identifiers.len() {
-                if let Some(expr) = parsed.debug_tag_exprs.get_mut(&(tag.id, i)) {
-                    transform_expr(ctx, expr, scope);
-                }
+            for span in &tag.identifiers {
+                transform_expr_at(ctx, span.start, parsed, scope);
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
-/// Transform a single expression stored in `parsed.exprs` at the given node ID.
-fn transform_node_expr<'a>(
+/// Transform a single expression stored by offset.
+fn transform_expr_at<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    node_id: NodeId,
+    offset: u32,
     parsed: &mut ParsedExprs<'a>,
     scope: ScopeId,
 ) {
-    if let Some(expr) = parsed.exprs.get_mut(&node_id) {
+    if let Some(expr) = parsed.exprs.get_mut(&offset) {
         transform_expr(ctx, expr, scope);
     }
 }
@@ -211,13 +210,20 @@ fn transform_attrs<'a>(
     scope: ScopeId,
 ) {
     for attr in attrs {
-        let attr_id = attr.id();
-        if let Some(expr) = parsed.attr_exprs.get_mut(&attr_id) {
-            transform_expr(ctx, expr, scope);
+        // Transform the main attribute expression
+        let expr_offset = get_attr_expr_offset(attr);
+        if let Some(offset) = expr_offset {
+            transform_expr_at(ctx, offset, parsed, scope);
         }
 
-        // Transform concat dynamic parts (ConcatenationAttribute + StyleDirective::Concatenation)
-        let concat_parts: Option<&[svelte_ast::ConcatPart]> = match attr {
+        // Transform directive name expressions (use:, transition:, animate:)
+        let name_offset = get_directive_name_offset(attr);
+        if let Some(offset) = name_offset {
+            transform_expr_at(ctx, offset, parsed, scope);
+        }
+
+        // Transform concat dynamic parts
+        let concat_parts: Option<&[ConcatPart]> = match attr {
             Attribute::ConcatenationAttribute(a) => Some(&a.parts),
             Attribute::StyleDirective(a) => match &a.value {
                 svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
@@ -226,14 +232,44 @@ fn transform_attrs<'a>(
             _ => None,
         };
         if let Some(parts) = concat_parts {
-            let dyn_count = parts.iter().filter(|p| matches!(p, svelte_ast::ConcatPart::Dynamic(_))).count();
-            for dyn_idx in 0..dyn_count {
-                let part_key = (attr_id, dyn_idx);
-                if let Some(expr) = parsed.concat_part_exprs.get_mut(&part_key) {
-                    transform_expr(ctx, expr, scope);
+            for part in parts {
+                if let ConcatPart::Dynamic(span) = part {
+                    transform_expr_at(ctx, span.start, parsed, scope);
                 }
             }
         }
+    }
+}
+
+/// Get the offset for an attribute's primary expression.
+fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
+    match attr {
+        Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
+        Attribute::ClassDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::StyleDirective(a) => match &a.value {
+            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
+            _ => None,
+        },
+        Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::SpreadAttribute(a) => Some(a.expression_span.start + 3),
+        Attribute::Shorthand(a) => Some(a.expression_span.start),
+        Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
+        Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AttachTag(a) => Some(a.expression_span.start),
+        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+        | Attribute::ConcatenationAttribute(_) => None,
+    }
+}
+
+/// Get the offset for a directive's name expression (use:, transition:, animate:).
+fn get_directive_name_offset(attr: &Attribute) -> Option<u32> {
+    match attr {
+        Attribute::UseDirective(a) => Some(a.name.start),
+        Attribute::TransitionDirective(a) => Some(a.name.start),
+        Attribute::AnimateDirective(a) => Some(a.name.start),
+        _ => None,
     }
 }
 

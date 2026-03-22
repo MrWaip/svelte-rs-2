@@ -1,10 +1,10 @@
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
-use svelte_parser::ScriptInfo;
 use svelte_span::Span;
 
 use crate::scope::{ComponentScoping, SymbolId};
+use crate::script_types::{ExportInfo, ScriptInfo};
 
 pub use svelte_parser::ParsedExprs;
 
@@ -493,7 +493,7 @@ pub struct AnalysisData {
     /// Binding name from `const id = $props.id()`.
     pub props_id: Option<String>,
     /// Exported names from `export const/function/class` or `export { ... }`.
-    pub exports: Vec<svelte_parser::ExportInfo>,
+    pub exports: Vec<ExportInfo>,
     /// Component needs runtime context (`$.push`/`$.pop`), e.g. has `$effect` calls.
     pub needs_context: bool,
     /// Script contains class declarations with `$state`/`$state.raw` fields.

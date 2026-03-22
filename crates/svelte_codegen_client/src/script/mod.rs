@@ -14,9 +14,9 @@ use oxc_traverse::traverse_mut;
 
 use svelte_analyze::{ComponentScoping, PropsAnalysis};
 use svelte_ast::ScriptLanguage;
-use svelte_parser::RuneKind;
+use svelte_analyze::RuneKind;
 
-use crate::builder::{Arg, Builder};
+use crate::builder::Builder;
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
@@ -61,12 +61,13 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     let filename = ctx.filename;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
-    if let Some(program) = ctx.parsed.script_program.take() {
-        // Clone default expressions for the transformer; originals stay for CE setter in lib.rs
-        let prop_defaults: Vec<Option<Expression<'a>>> = ctx.parsed.prop_default_exprs
-            .iter()
-            .map(|opt| opt.as_ref().map(|e| ctx.b.clone_expr(e)))
-            .collect();
+    if let Some(program) = ctx.parsed.program.take() {
+        let b = Builder::new(allocator);
+        let prop_defaults: Vec<Option<Expression<'a>>> = props
+            .map(|pa| pa.props.iter().map(|p| {
+                p.default_text.as_deref().map(|text| b.parse_expression(text))
+            }).collect())
+            .unwrap_or_default();
         return transform_program(
             allocator,
             program,

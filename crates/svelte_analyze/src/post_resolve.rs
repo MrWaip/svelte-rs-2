@@ -1,5 +1,5 @@
 use svelte_ast::Component;
-use svelte_parser::{DeclarationKind, RuneKind};
+use crate::script_types::{DeclarationKind, RuneKind};
 
 use crate::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 use crate::store_subscriptions;

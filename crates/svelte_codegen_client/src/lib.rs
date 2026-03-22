@@ -129,7 +129,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         // Custom element prop getter/setters
         if has_ce_props {
             if let Some(ref props_analysis) = ctx.analysis.props {
-                for (i, prop) in props_analysis.props.iter().enumerate() {
+                for prop in &props_analysis.props {
                     if prop.is_rest || prop.is_reserved {
                         continue;
                     }
@@ -141,9 +141,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     // set name($$value = default?) { name($$value); $.flush(); }
-                    let default_expr = ctx.parsed.prop_default_exprs
-                        .get_mut(i)
-                        .and_then(|e| e.take());
+                    let default_expr = prop.default_text.as_deref()
+                        .map(|text| ctx.b.parse_expression(text));
                     let setter_body = vec![
                         ctx.b.expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
                         ctx.b.call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),

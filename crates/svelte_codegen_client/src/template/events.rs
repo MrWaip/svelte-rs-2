@@ -41,7 +41,7 @@ pub(crate) fn gen_use_directive<'a>(
         ctx.b.params(["$$node"])
     };
 
-    let name_expr = ctx.parsed.directive_name_exprs.remove(&ud.id).unwrap();
+    let name_expr = ctx.parsed.exprs.remove(&ud.name.start).unwrap();
 
     // Build optional call: name?.($$node) or name?.($$node, $$action_arg)
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$node")];
@@ -107,7 +107,7 @@ pub(crate) fn gen_transition_directive<'a>(
         svelte_ast::TransitionDirection::Out => flags |= 2,
     }
 
-    let name_expr = ctx.parsed.directive_name_exprs.remove(&td.id).unwrap();
+    let name_expr = ctx.parsed.exprs.remove(&td.name.start).unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -134,7 +134,7 @@ pub(crate) fn gen_animate_directive<'a>(
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
-    let name_expr = ctx.parsed.directive_name_exprs.remove(&ad.id).unwrap();
+    let name_expr = ctx.parsed.exprs.remove(&ad.name.start).unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![

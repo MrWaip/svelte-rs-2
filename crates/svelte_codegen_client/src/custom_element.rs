@@ -47,7 +47,9 @@ pub fn gen_custom_element<'a>(
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
 
     // -- Arg 6: Extend (pre-parsed in analyze) --
-    let extend_arg: Option<Expression<'a>> = ctx.parsed.ce_extend_expr.take();
+    let extend_arg: Option<Expression<'a>> = ctx.analysis.ce_config.as_ref()
+        .and_then(|c| c.extend_span)
+        .and_then(|span| ctx.parsed.exprs.remove(&span.start));
 
     // Build $.create_custom_element() call
     let mut args: Vec<Arg<'a, '_>> = vec![
