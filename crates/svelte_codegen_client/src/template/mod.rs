@@ -84,6 +84,7 @@ use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
 use debug_tag::emit_debug_tags;
+use title_element::emit_title_elements;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
@@ -209,6 +210,16 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     let mut sub_hoisted = Vec::new();
     emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
     ctx.module_hoisted.extend(sub_hoisted);
+
+    // Title elements emit after DOM init but before $.append()
+    let has_append = matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. } | ContentStrategy::SingleBlock(_));
+    if has_append && !body.is_empty() {
+        let append = body.pop().unwrap();
+        emit_title_elements(ctx, key, &mut body);
+        body.push(append);
+    } else {
+        emit_title_elements(ctx, key, &mut body);
+    }
 
     body
 }
@@ -361,7 +372,7 @@ fn emit_single_block<'a>(
     is_root: bool,
     body: &mut Vec<Statement<'a>>,
 ) {
-    // RenderTag / ComponentNode / TitleElement: call directly with $$anchor, no wrapping.
+    // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
         FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
@@ -372,11 +383,6 @@ fn emit_single_block<'a>(
         FragmentItem::ComponentNode(id) => {
             if !is_root { ctx.gen_ident("fragment"); }
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
-            return;
-        }
-        FragmentItem::TitleElement(id) => {
-            if !is_root { ctx.gen_ident("fragment"); }
-            title_element::gen_title_element(ctx, *id, body);
             return;
         }
         FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {

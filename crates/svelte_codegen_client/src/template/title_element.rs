@@ -14,6 +14,20 @@ use crate::context::Ctx;
 
 use super::expression::{build_concat_from_parts, parts_are_dynamic};
 
+/// Emit title element statements for a fragment (called before DOM init, like const_tags).
+pub(crate) fn emit_title_elements<'a>(
+    ctx: &mut Ctx<'a>,
+    key: FragmentKey,
+    stmts: &mut Vec<Statement<'a>>,
+) {
+    let Some(ids) = ctx.analysis.title_elements.by_fragment(&key).cloned() else {
+        return;
+    };
+    for id in ids {
+        gen_title_element(ctx, id, stmts);
+    }
+}
+
 /// Generate `$.document.title = <value>` wrapped in an effect.
 pub(crate) fn gen_title_element<'a>(
     ctx: &mut Ctx<'a>,

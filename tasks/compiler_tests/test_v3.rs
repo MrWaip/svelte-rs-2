@@ -1614,3 +1614,18 @@ fn each_destructured_default() {
 fn each_destructured_array() {
     assert_compiler("each_destructured_array");
 }
+
+#[rstest]
+fn svelte_head_title_with_meta() {
+    assert_compiler("svelte_head_title_with_meta");
+}
+
+#[rstest]
+fn svelte_head_title_mixed_siblings() {
+    assert_compiler("svelte_head_title_mixed_siblings");
+}
+
+#[rstest]
+fn svelte_head_static_title_with_meta() {
+    assert_compiler("svelte_head_static_title_with_meta");
+}

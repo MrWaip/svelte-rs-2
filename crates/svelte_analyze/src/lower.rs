@@ -32,6 +32,16 @@ fn lower_fragment(
         data.debug_tags.by_fragment.insert(key, debug_ids);
     }
 
+    // Collect TitleElement node IDs (<title> inside <svelte:head>)
+    if inside_head {
+        let title_ids: Vec<_> = fragment.nodes.iter()
+            .filter_map(|n| n.as_element().filter(|el| el.name == "title").map(|el| el.id))
+            .collect();
+        if !title_ids.is_empty() {
+            data.title_elements.by_fragment.insert(key, title_ids);
+        }
+    }
+
     let items = build_items(fragment, component, inside_head);
     data.fragments.lowered.insert(key, LoweredFragment { items });
 
@@ -97,11 +107,12 @@ fn lower_fragment(
 ///    but preserve whitespace adjacent to ExpressionTag
 /// 5. Group consecutive Text + ExpressionTag into TextConcat
 fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) -> Vec<FragmentItem> {
-    // Step 1: collect regular nodes (skip comments and snippets)
+    // Step 1: collect regular nodes (skip comments, snippets, and title inside head)
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
             Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
+            Node::Element(el) if inside_head && el.name == "title" => continue,
             _ => regular.push(node),
         }
     }
@@ -175,11 +186,7 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
                 flush(&mut concat, &mut items);
                 match other {
                     Node::Element(el) => {
-                        if inside_head && el.name == "title" {
-                            items.push(FragmentItem::TitleElement(el.id));
-                        } else {
-                            items.push(FragmentItem::Element(el.id));
-                        }
+                        items.push(FragmentItem::Element(el.id));
                     }
                     Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
                     Node::IfBlock(block) => items.push(FragmentItem::IfBlock(block.id)),
