@@ -320,6 +320,21 @@ impl DebugTagData {
     pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
 }
 
+/// TitleElement per-fragment grouping (<title> inside <svelte:head>).
+pub struct TitleElementData {
+    pub(crate) by_fragment: FxHashMap<FragmentKey, Vec<NodeId>>,
+}
+
+impl TitleElementData {
+    pub fn new() -> Self {
+        Self {
+            by_fragment: FxHashMap::default(),
+        }
+    }
+
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+}
+
 /// Each-block context/index names, extracted from source text during scope building.
 pub struct EachBlockData {
     pub(crate) context_names: FxHashMap<NodeId, String>,
@@ -495,6 +510,8 @@ pub struct AnalysisData {
     pub const_tags: ConstTagData,
     /// DebugTag per-fragment grouping.
     pub debug_tags: DebugTagData,
+    /// TitleElement per-fragment grouping (<title> inside <svelte:head>).
+    pub title_elements: TitleElementData,
     /// Each-block context/index names.
     pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
@@ -548,6 +565,7 @@ impl AnalysisData {
             snippets: SnippetData::new(),
             const_tags: ConstTagData::new(),
             debug_tags: DebugTagData::new(),
+            title_elements: TitleElementData::new(),
             each_blocks: EachBlockData::new(),
             render_tag_arg_has_call: FxHashMap::default(),
             render_tag_arg_idents: FxHashMap::default(),
@@ -637,8 +655,6 @@ pub enum FragmentItem {
     SvelteBoundary(NodeId),
     /// An AwaitBlock ({#await expr}...{/await}).
     AwaitBlock(NodeId),
-    /// A <title> element inside <svelte:head>, special-cased to assign document.title.
-    TitleElement(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
     TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
 }
@@ -664,8 +680,7 @@ impl FragmentItem {
             | FragmentItem::KeyBlock(id)
             | FragmentItem::SvelteElement(id)
             | FragmentItem::SvelteBoundary(id)
-            | FragmentItem::AwaitBlock(id)
-            | FragmentItem::TitleElement(id) => *id,
+            | FragmentItem::AwaitBlock(id) => *id,
             FragmentItem::TextConcat { .. } => panic!("TextConcat has no single NodeId"),
         }
     }

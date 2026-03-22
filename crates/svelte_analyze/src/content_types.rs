@@ -32,8 +32,7 @@ fn item_is_dynamic(
         | FragmentItem::KeyBlock(id)
         | FragmentItem::SvelteElement(id)
         | FragmentItem::SvelteBoundary(id)
-        | FragmentItem::AwaitBlock(id)
-        | FragmentItem::TitleElement(id) => dynamic_nodes.contains(id),
+        | FragmentItem::AwaitBlock(id) => dynamic_nodes.contains(id),
     }
 }
 
@@ -66,8 +65,7 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
             | FragmentItem::KeyBlock(_)
             | FragmentItem::SvelteElement(_)
             | FragmentItem::SvelteBoundary(_)
-            | FragmentItem::AwaitBlock(_)
-            | FragmentItem::TitleElement(_) => has_block = true,
+            | FragmentItem::AwaitBlock(_) => has_block = true,
             FragmentItem::TextConcat { has_expr, .. } => {
                 if *has_expr {
                     has_dynamic_text = true;
