@@ -9,6 +9,10 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 use super::attributes::{process_attr, process_attrs_spread, process_class_attribute_and_directives, process_style_directives};
+use super::events::{
+    gen_use_directive, gen_on_directive_legacy, gen_transition_directive,
+    gen_animate_directive, gen_attach_tag,
+};
 use super::each_block::gen_each_block;
 use super::expression::{build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo};
 use super::html_tag::gen_html_tag;
@@ -50,6 +54,39 @@ pub(crate) fn process_element<'a>(
     if ctx.has_spread(el_id) {
         let el_clone = el.clone_without_fragment();
         process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
+
+        // Directives skipped by process_attrs_spread — handle them separately
+        let el = ctx.element(el_id);
+        let attrs: Vec<_> = el.attributes.iter().filter_map(|attr| {
+            match attr {
+                svelte_ast::Attribute::UseDirective(_)
+                | svelte_ast::Attribute::OnDirectiveLegacy(_)
+                | svelte_ast::Attribute::TransitionDirective(_)
+                | svelte_ast::Attribute::AnimateDirective(_)
+                | svelte_ast::Attribute::AttachTag(_) => Some((attr.clone(), attr.id())),
+                _ => None,
+            }
+        }).collect();
+        for (attr, attr_id) in &attrs {
+            match attr {
+                svelte_ast::Attribute::UseDirective(ud) => {
+                    gen_use_directive(ctx, ud, *attr_id, el_name, &mut directive_init);
+                }
+                svelte_ast::Attribute::OnDirectiveLegacy(od) => {
+                    gen_on_directive_legacy(ctx, od, *attr_id, el_name, &mut directive_after_update);
+                }
+                svelte_ast::Attribute::TransitionDirective(td) => {
+                    gen_transition_directive(ctx, td, *attr_id, el_name, &mut directive_after_update);
+                }
+                svelte_ast::Attribute::AnimateDirective(ad) => {
+                    gen_animate_directive(ctx, ad, *attr_id, el_name, &mut directive_after_update);
+                }
+                svelte_ast::Attribute::AttachTag(_) => {
+                    gen_attach_tag(ctx, *attr_id, el_name, &mut directive_init);
+                }
+                _ => unreachable!(),
+            }
+        }
     } else {
         let el = ctx.element(el_id);
         let has_use_directive = ctx.has_use_directive(el_id);
@@ -72,6 +109,9 @@ pub(crate) fn process_element<'a>(
     process_style_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
 
     // --- Children ---
+    // Debug tags inside this element's fragment (before child DOM traversal)
+    super::debug_tag::emit_debug_tags(ctx, child_key, init);
+
     let prev_bound_contenteditable = ctx.bound_contenteditable;
     if ctx.is_bound_contenteditable(el_id) {
         ctx.bound_contenteditable = true;
@@ -193,7 +233,7 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         svelte_analyze::FragmentItem::Element(id) => ctx.needs_var(*id),
-        svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) | svelte_analyze::FragmentItem::KeyBlock(_) | svelte_analyze::FragmentItem::SvelteElement(_) | svelte_analyze::FragmentItem::SvelteBoundary(_) | svelte_analyze::FragmentItem::AwaitBlock(_) | svelte_analyze::FragmentItem::TitleElement(_) => {
+        svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) | svelte_analyze::FragmentItem::KeyBlock(_) | svelte_analyze::FragmentItem::SvelteElement(_) | svelte_analyze::FragmentItem::SvelteBoundary(_) | svelte_analyze::FragmentItem::AwaitBlock(_) => {
             true
         }
     }

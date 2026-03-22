@@ -36,7 +36,7 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
                 html.push_str(&el_html);
                 import_node |= el_import;
             }
-            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::AwaitBlock(_) | FragmentItem::TitleElement(_) => html.push_str("<!>"),
+            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::AwaitBlock(_) => html.push_str("<!>"),
         }
     }
     (html, import_node)

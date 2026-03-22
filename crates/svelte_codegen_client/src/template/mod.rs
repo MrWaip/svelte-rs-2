@@ -84,6 +84,7 @@ use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use const_tag::emit_const_tags;
 use debug_tag::emit_debug_tags;
+use title_element::emit_title_elements;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
 use traverse::traverse_items;
@@ -102,17 +103,11 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
 
-    // Collect snippet IDs and pre-consume gen_ident slots for parameter names
-    // to avoid collisions (e.g., badge's `text` param reserves the "text" counter)
+    // Collect snippet IDs (param names are already in IdentGen conflicts via ComponentScoping)
     let mut instance_snippet_ids = Vec::new();
     let mut hoistable_snippet_ids = Vec::new();
     for node in &ctx.component.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            if let Some(params) = ctx.analysis.snippets.params(block.id) {
-                for param in params {
-                    ctx.gen_ident(param);
-                }
-            }
             if ctx.is_snippet_hoistable(block.id) {
                 hoistable_snippet_ids.push(block.id);
             } else {
@@ -137,36 +132,49 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     emit_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
 
-    // Generate svelte:window events/bindings — go to init (before template)
+    // Collect special element IDs before template init
     let svelte_window_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_window().map(|w| w.id))
         .collect();
-    for id in svelte_window_ids {
-        svelte_window::gen_svelte_window(ctx, id, &mut body);
-    }
-
-    // Generate svelte:document events/bindings — go to init (before template)
     let svelte_document_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_document().map(|d| d.id))
         .collect();
-    for id in svelte_document_ids {
-        svelte_document::gen_svelte_document(ctx, id, &mut body);
-    }
-
-    // Generate svelte:body events/actions — go to init (before template)
     let svelte_body_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_body().map(|b| b.id))
         .collect();
-    for id in svelte_body_ids {
-        svelte_body::gen_svelte_body(ctx, id, &mut body);
-    }
-
-    // Collect SvelteHead IDs — $.head() calls are generated after main template init
     let svelte_head_ids: Vec<_> = ctx.component.fragment.nodes.iter()
         .filter_map(|n| n.as_svelte_head().map(|h| h.id))
         .collect();
 
+    // Template init first (Svelte reference unshifts var decl to init[0])
+    let pre_len = body.len();
     emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
+
+    // Special element events/bindings: inserted right after the template root var
+    // init but before child processing and $.append (matches Svelte reference order).
+    let mut special_body: Vec<Statement<'a>> = Vec::new();
+    for id in svelte_window_ids {
+        svelte_window::gen_svelte_window(ctx, id, &mut special_body);
+    }
+    for id in svelte_document_ids {
+        svelte_document::gen_svelte_document(ctx, id, &mut special_body);
+    }
+    for id in svelte_body_ids {
+        svelte_body::gen_svelte_body(ctx, id, &mut special_body);
+    }
+    if !special_body.is_empty() {
+        if body.len() > pre_len + 1 {
+            // Content strategy added statements — insert after the first one
+            // (e.g., after `var div = root()`) but before child processing
+            let insert_pos = pre_len + 1;
+            let tail: Vec<_> = body.drain(insert_pos..).collect();
+            body.extend(special_body);
+            body.extend(tail);
+        } else {
+            // No content or single statement — just append
+            body.extend(special_body);
+        }
+    }
 
     // Generate $.head() calls for <svelte:head> nodes.
     // In the Svelte reference, hoisted nodes are visited first and push to init[],
@@ -209,6 +217,16 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     let mut sub_hoisted = Vec::new();
     emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
     ctx.module_hoisted.extend(sub_hoisted);
+
+    // Title elements emit after DOM init but before $.append()
+    let has_append = matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. } | ContentStrategy::SingleBlock(_));
+    if has_append && !body.is_empty() {
+        let append = body.pop().unwrap();
+        emit_title_elements(ctx, key, &mut body);
+        body.push(append);
+    } else {
+        emit_title_elements(ctx, key, &mut body);
+    }
 
     body
 }
@@ -361,7 +379,7 @@ fn emit_single_block<'a>(
     is_root: bool,
     body: &mut Vec<Statement<'a>>,
 ) {
-    // RenderTag / ComponentNode / TitleElement: call directly with $$anchor, no wrapping.
+    // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
         FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
@@ -372,11 +390,6 @@ fn emit_single_block<'a>(
         FragmentItem::ComponentNode(id) => {
             if !is_root { ctx.gen_ident("fragment"); }
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
-            return;
-        }
-        FragmentItem::TitleElement(id) => {
-            if !is_root { ctx.gen_ident("fragment"); }
-            title_element::gen_title_element(ctx, *id, body);
             return;
         }
         FragmentItem::Element(_) | FragmentItem::TextConcat { .. } => {
