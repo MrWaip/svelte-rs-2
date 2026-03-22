@@ -1677,3 +1677,9 @@ fn root_with_special_elements() {
 fn debug_inside_element() {
     assert_compiler("debug_inside_element");
 }
+
+
+#[rstest]
+fn needs_context_method_chain() {
+    assert_compiler("needs_context_method_chain");
+}
