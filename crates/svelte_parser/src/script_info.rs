@@ -24,8 +24,6 @@ pub fn extract_script_info(
     let mut declarations = Vec::new();
     let mut props_declaration = None;
     let mut exports = Vec::new();
-    let mut has_effects = false;
-    let mut has_class_state_fields = false;
 
     for stmt in &program.body {
         use oxc_ast::ast::Statement;
@@ -65,16 +63,6 @@ pub fn extract_script_info(
             Statement::FunctionDeclaration(func) => {
                 collect_func_declaration(func, offset, &mut declarations);
             }
-            Statement::ExpressionStatement(es) => {
-                if is_effect_call(&es.expression) {
-                    has_effects = true;
-                }
-            }
-            Statement::ClassDeclaration(class) => {
-                if has_class_state_runes(&class.body) {
-                    has_class_state_fields = true;
-                }
-            }
             _ => {}
         }
     }
@@ -83,10 +71,7 @@ pub fn extract_script_info(
         declarations,
         props_declaration,
         exports,
-        has_effects,
-        has_class_state_fields,
         store_candidates: Vec::new(),
-        has_store_member_mutations: false,
     }
 }
 
@@ -438,58 +423,6 @@ fn extract_prop_default(
     } else {
         (None, None, false, true)
     }
-}
-
-fn is_effect_call(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-fn has_class_state_runes(body: &oxc_ast::ast::ClassBody<'_>) -> bool {
-    for element in &body.body {
-        match element {
-            oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
-                if let Some(value) = &prop.value {
-                    if let Some(kind) = detect_rune(value) {
-                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
-                    if let Some(body) = &method.value.body {
-                        for stmt in &body.statements {
-                            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-                                if let Expression::AssignmentExpression(assign) = &es.expression {
-                                    if let Some(kind) = detect_rune(&assign.right) {
-                                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
 }
 
 fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
