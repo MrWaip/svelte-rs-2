@@ -28,7 +28,7 @@ test-analyzer:
     cargo test -p svelte_analyze
 
 # Generate benchmark .svelte file (usage: just generate-benchmark big_v2 50)
-generate-benchmark name='big_v1' chunks='50':
+generate-benchmark name='big_v5' chunks='50':
     cargo run -p generate_benchmark -- {{name}} {{chunks}}
 
 # Compare Rust vs JS compiler performance (wall-clock)

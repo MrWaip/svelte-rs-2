@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "../..");
 
-const file = process.argv[2] || "tasks/benchmark/benches/compiler/big_v1.svelte";
+const file = process.argv[2] || "tasks/benchmark/benches/compiler/big_v5.svelte";
 const iterations = parseInt(process.argv[3] || "100", 10);
 const filePath = resolve(projectRoot, file);
 

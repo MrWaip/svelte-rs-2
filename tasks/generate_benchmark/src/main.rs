@@ -3,7 +3,7 @@ use std::fmt::Write;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let name = args.get(1).map(|s| s.as_str()).unwrap_or("big_v1");
+    let name = args.get(1).map(|s| s.as_str()).unwrap_or("big_v5");
     let n: usize = args
         .get(2)
         .and_then(|s| s.parse().ok())
