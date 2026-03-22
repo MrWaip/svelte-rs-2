@@ -47,7 +47,7 @@ Two complementary systems:
 - **CodSpeed (CI, automatic)** — runs on every push, tracks CPU instruction count via Valgrind. Deterministic, no noise. Alerts on regressions. Only measures Rust.
 - **`just compare-benchmark` (local, manual)** — wall-clock Rust vs JS comparison. Run after major changes or for reporting.
 
-Benchmark files are versioned (`big_v5.svelte`, `big_v6.svelte`, ...). When porting a feature that adds new syntax, `/port-svelte` Step 8 creates a new version. Old files are never modified — their CodSpeed history stays valid.
+Benchmark file is versioned (`big_vN.svelte`). When porting a feature that adds new syntax, `/port-svelte` Step 8 bumps the version: adds the construct, increments N, deletes the old file, and regenerates.
 
 ## General rules for commands
 
