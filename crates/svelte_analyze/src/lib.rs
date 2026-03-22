@@ -4,12 +4,10 @@ mod content_types;
 mod markers;
 mod data;
 mod element_flags;
-mod elseif;
 mod hoistable;
 pub mod ident_gen;
 pub(crate) mod js_analyze;
 mod lower;
-mod needs_var;
 pub mod node_table;
 mod analyze_semantic;
 mod post_resolve;
@@ -96,7 +94,8 @@ pub fn analyze_with_options<'a>(
     data.scoping.precompute_dynamic_cache();
     lower::lower(component, &mut data);
 
-    // Single composite walk: reactivity + elseif + element flags + hoistable snippets
+    // Single composite walk: reactivity + element flags + hoistable snippets +
+    // bind semantics + content classification + needs_var (bottom-up via leave_element)
     {
         let root = data.scoping.root_scope_id();
         let script_syms: rustc_hash::FxHashSet<crate::scope::SymbolId> = data
@@ -122,30 +121,17 @@ pub fn analyze_with_options<'a>(
             .collect();
         let mut visitor = (
             reactivity::ReactivityVisitor,
-            elseif::ElseifVisitor,
             element_flags::ElementFlagsVisitor::new(&component.source),
             hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics::BindSemanticsVisitor::new(&component.source),
+            content_types::ContentAndVarVisitor,
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
 
-    // Classify fragments + mark which have dynamic children (single pass over lowered_fragments)
-    debug_assert!(
-        !data.fragments.lowered.is_empty() || component.fragment.nodes.is_empty(),
-        "classify_and_mark_dynamic requires lowered_fragments (from lower pass)"
-    );
-    content_types::classify_and_mark_dynamic(&mut data);
-    // Separate walker pass: needs_var depends on content_types (computed above)
-    debug_assert!(
-        !data.fragments.content_types.is_empty() || component.fragment.nodes.is_empty(),
-        "needs_var requires content_types (from classify_and_mark_dynamic)"
-    );
-    {
-        let root = data.scoping.root_scope_id();
-        let mut visitor = needs_var::NeedsVarVisitor;
-        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
-    }
+    // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
+    // Element fragments already classified by ContentAndVarVisitor::leave_element
+    content_types::classify_remaining_fragments(&mut data);
     validate::validate(component, &data, &mut diags);
 
     (data, parsed, diags)
