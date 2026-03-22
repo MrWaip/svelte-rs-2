@@ -126,6 +126,34 @@ pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     None
 }
 
+/// Check if the first argument of a $state/$state.raw call is proxyable (non-primitive).
+/// Mirrors codegen's `should_proxy` — arrays, objects, and expressions that might
+/// produce non-primitive values require $.proxy() wrapping at runtime.
+fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expr else { return false };
+    let Some(arg) = call.arguments.first() else { return false };
+    let Some(e) = arg.as_expression() else { return false };
+    if e.is_literal() {
+        return false;
+    }
+    if matches!(
+        e,
+        Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::UnaryExpression(_)
+            | Expression::BinaryExpression(_)
+    ) {
+        return false;
+    }
+    if let Expression::Identifier(id) = e {
+        if id.name == "undefined" {
+            return false;
+        }
+    }
+    true
+}
+
 /// Check if a `$`-prefixed name is a known rune (not a store candidate).
 pub fn is_rune_name(name: &str) -> bool {
     matches!(
@@ -204,6 +232,7 @@ fn collect_func_declaration(
             init_span: None,
             is_rune: None,
             rune_init_refs: vec![],
+            is_proxy_init: false,
         });
     }
 }
@@ -228,7 +257,7 @@ fn collect_var_declarations(
                 let name = CompactString::from(ident.name.as_str());
                 let decl_span = Span::new(ident.span.start + offset, ident.span.end + offset);
 
-                let (init_span, is_rune, rune_init_refs) = if let Some(init) = &declarator.init {
+                let (init_span, is_rune, rune_init_refs, is_proxy_init) = if let Some(init) = &declarator.init {
                     let init_sp = Span::new(
                         init.span().start + offset,
                         init.span().end + offset,
@@ -239,9 +268,11 @@ fn collect_var_declarations(
                     } else {
                         vec![]
                     };
-                    (Some(init_sp), rune, refs)
+                    let proxy = matches!(rune, Some(RuneKind::State | RuneKind::StateRaw))
+                        && is_proxyable_state_init(init);
+                    (Some(init_sp), rune, refs, proxy)
                 } else {
-                    (None, None, vec![])
+                    (None, None, vec![], false)
                 };
 
                 declarations.push(DeclarationInfo {
@@ -251,6 +282,7 @@ fn collect_var_declarations(
                     init_span,
                     is_rune,
                     rune_init_refs,
+                    is_proxy_init,
                 });
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
@@ -279,6 +311,7 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
                             rune_init_refs: vec![],
+                            is_proxy_init: false,
                         });
 
                         props.push(PropInfo {
@@ -308,6 +341,7 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::Props),
                                 rune_init_refs: vec![],
+                                is_proxy_init: false,
                             });
                             props.push(PropInfo {
                                 local_name: rest_name.clone(),
@@ -337,6 +371,7 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::StateRaw),
                             rune_init_refs: vec![],
+                            is_proxy_init: false,
                         });
                     }
                 }
@@ -359,6 +394,7 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::StateRaw),
                                 rune_init_refs: vec![],
+                                is_proxy_init: false,
                             });
                         }
                     }

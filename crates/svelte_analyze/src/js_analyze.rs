@@ -41,7 +41,9 @@ pub(crate) fn analyze_script(
     });
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = script_info.has_effects || script_info.has_class_state_fields;
+    data.needs_context = script_info.has_effects
+        || script_info.has_class_state_fields
+        || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
     data.has_class_state_fields = script_info.has_class_state_fields;
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
@@ -122,6 +124,144 @@ pub(crate) fn compute_render_tag_args(
             data.render_tag_arg_idents.insert(node_id, idents);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// needs_context detection (matches Svelte reference 2-analyze visitors)
+// ---------------------------------------------------------------------------
+
+/// Walk top-level script body to detect expressions that require component context.
+/// Checks for: NewExpression, CallExpression with non-safe callee,
+/// MemberExpression with non-safe root.
+fn script_body_needs_context(
+    program: &oxc_ast::ast::Program<'_>,
+    scoping: &oxc_semantic::Scoping,
+    script_info: &ScriptInfo,
+) -> bool {
+    // Collect prop declaration names for is_safe_identifier check
+    let prop_names: rustc_hash::FxHashSet<&str> = script_info
+        .declarations
+        .iter()
+        .filter(|d| d.is_rune == Some(RuneKind::Props))
+        .map(|d| d.name.as_str())
+        .collect();
+
+    for stmt in &program.body {
+        if stmt_needs_context(stmt, scoping, &prop_names) {
+            return true;
+        }
+    }
+    false
+}
+
+fn stmt_needs_context(
+    stmt: &oxc_ast::ast::Statement<'_>,
+    scoping: &oxc_semantic::Scoping,
+    prop_names: &rustc_hash::FxHashSet<&str>,
+) -> bool {
+    match stmt {
+        oxc_ast::ast::Statement::VariableDeclaration(decl) => {
+            for declarator in &decl.declarations {
+                if let Some(init) = &declarator.init {
+                    // Skip rune wrappers — check inner expression for $state/$derived/etc.
+                    let inner = unwrap_rune_arg(init);
+                    if expr_needs_context(inner, scoping, prop_names) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        oxc_ast::ast::Statement::ExpressionStatement(es) => {
+            expr_needs_context(&es.expression, scoping, prop_names)
+        }
+        _ => false,
+    }
+}
+
+fn expr_needs_context(
+    expr: &Expression<'_>,
+    scoping: &oxc_semantic::Scoping,
+    prop_names: &rustc_hash::FxHashSet<&str>,
+) -> bool {
+    match expr {
+        Expression::NewExpression(_) => true,
+        Expression::CallExpression(call) => {
+            !is_safe_identifier(&call.callee, scoping, prop_names)
+        }
+        Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
+            !is_safe_identifier(expr, scoping, prop_names)
+        }
+        _ => false,
+    }
+}
+
+/// A 'safe' identifier means foo in foo.bar or foo() will not call functions
+/// that require component context. Mirrors reference utils.js:is_safe_identifier.
+fn is_safe_identifier(
+    expr: &Expression<'_>,
+    scoping: &oxc_semantic::Scoping,
+    prop_names: &rustc_hash::FxHashSet<&str>,
+) -> bool {
+    // Walk member chain to root
+    let mut node = expr;
+    loop {
+        match node {
+            Expression::StaticMemberExpression(m) => node = &m.object,
+            Expression::ComputedMemberExpression(m) => node = &m.object,
+            _ => break,
+        }
+    }
+
+    let Expression::Identifier(ident) = node else { return false };
+    let name = ident.name.as_str();
+
+    // Prop bindings are not safe (they come from parent context)
+    if prop_names.contains(name) {
+        return false;
+    }
+
+    // Check OXC scoping for the identifier
+    let root_scope = scoping.root_scope_id();
+    if let Some(sym_id) = scoping.find_binding(root_scope, name.into()) {
+        let flags = scoping.symbol_flags(sym_id);
+        // Imports are not safe — they may call functions needing context
+        if flags.contains(oxc_semantic::SymbolFlags::Import) {
+            return false;
+        }
+        // Local binding (not import, not prop) — safe
+        true
+    } else {
+        // No binding = global (Map, console, etc.) — safe
+        true
+    }
+}
+
+/// Unwrap a rune call to get its first argument expression.
+/// E.g., `$derived(expr)` → `expr`, `$state(expr)` → `expr`.
+/// Non-rune expressions pass through unchanged.
+fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
+    if let Expression::CallExpression(call) = expr {
+        let is_rune = match &call.callee {
+            Expression::Identifier(id) => svelte_parser::script_info::is_rune_name(&id.name),
+            Expression::StaticMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    svelte_parser::script_info::is_rune_name(&obj.name)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+        if is_rune {
+            if let Some(arg) = call.arguments.first() {
+                if let Some(e) = arg.as_expression() {
+                    return e;
+                }
+            }
+        }
+    }
+    expr
 }
 
 // ---------------------------------------------------------------------------
