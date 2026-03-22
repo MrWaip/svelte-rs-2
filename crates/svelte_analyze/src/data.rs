@@ -545,6 +545,9 @@ pub struct AnalysisData {
     /// $state/$state.raw declarations with proxyable init (array/object/non-primitive).
     /// Keyed by declaration name. Computed in analyze_script, consumed in build_scoping.
     pub(crate) proxy_state_inits: FxHashMap<compact_str::CompactString, bool>,
+    /// True when script contains deep mutations on `$`-prefixed identifiers
+    /// (e.g., `$store.field = val`). Triggers `$.push/$.pop` for `$.store_mutate`.
+    pub(crate) has_store_member_mutations: bool,
 }
 
 impl AnalysisData {
@@ -583,6 +586,7 @@ impl AnalysisData {
             custom_element: false,
             ce_config: None,
             proxy_state_inits: FxHashMap::default(),
+            has_store_member_mutations: false,
         }
     }
 }

@@ -60,12 +60,8 @@ pub fn detect_store_subscriptions(data: &mut AnalysisData) {
     }
 
     // Also check script-level deep mutations
-    if !data.needs_context {
-        if let Some(script) = &data.script {
-            if script.has_store_member_mutations {
-                data.needs_context = true;
-            }
-        }
+    if !data.needs_context && data.has_store_member_mutations {
+        data.needs_context = true;
     }
 }
 

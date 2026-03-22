@@ -31,8 +31,9 @@ pub(crate) fn analyze_script(
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
     svelte_parser::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
-    // Detect deep store mutations in script body
-    script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
+    // Classify script body: effects, class state fields, store mutations
+    let (has_effects, has_class_state_fields) = detect_script_flags(program);
+    data.has_store_member_mutations = program.body.iter().any(|stmt| {
         if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
             has_deep_store_mutation(&es.expression)
         } else {
@@ -41,10 +42,10 @@ pub(crate) fn analyze_script(
     });
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = script_info.has_effects
-        || script_info.has_class_state_fields
+    data.needs_context = has_effects
+        || has_class_state_fields
         || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
-    data.has_class_state_fields = script_info.has_class_state_fields;
+    data.has_class_state_fields = has_class_state_fields;
     compute_proxy_state_inits(program, &script_info, data);
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
@@ -125,6 +126,85 @@ pub(crate) fn compute_render_tag_args(
             data.render_tag_arg_idents.insert(node_id, idents);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Script-level classification (moved from parser — these are derived flags)
+// ---------------------------------------------------------------------------
+
+/// Detect `$effect()`/`$effect.pre()` calls and class fields with `$state()`/`$state.raw()`.
+fn detect_script_flags(program: &oxc_ast::ast::Program<'_>) -> (bool, bool) {
+    let mut has_effects = false;
+    let mut has_class_state_fields = false;
+    for stmt in &program.body {
+        match stmt {
+            oxc_ast::ast::Statement::ExpressionStatement(es) => {
+                if is_effect_call(&es.expression) {
+                    has_effects = true;
+                }
+            }
+            oxc_ast::ast::Statement::ClassDeclaration(class) => {
+                if has_class_state_runes(&class.body) {
+                    has_class_state_fields = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    (has_effects, has_class_state_fields)
+}
+
+fn is_effect_call(expr: &Expression<'_>) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        match &call.callee {
+            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
+            Expression::StaticMemberExpression(member) => {
+                if let Expression::Identifier(obj) = &member.object {
+                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn has_class_state_runes(body: &oxc_ast::ast::ClassBody<'_>) -> bool {
+    use svelte_parser::script_info::detect_rune;
+    for element in &body.body {
+        match element {
+            oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
+                if let Some(value) = &prop.value {
+                    if let Some(kind) = detect_rune(value) {
+                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
+                if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
+                    if let Some(body) = &method.value.body {
+                        for stmt in &body.statements {
+                            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
+                                if let Expression::AssignmentExpression(assign) = &es.expression {
+                                    if let Some(kind) = detect_rune(&assign.right) {
+                                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------

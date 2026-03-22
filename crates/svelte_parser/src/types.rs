@@ -50,16 +50,9 @@ pub struct ScriptInfo {
     pub declarations: Vec<DeclarationInfo>,
     pub props_declaration: Option<PropsDeclaration>,
     pub exports: Vec<ExportInfo>,
-    /// True when the script contains `$effect(...)` or `$effect.pre(...)` calls.
-    pub has_effects: bool,
-    /// True when the script contains class fields with `$state()`/`$state.raw()` initializers.
-    pub has_class_state_fields: bool,
     /// Base names of `$`-prefixed identifiers found in the script body
     /// (e.g. `"count"` for `$count`). Used to detect store subscriptions.
     pub store_candidates: Vec<CompactString>,
-    /// True when script contains deep mutations on `$`-prefixed identifiers
-    /// (e.g., `$store.field = val`). Triggers `$.push/$.pop` for `$.store_mutate`.
-    pub has_store_member_mutations: bool,
 }
 
 #[derive(Debug, Clone)]
