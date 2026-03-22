@@ -121,7 +121,7 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
     let mut regular: Vec<&Node> = Vec::new();
     for node in &fragment.nodes {
         match node {
-            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
+            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
             Node::Element(el) if inside_head && el.name == "title" => continue,
             _ => regular.push(node),
         }
