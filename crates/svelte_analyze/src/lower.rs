@@ -411,6 +411,7 @@ mod tests {
             Fragment::new(nodes),
             None,
             None,
+            100,
         )
     }
 

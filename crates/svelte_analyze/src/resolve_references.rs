@@ -5,30 +5,24 @@ use svelte_ast::{
 };
 
 use crate::data::AnalysisData;
-use crate::walker::{self, TemplateVisitor};
+use crate::walker::TemplateVisitor;
 
 use svelte_ast::Component;
 
-/// Resolve all template references to SymbolIds and register write references in OXC Scoping.
-/// After this pass, `symbol_is_mutated()` covers both script and template mutations.
-pub fn resolve_references(
-    component: &Component,
-    data: &mut AnalysisData,
-    _scoping: crate::markers::ScopingBuilt,
-) {
-    let root_scope = data.scoping.root_scope_id();
-    let mut visitor = ResolveReferencesVisitor { component };
-    walker::walk_template(&component.fragment, data, root_scope, &mut visitor);
+/// Create a ResolveReferencesVisitor for use in a composite walk.
+/// Consumes `ScopingBuilt` marker to enforce ordering.
+pub(crate) fn make_visitor(component: &Component, _scoping: crate::markers::ScopingBuilt) -> ResolveReferencesVisitor<'_> {
+    ResolveReferencesVisitor { component }
 }
 
-struct ResolveReferencesVisitor<'a> {
+pub(crate) struct ResolveReferencesVisitor<'a> {
     component: &'a Component,
 }
 
 /// Resolve references in an expression (by NodeId in `data.expressions`).
 /// NLL allows split borrows: `data.expressions` and `data.scoping` are separate fields.
 fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
-    let Some(info) = data.expressions.get_mut(&node_id) else {
+    let Some(info) = data.expressions.get_mut(node_id) else {
         return;
     };
     for r in &mut info.references {
@@ -50,7 +44,7 @@ fn resolve_attr_refs(
     scope: ScopeId,
     data: &mut AnalysisData,
 ) {
-    let Some(info) = data.attr_expressions.get_mut(&attr_id) else {
+    let Some(info) = data.attr_expressions.get_mut(attr_id) else {
         return;
     };
     for r in &mut info.references {
@@ -100,7 +94,7 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
 
         // Store the scope for this render tag so we can resolve dynamic callees later
         // (after props analysis populates is_prop_source).
-        if let Some(name) = data.render_tag_callee_name.get(&tag.id) {
+        if let Some(name) = data.render_tag_callee_name.get(tag.id) {
             if let Some(sym_id) = data.scoping.find_binding(scope, name) {
                 data.render_tag_callee_sym.insert(tag.id, sym_id);
             }

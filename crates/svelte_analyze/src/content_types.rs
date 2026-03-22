@@ -17,7 +17,7 @@ pub fn classify_and_mark_dynamic(data: &mut AnalysisData) {
 
 fn item_is_dynamic(
     item: &FragmentItem,
-    dynamic_nodes: &rustc_hash::FxHashSet<svelte_ast::NodeId>,
+    dynamic_nodes: &crate::node_table::NodeBitSet,
 ) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {

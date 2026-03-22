@@ -1,202 +1,166 @@
 use oxc_ast::ast::{ArrowFunctionExpression, BindingPattern, Expression, FormalParameters};
 use oxc_ast_visit::Visit;
-use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
+use oxc_semantic::ScopeId;
+use svelte_ast::{
+    Attribute, AwaitBlock, ComponentNode, ConcatPart, EachBlock, Element, ExpressionTag,
+    HtmlTag, IfBlock, KeyBlock, RenderTag, SvelteBody, SvelteBoundary, SvelteDocument,
+    SvelteElement, SvelteWindow,
+};
 use svelte_parser::ParsedExprs;
 
-use crate::data::{AnalysisData, FragmentKey};
+use crate::data::AnalysisData;
 use crate::js_analyze::extract_expression_info;
-use crate::scope::{ComponentScoping, ScopeId};
+use crate::scope::ComponentScoping;
+use crate::walker::TemplateVisitor;
 
 // ---------------------------------------------------------------------------
-// Combined pass: arrow scope registration + each-block index usage
-// Must run after build_scoping (needs template scopes) and extract_all_expressions.
+// JsMetadataVisitor — arrow scope registration + each-block index usage
+// Merged into resolve_references composite walk.
 // ---------------------------------------------------------------------------
 
-/// Single tree walk that registers arrow function scopes and computes each-block index usage.
-pub(crate) fn compute_js_metadata(
-    component: &Component,
-    data: &mut AnalysisData,
-    parsed: &ParsedExprs<'_>,
-) {
-    let root = data.scoping.root_scope_id();
-    walk_fragment(&component.fragment, component, data, parsed, root);
+pub(crate) struct JsMetadataVisitor<'a> {
+    pub component: &'a svelte_ast::Component,
+    pub parsed: &'a ParsedExprs<'a>,
 }
 
-fn walk_fragment(
-    fragment: &Fragment,
-    component: &Component,
-    data: &mut AnalysisData,
-    parsed: &ParsedExprs<'_>,
-    scope: ScopeId,
-) {
-    for node in &fragment.nodes {
-        walk_node(node, component, data, parsed, scope);
+impl TemplateVisitor for JsMetadataVisitor<'_> {
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
     }
-}
 
-fn walk_node(
-    node: &Node,
-    component: &Component,
-    data: &mut AnalysisData,
-    parsed: &ParsedExprs<'_>,
-    scope: ScopeId,
-) {
-    match node {
-        Node::ExpressionTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
-        }
-        Node::Element(el) => {
-            scan_attrs_arrows(&el.attributes, &mut data.scoping, parsed, scope);
-            walk_fragment(&el.fragment, component, data, parsed, scope);
-        }
-        Node::ComponentNode(cn) => {
-            scan_attrs_arrows(&cn.attributes, &mut data.scoping, parsed, scope);
-            walk_fragment(&cn.fragment, component, data, parsed, scope);
-        }
-        Node::IfBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.test_span.start), &mut data.scoping, scope);
-            let cons_scope = data.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
-            walk_fragment(&block.consequent, component, data, parsed, cons_scope);
-            if let Some(alt) = &block.alternate {
-                let alt_scope = data.scoping.fragment_scope(&FragmentKey::IfAlternate(block.id)).unwrap_or(scope);
-                walk_fragment(alt, component, data, parsed, alt_scope);
-            }
-        }
-        Node::EachBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
+    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
+    }
 
-            // --- each-block index usage ---
-            if let Some(idx_span) = block.index_span {
-                let idx_name = component.source_text(idx_span);
-                if let Some(key_span) = block.key_span {
-                    if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
-                        let info = extract_expression_info(key_expr, key_span.start);
-                        if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                            data.each_blocks.key_uses_index.insert(block.id);
-                        }
+    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, scope: ScopeId, data: &mut AnalysisData) {
+        let ref_offset = tag.declaration_span.start.wrapping_sub(6);
+        scan_expr_arrows(self.parsed.exprs.get(&ref_offset), &mut data.scoping, scope);
+    }
+
+    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&block.test_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, _body_scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&block.expression_span.start), &mut data.scoping, parent_scope);
+
+        // Each-block index usage detection
+        if let Some(idx_span) = block.index_span {
+            let idx_name = self.component.source_text(idx_span);
+            if let Some(key_span) = block.key_span {
+                if let Some(key_expr) = self.parsed.exprs.get(&key_span.start) {
+                    let info = extract_expression_info(key_expr, key_span.start);
+                    if info.references.iter().any(|r| r.name.as_str() == idx_name) {
+                        data.each_blocks.key_uses_index.insert(block.id);
                     }
                 }
-                if check_fragment_uses_name(&block.body, idx_name, data) {
-                    data.each_blocks.body_uses_index.insert(block.id);
-                }
             }
+            if check_fragment_uses_name(&block.body, idx_name, data) {
+                data.each_blocks.body_uses_index.insert(block.id);
+            }
+        }
+    }
 
-            let body_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
-            walk_fragment(&block.body, component, data, parsed, body_scope);
-            if let Some(fb) = &block.fallback {
-                walk_fragment(fb, component, data, parsed, scope);
-            }
+    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {
+        scan_expr_arrows(self.parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_attribute(&mut self, attr: &Attribute, _el: &Element, scope: ScopeId, data: &mut AnalysisData) {
+        scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+    }
+
+    fn visit_component_attribute(&mut self, attr: &Attribute, _cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+        scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+    }
+
+    fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {
+        if !el.static_tag {
+            scan_expr_arrows(self.parsed.exprs.get(&el.tag_span.start), &mut data.scoping, scope);
         }
-        Node::SnippetBlock(block) => {
-            let snippet_scope = data.scoping.node_scope(block.id).unwrap_or(scope);
-            walk_fragment(&block.body, component, data, parsed, snippet_scope);
+        for attr in &el.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
         }
-        Node::RenderTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_svelte_window(&mut self, w: &SvelteWindow, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &w.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
         }
-        Node::HtmlTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
+    }
+
+    fn visit_svelte_document(&mut self, doc: &SvelteDocument, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &doc.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
         }
-        Node::ConstTag(tag) => {
-            let ref_offset = tag.declaration_span.start.wrapping_sub(6);
-            scan_expr_arrows(parsed.exprs.get(&ref_offset), &mut data.scoping, scope);
+    }
+
+    fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &body.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
         }
-        Node::KeyBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
-            let child_scope = data.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
-            walk_fragment(&block.fragment, component, data, parsed, child_scope);
+    }
+
+    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &boundary.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
         }
-        Node::SvelteHead(head) => {
-            let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteHeadBody(head.id)).unwrap_or(scope);
-            walk_fragment(&head.fragment, component, data, parsed, child_scope);
-        }
-        Node::SvelteElement(el) => {
-            if !el.static_tag {
-                scan_expr_arrows(parsed.exprs.get(&el.tag_span.start), &mut data.scoping, scope);
-            }
-            scan_attrs_arrows(&el.attributes, &mut data.scoping, parsed, scope);
-            let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
-            walk_fragment(&el.fragment, component, data, parsed, child_scope);
-        }
-        Node::SvelteWindow(w) => {
-            scan_attrs_arrows(&w.attributes, &mut data.scoping, parsed, scope);
-        }
-        Node::SvelteDocument(d) => {
-            scan_attrs_arrows(&d.attributes, &mut data.scoping, parsed, scope);
-        }
-        Node::SvelteBody(b) => {
-            scan_attrs_arrows(&b.attributes, &mut data.scoping, parsed, scope);
-        }
-        Node::SvelteBoundary(b) => {
-            scan_attrs_arrows(&b.attributes, &mut data.scoping, parsed, scope);
-            let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(b.id)).unwrap_or(scope);
-            walk_fragment(&b.fragment, component, data, parsed, child_scope);
-        }
-        Node::AwaitBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
-            if let Some(ref p) = block.pending {
-                let s = data.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
-                walk_fragment(p, component, data, parsed, s);
-            }
-            if let Some(ref t) = block.then {
-                let s = data.scoping.node_scope(block.id).unwrap_or(scope);
-                walk_fragment(t, component, data, parsed, s);
-            }
-            if let Some(ref c) = block.catch {
-                let s = data.scoping.await_catch_scope(block.id).unwrap_or(scope);
-                walk_fragment(c, component, data, parsed, s);
-            }
-        }
-        Node::DebugTag(_) | Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
 // ---------------------------------------------------------------------------
-// check_fragment_uses_name (moved from js_analyze.rs)
+// check_fragment_uses_name (sub-walk for each-block index detection)
 // ---------------------------------------------------------------------------
 
 /// Check if any expression in a fragment references a given name.
-fn check_fragment_uses_name(fragment: &Fragment, name: &str, data: &AnalysisData) -> bool {
+fn check_fragment_uses_name(fragment: &svelte_ast::Fragment, name: &str, data: &AnalysisData) -> bool {
     for node in &fragment.nodes {
         let refs_match = |id: svelte_ast::NodeId| -> bool {
-            data.expressions.get(&id)
+            data.expressions.get(id)
                 .is_some_and(|info| info.references.iter().any(|r| r.name.as_str() == name))
         };
         let attr_refs_match = |attrs: &[Attribute]| -> bool {
             attrs.iter().any(|a| {
-                data.attr_expressions.get(&a.id())
+                data.attr_expressions.get(a.id())
                     .is_some_and(|info| info.references.iter().any(|r| r.name.as_str() == name))
             })
         };
         match node {
-            Node::ExpressionTag(t) if refs_match(t.id) => return true,
-            Node::Element(el) => {
+            svelte_ast::Node::ExpressionTag(t) if refs_match(t.id) => return true,
+            svelte_ast::Node::Element(el) => {
                 if attr_refs_match(&el.attributes) { return true; }
                 if check_fragment_uses_name(&el.fragment, name, data) { return true; }
             }
-            Node::ComponentNode(cn) => {
+            svelte_ast::Node::ComponentNode(cn) => {
                 if attr_refs_match(&cn.attributes) { return true; }
                 if check_fragment_uses_name(&cn.fragment, name, data) { return true; }
             }
-            Node::IfBlock(b) => {
+            svelte_ast::Node::IfBlock(b) => {
                 if refs_match(b.id) { return true; }
                 if check_fragment_uses_name(&b.consequent, name, data) { return true; }
                 if let Some(ref alt) = b.alternate {
                     if check_fragment_uses_name(alt, name, data) { return true; }
                 }
             }
-            Node::EachBlock(b) => {
+            svelte_ast::Node::EachBlock(b) => {
                 if refs_match(b.id) { return true; }
                 if check_fragment_uses_name(&b.body, name, data) { return true; }
             }
-            Node::RenderTag(t) if refs_match(t.id) => return true,
-            Node::HtmlTag(t) if refs_match(t.id) => return true,
-            Node::KeyBlock(b) => {
+            svelte_ast::Node::RenderTag(t) if refs_match(t.id) => return true,
+            svelte_ast::Node::HtmlTag(t) if refs_match(t.id) => return true,
+            svelte_ast::Node::KeyBlock(b) => {
                 if refs_match(b.id) { return true; }
                 if check_fragment_uses_name(&b.fragment, name, data) { return true; }
             }
-            Node::ConstTag(t) if refs_match(t.id) => return true,
-            Node::SvelteElement(e) => {
+            svelte_ast::Node::ConstTag(t) if refs_match(t.id) => return true,
+            svelte_ast::Node::SvelteElement(e) => {
                 if !e.static_tag && refs_match(e.id) { return true; }
                 if attr_refs_match(&e.attributes) { return true; }
                 if check_fragment_uses_name(&e.fragment, name, data) { return true; }
@@ -211,32 +175,30 @@ fn check_fragment_uses_name(fragment: &Fragment, name: &str, data: &AnalysisData
 // Arrow scope helpers
 // ---------------------------------------------------------------------------
 
-fn scan_attrs_arrows(
-    attrs: &[Attribute],
+/// Scan a single attribute for arrow function scopes.
+fn scan_single_attr_arrows(
+    attr: &Attribute,
     scoping: &mut ComponentScoping,
     parsed: &ParsedExprs<'_>,
     scope: ScopeId,
 ) {
-    for attr in attrs {
-        // Look up the expression by the attribute's expression span offset
-        let expr_offset = get_attr_expr_offset(attr);
-        if let Some(offset) = expr_offset {
-            scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
-        }
-        // Also scan concat part expressions
-        let concat_parts: Option<&[ConcatPart]> = match attr {
-            Attribute::ConcatenationAttribute(a) => Some(&a.parts),
-            Attribute::StyleDirective(a) => match &a.value {
-                svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
-                _ => None,
-            },
+    let expr_offset = get_attr_expr_offset(attr);
+    if let Some(offset) = expr_offset {
+        scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
+    }
+    // Also scan concat part expressions
+    let concat_parts: Option<&[ConcatPart]> = match attr {
+        Attribute::ConcatenationAttribute(a) => Some(&a.parts),
+        Attribute::StyleDirective(a) => match &a.value {
+            svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
             _ => None,
-        };
-        if let Some(parts) = concat_parts {
-            for part in parts {
-                if let ConcatPart::Dynamic(span) = part {
-                    scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
-                }
+        },
+        _ => None,
+    };
+    if let Some(parts) = concat_parts {
+        for part in parts {
+            if let ConcatPart::Dynamic(span) = part {
+                scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
             }
         }
     }

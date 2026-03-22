@@ -35,7 +35,7 @@ impl HoistableSnippetsVisitor {
 
     fn check_expr(&mut self, node_id: &NodeId, data: &AnalysisData) {
         let Some(root) = self.current_root else { return };
-        if let Some(info) = data.expressions.get(node_id) {
+        if let Some(info) = data.expressions.get(*node_id) {
             if info
                 .references
                 .iter()
@@ -48,7 +48,7 @@ impl HoistableSnippetsVisitor {
 
     fn check_attr_expr(&mut self, attr_id: NodeId, data: &AnalysisData) {
         let Some(root) = self.current_root else { return };
-        if let Some(info) = data.attr_expressions.get(&attr_id) {
+        if let Some(info) = data.attr_expressions.get(attr_id) {
             if info
                 .references
                 .iter()

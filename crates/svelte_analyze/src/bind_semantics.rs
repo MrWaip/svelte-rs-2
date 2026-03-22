@@ -90,7 +90,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         }
 
         // Non-shorthand: use pre-resolved SymbolId from attr_expressions
-        let Some(info) = data.attr_expressions.get(&dir.id) else { return };
+        let Some(info) = data.attr_expressions.get(dir.id) else { return };
         if !matches!(info.kind, crate::data::ExpressionKind::Identifier(_)) { return }
 
         if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {

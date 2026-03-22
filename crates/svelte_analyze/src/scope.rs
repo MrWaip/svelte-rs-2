@@ -7,6 +7,7 @@ use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
 use crate::script_types::RuneKind;
 
 use crate::data::{AnalysisData, EachBlockData, FragmentKey};
+use crate::node_table::NodeTable;
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -462,8 +463,8 @@ pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> c
     // Walk template to add each-block/snippet scopes and const bindings.
     // Take both tables temporarily to avoid split borrow on `data`.
     let root = data.scoping.root_scope_id();
-    let const_tag_names = std::mem::take(&mut data.const_tags.names);
-    let mut snippet_params = std::mem::take(&mut data.snippets.params);
+    let const_tag_names = std::mem::replace(&mut data.const_tags.names, NodeTable::new(0));
+    let mut snippet_params = std::mem::replace(&mut data.snippets.params, NodeTable::new(0));
     walk_template_scopes(&component.fragment, component, &mut data.scoping, root, &const_tag_names, &mut snippet_params, &mut data.each_blocks);
     data.const_tags.names = const_tag_names;
     data.snippets.params = snippet_params;
@@ -475,8 +476,8 @@ fn walk_template_scopes(
     component: &Component,
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
-    const_tag_names: &FxHashMap<NodeId, Vec<String>>,
-    snippet_params: &mut FxHashMap<NodeId, Vec<String>>,
+    const_tag_names: &NodeTable<Vec<String>>,
+    snippet_params: &mut NodeTable<Vec<String>>,
     each_blocks: &mut EachBlockData,
 ) {
     for node in &fragment.nodes {
@@ -573,7 +574,7 @@ fn walk_template_scopes(
                 let snippet_scope = scoping.add_child_scope(current_scope);
                 scoping.set_node_scope(block.id, snippet_scope);
                 // Read pre-computed params (populated by parser)
-                if let Some(params) = snippet_params.get(&block.id) {
+                if let Some(params) = snippet_params.get(block.id) {
                     for param in params {
                         let sym_id = scoping.add_binding(snippet_scope, param);
                         scoping.mark_snippet_param(sym_id);
@@ -602,7 +603,7 @@ fn walk_template_scopes(
                 walk_template_scopes(&b.fragment, component, scoping, child_scope, const_tag_names, snippet_params, each_blocks);
             }
             Node::ConstTag(tag) => {
-                if let Some(names) = const_tag_names.get(&tag.id) {
+                if let Some(names) = const_tag_names.get(tag.id) {
                     let is_destructured = names.len() > 1;
                     for name in names {
                         let sym_id = scoping.add_binding(current_scope, name);

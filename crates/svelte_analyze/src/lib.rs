@@ -10,6 +10,7 @@ pub mod ident_gen;
 pub(crate) mod js_analyze;
 mod lower;
 mod needs_var;
+pub mod node_table;
 mod analyze_semantic;
 mod post_resolve;
 mod reactivity;
@@ -53,7 +54,7 @@ pub fn analyze_with_options<'a>(
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
-    let mut data = AnalysisData::new_empty();
+    let mut data = AnalysisData::new_empty(component.node_count);
     data.custom_element = custom_element;
 
     let script_content_span = js_result.script_content_span;
@@ -79,9 +80,16 @@ pub fn analyze_with_options<'a>(
     js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
 
     let scoping_built = scope::build_scoping(component, &mut data);
-    analyze_semantic::compute_js_metadata(component, &mut data, &parsed);
     data.import_syms = data.scoping.collect_import_syms();
-    resolve_references::resolve_references(component, &mut data, scoping_built);
+    // Combined walk: arrow scope registration + each-block index usage + reference resolution
+    {
+        let root = data.scoping.root_scope_id();
+        let mut visitor = (
+            analyze_semantic::JsMetadataVisitor { component, parsed: &parsed },
+            resolve_references::make_visitor(component, scoping_built),
+        );
+        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
+    }
     post_resolve::run_post_resolve_passes(component, &mut data);
     resolve_render_tag_prop_sources(&mut data);
     resolve_render_tag_dynamic(&mut data);
@@ -156,7 +164,7 @@ pub fn analyze_module(
     let _ = dev;
     let mut diags = Vec::new();
 
-    let mut data = AnalysisData::new_empty();
+    let mut data = AnalysisData::new_empty(0);
     match svelte_parser::parse_module(alloc, source, is_ts) {
         Ok((program, scoping)) => {
             data.scoping = scope::ComponentScoping::new(Some(scoping));
@@ -196,15 +204,16 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
     use crate::data::RenderTagCalleeMode;
 
-    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().copied().collect();
+    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().collect();
 
     for node_id in all_ids {
-        let is_dynamic = match data.render_tag_callee_sym.get(&node_id) {
+        let is_dynamic = match data.render_tag_callee_sym.get(node_id) {
             Some(&sym_id) => !data.scoping.is_normal_binding(sym_id),
             // No sym: non-Identifier callee or unresolved binding — always dynamic.
             None => true,
         };
         let is_chain = data.render_tag_is_chain.contains(&node_id);
+
 
         let mode = match (is_dynamic, is_chain) {
             (true, true) => RenderTagCalleeMode::DynamicChain,
