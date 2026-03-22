@@ -12,6 +12,9 @@ pub struct Rune {
     pub kind: RuneKind,
     /// Symbols referenced in the init expression. Only populated for Derived/DerivedBy.
     pub derived_deps: Vec<SymbolId>,
+    /// True when $state/$state.raw init is proxyable (array/object/non-primitive).
+    /// Proxy-candidate state is reactive even without reassignment.
+    pub is_proxy_init: bool,
 }
 
 /// Unified scope tree for script + template, wrapping `oxc_semantic::Scoping`.
@@ -146,7 +149,11 @@ impl ComponentScoping {
     // -- Rune tracking --
 
     pub fn mark_rune(&mut self, id: SymbolId, kind: RuneKind) {
-        self.runes.insert(id, Rune { kind, derived_deps: Vec::new() });
+        self.runes.insert(id, Rune { kind, derived_deps: Vec::new(), is_proxy_init: false });
+    }
+
+    pub fn mark_rune_with_proxy(&mut self, id: SymbolId, kind: RuneKind, is_proxy_init: bool) {
+        self.runes.insert(id, Rune { kind, derived_deps: Vec::new(), is_proxy_init });
     }
 
     pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<SymbolId>) {
@@ -196,7 +203,9 @@ impl ComponentScoping {
             return true;
         }
         if let Some(rune) = self.runes.get(&sym_id) {
-            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) {
+            // Unmutated primitive $state is a compile-time constant (not dynamic).
+            // Unmutated proxy-candidate $state (array/object) is still reactive via proxy.
+            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) && !rune.is_proxy_init {
                 return false;
             }
             if rune.kind.is_derived() {
@@ -240,7 +249,7 @@ impl ComponentScoping {
             return true;
         }
         let result = if let Some(rune) = self.runes.get(&sym_id) {
-            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) {
+            if rune.kind == RuneKind::State && !self.is_mutated(sym_id) && !rune.is_proxy_init {
                 false
             } else if rune.kind.is_derived() {
                 if rune.derived_deps.is_empty() {
@@ -433,7 +442,7 @@ pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> c
             if let Some(rune_kind) = decl.is_rune {
                 let root = data.scoping.root_scope_id();
                 if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
-                    data.scoping.mark_rune(sym_id, rune_kind);
+                    data.scoping.mark_rune_with_proxy(sym_id, rune_kind, decl.is_proxy_init);
                     if rune_kind.is_derived()
                         && !decl.rune_init_refs.is_empty()
                     {

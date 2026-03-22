@@ -1,7 +1,8 @@
 import * as $ from "svelte/internal/client";
 import { createFormatter } from "./utils.js";
-var root = $.from_html(`<p></p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
+	$.push($$props, true);
 	let items = $.proxy([]);
 	// member on call result: items.filter(Boolean).length
 	let total = $.derived(() => items.filter(Boolean).length);
@@ -14,6 +15,9 @@ export default function App($$anchor, $$props) {
 	// new expression
 	let map = new Map();
 	var p = root();
-	p.textContent = `${$.get(total) ?? ""} ${fmt ?? ""} ${defaults ?? ""} ${nested ?? ""} ${map ?? ""}`;
+	var text = $.child(p);
+	$.reset(p);
+	$.template_effect(() => $.set_text(text, `${$.get(total) ?? ""} ${fmt ?? ""} ${defaults ?? ""} ${nested ?? ""} ${map ?? ""}`));
 	$.append($$anchor, p);
+	$.pop();
 }
