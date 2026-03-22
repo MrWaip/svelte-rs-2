@@ -215,13 +215,13 @@ pub(crate) fn process_attr<'a>(
 /// - class={expr} + class:name -> `$.set_class(el, 1, $.clsx(expr), null, prev, { ... })`
 pub(crate) fn process_class_attribute_and_directives<'a>(
     ctx: &mut Ctx<'a>,
-    el: &Element,
+    el_id: NodeId,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
-    let has_class_attr = ctx.has_class_attribute(el.id);
-    let has_class_dirs = ctx.has_class_directives(el.id);
+    let has_class_attr = ctx.has_class_attribute(el_id);
+    let has_class_dirs = ctx.has_class_directives(el_id);
 
     if !has_class_attr && !has_class_dirs {
         return;
@@ -229,7 +229,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class value ---
     let class_value = if has_class_attr {
-        let class_attr_id = ctx.class_attr_id(el.id)
+        let class_attr_id = ctx.class_attr_id(el_id)
             .expect("has_class_attribute set but no class attr id");
 
         let mut expr = get_attr_expr(ctx, class_attr_id);
@@ -240,14 +240,14 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         expr
     } else {
         // No class expression attribute — use static class or empty string
-        let static_class = ctx.static_class(el.id).unwrap_or("");
+        let static_class = ctx.static_class(el_id).unwrap_or("");
         ctx.b.str_expr(static_class)
     };
 
     // --- Build class directives object ---
     let directives_obj = if has_class_dirs {
         // Snapshot directive info to release the immutable borrow on ctx before the mutable loop.
-        let dir_snapshot: Vec<_> = ctx.class_directive_info(el.id)
+        let dir_snapshot: Vec<_> = ctx.class_directive_info(el_id)
             .expect("has_class_directives set but no directive info")
             .iter()
             .map(|cd| (cd.id, cd.name.clone(), cd.has_expression))
@@ -268,7 +268,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         None
     };
 
-    let has_state = ctx.class_needs_state(el.id);
+    let has_state = ctx.class_needs_state(el_id);
 
     // --- Generate $.set_class() call ---
     if let Some(dir_obj) = directives_obj {
@@ -323,21 +323,21 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 /// Pushes `let styles_N;` to `init` and the assignment to `update` for combined template_effect.
 pub(crate) fn process_style_directives<'a>(
     ctx: &mut Ctx<'a>,
-    el: &Element,
+    el_id: NodeId,
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
     update: &mut Vec<Statement<'a>>,
 ) {
     use svelte_ast::StyleDirectiveValue;
 
-    if !ctx.has_style_directives(el.id) {
+    if !ctx.has_style_directives(el_id) {
         return;
     }
 
-    let style_dirs = ctx.style_directives(el.id).to_vec();
+    let style_dirs = ctx.style_directives(el_id).to_vec();
 
     // Read precomputed static style value
-    let static_style = ctx.static_style(el.id).unwrap_or("").to_string();
+    let static_style = ctx.static_style(el_id).unwrap_or("").to_string();
 
     let mut normal_props: Vec<ObjProp<'a>> = Vec::new();
     let mut important_props: Vec<ObjProp<'a>> = Vec::new();
@@ -425,7 +425,9 @@ fn build_style_concat<'a>(
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
 pub(crate) fn process_attrs_spread<'a>(
     ctx: &mut Ctx<'a>,
-    el: &Element,
+    el_id: NodeId,
+    el_tag: &str,
+    attrs: &[Attribute],
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
@@ -433,7 +435,7 @@ pub(crate) fn process_attrs_spread<'a>(
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-    for attr in &el.attributes {
+    for attr in attrs {
         let attr_id = attr.id();
         match attr {
             Attribute::BooleanAttribute(a) => {
@@ -484,8 +486,8 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::Shorthand(name_alloc));
             }
             Attribute::BindDirective(bind) => {
-                let has_use = ctx.has_use_directive(el.id);
-                if let Some(placement) = gen_bind_directive(ctx, bind, el_name, &el.name, has_use) {
+                let has_use = ctx.has_use_directive(el_id);
+                if let Some(placement) = gen_bind_directive(ctx, bind, el_name, el_tag, has_use) {
                     match placement {
                         BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                         BindPlacement::Init(stmt) => init.push(stmt),
@@ -505,7 +507,7 @@ pub(crate) fn process_attrs_spread<'a>(
     }
 
     // Collect style directives into [$.STYLE] computed property
-    let style_dirs = ctx.style_directives(el.id).to_vec();
+    let style_dirs = ctx.style_directives(el_id).to_vec();
 
     if !style_dirs.is_empty() {
         use svelte_ast::StyleDirectiveValue;
