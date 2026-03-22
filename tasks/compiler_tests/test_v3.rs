@@ -1624,3 +1624,8 @@ fn style_attr_object() {
 fn style_attr_dynamic() {
     assert_compiler("style_attr_dynamic");
 }
+
+#[rstest]
+fn script_jsdoc_comment() {
+    assert_compiler("script_jsdoc_comment");
+}
