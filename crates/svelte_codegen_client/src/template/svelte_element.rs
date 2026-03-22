@@ -52,9 +52,30 @@ pub(crate) fn gen_svelte_element<'a>(
     let mut inner_init: Vec<Statement<'a>> = Vec::new();
     let mut inner_after_update: Vec<Statement<'a>> = Vec::new();
 
-    // Process attributes — always use spread-like handling for svelte:element
-    // because the element tag is unknown at compile time.
-    if has_attrs {
+    // Optimization: when the only attribute is a static class, use $.set_class
+    // instead of $.attribute_effect (matches Svelte reference SvelteElement.js).
+    let sole_static_class = if el_clone.attributes.len() == 1 {
+        if let svelte_ast::Attribute::StringAttribute(sa) = &el_clone.attributes[0] {
+            if sa.name.eq_ignore_ascii_case("class") {
+                Some(ctx.component.source_text(sa.value_span).to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(class_value) = sole_static_class {
+        inner_init.push(ctx.b.call_stmt(
+            "$.set_class",
+            [Arg::Ident(&el_name), Arg::Num(0.0), Arg::Str(class_value)],
+        ));
+    } else if has_attrs {
+        // Generic spread-like handling for svelte:element
+        // because the element tag is unknown at compile time.
         process_attrs_spread(ctx, &el_clone, &el_name, &mut inner_init, &mut inner_after_update);
     }
 

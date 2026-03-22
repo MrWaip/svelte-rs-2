@@ -17,9 +17,13 @@ fn assert_compiler(case: &str) {
 
     let dir = path.parent().unwrap();
     let config_path = dir.join("config.json");
-    let mut opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+    let mut opts = CompileOptions {
+        name: Some("App".into()),
+        ..Default::default()
+    };
     if config_path.exists() {
-        let config: serde_json::Value = serde_json::from_str(&read_to_string(&config_path).unwrap()).unwrap();
+        let config: serde_json::Value =
+            serde_json::from_str(&read_to_string(&config_path).unwrap()).unwrap();
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
@@ -1628,4 +1632,48 @@ fn style_attr_dynamic() {
 #[rstest]
 fn script_jsdoc_comment() {
     assert_compiler("script_jsdoc_comment");
+}
+
+fn svelte_head_title_with_meta() {
+    assert_compiler("svelte_head_title_with_meta");
+}
+
+#[rstest]
+fn svelte_head_title_mixed_siblings() {
+    assert_compiler("svelte_head_title_mixed_siblings");
+}
+
+#[rstest]
+fn svelte_head_static_title_with_meta() {
+    assert_compiler("svelte_head_static_title_with_meta");
+}
+
+#[rstest]
+fn snippet_ident_conflict_with_script() {
+    assert_compiler("snippet_ident_conflict_with_script");
+}
+
+#[rstest]
+fn debug_non_dev() {
+    assert_compiler("debug_non_dev");
+}
+
+#[rstest]
+fn animate_with_spread() {
+    assert_compiler("animate_with_spread");
+}
+
+#[rstest]
+fn svelte_element_static_class_attr() {
+    assert_compiler("svelte_element_static_class_attr");
+}
+
+#[rstest]
+fn root_with_special_elements() {
+    assert_compiler("root_with_special_elements");
+}
+
+#[rstest]
+fn debug_inside_element() {
+    assert_compiler("debug_inside_element");
 }
