@@ -57,7 +57,7 @@ pub(crate) fn add_svelte_meta<'a>(
     let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
     ctx.b.call_stmt("$.add_svelte_meta", [
         Arg::Expr(thunk),
-        Arg::Str(block_type.to_string()),
+        Arg::StrRef(block_type),
         Arg::Ident(ctx.name),
         Arg::Num(line as f64),
         Arg::Num(col as f64),
@@ -277,7 +277,7 @@ fn emit_static_text<'a>(
     let call = if text.is_empty() {
         ctx.b.call_expr("$.text", [])
     } else {
-        ctx.b.call_expr("$.text", [Arg::Str(text.to_string())])
+        ctx.b.call_expr("$.text", [Arg::StrRef(text)])
     };
     body.push(ctx.b.var_stmt(&name, call));
     body.push(ctx.b.call_stmt(

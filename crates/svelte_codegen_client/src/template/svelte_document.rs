@@ -66,8 +66,8 @@ fn gen_document_binding<'a>(
         "fullscreenElement" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("fullscreenElement".to_string()),
-                Arg::Str("fullscreenchange".to_string()),
+                Arg::StrRef("fullscreenElement"),
+                Arg::StrRef("fullscreenchange"),
                 Arg::Ident("$.document"),
                 Arg::Expr(setter),
             ])
@@ -75,8 +75,8 @@ fn gen_document_binding<'a>(
         "pointerLockElement" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("pointerLockElement".to_string()),
-                Arg::Str("pointerlockchange".to_string()),
+                Arg::StrRef("pointerLockElement"),
+                Arg::StrRef("pointerlockchange"),
                 Arg::Ident("$.document"),
                 Arg::Expr(setter),
             ])
@@ -84,8 +84,8 @@ fn gen_document_binding<'a>(
         "visibilityState" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("visibilityState".to_string()),
-                Arg::Str("visibilitychange".to_string()),
+                Arg::StrRef("visibilityState"),
+                Arg::StrRef("visibilitychange"),
                 Arg::Ident("$.document"),
                 Arg::Expr(setter),
             ])
