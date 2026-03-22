@@ -1634,3 +1634,28 @@ fn svelte_head_static_title_with_meta() {
 fn snippet_ident_conflict_with_script() {
     assert_compiler("snippet_ident_conflict_with_script");
 }
+
+#[rstest]
+fn debug_non_dev() {
+    assert_compiler("debug_non_dev");
+}
+
+#[rstest]
+fn animate_with_spread() {
+    assert_compiler("animate_with_spread");
+}
+
+#[rstest]
+fn svelte_element_static_class_attr() {
+    assert_compiler("svelte_element_static_class_attr");
+}
+
+#[rstest]
+fn root_with_special_elements() {
+    assert_compiler("root_with_special_elements");
+}
+
+#[rstest]
+fn debug_inside_element() {
+    assert_compiler("debug_inside_element");
+}
