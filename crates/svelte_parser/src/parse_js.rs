@@ -302,7 +302,7 @@ pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
 /// `source` is the raw expression text (e.g., `{ tag: "my-el", shadow: "open", props: {...} }`).
 /// `offset` is the byte offset of `source` within the original .svelte file,
 /// used to adjust `extend` span to absolute coordinates.
-pub fn parse_ce_config(source: &str, offset: u32) -> ParsedCeConfig {
+pub(crate) fn parse_ce_config(source: &str, offset: u32) -> ParsedCeConfig {
     let alloc = Allocator::default();
     let wrapped = format!("var x = {};", source);
     let result = OxcParser::new(&alloc, &wrapped, SourceType::default()).parse();
@@ -449,19 +449,6 @@ pub fn parse_snippet_params(params_text: &str) -> Vec<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
-}
-
-/// Check if an expression text represents a "simple" expression that can be
-/// eagerly evaluated (no side effects). Matches Svelte's `is_simple_expression()`.
-///
-/// Simple expressions: literals, identifiers, functions, and combinations of
-/// binary/logical/conditional expressions composed of simples.
-pub fn is_simple_expression(text: &str) -> bool {
-    let alloc = Allocator::default();
-    let Ok(expr) = OxcParser::new(&alloc, text, SourceType::default()).parse_expression() else {
-        return false;
-    };
-    crate::types::is_simple_expr(&expr)
 }
 
 /// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.

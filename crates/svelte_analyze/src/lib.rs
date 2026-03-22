@@ -1,4 +1,5 @@
 mod bind_semantics;
+mod ce_config;
 mod content_types;
 mod markers;
 mod data;
@@ -74,9 +75,8 @@ pub fn analyze_with_options<'a>(
         .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
     data.scoping = ComponentScoping::new(script_scoping);
 
-    // Extract expression info + classify shorthand/clsx/snippets/const_tags/await_bindings/CE config
+    // Extract expression info + classify shorthand/clsx/snippets/const_tags/await_bindings/render_tag_args/CE config
     js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
-    js_analyze::compute_render_tag_args(&parsed, component, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
     analyze_semantic::compute_js_metadata(component, &mut data, &parsed);

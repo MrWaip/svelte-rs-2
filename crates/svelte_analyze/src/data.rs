@@ -531,6 +531,11 @@ pub struct AnalysisData {
     pub(crate) render_tag_is_chain: FxHashSet<NodeId>,
     /// Pre-computed render tag callee routing (replaces separate is_dynamic/is_chain/is_getter flags).
     pub render_tag_callee_mode: FxHashMap<NodeId, RenderTagCalleeMode>,
+    /// Source offsets for template node expressions (NodeId → span.start).
+    /// Populated during extract_all_expressions, consumed by codegen for O(1) ParsedExprs lookup.
+    pub node_expr_offsets: FxHashMap<NodeId, u32>,
+    /// Source offsets for attribute expressions (NodeId → span.start).
+    pub attr_expr_offsets: FxHashMap<NodeId, u32>,
     /// Await block binding patterns (then/catch), parsed via OXC.
     pub await_bindings: AwaitBindingData,
     /// Pre-computed bind/directive semantics (mutable rune targets, prop sources).
@@ -580,6 +585,8 @@ impl AnalysisData {
             render_tag_callee_sym: FxHashMap::default(),
             render_tag_is_chain: FxHashSet::default(),
             render_tag_callee_mode: FxHashMap::default(),
+            node_expr_offsets: FxHashMap::default(),
+            attr_expr_offsets: FxHashMap::default(),
             await_bindings: AwaitBindingData::new(),
             bind_semantics: BindSemanticsData::new(),
             import_syms: FxHashSet::default(),
@@ -596,6 +603,12 @@ impl AnalysisData {
     pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(&id) }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(&id) }
+    pub fn node_expr_offset(&self, id: NodeId) -> u32 {
+        *self.node_expr_offsets.get(&id).unwrap_or_else(|| panic!("no expr offset for node {:?}", id))
+    }
+    pub fn attr_expr_offset(&self, id: NodeId) -> u32 {
+        *self.attr_expr_offsets.get(&id).unwrap_or_else(|| panic!("no expr offset for attr {:?}", id))
+    }
     /// Whether the attribute's expression references an imported symbol (first reference).
     /// Import identifiers may be live bindings — codegen needs getters/wrapping.
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
