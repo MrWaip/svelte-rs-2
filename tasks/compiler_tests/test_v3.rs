@@ -1614,3 +1614,13 @@ fn each_destructured_default() {
 fn each_destructured_array() {
     assert_compiler("each_destructured_array");
 }
+
+#[rstest]
+fn style_attr_object() {
+    assert_compiler("style_attr_object");
+}
+
+#[rstest]
+fn style_attr_dynamic() {
+    assert_compiler("style_attr_dynamic");
+}
