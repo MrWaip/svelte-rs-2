@@ -17,15 +17,16 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] Script/Style blocks, TypeScript support
 - [x] Void (self-closing) HTML elements — `VOID_ELEMENTS`, auto `self_closing`, closing tag validation
 
-### Analyze (11 passes, composite visitor)
-- [x] `parse_js` — JS expression parsing, rune detection
+### Analyze (12 passes, composite visitor)
+- [x] `js_analyze` — expression analysis from pre-parsed OXC ASTs (JS parsing done in `svelte_parser`)
 - [x] `build_scoping` — unified scope tree (script + template)
+- [x] `register_arrow_scopes` — arrow function scope registration
 - [x] `resolve_references` — template refs → SymbolId, mutation tracking
 - [x] `store_subscriptions` — `$store` subscription detection
 - [x] `known_values` — static const evaluation
 - [x] `props` — `$props()` destructuring ($bindable, defaults, rest)
 - [x] `lower` — whitespace trim, adjacent text+expr merge
-- [x] `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` — composite walk (4 visitors)
+- [x] `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` + `bind_semantics` — composite walk (5 visitors)
 - [x] `classify_and_mark_dynamic` — fragment classification (single-element, text-only, etc.)
 - [x] `needs_var` — elements needing JS variables
 - [x] `validate` — semantic checks

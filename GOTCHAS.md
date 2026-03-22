@@ -20,13 +20,20 @@
 What each pass reads and writes:
 
 ```
-parse_js           reads: component (source spans), JsParseResult (from parser)
-                   writes: data.expressions, data.attr_expressions, data.script
-                           data.const_tags.names, data.const_tags.by_fragment
-                           (ParsedExprs populated by parser in parse_with_js)
+ingest_js_result   reads: JsParseResult (from svelte_parser::parse_with_js)
+                   writes: data.const_tags.names, data.await_bindings, data.ce_config,
+                           data.snippets.params, data.element_flags (shorthand, clsx),
+                           data.render_tag_* (structural parse data → side tables)
+
+js_analyze         reads: ParsedExprs (OXC ASTs), data.script
+                   writes: data.expressions, data.attr_expressions, data.scoping (init),
+                           data.each_blocks (index usage), data.render_tag_arg_has_call
 
 build_scoping      reads: component, data.script
                    writes: data.scoping (ComponentScoping with unified scope tree)
+
+register_arrow_scopes reads: component, ParsedExprs
+                   writes: data.scoping (arrow function scopes)
 
 resolve_references reads: component, data.scoping
                    writes: data.scoping (mutations marked)
@@ -134,8 +141,10 @@ Parser / AST:
 □ svelte_ast/src/lib.rs        — struct FooBar + add variant to Node enum
 □ svelte_parser/src/lib.rs     — scanner token + parse the tag
 
+Parse JS:
+□ svelte_parser/src/parse_js.rs       — register expression_span in parsed.exprs
+
 Analyze:
-□ svelte_analyze/src/parse_js.rs      — register expression_span in parsed.exprs
 □ svelte_analyze/src/lower.rs         — add FooBar to FragmentItem enum + handle in lower()
 □ svelte_analyze/src/walker.rs        — add on_foo_bar() to TemplateVisitor, call from walk_fragment()
 □ svelte_analyze/src/reactivity.rs    — handle in ReactivityVisitor if expression can be dynamic

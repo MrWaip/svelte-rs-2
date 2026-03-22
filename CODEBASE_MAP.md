@@ -6,8 +6,8 @@ Rust компилятор Svelte v5. Компилирует `.svelte` → client
 
 ```
 source: &str
-  → svelte_parser::Parser → Component (AST)
-  → svelte_analyze::analyze → (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+  → svelte_parser::parse_with_js(alloc, source) → (Component, JsParseResult<'a>, Vec<Diagnostic>)
+  → svelte_analyze::analyze(component, js_result) → (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
   → svelte_transform::transform_component → (mutates ParsedExprs in-place)
   → svelte_codegen_client::generate → String (JS)
 ```
@@ -163,18 +163,19 @@ struct Reference { name, span, flags: ReferenceFlags, symbol_id: Option<SymbolId
 enum ReferenceFlags { Read, Write, ReadWrite }
 ```
 
-**11 passes** (порядок важен, composite walk is 5 visitors):
-1. `parse_js` — парсит JS-выражения → `ParsedExprs`, `expressions`, `attr_expressions`, `script`
+**12 passes** (порядок важен, composite walk is 5 visitors):
+1. `ingest_js_result` + `js_analyze` — принимает `JsParseResult` от parser, анализирует OXC AST'ы → `expressions`, `attr_expressions`, `script`, scoping init
 2. `build_scoping` — строит единое дерево скоупов (script + template) → `ComponentScoping`
-3. `resolve_references` — резолвит template-ссылки к SymbolId, регистрирует мутации
-4. `store_subscriptions` — определяет `$store` подписки → `store_subscriptions`
-5. `known_values` — const-декларации с литеральным init → `known_values`
-6. `props` — анализ `$props()` деструктуризации → `props`
-7. `lower` — trim whitespace, группирует Text+ExprTag → `fragments.lowered`
-8. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` (5 visitor'ов за один обход)
-9. `classify_and_mark_dynamic` — классификация фрагментов → `fragments.content_types`, `fragments.has_dynamic_children`
-10. `needs_var` — элементы, которым нужна DOM-переменная → `element_flags.needs_var`
-11. `validate` — семантические проверки
+3. `register_arrow_scopes` — регистрирует arrow-функции в scope tree
+4. `resolve_references` — резолвит template-ссылки к SymbolId, регистрирует мутации
+5. `store_subscriptions` — определяет `$store` подписки → `store_subscriptions`
+6. `known_values` — const-декларации с литеральным init → `known_values`
+7. `props` — анализ `$props()` деструктуризации → `props`
+8. `lower` — trim whitespace, группирует Text+ExprTag → `fragments.lowered`
+9. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` + `bind_semantics` (5 visitor'ов за один обход)
+10. `classify_and_mark_dynamic` — классификация фрагментов → `fragments.content_types`, `fragments.has_dynamic_children`
+11. `needs_var` — элементы, которым нужна DOM-переменная → `element_flags.needs_var`, `element_flags.needs_ref`
+12. `validate` — семантические проверки
 
 **Scope system** (`scope.rs`):
 ```rust
@@ -471,7 +472,7 @@ wasm_compiler
 - OXC Expression AST'ы живут в `ParsedExprs<'a>` (аллокатор принадлежит caller'у). В публичный API `svelte_compiler` они не выходят
 - `oxc_semantic::Scoping` — owned, lifetime-free. Живёт в `ComponentScoping` внутри `AnalysisData`
 - Все поля `AnalysisData` — owned, без lifetime параметров
-- AST хранит `Span` для JS-выражений; `parse_js` парсит их один раз в `ParsedExprs`; `transform` мутирует; `codegen` использует
+- AST хранит `Span` для JS-выражений; `svelte_parser::parse_with_js` парсит их один раз в `ParsedExprs` (через `JsParseResult`); `transform` мутирует; `codegen` использует
 - `u32` везде где возможно вместо `usize` (NodeId, Span)
 - `ConcatPart` (svelte_ast) и `LoweredTextPart` (svelte_analyze) — **разные типы** для аналогичных целей в разных фазах
 - Sub-struct поля `ElementFlags`, `FragmentData`, `SnippetData`, `ConstTagData` — `pub(crate)`, снаружи только через методы
