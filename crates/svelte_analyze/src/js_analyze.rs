@@ -6,14 +6,13 @@
 use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use svelte_span::Span;
-use svelte_parser::{
-    ExpressionInfo, ExpressionKind, Reference, ReferenceFlags, RuneKind, ScriptInfo,
-};
+use svelte_parser::{RuneKind, ScriptInfo};
 
 use svelte_ast::{Component, Fragment, Node, NodeId};
 
-use crate::data::{AnalysisData, ParsedExprs};
-use crate::scope::ComponentScoping;
+use crate::data::{
+    AnalysisData, ExpressionInfo, ExpressionKind, ParsedExprs, Reference, ReferenceFlags,
+};
 
 // ---------------------------------------------------------------------------
 // Entry-point functions (called from analyze pipeline)
@@ -21,15 +20,16 @@ use crate::scope::ComponentScoping;
 
 /// Enrich pre-extracted ScriptInfo with semantic data and build Scoping.
 /// `script_info` comes from `JsParseResult` (extracted by parser).
+/// Returns the OXC Scoping for the script block.
 pub(crate) fn analyze_script(
     parsed: &ParsedExprs<'_>,
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
-) {
-    let Some(ref program) = parsed.script_program else { return };
+) -> Option<oxc_semantic::Scoping> {
+    let Some(ref program) = parsed.script_program else { return None };
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
-    enrich_script_info_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+    svelte_parser::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     // Detect deep store mutations in script body
     script_info.has_store_member_mutations = program.body.iter().any(|stmt| {
@@ -43,8 +43,8 @@ pub(crate) fn analyze_script(
     data.exports = std::mem::take(&mut script_info.exports);
     data.needs_context = script_info.has_effects || script_info.has_class_state_fields;
     data.has_class_state_fields = script_info.has_class_state_fields;
-    data.scoping = ComponentScoping::from_scoping(sem.semantic.into_scoping());
     data.script = Some(script_info);
+    Some(sem.semantic.into_scoping())
 }
 
 /// Extract ExpressionInfo for all parsed template and attribute expressions.
@@ -295,7 +295,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
 /// Check if the expression (or any sub-expression) contains a call to a specific rune.
 fn expression_has_rune(expr: &Expression<'_>, target: RuneKind) -> bool {
     match expr {
-        Expression::CallExpression(_) => svelte_parser::parse_js::detect_rune(expr) == Some(target),
+        Expression::CallExpression(_) => svelte_parser::script_info::detect_rune(expr) == Some(target),
         Expression::ConditionalExpression(c) => {
             expression_has_rune(&c.test, target)
                 || expression_has_rune(&c.consequent, target)
@@ -539,17 +539,6 @@ fn collect_statement_references(stmt: &oxc_ast::ast::Statement<'_>, offset: u32,
             }
         }
         _ => {}
-    }
-}
-
-/// Enrich ScriptInfo from OXC's unresolved references in one pass.
-/// Detects store candidates ($count etc) from unresolved `$`-prefixed references.
-pub(crate) fn enrich_script_info_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
-    for key in scoping.root_unresolved_references().keys() {
-        let name = key.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !svelte_parser::parse_js::is_rune_name(name) {
-            info.store_candidates.push(CompactString::from(&name[1..]));
-        }
     }
 }
 
