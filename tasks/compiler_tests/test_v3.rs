@@ -1629,3 +1629,8 @@ fn svelte_head_title_mixed_siblings() {
 fn svelte_head_static_title_with_meta() {
     assert_compiler("svelte_head_static_title_with_meta");
 }
+
+#[rstest]
+fn snippet_ident_conflict_with_script() {
+    assert_compiler("snippet_ident_conflict_with_script");
+}
