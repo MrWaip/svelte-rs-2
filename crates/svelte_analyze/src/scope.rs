@@ -4,7 +4,7 @@ pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
-use svelte_parser::RuneKind;
+use crate::script_types::RuneKind;
 
 use crate::data::{AnalysisData, EachBlockData, FragmentKey};
 

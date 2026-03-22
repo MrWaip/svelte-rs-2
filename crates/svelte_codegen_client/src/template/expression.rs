@@ -11,41 +11,36 @@ use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
-// Pre-transformed expression lookup (new path)
+// Pre-transformed expression lookup (offset-based)
 // ---------------------------------------------------------------------------
 
+/// Get a pre-transformed expression by source offset.
+/// Takes ownership via remove — each expression can only be consumed once.
+pub(crate) fn get_expr_at<'a>(ctx: &mut Ctx<'a>, offset: u32) -> Expression<'a> {
+    if let Some(expr) = ctx.parsed.exprs.remove(&offset) {
+        expr
+    } else {
+        debug_assert!(false, "missing pre-transformed expr at offset {}", offset);
+        ctx.b.str_expr("")
+    }
+}
+
 /// Get a pre-transformed expression from ParsedExprs by NodeId.
-/// Takes ownership via remove — each expression can only be consumed once.
+/// Resolves the offset from the node's expression span, then removes the expression.
 pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
-    if let Some(expr) = ctx.parsed.exprs.remove(&node_id) {
-        expr
-    } else {
-        debug_assert!(false, "missing pre-transformed expr for node {:?}", node_id);
-        ctx.b.str_expr("")
-    }
+    let offset = ctx.node_expr_offset(node_id);
+    get_expr_at(ctx, offset)
 }
 
-/// Get a pre-transformed attribute expression from ParsedExprs by attribute NodeId.
-/// Takes ownership via remove — each expression can only be consumed once.
+/// Get a pre-transformed attribute expression by attribute's expression span offset.
 pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
-    if let Some(expr) = ctx.parsed.attr_exprs.remove(&attr_id) {
-        expr
-    } else {
-        debug_assert!(false, "missing pre-transformed attr expr for {:?}", attr_id);
-        ctx.b.str_expr("")
-    }
+    let offset = ctx.attr_expr_offset(attr_id);
+    get_expr_at(ctx, offset)
 }
 
-/// Get a pre-transformed concat part expression from ParsedExprs.
-/// Takes ownership via remove — each expression can only be consumed once.
-pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId, part_idx: usize) -> Expression<'a> {
-    let key = (attr_id, part_idx);
-    if let Some(expr) = ctx.parsed.concat_part_exprs.remove(&key) {
-        expr
-    } else {
-        debug_assert!(false, "missing pre-transformed concat part expr for {:?}", key);
-        ctx.b.str_expr("")
-    }
+/// Get a pre-transformed concat part expression by span offset.
+pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, span_start: u32) -> Expression<'a> {
+    get_expr_at(ctx, span_start)
 }
 
 
@@ -136,18 +131,16 @@ pub(crate) fn build_concat_from_parts<'a>(
 
 pub(crate) fn build_attr_concat<'a>(
     ctx: &mut Ctx<'a>,
-    attr_id: NodeId,
+    _attr_id: NodeId,
     parts: &[AstConcatPart],
 ) -> Expression<'a> {
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
-    let mut dyn_idx = 0usize;
     for part in parts {
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
-            AstConcatPart::Dynamic(_) => {
-                let expr = get_concat_part_expr(ctx, attr_id, dyn_idx);
+            AstConcatPart::Dynamic(span) => {
+                let expr = get_concat_part_expr(ctx, span.start);
                 tpl_parts.push(TemplatePart::Expr(expr));
-                dyn_idx += 1;
             }
         }
     }

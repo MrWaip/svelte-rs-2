@@ -147,7 +147,15 @@ fn build_bind_this_call<'a>(
     value: Expression<'a>,
 ) -> Expression<'a> {
     // Consume the transformed attr expr to keep the side table clean
-    let _ = ctx.parsed.attr_exprs.remove(&bind_id);
+    let cn_tmp = ctx.component_node(component_id);
+    let bind_tmp = cn_tmp.attributes.iter().find_map(|a| {
+        if let Attribute::BindDirective(b) = a { if b.id == bind_id { Some(b) } else { None } } else { None }
+    });
+    if let Some(b) = bind_tmp {
+        if let Some(span) = b.expression_span {
+            let _ = ctx.parsed.exprs.remove(&span.start);
+        }
+    }
 
     // Look up the bind directive from the component AST to get expression text
     let cn = ctx.component_node(component_id);

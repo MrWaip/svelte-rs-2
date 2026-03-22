@@ -43,7 +43,7 @@ fn walk_node(
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
         }
         Node::Element(el) => {
             scan_attrs_arrows(&el.attributes, &mut data.scoping, parsed, scope);
@@ -54,7 +54,7 @@ fn walk_node(
             walk_fragment(&cn.fragment, component, data, parsed, scope);
         }
         Node::IfBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&block.test_span.start), &mut data.scoping, scope);
             let cons_scope = data.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
             walk_fragment(&block.consequent, component, data, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
@@ -63,16 +63,17 @@ fn walk_node(
             }
         }
         Node::EachBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
 
-            // --- each-block index usage (merged from compute_each_index_usage) ---
+            // --- each-block index usage ---
             if let Some(idx_span) = block.index_span {
                 let idx_name = component.source_text(idx_span);
-                if let Some(key_expr) = parsed.key_exprs.get(&block.id) {
-                    let offset = parsed.key_expr_offsets.get(&block.id).copied().unwrap_or(0);
-                    let info = extract_expression_info(key_expr, offset);
-                    if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                        data.each_blocks.key_uses_index.insert(block.id);
+                if let Some(key_span) = block.key_span {
+                    if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
+                        let info = extract_expression_info(key_expr, key_span.start);
+                        if info.references.iter().any(|r| r.name.as_str() == idx_name) {
+                            data.each_blocks.key_uses_index.insert(block.id);
+                        }
                     }
                 }
                 if check_fragment_uses_name(&block.body, idx_name, data) {
@@ -91,16 +92,17 @@ fn walk_node(
             walk_fragment(&block.body, component, data, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
         }
         Node::HtmlTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
         }
         Node::ConstTag(tag) => {
-            scan_expr_arrows(parsed.exprs.get(&tag.id), &mut data.scoping, scope);
+            let ref_offset = tag.declaration_span.start.wrapping_sub(6);
+            scan_expr_arrows(parsed.exprs.get(&ref_offset), &mut data.scoping, scope);
         }
         Node::KeyBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
             let child_scope = data.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
             walk_fragment(&block.fragment, component, data, parsed, child_scope);
         }
@@ -110,7 +112,7 @@ fn walk_node(
         }
         Node::SvelteElement(el) => {
             if !el.static_tag {
-                scan_expr_arrows(parsed.exprs.get(&el.id), &mut data.scoping, scope);
+                scan_expr_arrows(parsed.exprs.get(&el.tag_span.start), &mut data.scoping, scope);
             }
             scan_attrs_arrows(&el.attributes, &mut data.scoping, parsed, scope);
             let child_scope = data.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
@@ -131,7 +133,7 @@ fn walk_node(
             walk_fragment(&b.fragment, component, data, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
-            scan_expr_arrows(parsed.exprs.get(&block.id), &mut data.scoping, scope);
+            scan_expr_arrows(parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
             if let Some(ref p) = block.pending {
                 let s = data.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
                 walk_fragment(p, component, data, parsed, s);
@@ -216,8 +218,12 @@ fn scan_attrs_arrows(
     scope: ScopeId,
 ) {
     for attr in attrs {
-        let attr_id = attr.id();
-        scan_expr_arrows(parsed.attr_exprs.get(&attr_id), scoping, scope);
+        // Look up the expression by the attribute's expression span offset
+        let expr_offset = get_attr_expr_offset(attr);
+        if let Some(offset) = expr_offset {
+            scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
+        }
+        // Also scan concat part expressions
         let concat_parts: Option<&[ConcatPart]> = match attr {
             Attribute::ConcatenationAttribute(a) => Some(&a.parts),
             Attribute::StyleDirective(a) => match &a.value {
@@ -227,11 +233,34 @@ fn scan_attrs_arrows(
             _ => None,
         };
         if let Some(parts) = concat_parts {
-            let dyn_count = parts.iter().filter(|p| matches!(p, ConcatPart::Dynamic(_))).count();
-            for dyn_idx in 0..dyn_count {
-                scan_expr_arrows(parsed.concat_part_exprs.get(&(attr_id, dyn_idx)), scoping, scope);
+            for part in parts {
+                if let ConcatPart::Dynamic(span) = part {
+                    scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
+                }
             }
         }
+    }
+}
+
+/// Get the offset for an attribute's primary expression.
+fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
+    match attr {
+        Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
+        Attribute::ClassDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::StyleDirective(a) => match &a.value {
+            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
+            _ => None,
+        },
+        Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::SpreadAttribute(a) => Some(a.expression_span.start + 3),
+        Attribute::Shorthand(a) => Some(a.expression_span.start),
+        Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
+        Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AttachTag(a) => Some(a.expression_span.start),
+        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+        | Attribute::ConcatenationAttribute(_) => None,
     }
 }
 

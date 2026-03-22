@@ -132,7 +132,8 @@ pub(crate) fn gen_svelte_boundary<'a>(
             let mut set: Vec<(NodeId, Vec<String>, Expression<'a>)> = Vec::new();
             for (cid, names) in &infos {
                 // Clone from the parsed expr cache (not removing — just borrowing and cloning)
-                if let Some(expr) = ctx.parsed.exprs.get(cid) {
+                let cid_offset = ctx.node_expr_offset(*cid);
+                if let Some(expr) = ctx.parsed.exprs.get(&cid_offset) {
                     let cloned = ctx.b.clone_expr(expr);
                     set.push((*cid, names.clone(), cloned));
                 }

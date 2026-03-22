@@ -10,7 +10,7 @@ use oxc_span::GetSpan as _;
 use rustc_hash::FxHashSet;
 use svelte_span::Span;
 
-use crate::types::{
+use crate::script_types::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 
@@ -189,7 +189,6 @@ fn collect_func_declaration(
             init_span: None,
             is_rune: None,
             rune_init_refs: vec![],
-
         });
     }
 }
@@ -265,7 +264,6 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
                             rune_init_refs: vec![],
-                
                         });
 
                         props.push(PropInfo {
@@ -295,7 +293,6 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::Props),
                                 rune_init_refs: vec![],
-                    
                             });
                             props.push(PropInfo {
                                 local_name: rest_name.clone(),
@@ -312,7 +309,7 @@ fn collect_var_declarations(
                     *props_declaration = Some(PropsDeclaration { props });
                 } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
                     let mut names = Vec::new();
-                    crate::types::extract_all_binding_names(&declarator.id, &mut names);
+                    svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
                     for name in names {
                         let decl_span = Span::new(
                             declarator.span.start + offset,
@@ -325,7 +322,6 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::StateRaw),
                             rune_init_refs: vec![],
-                
                         });
                     }
                 }
@@ -335,7 +331,7 @@ fn collect_var_declarations(
                 if let Some(rune_kind) = rune {
                     if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
                         let mut names = Vec::new();
-                        crate::types::extract_all_binding_names(&declarator.id, &mut names);
+                        svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
                         for name in names {
                             let decl_span = Span::new(
                                 declarator.span.start + offset,
@@ -348,7 +344,6 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::StateRaw),
                                 rune_init_refs: vec![],
-                    
                             });
                         }
                     }
@@ -402,7 +397,7 @@ fn extract_prop_default(
                             (
                                 Some(Span::new(sp.start + offset, sp.end + offset)),
                                 Some(text.to_string()),
-                                crate::types::is_simple_expr(expr),
+                                svelte_parser::is_simple_expr(expr),
                             )
                         } else {
                             (None, None, true)
@@ -413,7 +408,7 @@ fn extract_prop_default(
         }
         let sp = right.span();
         let text = &source[sp.start as usize..sp.end as usize];
-        let is_simple = crate::types::is_simple_expr(right);
+        let is_simple = svelte_parser::is_simple_expr(right);
         (
             Some(Span::new(sp.start + offset, sp.end + offset)),
             Some(text.to_string()),

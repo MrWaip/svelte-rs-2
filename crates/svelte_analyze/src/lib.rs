@@ -14,6 +14,8 @@ mod post_resolve;
 mod reactivity;
 mod resolve_references;
 pub mod scope;
+pub mod script_types;
+pub(crate) mod script_info;
 mod store_subscriptions;
 pub mod utils;
 mod validate;
@@ -27,6 +29,7 @@ pub use data::{
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
+pub use script_types::{ScriptInfo, DeclarationInfo, DeclarationKind, RuneKind, PropInfo, PropsDeclaration, ExportInfo};
 pub use utils::{is_delegatable_event, is_capture_event, strip_capture_event, is_passive_event, is_simple_identifier};
 
 use svelte_ast::Component;
@@ -52,14 +55,28 @@ pub fn analyze_with_options<'a>(
     let mut data = AnalysisData::new_empty();
     data.custom_element = custom_element;
 
-    let (parsed, script_info) = ingest_js_result(js_result, &mut data);
+    let script_content_span = js_result.script_content_span;
+    let typescript = js_result.typescript;
+    let mut parsed = js_result.parsed;
+
+    // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
+    js_analyze::classify_render_tags(&mut parsed, component, &mut data);
+
+    // Extract script info from pre-parsed Program AST
+    let script_info = parsed.program.as_ref().and_then(|program| {
+        let span = script_content_span?;
+        let source = component.source_text(span);
+        Some(script_info::extract_script_info(program, span.start, source))
+    });
 
     // JS analysis: enrich script info and extract OXC Scoping
     let script_scoping = script_info
         .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
     data.scoping = ComponentScoping::new(script_scoping);
-    js_analyze::extract_all_expressions(&parsed, &mut data);
-    js_analyze::compute_render_tag_args(&parsed, &mut data);
+
+    // Extract expression info + classify shorthand/clsx/snippets/const_tags/await_bindings/CE config
+    js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
+    js_analyze::compute_render_tag_args(&parsed, component, &mut data);
 
     let scoping_built = scope::build_scoping(component, &mut data);
     analyze_semantic::compute_js_metadata(component, &mut data, &parsed);
@@ -126,39 +143,24 @@ pub fn analyze_with_options<'a>(
     (data, parsed, diags)
 }
 
-/// Move structural parse data from `JsParseResult` into `AnalysisData` side tables.
-/// Analysis metadata (ExpressionInfo, ScriptInfo, Scoping) is computed separately
-/// by `js_analyze` passes.
-fn ingest_js_result<'a>(
-    js_result: JsParseResult<'a>,
-    data: &mut AnalysisData,
-) -> (ParsedExprs<'a>, Option<svelte_parser::ScriptInfo>) {
-    data.render_tag_is_chain = js_result.render_tag_is_chain;
-    data.render_tag_callee_name = js_result.render_tag_callee_name;
-    data.element_flags.expression_shorthand = js_result.expression_shorthand;
-    data.element_flags.needs_clsx = js_result.needs_clsx;
-    data.const_tags.names = js_result.const_tag_names;
-    data.await_bindings.values = js_result.await_values;
-    data.await_bindings.errors = js_result.await_errors;
-    data.ce_config = js_result.ce_config;
-    data.snippets.params = js_result.snippet_param_names;
-    (js_result.parsed, js_result.script_info)
-}
-
 /// Simplified analysis for standalone `.svelte.js`/`.svelte.ts` modules.
 ///
 /// Only parses JS, builds scopes, and detects runes. No template, no props,
 /// no fragment classification — modules are pure JS with rune transforms.
-pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>) {
-    let _ = dev; // reserved for future dev-mode analysis (e.g. $inspect.trace labels)
+pub fn analyze_module(
+    alloc: &oxc_allocator::Allocator,
+    source: &str,
+    is_ts: bool,
+    dev: bool,
+) -> (AnalysisData, Vec<Diagnostic>) {
+    let _ = dev;
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty();
-    match svelte_parser::parse_module(source, is_ts) {
-        Ok((script_info, scoping)) => {
+    match svelte_parser::parse_module(alloc, source, is_ts) {
+        Ok((program, scoping)) => {
             data.scoping = scope::ComponentScoping::new(Some(scoping));
-
-            // Mark runes from script declarations
+            let script_info = script_info::extract_script_info(&program, 0, source);
             for decl in &script_info.declarations {
                 if let Some(rune_kind) = decl.is_rune {
                     let root = data.scoping.root_scope_id();

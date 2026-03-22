@@ -4,7 +4,7 @@ use oxc_allocator::CloneIn;
 use oxc_ast::NONE;
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_parser::RuneKind;
+use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
 

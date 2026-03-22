@@ -95,17 +95,21 @@ pub(crate) fn gen_each_block<'a>(
     };
 
     // Key function: keyed each uses (item[, index]) => key_expr, unkeyed uses $.index
-    let key_fn = if let Some(key_expr) = ctx.parsed.key_exprs.remove(&block_id) {
-        let key_body = ctx.b.expr_stmt(key_expr);
-        if ctx.each_key_uses_index(block_id) {
-            let idx_name = user_index_name.as_ref()
-                .expect("key_uses_index implies index exists");
-            ctx.b.arrow_expr(ctx.b.params([&context_name, idx_name]), [key_body])
+    let key_fn = {
+        let key_span = ctx.each_block(block_id).key_span;
+        let key_expr = key_span.and_then(|ks| ctx.parsed.exprs.remove(&ks.start));
+        if let Some(key_expr) = key_expr {
+            let key_body = ctx.b.expr_stmt(key_expr);
+            if ctx.each_key_uses_index(block_id) {
+                let idx_name = user_index_name.as_ref()
+                    .expect("key_uses_index implies index exists");
+                ctx.b.arrow_expr(ctx.b.params([&context_name, idx_name]), [key_body])
+            } else {
+                ctx.b.arrow_expr(ctx.b.params([&context_name]), [key_body])
+            }
         } else {
-            ctx.b.arrow_expr(ctx.b.params([&context_name]), [key_body])
+            ctx.b.rid_expr("$.index")
         }
-    } else {
-        ctx.b.rid_expr("$.index")
     };
 
     // Destructuring declarations prepended to body
@@ -161,8 +165,13 @@ fn gen_destructuring_declarations<'a>(
     block_id: NodeId,
     item_reactive: bool,
 ) -> Vec<Statement<'a>> {
-    let binding = ctx.parsed.each_context_bindings.remove(&block_id)
-        .expect("destructured each block must have parsed context");
+    let block = ctx.each_block(block_id);
+    let ctx_source = ctx.component.source_text(block.context_span);
+    let typescript = ctx.component.script.as_ref()
+        .is_some_and(|s| matches!(s.language, svelte_ast::ScriptLanguage::TypeScript));
+    let arena_ctx: &'a str = ctx.b.alloc_str(ctx_source);
+    let binding = svelte_parser::parse_each_context_with_alloc(ctx.b.ast.allocator, arena_ctx, typescript)
+        .expect("destructured each block must have parseable context");
 
     let mut decls = Vec::new();
 

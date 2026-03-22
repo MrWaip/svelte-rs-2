@@ -8,8 +8,10 @@ svelte_ast = { path = "../svelte_ast" }
 svelte_parser = { path = "../svelte_parser" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 svelte_span = { path = "../svelte_span" }
+oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_ast_visit = { workspace = true }
+oxc_parser = { workspace = true }
 oxc_semantic = { workspace = true }
 oxc_span = { workspace = true }
 compact_str = { workspace = true }
@@ -17,5 +19,3 @@ rustc-hash = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-oxc_allocator = { workspace = true }
-oxc_parser = { workspace = true }

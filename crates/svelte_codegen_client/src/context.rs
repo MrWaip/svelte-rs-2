@@ -260,4 +260,105 @@ impl<'a> Ctx<'a> {
     pub fn each_key_is_item(&self, id: NodeId) -> bool { self.analysis.each_blocks.key_is_item(id) }
     pub fn each_has_animate(&self, id: NodeId) -> bool { self.analysis.each_blocks.has_animate(id) }
 
+    // -- Expression offset lookups (for offset-keyed ParsedExprs) --
+
+    /// Get the expression offset for a template node (ExpressionTag, IfBlock, EachBlock, etc.).
+    pub fn node_expr_offset(&self, node_id: NodeId) -> u32 {
+        let node = self.index.nodes.get(&node_id)
+            .unwrap_or_else(|| panic!("node {:?} not found in index", node_id));
+        match node {
+            Node::ExpressionTag(t) => t.expression_span.start,
+            Node::IfBlock(b) => b.test_span.start,
+            Node::EachBlock(b) => b.expression_span.start,
+            Node::RenderTag(t) => t.expression_span.start,
+            Node::HtmlTag(t) => t.expression_span.start,
+            Node::KeyBlock(b) => b.expression_span.start,
+            Node::AwaitBlock(b) => b.expression_span.start,
+            Node::ConstTag(t) => t.declaration_span.start.wrapping_sub(6),
+            Node::SvelteElement(e) => e.tag_span.start,
+            _ => panic!("node {:?} does not have an expression span", node_id),
+        }
+    }
+
+    /// Get the expression offset for an attribute by its attribute NodeId.
+    /// Looks up the attribute from the AST to find its expression span.
+    pub fn attr_expr_offset(&self, attr_id: NodeId) -> u32 {
+        // Walk all nodes to find the attribute with this ID
+        find_attr_offset(&self.component.fragment, attr_id)
+            .unwrap_or_else(|| panic!("attr {:?} not found in component", attr_id))
+    }
+}
+
+/// Walk the fragment tree to find an attribute's expression offset.
+fn find_attr_offset(fragment: &Fragment, target_id: NodeId) -> Option<u32> {
+    for node in &fragment.nodes {
+        let attrs: Option<&[svelte_ast::Attribute]> = match node {
+            Node::Element(el) => Some(&el.attributes),
+            Node::ComponentNode(cn) => Some(&cn.attributes),
+            Node::SvelteElement(el) => Some(&el.attributes),
+            Node::SvelteWindow(w) => Some(&w.attributes),
+            Node::SvelteDocument(d) => Some(&d.attributes),
+            Node::SvelteBody(b) => Some(&b.attributes),
+            Node::SvelteBoundary(b) => Some(&b.attributes),
+            _ => None,
+        };
+        if let Some(attrs) = attrs {
+            for attr in attrs {
+                if attr.id() == target_id {
+                    return attr_offset(attr);
+                }
+            }
+        }
+        // Recurse into children
+        let result = match node {
+            Node::Element(el) => find_attr_offset(&el.fragment, target_id),
+            Node::ComponentNode(cn) => find_attr_offset(&cn.fragment, target_id),
+            Node::IfBlock(b) => {
+                find_attr_offset(&b.consequent, target_id)
+                    .or_else(|| b.alternate.as_ref().and_then(|a| find_attr_offset(a, target_id)))
+            }
+            Node::EachBlock(b) => {
+                find_attr_offset(&b.body, target_id)
+                    .or_else(|| b.fallback.as_ref().and_then(|f| find_attr_offset(f, target_id)))
+            }
+            Node::SnippetBlock(b) => find_attr_offset(&b.body, target_id),
+            Node::KeyBlock(b) => find_attr_offset(&b.fragment, target_id),
+            Node::SvelteHead(h) => find_attr_offset(&h.fragment, target_id),
+            Node::SvelteElement(el) => find_attr_offset(&el.fragment, target_id),
+            Node::SvelteBoundary(b) => find_attr_offset(&b.fragment, target_id),
+            Node::AwaitBlock(b) => {
+                b.pending.as_ref().and_then(|p| find_attr_offset(p, target_id))
+                    .or_else(|| b.then.as_ref().and_then(|t| find_attr_offset(t, target_id)))
+                    .or_else(|| b.catch.as_ref().and_then(|c| find_attr_offset(c, target_id)))
+            }
+            _ => None,
+        };
+        if result.is_some() {
+            return result;
+        }
+    }
+    None
+}
+
+/// Get the expression offset for an attribute.
+fn attr_offset(attr: &svelte_ast::Attribute) -> Option<u32> {
+    use svelte_ast::Attribute;
+    match attr {
+        Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
+        Attribute::ClassDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::StyleDirective(a) => match &a.value {
+            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
+            _ => None,
+        },
+        Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::SpreadAttribute(a) => Some(a.expression_span.start + 3),
+        Attribute::Shorthand(a) => Some(a.expression_span.start),
+        Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
+        Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
+        Attribute::AttachTag(a) => Some(a.expression_span.start),
+        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+        | Attribute::ConcatenationAttribute(_) => None,
+    }
 }

@@ -8,7 +8,7 @@ use oxc_ast::ast::{
 use oxc_span::{GetSpan, GetSpanMut};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use svelte_parser::RuneKind;
+use svelte_analyze::RuneKind;
 
 use crate::builder::{Arg, Builder};
 

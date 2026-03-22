@@ -405,21 +405,19 @@ pub(crate) fn process_style_directives<'a>(
 /// so we consume the pre-transformed expressions directly.
 fn build_style_concat<'a>(
     ctx: &mut Ctx<'a>,
-    attr_id: NodeId,
+    _attr_id: NodeId,
     parts: &[svelte_ast::ConcatPart],
 ) -> Expression<'a> {
     use crate::builder::TemplatePart;
     use super::expression::get_concat_part_expr;
 
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
-    let mut dyn_idx = 0usize;
     for part in parts {
         match part {
             svelte_ast::ConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
-            svelte_ast::ConcatPart::Dynamic(_) => {
-                let expr = get_concat_part_expr(ctx, attr_id, dyn_idx);
+            svelte_ast::ConcatPart::Dynamic(span) => {
+                let expr = get_concat_part_expr(ctx, span.start);
                 tpl_parts.push(TemplatePart::Expr(expr));
-                dyn_idx += 1;
             }
         }
     }

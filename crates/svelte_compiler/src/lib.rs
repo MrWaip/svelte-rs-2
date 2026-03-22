@@ -56,19 +56,19 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let is_ts = options.filename.ends_with(".ts");
     let dev = options.dev;
 
+    let js_alloc = oxc_allocator::Allocator::default();
+
     // Analysis-only mode: skip codegen entirely
     if options.generate == GenerateMode::False {
-        let (_, diagnostics) = svelte_analyze::analyze_module(source, is_ts, dev);
+        let (_, diagnostics) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
         return CompileResult {
             js: None,
             diagnostics,
         };
     }
 
-    let js_alloc = oxc_allocator::Allocator::default();
-
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, analyze_diags) = svelte_analyze::analyze_module(source, is_ts, dev);
+        let (analysis, analyze_diags) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
         let js = svelte_codegen_client::generate_module(&js_alloc, source, is_ts, &analysis, dev);
         (js, analyze_diags)
     }));
