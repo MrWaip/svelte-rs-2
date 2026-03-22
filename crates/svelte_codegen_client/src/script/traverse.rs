@@ -5,7 +5,7 @@ use oxc_ast::ast::{
     ImportDeclarationSpecifier, MethodDefinitionType,
     PropertyDefinitionType, Statement, VariableDeclarator,
 };
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, GetSpanMut};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use svelte_parser::RuneKind;
@@ -403,7 +403,12 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
 
         let Some(j) = idx else { return };
 
-        let replacement = self.gen_props_statements();
+        // Preserve original statement span so JSDoc comments stay attached
+        let original_span = stmts[j].span();
+        let mut replacement = self.gen_props_statements();
+        if let Some(first) = replacement.first_mut() {
+            *first.span_mut() = original_span;
+        }
         stmts.remove(j);
         for (k, stmt) in replacement.into_iter().enumerate() {
             stmts.insert(j + k, stmt);

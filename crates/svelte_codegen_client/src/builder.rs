@@ -13,7 +13,7 @@ use oxc_ast::{
     AstBuilder, NONE,
 };
 use oxc_parser::Parser as OxcParser;
-use oxc_span::{Atom, SourceType, SPAN};
+use oxc_span::{Atom, SourceType, Span, SPAN};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use std::cell::Cell;
 
@@ -584,9 +584,10 @@ impl<'a> Builder<'a> {
         id: BindingIdentifier<'a>,
         body: Vec<Statement<'a>>,
         params: FormalParameters<'a>,
+        body_span: Span,
     ) -> Function<'a> {
         let body = self.ast.alloc_function_body(
-            SPAN,
+            body_span,
             self.ast.vec(),
             self.ast.vec_from_iter(body),
         );
@@ -984,15 +985,21 @@ impl<'a> Builder<'a> {
         Statement::from(ModuleDeclaration::ExportDefaultDeclaration(res))
     }
 
-    pub fn program(&self, body: Vec<Statement<'a>>) -> Program<'a> {
+    pub fn program(
+        &self,
+        body: Vec<Statement<'a>>,
+        comments: Vec<oxc_ast::Comment>,
+        source_text: &'a str,
+        span_end: u32,
+    ) -> Program<'a> {
         Program {
             node_id: Cell::new(OxcNodeId::DUMMY),
             body: self.ast.vec_from_iter(body),
-            span: SPAN,
-            comments: self.ast.vec(),
+            span: Span::new(0, span_end),
+            comments: self.ast.vec_from_iter(comments),
             directives: self.ast.vec(),
             hashbang: None,
-            source_text: "",
+            source_text,
             source_type: SourceType::mjs(),
             scope_id: Cell::from(None),
         }

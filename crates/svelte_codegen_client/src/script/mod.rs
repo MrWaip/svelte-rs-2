@@ -6,6 +6,7 @@ use rustc_hash::FxHashSet;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement};
+use oxc_ast::Comment;
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::SourceType;
@@ -28,13 +29,27 @@ pub(super) const PROPS_IS_UPDATED: u32 = 1 << 2;
 pub(super) const PROPS_IS_BINDABLE: u32 = 1 << 3;
 pub(super) const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 
+/// Script transformation result carrying statements and comment metadata
+/// for preserving JSDoc/leading comments in the final output.
+pub struct ScriptOutput<'a> {
+    pub imports: Vec<Statement<'a>>,
+    pub body: Vec<Statement<'a>>,
+    pub has_tracing: bool,
+    /// Comments from the parsed script program (for OXC Codegen to print).
+    pub comments: Vec<Comment>,
+    /// Source text the comment spans index into.
+    pub source_text: &'a str,
+    /// span.end of the original script program (for trailing comment matching).
+    pub program_span_end: u32,
+}
+
 /// Parse and transform the script block.
-///
-/// Returns `(imports, body, has_tracing)` — imports are extracted separately so they can
-/// be hoisted to the top of the generated module.
-pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
+pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     if ctx.component.script.is_none() {
-        return (vec![], vec![], false);
+        return ScriptOutput {
+            imports: vec![], body: vec![], has_tracing: false,
+            comments: vec![], source_text: "", program_span_end: 0,
+        };
     };
 
     let allocator = ctx.b.ast.allocator;
@@ -90,8 +105,8 @@ pub fn transform_module_script<'a>(
     source: &'a str,
     is_ts: bool,
     component_scoping: &ComponentScoping,
-) -> (Vec<Statement<'a>>, Vec<Statement<'a>>) {
-    let (imports, body, _has_tracing) = transform_script_text(
+) -> ScriptOutput<'a> {
+    transform_script_text(
         allocator,
         source,
         is_ts,
@@ -102,11 +117,10 @@ pub fn transform_module_script<'a>(
         source,
         0,
         "(unknown)",
-    );
-    (imports, body)
+    )
 }
 
-/// Parse the script source and apply rune transformations, returning (imports, body, has_tracing).
+/// Parse the script source and apply rune transformations.
 fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
@@ -118,7 +132,7 @@ fn transform_script_text<'a>(
     component_source: &str,
     script_content_start: u32,
     filename: &str,
-) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
+) -> ScriptOutput<'a> {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
     } else {
@@ -173,6 +187,10 @@ fn transform_script_text<'a>(
 
     let has_tracing = transformer.has_tracing;
 
+    let comments: Vec<Comment> = program.comments.iter().copied().collect();
+    let source_text = program.source_text;
+    let program_span_end = program.span.end;
+
     let mut imports = vec![];
     let mut body = vec![];
 
@@ -183,7 +201,7 @@ fn transform_script_text<'a>(
         }
     }
 
-    (imports, body, has_tracing)
+    ScriptOutput { imports, body, has_tracing, comments, source_text, program_span_end }
 }
 
 /// Transform a pre-parsed Program AST (from analysis), applying rune transformations.
@@ -197,7 +215,7 @@ fn transform_program<'a>(
     component_source: &str,
     script_content_start: u32,
     filename: &str,
-) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, bool) {
+) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
 
     // Detect TypeScript from the program's source_type
@@ -238,6 +256,10 @@ fn transform_program<'a>(
 
     let has_tracing = transformer.has_tracing;
 
+    let comments: Vec<Comment> = program.comments.iter().copied().collect();
+    let source_text = program.source_text;
+    let program_span_end = program.span.end;
+
     let mut imports = vec![];
     let mut body = vec![];
 
@@ -248,7 +270,7 @@ fn transform_program<'a>(
         }
     }
 
-    (imports, body, has_tracing)
+    ScriptOutput { imports, body, has_tracing, comments, source_text, program_span_end }
 }
 
 pub(super) enum PropKind {

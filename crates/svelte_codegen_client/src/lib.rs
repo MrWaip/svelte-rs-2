@@ -7,6 +7,7 @@ mod template;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
+use oxc_span::Span;
 
 use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
 use svelte_ast::{Attribute, Component, Node};
@@ -22,7 +23,13 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     // 1. Script transformation
     // -----------------------------------------------------------------------
-    let (script_imports, script_body, has_tracing) = script::gen_script(&mut ctx, dev);
+    let script_output = script::gen_script(&mut ctx, dev);
+    let script_imports = script_output.imports;
+    let script_body = script_output.body;
+    let has_tracing = script_output.has_tracing;
+    let script_comments = script_output.comments;
+    let script_source_text = script_output.source_text;
+    let script_span_end = script_output.program_span_end;
 
     // -----------------------------------------------------------------------
     // 2. Template generation (consumes "root" ident first)
@@ -206,7 +213,14 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         b.params(["$$anchor"])
     };
 
-    let fn_decl = b.function_decl(b.bid(ctx.name), fn_body, fn_params);
+    // Set body span so OXC Codegen can find trailing comments inside the function.
+    // FunctionBody.gen() looks for comments at span_end - 1.
+    let body_span = if script_span_end > 0 {
+        Span::new(0, script_span_end + 1)
+    } else {
+        Span::default()
+    };
+    let fn_decl = b.function_decl(b.bid(ctx.name), fn_body, fn_params, body_span);
     let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
         b.alloc(fn_decl),
     ));
@@ -236,7 +250,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         program_body.extend(ce_stmts);
     }
 
-    let program = ctx.b.program(program_body);
+    let program = ctx.b.program(program_body, script_comments, script_source_text, script_span_end);
 
     Codegen::default().build(&program).code
 }
@@ -246,16 +260,16 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &AnalysisData, dev: bool) -> String {
     let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
     let arena_source: &str = alloc.alloc_str(source);
-    let (imports, body) = script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
+    let script_output = script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
     program_body.push(import_svelte);
-    program_body.extend(imports);
-    program_body.extend(body);
+    program_body.extend(script_output.imports);
+    program_body.extend(script_output.body);
 
-    let program = b.program(program_body);
+    let program = b.program(program_body, script_output.comments, script_output.source_text, script_output.program_span_end);
     Codegen::default().build(&program).code
 }
