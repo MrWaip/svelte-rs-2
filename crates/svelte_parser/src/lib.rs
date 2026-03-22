@@ -24,7 +24,7 @@ mod svelte_elements;
 pub use types::*;
 
 // Re-export parsing functions used by svelte_analyze
-pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding, parse_ce_config, parse_each_context_with_alloc};
+pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding, parse_each_context_with_alloc};
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.
 ///

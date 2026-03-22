@@ -135,7 +135,7 @@ pub(crate) fn extract_all_expressions(
         component.options.as_ref().and_then(|o| o.custom_element.as_ref())
     {
         if let Some(expr) = parsed.exprs.get(&span.start) {
-            let config = extract_ce_config_from_expr(expr, span.start);
+            let config = crate::ce_config::extract_ce_config_from_expr(expr, span.start);
             data.ce_config = Some(config);
         }
     }
@@ -195,6 +195,7 @@ fn walk_node_for_exprs(
         }
         Node::RenderTag(tag) => {
             insert_node_expr_info(parsed, data, tag.id, tag.expression_span.start);
+            classify_render_tag_args(parsed, data, tag);
         }
         Node::HtmlTag(tag) => {
             insert_node_expr_info(parsed, data, tag.id, tag.expression_span.start);
@@ -372,6 +373,7 @@ fn insert_node_expr_info(
     node_id: NodeId,
     offset: u32,
 ) {
+    data.node_expr_offsets.insert(node_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
         let info = extract_expression_info(expr, offset);
         data.expressions.insert(node_id, info);
@@ -385,6 +387,7 @@ fn insert_attr_expr_info(
     attr_id: NodeId,
     offset: u32,
 ) {
+    data.attr_expr_offsets.insert(attr_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
         let info = extract_expression_info(expr, offset);
         data.attr_expressions.insert(attr_id, info);
@@ -446,184 +449,28 @@ fn extract_const_tag_names(decl_text: &str, typescript: bool) -> Vec<String> {
     Vec::new()
 }
 
-/// Extract a `ParsedCeConfig` from an already-parsed ObjectExpression AST node.
-fn extract_ce_config_from_expr(
-    expr: &Expression<'_>,
-    offset: u32,
-) -> svelte_parser::ParsedCeConfig {
-    use oxc_ast::ast::{ObjectPropertyKind, PropertyKey};
 
-    let mut config = svelte_parser::ParsedCeConfig {
-        tag: None,
-        shadow: svelte_parser::CeShadowMode::Open,
-        props: Vec::new(),
-        extend_span: None,
-    };
-
-    let Expression::ObjectExpression(obj) = expr else { return config };
-
-    for prop_kind in &obj.properties {
-        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
-        let key_name = match &prop.key {
-            PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-            _ => continue,
-        };
-
-        match key_name {
-            "tag" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    config.tag = Some(lit.value.to_string());
-                }
-            }
-            "shadow" => {
-                if let Expression::StringLiteral(lit) = &prop.value {
-                    if lit.value.as_str() == "none" {
-                        config.shadow = svelte_parser::CeShadowMode::None;
-                    }
-                }
-            }
-            "props" => {
-                if let Expression::ObjectExpression(props_obj) = &prop.value {
-                    for prop_entry in &props_obj.properties {
-                        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else { continue };
-                        let prop_name = match &entry.key {
-                            PropertyKey::StaticIdentifier(id) => id.name.to_string(),
-                            _ => continue,
-                        };
-                        let mut prop_cfg = svelte_parser::CePropConfig {
-                            name: prop_name,
-                            attribute: None,
-                            reflect: false,
-                            prop_type: None,
-                        };
-                        if let Expression::ObjectExpression(def_obj) = &entry.value {
-                            for def_prop in &def_obj.properties {
-                                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else { continue };
-                                let dk = match &dp.key {
-                                    PropertyKey::StaticIdentifier(id) => id.name.as_str(),
-                                    _ => continue,
-                                };
-                                match dk {
-                                    "attribute" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.attribute = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    "reflect" => {
-                                        if let Expression::BooleanLiteral(lit) = &dp.value {
-                                            prop_cfg.reflect = lit.value;
-                                        }
-                                    }
-                                    "type" => {
-                                        if let Expression::StringLiteral(lit) = &dp.value {
-                                            prop_cfg.prop_type = Some(lit.value.to_string());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        config.props.push(prop_cfg);
-                    }
-                }
-            }
-            "extend" => {
-                use oxc_span::GetSpan as _;
-                let ext_span = prop.value.span();
-                // The expression was parsed directly from source at `offset`, so
-                // OXC spans are relative to the expression start. Adjust to absolute.
-                config.extend_span = Some(Span::new(
-                    ext_span.start + offset,
-                    ext_span.end + offset,
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    config
-}
-
-/// Compute render tag argument metadata from parsed CallExpressions.
-pub(crate) fn compute_render_tag_args(
-    parsed: &ParsedExprs<'_>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    walk_render_tags(&component.fragment, parsed, data);
-}
-
-fn walk_render_tags(
-    fragment: &Fragment,
+/// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
+fn classify_render_tag_args(
     parsed: &ParsedExprs<'_>,
     data: &mut AnalysisData,
+    tag: &svelte_ast::RenderTag,
 ) {
-    for node in &fragment.nodes {
-        match node {
-            Node::RenderTag(tag) => {
-                let offset = tag.expression_span.start;
-                if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
-                    let flags: Vec<bool> = call.arguments.iter().map(|arg| {
-                        expression_has_call(arg.to_expression())
-                    }).collect();
-                    data.render_tag_arg_has_call.insert(tag.id, flags);
+    let offset = tag.expression_span.start;
+    if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
+        let flags: Vec<bool> = call.arguments.iter().map(|arg| {
+            expression_has_call(arg.to_expression())
+        }).collect();
+        data.render_tag_arg_has_call.insert(tag.id, flags);
 
-                    let idents: Vec<Option<String>> = call.arguments.iter().map(|arg| {
-                        if let Expression::Identifier(id) = arg.to_expression() {
-                            Some(id.name.to_string())
-                        } else {
-                            None
-                        }
-                    }).collect();
-                    data.render_tag_arg_idents.insert(tag.id, idents);
-                }
+        let idents: Vec<Option<String>> = call.arguments.iter().map(|arg| {
+            if let Expression::Identifier(id) = arg.to_expression() {
+                Some(id.name.to_string())
+            } else {
+                None
             }
-            Node::Element(el) => {
-                walk_render_tags(&el.fragment, parsed, data);
-            }
-            Node::ComponentNode(cn) => {
-                walk_render_tags(&cn.fragment, parsed, data);
-            }
-            Node::IfBlock(block) => {
-                walk_render_tags(&block.consequent, parsed, data);
-                if let Some(alt) = &block.alternate {
-                    walk_render_tags(alt, parsed, data);
-                }
-            }
-            Node::EachBlock(block) => {
-                walk_render_tags(&block.body, parsed, data);
-                if let Some(fb) = &block.fallback {
-                    walk_render_tags(fb, parsed, data);
-                }
-            }
-            Node::SnippetBlock(block) => {
-                walk_render_tags(&block.body, parsed, data);
-            }
-            Node::KeyBlock(block) => {
-                walk_render_tags(&block.fragment, parsed, data);
-            }
-            Node::AwaitBlock(block) => {
-                if let Some(ref p) = block.pending {
-                    walk_render_tags(p, parsed, data);
-                }
-                if let Some(ref t) = block.then {
-                    walk_render_tags(t, parsed, data);
-                }
-                if let Some(ref c) = block.catch {
-                    walk_render_tags(c, parsed, data);
-                }
-            }
-            Node::SvelteHead(head) => {
-                walk_render_tags(&head.fragment, parsed, data);
-            }
-            Node::SvelteElement(el) => {
-                walk_render_tags(&el.fragment, parsed, data);
-            }
-            Node::SvelteBoundary(b) => {
-                walk_render_tags(&b.fragment, parsed, data);
-            }
-            _ => {}
-        }
+        }).collect();
+        data.render_tag_arg_idents.insert(tag.id, idents);
     }
 }
 
