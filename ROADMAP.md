@@ -152,6 +152,9 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] `$.push/$.pop` for components with deep store mutations (`needs_context` detection)
 - [x] `collect_references` fix: walk member chains in UpdateExpression/AssignmentExpression targets
 
+### 1c - Style attribute not completed
+- [ ] `style={{a: 123}}`
+
 ---
 
 ## Tier 1.1 — Experimental Async (`experimental.async`)
