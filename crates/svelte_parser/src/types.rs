@@ -27,6 +27,8 @@ pub struct ParsedExprs<'a> {
     pub program: Option<oxc_ast::ast::Program<'a>>,
     /// All parsed expressions keyed by source byte offset.
     pub exprs: FxHashMap<u32, Expression<'a>>,
+    /// Parsed each-block destructuring contexts, keyed by context_span.start.
+    pub each_contexts: FxHashMap<u32, EachContextBinding<'a>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -34,6 +36,7 @@ impl<'a> ParsedExprs<'a> {
         Self {
             program: None,
             exprs: FxHashMap::default(),
+            each_contexts: FxHashMap::default(),
         }
     }
 }

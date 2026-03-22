@@ -166,12 +166,8 @@ fn gen_destructuring_declarations<'a>(
     item_reactive: bool,
 ) -> Vec<Statement<'a>> {
     let block = ctx.each_block(block_id);
-    let ctx_source = ctx.component.source_text(block.context_span);
-    let typescript = ctx.component.script.as_ref()
-        .is_some_and(|s| matches!(s.language, svelte_ast::ScriptLanguage::TypeScript));
-    let arena_ctx: &'a str = ctx.b.alloc_str(ctx_source);
-    let binding = svelte_parser::parse_each_context_with_alloc(ctx.b.ast.allocator, arena_ctx, typescript)
-        .expect("destructured each block must have parseable context");
+    let binding = ctx.parsed.each_contexts.remove(&block.context_span.start)
+        .expect("destructured each block must have pre-parsed context");
 
     let mut decls = Vec::new();
 
