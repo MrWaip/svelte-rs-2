@@ -68,7 +68,12 @@ impl ComponentScoping {
 
     /// Create an empty scoping (no script block).
     pub fn empty() -> Self {
-        Self::from_scoping(Scoping::default())
+        let mut scoping = Scoping::default();
+        // Scoping::default() has no scopes at all, but root_scope_id() returns ScopeId(0).
+        // We must add a root scope so that ScopeId(0) exists and add_child_scope doesn't
+        // create a self-referential parent pointer (which causes infinite loops in find_binding).
+        scoping.add_scope(None, OxcNodeId::DUMMY, ScopeFlags::empty());
+        Self::from_scoping(scoping)
     }
 
     // -- Scope management --
