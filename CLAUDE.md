@@ -119,7 +119,7 @@ Legacy Svelte 4 syntax (deprecated in Svelte 5, scheduled for removal in Svelte 
 
 Layers and their responsibilities:
 - `svelte_parser` — produces immutable AST. Owns shared domain types (`RuneKind`, `ScriptInfo`, `ParsedExprs`, `JsParseResult`, etc.) and JS expression pre-parsing (`parse_js` → `JsParseResult`). Entry point: `parse_with_js(&alloc, source) → (Component, JsParseResult, Diagnostics)`.
-- `svelte_analyze` — single-pass composite visitor. Owns ALL derived data, classifications, flags, precomputation → `AnalysisData` side tables (keyed by `NodeId`). Also owns expression analysis types (`ExpressionInfo`, `Reference`, `ReferenceFlags`, `ExpressionKind`) — created during analysis, not parsing. Entry point: `analyze(&component, js_result) → (AnalysisData, ParsedExprs, Diagnostics)`.
+- `svelte_analyze` — multi-pass pipeline with composite visitor. Owns ALL derived data, classifications, flags, precomputation → `AnalysisData` side tables (keyed by `NodeId`). Also owns expression analysis types (`ExpressionInfo`, `Reference`, `ReferenceFlags`, `ExpressionKind`) — created during analysis, not parsing. Entry point: `analyze(&component, js_result) → (AnalysisData, ParsedExprs, Diagnostics)`.
 - `svelte_codegen_client` — consumes AST + AnalysisData + ParsedExprs to produce JS output. Owns only JS output construction logic.
 
 Boundary rules:
