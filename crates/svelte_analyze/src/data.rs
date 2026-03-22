@@ -258,6 +258,14 @@ impl FragmentData {
         }
     }
 
+    pub fn with_capacity(estimated_fragments: usize) -> Self {
+        Self {
+            lowered: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
+            content_types: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
+            has_dynamic_children: FxHashSet::with_capacity_and_hasher(estimated_fragments / 4, Default::default()),
+        }
+    }
+
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
         self.content_types.get(key).cloned().unwrap_or(ContentStrategy::Empty)
     }
@@ -574,7 +582,7 @@ impl AnalysisData {
             needs_context: false,
             has_class_state_fields: false,
             element_flags: ElementFlags::new(node_count),
-            fragments: FragmentData::new(),
+            fragments: FragmentData::with_capacity(node_count as usize / 3),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
