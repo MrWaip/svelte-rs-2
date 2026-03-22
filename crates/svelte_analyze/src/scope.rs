@@ -394,6 +394,11 @@ impl ComponentScoping {
             .collect()
     }
 
+    /// Collect all symbol names from all scopes (for IdentGen conflict detection).
+    pub fn collect_all_symbol_names(&self) -> FxHashSet<String> {
+        self.scoping.symbol_names().map(|s| s.to_string()).collect()
+    }
+
     /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
     pub fn is_store_ref(&self, name: &str) -> bool {
         self.store_base_name(name).is_some()

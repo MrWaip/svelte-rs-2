@@ -103,17 +103,11 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
 
-    // Collect snippet IDs and pre-consume gen_ident slots for parameter names
-    // to avoid collisions (e.g., badge's `text` param reserves the "text" counter)
+    // Collect snippet IDs (param names are already in IdentGen conflicts via ComponentScoping)
     let mut instance_snippet_ids = Vec::new();
     let mut hoistable_snippet_ids = Vec::new();
     for node in &ctx.component.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            if let Some(params) = ctx.analysis.snippets.params(block.id) {
-                for param in params {
-                    ctx.gen_ident(param);
-                }
-            }
             if ctx.is_snippet_hoistable(block.id) {
                 hoistable_snippet_ids.push(block.id);
             } else {
