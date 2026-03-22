@@ -442,7 +442,8 @@ pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> c
             if let Some(rune_kind) = decl.is_rune {
                 let root = data.scoping.root_scope_id();
                 if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
-                    data.scoping.mark_rune_with_proxy(sym_id, rune_kind, decl.is_proxy_init);
+                    let is_proxy = data.proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
+                    data.scoping.mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
                     if rune_kind.is_derived()
                         && !decl.rune_init_refs.is_empty()
                     {

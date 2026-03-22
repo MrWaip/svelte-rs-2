@@ -542,6 +542,9 @@ pub struct AnalysisData {
     pub custom_element: bool,
     /// Parsed custom element config (from object expression form).
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
+    /// $state/$state.raw declarations with proxyable init (array/object/non-primitive).
+    /// Keyed by declaration name. Computed in analyze_script, consumed in build_scoping.
+    pub(crate) proxy_state_inits: FxHashMap<compact_str::CompactString, bool>,
 }
 
 impl AnalysisData {
@@ -579,6 +582,7 @@ impl AnalysisData {
             import_syms: FxHashSet::default(),
             custom_element: false,
             ce_config: None,
+            proxy_state_inits: FxHashMap::default(),
         }
     }
 }

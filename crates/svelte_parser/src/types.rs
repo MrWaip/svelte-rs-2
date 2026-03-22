@@ -71,9 +71,6 @@ pub struct DeclarationInfo {
     pub is_rune: Option<RuneKind>,
     /// For $derived/$derived.by: names referenced in the init expression.
     pub rune_init_refs: Vec<CompactString>,
-    /// True when $state/$state.raw init argument is proxyable (array/object/non-primitive).
-    /// Proxy-candidate $state is still reactive even without reassignment.
-    pub is_proxy_init: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -45,6 +45,7 @@ pub(crate) fn analyze_script(
         || script_info.has_class_state_fields
         || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
     data.has_class_state_fields = script_info.has_class_state_fields;
+    compute_proxy_state_inits(program, &script_info, data);
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
 }
@@ -124,6 +125,75 @@ pub(crate) fn compute_render_tag_args(
             data.render_tag_arg_idents.insert(node_id, idents);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Proxy-candidate $state detection
+// ---------------------------------------------------------------------------
+
+/// Walk script body to find $state/$state.raw declarations with proxyable init.
+/// Stores results in `data.proxy_state_inits` keyed by declaration name.
+fn compute_proxy_state_inits(
+    program: &oxc_ast::ast::Program<'_>,
+    script_info: &ScriptInfo,
+    data: &mut AnalysisData,
+) {
+    for stmt in &program.body {
+        let decls = match stmt {
+            oxc_ast::ast::Statement::VariableDeclaration(d) => &d.declarations,
+            oxc_ast::ast::Statement::ExportNamedDeclaration(e) => {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &e.declaration {
+                    &d.declarations
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
+        };
+        for declarator in decls.iter() {
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else { continue };
+            let Some(init) = &declarator.init else { continue };
+            let rune = svelte_parser::script_info::detect_rune(init);
+            if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
+                continue;
+            }
+            // Match declaration name against script_info to confirm it's tracked
+            let name = ident.name.as_str();
+            if script_info.declarations.iter().any(|d| d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))) {
+                if is_proxyable_state_init(init) {
+                    data.proxy_state_inits.insert(CompactString::from(name), true);
+                }
+            }
+        }
+    }
+}
+
+/// Check if the first argument of a $state/$state.raw call is proxyable (non-primitive).
+/// Arrays, objects, and expressions that might produce non-primitive values
+/// require $.proxy() wrapping at runtime and remain reactive without reassignment.
+fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expr else { return false };
+    let Some(arg) = call.arguments.first() else { return false };
+    let Some(e) = arg.as_expression() else { return false };
+    if e.is_literal() {
+        return false;
+    }
+    if matches!(
+        e,
+        Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::UnaryExpression(_)
+            | Expression::BinaryExpression(_)
+    ) {
+        return false;
+    }
+    if let Expression::Identifier(id) = e {
+        if id.name == "undefined" {
+            return false;
+        }
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
