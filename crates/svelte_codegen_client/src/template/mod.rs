@@ -150,8 +150,17 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let pre_len = body.len();
     emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
 
-    // Special element events/bindings: inserted right after the template root var
-    // init but before child processing and $.append (matches Svelte reference order).
+    // Svelte reference order in init[]: template var (unshifted to [0]) →
+    // head → window/document/body events → child processing → append.
+    // We insert head first, then special elements, both after the root var.
+
+    // Generate $.head() calls for <svelte:head> nodes.
+    let mut head_stmts = Vec::new();
+    for id in &svelte_head_ids {
+        svelte_head::gen_svelte_head(ctx, *id, &mut head_stmts);
+    }
+
+    // Special element events/bindings
     let mut special_body: Vec<Statement<'a>> = Vec::new();
     for id in svelte_window_ids {
         svelte_window::gen_svelte_window(ctx, id, &mut special_body);
@@ -162,37 +171,18 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     for id in svelte_body_ids {
         svelte_body::gen_svelte_body(ctx, id, &mut special_body);
     }
-    if !special_body.is_empty() {
+
+    // Insert head + special elements right after root var init
+    let combined: Vec<_> = head_stmts.into_iter().chain(special_body).collect();
+    if !combined.is_empty() {
         if body.len() > pre_len + 1 {
-            // Content strategy added statements — insert after the first one
-            // (e.g., after `var div = root()`) but before child processing
             let insert_pos = pre_len + 1;
             let tail: Vec<_> = body.drain(insert_pos..).collect();
-            body.extend(special_body);
+            body.extend(combined);
             body.extend(tail);
         } else {
-            // No content or single statement — just append
-            body.extend(special_body);
+            body.extend(combined);
         }
-    }
-
-    // Generate $.head() calls for <svelte:head> nodes.
-    // In the Svelte reference, hoisted nodes are visited first and push to init[],
-    // while the template var decl is unshifted to init[0]. So $.head() ends up
-    // after the template init but before $.append().
-    if !svelte_head_ids.is_empty() {
-        // Find the $.append() call at the end and insert before it
-        let insert_pos = body.len().saturating_sub(
-            if matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. }) { 1 } else { 0 }
-        );
-        let mut head_stmts = Vec::new();
-        for id in svelte_head_ids {
-            svelte_head::gen_svelte_head(ctx, id, &mut head_stmts);
-        }
-        // Insert head stmts before the append
-        let tail: Vec<_> = body.drain(insert_pos..).collect();
-        body.extend(head_stmts);
-        body.extend(tail);
     }
 
     (hoisted, body, snippet_stmts, hoistable_snippets)
