@@ -45,8 +45,18 @@ pub struct ComponentScoping {
 }
 
 impl ComponentScoping {
-    /// Create from a pre-built OXC Scoping (produced by `analyze_script_with_scoping`).
-    pub fn from_scoping(scoping: Scoping) -> Self {
+    /// Create ComponentScoping from an optional OXC Scoping.
+    ///
+    /// - `Some(scoping)` — script block was parsed, use its scope tree (already has a root scope).
+    /// - `None` — no script block; creates a minimal Scoping with just a root scope.
+    pub fn new(scoping: Option<Scoping>) -> Self {
+        let scoping = scoping.unwrap_or_else(|| {
+            let mut s = Scoping::default();
+            // Scoping::default() has no scopes, but root_scope_id() returns ScopeId(0).
+            // Add a root scope so ScopeId(0) exists and child scopes get a valid parent.
+            s.add_scope(None, OxcNodeId::DUMMY, ScopeFlags::empty());
+            s
+        });
         Self {
             scoping,
             runes: FxHashMap::default(),
@@ -64,16 +74,6 @@ impl ComponentScoping {
             const_alias_tags: FxHashMap::default(),
             arrow_scopes: FxHashMap::default(),
         }
-    }
-
-    /// Create an empty scoping (no script block).
-    pub fn empty() -> Self {
-        let mut scoping = Scoping::default();
-        // Scoping::default() has no scopes at all, but root_scope_id() returns ScopeId(0).
-        // We must add a root scope so that ScopeId(0) exists and add_child_scope doesn't
-        // create a self-referential parent pointer (which causes infinite loops in find_binding).
-        scoping.add_scope(None, OxcNodeId::DUMMY, ScopeFlags::empty());
-        Self::from_scoping(scoping)
     }
 
     // -- Scope management --

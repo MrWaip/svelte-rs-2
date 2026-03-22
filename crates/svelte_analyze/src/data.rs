@@ -528,12 +528,14 @@ pub struct AnalysisData {
 }
 
 impl AnalysisData {
-    pub fn new() -> Self {
+    /// Create AnalysisData with all fields defaulted.
+    /// `scoping` is left uninitialized — caller must assign it before use.
+    pub(crate) fn new_empty() -> Self {
         Self {
             expressions: FxHashMap::default(),
             attr_expressions: FxHashMap::default(),
             script: None,
-            scoping: ComponentScoping::empty(),
+            scoping: ComponentScoping::new(None),
             dynamic_nodes: FxHashSet::default(),
             alt_is_elseif: FxHashSet::default(),
             props: None,

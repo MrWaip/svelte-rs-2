@@ -48,16 +48,17 @@ pub fn analyze_with_options<'a>(
     js_result: JsParseResult<'a>,
     custom_element: bool,
 ) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
-    let mut data = AnalysisData::new();
-    data.custom_element = custom_element;
     let mut diags = Vec::new();
+
+    let mut data = AnalysisData::new_empty();
+    data.custom_element = custom_element;
 
     let (parsed, script_info) = ingest_js_result(js_result, &mut data);
 
-    // JS analysis passes (before scoping)
-    if let Some(script_info) = script_info {
-        js_analyze::analyze_script(&parsed, &mut data, script_info);
-    }
+    // JS analysis: enrich script info and extract OXC Scoping
+    let script_scoping = script_info
+        .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
+    data.scoping = ComponentScoping::new(script_scoping);
     js_analyze::extract_all_expressions(&parsed, &mut data);
     js_analyze::compute_each_index_usage(&parsed, component, &mut data);
     js_analyze::compute_render_tag_args(&parsed, &mut data);
@@ -153,12 +154,12 @@ fn ingest_js_result<'a>(
 /// no fragment classification — modules are pure JS with rune transforms.
 pub fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>) {
     let _ = dev; // reserved for future dev-mode analysis (e.g. $inspect.trace labels)
-    let mut data = AnalysisData::new();
     let mut diags = Vec::new();
 
+    let mut data = AnalysisData::new_empty();
     match svelte_parser::parse_module(source, is_ts) {
         Ok((script_info, scoping)) => {
-            data.scoping = scope::ComponentScoping::from_scoping(scoping);
+            data.scoping = scope::ComponentScoping::new(Some(scoping));
 
             // Mark runes from script declarations
             for decl in &script_info.declarations {
