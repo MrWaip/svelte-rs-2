@@ -187,7 +187,9 @@ pub(crate) fn gen_on_directive_legacy<'a>(
     let mods = od.parsed_modifiers();
     let mut wrapped = handler;
     for wrapper in mods.handler_wrappers() {
-        let fn_name = format!("$.{}", wrapper);
+        let mut fn_name = String::with_capacity(2 + wrapper.len());
+        fn_name.push_str("$.");
+        fn_name.push_str(wrapper);
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
@@ -389,7 +391,9 @@ pub(crate) fn gen_legacy_event_on<'a>(
     let mods = od.parsed_modifiers();
     let mut wrapped = handler;
     for wrapper in mods.handler_wrappers() {
-        let fn_name = format!("$.{}", wrapper);
+        let mut fn_name = String::with_capacity(2 + wrapper.len());
+        fn_name.push_str("$.");
+        fn_name.push_str(wrapper);
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 

@@ -79,7 +79,10 @@ pub(crate) fn emit_bind_group_value<'a>(
     init: &mut Vec<Statement<'a>>,
     _update: &mut Vec<Statement<'a>>,
 ) {
-    let cache_name = ctx.gen_ident(&format!("{}_value", el_name));
+    let mut prefix = String::with_capacity(el_name.len() + 6);
+    prefix.push_str(el_name);
+    prefix.push_str("_value");
+    let cache_name = ctx.gen_ident(&prefix);
 
     // var input_value;
     init.push(ctx.b.var_uninit_stmt(&cache_name));
