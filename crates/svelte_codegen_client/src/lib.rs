@@ -63,9 +63,6 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
-    if ctx.needs_binding_group {
-        fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
-    }
     if ctx.dev {
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.check_target", [
             Arg::Expr(ctx.b.new_target_expr()),
@@ -77,6 +74,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             push_args.push(Arg::Ident(ctx.name));
         }
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.push", push_args)));
+    }
+    if ctx.needs_binding_group {
+        fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
     }
 
     // Store subscription setup:

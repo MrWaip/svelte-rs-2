@@ -103,20 +103,39 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     // Consume "root" name for all content types to keep numbering consistent
     let tpl_name = ctx.gen_ident("root");
 
-    // Collect snippet IDs (param names are already in IdentGen conflicts via ComponentScoping)
+    // Collect IDs for special elements, snippets — process in source order
+    // to match Svelte reference ident numbering.
+    let mut svelte_head_ids = Vec::new();
+    let mut svelte_window_ids = Vec::new();
+    let mut svelte_document_ids = Vec::new();
+    let mut svelte_body_ids = Vec::new();
     let mut instance_snippet_ids = Vec::new();
     let mut hoistable_snippet_ids = Vec::new();
     for node in &ctx.component.fragment.nodes {
-        if let svelte_ast::Node::SnippetBlock(block) = node {
-            if ctx.is_snippet_hoistable(block.id) {
-                hoistable_snippet_ids.push(block.id);
-            } else {
-                instance_snippet_ids.push(block.id);
+        match node {
+            svelte_ast::Node::SvelteHead(h) => svelte_head_ids.push(h.id),
+            svelte_ast::Node::SvelteWindow(w) => svelte_window_ids.push(w.id),
+            svelte_ast::Node::SvelteDocument(d) => svelte_document_ids.push(d.id),
+            svelte_ast::Node::SvelteBody(b) => svelte_body_ids.push(b.id),
+            svelte_ast::Node::SnippetBlock(block) => {
+                if ctx.is_snippet_hoistable(block.id) {
+                    hoistable_snippet_ids.push(block.id);
+                } else {
+                    instance_snippet_ids.push(block.id);
+                }
             }
+            _ => {}
         }
     }
 
-    // Generate snippet bodies: instance first, then hoistable (ordering matters for ident numbering)
+    // Svelte reference processes hoisted nodes in source order: head first,
+    // then snippets. This determines template ident numbering (root_1, root_2, ...).
+    let mut head_stmts = Vec::new();
+    for id in &svelte_head_ids {
+        svelte_head::gen_svelte_head(ctx, *id, &mut head_stmts);
+    }
+
+    // Generate snippet bodies: instance first, then hoistable
     let mut snippet_stmts: Vec<Statement<'a>> = Vec::new();
     for id in instance_snippet_ids {
         snippet_stmts.push(snippet::gen_snippet_block(ctx, id, vec![]));
@@ -132,33 +151,12 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     emit_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
 
-    // Collect special element IDs before template init
-    let svelte_window_ids: Vec<_> = ctx.component.fragment.nodes.iter()
-        .filter_map(|n| n.as_svelte_window().map(|w| w.id))
-        .collect();
-    let svelte_document_ids: Vec<_> = ctx.component.fragment.nodes.iter()
-        .filter_map(|n| n.as_svelte_document().map(|d| d.id))
-        .collect();
-    let svelte_body_ids: Vec<_> = ctx.component.fragment.nodes.iter()
-        .filter_map(|n| n.as_svelte_body().map(|b| b.id))
-        .collect();
-    let svelte_head_ids: Vec<_> = ctx.component.fragment.nodes.iter()
-        .filter_map(|n| n.as_svelte_head().map(|h| h.id))
-        .collect();
-
     // Template init first (Svelte reference unshifts var decl to init[0])
     let pre_len = body.len();
     emit_content_strategy(ctx, key, &ct, &tpl_name, true, &mut hoisted, &mut body);
 
     // Svelte reference order in init[]: template var (unshifted to [0]) →
     // head → window/document/body events → child processing → append.
-    // We insert head first, then special elements, both after the root var.
-
-    // Generate $.head() calls for <svelte:head> nodes.
-    let mut head_stmts = Vec::new();
-    for id in &svelte_head_ids {
-        svelte_head::gen_svelte_head(ctx, *id, &mut head_stmts);
-    }
 
     // Special element events/bindings
     let mut special_body: Vec<Statement<'a>> = Vec::new();
