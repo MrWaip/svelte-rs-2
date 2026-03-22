@@ -1,17 +1,101 @@
-use crate::data::{AnalysisData, LoweredTextPart, ContentStrategy, FragmentItem};
+use oxc_semantic::ScopeId;
+use svelte_ast::{Attribute, Element};
 
-/// Classify all fragments and mark which ones have dynamic children.
-pub fn classify_and_mark_dynamic(data: &mut AnalysisData) {
-    let dynamic_nodes = &data.dynamic_nodes;
-    let keys: Vec<_> = data.fragments.lowered.keys().copied().collect();
+use crate::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
+use crate::walker::TemplateVisitor;
+
+/// Visitor that computes content_type + has_dynamic_children + needs_var
+/// for element fragments during the main composite walk.
+///
+/// Must be LAST in the composite tuple: reads `dynamic_nodes` and `needs_ref`
+/// populated by ReactivityVisitor earlier in the same walk.
+pub(crate) struct ContentAndVarVisitor;
+
+impl TemplateVisitor for ContentAndVarVisitor {
+    fn leave_element(&mut self, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+        let key = FragmentKey::Element(el.id);
+
+        // Compute content_type + has_dynamic for this element's fragment
+        if let Some(lf) = data.fragments.lowered.get(&key) {
+            let cs = classify_items(&lf.items);
+            let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
+            data.fragments.content_types.insert(key, cs);
+            if has_dynamic {
+                data.fragments.has_dynamic_children.insert(key);
+            }
+        }
+
+        // Compute needs_var (same logic as former NeedsVarVisitor)
+        if element_needs_var(el, data) {
+            data.element_flags.needs_var.insert(el.id);
+        }
+    }
+}
+
+/// Classify non-element fragments after the composite walk completes.
+/// Element fragments are already classified by ContentAndVarVisitor::leave_element.
+pub fn classify_remaining_fragments(data: &mut AnalysisData) {
+    let keys: Vec<_> = data.fragments.lowered.keys()
+        .filter(|k| !matches!(k, FragmentKey::Element(_)))
+        .copied()
+        .collect();
     for key in keys {
         let lf = &data.fragments.lowered[&key];
         let cs = classify_items(&lf.items);
-        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, dynamic_nodes));
+        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
         data.fragments.content_types.insert(key, cs);
         if has_dynamic {
             data.fragments.has_dynamic_children.insert(key);
         }
+    }
+}
+
+fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
+    let id = el.id;
+
+    if data.element_flags.needs_ref.contains(&id) {
+        return true;
+    }
+
+    let has_runtime_attrs = el
+        .attributes
+        .iter()
+        .any(|a| !matches!(a, Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)));
+    if has_runtime_attrs {
+        return true;
+    }
+
+    let key = FragmentKey::Element(id);
+    let ct = data
+        .fragments
+        .content_types
+        .get(&key)
+        .cloned()
+        .unwrap_or(ContentStrategy::Empty);
+    match ct {
+        ContentStrategy::Empty | ContentStrategy::Static(_) => false,
+        ContentStrategy::DynamicText => true,
+        ContentStrategy::SingleBlock(_) => true,
+        ContentStrategy::SingleElement(_) | ContentStrategy::Mixed { .. } => {
+            let Some(lf) = data.fragments.lowered.get(&key) else {
+                return false;
+            };
+            lf.items.iter().any(|item| item_needs_var(item, data))
+        }
+    }
+}
+
+fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
+    match item {
+        FragmentItem::TextConcat { has_expr, .. } => *has_expr,
+        FragmentItem::Element(id) => {
+            // Bottom-up: child elements' needs_var already computed via leave_element
+            data.element_flags.needs_var.contains(id)
+        }
+        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_)
+        | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_)
+        | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_)
+        | FragmentItem::AwaitBlock(_) => true,
     }
 }
 
@@ -84,11 +168,10 @@ fn classify_items(items: &[FragmentItem]) -> ContentStrategy {
     if has_dynamic_text {
         ContentStrategy::DynamicText
     } else if has_static_text {
-        // Extract text from the single TextConcat item (all parts are static)
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
             parts.iter().map(|p| match p {
                 LoweredTextPart::Text(t) => t.as_str(),
-                LoweredTextPart::Expr(_) => "", // unreachable for static text
+                LoweredTextPart::Expr(_) => "",
             }).collect::<String>()
         } else {
             String::new()

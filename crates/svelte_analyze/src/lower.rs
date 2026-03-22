@@ -56,7 +56,17 @@ fn lower_fragment(
             Node::IfBlock(block) => {
                 lower_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), component, data);
                 if let Some(alt) = &block.alternate {
-                    lower_fragment(alt, FragmentKey::IfAlternate(block.id), component, data);
+                    let alt_key = FragmentKey::IfAlternate(block.id);
+                    lower_fragment(alt, alt_key, component, data);
+                    // Detect elseif: alternate has a single IfBlock child marked as elseif
+                    let is_elseif = data.fragments.lowered.get(&alt_key).is_some_and(|lf| {
+                        lf.items.len() == 1
+                            && matches!(&lf.items[0], FragmentItem::IfBlock(id)
+                                if alt.nodes.iter().any(|n| matches!(n, Node::IfBlock(ib) if ib.id == *id && ib.elseif)))
+                    });
+                    if is_elseif {
+                        data.alt_is_elseif.insert(block.id);
+                    }
                 }
             }
             Node::EachBlock(block) => {

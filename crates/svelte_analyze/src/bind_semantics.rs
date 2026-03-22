@@ -38,7 +38,7 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     /// Extract identifier-like tokens from an expression string.
-    fn extract_identifiers(expr: &str) -> Vec<String> {
+    fn extract_identifiers(expr: &str) -> Vec<&str> {
         expr.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
             .filter(|s| {
                 !s.is_empty()
@@ -46,7 +46,6 @@ impl<'s> BindSemanticsVisitor<'s> {
                         .next()
                         .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
             })
-            .map(|s| s.to_string())
             .collect()
     }
 
@@ -73,6 +72,7 @@ impl<'s> BindSemanticsVisitor<'s> {
                 data.scoping.find_binding(scope, name)
                     .is_some_and(|sym| data.scoping.is_each_block_var(sym))
             })
+            .map(|s| s.to_string())
             .collect();
 
         if !each_vars.is_empty() {
