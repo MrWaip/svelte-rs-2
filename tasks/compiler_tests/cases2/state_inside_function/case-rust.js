@@ -2,13 +2,13 @@ import * as $ from "svelte/internal/client";
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	function createCounter() {
-		let count = $state(0);
+		let count = $.state(0);
 		return {
 			get count() {
-				return count;
+				return $.get(count);
 			},
 			increment() {
-				count++;
+				$.update(count);
 			}
 		};
 	}

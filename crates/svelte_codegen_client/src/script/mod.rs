@@ -2,7 +2,7 @@ mod props;
 mod state;
 mod traverse;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement};
@@ -177,6 +177,7 @@ fn transform_script_text<'a>(
         class_state_stack: Vec::new(),
         prop_default_exprs,
         nested_derived_syms: FxHashSet::default(),
+        nested_state_syms: FxHashMap::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -248,6 +249,7 @@ fn transform_program<'a>(
         class_state_stack: Vec::new(),
         prop_default_exprs,
         nested_derived_syms: FxHashSet::default(),
+        nested_state_syms: FxHashMap::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -371,6 +373,9 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     /// SymbolIds of $derived/$derived.by variables declared in nested scopes (inside functions).
     /// These are detected syntactically (by callee name) since analysis only registers root-scope runes.
     pub(super) nested_derived_syms: FxHashSet<oxc_semantic::SymbolId>,
+    /// SymbolIds of $state variables declared in nested scopes. Maps to RuneKind
+    /// (State vs StateRaw) for proxy decision in $.set().
+    pub(super) nested_state_syms: FxHashMap<oxc_semantic::SymbolId, RuneKind>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
