@@ -1,12 +1,4 @@
 {
-  "ignorePatterns": [
-    "docs/compiler",
-    "target",
-    "tasks/benchmark/benches/compiler/*",
-    "tasks/compiler_tests/cases2/*/case-svelte.js",
-    "tasks/compiler_tests/cases2/*/case-rust.js",
-    "REVIEW.md"
-  ],
   "permissions": {
     "allow": [
       "Bash(cargo doc*)",
@@ -30,5 +22,16 @@
       "Bash(diff *)"
     ]
   },
-  "hooks": {}
+  "hooks": {},
+  "ignorePatterns": [
+    "docs/compiler",
+    "target",
+    "tasks/benchmark/benches/compiler/*",
+    "tasks/compiler_tests/cases2/*/case-svelte.js",
+    "tasks/compiler_tests/cases2/*/case-rust.js",
+    "REVIEW.md"
+  ],
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true
+  }
 }

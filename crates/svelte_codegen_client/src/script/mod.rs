@@ -409,58 +409,18 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
     }
 
-    pub(super) fn should_proxy(e: &Expression) -> bool {
-        if e.is_literal() {
-            return false;
-        }
-        if matches!(
-            e,
-            Expression::TemplateLiteral(_)
-                | Expression::ArrowFunctionExpression(_)
-                | Expression::FunctionExpression(_)
-                | Expression::UnaryExpression(_)
-                | Expression::BinaryExpression(_)
-        ) {
-            return false;
-        }
-        if let Expression::Identifier(id) = e {
-            if id.name == "undefined" {
-                return false;
-            }
-        }
-        true
-    }
-
     /// Walk an AssignmentTarget member chain to find root store ref.
     /// Returns `(dollar_name, base_name)` — e.g. `("$count", "count")`.
     pub(super) fn extract_assign_member_store_root<'t>(&self, target: &'t oxc_ast::ast::AssignmentTarget<'a>) -> Option<(&'t str, &'t str)> {
-        match target {
-            oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) => {
-                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.store_base_name(name).map(|base| (name, base))
-            }
-            oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) => {
-                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.store_base_name(name).map(|base| (name, base))
-            }
-            _ => None,
-        }
+        let name = svelte_transform::rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+        self.component_scoping.store_base_name(name).map(|base| (name, base))
     }
 
     /// Walk a SimpleAssignmentTarget member chain to find root store ref.
     /// Returns `(dollar_name, base_name)` — e.g. `("$count", "count")`.
     pub(super) fn extract_simple_member_store_root<'t>(&self, target: &'t oxc_ast::ast::SimpleAssignmentTarget<'a>) -> Option<(&'t str, &'t str)> {
-        match target {
-            oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(m) => {
-                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.store_base_name(name).map(|base| (name, base))
-            }
-            oxc_ast::ast::SimpleAssignmentTarget::ComputedMemberExpression(m) => {
-                let name = svelte_transform::rune_refs::find_expr_root_name(&m.object)?;
-                self.component_scoping.store_base_name(name).map(|base| (name, base))
-            }
-            _ => None,
-        }
+        let name = svelte_transform::rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+        self.component_scoping.store_base_name(name).map(|base| (name, base))
     }
 }
 

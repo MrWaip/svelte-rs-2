@@ -23,8 +23,6 @@ mod svelte_elements;
 // Re-export all shared types for convenience
 pub use types::*;
 
-// Re-export parsing functions used by svelte_analyze
-pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.
 ///
@@ -43,20 +41,20 @@ pub fn parse_module<'a>(
 
 /// Parse a Svelte source file and all embedded JS expressions.
 ///
-/// Returns the parsed component AST, JS parse results (expression metadata + ASTs),
+/// Returns the parsed component AST, parse results (expression + statement ASTs),
 /// and any diagnostics from both the Svelte parser and JS expression parsing.
 pub fn parse_with_js<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &str,
 ) -> (
     svelte_ast::Component,
-    crate::types::JsParseResult<'a>,
+    crate::types::ParserResult<'a>,
     Vec<Diagnostic>,
 ) {
     let (component, mut diagnostics) = Parser::new(source).parse();
-    let mut js_result = crate::types::JsParseResult::new();
-    walk_js::parse_js(alloc, &component, &mut js_result, &mut diagnostics);
-    (component, js_result, diagnostics)
+    let mut result = crate::types::ParserResult::new();
+    walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
+    (component, result, diagnostics)
 }
 
 // ---------------------------------------------------------------------------
@@ -107,8 +105,7 @@ struct EachBlockEntry {
 
 struct SnippetBlockEntry {
     span_start: Span,
-    name: String,
-    params_span: Option<Span>,
+    expression_span: Span,
 }
 
 /// Tracks which sub-fragment is currently being collected.
@@ -282,8 +279,7 @@ impl<'a> Parser<'a> {
                 TokenType::StartSnippetTag(snippet_tag) => {
                     entry_stack.push(StackEntry::SnippetBlock(SnippetBlockEntry {
                         span_start: token.span,
-                        name: snippet_tag.name_span.source_text(self.source).to_string(),
-                        params_span: snippet_tag.params_span,
+                        expression_span: snippet_tag.expression_span,
                     }));
                     children_stack.push(vec![]);
                 }
@@ -348,7 +344,7 @@ impl<'a> Parser<'a> {
                     let node = Node::ConstTag(ConstTag {
                         id: self.ids.next(),
                         span: token.span,
-                        declaration_span: ct.declaration_span,
+                        expression_span: ct.expression_span,
                     });
                     push_child(&mut children_stack, node);
                 }

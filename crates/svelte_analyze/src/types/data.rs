@@ -4,11 +4,38 @@ use smallvec::SmallVec;
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
-use crate::node_table::{NodeBitSet, NodeTable};
+use super::node_table::{NodeBitSet, NodeTable};
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::script_types::{ExportInfo, ScriptInfo};
+use super::script::{ExportInfo, ScriptInfo};
 
-pub use svelte_parser::ParsedExprs;
+pub use svelte_parser::ParserResult;
+
+// ---------------------------------------------------------------------------
+// AwaitBindingInfo / DestructureKind — binding patterns for await blocks
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub enum AwaitBindingInfo {
+    Simple(String),
+    Destructured { kind: DestructureKind, names: Vec<String> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestructureKind {
+    Object,
+    Array,
+}
+
+impl AwaitBindingInfo {
+    pub fn names(&self) -> &[String] {
+        match self {
+            Self::Simple(name) => std::slice::from_ref(name),
+            Self::Destructured { names, .. } => names,
+        }
+    }
+}
+
+// BindingNameCollector and DestructureBindingCollector moved to passes/build_scoping.rs
 
 // ---------------------------------------------------------------------------
 // Expression analysis types (created in js_analyze, stored in AnalysisData)
@@ -17,7 +44,11 @@ pub use svelte_parser::ParsedExprs;
 #[derive(Debug, Clone)]
 pub struct ExpressionInfo {
     pub kind: ExpressionKind,
-    pub references: SmallVec<[Reference; 2]>,
+    /// Resolved SymbolIds referenced in this expression.
+    /// Populated by `resolve_references` from OXC reference_id on AST nodes.
+    pub ref_symbols: SmallVec<[SymbolId; 2]>,
+    /// Expression references a `$X` store subscription.
+    pub has_store_ref: bool,
     pub has_side_effects: bool,
     pub has_call: bool,
     /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
@@ -29,22 +60,14 @@ pub struct ExpressionInfo {
     /// Expression requires component context (unsafe member/call/new on import/prop).
     /// Aggregated into `AnalysisData::needs_context` for `$.push`/`$.pop`.
     pub needs_context: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Reference {
-    pub(crate) name: CompactString,
-    pub(crate) span: Span,
-    pub(crate) flags: ReferenceFlags,
-    /// Resolved after `resolve_references` pass. `None` for globals/unresolved.
-    pub(crate) symbol_id: Option<SymbolId>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReferenceFlags {
-    Read,
-    Write,
-    ReadWrite,
+    /// Dynamic in template or element-attribute context.
+    /// For `expressions`: template semantics (state runes, dynamic bindings, stores, class fields).
+    /// For `attr_expressions`: element-attribute semantics (prop_non_source OR is_dynamic_by_id).
+    pub is_dynamic: bool,
+    /// Dynamic in component/boundary attribute context (Svelte's `has_state` semantics).
+    /// Any reference to a rune or non-root-scope binding.
+    /// Only meaningful for `attr_expressions`; for regular `expressions`, equals `is_dynamic`.
+    pub has_state: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +110,25 @@ pub enum FragmentKey {
     AwaitCatch(NodeId),
 }
 
+impl FragmentKey {
+    pub fn is_each_body(&self) -> bool {
+        matches!(self, Self::EachBody(_))
+    }
+
+    pub fn node_id(&self) -> Option<NodeId> {
+        match self {
+            Self::Root => None,
+            Self::Element(id) | Self::ComponentNode(id)
+            | Self::IfConsequent(id) | Self::IfAlternate(id)
+            | Self::EachBody(id) | Self::EachFallback(id)
+            | Self::SnippetBody(id) | Self::KeyBlockBody(id)
+            | Self::SvelteHeadBody(id) | Self::SvelteElementBody(id)
+            | Self::SvelteBoundaryBody(id)
+            | Self::AwaitPending(id) | Self::AwaitThen(id) | Self::AwaitCatch(id) => Some(*id),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
@@ -116,15 +158,28 @@ pub enum ComponentPropKind {
     /// `name` — boolean attribute
     Boolean { name: String },
     /// `name={expr}` — expression (possibly shorthand, possibly memoized)
-    Expression { name: String, attr_id: NodeId, shorthand: bool, needs_memo: bool },
+    Expression {
+        name: String,
+        attr_id: NodeId,
+        shorthand: bool,
+        needs_memo: bool,
+    },
     /// `name="text{expr}text"` — template concatenation
-    Concatenation { name: String, attr_id: NodeId, parts: Vec<ConcatPart> },
+    Concatenation {
+        name: String,
+        attr_id: NodeId,
+        parts: Vec<ConcatPart>,
+    },
     /// `{name}` — shorthand
     Shorthand { attr_id: NodeId, name: String },
     /// `bind:this={expr}`
     BindThis { bind_id: NodeId },
     /// `bind:name` or `bind:name={expr}` — component prop binding (not bind:this)
-    Bind { name: String, bind_id: NodeId, mode: ComponentBindMode },
+    Bind {
+        name: String,
+        bind_id: NodeId,
+        mode: ComponentBindMode,
+    },
     /// `{...spread}` — spread attribute on component
     Spread { attr_id: NodeId },
 }
@@ -226,30 +281,68 @@ impl ElementFlags {
         }
     }
 
-    pub fn has_spread(&self, id: NodeId) -> bool { self.has_spread.contains(&id) }
-    pub fn has_class_directives(&self, id: NodeId) -> bool { self.class_directive_info.contains_key(id) }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.class_attr_id.contains_key(id) }
-    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.class_attr_id.get(id).copied() }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.class_directive_info.get(id).map(|v| v.as_slice()) }
-    pub fn needs_clsx(&self, id: NodeId) -> bool { self.needs_clsx.contains(&id) }
-    pub fn has_style_directives(&self, id: NodeId) -> bool { self.style_directives.contains_key(id) }
-    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] { self.style_directives.get(id).map_or(&[], |v| v.as_slice()) }
-    pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.needs_input_defaults.contains(&id) }
-    pub fn needs_var(&self, id: NodeId) -> bool { self.needs_var.contains(&id) }
-    pub fn needs_ref(&self, id: NodeId) -> bool { self.needs_ref.contains(&id) }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.dynamic_attrs.contains(&id) }
-    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.static_class.get(id).map(|s| s.as_str()) }
-    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.static_style.get(id).map(|s| s.as_str()) }
-    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.bound_contenteditable.contains(&id) }
-    pub fn has_use_directive(&self, id: NodeId) -> bool { self.has_use_directive.contains(&id) }
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.has_dynamic_class_directives.contains(&id) }
+    pub fn has_spread(&self, id: NodeId) -> bool {
+        self.has_spread.contains(&id)
+    }
+    pub fn has_class_directives(&self, id: NodeId) -> bool {
+        self.class_directive_info.contains_key(id)
+    }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool {
+        self.class_attr_id.contains_key(id)
+    }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
+        self.class_attr_id.get(id).copied()
+    }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
+        self.class_directive_info.get(id).map(|v| v.as_slice())
+    }
+    pub fn needs_clsx(&self, id: NodeId) -> bool {
+        self.needs_clsx.contains(&id)
+    }
+    pub fn has_style_directives(&self, id: NodeId) -> bool {
+        self.style_directives.contains_key(id)
+    }
+    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
+        self.style_directives.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool {
+        self.needs_input_defaults.contains(&id)
+    }
+    pub fn needs_var(&self, id: NodeId) -> bool {
+        self.needs_var.contains(&id)
+    }
+    pub fn needs_ref(&self, id: NodeId) -> bool {
+        self.needs_ref.contains(&id)
+    }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
+        self.dynamic_attrs.contains(&id)
+    }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> {
+        self.static_class.get(id).map(|s| s.as_str())
+    }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> {
+        self.static_style.get(id).map(|s| s.as_str())
+    }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
+        self.bound_contenteditable.contains(&id)
+    }
+    pub fn has_use_directive(&self, id: NodeId) -> bool {
+        self.has_use_directive.contains(&id)
+    }
+    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
+        self.has_dynamic_class_directives.contains(&id)
+    }
     /// Whether class attribute handling needs state (dynamic class attr or dynamic class directives).
     pub fn class_needs_state(&self, element_id: NodeId) -> bool {
-        let class_attr_dynamic = self.class_attr_id.get(element_id)
+        let class_attr_dynamic = self
+            .class_attr_id
+            .get(element_id)
             .is_some_and(|&attr_id| self.dynamic_attrs.contains(&attr_id));
         class_attr_dynamic || self.has_dynamic_class_directives.contains(&element_id)
     }
-    pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.expression_shorthand.contains(&id) }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
+        self.expression_shorthand.contains(&id)
+    }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(id).map_or(&[], |v| v.as_slice())
     }
@@ -277,13 +370,22 @@ impl FragmentData {
     pub fn with_capacity(estimated_fragments: usize) -> Self {
         Self {
             lowered: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
-            content_types: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
-            has_dynamic_children: FxHashSet::with_capacity_and_hasher(estimated_fragments / 4, Default::default()),
+            content_types: FxHashMap::with_capacity_and_hasher(
+                estimated_fragments,
+                Default::default(),
+            ),
+            has_dynamic_children: FxHashSet::with_capacity_and_hasher(
+                estimated_fragments / 4,
+                Default::default(),
+            ),
         }
     }
 
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.content_types.get(key).cloned().unwrap_or(ContentStrategy::Empty)
+        self.content_types
+            .get(key)
+            .cloned()
+            .unwrap_or(ContentStrategy::Empty)
     }
 
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
@@ -295,9 +397,8 @@ impl FragmentData {
     }
 }
 
-/// Snippet analysis: parameter names and hoistability.
+/// Snippet analysis: hoistability and component-snippet grouping.
 pub struct SnippetData {
-    pub(crate) params: NodeTable<Vec<String>>,
     pub(crate) hoistable: NodeBitSet,
     /// Key: ComponentNode NodeId → snippet NodeIds declared in its fragment
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
@@ -306,16 +407,18 @@ pub struct SnippetData {
 impl SnippetData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            params: NodeTable::new(node_count),
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
         }
     }
 
-    pub fn params(&self, id: NodeId) -> Option<&Vec<String>> { self.params.get(id) }
-    pub fn is_hoistable(&self, id: NodeId) -> bool { self.hoistable.contains(&id) }
+    pub fn is_hoistable(&self, id: NodeId) -> bool {
+        self.hoistable.contains(&id)
+    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
-        self.component_snippets.get(id).map_or(&[], |v| v.as_slice())
+        self.component_snippets
+            .get(id)
+            .map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -333,8 +436,12 @@ impl ConstTagData {
         }
     }
 
-    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> { self.names.get(id) }
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+    pub fn names(&self, id: NodeId) -> Option<&Vec<String>> {
+        self.names.get(id)
+    }
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get(key)
+    }
 }
 
 /// DebugTag per-fragment grouping.
@@ -349,7 +456,9 @@ impl DebugTagData {
         }
     }
 
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get(key)
+    }
 }
 
 /// TitleElement per-fragment grouping (<title> inside <svelte:head>).
@@ -364,13 +473,17 @@ impl TitleElementData {
         }
     }
 
-    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.by_fragment.get(key) }
+    pub fn by_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
+        self.by_fragment.get(key)
+    }
 }
 
-/// Each-block context/index names, extracted from source text during scope building.
+/// Each-block analysis data — side tables populated during build_scoping.
 pub struct EachBlockData {
-    pub(crate) context_names: NodeTable<String>,
-    pub(crate) index_names: NodeTable<String>,
+    /// SymbolId of the index variable.
+    pub(crate) index_syms: NodeTable<SymbolId>,
+    /// Analyzed key expression (stored separately because expressions[block.id] holds the iterable).
+    pub(crate) key_infos: NodeTable<ExpressionInfo>,
     /// Key expression references the index variable (needs index param in key arrow).
     pub(crate) key_uses_index: NodeBitSet,
     /// Context is a destructuring pattern (`{ name, value }` or `[a, b]`).
@@ -386,8 +499,8 @@ pub struct EachBlockData {
 impl EachBlockData {
     pub fn new(node_count: u32) -> Self {
         Self {
-            context_names: NodeTable::new(node_count),
-            index_names: NodeTable::new(node_count),
+            index_syms: NodeTable::new(node_count),
+            key_infos: NodeTable::new(node_count),
             key_uses_index: NodeBitSet::new(node_count),
             is_destructured: NodeBitSet::new(node_count),
             body_uses_index: NodeBitSet::new(node_count),
@@ -396,27 +509,33 @@ impl EachBlockData {
         }
     }
 
-    pub fn context_name(&self, id: NodeId) -> Option<&str> {
-        self.context_names.get(id).map(|s| s.as_str())
+    pub fn index_sym(&self, id: NodeId) -> Option<SymbolId> {
+        self.index_syms.get(id).copied()
     }
 
-    pub fn index_name(&self, id: NodeId) -> Option<&str> {
-        self.index_names.get(id).map(|s| s.as_str())
+    pub fn key_uses_index(&self, id: NodeId) -> bool {
+        self.key_uses_index.contains(&id)
     }
-
-    pub fn key_uses_index(&self, id: NodeId) -> bool { self.key_uses_index.contains(&id) }
-    pub fn is_destructured(&self, id: NodeId) -> bool { self.is_destructured.contains(&id) }
-    pub fn body_uses_index(&self, id: NodeId) -> bool { self.body_uses_index.contains(&id) }
-    pub fn key_is_item(&self, id: NodeId) -> bool { self.key_is_item.contains(&id) }
-    pub fn has_animate(&self, id: NodeId) -> bool { self.has_animate.contains(&id) }
+    pub fn is_destructured(&self, id: NodeId) -> bool {
+        self.is_destructured.contains(&id)
+    }
+    pub fn body_uses_index(&self, id: NodeId) -> bool {
+        self.body_uses_index.contains(&id)
+    }
+    pub fn key_is_item(&self, id: NodeId) -> bool {
+        self.key_is_item.contains(&id)
+    }
+    pub fn has_animate(&self, id: NodeId) -> bool {
+        self.has_animate.contains(&id)
+    }
 }
 
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
 pub struct AwaitBindingData {
     /// Then binding info, keyed by AwaitBlock NodeId.
-    pub(crate) values: NodeTable<svelte_parser::AwaitBindingInfo>,
+    pub(crate) values: NodeTable<AwaitBindingInfo>,
     /// Catch binding info, keyed by AwaitBlock NodeId.
-    pub(crate) errors: NodeTable<svelte_parser::AwaitBindingInfo>,
+    pub(crate) errors: NodeTable<AwaitBindingInfo>,
 }
 
 impl AwaitBindingData {
@@ -427,8 +546,12 @@ impl AwaitBindingData {
         }
     }
 
-    pub fn value(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.values.get(id) }
-    pub fn error(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> { self.errors.get(id) }
+    pub fn value(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
+        self.values.get(id)
+    }
+    pub fn error(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
+        self.errors.get(id)
+    }
 }
 
 /// Pre-computed bind/directive semantics for codegen.
@@ -548,14 +671,9 @@ pub struct AnalysisData {
     pub each_blocks: EachBlockData,
     /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
     pub render_tag_arg_has_call: NodeTable<Vec<bool>>,
-    /// Intermediate: per-argument identifier name (if the arg is a plain identifier).
-    /// Consumed by `resolve_render_tag_prop_sources` after props analysis.
-    pub(crate) render_tag_arg_idents: NodeTable<Vec<Option<String>>>,
     /// Per-argument prop-source SymbolId for render tags.
     /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
     pub render_tag_prop_sources: NodeTable<Vec<Option<SymbolId>>>,
-    /// Callee identifier name for render tags (only set when callee is an Identifier).
-    pub(crate) render_tag_callee_name: NodeTable<String>,
     /// Callee SymbolId for render tags (resolved during resolve_references).
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     /// Intermediate: render tags with ChainExpression callee (`{@render fn?.()}`).
@@ -611,9 +729,7 @@ impl AnalysisData {
             title_elements: TitleElementData::new(),
             each_blocks: EachBlockData::new(node_count),
             render_tag_arg_has_call: NodeTable::new(node_count),
-            render_tag_arg_idents: NodeTable::new(node_count),
             render_tag_prop_sources: NodeTable::new(node_count),
-            render_tag_callee_name: NodeTable::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
             render_tag_callee_mode: NodeTable::new(node_count),
@@ -631,43 +747,64 @@ impl AnalysisData {
 }
 
 impl AnalysisData {
-    pub fn is_dynamic(&self, id: NodeId) -> bool { self.dynamic_nodes.contains(&id) }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.alt_is_elseif.contains(&id) }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.expressions.get(id) }
-    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.attr_expressions.get(id) }
+    pub fn is_dynamic(&self, id: NodeId) -> bool {
+        self.dynamic_nodes.contains(&id)
+    }
+    pub fn is_elseif_alt(&self, id: NodeId) -> bool {
+        self.alt_is_elseif.contains(&id)
+    }
+    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
+        self.expressions.get(id)
+    }
+    pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
+        self.attr_expressions.get(id)
+    }
     pub fn node_expr_offset(&self, id: NodeId) -> u32 {
-        *self.node_expr_offsets.get(id).unwrap_or_else(|| panic!("no expr offset for node {:?}", id))
+        *self
+            .node_expr_offsets
+            .get(id)
+            .unwrap_or_else(|| panic!("no expr offset for node {:?}", id))
     }
     pub fn attr_expr_offset(&self, id: NodeId) -> u32 {
-        *self.attr_expr_offsets.get(id).unwrap_or_else(|| panic!("no expr offset for attr {:?}", id))
+        *self
+            .attr_expr_offsets
+            .get(id)
+            .unwrap_or_else(|| panic!("no expr offset for attr {:?}", id))
     }
     /// Whether the attribute's expression references an imported symbol (first reference).
     /// Import identifiers may be live bindings — codegen needs getters/wrapping.
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(attr_id)
-            .and_then(|info| info.references.first())
-            .and_then(|r| r.symbol_id)
-            .is_some_and(|sym| self.import_syms.contains(&sym))
+        self.attr_expressions
+            .get(attr_id)
+            .and_then(|info| info.ref_symbols.first())
+            .is_some_and(|&sym| self.import_syms.contains(&sym))
     }
-    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> { self.render_tag_arg_has_call.get(id).map(|v| v.as_slice()) }
-    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> { self.render_tag_prop_sources.get(id).map(|v| v.as_slice()) }
+    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> {
+        self.render_tag_arg_has_call.get(id).map(|v| v.as_slice())
+    }
+    pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> {
+        self.render_tag_prop_sources.get(id).map(|v| v.as_slice())
+    }
     pub fn render_tag_callee_mode(&self, id: NodeId) -> RenderTagCalleeMode {
-        self.render_tag_callee_mode.get(id).copied().unwrap_or(RenderTagCalleeMode::Direct)
+        self.render_tag_callee_mode
+            .get(id)
+            .copied()
+            .unwrap_or(RenderTagCalleeMode::Direct)
     }
 
     /// Component attribute needs `$.derived()` memoization:
     /// has a function call, OR is a non-simple dynamic expression.
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions.get(attr_id).is_some_and(|e|
+        self.attr_expressions.get(attr_id).is_some_and(|e| {
             e.has_call || (!e.kind.is_simple() && self.element_flags.is_dynamic_attr(attr_id))
-        )
+        })
     }
 
     /// Expression has a function call AND references to resolved bindings — needs `$.derived` wrapping.
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
-        self.expressions.get(id).is_some_and(|e|
-            e.has_call && e.references.iter().any(|r| r.symbol_id.is_some())
-        )
+        self.expressions
+            .get(id)
+            .is_some_and(|e| e.has_call && !e.ref_symbols.is_empty())
     }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
@@ -709,7 +846,10 @@ pub enum FragmentItem {
     /// An AwaitBlock ({#await expr}...{/await}).
     AwaitBlock(NodeId),
     /// Adjacent text nodes and expression tags grouped together.
-    TextConcat { parts: Vec<LoweredTextPart>, has_expr: bool },
+    TextConcat {
+        parts: Vec<LoweredTextPart>,
+        has_expr: bool,
+    },
 }
 
 impl FragmentItem {
@@ -787,7 +927,10 @@ impl LoweredTextPart {
 
     /// Returns true if this is a text part (span or owned).
     pub fn is_text(&self) -> bool {
-        matches!(self, LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_))
+        matches!(
+            self,
+            LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_)
+        )
     }
 }
 
@@ -836,5 +979,9 @@ pub enum ContentStrategy {
     /// Text with expressions (no elements or blocks).
     DynamicText,
     /// Mix of elements, blocks, and/or text.
-    Mixed { has_elements: bool, has_blocks: bool, has_text: bool },
+    Mixed {
+        has_elements: bool,
+        has_blocks: bool,
+        has_text: bool,
+    },
 }

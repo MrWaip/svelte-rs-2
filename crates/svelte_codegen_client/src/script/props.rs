@@ -96,7 +96,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     .and_then(|e| e.take())
                     .unwrap_or_else(|| panic!("prop_default_exprs missing for prop {}", prop.local_name));
                 // Wrap $bindable() defaults in $.proxy() when needed
-                let default_expr = if prop.is_bindable && Self::should_proxy(&default_expr) {
+                let default_expr = if prop.is_bindable && svelte_transform::rune_refs::should_proxy(&default_expr) {
                     self.b.call_expr("$.proxy", [Arg::Expr(default_expr)])
                 } else {
                     default_expr

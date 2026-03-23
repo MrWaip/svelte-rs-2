@@ -1659,6 +1659,7 @@ fn script_jsdoc_comment() {
     assert_compiler("script_jsdoc_comment");
 }
 
+#[rstest]
 fn svelte_head_title_with_meta() {
     assert_compiler("svelte_head_title_with_meta");
 }
@@ -1702,7 +1703,6 @@ fn root_with_special_elements() {
 fn debug_inside_element() {
     assert_compiler("debug_inside_element");
 }
-
 
 #[rstest]
 fn needs_context_method_chain() {

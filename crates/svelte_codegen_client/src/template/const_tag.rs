@@ -5,8 +5,6 @@ use svelte_analyze::FragmentKey;
 use crate::builder::{Arg, ObjProp};
 use crate::context::Ctx;
 
-use super::expression::get_node_expr;
-
 /// Emit `const name = $.derived(() => init_expr)` for each ConstTag in a fragment.
 ///
 /// Called before DOM init code in every fragment codegen path.
@@ -21,7 +19,16 @@ pub(crate) fn emit_const_tags<'a>(
 
     for id in ids {
         let names = ctx.const_tag_names(id).cloned().unwrap_or_default();
-        let init_expr = get_node_expr(ctx, id);
+        // Extract init expression from the pre-parsed Statement in stmts.
+        // Shallow destructure of `const EXPR;` — known top-level shape.
+        let offset = ctx.node_expr_offset(id);
+        let stmt = ctx.parsed.stmts.remove(&offset)
+            .expect("const tag stmt missing from parsed.stmts");
+        let Statement::VariableDeclaration(mut decl) = stmt else {
+            unreachable!("const tag stmt must be VariableDeclaration")
+        };
+        let init_expr = decl.declarations.remove(0).init.take()
+            .expect("const tag declarator must have init expression");
 
         if names.len() == 1 {
             // Simple identifier: const name = $.derived(() => init_expr)

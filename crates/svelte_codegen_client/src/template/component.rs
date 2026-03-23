@@ -133,7 +133,7 @@ pub(crate) fn gen_component<'a>(
     let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
     let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
     for snippet_id in &snippet_ids {
-        let snippet_name = ctx.snippet_block(*snippet_id).name.clone();
+        let snippet_name = ctx.snippet_block(*snippet_id).name(ctx.source).to_string();
         snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
         items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));

@@ -239,27 +239,27 @@ pub fn should_proxy(e: &Expression) -> bool {
 
 /// Walk an Expression member chain to find the root identifier name.
 pub fn find_expr_root_name<'b>(expr: &'b Expression) -> Option<&'b str> {
-    match expr {
-        Expression::Identifier(id) => Some(id.name.as_str()),
-        Expression::StaticMemberExpression(m) => find_expr_root_name(&m.object),
-        Expression::ComputedMemberExpression(m) => find_expr_root_name(&m.object),
-        _ => None,
+    let mut current = expr;
+    loop {
+        match current {
+            Expression::Identifier(id) => return Some(id.name.as_str()),
+            _ => current = current.as_member_expression()?.object(),
+        }
     }
 }
 
 /// Replace the root identifier in an Expression member chain with a replacement.
 pub fn replace_expr_root<'a>(expr: &mut Expression<'a>, replacement: Expression<'a>) {
-    match expr {
-        Expression::Identifier(_) => {
-            *expr = replacement;
+    let mut current = expr;
+    loop {
+        if matches!(current, Expression::Identifier(_)) {
+            *current = replacement;
+            return;
         }
-        Expression::StaticMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
+        match current.as_member_expression_mut() {
+            Some(member) => current = member.object_mut(),
+            None => return,
         }
-        Expression::ComputedMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
-        }
-        _ => {}
     }
 }
 
@@ -268,14 +268,8 @@ pub fn replace_expr_root_in_assign_target<'a>(
     target: &mut AssignmentTarget<'a>,
     replacement: Expression<'a>,
 ) {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
-        }
-        AssignmentTarget::ComputedMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
-        }
-        _ => {}
+    if let Some(member) = target.as_member_expression_mut() {
+        replace_expr_root(member.object_mut(), replacement);
     }
 }
 
@@ -284,14 +278,8 @@ pub fn replace_expr_root_in_simple_target<'a>(
     target: &mut SimpleAssignmentTarget<'a>,
     replacement: Expression<'a>,
 ) {
-    match target {
-        SimpleAssignmentTarget::StaticMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
-        }
-        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
-            replace_expr_root(&mut m.object, replacement);
-        }
-        _ => {}
+    if let Some(member) = target.as_member_expression_mut() {
+        replace_expr_root(member.object_mut(), replacement);
     }
 }
 

@@ -214,3 +214,23 @@ $.append($$anchor, fragment);
 const $$const_0 = $.derived(() => point);
 // x → $.get($$const_0).x in subsequent expressions
 ```
+
+---
+
+## EachBlock Compilation
+
+Input variants and their codegen output:
+
+| Svelte syntax | Callback param | Notes |
+|---|---|---|
+| `{#each expr as name}` | `($$anchor, name)` | Simple identifier from parsed `let name = x;` |
+| `{#each expr as name, i}` | `($$anchor, name, i)` | + index param |
+| `{#each expr as name (key)}` | `($$anchor, name)` | Keyed, key fn gets separate arrow |
+| `{#each expr as { id, name }}` | `($$anchor, $$item)` | Destructured → `$$item` + getter declarations |
+| `{#each expr as [a, b]}` | `($$anchor, $$item)` | Array destructured → `$$item` + `$.to_array` |
+| `{#each expr}` | `($$anchor, $$item)` | No context → `$$item` |
+| `{#each expr, i}` | `($$anchor, $$item, i)` | No context + index |
+
+Context name resolution (codegen, `each_block.rs`):
+- Parser wraps context as `let PATTERN = x;` → stored in `parsed.stmts[context_span.start]`
+- Codegen checks `declarator.id`: `BindingIdentifier` → use name, otherwise → `"$$item"`
