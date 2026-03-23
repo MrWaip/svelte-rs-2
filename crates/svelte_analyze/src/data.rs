@@ -258,6 +258,14 @@ impl FragmentData {
         }
     }
 
+    pub fn with_capacity(estimated_fragments: usize) -> Self {
+        Self {
+            lowered: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
+            content_types: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
+            has_dynamic_children: FxHashSet::with_capacity_and_hasher(estimated_fragments / 4, Default::default()),
+        }
+    }
+
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
         self.content_types.get(key).cloned().unwrap_or(ContentStrategy::Empty)
     }
@@ -574,7 +582,7 @@ impl AnalysisData {
             needs_context: false,
             has_class_state_fields: false,
             element_flags: ElementFlags::new(node_count),
-            fragments: FragmentData::new(),
+            fragments: FragmentData::with_capacity(node_count as usize / 3),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
@@ -737,10 +745,28 @@ impl LoweredFragment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredTextPart {
-    /// Static text content (possibly trimmed).
-    Text(String),
+    /// Unmodified text — reference source via span (zero-alloc).
+    TextSpan(svelte_span::Span),
+    /// Trimmed/modified text that differs from source (heap-allocated).
+    TextOwned(String),
     /// Expression tag node id.
     Expr(NodeId),
+}
+
+impl LoweredTextPart {
+    /// Get text value, resolving spans against source.
+    pub fn text_value<'a>(&'a self, source: &'a str) -> Option<&'a str> {
+        match self {
+            LoweredTextPart::TextSpan(span) => Some(span.source_text(source)),
+            LoweredTextPart::TextOwned(s) => Some(s.as_str()),
+            LoweredTextPart::Expr(_) => None,
+        }
+    }
+
+    /// Returns true if this is a text part (span or owned).
+    pub fn is_text(&self) -> bool {
+        matches!(self, LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_))
+    }
 }
 
 // ---------------------------------------------------------------------------

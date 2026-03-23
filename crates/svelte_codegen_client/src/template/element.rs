@@ -52,8 +52,10 @@ pub(crate) fn process_element<'a>(
     let mut directive_after_update: Vec<Statement<'a>> = Vec::new();
 
     if ctx.has_spread(el_id) {
-        let el_clone = el.clone_without_fragment();
-        process_attrs_spread(ctx, &el_clone, el_name, init, after_update);
+        let el = ctx.element(el_id);
+        let el_tag = el.name.clone();
+        let spread_attrs = el.attributes.clone();
+        process_attrs_spread(ctx, el_id, &el_tag, &spread_attrs, el_name, init, after_update);
 
         // Directives skipped by process_attrs_spread — handle them separately
         let el = ctx.element(el_id);
@@ -101,12 +103,10 @@ pub(crate) fn process_element<'a>(
     }
 
     // Class attribute and/or class directives
-    let el = ctx.element(el_id);
-    process_class_attribute_and_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
+    process_class_attribute_and_directives(ctx, el_id, el_name, init, update);
 
     // Style directives
-    let el = ctx.element(el_id);
-    process_style_directives(ctx, &el.clone_without_fragment(), el_name, init, update);
+    process_style_directives(ctx, el_id, el_name, init, update);
 
     // --- Children ---
     // Debug tags inside this element's fragment (before child DOM traversal)

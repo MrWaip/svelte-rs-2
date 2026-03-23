@@ -8,15 +8,15 @@ use svelte_transform::TransformData;
 
 use crate::builder::Builder;
 
-/// Pre-built index for O(1) node lookup by NodeId.
+/// Dense Vec-based index for O(1) node lookup by NodeId (no hashing overhead).
 struct NodeIndex<'a> {
-    nodes: FxHashMap<NodeId, &'a Node>,
+    nodes: Vec<Option<&'a Node>>,
 }
 
 impl<'a> NodeIndex<'a> {
-    fn build(fragment: &'a Fragment) -> Self {
+    fn build(fragment: &'a Fragment, node_count: u32) -> Self {
         let mut index = Self {
-            nodes: FxHashMap::default(),
+            nodes: vec![None; node_count as usize],
         };
         index.walk(fragment);
         index
@@ -26,7 +26,12 @@ impl<'a> NodeIndex<'a> {
         for node in &fragment.nodes {
             match node {
                 Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
-                _ => { self.nodes.insert(node.node_id(), node); }
+                _ => {
+                    let id = node.node_id().0 as usize;
+                    if id < self.nodes.len() {
+                        self.nodes[id] = Some(node);
+                    }
+                }
             }
             match node {
                 Node::Element(el) => self.walk(&el.fragment),
@@ -89,7 +94,9 @@ pub struct Ctx<'a> {
     pub dev: bool,
 
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
+    /// Ordered Vec for deterministic output + HashSet for O(1) dedup.
     pub delegated_events: Vec<String>,
+    delegated_events_set: rustc_hash::FxHashSet<String>,
 
     /// Original component source text (for re-parsing expression spans in codegen).
     pub source: &'a str,
@@ -112,7 +119,7 @@ impl<'a> Ctx<'a> {
         source: &'a str,
         filename: &str,
     ) -> Self {
-        let index = NodeIndex::build(&component.fragment);
+        let index = NodeIndex::build(&component.fragment, component.node_count);
         let name = allocator.alloc_str(name);
         let filename = allocator.alloc_str(filename);
 
@@ -132,6 +139,7 @@ impl<'a> Ctx<'a> {
             bound_contenteditable: false,
             snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
+            delegated_events_set: rustc_hash::FxHashSet::default(),
             source,
             filename,
             has_tracing: false,
@@ -154,7 +162,8 @@ impl<'a> Ctx<'a> {
     pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(id, "svelte document", Node::as_svelte_document) }
     pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(id, "svelte body", Node::as_svelte_body) }
     fn get_node<T>(&self, id: NodeId, label: &str, extract: fn(&Node) -> Option<&T>) -> &'a T {
-        let node = self.index.nodes.get(&id)
+        let node = self.index.nodes.get(id.0 as usize)
+            .and_then(|slot| slot.as_ref())
             .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id));
         extract(node)
             .unwrap_or_else(|| panic!("{} {:?} is wrong node type", label, id))
@@ -268,5 +277,14 @@ impl<'a> Ctx<'a> {
 
     pub fn attr_expr_offset(&self, attr_id: NodeId) -> u32 {
         self.analysis.attr_expr_offset(attr_id)
+    }
+
+    // -- Delegated events --
+
+    /// Register a delegated event name (deduplicates via O(1) HashSet lookup).
+    pub fn add_delegated_event(&mut self, event_name: String) {
+        if self.delegated_events_set.insert(event_name.clone()) {
+            self.delegated_events.push(event_name);
+        }
     }
 }

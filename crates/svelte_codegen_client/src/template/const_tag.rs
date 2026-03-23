@@ -31,7 +31,7 @@ pub(crate) fn emit_const_tags<'a>(
             // Dev mode: wrap with $.tag(derived, "name") + eager $.get() to catch init errors
             let final_expr = if ctx.dev {
                 let name_str = ctx.b.alloc_str(&names[0]);
-                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::Str(name_str.to_string())])
+                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
             } else {
                 derived
             };
@@ -60,7 +60,7 @@ pub(crate) fn emit_const_tags<'a>(
 
             // Dev mode: wrap with $.tag(derived, "[@const]")
             let final_expr = if ctx.dev {
-                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::Str("[@const]".to_string())])
+                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
             } else {
                 derived
             };

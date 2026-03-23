@@ -64,7 +64,7 @@ fn gen_window_binding<'a>(
             let getter = build_binding_getter(ctx, &var_name, is_rune);
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_window_scroll", [
-                Arg::Str(axis.to_string()),
+                Arg::StrRef(axis),
                 Arg::Expr(getter),
                 Arg::Expr(setter),
             ])
@@ -72,7 +72,7 @@ fn gen_window_binding<'a>(
         "innerWidth" | "innerHeight" | "outerWidth" | "outerHeight" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_window_size", [
-                Arg::Str(bind.name.clone()),
+                Arg::StrRef(&bind.name),
                 Arg::Expr(setter),
             ])
         }
@@ -83,8 +83,8 @@ fn gen_window_binding<'a>(
         "devicePixelRatio" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
             ctx.b.call_stmt("$.bind_property", [
-                Arg::Str("devicePixelRatio".to_string()),
-                Arg::Str("resize".to_string()),
+                Arg::StrRef("devicePixelRatio"),
+                Arg::StrRef("resize"),
                 Arg::Ident("$.window"),
                 Arg::Expr(setter),
             ])

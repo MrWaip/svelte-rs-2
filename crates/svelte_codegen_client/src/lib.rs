@@ -88,7 +88,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         store_names.sort();
 
         for base_name in &store_names {
-            let dollar_name = format!("${}", base_name);
+            let mut dollar_name = String::with_capacity(1 + base_name.len());
+            dollar_name.push('$');
+            dollar_name.push_str(base_name);
             let dollar_name_str: &str = ctx.b.alloc_str(&dollar_name);
             let base_str: &str = ctx.b.alloc_str(base_name);
             // const $name = () => $.store_get(name, "$name", $$stores)

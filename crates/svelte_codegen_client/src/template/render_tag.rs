@@ -69,7 +69,9 @@ pub(crate) fn gen_render_tag<'a>(
         let has_call = arg_has_call.get(i).copied().unwrap_or(false);
 
         if has_call {
-            let memo_name = format!("${memo_counter}");
+            let mut memo_name = String::with_capacity(4);
+            memo_name.push('$');
+            memo_name.push_str(&memo_counter.to_string());
             memo_counter += 1;
             let thunk = ctx.b.thunk(arg_expr);
             let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);

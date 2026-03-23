@@ -95,12 +95,13 @@ pub(crate) fn build_concat_from_parts<'a>(
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
         match part {
-            LoweredTextPart::Text(s) => {
+            LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
+                let s = part.text_value(&ctx.component.source).unwrap();
                 // Merge with previous Str part if possible
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
                 } else {
-                    tpl_parts.push(TemplatePart::Str(s.clone()));
+                    tpl_parts.push(TemplatePart::Str(s.to_string()));
                 }
             }
             LoweredTextPart::Expr(nid) => {

@@ -187,13 +187,15 @@ pub(crate) fn gen_on_directive_legacy<'a>(
     let mods = od.parsed_modifiers();
     let mut wrapped = handler;
     for wrapper in mods.handler_wrappers() {
-        let fn_name = format!("$.{}", wrapper);
+        let mut fn_name = String::with_capacity(2 + wrapper.len());
+        fn_name.push_str("$.");
+        fn_name.push_str(wrapper);
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
     // --- Build $.event() call ---
     let mut args: Vec<Arg<'a, '_>> = vec![
-        Arg::Str(od.name.clone()),
+        Arg::StrRef(&od.name),
         Arg::Ident(el_name),
         Arg::Expr(wrapped),
     ];
@@ -389,12 +391,14 @@ pub(crate) fn gen_legacy_event_on<'a>(
     let mods = od.parsed_modifiers();
     let mut wrapped = handler;
     for wrapper in mods.handler_wrappers() {
-        let fn_name = format!("$.{}", wrapper);
+        let mut fn_name = String::with_capacity(2 + wrapper.len());
+        fn_name.push_str("$.");
+        fn_name.push_str(wrapper);
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
     let mut args: Vec<Arg<'a, '_>> = vec![
-        Arg::Str(od.name.clone()),
+        Arg::StrRef(&od.name),
         Arg::Ident(target),
         Arg::Expr(wrapped),
     ];
@@ -431,7 +435,7 @@ pub(crate) fn gen_event_attr_on<'a>(
 
     let passive = svelte_analyze::is_passive_event(&event_name);
     let mut args: Vec<Arg<'a, '_>> = vec![
-        Arg::Str(event_name.clone()),
+        Arg::StrRef(&event_name),
         Arg::Ident(target),
         Arg::Expr(handler),
     ];

@@ -39,7 +39,7 @@ pub fn gen_custom_element<'a>(
     let accessors = b.array_from_args(
         ctx.analysis.exports.iter().map(|e| {
             let name = e.alias.as_deref().unwrap_or(e.name.as_str());
-            Arg::Str(name.to_string())
+            Arg::StrRef(name)
         })
     );
 
@@ -79,7 +79,7 @@ pub fn gen_custom_element<'a>(
             "define",
         );
         let define_call = b.call_expr_callee(define_callee, [
-            Arg::Str(tag_str.to_string()),
+            Arg::StrRef(tag_str),
             Arg::Expr(create_ce),
         ]);
         stmts.push(b.expr_stmt(define_call));
