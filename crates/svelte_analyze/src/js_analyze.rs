@@ -37,22 +37,17 @@ pub(crate) fn analyze_script(
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
     crate::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
-    // Classify script body: effects, class state fields, store mutations
-    let (has_effects, has_class_state_fields) = detect_script_flags(program);
-    data.has_store_member_mutations = program.body.iter().any(|stmt| {
-        if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-            analyze_expression(&es.expression, 0).has_store_member_mutation
-        } else {
-            false
-        }
-    });
+    // Classify script body in a single pass: effects, class state fields,
+    // store mutations, proxy state inits.
+    let body_flags = analyze_script_body(program, &script_info);
+    data.has_store_member_mutations = body_flags.has_store_member_mutations;
+    data.proxy_state_inits = body_flags.proxy_state_inits;
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = has_effects
-        || has_class_state_fields
+    data.needs_context = body_flags.has_effects
+        || body_flags.has_class_state_fields
         || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
-    data.has_class_state_fields = has_class_state_fields;
-    compute_proxy_state_inits(program, &script_info, data);
+    data.has_class_state_fields = body_flags.has_class_state_fields;
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
 }
@@ -482,31 +477,140 @@ fn classify_render_tag_args(
 }
 
 // ---------------------------------------------------------------------------
-// Script-level classification (moved from parser — these are derived flags)
+// Script body analysis — single-pass OXC Visit over top-level statements
 // ---------------------------------------------------------------------------
 
-/// Detect `$effect()`/`$effect.pre()` calls and class fields with `$state()`/`$state.raw()`.
-fn detect_script_flags(program: &oxc_ast::ast::Program<'_>) -> (bool, bool) {
-    let mut has_effects = false;
-    let mut has_class_state_fields = false;
-    for stmt in &program.body {
+/// Results from analyzing the script Program body in a single pass.
+struct ScriptBodyFlags {
+    has_effects: bool,
+    has_class_state_fields: bool,
+    has_store_member_mutations: bool,
+    proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
+}
+
+/// Analyze top-level script body for effects, class state fields, store
+/// mutations, and proxyable state inits — all in a single walk.
+fn analyze_script_body(
+    program: &oxc_ast::ast::Program<'_>,
+    script_info: &ScriptInfo,
+) -> ScriptBodyFlags {
+    let mut analyzer = ScriptBodyAnalyzer {
+        has_effects: false,
+        has_class_state_fields: false,
+        has_store_member_mutations: false,
+        proxy_state_inits: rustc_hash::FxHashMap::default(),
+        script_info,
+    };
+    analyzer.visit_program(program);
+    ScriptBodyFlags {
+        has_effects: analyzer.has_effects,
+        has_class_state_fields: analyzer.has_class_state_fields,
+        has_store_member_mutations: analyzer.has_store_member_mutations,
+        proxy_state_inits: analyzer.proxy_state_inits,
+    }
+}
+
+struct ScriptBodyAnalyzer<'s> {
+    has_effects: bool,
+    has_class_state_fields: bool,
+    has_store_member_mutations: bool,
+    proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
+    script_info: &'s ScriptInfo,
+}
+
+impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
+    fn visit_program(&mut self, program: &oxc_ast::ast::Program<'a>) {
+        // Intentionally iterate only top-level statements — these flags are
+        // about the script module surface, not nested scopes.
+        for stmt in &program.body {
+            self.visit_statement(stmt);
+        }
+    }
+
+    fn visit_statement(&mut self, stmt: &oxc_ast::ast::Statement<'a>) {
+        use oxc_ast::ast::Statement;
         match stmt {
-            oxc_ast::ast::Statement::ExpressionStatement(es) => {
+            Statement::ExpressionStatement(es) => {
                 if is_effect_call(&es.expression) {
-                    has_effects = true;
+                    self.has_effects = true;
+                }
+                if analyze_expression(&es.expression, 0).has_store_member_mutation {
+                    self.has_store_member_mutations = true;
                 }
             }
-            oxc_ast::ast::Statement::ClassDeclaration(class) => {
-                if has_class_state_runes(&class.body) {
-                    has_class_state_fields = true;
+            Statement::ClassDeclaration(class) => {
+                self.visit_class(class);
+            }
+            Statement::VariableDeclaration(decl) => {
+                self.check_proxy_state_inits(&decl.declarations);
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration {
+                    self.check_proxy_state_inits(&d.declarations);
                 }
             }
             _ => {}
         }
+        // No walk — top-level only
     }
-    (has_effects, has_class_state_fields)
+
+    fn visit_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+        // Walk class body elements using Visit dispatch
+        for element in &class.body.body {
+            self.visit_class_element(element);
+        }
+    }
+
+    fn visit_property_definition(&mut self, prop: &oxc_ast::ast::PropertyDefinition<'a>) {
+        if let Some(value) = &prop.value {
+            if let Some(kind) = crate::script_info::detect_rune(value) {
+                if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                    self.has_class_state_fields = true;
+                }
+            }
+        }
+    }
+
+    fn visit_method_definition(&mut self, method: &oxc_ast::ast::MethodDefinition<'a>) {
+        if method.kind != oxc_ast::ast::MethodDefinitionKind::Constructor {
+            return;
+        }
+        let Some(body) = &method.value.body else { return };
+        for stmt in &body.statements {
+            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
+                if let Expression::AssignmentExpression(assign) = &es.expression {
+                    if let Some(kind) = crate::script_info::detect_rune(&assign.right) {
+                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
+                            self.has_class_state_fields = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
+impl ScriptBodyAnalyzer<'_> {
+    fn check_proxy_state_inits(&mut self, declarations: &oxc_allocator::Vec<'_, oxc_ast::ast::VariableDeclarator<'_>>) {
+        for declarator in declarations.iter() {
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else { continue };
+            let Some(init) = &declarator.init else { continue };
+            let rune = crate::script_info::detect_rune(init);
+            if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
+                continue;
+            }
+            let name = ident.name.as_str();
+            if self.script_info.declarations.iter().any(|d| d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))) {
+                if is_proxyable_state_init(init) {
+                    self.proxy_state_inits.insert(CompactString::from(name), true);
+                }
+            }
+        }
+    }
+}
+
+/// Check if an expression is a `$effect()` or `$effect.pre()` call.
+// TODO(oxc-visit): shallow callee check — allowed exception
 fn is_effect_call(expr: &Expression<'_>) -> bool {
     if let Expression::CallExpression(call) = expr {
         match &call.callee {
@@ -524,86 +628,7 @@ fn is_effect_call(expr: &Expression<'_>) -> bool {
     false
 }
 
-fn has_class_state_runes(body: &oxc_ast::ast::ClassBody<'_>) -> bool {
-    use crate::script_info::detect_rune;
-    for element in &body.body {
-        match element {
-            oxc_ast::ast::ClassElement::PropertyDefinition(prop) => {
-                if let Some(value) = &prop.value {
-                    if let Some(kind) = detect_rune(value) {
-                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
-                    if let Some(body) = &method.value.body {
-                        for stmt in &body.statements {
-                            if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-                                if let Expression::AssignmentExpression(assign) = &es.expression {
-                                    if let Some(kind) = detect_rune(&assign.right) {
-                                        if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-// ---------------------------------------------------------------------------
-// Proxy-candidate $state detection
-// ---------------------------------------------------------------------------
-
-/// Walk script body to find $state/$state.raw declarations with proxyable init.
-/// Stores results in `data.proxy_state_inits` keyed by declaration name.
-fn compute_proxy_state_inits(
-    program: &oxc_ast::ast::Program<'_>,
-    script_info: &ScriptInfo,
-    data: &mut AnalysisData,
-) {
-    for stmt in &program.body {
-        let decls = match stmt {
-            oxc_ast::ast::Statement::VariableDeclaration(d) => &d.declarations,
-            oxc_ast::ast::Statement::ExportNamedDeclaration(e) => {
-                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &e.declaration {
-                    &d.declarations
-                } else {
-                    continue;
-                }
-            }
-            _ => continue,
-        };
-        for declarator in decls.iter() {
-            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else { continue };
-            let Some(init) = &declarator.init else { continue };
-            let rune = crate::script_info::detect_rune(init);
-            if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
-                continue;
-            }
-            // Match declaration name against script_info to confirm it's tracked
-            let name = ident.name.as_str();
-            if script_info.declarations.iter().any(|d| d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))) {
-                if is_proxyable_state_init(init) {
-                    data.proxy_state_inits.insert(CompactString::from(name), true);
-                }
-            }
-        }
-    }
-}
-
 /// Check if the first argument of a $state/$state.raw call is proxyable (non-primitive).
-/// Arrays, objects, and expressions that might produce non-primitive values
-/// require $.proxy() wrapping at runtime and remain reactive without reassignment.
 fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr else { return false };
     let Some(arg) = call.arguments.first() else { return false };
