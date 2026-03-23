@@ -4,7 +4,7 @@ use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, ComponentNode, Element, SvelteElement};
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
+use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -120,6 +120,26 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             Attribute::SpreadAttribute(_) => ComponentPropKind::Spread,
             Attribute::BindDirective(b) if b.name == "this" => {
                 ComponentPropKind::BindThis { bind_id: b.id }
+            }
+            Attribute::BindDirective(b) => {
+                // Non-bind:this: classify getter/setter pattern
+                let root = data.scoping.root_scope_id();
+                let mode = data.scoping.find_binding(root, &b.name)
+                    .map(|sym| {
+                        if data.scoping.is_prop_source(sym) {
+                            ComponentBindMode::PropSource
+                        } else if data.scoping.is_rune(sym) && data.scoping.is_mutated(sym) {
+                            ComponentBindMode::Rune
+                        } else {
+                            ComponentBindMode::Plain
+                        }
+                    })
+                    .unwrap_or(ComponentBindMode::Plain);
+                ComponentPropKind::Bind {
+                    name: b.name.clone(),
+                    bind_id: b.id,
+                    mode,
+                }
             }
             // Directives that don't become props
             _ => return,

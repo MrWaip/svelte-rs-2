@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ComponentPropKind, ContentStrategy, FragmentKey};
+use svelte_analyze::{ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey};
 use svelte_ast::{Attribute, NodeId};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
@@ -84,6 +84,30 @@ pub(crate) fn gen_component<'a>(
                     props.push(ObjProp::Getter(key, expr));
                 } else {
                     props.push(ObjProp::Shorthand(key));
+                }
+            }
+            ComponentPropKind::Bind { name, bind_id: _, mode } => {
+                let key = ctx.b.alloc_str(&name);
+                let name_ref = ctx.b.alloc_str(&name);
+                match mode {
+                    ComponentBindMode::PropSource => {
+                        let get_body = ctx.b.call_expr(name_ref, []);
+                        props.push(ObjProp::Getter(key, get_body));
+                        let set_body = ctx.b.call_expr(name_ref, [Arg::Ident("$$value")]);
+                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                    }
+                    ComponentBindMode::Rune => {
+                        let get_body = ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
+                        props.push(ObjProp::Getter(key, get_body));
+                        let set_body = ctx.b.call_expr("$.set", [Arg::Ident(name_ref), Arg::Ident("$$value")]);
+                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                    }
+                    ComponentBindMode::Plain => {
+                        let get_body = ctx.b.rid_expr(name_ref);
+                        props.push(ObjProp::Getter(key, get_body));
+                        let set_body = ctx.b.assign_expr(AssignLeft::Ident(name), ctx.b.rid_expr("$$value"));
+                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                    }
                 }
             }
             ComponentPropKind::BindThis { bind_id } => {
