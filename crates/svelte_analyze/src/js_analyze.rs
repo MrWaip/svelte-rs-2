@@ -39,15 +39,17 @@ pub(crate) fn analyze_script(
 
     // Classify script body in a single pass: effects, class state fields,
     // store mutations, proxy state inits.
-    let body_flags = analyze_script_body(program, &script_info);
-    data.has_store_member_mutations = body_flags.has_store_member_mutations;
-    data.proxy_state_inits = body_flags.proxy_state_inits;
+    let body = analyze_script_body(program, &script_info);
+    let has_effects = body.has_effects;
+    let has_class_state_fields = body.has_class_state_fields;
+    data.has_store_member_mutations = body.has_store_member_mutations;
+    data.proxy_state_inits = body.proxy_state_inits;
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = body_flags.has_effects
-        || body_flags.has_class_state_fields
+    data.needs_context = has_effects
+        || has_class_state_fields
         || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
-    data.has_class_state_fields = body_flags.has_class_state_fields;
+    data.has_class_state_fields = has_class_state_fields;
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
 }
@@ -461,7 +463,7 @@ fn classify_render_tag_args(
     let offset = tag.expression_span.start;
     if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
         let flags: Vec<bool> = call.arguments.iter().map(|arg| {
-            analyze_expression(arg.to_expression(), 0).has_call
+            expression_has_call(arg.to_expression())
         }).collect();
         data.render_tag_arg_has_call.insert(tag.id, flags);
 
@@ -480,20 +482,12 @@ fn classify_render_tag_args(
 // Script body analysis — single-pass OXC Visit over top-level statements
 // ---------------------------------------------------------------------------
 
-/// Results from analyzing the script Program body in a single pass.
-struct ScriptBodyFlags {
-    has_effects: bool,
-    has_class_state_fields: bool,
-    has_store_member_mutations: bool,
-    proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
-}
-
 /// Analyze top-level script body for effects, class state fields, store
 /// mutations, and proxyable state inits — all in a single walk.
-fn analyze_script_body(
+fn analyze_script_body<'s>(
     program: &oxc_ast::ast::Program<'_>,
-    script_info: &ScriptInfo,
-) -> ScriptBodyFlags {
+    script_info: &'s ScriptInfo,
+) -> ScriptBodyAnalyzer<'s> {
     let mut analyzer = ScriptBodyAnalyzer {
         has_effects: false,
         has_class_state_fields: false,
@@ -502,12 +496,7 @@ fn analyze_script_body(
         script_info,
     };
     analyzer.visit_program(program);
-    ScriptBodyFlags {
-        has_effects: analyzer.has_effects,
-        has_class_state_fields: analyzer.has_class_state_fields,
-        has_store_member_mutations: analyzer.has_store_member_mutations,
-        proxy_state_inits: analyzer.proxy_state_inits,
-    }
+    analyzer
 }
 
 struct ScriptBodyAnalyzer<'s> {
@@ -534,7 +523,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 if is_effect_call(&es.expression) {
                     self.has_effects = true;
                 }
-                if analyze_expression(&es.expression, 0).has_store_member_mutation {
+                if has_store_member_mutation(&es.expression) {
                     self.has_store_member_mutations = true;
                 }
             }
@@ -555,7 +544,6 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
     }
 
     fn visit_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
-        // Walk class body elements using Visit dispatch
         for element in &class.body.body {
             self.visit_class_element(element);
         }
@@ -822,13 +810,13 @@ fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 
 /// Single-pass expression analyzer using OXC Visit infrastructure.
 /// Collects all expression metadata in one walk: kind classification,
-/// references, has_call, has_state_rune, has_store_mutation, has_side_effects.
+/// references, has_call, has_state_rune, has_store_member_mutation, has_side_effects.
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
     references: SmallVec<[Reference; 2]>,
     has_call: bool,
     has_state_rune: bool,
-    has_store_mutation: bool,
+    has_store_member_mutation: bool,
     has_side_effects: bool,
     offset: u32,
     /// Expression nesting depth. 0 = root expression (used for classification).
@@ -899,13 +887,13 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
             }
             AssignmentTarget::StaticMemberExpression(m) => {
                 if member_root_is_store(&m.object) {
-                    self.has_store_mutation = true;
+                    self.has_store_member_mutation = true;
                 }
                 self.visit_expression(&m.object);
             }
             AssignmentTarget::ComputedMemberExpression(m) => {
                 if member_root_is_store(&m.object) {
-                    self.has_store_mutation = true;
+                    self.has_store_member_mutation = true;
                 }
                 self.visit_expression(&m.object);
                 self.visit_expression(&m.expression);
@@ -928,13 +916,13 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
             }
             SimpleAssignmentTarget::StaticMemberExpression(m) => {
                 if member_root_is_store(&m.object) {
-                    self.has_store_mutation = true;
+                    self.has_store_member_mutation = true;
                 }
                 self.visit_expression(&m.object);
             }
             SimpleAssignmentTarget::ComputedMemberExpression(m) => {
                 if member_root_is_store(&m.object) {
-                    self.has_store_mutation = true;
+                    self.has_store_member_mutation = true;
                 }
                 self.visit_expression(&m.object);
                 self.visit_expression(&m.expression);
@@ -975,7 +963,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> Expressi
         references: SmallVec::new(),
         has_call: false,
         has_state_rune: false,
-        has_store_mutation: false,
+        has_store_member_mutation: false,
         has_side_effects: false,
         offset,
         depth: 0,
@@ -988,9 +976,60 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> Expressi
         has_side_effects: analyzer.has_side_effects,
         has_call: analyzer.has_call,
         has_state_rune: analyzer.has_state_rune,
-        has_store_member_mutation: analyzer.has_store_mutation,
+        has_store_member_mutation: analyzer.has_store_member_mutation,
         needs_context: false,
     }
+}
+
+/// Lightweight check: does the expression contain a CallExpression?
+/// Stops at function boundaries (arrow/function expressions are opaque).
+fn expression_has_call(expr: &Expression<'_>) -> bool {
+    struct HasCallCheck { found: bool, fn_depth: u32 }
+    impl<'a> Visit<'a> for HasCallCheck {
+        fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+            if self.fn_depth == 0 { self.found = true; }
+            if !self.found { walk_call_expression(self, call); }
+        }
+        fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+            self.fn_depth += 1;
+            walk_arrow_function_expression(self, arrow);
+            self.fn_depth -= 1;
+        }
+        fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: ScopeFlags) {
+            self.fn_depth += 1;
+            walk_function(self, func, flags);
+            self.fn_depth -= 1;
+        }
+    }
+    let mut check = HasCallCheck { found: false, fn_depth: 0 };
+    check.visit_expression(expr);
+    check.found
+}
+
+/// Lightweight check for store member mutations (e.g. `$store.field = x`).
+/// Uses a dedicated visitor instead of the full ExpressionAnalyzer.
+fn has_store_member_mutation(expr: &Expression<'_>) -> bool {
+    struct StoreMutationCheck(bool);
+    impl<'a> Visit<'a> for StoreMutationCheck {
+        fn visit_assignment_expression(&mut self, assign: &oxc_ast::ast::AssignmentExpression<'a>) {
+            match &assign.left {
+                AssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                AssignmentTarget::ComputedMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                _ => {}
+            }
+            if !self.0 { self.visit_expression(&assign.right); }
+        }
+        fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
+            match &upd.argument {
+                SimpleAssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                SimpleAssignmentTarget::ComputedMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                _ => {}
+            }
+        }
+    }
+    let mut check = StoreMutationCheck(false);
+    check.visit_expression(expr);
+    check.0
 }
 
 /// Check if the root of a member expression chain is a $-prefixed identifier.

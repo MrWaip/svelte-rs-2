@@ -86,7 +86,7 @@ pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
 
 /// Detect which Svelte rune a `CallExpression` invokes, without requiring the
 /// outer `Expression` wrapper. Used by the `ExpressionAnalyzer` visitor.
-pub fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => {
             match ident.name.as_str() {
