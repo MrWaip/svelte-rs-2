@@ -28,7 +28,10 @@ fn build_directive_prop<'a>(
     if ctx.is_mutable_rune_target(directive_id) {
         let get_call = ctx.b.call_expr("$.get", [Arg::Ident(name)]);
         ObjProp::KeyValue(name_alloc, get_call)
-    } else if same_name {
+    } else if same_name && expr.is_identifier_reference() {
+        // Only use shorthand when the expression is still a plain identifier.
+        // Transform may have wrapped rune references with $.get(), making
+        // shorthand incorrect.
         ObjProp::Shorthand(name_alloc)
     } else {
         ObjProp::KeyValue(name_alloc, expr)
