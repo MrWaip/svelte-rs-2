@@ -994,12 +994,18 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> Expressi
 }
 
 /// Check if the root of a member expression chain is a $-prefixed identifier.
-// TODO(oxc-visit): shallow member-chain walk — allowed exception per CLAUDE.md
 fn member_root_is_store(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::Identifier(id) => id.name.starts_with('$') && id.name.len() > 1,
-        Expression::StaticMemberExpression(m) => member_root_is_store(&m.object),
-        Expression::ComputedMemberExpression(m) => member_root_is_store(&m.object),
-        _ => false,
+    let mut node = expr;
+    loop {
+        match node {
+            Expression::StaticMemberExpression(m) => node = &m.object,
+            Expression::ComputedMemberExpression(m) => node = &m.object,
+            _ => break,
+        }
+    }
+    if let Expression::Identifier(id) = node {
+        id.name.starts_with('$') && id.name.len() > 1
+    } else {
+        false
     }
 }
