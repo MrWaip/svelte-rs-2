@@ -4,7 +4,7 @@
 //! No semantic analysis (scoping, store detection, etc.).
 
 use compact_str::CompactString;
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{CallExpression, Expression};
 use oxc_span::GetSpan as _;
 
 use rustc_hash::FxHashSet;
@@ -78,37 +78,45 @@ pub fn extract_script_info(
 /// Detect which Svelte rune a call expression invokes.
 pub fn detect_rune(expr: &Expression<'_>) -> Option<RuneKind> {
     if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(ident) => {
-                return match ident.name.as_str() {
-                    "$state" => Some(RuneKind::State),
-                    "$derived" => Some(RuneKind::Derived),
-                    "$effect" => Some(RuneKind::Effect),
-                    "$props" => Some(RuneKind::Props),
-                    "$bindable" => Some(RuneKind::Bindable),
-                    "$inspect" => Some(RuneKind::Inspect),
-                    "$host" => Some(RuneKind::Host),
-                    _ => None,
-                };
-            }
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    let prop = member.property.name.as_str();
-                    return match (obj.name.as_str(), prop) {
-                        ("$derived", "by") => Some(RuneKind::DerivedBy),
-                        ("$state", "raw") => Some(RuneKind::StateRaw),
-                        ("$state", "eager") => Some(RuneKind::StateEager),
-                        ("$effect", "tracking") => Some(RuneKind::EffectTracking),
-                        ("$effect", "pending") => Some(RuneKind::EffectPending),
-                        ("$props", "id") => Some(RuneKind::PropsId),
-                        _ => None,
-                    };
-                }
-            }
-            _ => {}
-        }
+        return detect_rune_from_call(call);
     }
     None
+}
+
+/// Detect which Svelte rune a `CallExpression` invokes, without requiring the
+/// outer `Expression` wrapper. Used by the `ExpressionAnalyzer` visitor.
+pub fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+    match &call.callee {
+        Expression::Identifier(ident) => {
+            match ident.name.as_str() {
+                "$state" => Some(RuneKind::State),
+                "$derived" => Some(RuneKind::Derived),
+                "$effect" => Some(RuneKind::Effect),
+                "$props" => Some(RuneKind::Props),
+                "$bindable" => Some(RuneKind::Bindable),
+                "$inspect" => Some(RuneKind::Inspect),
+                "$host" => Some(RuneKind::Host),
+                _ => None,
+            }
+        }
+        Expression::StaticMemberExpression(member) => {
+            if let Expression::Identifier(obj) = &member.object {
+                let prop = member.property.name.as_str();
+                match (obj.name.as_str(), prop) {
+                    ("$derived", "by") => Some(RuneKind::DerivedBy),
+                    ("$state", "raw") => Some(RuneKind::StateRaw),
+                    ("$state", "eager") => Some(RuneKind::StateEager),
+                    ("$effect", "tracking") => Some(RuneKind::EffectTracking),
+                    ("$effect", "pending") => Some(RuneKind::EffectPending),
+                    ("$props", "id") => Some(RuneKind::PropsId),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Check if a `$`-prefixed name is a known rune (not a store candidate).

@@ -18,7 +18,7 @@ Allowed visitors per crate:
 
 ---
 
-## Stage 1 — Unified ExpressionAnalyzer (svelte_analyze)
+## Stage 1 ✅ DONE — Unified ExpressionAnalyzer (svelte_analyze)
 
 **Goal**: Replace 8 functions in `js_analyze.rs` with a single `impl Visit<'a>` visitor
 that collects all expression metadata in one pass.
