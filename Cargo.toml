@@ -40,9 +40,3 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
-# Fast debug builds for development
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 2

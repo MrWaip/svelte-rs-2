@@ -9,7 +9,7 @@ use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 use oxc_span::Span;
 
-use svelte_analyze::{AnalysisData, IdentGen, ParsedExprs};
+use svelte_analyze::{AnalysisData, IdentGen, ParserResult};
 use svelte_ast::{Attribute, Component, Node};
 use svelte_transform::TransformData;
 
@@ -17,7 +17,7 @@ use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParsedExprs<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str) -> String {
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParserResult<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str) -> String {
     let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source, filename);
 
     // -----------------------------------------------------------------------
@@ -49,7 +49,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let is_custom_element = ctx.analysis.custom_element;
     let has_exports = !ctx.analysis.exports.is_empty();
     let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = !ctx.analysis.scoping.store_symbols().is_empty();
+    let has_stores = !ctx.analysis.scoping.store_symbol_ids().is_empty();
     let has_ce_props = is_custom_element && ctx.analysis.props.as_ref().is_some_and(|p| !p.props.is_empty());
     let needs_push = has_bindable || has_exports || has_ce_props || ctx.analysis.needs_context || ctx.dev;
     let has_component_exports = has_exports || has_ce_props || ctx.dev;
@@ -84,7 +84,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     //   const [$$stores, $$cleanup] = $.setup_stores();
     if has_stores {
         // Sort store base names for deterministic output
-        let mut store_names: Vec<&str> = ctx.analysis.scoping.store_symbols().values().map(|s| s.as_str()).collect();
+        let mut store_names: Vec<&str> = ctx.analysis.scoping.store_symbol_ids().iter()
+            .map(|&sym| ctx.analysis.scoping.symbol_name(sym))
+            .collect();
         store_names.sort();
 
         for base_name in &store_names {

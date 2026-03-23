@@ -259,11 +259,20 @@ pub struct EachBlock {
 pub struct SnippetBlock {
     pub id: NodeId,
     pub span: Span,
-    pub name: String,
-    /// Span of the parameter list inside parentheses.
-    /// None if no params.
-    pub params_span: Option<Span>,
+    /// Span covering `name(params)` or just `name` — the full snippet declaration expression.
+    pub expression_span: Span,
     pub body: Fragment,
+}
+
+impl SnippetBlock {
+    /// Get the snippet name from source text (everything before '(' or the whole expression).
+    pub fn name<'a>(&self, source: &'a str) -> &'a str {
+        let expr = &source[self.expression_span.start as usize..self.expression_span.end as usize];
+        match expr.find('(') {
+            Some(pos) => &expr[..pos],
+            None => expr,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,8 +304,8 @@ pub struct HtmlTag {
 pub struct ConstTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the declaration text: `doubled = item * 2` in `{@const doubled = item * 2}`.
-    pub declaration_span: Span,
+    /// Span of the full declaration: `const doubled = item * 2` in `{@const doubled = item * 2}`.
+    pub expression_span: Span,
 }
 
 // ---------------------------------------------------------------------------

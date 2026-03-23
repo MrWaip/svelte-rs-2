@@ -77,7 +77,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let mut hoisted_snippet_ids: Vec<(NodeId, Option<&str>)> = Vec::new();
     for node in &boundary.fragment.nodes {
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            let name = block.name.as_str();
+            let name = block.name(ctx.source);
             let prop_name = if name == "failed" || name == "pending" {
                 Some(name)
             } else {
@@ -131,11 +131,14 @@ pub(crate) fn gen_svelte_boundary<'a>(
         for _ in 0..snippet_count {
             let mut set: Vec<(NodeId, Vec<String>, Expression<'a>)> = Vec::new();
             for (cid, names) in &infos {
-                // Clone from the parsed expr cache (not removing — just borrowing and cloning)
+                // Clone init expression from the pre-parsed Statement in stmts.
+                // Shallow destructure — known top-level shape, not removing yet.
                 let cid_offset = ctx.node_expr_offset(*cid);
-                if let Some(expr) = ctx.parsed.exprs.get(&cid_offset) {
-                    let cloned = ctx.b.clone_expr(expr);
-                    set.push((*cid, names.clone(), cloned));
+                if let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmts.get(&cid_offset) {
+                    if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref()) {
+                        let cloned = ctx.b.clone_expr(init);
+                        set.push((*cid, names.clone(), cloned));
+                    }
                 }
             }
             cloned_exprs.push(set);

@@ -640,7 +640,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                         } else if kind == RuneKind::State {
                             // Wrap proxyable args (arrays/objects) in $.proxy()
                             let needs_proxy = call.arguments[0].as_expression()
-                                .is_some_and(|e| Self::should_proxy(e));
+                                .is_some_and(|e| svelte_transform::rune_refs::should_proxy(e));
                             if needs_proxy {
                                 let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
                                 std::mem::swap(&mut call.arguments[0], &mut dummy);
@@ -673,7 +673,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             dummy.into_expression()
                         };
-                        let value = if kind == RuneKind::State && Self::should_proxy(&value) {
+                        let value = if kind == RuneKind::State && svelte_transform::rune_refs::should_proxy(&value) {
                             self.b.call_expr("$.proxy", [Arg::Expr(value)])
                         } else {
                             value
@@ -1017,7 +1017,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                         }
                     };
 
-                    let needs_proxy = kind != RuneKind::StateRaw && Self::should_proxy(&value);
+                    let needs_proxy = kind != RuneKind::StateRaw && svelte_transform::rune_refs::should_proxy(&value);
                     *node = svelte_transform::rune_refs::make_rune_set(self.b.ast.allocator, &name, value, needs_proxy);
                     return;
                 }

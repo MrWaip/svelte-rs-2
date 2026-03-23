@@ -19,14 +19,9 @@ pub(crate) fn gen_snippet_block<'a>(
     prepend_stmts: Vec<Statement<'a>>,
 ) -> Statement<'a> {
     let block = ctx.snippet_block(id);
-    let name = block.name.clone();
+    let name = block.name(ctx.source).to_string();
 
-    let param_names: Vec<String> = ctx
-        .analysis
-        .snippets
-        .params(id)
-        .cloned()
-        .unwrap_or_default();
+    let param_names: Vec<String> = extract_snippet_param_names(ctx, block.expression_span.start);
 
     // Set snippet params so expression codegen wraps them as thunk calls.
     // Save and restore to handle nested snippets correctly.
@@ -43,6 +38,26 @@ pub(crate) fn gen_snippet_block<'a>(
     let arrow = ctx.b.arrow(params, all_stmts);
 
     ctx.b.const_stmt(&name, oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow)))
+}
+
+/// Extract param names from parsed `const name = (a, b) => {}` arrow.
+fn extract_snippet_param_names(ctx: &Ctx<'_>, offset: u32) -> Vec<String> {
+    use oxc_ast::ast::{Expression, Statement};
+    ctx.parsed.stmts.get(&offset)
+        .and_then(|stmt| match stmt {
+            Statement::VariableDeclaration(decl) => decl.declarations.first(),
+            _ => None,
+        })
+        .and_then(|d| match d.init.as_ref()? {
+            Expression::ArrowFunctionExpression(arrow) => Some(
+                arrow.params.items.iter()
+                    .filter_map(|p| p.pattern.get_binding_identifier())
+                    .map(|id| id.name.to_string())
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// Build FormalParameters: `($$anchor, name = $.noop, ...)`

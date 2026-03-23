@@ -8,13 +8,18 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::attributes::{process_attr, process_attrs_spread, process_class_attribute_and_directives, process_style_directives};
-use super::events::{
-    gen_use_directive, gen_on_directive_legacy, gen_transition_directive,
-    gen_animate_directive, gen_attach_tag,
+use super::attributes::{
+    process_attr, process_attrs_spread, process_class_attribute_and_directives,
+    process_style_directives,
 };
 use super::each_block::gen_each_block;
-use super::expression::{build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo};
+use super::events::{
+    gen_animate_directive, gen_attach_tag, gen_on_directive_legacy, gen_transition_directive,
+    gen_use_directive,
+};
+use super::expression::{
+    build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo,
+};
 use super::html_tag::gen_html_tag;
 use super::traverse::traverse_items;
 
@@ -34,16 +39,15 @@ pub(crate) fn process_element<'a>(
     hoisted: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
 ) {
-    let el = ctx.element(el_id);
     let child_key = FragmentKey::Element(el_id);
     let ct = ctx.content_type(&child_key);
 
     // $.remove_input_defaults for <input> elements with bind or dynamic value attribute
     if ctx.needs_input_defaults(el_id) {
-        init.push(ctx.b.call_stmt(
-            "$.remove_input_defaults",
-            [Arg::Ident(el_name)],
-        ));
+        init.push(
+            ctx.b
+                .call_stmt("$.remove_input_defaults", [Arg::Ident(el_name)]),
+        );
     }
 
     // --- Attributes (simple attrs go into init/update directly; directives into separate buffers) ---
@@ -55,30 +59,52 @@ pub(crate) fn process_element<'a>(
         let el = ctx.element(el_id);
         let el_tag = el.name.clone();
         let spread_attrs = el.attributes.clone();
-        process_attrs_spread(ctx, el_id, &el_tag, &spread_attrs, el_name, init, after_update);
+        process_attrs_spread(
+            ctx,
+            el_id,
+            &el_tag,
+            &spread_attrs,
+            el_name,
+            init,
+            after_update,
+        );
 
         // Directives skipped by process_attrs_spread — handle them separately
         let el = ctx.element(el_id);
-        let attrs: Vec<_> = el.attributes.iter().filter_map(|attr| {
-            match attr {
+        let attrs: Vec<_> = el
+            .attributes
+            .iter()
+            .filter_map(|attr| match attr {
                 svelte_ast::Attribute::UseDirective(_)
                 | svelte_ast::Attribute::OnDirectiveLegacy(_)
                 | svelte_ast::Attribute::TransitionDirective(_)
                 | svelte_ast::Attribute::AnimateDirective(_)
                 | svelte_ast::Attribute::AttachTag(_) => Some((attr.clone(), attr.id())),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         for (attr, attr_id) in &attrs {
             match attr {
                 svelte_ast::Attribute::UseDirective(ud) => {
                     gen_use_directive(ctx, ud, *attr_id, el_name, &mut directive_init);
                 }
                 svelte_ast::Attribute::OnDirectiveLegacy(od) => {
-                    gen_on_directive_legacy(ctx, od, *attr_id, el_name, &mut directive_after_update);
+                    gen_on_directive_legacy(
+                        ctx,
+                        od,
+                        *attr_id,
+                        el_name,
+                        &mut directive_after_update,
+                    );
                 }
                 svelte_ast::Attribute::TransitionDirective(td) => {
-                    gen_transition_directive(ctx, td, *attr_id, el_name, &mut directive_after_update);
+                    gen_transition_directive(
+                        ctx,
+                        td,
+                        *attr_id,
+                        el_name,
+                        &mut directive_after_update,
+                    );
                 }
                 svelte_ast::Attribute::AnimateDirective(ad) => {
                     gen_animate_directive(ctx, ad, *attr_id, el_name, &mut directive_after_update);
@@ -92,7 +118,9 @@ pub(crate) fn process_element<'a>(
     } else {
         let el = ctx.element(el_id);
         let has_use_directive = ctx.has_use_directive(el_id);
-        let attr_dynamic: Vec<_> = el.attributes.iter()
+        let attr_dynamic: Vec<_> = el
+            .attributes
+            .iter()
             .map(|attr| ctx.is_dynamic_attr(attr.id()))
             .collect();
 
@@ -106,7 +134,19 @@ pub(crate) fn process_element<'a>(
         let el = ctx.element(el_id);
         let tag = el.name.clone();
         for (i, attr) in el.attributes.iter().enumerate() {
-            process_attr(ctx, attr, el_name, el_id, &tag, attr_dynamic[i], has_use_directive, init, update, &mut directive_init, &mut directive_after_update);
+            process_attr(
+                ctx,
+                attr,
+                el_name,
+                el_id,
+                &tag,
+                attr_dynamic[i],
+                has_use_directive,
+                init,
+                update,
+                &mut directive_init,
+                &mut directive_after_update,
+            );
         }
     }
 
@@ -132,10 +172,7 @@ pub(crate) fn process_element<'a>(
 
         ContentStrategy::DynamicText if !has_state => {
             // textContent shortcut
-            let items: Vec<_> = ctx
-                .lowered_fragment(&child_key)
-                .items
-                .clone();
+            let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
             let expr = build_concat(ctx, &items[0]);
             init.push(ctx.b.assign_stmt(
                 crate::builder::AssignLeft::StaticMember(
@@ -147,14 +184,12 @@ pub(crate) fn process_element<'a>(
 
         ContentStrategy::DynamicText => {
             let text_name = ctx.gen_ident("text");
-            let items: Vec<_> = ctx
-                .lowered_fragment(&child_key)
-                .items
-                .clone();
+            let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
             // is_text only for standalone {expression} (single Expr part, no surrounding text)
             let is_text = items.first().is_some_and(|item| item.is_standalone_expr());
             let child_call = if is_text {
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+                ctx.b
+                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
             } else {
                 ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
             };
@@ -178,10 +213,10 @@ pub(crate) fn process_element<'a>(
                     // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
                     emit_memoized_text_effect(ctx, &text_name, expr, init);
                 } else {
-                    update.push(ctx.b.call_stmt(
-                        "$.set_text",
-                        [Arg::Ident(&text_name), Arg::Expr(expr)],
-                    ));
+                    update.push(
+                        ctx.b
+                            .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
+                    );
                 }
             }
         }
@@ -198,13 +233,18 @@ pub(crate) fn process_element<'a>(
             init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
         }
 
-        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Mixed { .. } => {
+        ContentStrategy::SingleElement(_)
+        | ContentStrategy::SingleBlock(_)
+        | ContentStrategy::Mixed { .. } => {
             // Clone needed: traverse_items borrows ctx mutably
             let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
 
-            let first_is_text = child_items.first().is_some_and(|item| item.is_standalone_expr());
+            let first_is_text = child_items
+                .first()
+                .is_some_and(|item| item.is_standalone_expr());
             let first_child = if first_is_text {
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+                ctx.b
+                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
             } else {
                 ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
             };
@@ -243,8 +283,14 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         svelte_analyze::FragmentItem::Element(id) => ctx.needs_var(*id),
-        svelte_analyze::FragmentItem::ComponentNode(_) | svelte_analyze::FragmentItem::IfBlock(_) | svelte_analyze::FragmentItem::EachBlock(_) | svelte_analyze::FragmentItem::RenderTag(_) | svelte_analyze::FragmentItem::HtmlTag(_) | svelte_analyze::FragmentItem::KeyBlock(_) | svelte_analyze::FragmentItem::SvelteElement(_) | svelte_analyze::FragmentItem::SvelteBoundary(_) | svelte_analyze::FragmentItem::AwaitBlock(_) => {
-            true
-        }
+        svelte_analyze::FragmentItem::ComponentNode(_)
+        | svelte_analyze::FragmentItem::IfBlock(_)
+        | svelte_analyze::FragmentItem::EachBlock(_)
+        | svelte_analyze::FragmentItem::RenderTag(_)
+        | svelte_analyze::FragmentItem::HtmlTag(_)
+        | svelte_analyze::FragmentItem::KeyBlock(_)
+        | svelte_analyze::FragmentItem::SvelteElement(_)
+        | svelte_analyze::FragmentItem::SvelteBoundary(_)
+        | svelte_analyze::FragmentItem::AwaitBlock(_) => true,
     }
 }
