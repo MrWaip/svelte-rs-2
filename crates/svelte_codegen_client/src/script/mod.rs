@@ -2,7 +2,7 @@ mod props;
 mod state;
 mod traverse;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement};
@@ -176,8 +176,6 @@ fn transform_script_text<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
-        nested_derived_syms: FxHashSet::default(),
-        nested_state_syms: FxHashMap::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -248,8 +246,6 @@ fn transform_program<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
-        nested_derived_syms: FxHashSet::default(),
-        nested_state_syms: FxHashMap::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -370,27 +366,15 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) class_state_stack: Vec<ClassStateInfo>,
     /// Pre-parsed prop default expressions, indexed by prop position.
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
-    /// SymbolIds of $derived/$derived.by variables declared in nested scopes (inside functions).
-    /// These are detected syntactically (by callee name) since analysis only registers root-scope runes.
-    pub(super) nested_derived_syms: FxHashSet<oxc_semantic::SymbolId>,
-    /// SymbolIds of $state variables declared in nested scopes. Maps to RuneKind
-    /// (State vs StateRaw) for proxy decision in $.set().
-    pub(super) nested_state_syms: FxHashMap<oxc_semantic::SymbolId, RuneKind>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
     /// Resolve a binding identifier to its rune kind and mutated status.
-    /// Only root-scope symbols are considered runes (skips shadowing parameters).
     pub(super) fn rune_for_binding(
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
     ) -> Option<(RuneKind, bool)> {
         let sym_id = id.symbol_id.get()?;
-        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
-            return None;
-        }
-        // OXC SemanticBuilder produces identical SymbolIds for the same script source,
-        // so we can use sym_id directly against ComponentScoping without name round-trip.
         let kind = self.component_scoping.rune_kind(sym_id)?;
         Some((kind, self.component_scoping.is_mutated(sym_id)))
     }
@@ -402,9 +386,6 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     ) -> Option<(RuneKind, bool)> {
         let ref_id = id.reference_id.get()?;
         let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
-            return None;
-        }
         let kind = self.component_scoping.rune_kind(sym_id)?;
         Some((kind, self.component_scoping.is_mutated(sym_id)))
     }

@@ -130,6 +130,7 @@ Boundary rules:
 5. **OXC as direct dependency** — OXC types (`Expression<'a>`, `Program<'a>`) are used directly across crates. `svelte_parser` provides shared domain types; `ParsedExprs<'a>` carries OXC ASTs from parser through analyze/transform to codegen.
 6. **No codegen data caching** — codegen-internal enums/structs that cache or duplicate AST data to avoid re-lookups are a smell. The classification belongs in `AnalysisData`.
 7. **Correct over minimal** — never propose a "simple" or "minimal" fix in the wrong layer when a correct architectural approach exists. If unsure which layer owns the logic, ask.
+8. **Existing violations are not precedent** — if you see code in the wrong layer, do not extend it. When implementing a feature near an existing boundary violation, either fix the violation first or flag it as tech debt. Never use "the existing code already does this" as justification for adding more logic in the wrong place.
 
 Additional rules:
 - `FxHashMap`/`FxHashSet` everywhere instead of std `HashMap`.

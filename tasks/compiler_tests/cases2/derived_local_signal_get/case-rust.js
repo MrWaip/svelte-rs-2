@@ -3,11 +3,11 @@ export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	let x = 0;
 	function getValues() {
-		const doubled = $derived(x * 2);
+		const doubled = $.derived(() => x * 2);
 		return {
-			doubled,
+			doubled: $.get(doubled),
 			get live() {
-				return doubled;
+				return $.get(doubled);
 			}
 		};
 	}
