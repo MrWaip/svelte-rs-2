@@ -1787,3 +1787,22 @@ fn component_spread_props() {
 fn component_bind_prop_forward() {
     assert_compiler("component_bind_prop_forward");
 }
+
+// ---------------------------------------------------------------------------
+// Diagnose: svelte import patterns
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn needs_context_nested_fn() {
+    assert_compiler("needs_context_nested_fn");
+}
+
+#[rstest]
+fn member_expr_dynamic_local() {
+    assert_compiler("member_expr_dynamic_local");
+}
+
+#[rstest]
+fn import_type_mixed() {
+    assert_compiler("import_type_mixed")
+}
