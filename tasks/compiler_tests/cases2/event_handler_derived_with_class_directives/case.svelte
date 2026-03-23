@@ -1,16 +1,16 @@
 <script>
     let counter = $state(0);
-    let active = $state(false);
+    let color = $state("red");
 
     function getHandler() {
-        return () => counter++;
+        return () => { counter++; color = "blue"; };
     }
 </script>
 
 <div
-    class:active={active}
+    class:active={counter > 5}
     class:big={counter > 10}
-    style:color={active ? "red" : "blue"}
+    style:color={color}
     onfocus={getHandler()}
 >
     content
