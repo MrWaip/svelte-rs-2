@@ -1744,6 +1744,26 @@ fn derived_by_inside_function() {
     assert_compiler("derived_by_inside_function");
 }
 
+#[rstest]
+fn component_snippet_prop() {
+    assert_compiler("component_snippet_prop");
+}
+
+#[rstest]
+fn component_snippet_with_children() {
+    assert_compiler("component_snippet_with_children");
+}
+
+#[rstest]
+fn component_multiple_snippets() {
+    assert_compiler("component_multiple_snippets");
+}
+
+#[rstest]
+fn component_snippet_only() {
+    assert_compiler("component_snippet_only");
+}
+
 // ---------------------------------------------------------------------------
 // Diagnose: TypeScript import + spread + bind:prop tests
 // ---------------------------------------------------------------------------
