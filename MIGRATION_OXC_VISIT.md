@@ -91,7 +91,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer<'a> {
 
 ---
 
-## Stage 2 — extract_expression_info + unwrap_rune_arg + detect_rune (svelte_analyze)
+## Stage 2 ✅ DONE — extract_expression_info + unwrap_rune_arg + detect_rune (svelte_analyze)
 
 **Goal**: Migrate shallow pattern-matching functions to Visit.
 
@@ -103,8 +103,13 @@ impl<'a> Visit<'a> for ExpressionAnalyzer<'a> {
 
 ### Approach
 
-Incorporate into `ExpressionAnalyzer` from Stage 1. The visitor's `visit_expression()`
-at depth 0 handles classification; deeper visits collect references/flags as before.
+`extract_expression_info()` folded into `ExpressionAnalyzer` from Stage 1.
+The visitor's `visit_expression()` at depth 0 handles kind classification and
+`has_side_effects`; deeper visits collect references/flags as before.
+`analyze_expression()` now returns `ExpressionInfo` directly.
+
+`unwrap_rune_arg()` and `detect_rune()` are shallow pattern matches (allowed
+exceptions per CLAUDE.md) — they stay as-is.
 
 ---
 

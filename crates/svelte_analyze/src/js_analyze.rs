@@ -7,7 +7,7 @@ use compact_str::CompactString;
 use oxc_ast::ast::{AssignmentTarget, CallExpression, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_call_expression, walk_function,
+    walk_arrow_function_expression, walk_call_expression, walk_expression, walk_function,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -41,7 +41,7 @@ pub(crate) fn analyze_script(
     let (has_effects, has_class_state_fields) = detect_script_flags(program);
     data.has_store_member_mutations = program.body.iter().any(|stmt| {
         if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
-            analyze_expression(&es.expression, 0).has_store_mutation
+            analyze_expression(&es.expression, 0).has_store_member_mutation
         } else {
             false
         }
@@ -381,7 +381,7 @@ fn insert_node_expr_info(
 ) {
     data.node_expr_offsets.insert(node_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = extract_expression_info(expr, offset);
+        let info = analyze_expression(expr, offset);
         data.expressions.insert(node_id, info);
     }
 }
@@ -395,7 +395,7 @@ fn insert_attr_expr_info(
 ) {
     data.attr_expr_offsets.insert(attr_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = extract_expression_info(expr, offset);
+        let info = analyze_expression(expr, offset);
         data.attr_expressions.insert(attr_id, info);
     }
 }
@@ -411,7 +411,7 @@ fn insert_concat_expr_info(
     for part in parts {
         if let ConcatPart::Dynamic(span) = part {
             if let Some(expr) = parsed.exprs.get(&span.start) {
-                let info = extract_expression_info(expr, span.start);
+                let info = analyze_expression(expr, span.start);
                 all_refs.extend(info.references);
             }
         }
@@ -796,14 +796,18 @@ fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 // ---------------------------------------------------------------------------
 
 /// Single-pass expression analyzer using OXC Visit infrastructure.
-/// Replaces manual recursive functions: collect_references, expression_has_call,
-/// expression_has_rune, has_deep_store_mutation.
+/// Collects all expression metadata in one walk: kind classification,
+/// references, has_call, has_state_rune, has_store_mutation, has_side_effects.
 struct ExpressionAnalyzer {
+    kind: ExpressionKind,
     references: SmallVec<[Reference; 2]>,
     has_call: bool,
     has_state_rune: bool,
     has_store_mutation: bool,
+    has_side_effects: bool,
     offset: u32,
+    /// Expression nesting depth. 0 = root expression (used for classification).
+    depth: u32,
     /// Depth inside function boundaries. When >0, `has_call` and `has_state_rune`
     /// are not updated (matching Svelte semantics: function bodies are opaque
     /// for call/rune detection).
@@ -811,6 +815,43 @@ struct ExpressionAnalyzer {
 }
 
 impl<'a> Visit<'a> for ExpressionAnalyzer {
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.depth == 0 {
+            self.kind = match expr {
+                Expression::Identifier(ident) => {
+                    ExpressionKind::Identifier(CompactString::from(ident.name.as_str()))
+                }
+                Expression::NumericLiteral(_)
+                | Expression::StringLiteral(_)
+                | Expression::BooleanLiteral(_)
+                | Expression::NullLiteral(_) => ExpressionKind::Literal,
+                Expression::CallExpression(call) => {
+                    let callee = match &call.callee {
+                        Expression::Identifier(ident) => {
+                            CompactString::from(ident.name.as_str())
+                        }
+                        _ => CompactString::default(),
+                    };
+                    ExpressionKind::CallExpression { callee }
+                }
+                Expression::StaticMemberExpression(_)
+                | Expression::ComputedMemberExpression(_) => ExpressionKind::MemberExpression,
+                Expression::ArrowFunctionExpression(_) => ExpressionKind::ArrowFunction,
+                Expression::AssignmentExpression(_) => ExpressionKind::Assignment,
+                _ => ExpressionKind::Other,
+            };
+            self.has_side_effects = matches!(
+                expr,
+                Expression::CallExpression(_)
+                    | Expression::AssignmentExpression(_)
+                    | Expression::UpdateExpression(_)
+            );
+        }
+        self.depth += 1;
+        walk_expression(self, expr);
+        self.depth -= 1;
+    }
+
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
         self.references.push(Reference {
             name: CompactString::from(ident.name.as_str()),
@@ -903,61 +944,26 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
 }
 
 /// Run the unified expression analyzer. Returns all metadata in a single pass.
-fn analyze_expression(expr: &Expression<'_>, offset: u32) -> ExpressionAnalyzer {
+pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
+        kind: ExpressionKind::Other,
         references: SmallVec::new(),
         has_call: false,
         has_state_rune: false,
         has_store_mutation: false,
+        has_side_effects: false,
         offset,
+        depth: 0,
         fn_depth: 0,
     };
     analyzer.visit_expression(expr);
-    analyzer
-}
-
-// ---------------------------------------------------------------------------
-// Expression info extraction
-// ---------------------------------------------------------------------------
-
-pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
-    let kind = match expr {
-        Expression::Identifier(ident) => ExpressionKind::Identifier(CompactString::from(ident.name.as_str())),
-        Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NullLiteral(_) => ExpressionKind::Literal,
-        Expression::CallExpression(call) => {
-            let callee = match &call.callee {
-                Expression::Identifier(ident) => CompactString::from(ident.name.as_str()),
-                _ => CompactString::default(),
-            };
-            ExpressionKind::CallExpression { callee }
-        }
-        Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
-            ExpressionKind::MemberExpression
-        }
-        Expression::ArrowFunctionExpression(_) => ExpressionKind::ArrowFunction,
-        Expression::AssignmentExpression(_) => ExpressionKind::Assignment,
-        _ => ExpressionKind::Other,
-    };
-
-    let analyzed = analyze_expression(expr, offset);
-
-    let has_side_effects = matches!(
-        expr,
-        Expression::CallExpression(_)
-            | Expression::AssignmentExpression(_)
-            | Expression::UpdateExpression(_)
-    );
-
     ExpressionInfo {
-        kind,
-        references: analyzed.references,
-        has_side_effects,
-        has_call: analyzed.has_call,
-        has_state_rune: analyzed.has_state_rune,
-        has_store_member_mutation: analyzed.has_store_mutation,
+        kind: analyzer.kind,
+        references: analyzer.references,
+        has_side_effects: analyzer.has_side_effects,
+        has_call: analyzer.has_call,
+        has_state_rune: analyzer.has_state_rune,
+        has_store_member_mutation: analyzer.has_store_mutation,
         needs_context: false,
     }
 }

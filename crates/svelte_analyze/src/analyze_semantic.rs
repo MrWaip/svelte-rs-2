@@ -9,7 +9,7 @@ use svelte_ast::{
 use svelte_parser::ParsedExprs;
 
 use crate::data::AnalysisData;
-use crate::js_analyze::extract_expression_info;
+use crate::js_analyze::analyze_expression;
 use crate::scope::ComponentScoping;
 use crate::walker::TemplateVisitor;
 
@@ -53,7 +53,7 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
             let idx_name = self.component.source_text(idx_span);
             if let Some(key_span) = block.key_span {
                 if let Some(key_expr) = self.parsed.exprs.get(&key_span.start) {
-                    let info = extract_expression_info(key_expr, key_span.start);
+                    let info = analyze_expression(key_expr, key_span.start);
                     if info.references.iter().any(|r| r.name.as_str() == idx_name) {
                         data.each_blocks.key_uses_index.insert(block.id);
                     }
