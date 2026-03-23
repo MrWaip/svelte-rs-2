@@ -176,6 +176,7 @@ fn transform_script_text<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
+        nested_derived_syms: FxHashSet::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -246,6 +247,7 @@ fn transform_program<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
+        nested_derived_syms: FxHashSet::default(),
     };
 
     let empty_scoping = Scoping::default();
@@ -366,6 +368,9 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) class_state_stack: Vec<ClassStateInfo>,
     /// Pre-parsed prop default expressions, indexed by prop position.
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
+    /// SymbolIds of $derived/$derived.by variables declared in nested scopes (inside functions).
+    /// These are detected syntactically (by callee name) since analysis only registers root-scope runes.
+    pub(super) nested_derived_syms: FxHashSet<oxc_semantic::SymbolId>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {

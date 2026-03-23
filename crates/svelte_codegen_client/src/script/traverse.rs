@@ -20,32 +20,55 @@ pub(super) fn wrap_derived_thunks<'a>(
     program: &mut oxc_ast::ast::Program<'a>,
     pending: &FxHashSet<oxc_semantic::SymbolId>,
 ) {
-    use oxc_ast::ast::Statement;
-    for stmt in program.body.iter_mut() {
-        if let Statement::VariableDeclaration(decl) = stmt {
-            for declarator in decl.declarations.iter_mut() {
-                let sym_id = match &declarator.id {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        match id.symbol_id.get() {
-                            Some(s) => s,
-                            None => continue,
+    wrap_derived_thunks_in_stmts(b, &mut program.body, pending);
+}
+
+fn wrap_derived_thunks_in_stmts<'a>(
+    b: &Builder<'a>,
+    stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
+    pending: &FxHashSet<oxc_semantic::SymbolId>,
+) {
+    for stmt in stmts.iter_mut() {
+        match stmt {
+            Statement::VariableDeclaration(decl) => {
+                for declarator in decl.declarations.iter_mut() {
+                    let sym_id = match &declarator.id {
+                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                            match id.symbol_id.get() {
+                                Some(s) => s,
+                                None => continue,
+                            }
                         }
+                        _ => continue,
+                    };
+                    if !pending.contains(&sym_id) {
+                        continue;
                     }
-                    _ => continue,
-                };
-                if !pending.contains(&sym_id) {
-                    continue;
-                }
-                if let Some(Expression::CallExpression(call)) = &mut declarator.init {
-                    if !call.arguments.is_empty() {
-                        let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
-                        std::mem::swap(&mut call.arguments[0], &mut dummy);
-                        let arg_expr = dummy.into_expression();
-                        let thunk = b.thunk(arg_expr);
-                        call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                    if let Some(Expression::CallExpression(call)) = &mut declarator.init {
+                        if !call.arguments.is_empty() {
+                            let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
+                            std::mem::swap(&mut call.arguments[0], &mut dummy);
+                            let arg_expr = dummy.into_expression();
+                            let thunk = b.thunk(arg_expr);
+                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                        }
                     }
                 }
             }
+            // Recurse into function bodies to handle nested $derived
+            Statement::FunctionDeclaration(func) => {
+                if let Some(body) = &mut func.body {
+                    wrap_derived_thunks_in_stmts(b, &mut body.statements, pending);
+                }
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                if let Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) = &mut export.declaration {
+                    if let Some(body) = &mut func.body {
+                        wrap_derived_thunks_in_stmts(b, &mut body.statements, pending);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -577,6 +600,8 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         };
 
         let Some((kind, mutated)) = rune_info else {
+            // Nested scope: detect $derived/$derived.by syntactically by callee name
+            self.try_transform_nested_derived(node);
             return;
         };
 
@@ -792,13 +817,17 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                     return;
                 }
-                // Regular rune check
-                let Some((kind, mutated)) = self.rune_for_ref(id) else {
+                // Regular rune check (root-scope runes registered by analysis)
+                if let Some((kind, mutated)) = self.rune_for_ref(id) {
+                    let needs_get = mutated || kind.is_derived();
+                    if needs_get {
+                        let name = id.name.as_str().to_string();
+                        *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
+                    }
                     return;
-                };
-                let needs_get = mutated
-                    || kind.is_derived();
-                if needs_get {
+                }
+                // Nested-scope derived refs (detected syntactically during traverse)
+                if self.is_nested_derived_ref(id) {
                     let name = id.name.as_str().to_string();
                     *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                 }
@@ -838,6 +867,72 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
+    /// Detect `$derived(expr)` or `$derived.by(fn)` in nested scopes (inside functions)
+    /// and transform them syntactically. Analysis only registers root-scope runes, so nested
+    /// rune declarations are handled here by matching the callee name.
+    fn try_transform_nested_derived(&mut self, node: &mut VariableDeclarator<'a>) {
+        let init = match node.init.as_ref() {
+            Some(Expression::CallExpression(call)) => call,
+            _ => return,
+        };
+
+        let nested_kind = match &init.callee {
+            Expression::Identifier(id) if id.name.as_str() == "$derived" => {
+                Some(RuneKind::Derived)
+            }
+            Expression::StaticMemberExpression(member) => {
+                if let Expression::Identifier(obj) = &member.object {
+                    if obj.name.as_str() == "$derived" && member.property.name.as_str() == "by" {
+                        Some(RuneKind::DerivedBy)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let Some(kind) = nested_kind else { return };
+
+        let sym_id = match &node.id {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.symbol_id.get(),
+            _ => None,
+        };
+
+        let init = node.init.as_mut().unwrap();
+        let init_expr = self.b.move_expr(init);
+        let Expression::CallExpression(mut call) = init_expr else { unreachable!() };
+
+        call.callee = self.b.rid_expr("$.derived");
+
+        if kind == RuneKind::Derived {
+            if let Some(sym_id) = sym_id {
+                self.derived_pending.insert(sym_id);
+                self.nested_derived_syms.insert(sym_id);
+            }
+        } else if let Some(sym_id) = sym_id {
+            // $derived.by — no thunk wrapping needed, but still needs $.get() on references
+            self.nested_derived_syms.insert(sym_id);
+        }
+
+        node.init = Some(Expression::CallExpression(call));
+    }
+
+    /// Check if a reference points to a nested $derived variable and needs $.get() wrapping.
+    fn is_nested_derived_ref(&self, id: &oxc_ast::ast::IdentifierReference<'a>) -> bool {
+        let ref_id = match id.reference_id.get() {
+            Some(r) => r,
+            None => return false,
+        };
+        let sym_id = match self.scoping.get_reference(ref_id).symbol_id() {
+            Some(s) => s,
+            None => return false,
+        };
+        self.nested_derived_syms.contains(&sym_id)
+    }
+
     /// Transform `$inspect(args)` → `$.inspect(thunk, inspector, true)`
     /// and `$inspect(args).with(cb)` → `$.inspect(thunk, inspector)`.
     ///
