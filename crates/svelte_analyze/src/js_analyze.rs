@@ -418,6 +418,7 @@ fn insert_concat_expr_info(
         has_call: false,
         has_state_rune: false,
         has_store_member_mutation: false,
+        needs_context: false,
     };
     data.attr_expressions.insert(attr_id, merged);
 }
@@ -734,6 +735,30 @@ fn is_safe_identifier(
     }
 }
 
+/// Classify per-expression `needs_context` using ComponentScoping.
+/// MemberExpression/CallExpression on imports/props → needs_context.
+/// Mirrors reference: MemberExpression.js + CallExpression.js + is_safe_identifier.
+pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
+    let root = data.scoping.root_scope_id();
+    for info in data.expressions.values_mut()
+        .chain(data.attr_expressions.values_mut())
+    {
+        info.needs_context = match &info.kind {
+            ExpressionKind::MemberExpression | ExpressionKind::CallExpression { .. } => {
+                info.references.iter().any(|r| {
+                    data.scoping.find_binding(root, &r.name)
+                        .is_some_and(|sym| {
+                            data.scoping.is_import(sym)
+                                || data.scoping.is_prop_source(sym)
+                                || data.scoping.prop_non_source_name(sym).is_some()
+                        })
+                })
+            }
+            _ => false,
+        };
+    }
+}
+
 /// Unwrap a rune call to get its first argument expression.
 /// E.g., `$derived(expr)` → `expr`, `$state(expr)` → `expr`.
 /// Non-rune expressions pass through unchanged.
@@ -811,6 +836,7 @@ pub(crate) fn extract_expression_info(expr: &Expression<'_>, offset: u32) -> Exp
         has_call,
         has_state_rune,
         has_store_member_mutation,
+        needs_context: false,
     }
 }
 

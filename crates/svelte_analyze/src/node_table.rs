@@ -56,6 +56,10 @@ impl<T> NodeTable<T> {
         self.0.iter().filter_map(|slot| slot.as_ref())
     }
 
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.0.iter_mut().filter_map(|slot| slot.as_mut())
+    }
+
     pub fn keys(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.0.iter().enumerate().filter_map(|(i, slot)| {
             slot.as_ref().map(|_| NodeId(i as u32))

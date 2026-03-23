@@ -26,6 +26,9 @@ pub struct ExpressionInfo {
     /// (e.g., `$store.field = val` or `$store.count++`). Used to determine if component
     /// needs `$.push/$.pop` for `$.store_mutate` support.
     pub has_store_member_mutation: bool,
+    /// Expression requires component context (unsafe member/call/new on import/prop).
+    /// Aggregated into `AnalysisData::needs_context` for `$.push`/`$.pop`.
+    pub needs_context: bool,
 }
 
 #[derive(Debug, Clone)]

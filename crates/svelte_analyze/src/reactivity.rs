@@ -16,7 +16,7 @@ impl ReactivityVisitor {
         data: &AnalysisData,
     ) -> bool {
         if let Some(info) = data.expressions.get(*node_id) {
-            if info.has_state_rune {
+            if info.has_state_rune || info.needs_context {
                 return true;
             }
             return info.references.iter().any(|r| {
