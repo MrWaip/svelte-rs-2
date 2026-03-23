@@ -76,33 +76,53 @@ impl<T> NodeTable<T> {
     }
 }
 
-/// Dense bitset indexed by `NodeId`. Replaces `FxHashSet<NodeId>`.
+/// Dense bitset indexed by `NodeId`. Uses u64-packed words for 8x less memory
+/// and faster iteration than `Vec<bool>`.
 #[derive(Debug, Clone)]
-pub struct NodeBitSet(Vec<bool>);
+pub struct NodeBitSet {
+    words: Vec<u64>,
+    len: usize,
+}
 
 impl NodeBitSet {
     pub fn new(node_count: u32) -> Self {
-        Self(vec![false; node_count as usize])
+        let len = node_count as usize;
+        let word_count = (len + 63) / 64;
+        Self {
+            words: vec![0u64; word_count],
+            len,
+        }
     }
 
     #[inline]
     pub fn contains(&self, id: &NodeId) -> bool {
-        self.0.get(id.0 as usize).copied().unwrap_or(false)
+        let idx = id.0 as usize;
+        let word = idx / 64;
+        let bit = idx % 64;
+        self.words.get(word).is_some_and(|w| w & (1u64 << bit) != 0)
     }
 
     pub fn insert(&mut self, id: NodeId) {
         let idx = id.0 as usize;
-        if idx >= self.0.len() {
-            self.0.resize(idx + 1, false);
+        let word = idx / 64;
+        let bit = idx % 64;
+        if word >= self.words.len() {
+            self.words.resize(word + 1, 0);
         }
-        self.0[idx] = true;
+        self.words[word] |= 1u64 << bit;
+        if idx >= self.len {
+            self.len = idx + 1;
+        }
     }
 
     pub fn remove(&mut self, id: &NodeId) -> bool {
         let idx = id.0 as usize;
-        if let Some(slot) = self.0.get_mut(idx) {
-            let was = *slot;
-            *slot = false;
+        let word = idx / 64;
+        let bit = idx % 64;
+        if let Some(w) = self.words.get_mut(word) {
+            let mask = 1u64 << bit;
+            let was = *w & mask != 0;
+            *w &= !mask;
             was
         } else {
             false
@@ -110,12 +130,33 @@ impl NodeBitSet {
     }
 
     pub fn is_empty(&self) -> bool {
-        !self.0.iter().any(|&b| b)
+        self.words.iter().all(|&w| w == 0)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.0.iter().enumerate().filter_map(|(i, &b)| {
-            if b { Some(NodeId(i as u32)) } else { None }
+        self.words.iter().enumerate().flat_map(|(word_idx, &word)| {
+            let base = (word_idx * 64) as u32;
+            BitIter { word, base }
         })
+    }
+}
+
+/// Iterator over set bits in a single u64 word.
+struct BitIter {
+    word: u64,
+    base: u32,
+}
+
+impl Iterator for BitIter {
+    type Item = NodeId;
+
+    #[inline]
+    fn next(&mut self) -> Option<NodeId> {
+        if self.word == 0 {
+            return None;
+        }
+        let bit = self.word.trailing_zeros();
+        self.word &= self.word - 1; // clear lowest set bit
+        Some(NodeId(self.base + bit))
     }
 }

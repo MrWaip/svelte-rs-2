@@ -124,14 +124,14 @@ pub fn analyze_with_options<'a>(
             element_flags::ElementFlagsVisitor::new(&component.source),
             hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics::BindSemanticsVisitor::new(&component.source),
-            content_types::ContentAndVarVisitor,
+            content_types::ContentAndVarVisitor { source: &component.source },
         );
         walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
     }
 
     // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
     // Element fragments already classified by ContentAndVarVisitor::leave_element
-    content_types::classify_remaining_fragments(&mut data);
+    content_types::classify_remaining_fragments(&mut data, &component.source);
     validate::validate(component, &data, &mut diags);
 
     (data, parsed, diags)

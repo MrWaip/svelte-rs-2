@@ -279,7 +279,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         if n == 0 {
             prefix.to_string()
         } else {
-            format!("{}_{}", prefix, n)
+            let mut s = String::with_capacity(prefix.len() + 4);
+            s.push_str(prefix);
+            s.push('_');
+            s.push_str(&n.to_string());
+            s
         }
     }
 

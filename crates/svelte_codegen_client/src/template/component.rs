@@ -46,7 +46,9 @@ pub(crate) fn gen_component<'a>(
             ComponentPropKind::Expression { name, attr_id, shorthand, needs_memo } => {
                 let key = ctx.b.alloc_str(&name);
                 if needs_memo {
-                    let memo_name = format!("${memo_counter}");
+                    let mut memo_name = String::with_capacity(4);
+                    memo_name.push('$');
+                    memo_name.push_str(&memo_counter.to_string());
                     memo_counter += 1;
                     let expr = get_attr_expr(ctx, attr_id);
                     let thunk = ctx.b.thunk(expr);

@@ -19,6 +19,8 @@ use std::cell::Cell;
 
 pub enum Arg<'a, 'short> {
     Str(String),
+    /// Borrowed string literal — avoids heap allocation when a &str is available.
+    StrRef(&'short str),
     Num(f64),
     Ident(&'short str),
     #[allow(dead_code)]
@@ -123,6 +125,7 @@ impl<'a> Builder<'a> {
             }
             let expr = match a {
                 Arg::Str(v) => self.str_expr(&v),
+                Arg::StrRef(v) => self.str_expr(v),
                 Arg::Num(v) => self.num_expr(v),
                 Arg::Ident(v) => self.rid_expr(v),
                 Arg::IdentRef(r) => Expression::Identifier(self.alloc(r)),
@@ -172,6 +175,7 @@ impl<'a> Builder<'a> {
     fn arg_to_argument<'short>(&self, arg: Arg<'a, 'short>) -> Argument<'a> {
         match arg {
             Arg::Str(v) => Argument::StringLiteral(self.alloc(self.str_lit(&v))),
+            Arg::StrRef(v) => Argument::StringLiteral(self.alloc(self.str_lit(v))),
             Arg::Num(v) => Argument::NumericLiteral(self.alloc(self.num(v))),
             Arg::Ident(v) => Argument::Identifier(self.alloc(self.rid(v))),
             Arg::IdentRef(r) => Argument::Identifier(self.alloc(r)),

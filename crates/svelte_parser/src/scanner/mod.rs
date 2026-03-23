@@ -1,6 +1,6 @@
 pub mod token;
 
-use std::{iter::Peekable, str::Chars, vec};
+use std::vec;
 
 pub use svelte_ast::is_void;
 
@@ -16,7 +16,7 @@ use svelte_span::{Span, SPAN};
 
 pub struct Scanner<'a> {
     source: &'a str,
-    chars: Peekable<Chars<'a>>,
+    bytes: &'a [u8],
     tokens: Vec<Token>,
     diagnostics: Vec<Diagnostic>,
     start: usize,
@@ -28,9 +28,9 @@ impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Scanner<'a> {
         Scanner {
             source,
+            bytes: source.as_bytes(),
             tokens: vec![],
             diagnostics: vec![],
-            chars: source.chars().peekable(),
             prev: 0,
             current: 0,
             start: 0,
@@ -106,16 +106,26 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        let char = self.chars.next().unwrap();
-
         self.prev = self.current;
-        self.current += char.len_utf8();
-
-        char
+        let b = self.bytes[self.current];
+        if b < 0x80 {
+            self.current += 1;
+            b as char
+        } else {
+            let ch = self.source[self.current..].chars().next().unwrap();
+            self.current += ch.len_utf8();
+            ch
+        }
     }
 
-    fn is_at_end(&mut self) -> bool {
-        self.chars.peek().is_none()
+    #[inline]
+    fn is_at_end(&self) -> bool {
+        self.current >= self.bytes.len()
+    }
+
+    #[inline]
+    fn peek_byte(&self) -> Option<u8> {
+        self.bytes.get(self.current).copied()
     }
 
     fn identifier(&mut self) -> &'a str {
@@ -191,25 +201,24 @@ impl<'a> Scanner<'a> {
     }
 
     fn match_char(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            return false;
+        if self.peek_byte().is_some_and(|b| b == expected as u8) {
+            self.advance();
+            true
+        } else {
+            false
         }
-
-        if self.peek().is_some_and(|c| c != expected) {
-            return false;
-        }
-
-        self.advance();
-
-        true
     }
 
-    fn peek(&mut self) -> Option<char> {
-        if self.is_at_end() {
+    fn peek(&self) -> Option<char> {
+        if self.current >= self.bytes.len() {
             return None;
         }
-
-        self.chars.peek().copied()
+        let b = self.bytes[self.current];
+        if b < 0x80 {
+            Some(b as char)
+        } else {
+            self.source[self.current..].chars().next()
+        }
     }
 
     fn collect_until_span<F>(&mut self, condition: F) -> Result<Span, Diagnostic>
@@ -745,7 +754,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn collect_js_expression(&mut self) -> Result<Span, Diagnostic> {
-        let mut stack: Vec<bool> = vec![];
+        let mut stack: Vec<bool> = Vec::with_capacity(4);
         let start = self.current;
 
         while !self.is_at_end() {

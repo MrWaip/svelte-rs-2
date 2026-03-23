@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use svelte_ast::{Component, Fragment, Node};
+use svelte_span::Span;
 
 use crate::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
 
@@ -16,29 +17,34 @@ fn lower_fragment(
 ) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
-    // Collect ConstTag node IDs for this fragment
-    let const_ids: Vec<_> = fragment.nodes.iter()
-        .filter_map(|n| n.as_const_tag().map(|ct| ct.id))
-        .collect();
-    if !const_ids.is_empty() {
-        data.const_tags.by_fragment.insert(key, const_ids);
-    }
+    // Collect special node IDs in a single pass instead of 2-3 separate iterations
+    {
+        let mut const_ids: Option<Vec<svelte_ast::NodeId>> = None;
+        let mut debug_ids: Option<Vec<svelte_ast::NodeId>> = None;
+        let mut title_ids: Option<Vec<svelte_ast::NodeId>> = None;
 
-    // Collect DebugTag node IDs for this fragment
-    let debug_ids: Vec<_> = fragment.nodes.iter()
-        .filter_map(|n| n.as_debug_tag().map(|dt| dt.id))
-        .collect();
-    if !debug_ids.is_empty() {
-        data.debug_tags.by_fragment.insert(key, debug_ids);
-    }
+        for node in &fragment.nodes {
+            if let Some(ct) = node.as_const_tag() {
+                const_ids.get_or_insert_with(Vec::new).push(ct.id);
+            } else if let Some(dt) = node.as_debug_tag() {
+                debug_ids.get_or_insert_with(Vec::new).push(dt.id);
+            } else if inside_head {
+                if let Some(el) = node.as_element() {
+                    if el.name == "title" {
+                        title_ids.get_or_insert_with(Vec::new).push(el.id);
+                    }
+                }
+            }
+        }
 
-    // Collect TitleElement node IDs (<title> inside <svelte:head>)
-    if inside_head {
-        let title_ids: Vec<_> = fragment.nodes.iter()
-            .filter_map(|n| n.as_element().filter(|el| el.name == "title").map(|el| el.id))
-            .collect();
-        if !title_ids.is_empty() {
-            data.title_elements.by_fragment.insert(key, title_ids);
+        if let Some(ids) = const_ids {
+            data.const_tags.by_fragment.insert(key, ids);
+        }
+        if let Some(ids) = debug_ids {
+            data.debug_tags.by_fragment.insert(key, ids);
+        }
+        if let Some(ids) = title_ids {
+            data.title_elements.by_fragment.insert(key, ids);
         }
     }
 
@@ -116,30 +122,46 @@ fn lower_fragment(
 /// 4. For internal Text nodes: collapse boundary whitespace to single space,
 ///    but preserve whitespace adjacent to ExpressionTag
 /// 5. Group consecutive Text + ExpressionTag into TextConcat
+/// Returns true for nodes that are filtered out of lowered representation.
+#[inline]
+fn is_skipped_node(node: &Node, inside_head: bool) -> bool {
+    match node {
+        Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_)
+        | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteDocument(_)
+        | Node::SvelteBody(_) | Node::Error(_) => true,
+        Node::Element(el) if inside_head && el.name == "title" => true,
+        _ => false,
+    }
+}
+
 fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) -> Vec<FragmentItem> {
-    // Step 1: collect regular nodes (skip comments, snippets, and title inside head)
-    let mut regular: Vec<&Node> = Vec::new();
-    for node in &fragment.nodes {
-        match node {
-            Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) | Node::Error(_) => continue,
-            Node::Element(el) if inside_head && el.name == "title" => continue,
-            _ => regular.push(node),
+    let nodes = &fragment.nodes;
+
+    // Build filtered index list to avoid allocating Vec<&Node>.
+    // For small fragments (common case), use inline storage.
+    let mut filtered: Vec<usize> = Vec::with_capacity(nodes.len());
+    for (i, node) in nodes.iter().enumerate() {
+        if !is_skipped_node(node, inside_head) {
+            filtered.push(i);
         }
     }
 
-    // Step 2: strip leading whitespace-only Text nodes (index-based to avoid O(n) shifts)
+    // Strip leading whitespace-only Text nodes
     let mut start = 0;
-    while let Some(Node::Text(t)) = regular.get(start) {
-        if !is_ws_only(t.value(&component.source)) {
-            break;
+    while start < filtered.len() {
+        if let Node::Text(t) = &nodes[filtered[start]] {
+            if is_ws_only(t.value(&component.source)) {
+                start += 1;
+                continue;
+            }
         }
-        start += 1;
+        break;
     }
 
-    // Step 3: strip trailing whitespace-only Text nodes
-    let mut end = regular.len();
+    // Strip trailing whitespace-only Text nodes
+    let mut end = filtered.len();
     while end > start {
-        if let Some(Node::Text(t)) = regular.get(end - 1) {
+        if let Node::Text(t) = &nodes[filtered[end - 1]] {
             if is_ws_only(t.value(&component.source)) {
                 end -= 1;
                 continue;
@@ -148,18 +170,15 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
         break;
     }
 
-    let regular = &regular[start..end];
+    let filtered = &filtered[start..end];
+    let len = filtered.len();
 
-    if regular.is_empty() {
+    if len == 0 {
         return vec![];
     }
 
-    // Sequential trimming pass + grouping into FragmentItems.
-    // Process nodes in order, tracking whether the previous trimmed text
-    // ends with whitespace to avoid double spaces.
-    let len = regular.len();
-    let mut items: Vec<FragmentItem> = Vec::new();
-    let mut concat: Vec<LoweredTextPart> = Vec::new();
+    let mut items: Vec<FragmentItem> = Vec::with_capacity(len);
+    let mut concat: Vec<LoweredTextPart> = Vec::with_capacity(4);
     let mut prev_text_ends_ws = false;
 
     let flush = |concat: &mut Vec<LoweredTextPart>, items: &mut Vec<FragmentItem>| {
@@ -170,21 +189,30 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
         }
     };
 
-    for i in 0..len {
-        match regular[i] {
+    for fi in 0..len {
+        let idx = filtered[fi];
+        match &nodes[idx] {
             Node::Text(text) => {
                 let raw = text.value(&component.source);
-                let is_first = i == 0;
-                let is_last = i == len - 1;
-                let prev = i.checked_sub(1).map(|j| regular[j]);
-                let next = regular.get(i + 1).copied();
+                let is_first = fi == 0;
+                let is_last = fi == len - 1;
+                let prev = if fi > 0 { Some(&nodes[filtered[fi - 1]]) } else { None };
+                let next = if fi + 1 < len { Some(&nodes[filtered[fi + 1]]) } else { None };
 
-                let data = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
+                let trimmed = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
 
-                prev_text_ends_ws = ends_with_ws(&data);
+                prev_text_ends_ws = ends_with_ws(&trimmed);
 
-                if !data.is_empty() {
-                    concat.push(LoweredTextPart::Text(data.into_owned()));
+                if !trimmed.is_empty() {
+                    let part = match trimmed {
+                        Cow::Borrowed(s) => {
+                            // Compute span from pointer offset into source
+                            let offset = s.as_ptr() as usize - component.source.as_ptr() as usize;
+                            LoweredTextPart::TextSpan(Span::new(offset as u32, (offset + s.len()) as u32))
+                        }
+                        Cow::Owned(s) => LoweredTextPart::TextOwned(s),
+                    };
+                    concat.push(part);
                 }
             }
             Node::ExpressionTag(tag) => {
@@ -195,9 +223,7 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool) ->
                 prev_text_ends_ws = false;
                 flush(&mut concat, &mut items);
                 match other {
-                    Node::Element(el) => {
-                        items.push(FragmentItem::Element(el.id));
-                    }
+                    Node::Element(el) => items.push(FragmentItem::Element(el.id)),
                     Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
                     Node::IfBlock(block) => items.push(FragmentItem::IfBlock(block.id)),
                     Node::EachBlock(block) => items.push(FragmentItem::EachBlock(block.id)),
@@ -425,13 +451,13 @@ mod tests {
         )
     }
 
-    fn collect_text_parts(items: &[FragmentItem]) -> Vec<String> {
+    fn collect_text_parts(items: &[FragmentItem], source: &str) -> Vec<String> {
         let mut out = Vec::new();
         for item in items {
             if let FragmentItem::TextConcat { parts, .. } = item {
                 for part in parts {
-                    if let LoweredTextPart::Text(s) = part {
-                        out.push(s.clone());
+                    if let Some(s) = part.text_value(source) {
+                        out.push(s.to_string());
                     }
                 }
             }
@@ -443,7 +469,7 @@ mod tests {
     fn trim_leading_and_trailing() {
         let src = "\n  hello  \n";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -451,7 +477,7 @@ mod tests {
     fn preserve_internal_newlines() {
         let src = "hello\n  world";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello\n  world"]);
     }
 
@@ -459,7 +485,7 @@ mod tests {
     fn tabs_and_crlf() {
         let src = "\r\n\thello\r\n";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -478,7 +504,7 @@ mod tests {
             expr_node(1),
             text_node(2, 6, src.len() as u32),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  hello"]);
     }
 
@@ -489,7 +515,7 @@ mod tests {
             text_node(1, 0, 8),
             expr_node(2),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello  \n"]);
     }
 
@@ -500,7 +526,7 @@ mod tests {
             text_node(1, 0, 1),
             text_node(2, 1, 2),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert!(texts.is_empty());
     }
 
@@ -508,7 +534,7 @@ mod tests {
     fn ws_between_non_expr_nodes_collapses_to_space() {
         let src = "hello\n\n  world";
         let comp = make_component(src, vec![text_node(1, 0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["hello\n\n  world"]);
     }
 
@@ -520,7 +546,7 @@ mod tests {
             text_node(2, 3, 7),
             expr_node(3),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  \n"]);
     }
 
@@ -532,7 +558,7 @@ mod tests {
             text_node(2, 6, 16),
             text_node(3, 16, 18),
         ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false));
+        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false), &comp.source);
         assert_eq!(texts, vec!["\n  hello ", "x"]);
     }
 
