@@ -3,8 +3,8 @@ export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	let value = 0;
 	function getInfo() {
-		const computed = $derived(value * 2);
-		return { computed };
+		const computed = $.derived(() => value * 2);
+		return { computed: $.get(computed) };
 	}
 	var $$exports = { getInfo };
 	return $.pop($$exports);
