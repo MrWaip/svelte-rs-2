@@ -5,6 +5,7 @@
 
 use compact_str::CompactString;
 use oxc_ast::ast::{CallExpression, Expression};
+use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
 
 use rustc_hash::FxHashSet;
@@ -428,6 +429,8 @@ fn extract_prop_default(
     }
 }
 
+/// Collect unique non-`$` identifier references from a `$derived`/`$derived.by` call's
+/// first argument. Uses OXC Visit for complete expression traversal.
 fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let Expression::CallExpression(call) = expr else {
         return vec![];
@@ -438,69 +441,24 @@ fn collect_derived_refs(expr: &Expression<'_>) -> Vec<CompactString> {
     let Some(arg_expr) = call.arguments[0].as_expression() else {
         return vec![];
     };
-    let mut refs = Vec::new();
-    collect_idents_recursive(arg_expr, &mut refs);
+    let mut collector = IdentCollector { refs: Vec::new() };
+    collector.visit_expression(arg_expr);
     let mut seen = FxHashSet::default();
-    refs.retain(|r| seen.insert(r.clone()));
-    refs
+    collector.refs.retain(|r| seen.insert(r.clone()));
+    collector.refs
 }
 
-fn collect_idents_recursive(expr: &Expression<'_>, refs: &mut Vec<CompactString>) {
-    use oxc_ast::ast::Expression::*;
-    match expr {
-        Identifier(id) => {
-            let name = id.name.as_str();
-            if !name.starts_with('$') {
-                refs.push(CompactString::from(name));
-            }
+/// Visitor that collects all non-`$`-prefixed identifier references.
+struct IdentCollector {
+    refs: Vec<CompactString>,
+}
+
+impl<'a> Visit<'a> for IdentCollector {
+    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        let name = ident.name.as_str();
+        if !name.starts_with('$') {
+            self.refs.push(CompactString::from(name));
         }
-        BinaryExpression(bin) => {
-            collect_idents_recursive(&bin.left, refs);
-            collect_idents_recursive(&bin.right, refs);
-        }
-        CallExpression(call) => {
-            collect_idents_recursive(&call.callee, refs);
-            for arg in &call.arguments {
-                if let Some(e) = arg.as_expression() {
-                    collect_idents_recursive(e, refs);
-                }
-            }
-        }
-        ArrowFunctionExpression(arrow) => {
-            for stmt in &arrow.body.statements {
-                match stmt {
-                    oxc_ast::ast::Statement::ExpressionStatement(es) => {
-                        collect_idents_recursive(&es.expression, refs);
-                    }
-                    oxc_ast::ast::Statement::ReturnStatement(ret) => {
-                        if let Some(arg) = &ret.argument {
-                            collect_idents_recursive(arg, refs);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        UnaryExpression(unary) => {
-            collect_idents_recursive(&unary.argument, refs);
-        }
-        ConditionalExpression(cond) => {
-            collect_idents_recursive(&cond.test, refs);
-            collect_idents_recursive(&cond.consequent, refs);
-            collect_idents_recursive(&cond.alternate, refs);
-        }
-        LogicalExpression(log) => {
-            collect_idents_recursive(&log.left, refs);
-            collect_idents_recursive(&log.right, refs);
-        }
-        StaticMemberExpression(m) => {
-            collect_idents_recursive(&m.object, refs);
-        }
-        ComputedMemberExpression(m) => {
-            collect_idents_recursive(&m.object, refs);
-            collect_idents_recursive(&m.expression, refs);
-        }
-        _ => {}
     }
 }
 

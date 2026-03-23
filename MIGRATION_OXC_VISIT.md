@@ -113,7 +113,7 @@ exceptions per CLAUDE.md) — they stay as-is.
 
 ---
 
-## Stage 3 — collect_idents_recursive (svelte_analyze)
+## Stage 3 ✅ DONE — collect_idents_recursive (svelte_analyze)
 
 **Goal**: Replace `collect_idents_recursive()` in `script_info.rs:440` with Visit.
 
