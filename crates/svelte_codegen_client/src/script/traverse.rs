@@ -55,7 +55,6 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     }
                 }
             }
-            // Recurse into function bodies to handle nested $derived
             Statement::FunctionDeclaration(func) => {
                 if let Some(body) = &mut func.body {
                     wrap_derived_thunks_in_stmts(b, &mut body.statements, pending);
@@ -600,8 +599,6 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         };
 
         let Some((kind, mutated)) = rune_info else {
-            // Nested scope: detect runes ($derived, $state, etc.) syntactically by callee name
-            self.try_transform_nested_rune(node);
             return;
         };
 
@@ -817,17 +814,12 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                     *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                     return;
                 }
-                // Regular rune check (root-scope runes registered by analysis)
-                if let Some((kind, mutated)) = self.rune_for_ref(id) {
-                    let needs_get = mutated || kind.is_derived();
-                    if needs_get {
-                        let name = id.name.as_str().to_string();
-                        *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
-                    }
+                // Rune check — $.get() for mutated $state or any $derived
+                let Some((kind, mutated)) = self.rune_for_ref(id) else {
                     return;
-                }
-                // Nested-scope rune refs (detected syntactically during traverse)
-                if self.nested_rune_for_ref(id).is_some() {
+                };
+                let needs_get = mutated || kind.is_derived();
+                if needs_get {
                     let name = id.name.as_str().to_string();
                     *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
                 }
@@ -867,117 +859,6 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
-    /// Detect rune calls ($derived, $derived.by, $state, $state.raw) in nested scopes
-    /// and transform them syntactically. Analysis only registers root-scope runes, so nested
-    /// rune declarations are handled here by matching the callee name.
-    fn try_transform_nested_rune(&mut self, node: &mut VariableDeclarator<'a>) {
-        let init = match node.init.as_ref() {
-            Some(Expression::CallExpression(call)) => call,
-            _ => return,
-        };
-
-        let nested_kind = match &init.callee {
-            Expression::Identifier(id) => match id.name.as_str() {
-                "$derived" => Some(RuneKind::Derived),
-                "$state" => Some(RuneKind::State),
-                _ => None,
-            },
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    match (obj.name.as_str(), member.property.name.as_str()) {
-                        ("$derived", "by") => Some(RuneKind::DerivedBy),
-                        ("$state", "raw") => Some(RuneKind::StateRaw),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        let Some(kind) = nested_kind else { return };
-
-        let sym_id = match &node.id {
-            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.symbol_id.get(),
-            _ => None,
-        };
-
-        let init = node.init.as_mut().unwrap();
-        let init_expr = self.b.move_expr(init);
-        let Expression::CallExpression(mut call) = init_expr else { unreachable!() };
-
-        match kind {
-            RuneKind::Derived => {
-                call.callee = self.b.rid_expr("$.derived");
-                if let Some(sym_id) = sym_id {
-                    self.derived_pending.insert(sym_id);
-                    self.nested_derived_syms.insert(sym_id);
-                }
-                node.init = Some(Expression::CallExpression(call));
-            }
-            RuneKind::DerivedBy => {
-                call.callee = self.b.rid_expr("$.derived");
-                if let Some(sym_id) = sym_id {
-                    self.nested_derived_syms.insert(sym_id);
-                }
-                node.init = Some(Expression::CallExpression(call));
-            }
-            RuneKind::State | RuneKind::StateRaw => {
-                call.callee = self.b.rid_expr("$.state");
-
-                if call.arguments.is_empty() {
-                    let void_zero = self.b.ast.expression_unary(
-                        oxc_span::SPAN,
-                        oxc_ast::ast::UnaryOperator::Void,
-                        self.b.num_expr(0.0),
-                    );
-                    call.arguments.push(void_zero.into());
-                } else if kind == RuneKind::State {
-                    let needs_proxy = call.arguments[0].as_expression()
-                        .is_some_and(|e| Self::should_proxy(e));
-                    if needs_proxy {
-                        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                        std::mem::swap(&mut call.arguments[0], &mut dummy);
-                        let inner = dummy.into_expression();
-                        let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
-                        call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
-                    }
-                }
-
-                if let Some(sym_id) = sym_id {
-                    self.nested_state_syms.insert(sym_id, kind);
-                }
-
-                node.init = Some(Expression::CallExpression(call));
-            }
-            _ => {}
-        }
-    }
-
-    /// Resolve a reference to its nested rune kind (derived or state).
-    fn nested_rune_for_ref(
-        &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
-    ) -> Option<RuneKind> {
-        let ref_id = id.reference_id.get()?;
-        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        if self.nested_derived_syms.contains(&sym_id) {
-            return Some(RuneKind::Derived);
-        }
-        self.nested_state_syms.get(&sym_id).copied()
-    }
-
-    /// Check if a reference points to a nested $state/$state.raw variable.
-    fn nested_state_sym_for_ref(
-        &self,
-        id: &oxc_ast::ast::IdentifierReference<'a>,
-    ) -> Option<&RuneKind> {
-        let ref_id = id.reference_id.get()?;
-        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        self.nested_state_syms.get(&sym_id)
-    }
-
     /// Transform `$inspect(args)` → `$.inspect(thunk, inspector, true)`
     /// and `$inspect(args).with(cb)` → `$.inspect(thunk, inspector)`.
     ///
@@ -1141,28 +1022,6 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     return;
                 }
             }
-            // Nested-scope state assignment
-            if let Some(&kind) = self.nested_state_sym_for_ref(id) {
-                let name = id.name.as_str().to_string();
-                let right = self.b.move_expr(&mut assign.right);
-
-                let value = if assign.operator.is_assign() {
-                    right
-                } else {
-                    let left_get = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
-                    if let Some(bin_op) = assign.operator.to_binary_operator() {
-                        self.b.ast.expression_binary(oxc_span::SPAN, left_get, bin_op, right)
-                    } else if let Some(log_op) = assign.operator.to_logical_operator() {
-                        self.b.ast.expression_logical(oxc_span::SPAN, left_get, log_op, right)
-                    } else {
-                        unreachable!("all compound assignment operators are either binary or logical")
-                    }
-                };
-
-                let needs_proxy = kind != RuneKind::StateRaw && Self::should_proxy(&value);
-                *node = svelte_transform::rune_refs::make_rune_set(self.b.ast.allocator, &name, value, needs_proxy);
-                return;
-            }
         }
 
         // Deep store mutation: $store.field = val → $.store_mutate(store, ...)
@@ -1228,15 +1087,6 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     );
                     return;
                 }
-            }
-            // Nested-scope state update
-            if self.nested_state_sym_for_ref(id).is_some() {
-                let name = id.name.as_str().to_string();
-                let is_increment = upd.operator == oxc_ast::ast::UpdateOperator::Increment;
-                *node = svelte_transform::rune_refs::make_rune_update(
-                    self.b.ast.allocator, &name, upd.prefix, is_increment,
-                );
-                return;
             }
         }
 

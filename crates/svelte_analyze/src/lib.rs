@@ -78,6 +78,9 @@ pub fn analyze_with_options<'a>(
     js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
 
     let scoping_built = scope::build_scoping(component, &mut data);
+    if let Some(ref program) = parsed.program {
+        scope::mark_nested_runes(program, &mut data.scoping);
+    }
     data.import_syms = data.scoping.collect_import_syms();
     // Combined walk: arrow scope registration + each-block index usage + reference resolution
     {

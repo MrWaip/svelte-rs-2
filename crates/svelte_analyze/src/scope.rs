@@ -471,6 +471,52 @@ pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> c
     crate::markers::ScopingBuilt::new()
 }
 
+/// Mark runes declared in nested function scopes ($derived, $state, etc.).
+/// Root-scope runes are already marked by `build_scoping` via `ScriptInfo`;
+/// this handles the remaining non-root declarations that `extract_script_info` skips.
+pub(crate) fn mark_nested_runes(program: &oxc_ast::ast::Program<'_>, scoping: &mut ComponentScoping) {
+    let root = scoping.root_scope_id();
+    mark_nested_runes_stmts(&program.body, scoping, root);
+}
+
+fn mark_nested_runes_stmts(
+    stmts: &oxc_allocator::Vec<'_, oxc_ast::ast::Statement<'_>>,
+    scoping: &mut ComponentScoping,
+    root: ScopeId,
+) {
+    use oxc_ast::ast::Statement;
+    for stmt in stmts.iter() {
+        match stmt {
+            Statement::VariableDeclaration(decl) => {
+                for declarator in &decl.declarations {
+                    let Some(init) = &declarator.init else { continue };
+                    let Some(rune_kind) = crate::script_info::detect_rune(init) else { continue };
+                    if !matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw) {
+                        continue;
+                    }
+                    let Some(sym_id) = declarator.id.get_binding_identifier()
+                        .and_then(|id| id.symbol_id.get()) else { continue };
+                    if scoping.symbol_scope_id(sym_id) == root { continue; }
+                    scoping.mark_rune(sym_id, rune_kind);
+                }
+            }
+            Statement::FunctionDeclaration(func) => {
+                if let Some(body) = &func.body {
+                    mark_nested_runes_stmts(&body.statements, scoping, root);
+                }
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                if let Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) = &export.declaration {
+                    if let Some(body) = &func.body {
+                        mark_nested_runes_stmts(&body.statements, scoping, root);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn walk_template_scopes(
     fragment: &Fragment,
     component: &Component,
