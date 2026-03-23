@@ -1763,3 +1763,27 @@ fn component_multiple_snippets() {
 fn component_snippet_only() {
     assert_compiler("component_snippet_only");
 }
+
+// ---------------------------------------------------------------------------
+// Diagnose: TypeScript import + spread + bind:prop tests
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn ts_type_import_comment() {
+    assert_compiler("ts_type_import_comment");
+}
+
+#[rstest]
+fn rest_props_member_access() {
+    assert_compiler("rest_props_member_access");
+}
+
+#[rstest]
+fn component_spread_props() {
+    assert_compiler("component_spread_props");
+}
+
+#[rstest]
+fn component_bind_prop_forward() {
+    assert_compiler("component_bind_prop_forward");
+}
