@@ -117,7 +117,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 let name = self.source_text(a.expression_span).trim().to_string();
                 ComponentPropKind::Shorthand { attr_id: a.id, name }
             }
-            Attribute::SpreadAttribute(_) => ComponentPropKind::Spread,
+            Attribute::SpreadAttribute(a) => ComponentPropKind::Spread { attr_id: a.id },
             Attribute::BindDirective(b) if b.name == "this" => {
                 ComponentPropKind::BindThis { bind_id: b.id }
             }
