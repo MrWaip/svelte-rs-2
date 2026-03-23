@@ -3,6 +3,42 @@
 Detailed crate API and type reference: `CODEBASE_MAP.md` (read when you need type signatures or module structure).
 Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` (read when adding a new feature or debugging unexpected output).
 
+## Code Navigation
+
+When navigating Rust code, ALWAYS use LSP tools (definitions, references, 
+hover, symbols, diagnostics) before falling back to grep/ripgrep.
+
+LSP is available via the rust-analyzer plugin. Grep misses re-exports, 
+trait impls, and gives false positives on string/comment matches.
+
+- Finding where something is defined → LSP go-to-definition
+- Finding all usages → LSP find-references  
+- Understanding a type → LSP hover
+- Listing module contents → LSP workspace/document symbols
+- grep/ripgrep → ONLY as fallback when LSP returns nothing
+
+ ### OXC expression traversal — no manual matching
+
+  All traversal of OXC `Expression`, `Statement`, `Program` trees MUST use OXC visitor infrastructure. Hand-written
+  multi-level matching on `Expression::*` variants is **prohibited** — it misses syntax variants and breaks on new JS/TS
+  nodes.
+
+  Visitor types:
+  - `Visit` — read-only traversal (analysis, classification)
+  - `VisitMut` — in-place mutation (transforms)
+  - `Traverse` — mutation with parent/scope context (complex transforms)
+
+  Allowed per crate:
+  - **`svelte_analyze`** — `Visit` / `VisitMut`
+  - **`svelte_transform`** — `Visit` / `VisitMut` / `Traverse`
+  - **`svelte_codegen_client`** — `Visit` / `VisitMut` / `Traverse`
+
+  **Allowed exceptions** (no visitor needed):
+  - Shallow destructure of a known top-level shape without descending into child expressions
+  - AST construction/mutation in `builder.rs`
+
+  **Existing violations**: marked `// TODO(oxc-visit)`.
+
 ## Testing
 
 All tests in `crates/svelte_parser` must follow the span-based pattern described in `/test-pattern`.
