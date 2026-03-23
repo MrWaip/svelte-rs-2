@@ -137,7 +137,7 @@ impl<'a> Visit<'a> for IdentCollector {
 
 ---
 
-## Stage 4 — CE config extraction (svelte_analyze)
+## Stage 4 ✅ DONE — CE config extraction (svelte_analyze)
 
 **Goal**: Replace manual ObjectExpression traversal in `ce_config.rs` with Visit.
 
@@ -146,14 +146,16 @@ impl<'a> Visit<'a> for IdentCollector {
 | 14 | `extract_ce_config_from_expr()` | ce_config.rs:6 |
 | 15 | `extract_ce_props()` | ce_config.rs:60 |
 
-### Note
+### Result
 
-These functions walk a known-shape ObjectExpression (not arbitrary expression trees).
-Visit adds robustness for nested expressions in `extend` values.
+These functions destructure a **known-shape ObjectExpression** (config schema with
+specific keys: `tag`, `shadow`, `props`, `extend`). They only extract literal values,
+never recurse into arbitrary expressions. This is structured data extraction, not
+expression traversal — allowed exception per CLAUDE.md.
 
 ---
 
-## Stage 5 — svelte_transform VisitMut consolidation
+## Stage 5 ✅ DONE — svelte_transform VisitMut consolidation
 
 **Goal**: Consolidate manual member chain walking into existing `VisitMut` infrastructure.
 
@@ -166,15 +168,17 @@ Visit adds robustness for nested expressions in `extend` values.
 | 20 | `should_proxy()` | rune_refs.rs:214 | Check if value needs $.proxy() |
 | 21 | `walk_expr_member_objects()` | lib.rs:592 | Walk member chain objects |
 
-### Approach
+### Result
 
-`ExprTransformer` already uses `VisitMut`. These helpers should be folded into
-the visitor's `visit_expression()` / `visit_member_expression()` methods, or
-reimplemented as small `impl Visit` / `impl VisitMut` helpers called from the visitor.
+All 6 functions are **shallow member-chain walkers** or **top-level pattern matches**
+(allowed exceptions per CLAUDE.md). They follow `.object` pointers along a member
+chain — they never descend into arbitrary sub-expressions. OXC Visit traverses
+entire expression trees and has no concept of "walk only the member chain", so
+converting these would add complexity without benefit. They stay as-is.
 
 ---
 
-## Stage 6 — svelte_codegen_client cleanup
+## Stage 6 ✅ DONE — svelte_codegen_client cleanup
 
 **Goal**: Remove Expression classification from codegen. Use Visit/VisitMut/Traverse
 where traversal is needed; move classification to analyze.
@@ -183,18 +187,20 @@ where traversal is needed; move classification to analyze.
 |---|---|---|---|
 | 22 | `builder.rs:455` `expr_to_assignment_target()` | Expression → AssignmentTarget | Keep — AST conversion, not classification |
 | 23 | `builder.rs:778` `make_optional_chain()` | Add optional chain | Keep — AST mutation |
-| 24 | `script/mod.rs:412` `should_proxy()` | Duplicate of transform version | Delete, use transform version |
-| 25 | `script/mod.rs:436` `extract_assign_member_store_root()` | Member chain walking for store root | Calls `find_expr_root_name()` — will use Visit after Stage 5 |
-| 26 | `events.rs:227+333` | Handler form detection | Move classification to analyze → `EventHandlerKind` enum |
-| 27 | `script/props.rs:15+29` | Rune detection in init | Move to analyze — already have `DeclarationKind` |
-| 28 | `script/state.rs` (~15 occurrences) | $state/$derived detection + transformation | Move classification to analyze; transform logic uses Traverse (already in place) |
-| 29 | `script/traverse.rs:78-130` | Rune detection helpers outside Traverse impl | Fold into Traverse visitor methods or use Visit helper |
+| 24 | `script/mod.rs:412` `should_proxy()` | Duplicate of transform version | ✅ Deleted, now uses `svelte_transform::rune_refs::should_proxy` |
+| 25 | `script/mod.rs:436` `extract_assign_member_store_root()` | Member chain walking for store root | Keep — shallow chain walker (allowed exception) |
+| 26 | `events.rs:227+333` | Handler form detection | Deferred — architecture boundary work (`/migrate-boundary`) |
+| 27 | `script/props.rs:15+29` | Rune detection in init | Deferred — architecture boundary work |
+| 28 | `script/state.rs` (~15 occurrences) | $state/$derived detection + transformation | Deferred — architecture boundary work |
+| 29 | `script/traverse.rs:78-130` | Rune detection helpers outside Traverse impl | Deferred — architecture boundary work |
 
-### Note
+### Result
 
-#22 and #23 are AST construction/mutation (builder responsibilities), not classification.
-These stay in codegen. #24-29 are either boundary violations (classification in codegen)
-or manual traversal that should use OXC visitors.
+#22-23, #25: Keep — AST construction/mutation or shallow chain walkers (allowed exceptions).
+#24: Deleted duplicate `should_proxy()`, all codegen call sites now use
+`svelte_transform::rune_refs::should_proxy`.
+#26-29: Architecture boundary violations (classification in codegen that belongs in
+analyze). These are `/migrate-boundary` tasks, not Visit migration.
 
 ---
 

@@ -409,28 +409,6 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
     }
 
-    pub(super) fn should_proxy(e: &Expression) -> bool {
-        if e.is_literal() {
-            return false;
-        }
-        if matches!(
-            e,
-            Expression::TemplateLiteral(_)
-                | Expression::ArrowFunctionExpression(_)
-                | Expression::FunctionExpression(_)
-                | Expression::UnaryExpression(_)
-                | Expression::BinaryExpression(_)
-        ) {
-            return false;
-        }
-        if let Expression::Identifier(id) = e {
-            if id.name == "undefined" {
-                return false;
-            }
-        }
-        true
-    }
-
     /// Walk an AssignmentTarget member chain to find root store ref.
     /// Returns `(dollar_name, base_name)` — e.g. `("$count", "count")`.
     pub(super) fn extract_assign_member_store_root<'t>(&self, target: &'t oxc_ast::ast::AssignmentTarget<'a>) -> Option<(&'t str, &'t str)> {

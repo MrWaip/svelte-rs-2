@@ -243,7 +243,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     ) -> Expression<'a> {
         match rune_kind {
             RuneKind::State => {
-                let proxied = if Self::should_proxy(&value) {
+                let proxied = if svelte_transform::rune_refs::should_proxy(&value) {
                     self.b.call_expr("$.proxy", [Arg::Expr(value)])
                 } else {
                     value
