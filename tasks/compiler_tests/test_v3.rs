@@ -1804,5 +1804,15 @@ fn member_expr_dynamic_local() {
 
 #[rstest]
 fn import_type_mixed() {
-    assert_compiler("import_type_mixed")
+    assert_compiler("import_type_mixed");
+}
+
+#[rstest]
+fn derived_in_nested_function() {
+    assert_compiler("derived_in_nested_function");
+}
+
+#[rstest]
+fn derived_local_signal_get() {
+    assert_compiler("derived_local_signal_get");
 }
