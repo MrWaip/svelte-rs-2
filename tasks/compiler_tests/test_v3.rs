@@ -1718,3 +1718,28 @@ fn event_handler_derived_with_class_directives() {
 fn event_handler_derived_with_class_object() {
     assert_compiler("event_handler_derived_with_class_object");
 }
+
+#[rstest]
+fn derived_inside_function() {
+    assert_compiler("derived_inside_function");
+}
+
+#[rstest]
+fn derived_nested_getter() {
+    assert_compiler("derived_nested_getter");
+}
+
+#[rstest]
+fn derived_shorthand_property() {
+    assert_compiler("derived_shorthand_property");
+}
+
+#[rstest]
+fn state_inside_function() {
+    assert_compiler("state_inside_function");
+}
+
+#[rstest]
+fn derived_by_inside_function() {
+    assert_compiler("derived_by_inside_function");
+}
