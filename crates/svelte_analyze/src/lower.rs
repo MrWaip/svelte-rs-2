@@ -57,6 +57,12 @@ fn lower_fragment(
                 lower_fragment(&el.fragment, FragmentKey::Element(el.id), component, data);
             }
             Node::ComponentNode(cn) => {
+                let snippets: Vec<_> = cn.fragment.nodes.iter()
+                    .filter_map(|n| n.as_snippet_block().map(|s| s.id))
+                    .collect();
+                if !snippets.is_empty() {
+                    data.snippets.component_snippets.insert(cn.id, snippets);
+                }
                 lower_fragment(&cn.fragment, FragmentKey::ComponentNode(cn.id), component, data);
             }
             Node::IfBlock(block) => {

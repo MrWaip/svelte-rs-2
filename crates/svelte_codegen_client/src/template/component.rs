@@ -10,6 +10,7 @@ use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
+use super::snippet;
 
 /// Generate `ComponentName($$anchor, { props })` call.
 pub(crate) fn gen_component<'a>(
@@ -117,7 +118,21 @@ pub(crate) fn gen_component<'a>(
         }
     }
 
-    // Add children snippet if component has non-empty fragment
+    // Named snippets declared inside this component's fragment
+    let snippet_ids: Vec<NodeId> = ctx.component_snippets(id).to_vec();
+
+    let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
+    let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
+    for snippet_id in &snippet_ids {
+        let snippet_name = ctx.snippet_block(*snippet_id).name.clone();
+        snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
+        let key = ctx.b.alloc_str(&snippet_name);
+        props.push(ObjProp::Shorthand(key));
+        let slot_key = if snippet_name == "children" { "default" } else { ctx.b.alloc_str(&snippet_name) };
+        slot_entries.push(ObjProp::KeyValue(slot_key, ctx.b.bool_expr(true)));
+    }
+
+    // Add children prop if component has non-snippet content
     let children_ct = ctx.content_type(&FragmentKey::ComponentNode(id));
 
     if children_ct != ContentStrategy::Empty {
@@ -136,11 +151,11 @@ pub(crate) fn gen_component<'a>(
         let params = ctx.b.params(["$$anchor", "$$slotProps"]);
         let arrow = ctx.b.arrow_expr(params, body_stmts);
         props.push(ObjProp::KeyValue("children", arrow));
+        slot_entries.push(ObjProp::KeyValue("default", ctx.b.bool_expr(true)));
+    }
 
-        let slots_obj = ctx.b.object_expr([
-            ObjProp::KeyValue("default", ctx.b.bool_expr(true))
-        ]);
-        props.push(ObjProp::KeyValue("$$slots", slots_obj));
+    if !slot_entries.is_empty() {
+        props.push(ObjProp::KeyValue("$$slots", ctx.b.object_expr(slot_entries)));
     }
 
     let props_expr = ctx.b.object_expr(props);
@@ -152,7 +167,12 @@ pub(crate) fn gen_component<'a>(
         component_call
     };
 
-    if memo_stmts.is_empty() {
+    let has_snippets = !snippet_decls.is_empty();
+    if has_snippets {
+        snippet_decls.extend(memo_stmts);
+        snippet_decls.push(ctx.b.expr_stmt(final_expr));
+        init.push(ctx.b.block_stmt(snippet_decls));
+    } else if memo_stmts.is_empty() {
         init.push(ctx.b.expr_stmt(final_expr));
     } else {
         memo_stmts.push(ctx.b.expr_stmt(final_expr));

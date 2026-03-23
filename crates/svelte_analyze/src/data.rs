@@ -296,6 +296,8 @@ impl FragmentData {
 pub struct SnippetData {
     pub(crate) params: NodeTable<Vec<String>>,
     pub(crate) hoistable: NodeBitSet,
+    /// Key: ComponentNode NodeId → snippet NodeIds declared in its fragment
+    pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
 }
 
 impl SnippetData {
@@ -303,11 +305,15 @@ impl SnippetData {
         Self {
             params: NodeTable::new(node_count),
             hoistable: NodeBitSet::new(node_count),
+            component_snippets: NodeTable::new(node_count),
         }
     }
 
     pub fn params(&self, id: NodeId) -> Option<&Vec<String>> { self.params.get(id) }
     pub fn is_hoistable(&self, id: NodeId) -> bool { self.hoistable.contains(&id) }
+    pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
+        self.component_snippets.get(id).map_or(&[], |v| v.as_slice())
+    }
 }
 
 /// ConstTag analysis: declared names and per-fragment grouping.
