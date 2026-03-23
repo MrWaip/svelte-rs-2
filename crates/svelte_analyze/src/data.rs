@@ -120,8 +120,21 @@ pub enum ComponentPropKind {
     Shorthand { attr_id: NodeId, name: String },
     /// `bind:this={expr}`
     BindThis { bind_id: NodeId },
+    /// `bind:name` or `bind:name={expr}` — component prop binding (not bind:this)
+    Bind { name: String, bind_id: NodeId, mode: ComponentBindMode },
     /// `{...spread}` — tracked but skipped in prop building
     Spread,
+}
+
+/// Getter/setter pattern for component bind directives.
+#[derive(Clone, Copy, Debug)]
+pub enum ComponentBindMode {
+    /// `$bindable()` prop — `name()` / `name($$value)`
+    PropSource,
+    /// `$state`/`$derived` rune — `$.get(name)` / `$.set(name, $$value)`
+    Rune,
+    /// Plain variable — `name` / `name = $$value`
+    Plain,
 }
 
 /// Pre-computed render tag callee routing mode.
