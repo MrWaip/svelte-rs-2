@@ -7,14 +7,14 @@ export default function App($$anchor, $$props) {
 		3
 	]);
 	function getTotal() {
-		const total = $derived.by(() => {
+		const total = $.derived(() => {
 			let sum = 0;
 			for (const item of items) {
 				sum += item;
 			}
 			return sum;
 		});
-		return total;
+		return $.get(total);
 	}
 	var $$exports = { getTotal };
 	return $.pop($$exports);
