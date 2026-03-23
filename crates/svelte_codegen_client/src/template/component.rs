@@ -28,7 +28,8 @@ pub(crate) fn gen_component<'a>(
         .map(|p| (p.kind.clone(), p.is_dynamic))
         .collect();
 
-    let mut props: Vec<ObjProp<'a>> = Vec::new();
+    // Items preserve attribute order for correct $.spread_props grouping
+    let mut items: Vec<PropOrSpread<'a>> = Vec::new();
     let mut bind_this_info: Option<NodeId> = None;
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
@@ -38,11 +39,11 @@ pub(crate) fn gen_component<'a>(
             ComponentPropKind::String { name, value_span } => {
                 let value_text = ctx.component.source_text(value_span);
                 let key = ctx.b.alloc_str(&name);
-                props.push(ObjProp::KeyValue(key, ctx.b.str_expr(value_text)));
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, ctx.b.str_expr(value_text))));
             }
             ComponentPropKind::Boolean { name } => {
                 let key = ctx.b.alloc_str(&name);
-                props.push(ObjProp::KeyValue(key, ctx.b.bool_expr(true)));
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, ctx.b.bool_expr(true))));
             }
             ComponentPropKind::Expression { name, attr_id, shorthand, needs_memo } => {
                 let key = ctx.b.alloc_str(&name);
@@ -57,15 +58,15 @@ pub(crate) fn gen_component<'a>(
                     memo_stmts.push(ctx.b.let_init_stmt(&memo_name, derived));
                     let memo_ref = ctx.b.alloc_str(&memo_name);
                     let get = ctx.b.call_expr("$.get", [Arg::Ident(memo_ref)]);
-                    props.push(ObjProp::Getter(key, get));
+                    items.push(PropOrSpread::Prop(ObjProp::Getter(key, get)));
                 } else {
                     let expr = get_attr_expr(ctx, attr_id);
                     if is_dynamic {
-                        props.push(ObjProp::Getter(key, expr));
+                        items.push(PropOrSpread::Prop(ObjProp::Getter(key, expr)));
                     } else if shorthand {
-                        props.push(ObjProp::Shorthand(key));
+                        items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
                     } else {
-                        props.push(ObjProp::KeyValue(key, expr));
+                        items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, expr)));
                     }
                 }
             }
@@ -73,18 +74,18 @@ pub(crate) fn gen_component<'a>(
                 let key = ctx.b.alloc_str(&name);
                 let val = build_attr_concat(ctx, attr_id, &parts);
                 if is_dynamic {
-                    props.push(ObjProp::Getter(key, val));
+                    items.push(PropOrSpread::Prop(ObjProp::Getter(key, val)));
                 } else {
-                    props.push(ObjProp::KeyValue(key, val));
+                    items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, val)));
                 }
             }
             ComponentPropKind::Shorthand { attr_id, name } => {
                 let key = ctx.b.alloc_str(&name);
                 let expr = get_attr_expr(ctx, attr_id);
                 if is_dynamic {
-                    props.push(ObjProp::Getter(key, expr));
+                    items.push(PropOrSpread::Prop(ObjProp::Getter(key, expr)));
                 } else {
-                    props.push(ObjProp::Shorthand(key));
+                    items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
                 }
             }
             ComponentPropKind::Bind { name, bind_id: _, mode } => {
@@ -93,28 +94,36 @@ pub(crate) fn gen_component<'a>(
                 match mode {
                     ComponentBindMode::PropSource => {
                         let get_body = ctx.b.call_expr(name_ref, []);
-                        props.push(ObjProp::Getter(key, get_body));
+                        items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                         let set_body = ctx.b.call_expr(name_ref, [Arg::Ident("$$value")]);
-                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
                     }
                     ComponentBindMode::Rune => {
                         let get_body = ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
-                        props.push(ObjProp::Getter(key, get_body));
+                        items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                         let set_body = ctx.b.call_expr("$.set", [Arg::Ident(name_ref), Arg::Ident("$$value")]);
-                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
                     }
                     ComponentBindMode::Plain => {
                         let get_body = ctx.b.rid_expr(name_ref);
-                        props.push(ObjProp::Getter(key, get_body));
+                        items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                         let set_body = ctx.b.assign_expr(AssignLeft::Ident(name), ctx.b.rid_expr("$$value"));
-                        props.push(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)]));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
                     }
                 }
             }
             ComponentPropKind::BindThis { bind_id } => {
                 bind_this_info = Some(bind_id);
             }
-            ComponentPropKind::Spread => {}
+            ComponentPropKind::Spread { attr_id } => {
+                let expr = get_attr_expr(ctx, attr_id);
+                let spread_expr = if is_dynamic {
+                    ctx.b.thunk(expr)
+                } else {
+                    expr
+                };
+                items.push(PropOrSpread::Spread(spread_expr));
+            }
         }
     }
 
@@ -127,7 +136,7 @@ pub(crate) fn gen_component<'a>(
         let snippet_name = ctx.snippet_block(*snippet_id).name.clone();
         snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
-        props.push(ObjProp::Shorthand(key));
+        items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
         let slot_key = if snippet_name == "children" { "default" } else { ctx.b.alloc_str(&snippet_name) };
         slot_entries.push(ObjProp::KeyValue(slot_key, ctx.b.bool_expr(true)));
     }
@@ -150,15 +159,15 @@ pub(crate) fn gen_component<'a>(
 
         let params = ctx.b.params(["$$anchor", "$$slotProps"]);
         let arrow = ctx.b.arrow_expr(params, body_stmts);
-        props.push(ObjProp::KeyValue("children", arrow));
+        items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
         slot_entries.push(ObjProp::KeyValue("default", ctx.b.bool_expr(true)));
     }
 
     if !slot_entries.is_empty() {
-        props.push(ObjProp::KeyValue("$$slots", ctx.b.object_expr(slot_entries)));
+        items.push(PropOrSpread::Prop(ObjProp::KeyValue("$$slots", ctx.b.object_expr(slot_entries))));
     }
 
-    let props_expr = ctx.b.object_expr(props);
+    let props_expr = build_props_expr(ctx, items);
     let component_call = ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
 
     let final_expr = if let Some(bind_id) = bind_this_info {
@@ -308,4 +317,43 @@ fn build_bind_this_call<'a>(
             ])
         }
     }
+}
+
+/// Prop or spread item — preserves attribute order for correct $.spread_props grouping.
+enum PropOrSpread<'a> {
+    Prop(ObjProp<'a>),
+    Spread(Expression<'a>),
+}
+
+/// Build the props expression: plain object when no spreads, `$.spread_props(...)` otherwise.
+fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expression<'a> {
+    let has_spread = items.iter().any(|i| matches!(i, PropOrSpread::Spread(_)));
+
+    if !has_spread {
+        let props: Vec<ObjProp<'a>> = items.into_iter()
+            .filter_map(|i| match i { PropOrSpread::Prop(p) => Some(p), _ => None })
+            .collect();
+        return ctx.b.object_expr(props);
+    }
+
+    // Group consecutive props into objects, intersperse with spread expressions
+    let mut args: Vec<Arg<'a, 'a>> = Vec::new();
+    let mut current_props: Vec<ObjProp<'a>> = Vec::new();
+
+    for item in items {
+        match item {
+            PropOrSpread::Prop(p) => current_props.push(p),
+            PropOrSpread::Spread(expr) => {
+                if !current_props.is_empty() {
+                    args.push(Arg::Expr(ctx.b.object_expr(std::mem::take(&mut current_props))));
+                }
+                args.push(Arg::Expr(expr));
+            }
+        }
+    }
+    if !current_props.is_empty() {
+        args.push(Arg::Expr(ctx.b.object_expr(current_props)));
+    }
+
+    ctx.b.call_expr("$.spread_props", args)
 }

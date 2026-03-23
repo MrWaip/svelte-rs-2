@@ -122,8 +122,8 @@ pub enum ComponentPropKind {
     BindThis { bind_id: NodeId },
     /// `bind:name` or `bind:name={expr}` — component prop binding (not bind:this)
     Bind { name: String, bind_id: NodeId, mode: ComponentBindMode },
-    /// `{...spread}` — tracked but skipped in prop building
-    Spread,
+    /// `{...spread}` — spread attribute on component
+    Spread { attr_id: NodeId },
 }
 
 /// Getter/setter pattern for component bind directives.
