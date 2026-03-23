@@ -95,6 +95,14 @@ pub(crate) fn process_element<'a>(
         let attr_dynamic: Vec<_> = el.attributes.iter()
             .map(|attr| ctx.is_dynamic_attr(attr.id()))
             .collect();
+
+        // When there's a class expression attribute, Svelte emits class declarations
+        // before event handler derived declarations (which are emitted during the attr loop).
+        let has_class_attr = ctx.has_class_attribute(el_id);
+        if has_class_attr {
+            process_class_attribute_and_directives(ctx, el_id, el_name, init, update);
+        }
+
         let el = ctx.element(el_id);
         let tag = el.name.clone();
         for (i, attr) in el.attributes.iter().enumerate() {
@@ -102,8 +110,10 @@ pub(crate) fn process_element<'a>(
         }
     }
 
-    // Class attribute and/or class directives
-    process_class_attribute_and_directives(ctx, el_id, el_name, init, update);
+    // Class directives only (no class expression attribute) — processed after attr loop
+    if !ctx.has_class_attribute(el_id) {
+        process_class_attribute_and_directives(ctx, el_id, el_name, init, update);
+    }
 
     // Style directives
     process_style_directives(ctx, el_id, el_name, init, update);
