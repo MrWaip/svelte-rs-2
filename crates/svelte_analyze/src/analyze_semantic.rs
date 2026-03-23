@@ -255,39 +255,18 @@ impl<'a> Visit<'a> for ArrowScopeCollector<'_> {
 }
 
 fn extract_arrow_param_names(params: &FormalParameters<'_>) -> Vec<String> {
-    let mut names = Vec::new();
-    for param in &params.items {
-        collect_binding_names(&param.pattern, &mut names);
-    }
-    if let Some(rest) = &params.rest {
-        collect_binding_names(&rest.rest.argument, &mut names);
-    }
-    names
+    let mut collector = BindingNameCollector { names: Vec::new() };
+    collector.visit_formal_parameters(params);
+    collector.names
 }
 
-fn collect_binding_names(pattern: &BindingPattern<'_>, names: &mut Vec<String>) {
-    match pattern {
-        BindingPattern::BindingIdentifier(id) => {
-            names.push(id.name.as_str().to_string());
-        }
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                collect_binding_names(&prop.value, names);
-            }
-            if let Some(rest) = &obj.rest {
-                collect_binding_names(&rest.argument, names);
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for elem in arr.elements.iter().flatten() {
-                collect_binding_names(elem, names);
-            }
-            if let Some(rest) = &arr.rest {
-                collect_binding_names(&rest.argument, names);
-            }
-        }
-        BindingPattern::AssignmentPattern(assign) => {
-            collect_binding_names(&assign.left, names);
-        }
+/// Visitor that collects all binding identifier names from a pattern.
+struct BindingNameCollector {
+    names: Vec<String>,
+}
+
+impl<'a> Visit<'a> for BindingNameCollector {
+    fn visit_binding_identifier(&mut self, ident: &oxc_ast::ast::BindingIdentifier<'a>) {
+        self.names.push(ident.name.as_str().to_string());
     }
 }

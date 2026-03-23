@@ -1,3 +1,4 @@
+use oxc_ast_visit::Visit;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub use oxc_semantic::{ScopeId, SymbolId};
@@ -476,44 +477,28 @@ pub(crate) fn build_scoping(component: &Component, data: &mut AnalysisData) -> c
 /// this handles the remaining non-root declarations that `extract_script_info` skips.
 pub(crate) fn mark_nested_runes(program: &oxc_ast::ast::Program<'_>, scoping: &mut ComponentScoping) {
     let root = scoping.root_scope_id();
-    mark_nested_runes_stmts(&program.body, scoping, root);
+    let mut visitor = NestedRuneVisitor { scoping, root };
+    visitor.visit_program(program);
 }
 
-fn mark_nested_runes_stmts(
-    stmts: &oxc_allocator::Vec<'_, oxc_ast::ast::Statement<'_>>,
-    scoping: &mut ComponentScoping,
+/// Visitor that walks JS statements to find rune declarations in nested scopes.
+struct NestedRuneVisitor<'s> {
+    scoping: &'s mut ComponentScoping,
     root: ScopeId,
-) {
-    use oxc_ast::ast::Statement;
-    for stmt in stmts.iter() {
-        match stmt {
-            Statement::VariableDeclaration(decl) => {
-                for declarator in &decl.declarations {
-                    let Some(init) = &declarator.init else { continue };
-                    let Some(rune_kind) = crate::script_info::detect_rune(init) else { continue };
-                    if !matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw) {
-                        continue;
-                    }
-                    let Some(sym_id) = declarator.id.get_binding_identifier()
-                        .and_then(|id| id.symbol_id.get()) else { continue };
-                    if scoping.symbol_scope_id(sym_id) == root { continue; }
-                    scoping.mark_rune(sym_id, rune_kind);
-                }
-            }
-            Statement::FunctionDeclaration(func) => {
-                if let Some(body) = &func.body {
-                    mark_nested_runes_stmts(&body.statements, scoping, root);
-                }
-            }
-            Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) = &export.declaration {
-                    if let Some(body) = &func.body {
-                        mark_nested_runes_stmts(&body.statements, scoping, root);
-                    }
-                }
-            }
-            _ => {}
+}
+
+impl<'a> Visit<'a> for NestedRuneVisitor<'_> {
+    fn visit_variable_declarator(&mut self, declarator: &oxc_ast::ast::VariableDeclarator<'a>) {
+        let Some(init) = &declarator.init else { return };
+        let Some(rune_kind) = crate::script_info::detect_rune(init) else { return };
+        if !matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw) {
+            return;
         }
+        let Some(sym_id) = declarator.id.get_binding_identifier()
+            .and_then(|id| id.symbol_id.get()) else { return };
+        if self.scoping.symbol_scope_id(sym_id) == self.root { return; }
+        self.scoping.mark_rune(sym_id, rune_kind);
+        // Don't walk deeper — we only care about the declaration, not sub-expressions
     }
 }
 

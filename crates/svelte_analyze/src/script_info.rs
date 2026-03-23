@@ -376,15 +376,8 @@ fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<Comp
 }
 
 fn extract_binding_name(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Option<CompactString> {
-    match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(ident) => {
-            Some(CompactString::from(ident.name.as_str()))
-        }
-        oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-            extract_binding_name(&assign.left)
-        }
-        _ => None,
-    }
+    pattern.get_binding_identifier()
+        .map(|id| CompactString::from(id.name.as_str()))
 }
 
 fn extract_prop_default(
