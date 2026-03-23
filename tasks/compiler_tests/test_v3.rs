@@ -1713,3 +1713,8 @@ fn needs_context_method_chain() {
 fn event_handler_derived_with_class_directives() {
     assert_compiler("event_handler_derived_with_class_directives");
 }
+
+#[rstest]
+fn event_handler_derived_with_class_object() {
+    assert_compiler("event_handler_derived_with_class_object");
+}
