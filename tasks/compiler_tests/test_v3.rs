@@ -1708,3 +1708,8 @@ fn debug_inside_element() {
 fn needs_context_method_chain() {
     assert_compiler("needs_context_method_chain");
 }
+
+#[rstest]
+fn event_handler_derived_with_class_directives() {
+    assert_compiler("event_handler_derived_with_class_directives");
+}
