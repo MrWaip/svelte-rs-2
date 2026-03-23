@@ -4,7 +4,7 @@ use svelte_ast::{
     Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SvelteBoundary,
     TransitionDirective, UseDirective,
 };
-use crate::data::AnalysisData;
+use crate::data::{AnalysisData, ExpressionKind};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ReactivityVisitor;
@@ -19,6 +19,18 @@ impl ReactivityVisitor {
             if info.has_state_rune || info.needs_context {
                 return true;
             }
+
+            // MemberExpressions: any resolved local binding → dynamic.
+            // Mirrors reference is_pure(): only globals (no binding) are pure.
+            if matches!(info.kind, ExpressionKind::MemberExpression) {
+                return info.references.iter().any(|r| {
+                    if data.scoping.is_store_ref(&r.name) {
+                        return true;
+                    }
+                    r.symbol_id.is_some()
+                });
+            }
+
             return info.references.iter().any(|r| {
                 // Store subscriptions ($count) are always dynamic
                 if data.scoping.is_store_ref(&r.name) {

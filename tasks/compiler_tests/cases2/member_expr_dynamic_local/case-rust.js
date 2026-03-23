@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p></p>`);
+var root_1 = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let obj = null;
 	var fragment = $.comment();
@@ -7,7 +7,9 @@ export default function App($$anchor) {
 	{
 		var consequent = ($$anchor) => {
 			var p = root_1();
-			p.textContent = obj.name;
+			var text = $.child(p, true);
+			$.reset(p);
+			$.template_effect(() => $.set_text(text, obj.name));
 			$.append($$anchor, p);
 		};
 		$.if(node, ($$render) => {
