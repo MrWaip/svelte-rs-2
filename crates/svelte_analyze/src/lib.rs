@@ -77,6 +77,15 @@ pub fn analyze_with_options<'a>(
     // Extract expression info + classify shorthand/clsx/snippets/const_tags/await_bindings/render_tag_args/CE config
     js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
 
+    // Classify per-expression needs_context (import/prop member access, calls)
+    // then aggregate into module-level flag for $.push/$.pop
+    js_analyze::classify_expression_needs_context(&mut data);
+    if !data.needs_context {
+        data.needs_context = data.expressions.values()
+            .chain(data.attr_expressions.values())
+            .any(|info| info.needs_context);
+    }
+
     let scoping_built = scope::build_scoping(component, &mut data);
     if let Some(ref program) = parsed.program {
         scope::mark_nested_runes(program, &mut data.scoping);
