@@ -6,5 +6,5 @@ export default function App($$anchor, $$props) {
 		"$$events",
 		"$$legacy"
 	]);
-	Button($$anchor, {});
+	Button($$anchor, $.spread_props(() => props));
 }
