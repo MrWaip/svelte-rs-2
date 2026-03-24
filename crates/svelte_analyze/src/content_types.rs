@@ -1,4 +1,3 @@
-use oxc_semantic::ScopeId;
 use svelte_ast::{Attribute, Element};
 
 use crate::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
@@ -14,22 +13,22 @@ pub(crate) struct ContentAndVarVisitor<'s> {
 }
 
 impl TemplateVisitor for ContentAndVarVisitor<'_> {
-    fn leave_element(&mut self, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+    fn leave_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_>) {
         let key = FragmentKey::Element(el.id);
 
         // Compute content_type + has_dynamic for this element's fragment
-        if let Some(lf) = data.fragments.lowered.get(&key) {
+        if let Some(lf) = ctx.data.fragments.lowered.get(&key) {
             let cs = classify_items(&lf.items, self.source);
-            let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
-            data.fragments.content_types.insert(key, cs);
+            let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &ctx.data.dynamic_nodes));
+            ctx.data.fragments.content_types.insert(key, cs);
             if has_dynamic {
-                data.fragments.has_dynamic_children.insert(key);
+                ctx.data.fragments.has_dynamic_children.insert(key);
             }
         }
 
         // Compute needs_var (same logic as former NeedsVarVisitor)
-        if element_needs_var(el, data) {
-            data.element_flags.needs_var.insert(el.id);
+        if element_needs_var(el, ctx.data) {
+            ctx.data.element_flags.needs_var.insert(el.id);
         }
     }
 }

@@ -1,13 +1,12 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use oxc_semantic::ScopeId;
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, ComponentNode, Element, ExpressionAttribute,
     NodeId, SpreadAttribute, StyleDirective, SvelteElement, UseDirective,
 };
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
+use crate::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -27,37 +26,37 @@ impl<'src> ElementFlagsVisitor<'src> {
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
-    fn visit_element(&mut self, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_>) {
         self.current_element_id = Some(el.id);
         self.current_element_name = Some(el.name.clone());
         // String/Boolean attributes aren't dispatched by the walker, so handle them here
         for attr in &el.attributes {
             match attr {
                 Attribute::StringAttribute(sa) if sa.name == "class" => {
-                    data.element_flags.static_class.insert(el.id, self.source_text(sa.value_span).to_string());
+                    ctx.data.element_flags.static_class.insert(el.id, self.source_text(sa.value_span).to_string());
                 }
                 Attribute::StringAttribute(sa) if sa.name == "style" => {
-                    data.element_flags.static_style.insert(el.id, self.source_text(sa.value_span).to_string());
+                    ctx.data.element_flags.static_style.insert(el.id, self.source_text(sa.value_span).to_string());
                 }
                 _ => {}
             }
         }
     }
 
-    fn leave_element(&mut self, _el: &Element, _scope: ScopeId, _data: &mut AnalysisData) {
+    fn leave_element(&mut self, _el: &Element, _ctx: &mut crate::walker::VisitContext<'_>) {
         self.current_element_id = None;
         self.current_element_name = None;
     }
 
-    fn visit_spread_attribute(&mut self, _attr: &SpreadAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_spread_attribute(&mut self, _attr: &SpreadAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
-            data.element_flags.has_spread.insert(el_id);
+            ctx.data.element_flags.has_spread.insert(el_id);
         }
     }
 
-    fn visit_class_directive(&mut self, cd: &ClassDirective, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_class_directive(&mut self, cd: &ClassDirective, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
-            data.element_flags.class_directive_info
+            ctx.data.element_flags.class_directive_info
                 .get_or_default(el_id)
                 .push(ClassDirectiveInfo {
                     id: cd.id,
@@ -67,21 +66,21 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
     }
 
-    fn visit_style_directive(&mut self, sd: &StyleDirective, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_style_directive(&mut self, sd: &StyleDirective, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
-            data.element_flags.style_directives
+            ctx.data.element_flags.style_directives
                 .get_or_default(el_id)
                 .push(sd.clone());
         }
     }
 
-    fn visit_expression_attribute(&mut self, ea: &ExpressionAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_expression_attribute(&mut self, ea: &ExpressionAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
             if ea.name == "class" {
-                data.element_flags.class_attr_id.insert(el_id, ea.id);
+                ctx.data.element_flags.class_attr_id.insert(el_id, ea.id);
             }
             if ea.name == "value" && self.current_element_name.as_deref() == Some("input") {
-                data.element_flags.needs_input_defaults.insert(el_id);
+                ctx.data.element_flags.needs_input_defaults.insert(el_id);
             }
             if ea.event_name.is_some() {
                 let raw = ea.event_name.as_deref().unwrap();
@@ -96,28 +95,29 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 } else {
                     EventHandlerMode::Direct { capture, passive }
                 };
-                data.element_flags.event_handler_mode.insert(ea.id, mode);
+                ctx.data.element_flags.event_handler_mode.insert(ea.id, mode);
             }
         }
     }
 
-    fn visit_bind_directive(&mut self, bd: &BindDirective, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_bind_directive(&mut self, bd: &BindDirective, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
             if self.current_element_name.as_deref() == Some("input")
                 && matches!(bd.name.as_str(), "value" | "checked" | "group")
             {
-                data.element_flags.needs_input_defaults.insert(el_id);
+                ctx.data.element_flags.needs_input_defaults.insert(el_id);
             }
         }
     }
 
-    fn visit_use_directive(&mut self, _dir: &UseDirective, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_use_directive(&mut self, _dir: &UseDirective, ctx: &mut crate::walker::VisitContext<'_>) {
         if let Some(el_id) = self.current_element_id {
-            data.element_flags.has_use_directive.insert(el_id);
+            ctx.data.element_flags.has_use_directive.insert(el_id);
         }
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut crate::walker::VisitContext<'_>) {
+        let data = &mut *ctx.data;
         for attr in &cn.attributes {
             let kind = match attr {
                 Attribute::StringAttribute(a) => ComponentPropKind::String {
@@ -184,9 +184,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_svelte_element(
         &mut self,
         el: &SvelteElement,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
+        let data = &mut *ctx.data;
         for attr in &el.attributes {
             match attr {
                 Attribute::ClassDirective(cd) => {

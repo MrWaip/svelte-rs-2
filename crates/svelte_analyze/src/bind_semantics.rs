@@ -5,7 +5,7 @@ use svelte_ast::{
 };
 
 use crate::data::AnalysisData;
-use crate::walker::TemplateVisitor;
+use crate::walker::{TemplateVisitor, VisitContext};
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
 /// symbol classifications from source text via string-based lookups.
@@ -134,87 +134,78 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     fn visit_bind_directive(
         &mut self,
         dir: &BindDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_bind(dir, data);
-        self.classify_bind_this(dir, scope, data);
+        self.classify_bind(dir, ctx.data);
+        self.classify_bind_this(dir, ctx.scope, ctx.data);
     }
 
     fn visit_class_directive(
         &mut self,
         dir: &ClassDirective,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_class(dir, data);
+        self.classify_class(dir, ctx.data);
     }
 
     fn visit_style_directive(
         &mut self,
         dir: &StyleDirective,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_style(dir, data);
+        self.classify_style(dir, ctx.data);
     }
 
     fn visit_svelte_window(
         &mut self,
         w: &SvelteWindow,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_attrs(&w.attributes, data);
+        self.classify_attrs(&w.attributes, ctx.data);
     }
 
     fn visit_svelte_document(
         &mut self,
         doc: &SvelteDocument,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_attrs(&doc.attributes, data);
+        self.classify_attrs(&doc.attributes, ctx.data);
     }
 
     fn visit_svelte_body(
         &mut self,
         body: &SvelteBody,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_attrs(&body.attributes, data);
+        self.classify_attrs(&body.attributes, ctx.data);
     }
 
     fn visit_svelte_element(
         &mut self,
         el: &SvelteElement,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        self.classify_attrs(&el.attributes, data);
+        self.classify_attrs(&el.attributes, ctx.data);
     }
 
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        _parent_scope: ScopeId,
-        body_scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         let text = self.source[block.expression_span.start as usize..block.expression_span.end as usize].trim();
-        if Self::is_prop_source(text, data) {
-            data.bind_semantics.prop_source_nodes.insert(block.id);
+        if Self::is_prop_source(text, ctx.data) {
+            ctx.data.bind_semantics.prop_source_nodes.insert(block.id);
         }
+        // ctx.scope is the parent scope at visit time; body_scope is looked up from scoping data
+        let body_scope = ctx.data.scoping.node_scope(block.id).unwrap_or(ctx.scope);
         self.each_block_stack.push((block.id, body_scope));
     }
 
     fn leave_each_block(
         &mut self,
         _block: &EachBlock,
-        _parent_scope: ScopeId,
-        _body_scope: ScopeId,
-        _data: &mut AnalysisData,
+        _ctx: &mut VisitContext<'_>,
     ) {
         self.each_block_stack.pop();
     }
@@ -222,8 +213,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     fn leave_element(
         &mut self,
         el: &Element,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         // Detect bind:group → mark element and find value attribute
         let bind_group = el.attributes.iter().find_map(|a| {
@@ -233,12 +223,12 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             None
         });
         if let Some(bg) = bind_group {
-            data.bind_semantics.has_bind_group.insert(el.id);
+            ctx.data.bind_semantics.has_bind_group.insert(el.id);
             // Find the value attribute on the same element (for getter thunk wrapping)
             if let Some(val_attr) = el.attributes.iter().find(|a| {
                 matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
             }) {
-                data.bind_semantics.bind_group_value_attr.insert(bg.id, val_attr.id());
+                ctx.data.bind_semantics.bind_group_value_attr.insert(bg.id, val_attr.id());
             }
 
             // Walk ancestor each blocks to find which ones declare vars
@@ -249,19 +239,19 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                 let mut parent_eaches = Vec::new();
                 for &(each_id, body_scope) in self.each_block_stack.iter().rev() {
                     let has_match = idents.iter().any(|name| {
-                        data.scoping.find_binding(body_scope, name)
+                        ctx.data.scoping.find_binding(body_scope, name)
                             .is_some_and(|sym| {
-                                data.scoping.is_each_block_var(sym)
-                                    && data.scoping.symbol_scope_id(sym) == body_scope
+                                ctx.data.scoping.is_each_block_var(sym)
+                                    && ctx.data.scoping.symbol_scope_id(sym) == body_scope
                             })
                     });
                     if has_match {
                         parent_eaches.push(each_id);
-                        data.bind_semantics.contains_group_binding.insert(each_id);
+                        ctx.data.bind_semantics.contains_group_binding.insert(each_id);
                     }
                 }
                 if !parent_eaches.is_empty() {
-                    data.bind_semantics.parent_each_blocks.insert(bg.id, parent_eaches);
+                    ctx.data.bind_semantics.parent_each_blocks.insert(bg.id, parent_eaches);
                 }
             }
         }
@@ -284,7 +274,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             matches!(a, Attribute::BindDirective(bd) if matches!(bd.name.as_str(), "innerHTML" | "innerText" | "textContent"))
         });
         if has_content_bind {
-            data.element_flags.bound_contenteditable.insert(el.id);
+            ctx.data.element_flags.bound_contenteditable.insert(el.id);
         }
     }
 

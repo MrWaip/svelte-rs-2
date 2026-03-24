@@ -8,7 +8,7 @@ use svelte_ast::{
 };
 
 use crate::data::AnalysisData;
-use crate::walker::TemplateVisitor;
+use crate::walker::{TemplateVisitor, VisitContext};
 
 use svelte_ast::Component;
 
@@ -67,90 +67,87 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_expression_tag(
         &mut self,
         tag: &ExpressionTag,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
-        resolve_expr_refs(tag.id, scope, data);
+        resolve_expr_refs(tag.id, ctx.scope, ctx.data);
     }
 
-    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_expr_refs(block.id, scope, data);
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_>) {
+        resolve_expr_refs(block.id, ctx.scope, ctx.data);
     }
 
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        parent_scope: ScopeId,
-        _body_scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         // Collection expression belongs to parent scope, not the each-block's child scope.
-        resolve_expr_refs(block.id, parent_scope, data);
+        resolve_expr_refs(block.id, ctx.scope, ctx.data);
     }
 
-    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_expr_refs(block.id, scope, data);
+    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {
+        resolve_expr_refs(block.id, ctx.scope, ctx.data);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_expr_refs(tag.id, scope, data);
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_>) {
+        resolve_expr_refs(tag.id, ctx.scope, ctx.data);
 
         // Store the scope for this render tag so we can resolve dynamic callees later
         // (after props analysis populates is_prop_source).
-        if let Some(name) = data.render_tag_callee_name.get(tag.id) {
-            if let Some(sym_id) = data.scoping.find_binding(scope, name) {
-                data.render_tag_callee_sym.insert(tag.id, sym_id);
+        if let Some(name) = ctx.data.render_tag_callee_name.get(tag.id) {
+            if let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, name) {
+                ctx.data.render_tag_callee_sym.insert(tag.id, sym_id);
             }
         }
     }
 
-    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_expr_refs(tag.id, scope, data);
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_>) {
+        resolve_expr_refs(tag.id, ctx.scope, ctx.data);
     }
 
-    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(attr.id, scope, data);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(attr.id, ctx.scope, ctx.data);
     }
-    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(attr.id, scope, data);
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(attr.id, ctx.scope, ctx.data);
     }
-    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(attr.id, scope, data);
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(attr.id, ctx.scope, ctx.data);
     }
-    fn visit_shorthand(&mut self, attr: &Shorthand, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(attr.id, scope, data);
+    fn visit_shorthand(&mut self, attr: &Shorthand, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(attr.id, ctx.scope, ctx.data);
     }
-    fn visit_class_directive(&mut self, dir: &ClassDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_style_directive(&mut self, dir: &StyleDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_bind_directive(&mut self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
-        self.resolve_bind(dir, scope, data);
+    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
+        self.resolve_bind(dir, ctx.scope, ctx.data);
     }
-    fn visit_use_directive(&mut self, dir: &UseDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_transition_directive(&mut self, dir: &TransitionDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_animate_directive(&mut self, dir: &AnimateDirective, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(dir.id, scope, data);
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(dir.id, ctx.scope, ctx.data);
     }
-    fn visit_attach_tag(&mut self, tag: &AttachTag, scope: ScopeId, data: &mut AnalysisData) {
-        resolve_attr_refs(tag.id, scope, data);
+    fn visit_attach_tag(&mut self, tag: &AttachTag, ctx: &mut VisitContext<'_>) {
+        resolve_attr_refs(tag.id, ctx.scope, ctx.data);
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         for attr in &cn.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
             if let Attribute::BindDirective(dir) = attr {
-                self.resolve_bind(dir, scope, data);
+                self.resolve_bind(dir, ctx.scope, ctx.data);
             }
         }
     }
@@ -158,18 +155,17 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_svelte_element(
         &mut self,
         el: &SvelteElement,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         // Resolve tag expression references (skip for static string tags)
         if !el.static_tag {
-            resolve_expr_refs(el.id, scope, data);
+            resolve_expr_refs(el.id, ctx.scope, ctx.data);
         }
         // Walk attributes — resolve expression refs and bind directives
         for attr in &el.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
             if let Attribute::BindDirective(dir) = attr {
-                self.resolve_bind(dir, scope, data);
+                self.resolve_bind(dir, ctx.scope, ctx.data);
             }
         }
     }
@@ -177,13 +173,12 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_svelte_window(
         &mut self,
         w: &SvelteWindow,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         for attr in &w.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
             if let Attribute::BindDirective(dir) = attr {
-                self.resolve_bind(dir, scope, data);
+                self.resolve_bind(dir, ctx.scope, ctx.data);
             }
         }
     }
@@ -191,13 +186,12 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_svelte_document(
         &mut self,
         doc: &SvelteDocument,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         for attr in &doc.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
             if let Attribute::BindDirective(dir) = attr {
-                self.resolve_bind(dir, scope, data);
+                self.resolve_bind(dir, ctx.scope, ctx.data);
             }
         }
     }
@@ -205,22 +199,20 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
     fn visit_svelte_body(
         &mut self,
         body: &SvelteBody,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         for attr in &body.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
         }
     }
 
     fn visit_svelte_boundary(
         &mut self,
         boundary: &SvelteBoundary,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut VisitContext<'_>,
     ) {
         for attr in &boundary.attributes {
-            resolve_attr_refs(attr.id(), scope, data);
+            resolve_attr_refs(attr.id(), ctx.scope, ctx.data);
         }
     }
 }

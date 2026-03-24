@@ -29,64 +29,60 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
     fn visit_expression_tag(
         &mut self,
         tag: &ExpressionTag,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_expr_arrows(
             self.parsed.exprs.get(&tag.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut crate::walker::VisitContext<'_>) {
         scan_expr_arrows(
             self.parsed.exprs.get(&tag.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
-    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut crate::walker::VisitContext<'_>) {
         scan_expr_arrows(
             self.parsed.exprs.get(&tag.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
     fn visit_const_tag(
         &mut self,
         tag: &svelte_ast::ConstTag,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_expr_arrows(
             self.parsed.exprs.get(&tag.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
-    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut crate::walker::VisitContext<'_>) {
         scan_expr_arrows(
             self.parsed.exprs.get(&block.test_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        parent_scope: ScopeId,
-        _body_scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_expr_arrows(
             self.parsed.exprs.get(&block.expression_span.start),
-            &mut data.scoping,
-            parent_scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
 
         // Each-block index usage detection
@@ -96,231 +92,242 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
                 if let Some(key_expr) = self.parsed.exprs.get(&key_span.start) {
                     let info = analyze_expression(key_expr);
                     if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                        data.each_blocks.key_uses_index.insert(block.id);
+                        ctx.data.each_blocks.key_uses_index.insert(block.id);
                     }
                 }
             }
-            if check_fragment_uses_name(&block.body, idx_name, data) {
-                data.each_blocks.body_uses_index.insert(block.id);
+            if check_fragment_uses_name(&block.body, idx_name, ctx.data) {
+                ctx.data.each_blocks.body_uses_index.insert(block.id);
             }
         }
     }
 
-    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut crate::walker::VisitContext<'_>) {
         scan_expr_arrows(
             self.parsed.exprs.get(&block.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
-    fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_await_block(
+        &mut self,
+        block: &AwaitBlock,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         scan_expr_arrows(
             self.parsed.exprs.get(&block.expression_span.start),
-            &mut data.scoping,
-            scope,
+            &mut ctx.data.scoping,
+            ctx.scope,
         );
     }
 
     fn visit_expression_attribute(
         &mut self,
         attr: &ExpressionAttribute,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             Some(attr.expression_span.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_concatenation_attribute(
         &mut self,
         attr: &ConcatenationAttribute,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        scan_concat_arrows(&attr.parts, &mut data.scoping, self.parsed, scope);
+        scan_concat_arrows(&attr.parts, &mut ctx.data.scoping, self.parsed, ctx.scope);
     }
     fn visit_spread_attribute(
         &mut self,
         attr: &SpreadAttribute,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             Some(attr.expression_span.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
-    fn visit_shorthand(&mut self, attr: &Shorthand, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_shorthand(
+        &mut self,
+        attr: &Shorthand,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         scan_attr_arrows_by_offset(
             Some(attr.expression_span.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_class_directive(
         &mut self,
         dir: &ClassDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_style_directive(
         &mut self,
         dir: &StyleDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         let offset = match &dir.value {
             svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
             _ => None,
         };
-        scan_attr_arrows_by_offset(offset, &mut data.scoping, self.parsed, scope);
+        scan_attr_arrows_by_offset(offset, &mut ctx.data.scoping, self.parsed, ctx.scope);
         if let svelte_ast::StyleDirectiveValue::Concatenation(parts) = &dir.value {
-            scan_concat_arrows(parts, &mut data.scoping, self.parsed, scope);
+            scan_concat_arrows(parts, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
     fn visit_bind_directive(
         &mut self,
         dir: &BindDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
-    fn visit_use_directive(&mut self, dir: &UseDirective, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_use_directive(
+        &mut self,
+        dir: &UseDirective,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_on_directive_legacy(
         &mut self,
         dir: &OnDirectiveLegacy,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_transition_directive(
         &mut self,
         dir: &TransitionDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
     fn visit_animate_directive(
         &mut self,
         dir: &AnimateDirective,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         scan_attr_arrows_by_offset(
             dir.expression_span.map(|s| s.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
-    fn visit_attach_tag(&mut self, tag: &AttachTag, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_attach_tag(
+        &mut self,
+        tag: &AttachTag,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         scan_attr_arrows_by_offset(
             Some(tag.expression_span.start),
-            &mut data.scoping,
+            &mut ctx.data.scoping,
             self.parsed,
-            scope,
+            ctx.scope,
         );
     }
 
     fn visit_component_node(
         &mut self,
         cn: &ComponentNode,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         for attr in &cn.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 
     fn visit_svelte_element(
         &mut self,
         el: &SvelteElement,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         if !el.static_tag {
             scan_expr_arrows(
                 self.parsed.exprs.get(&el.tag_span.start),
-                &mut data.scoping,
-                scope,
+                &mut ctx.data.scoping,
+                ctx.scope,
             );
         }
         for attr in &el.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 
-    fn visit_svelte_window(&mut self, w: &SvelteWindow, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_svelte_window(
+        &mut self,
+        w: &SvelteWindow,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         for attr in &w.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 
     fn visit_svelte_document(
         &mut self,
         doc: &SvelteDocument,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         for attr in &doc.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 
-    fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_svelte_body(
+        &mut self,
+        body: &SvelteBody,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
         for attr in &body.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 
     fn visit_svelte_boundary(
         &mut self,
         boundary: &SvelteBoundary,
-        scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         for attr in &boundary.attributes {
-            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
         }
     }
 }
