@@ -1,36 +1,41 @@
+mod analyze_semantic;
 mod bind_semantics;
 mod ce_config;
 mod content_types;
-mod markers;
 mod data;
 mod element_flags;
 mod hoistable;
 pub mod ident_gen;
 pub(crate) mod js_analyze;
 mod lower;
+mod markers;
 pub mod node_table;
-mod analyze_semantic;
 mod post_resolve;
 mod reactivity;
 mod resolve_references;
 pub mod scope;
-pub mod script_types;
 pub(crate) mod script_info;
+pub mod script_types;
 mod store_subscriptions;
 pub mod utils;
 mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    EventHandlerMode, ExpressionInfo, ExpressionKind, LoweredTextPart, ConstTagData, ContentStrategy,
-    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParserResult,
-    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
+    AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo,
+    ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, EventHandlerMode,
+    ExpressionInfo, ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment,
+    LoweredTextPart, ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;
-pub use script_types::{ScriptInfo, DeclarationInfo, DeclarationKind, RuneKind, PropInfo, PropsDeclaration, ExportInfo};
-pub use utils::{is_delegatable_event, is_capture_event, strip_capture_event, is_passive_event, is_simple_identifier};
+pub use script_types::{
+    DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
+};
+pub use utils::{
+    is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
+    strip_capture_event,
+};
 
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
@@ -63,22 +68,26 @@ pub fn analyze_with_options<'a>(
     let script_info = parsed.program.as_ref().and_then(|program| {
         let span = parsed.script_content_span?;
         let source = component.source_text(span);
-        Some(script_info::extract_script_info(program, span.start, source))
+        Some(script_info::extract_script_info(
+            program, span.start, source,
+        ))
     });
 
     // JS analysis: enrich script info and extract OXC Scoping
-    let script_scoping = script_info
-        .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
+    let script_scoping =
+        script_info.and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
     data.scoping = ComponentScoping::new(script_scoping);
 
     // Extract expression info + classify shorthand/clsx/snippets/render_tag_args/CE config
-    js_analyze::extract_all_expressions(&parsed, component, &mut data, parsed.typescript);
+    js_analyze::extract_all_expressions(&parsed, component, &mut data);
 
     // Classify per-expression needs_context (import/prop member access, calls)
     // then aggregate into module-level flag for $.push/$.pop
     js_analyze::classify_expression_needs_context(&mut data);
     if !data.needs_context {
-        data.needs_context = data.expressions.values()
+        data.needs_context = data
+            .expressions
+            .values()
             .chain(data.attr_expressions.values())
             .any(|info| info.needs_context);
     }
@@ -91,9 +100,17 @@ pub fn analyze_with_options<'a>(
     // Combined walk: arrow scope registration + each-block index usage + reference resolution
     {
         let root = data.scoping.root_scope_id();
-        let mut v1 = analyze_semantic::JsMetadataVisitor { component, parsed: &parsed };
+        let mut v1 = analyze_semantic::JsMetadataVisitor {
+            component,
+            parsed: &parsed,
+        };
         let mut v2 = resolve_references::make_visitor(component, scoping_built);
-        walker::walk_template(&component.fragment, &mut data, root, &mut [&mut v1, &mut v2]);
+        walker::walk_template(
+            &component.fragment,
+            &mut data,
+            root,
+            &mut [&mut v1, &mut v2],
+        );
     }
     post_resolve::run_post_resolve_passes(component, &mut data);
     resolve_render_tag_prop_sources(&mut data);
@@ -109,7 +126,8 @@ pub fn analyze_with_options<'a>(
             .script
             .as_ref()
             .map(|s| {
-                s.declarations.iter()
+                s.declarations
+                    .iter()
                     .filter_map(|d| data.scoping.find_binding(root, &d.name))
                     .collect()
             })
@@ -130,8 +148,15 @@ pub fn analyze_with_options<'a>(
         let mut v2 = element_flags::ElementFlagsVisitor::new(&component.source);
         let mut v3 = hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
         let mut v4 = bind_semantics::BindSemanticsVisitor::new(&component.source);
-        let mut v5 = content_types::ContentAndVarVisitor { source: &component.source };
-        walker::walk_template(&component.fragment, &mut data, root, &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5]);
+        let mut v5 = content_types::ContentAndVarVisitor {
+            source: &component.source,
+        };
+        walker::walk_template(
+            &component.fragment,
+            &mut data,
+            root,
+            &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5],
+        );
     }
 
     // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
@@ -180,12 +205,15 @@ pub fn analyze_module(
 fn resolve_render_tag_prop_sources(data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
     for (node_id, idents) in data.render_tag_arg_idents.drain() {
-        let resolved = idents.into_iter().map(|opt_name| {
-            opt_name.and_then(|name| {
-                let sym = data.scoping.find_binding(root, &name)?;
-                data.scoping.is_prop_source(sym).then_some(sym)
+        let resolved = idents
+            .into_iter()
+            .map(|opt_name| {
+                opt_name.and_then(|name| {
+                    let sym = data.scoping.find_binding(root, &name)?;
+                    data.scoping.is_prop_source(sym).then_some(sym)
+                })
             })
-        }).collect();
+            .collect();
         data.render_tag_prop_sources.insert(node_id, resolved);
     }
 }
@@ -204,7 +232,6 @@ fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
             None => true,
         };
         let is_chain = data.render_tag_is_chain.contains(&node_id);
-
 
         let mode = match (is_dynamic, is_chain) {
             (true, true) => RenderTagCalleeMode::DynamicChain,

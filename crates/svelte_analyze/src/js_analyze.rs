@@ -3,18 +3,17 @@
 //! These functions produce metadata (`ExpressionInfo`, `ScriptInfo`, etc.)
 //! from OXC AST nodes. They are internal to the analyze crate.
 
+use crate::script_types::{RuneKind, ScriptInfo};
 use compact_str::CompactString;
 use oxc_ast::ast::{AssignmentTarget, CallExpression, Expression, SimpleAssignmentTarget};
-use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_call_expression, walk_expression, walk_function,
 };
+use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
-use svelte_span::Span;
-use crate::script_types::{RuneKind, ScriptInfo};
 
-use svelte_ast::{ConcatPart, Component, NodeId};
+use svelte_ast::{Component, ConcatPart, NodeId};
 
 use crate::data::{
     AnalysisData, ExpressionInfo, ExpressionKind, ParserResult, Reference, ReferenceFlags,
@@ -32,7 +31,9 @@ pub(crate) fn analyze_script(
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
 ) -> Option<oxc_semantic::Scoping> {
-    let Some(ref program) = parsed.program else { return None };
+    let Some(ref program) = parsed.program else {
+        return None;
+    };
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
     crate::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
@@ -71,19 +72,30 @@ struct RenderTagClassifier<'a, 'b> {
 }
 
 impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
-    fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_render_tag(
+        &mut self,
+        tag: &svelte_ast::RenderTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         let offset = tag.expression_span.start;
-        if matches!(self.parsed.exprs.get(&offset), Some(Expression::ChainExpression(_))) {
+        if matches!(
+            self.parsed.exprs.get(&offset),
+            Some(Expression::ChainExpression(_))
+        ) {
             data.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.exprs.remove(&offset) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
-                    self.parsed.exprs.insert(offset, Expression::CallExpression(call));
+                    self.parsed
+                        .exprs
+                        .insert(offset, Expression::CallExpression(call));
                 }
             }
         }
         if let Some(Expression::CallExpression(call)) = self.parsed.exprs.get(&offset) {
             if let Expression::Identifier(ident) = &call.callee {
-                data.render_tag_callee_name.insert(tag.id, ident.name.to_string());
+                data.render_tag_callee_name
+                    .insert(tag.id, ident.name.to_string());
             }
         }
     }
@@ -112,7 +124,12 @@ struct BindingPreparer<'a, 'b> {
 }
 
 impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
-    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_await_block(
+        &mut self,
+        block: &svelte_ast::AwaitBlock,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(val_span) = block.value_span {
             if let Some(info) = extract_await_binding_info(self.parsed, val_span.start) {
                 data.await_bindings.values.insert(block.id, info);
@@ -133,8 +150,11 @@ fn extract_names_from_assignment_target(target: &oxc_ast::ast::AssignmentTarget)
     names
 }
 
-fn collect_assignment_target_names(target: &oxc_ast::ast::AssignmentTarget, names: &mut Vec<String>) {
-    use oxc_ast::ast::{AssignmentTarget, AssignmentTargetProperty, AssignmentTargetMaybeDefault};
+fn collect_assignment_target_names(
+    target: &oxc_ast::ast::AssignmentTarget,
+    names: &mut Vec<String>,
+) {
+    use oxc_ast::ast::{AssignmentTarget, AssignmentTargetProperty};
     match target {
         AssignmentTarget::AssignmentTargetIdentifier(ident) => {
             names.push(ident.name.to_string());
@@ -166,7 +186,10 @@ fn collect_assignment_target_names(target: &oxc_ast::ast::AssignmentTarget, name
     }
 }
 
-fn collect_maybe_default_names(target: &oxc_ast::ast::AssignmentTargetMaybeDefault, names: &mut Vec<String>) {
+fn collect_maybe_default_names(
+    target: &oxc_ast::ast::AssignmentTargetMaybeDefault,
+    names: &mut Vec<String>,
+) {
     use oxc_ast::ast::AssignmentTargetMaybeDefault;
     match target {
         AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => {
@@ -181,7 +204,10 @@ fn collect_maybe_default_names(target: &oxc_ast::ast::AssignmentTargetMaybeDefau
 }
 
 /// Extract AwaitBindingInfo from a parsed binding expression and remove it from `exprs`.
-fn extract_await_binding_info(parsed: &mut ParserResult<'_>, offset: u32) -> Option<svelte_parser::AwaitBindingInfo> {
+fn extract_await_binding_info(
+    parsed: &mut ParserResult<'_>,
+    offset: u32,
+) -> Option<svelte_parser::AwaitBindingInfo> {
     use svelte_parser::{AwaitBindingInfo, DestructureKind};
 
     let expr = parsed.exprs.remove(&offset)?;
@@ -191,19 +217,23 @@ fn extract_await_binding_info(parsed: &mut ParserResult<'_>, offset: u32) -> Opt
         other => other,
     };
     match inner {
-        Expression::Identifier(ident) => {
-            Some(AwaitBindingInfo::Simple(ident.name.to_string()))
-        }
+        Expression::Identifier(ident) => Some(AwaitBindingInfo::Simple(ident.name.to_string())),
         Expression::AssignmentExpression(assign) => {
             use oxc_ast::ast::AssignmentTarget;
             match &assign.left {
                 AssignmentTarget::ObjectAssignmentTarget(_) => {
                     let names = extract_names_from_assignment_target(&assign.left);
-                    Some(AwaitBindingInfo::Destructured { kind: DestructureKind::Object, names })
+                    Some(AwaitBindingInfo::Destructured {
+                        kind: DestructureKind::Object,
+                        names,
+                    })
                 }
                 AssignmentTarget::ArrayAssignmentTarget(_) => {
                     let names = extract_names_from_assignment_target(&assign.left);
-                    Some(AwaitBindingInfo::Destructured { kind: DestructureKind::Array, names })
+                    Some(AwaitBindingInfo::Destructured {
+                        kind: DestructureKind::Array,
+                        names,
+                    })
                 }
                 _ => None,
             }
@@ -219,15 +249,16 @@ pub(crate) fn extract_all_expressions(
     parsed: &ParserResult<'_>,
     component: &Component,
     data: &mut AnalysisData,
-    typescript: bool,
 ) {
     let root = data.scoping.root_scope_id();
-    let mut visitor = ExpressionExtractor { parsed, component, typescript };
+    let mut visitor = ExpressionExtractor { parsed };
     crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
 
     // Extract CE config (not template-related)
-    if let Some(svelte_ast::CustomElementConfig::Expression(span)) =
-        component.options.as_ref().and_then(|o| o.custom_element.as_ref())
+    if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
+        .options
+        .as_ref()
+        .and_then(|o| o.custom_element.as_ref())
     {
         if let Some(expr) = parsed.exprs.get(&span.start) {
             let config = crate::ce_config::extract_ce_config_from_expr(expr, span.start);
@@ -238,50 +269,99 @@ pub(crate) fn extract_all_expressions(
 
 struct ExpressionExtractor<'a, 'b> {
     parsed: &'b ParserResult<'a>,
-    component: &'b Component,
-    typescript: bool,
 }
 
 impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
-    fn visit_expression_tag(&mut self, tag: &svelte_ast::ExpressionTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_expression_tag(
+        &mut self,
+        tag: &svelte_ast::ExpressionTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
     }
 
-    fn visit_if_block(&mut self, block: &svelte_ast::IfBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_if_block(
+        &mut self,
+        block: &svelte_ast::IfBlock,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, block.id, block.test_span.start);
     }
 
-    fn visit_each_block(&mut self, block: &svelte_ast::EachBlock, _parent_scope: oxc_semantic::ScopeId, _body_scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_each_block(
+        &mut self,
+        block: &svelte_ast::EachBlock,
+        _parent_scope: oxc_semantic::ScopeId,
+        _body_scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
     }
 
-    fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_render_tag(
+        &mut self,
+        tag: &svelte_ast::RenderTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
         classify_render_tag_args(self.parsed, data, tag);
     }
 
-    fn visit_html_tag(&mut self, tag: &svelte_ast::HtmlTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_html_tag(
+        &mut self,
+        tag: &svelte_ast::HtmlTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
     }
 
-    fn visit_key_block(&mut self, block: &svelte_ast::KeyBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_key_block(
+        &mut self,
+        block: &svelte_ast::KeyBlock,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
     }
 
-    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_await_block(
+        &mut self,
+        block: &svelte_ast::AwaitBlock,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         // Binding info already extracted by prepare_template_bindings
         insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
     }
 
-    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_const_tag(
+        &mut self,
+        tag: &svelte_ast::ConstTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
     }
 
-    fn visit_snippet_block(&mut self, _block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, _data: &mut AnalysisData) {
+    fn visit_snippet_block(
+        &mut self,
+        _block: &svelte_ast::SnippetBlock,
+        _scope: oxc_semantic::ScopeId,
+        _data: &mut AnalysisData,
+    ) {
         // Snippet params transferred by transfer_snippet_params before this pass
     }
 
-    fn visit_svelte_element(&mut self, el: &svelte_ast::SvelteElement, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_svelte_element(
+        &mut self,
+        el: &svelte_ast::SvelteElement,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if !el.static_tag {
             insert_node_expr_info(self.parsed, data, el.id, el.tag_span.start);
         }
@@ -289,12 +369,19 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
 
     // --- Attribute visits ---
 
-    fn visit_expression_attribute(&mut self, attr: &svelte_ast::ExpressionAttribute, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_expression_attribute(
+        &mut self,
+        attr: &svelte_ast::ExpressionAttribute,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         let attr_id = attr.id;
         insert_attr_expr_info(self.parsed, data, attr_id, attr.expression_span.start);
 
         // Detect semantic shorthand: expression is a simple identifier matching attr name
-        if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&attr.expression_span.start) {
+        if let Some(Expression::Identifier(ident)) =
+            self.parsed.exprs.get(&attr.expression_span.start)
+        {
             if ident.name.as_str() == attr.name {
                 data.element_flags.expression_shorthand.insert(attr_id);
             }
@@ -315,11 +402,21 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         }
     }
 
-    fn visit_concatenation_attribute(&mut self, attr: &svelte_ast::ConcatenationAttribute, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_concatenation_attribute(
+        &mut self,
+        attr: &svelte_ast::ConcatenationAttribute,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_concat_expr_info(self.parsed, data, attr.id, &attr.parts);
     }
 
-    fn visit_class_directive(&mut self, dir: &svelte_ast::ClassDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_class_directive(
+        &mut self,
+        dir: &svelte_ast::ClassDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
             if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&span.start) {
@@ -330,7 +427,12 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         }
     }
 
-    fn visit_style_directive(&mut self, dir: &svelte_ast::StyleDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_style_directive(
+        &mut self,
+        dir: &svelte_ast::StyleDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         use svelte_ast::StyleDirectiveValue;
         match &dir.value {
             StyleDirectiveValue::Expression(span) => {
@@ -348,45 +450,85 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         }
     }
 
-    fn visit_bind_directive(&mut self, dir: &svelte_ast::BindDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_bind_directive(
+        &mut self,
+        dir: &svelte_ast::BindDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
         }
     }
 
-    fn visit_spread_attribute(&mut self, attr: &svelte_ast::SpreadAttribute, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_spread_attribute(
+        &mut self,
+        attr: &svelte_ast::SpreadAttribute,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start);
     }
 
-    fn visit_shorthand(&mut self, attr: &svelte_ast::Shorthand, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_shorthand(
+        &mut self,
+        attr: &svelte_ast::Shorthand,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start);
     }
 
-    fn visit_use_directive(&mut self, dir: &svelte_ast::UseDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_use_directive(
+        &mut self,
+        dir: &svelte_ast::UseDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
         }
     }
 
-    fn visit_on_directive_legacy(&mut self, dir: &svelte_ast::OnDirectiveLegacy, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_on_directive_legacy(
+        &mut self,
+        dir: &svelte_ast::OnDirectiveLegacy,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
         }
     }
 
-    fn visit_transition_directive(&mut self, dir: &svelte_ast::TransitionDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_transition_directive(
+        &mut self,
+        dir: &svelte_ast::TransitionDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
         }
     }
 
-    fn visit_animate_directive(&mut self, dir: &svelte_ast::AnimateDirective, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_animate_directive(
+        &mut self,
+        dir: &svelte_ast::AnimateDirective,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         if let Some(span) = dir.expression_span {
             insert_attr_expr_info(self.parsed, data, dir.id, span.start);
         }
     }
 
-    fn visit_attach_tag(&mut self, tag: &svelte_ast::AttachTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+    fn visit_attach_tag(
+        &mut self,
+        tag: &svelte_ast::AttachTag,
+        _scope: oxc_semantic::ScopeId,
+        data: &mut AnalysisData,
+    ) {
         insert_attr_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
     }
 }
@@ -400,7 +542,7 @@ fn insert_node_expr_info(
 ) {
     data.node_expr_offsets.insert(node_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr, offset);
+        let info = analyze_expression(expr);
         data.expressions.insert(node_id, info);
     }
 }
@@ -414,7 +556,7 @@ fn insert_attr_expr_info(
 ) {
     data.attr_expr_offsets.insert(attr_id, offset);
     if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr, offset);
+        let info = analyze_expression(expr);
         data.attr_expressions.insert(attr_id, info);
     }
 }
@@ -430,7 +572,7 @@ fn insert_concat_expr_info(
     for part in parts {
         if let ConcatPart::Dynamic(span) = part {
             if let Some(expr) = parsed.exprs.get(&span.start) {
-                let info = analyze_expression(expr, span.start);
+                let info = analyze_expression(expr);
                 all_refs.extend(info.references);
             }
         }
@@ -447,7 +589,6 @@ fn insert_concat_expr_info(
     data.attr_expressions.insert(attr_id, merged);
 }
 
-
 /// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
 fn classify_render_tag_args(
     parsed: &ParserResult<'_>,
@@ -456,18 +597,24 @@ fn classify_render_tag_args(
 ) {
     let offset = tag.expression_span.start;
     if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
-        let flags: Vec<bool> = call.arguments.iter().map(|arg| {
-            expression_has_call(arg.to_expression())
-        }).collect();
+        let flags: Vec<bool> = call
+            .arguments
+            .iter()
+            .map(|arg| expression_has_call(arg.to_expression()))
+            .collect();
         data.render_tag_arg_has_call.insert(tag.id, flags);
 
-        let idents: Vec<Option<String>> = call.arguments.iter().map(|arg| {
-            if let Expression::Identifier(id) = arg.to_expression() {
-                Some(id.name.to_string())
-            } else {
-                None
-            }
-        }).collect();
+        let idents: Vec<Option<String>> = call
+            .arguments
+            .iter()
+            .map(|arg| {
+                if let Expression::Identifier(id) = arg.to_expression() {
+                    Some(id.name.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
         data.render_tag_arg_idents.insert(tag.id, idents);
     }
 }
@@ -528,7 +675,8 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 self.check_proxy_state_inits(&decl.declarations);
             }
             Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration
+                {
                     self.check_proxy_state_inits(&d.declarations);
                 }
             }
@@ -557,7 +705,9 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
         if method.kind != oxc_ast::ast::MethodDefinitionKind::Constructor {
             return;
         }
-        let Some(body) = &method.value.body else { return };
+        let Some(body) = &method.value.body else {
+            return;
+        };
         for stmt in &body.statements {
             if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
                 if let Expression::AssignmentExpression(assign) = &es.expression {
@@ -573,18 +723,28 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 }
 
 impl ScriptBodyAnalyzer<'_> {
-    fn check_proxy_state_inits(&mut self, declarations: &oxc_allocator::Vec<'_, oxc_ast::ast::VariableDeclarator<'_>>) {
+    fn check_proxy_state_inits(
+        &mut self,
+        declarations: &oxc_allocator::Vec<'_, oxc_ast::ast::VariableDeclarator<'_>>,
+    ) {
         for declarator in declarations.iter() {
-            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else { continue };
-            let Some(init) = &declarator.init else { continue };
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
+                continue;
+            };
+            let Some(init) = &declarator.init else {
+                continue;
+            };
             let rune = crate::script_info::detect_rune(init);
             if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
                 continue;
             }
             let name = ident.name.as_str();
-            if self.script_info.declarations.iter().any(|d| d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))) {
+            if self.script_info.declarations.iter().any(|d| {
+                d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))
+            }) {
                 if is_proxyable_state_init(init) {
-                    self.proxy_state_inits.insert(CompactString::from(name), true);
+                    self.proxy_state_inits
+                        .insert(CompactString::from(name), true);
                 }
             }
         }
@@ -612,9 +772,15 @@ fn is_effect_call(expr: &Expression<'_>) -> bool {
 
 /// Check if the first argument of a $state/$state.raw call is proxyable (non-primitive).
 fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
-    let Expression::CallExpression(call) = expr else { return false };
-    let Some(arg) = call.arguments.first() else { return false };
-    let Some(e) = arg.as_expression() else { return false };
+    let Expression::CallExpression(call) = expr else {
+        return false;
+    };
+    let Some(arg) = call.arguments.first() else {
+        return false;
+    };
+    let Some(e) = arg.as_expression() else {
+        return false;
+    };
     if e.is_literal() {
         return false;
     }
@@ -696,9 +862,7 @@ fn expr_needs_context(
 ) -> bool {
     match expr {
         Expression::NewExpression(_) => true,
-        Expression::CallExpression(call) => {
-            !is_safe_identifier(&call.callee, scoping, prop_names)
-        }
+        Expression::CallExpression(call) => !is_safe_identifier(&call.callee, scoping, prop_names),
         Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
             !is_safe_identifier(expr, scoping, prop_names)
         }
@@ -723,7 +887,9 @@ fn is_safe_identifier(
         }
     }
 
-    let Expression::Identifier(ident) = node else { return false };
+    let Expression::Identifier(ident) = node else {
+        return false;
+    };
     let name = ident.name.as_str();
 
     // Prop bindings are not safe (they come from parent context)
@@ -752,18 +918,19 @@ fn is_safe_identifier(
 /// Mirrors reference: MemberExpression.js + CallExpression.js + is_safe_identifier.
 pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
     let root = data.scoping.root_scope_id();
-    for info in data.expressions.values_mut()
+    for info in data
+        .expressions
+        .values_mut()
         .chain(data.attr_expressions.values_mut())
     {
         info.needs_context = match &info.kind {
             ExpressionKind::MemberExpression | ExpressionKind::CallExpression { .. } => {
                 info.references.iter().any(|r| {
-                    data.scoping.find_binding(root, &r.name)
-                        .is_some_and(|sym| {
-                            data.scoping.is_import(sym)
-                                || data.scoping.is_prop_source(sym)
-                                || data.scoping.prop_non_source_name(sym).is_some()
-                        })
+                    data.scoping.find_binding(root, &r.name).is_some_and(|sym| {
+                        data.scoping.is_import(sym)
+                            || data.scoping.is_prop_source(sym)
+                            || data.scoping.prop_non_source_name(sym).is_some()
+                    })
                 })
             }
             _ => false,
@@ -812,7 +979,6 @@ struct ExpressionAnalyzer {
     has_state_rune: bool,
     has_store_member_mutation: bool,
     has_side_effects: bool,
-    offset: u32,
     /// Expression nesting depth. 0 = root expression (used for classification).
     depth: u32,
     /// Depth inside function boundaries. When >0, `has_call` and `has_state_rune`
@@ -834,15 +1000,14 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
                 | Expression::NullLiteral(_) => ExpressionKind::Literal,
                 Expression::CallExpression(call) => {
                     let callee = match &call.callee {
-                        Expression::Identifier(ident) => {
-                            CompactString::from(ident.name.as_str())
-                        }
+                        Expression::Identifier(ident) => CompactString::from(ident.name.as_str()),
                         _ => CompactString::default(),
                     };
                     ExpressionKind::CallExpression { callee }
                 }
-                Expression::StaticMemberExpression(_)
-                | Expression::ComputedMemberExpression(_) => ExpressionKind::MemberExpression,
+                Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
+                    ExpressionKind::MemberExpression
+                }
                 Expression::ArrowFunctionExpression(_) => ExpressionKind::ArrowFunction,
                 Expression::AssignmentExpression(_) => ExpressionKind::Assignment,
                 _ => ExpressionKind::Other,
@@ -862,7 +1027,6 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
         self.references.push(Reference {
             name: CompactString::from(ident.name.as_str()),
-            span: Span::new(ident.span.start + self.offset, ident.span.end + self.offset),
             flags: ReferenceFlags::Read,
             symbol_id: None,
         });
@@ -874,7 +1038,6 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
             AssignmentTarget::AssignmentTargetIdentifier(ident) => {
                 self.references.push(Reference {
                     name: CompactString::from(ident.name.as_str()),
-                    span: Span::new(ident.span.start + self.offset, ident.span.end + self.offset),
                     flags: ReferenceFlags::Write,
                     symbol_id: None,
                 });
@@ -903,7 +1066,6 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
             SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
                 self.references.push(Reference {
                     name: CompactString::from(ident.name.as_str()),
-                    span: Span::new(ident.span.start + self.offset, ident.span.end + self.offset),
                     flags: ReferenceFlags::Write,
                     symbol_id: None,
                 });
@@ -937,7 +1099,10 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
         walk_call_expression(self, call);
     }
 
-    fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+    fn visit_arrow_function_expression(
+        &mut self,
+        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+    ) {
         self.fn_depth += 1;
         walk_arrow_function_expression(self, arrow);
         self.fn_depth -= 1;
@@ -951,7 +1116,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
 }
 
 /// Run the unified expression analyzer. Returns all metadata in a single pass.
-pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> ExpressionInfo {
+pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
         kind: ExpressionKind::Other,
         references: SmallVec::new(),
@@ -959,7 +1124,6 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> Expressi
         has_state_rune: false,
         has_store_member_mutation: false,
         has_side_effects: false,
-        offset,
         depth: 0,
         fn_depth: 0,
     };
@@ -978,13 +1142,23 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>, offset: u32) -> Expressi
 /// Lightweight check: does the expression contain a CallExpression?
 /// Stops at function boundaries (arrow/function expressions are opaque).
 fn expression_has_call(expr: &Expression<'_>) -> bool {
-    struct HasCallCheck { found: bool, fn_depth: u32 }
+    struct HasCallCheck {
+        found: bool,
+        fn_depth: u32,
+    }
     impl<'a> Visit<'a> for HasCallCheck {
         fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-            if self.fn_depth == 0 { self.found = true; }
-            if !self.found { walk_call_expression(self, call); }
+            if self.fn_depth == 0 {
+                self.found = true;
+            }
+            if !self.found {
+                walk_call_expression(self, call);
+            }
         }
-        fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+        fn visit_arrow_function_expression(
+            &mut self,
+            arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        ) {
             self.fn_depth += 1;
             walk_arrow_function_expression(self, arrow);
             self.fn_depth -= 1;
@@ -995,7 +1169,10 @@ fn expression_has_call(expr: &Expression<'_>) -> bool {
             self.fn_depth -= 1;
         }
     }
-    let mut check = HasCallCheck { found: false, fn_depth: 0 };
+    let mut check = HasCallCheck {
+        found: false,
+        fn_depth: 0,
+    };
     check.visit_expression(expr);
     check.found
 }
@@ -1007,16 +1184,32 @@ fn has_store_member_mutation(expr: &Expression<'_>) -> bool {
     impl<'a> Visit<'a> for StoreMutationCheck {
         fn visit_assignment_expression(&mut self, assign: &oxc_ast::ast::AssignmentExpression<'a>) {
             match &assign.left {
-                AssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
-                AssignmentTarget::ComputedMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                AssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => {
+                    self.0 = true
+                }
+                AssignmentTarget::ComputedMemberExpression(m)
+                    if member_root_is_store(&m.object) =>
+                {
+                    self.0 = true
+                }
                 _ => {}
             }
-            if !self.0 { self.visit_expression(&assign.right); }
+            if !self.0 {
+                self.visit_expression(&assign.right);
+            }
         }
         fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
             match &upd.argument {
-                SimpleAssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
-                SimpleAssignmentTarget::ComputedMemberExpression(m) if member_root_is_store(&m.object) => self.0 = true,
+                SimpleAssignmentTarget::StaticMemberExpression(m)
+                    if member_root_is_store(&m.object) =>
+                {
+                    self.0 = true
+                }
+                SimpleAssignmentTarget::ComputedMemberExpression(m)
+                    if member_root_is_store(&m.object) =>
+                {
+                    self.0 = true
+                }
                 _ => {}
             }
         }
