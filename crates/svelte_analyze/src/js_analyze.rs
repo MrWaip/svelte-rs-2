@@ -250,7 +250,7 @@ pub(crate) fn extract_all_expressions(
     data: &mut AnalysisData,
 ) {
     let root = data.scoping.root_scope_id();
-    let mut visitor = ExpressionExtractor { parsed };
+    let mut visitor = ExpressionExtractor { parsed, pending_render_tag: None };
     let mut ctx = crate::walker::VisitContext::with_parsed(root, data, parsed);
     crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 
@@ -269,6 +269,7 @@ pub(crate) fn extract_all_expressions(
 
 struct ExpressionExtractor<'a, 'b> {
     parsed: &'b ParserResult<'a>,
+    pending_render_tag: Option<NodeId>,
 }
 
 impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
@@ -298,9 +299,20 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
     fn visit_render_tag(
         &mut self,
         tag: &svelte_ast::RenderTag,
+        _ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
+        self.pending_render_tag = Some(tag.id);
+    }
+
+    fn visit_js_expression(
+        &mut self,
+        node_id: svelte_ast::NodeId,
+        expr: &Expression<'_>,
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        classify_render_tag_args(self.parsed, ctx.data, tag);
+        if self.pending_render_tag.take() == Some(node_id) {
+            classify_render_tag_args(expr, ctx.data, node_id);
+        }
     }
 
     fn visit_const_tag(
@@ -447,18 +459,17 @@ fn insert_concat_expr_info(
 
 /// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
 fn classify_render_tag_args(
-    parsed: &ParserResult<'_>,
+    expr: &Expression<'_>,
     data: &mut AnalysisData,
-    tag: &svelte_ast::RenderTag,
+    tag_id: NodeId,
 ) {
-    let offset = tag.expression_span.start;
-    if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
+    if let Expression::CallExpression(call) = expr {
         let flags: Vec<bool> = call
             .arguments
             .iter()
             .map(|arg| expression_has_call(arg.to_expression()))
             .collect();
-        data.render_tag_arg_has_call.insert(tag.id, flags);
+        data.render_tag_arg_has_call.insert(tag_id, flags);
 
         let idents: Vec<Option<String>> = call
             .arguments
@@ -471,7 +482,7 @@ fn classify_render_tag_args(
                 }
             })
             .collect();
-        data.render_tag_arg_idents.insert(tag.id, idents);
+        data.render_tag_arg_idents.insert(tag_id, idents);
     }
 }
 
