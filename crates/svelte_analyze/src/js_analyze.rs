@@ -17,7 +17,7 @@ use crate::script_types::{RuneKind, ScriptInfo};
 use svelte_ast::{ConcatPart, Component, NodeId};
 
 use crate::data::{
-    AnalysisData, ExpressionInfo, ExpressionKind, ParsedExprs, Reference, ReferenceFlags,
+    AnalysisData, ExpressionInfo, ExpressionKind, ParserResult, Reference, ReferenceFlags,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ use crate::data::{
 /// `script_info` comes from `JsParseResult` (extracted by parser).
 /// Returns the OXC Scoping for the script block.
 pub(crate) fn analyze_script(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
 ) -> Option<oxc_semantic::Scoping> {
@@ -57,7 +57,7 @@ pub(crate) fn analyze_script(
 /// Unwrap ChainExpression → CallExpression for render tags and extract callee name.
 /// Must run before `extract_all_expressions` because it mutates `parsed.exprs`.
 pub(crate) fn classify_render_tags(
-    parsed: &mut ParsedExprs<'_>,
+    parsed: &mut ParserResult<'_>,
     component: &Component,
     data: &mut AnalysisData,
 ) {
@@ -67,7 +67,7 @@ pub(crate) fn classify_render_tags(
 }
 
 struct RenderTagClassifier<'a, 'b> {
-    parsed: &'b mut ParsedExprs<'a>,
+    parsed: &'b mut ParserResult<'a>,
 }
 
 impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
@@ -98,7 +98,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
 /// ConstTag names are handled separately — they come from `JsParseResult.const_tag_names`
 /// (extracted during OXC statement parsing to support TS type annotations).
 pub(crate) fn prepare_template_bindings(
-    parsed: &mut ParsedExprs<'_>,
+    parsed: &mut ParserResult<'_>,
     component: &Component,
     data: &mut AnalysisData,
 ) {
@@ -108,7 +108,7 @@ pub(crate) fn prepare_template_bindings(
 }
 
 struct BindingPreparer<'a, 'b> {
-    parsed: &'b mut ParsedExprs<'a>,
+    parsed: &'b mut ParserResult<'a>,
 }
 
 impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
@@ -121,54 +121,6 @@ impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
         if let Some(err_span) = block.error_span {
             if let Some(info) = extract_await_binding_info(self.parsed, err_span.start) {
                 data.await_bindings.errors.insert(block.id, info);
-            }
-        }
-    }
-}
-
-/// Transfer ConstTag names from JsParseResult into AnalysisData.
-pub(crate) fn transfer_const_tag_names(
-    const_tag_names: &rustc_hash::FxHashMap<u32, Vec<compact_str::CompactString>>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    let root = data.scoping.root_scope_id();
-    let mut visitor = ConstTagNameTransfer { const_tag_names };
-    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
-}
-
-struct ConstTagNameTransfer<'a> {
-    const_tag_names: &'a rustc_hash::FxHashMap<u32, Vec<compact_str::CompactString>>,
-}
-
-impl crate::walker::TemplateVisitor for ConstTagNameTransfer<'_> {
-    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
-        if let Some(names) = self.const_tag_names.get(&tag.expression_span.start) {
-            data.const_tags.names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());
-        }
-    }
-}
-
-/// Transfer snippet param names from JsParseResult into AnalysisData.
-pub(crate) fn transfer_snippet_params(
-    snippet_params: &rustc_hash::FxHashMap<u32, Vec<String>>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    let root = data.scoping.root_scope_id();
-    let mut visitor = SnippetParamTransfer { snippet_params };
-    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
-}
-
-struct SnippetParamTransfer<'a> {
-    snippet_params: &'a rustc_hash::FxHashMap<u32, Vec<String>>,
-}
-
-impl crate::walker::TemplateVisitor for SnippetParamTransfer<'_> {
-    fn visit_snippet_block(&mut self, block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
-        if let Some(span) = block.params_span {
-            if let Some(params) = self.snippet_params.get(&span.start) {
-                data.snippets.params.insert(block.id, params.clone());
             }
         }
     }
@@ -229,7 +181,7 @@ fn collect_maybe_default_names(target: &oxc_ast::ast::AssignmentTargetMaybeDefau
 }
 
 /// Extract AwaitBindingInfo from a parsed binding expression and remove it from `exprs`.
-fn extract_await_binding_info(parsed: &mut ParsedExprs<'_>, offset: u32) -> Option<svelte_parser::AwaitBindingInfo> {
+fn extract_await_binding_info(parsed: &mut ParserResult<'_>, offset: u32) -> Option<svelte_parser::AwaitBindingInfo> {
     use svelte_parser::{AwaitBindingInfo, DestructureKind};
 
     let expr = parsed.exprs.remove(&offset)?;
@@ -264,7 +216,7 @@ fn extract_await_binding_info(parsed: &mut ParsedExprs<'_>, offset: u32) -> Opti
 /// Also classifies: expression shorthand, needs_clsx, snippet_param_names,
 /// render_tag_args, CE config.
 pub(crate) fn extract_all_expressions(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     component: &Component,
     data: &mut AnalysisData,
     typescript: bool,
@@ -285,7 +237,7 @@ pub(crate) fn extract_all_expressions(
 }
 
 struct ExpressionExtractor<'a, 'b> {
-    parsed: &'b ParsedExprs<'a>,
+    parsed: &'b ParserResult<'a>,
     component: &'b Component,
     typescript: bool,
 }
@@ -441,7 +393,7 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
 
 /// Look up a parsed expression by offset and store ExpressionInfo for a template node.
 fn insert_node_expr_info(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     node_id: NodeId,
     offset: u32,
@@ -455,7 +407,7 @@ fn insert_node_expr_info(
 
 /// Look up a parsed expression by offset and store ExpressionInfo for an attribute.
 fn insert_attr_expr_info(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     attr_id: NodeId,
     offset: u32,
@@ -469,7 +421,7 @@ fn insert_attr_expr_info(
 
 /// Merge ExpressionInfo from all dynamic concatenation parts into a single entry.
 fn insert_concat_expr_info(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     attr_id: NodeId,
     parts: &[ConcatPart],
@@ -498,7 +450,7 @@ fn insert_concat_expr_info(
 
 /// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
 fn classify_render_tag_args(
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     tag: &svelte_ast::RenderTag,
 ) {

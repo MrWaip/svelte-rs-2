@@ -8,7 +8,7 @@ use svelte_ast::{
     SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument,
     SvelteElement, SvelteWindow, TransitionDirective, UseDirective,
 };
-use svelte_parser::ParsedExprs;
+use svelte_parser::ParserResult;
 
 use crate::data::AnalysisData;
 use crate::js_analyze::analyze_expression;
@@ -22,7 +22,7 @@ use crate::walker::TemplateVisitor;
 
 pub(crate) struct JsMetadataVisitor<'a> {
     pub component: &'a svelte_ast::Component,
-    pub parsed: &'a ParsedExprs<'a>,
+    pub parsed: &'a ParserResult<'a>,
 }
 
 impl TemplateVisitor for JsMetadataVisitor<'_> {
@@ -222,7 +222,7 @@ fn check_fragment_uses_name(fragment: &svelte_ast::Fragment, name: &str, data: &
 fn scan_single_attr_arrows(
     attr: &Attribute,
     scoping: &mut ComponentScoping,
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     scope: ScopeId,
 ) {
     let expr_offset = get_attr_expr_offset(attr);
@@ -251,7 +251,7 @@ fn scan_single_attr_arrows(
 fn scan_attr_arrows_by_offset(
     offset: Option<u32>,
     scoping: &mut ComponentScoping,
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     scope: ScopeId,
 ) {
     if let Some(offset) = offset {
@@ -263,7 +263,7 @@ fn scan_attr_arrows_by_offset(
 fn scan_concat_arrows(
     parts: &[ConcatPart],
     scoping: &mut ComponentScoping,
-    parsed: &ParsedExprs<'_>,
+    parsed: &ParserResult<'_>,
     scope: ScopeId,
 ) {
     for part in parts {

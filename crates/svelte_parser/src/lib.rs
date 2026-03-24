@@ -24,7 +24,7 @@ mod svelte_elements;
 pub use types::*;
 
 // Re-export parsing functions used by svelte_analyze
-pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_snippet_params, parse_await_binding};
+pub use parse_js::{parse_script_with_alloc, parse_expression_with_alloc, parse_await_binding};
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.
 ///
@@ -43,20 +43,20 @@ pub fn parse_module<'a>(
 
 /// Parse a Svelte source file and all embedded JS expressions.
 ///
-/// Returns the parsed component AST, JS parse results (expression metadata + ASTs),
+/// Returns the parsed component AST, parse results (expression + statement ASTs),
 /// and any diagnostics from both the Svelte parser and JS expression parsing.
 pub fn parse_with_js<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &str,
 ) -> (
     svelte_ast::Component,
-    crate::types::JsParseResult<'a>,
+    crate::types::ParserResult<'a>,
     Vec<Diagnostic>,
 ) {
     let (component, mut diagnostics) = Parser::new(source).parse();
-    let mut js_result = crate::types::JsParseResult::new();
-    walk_js::parse_js(alloc, &component, &mut js_result, &mut diagnostics);
-    (component, js_result, diagnostics)
+    let mut result = crate::types::ParserResult::new();
+    walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
+    (component, result, diagnostics)
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ use crate::node_table::{NodeBitSet, NodeTable};
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::script_types::{ExportInfo, ScriptInfo};
 
-pub use svelte_parser::ParsedExprs;
+pub use svelte_parser::ParserResult;
 
 // ---------------------------------------------------------------------------
 // Expression analysis types (created in js_analyze, stored in AnalysisData)

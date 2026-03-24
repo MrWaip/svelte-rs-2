@@ -1,7 +1,7 @@
-//! AST walk — fills `JsParseResult` by walking the Component tree.
+//! AST walk — fills `ParserResult` by walking the Component tree.
 //!
 //! The top-level `parse_js` function walks the component AST, calls OXC parsing
-//! utilities, and populates `JsParseResult` with parsed expressions and metadata.
+//! utilities, and populates `ParserResult` with parsed expressions and statements.
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Expression;
@@ -11,14 +11,14 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
     parse_const_declaration_with_alloc, parse_each_context_with_alloc,
-    parse_expression_with_alloc, parse_script_with_alloc,
+    parse_expression_with_alloc, parse_script_with_alloc, parse_snippet_params_with_alloc,
 };
-use crate::types::JsParseResult;
+use crate::types::ParserResult;
 
 pub(crate) fn parse_js<'a>(
     alloc: &'a Allocator,
     component: &Component,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let typescript = component.script.as_ref()
@@ -29,7 +29,7 @@ pub(crate) fn parse_js<'a>(
         let arena_source: &'a str = alloc.alloc_str(source);
         match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
             Ok(program) => {
-                result.parsed.program = Some(program);
+                result.program = Some(program);
                 result.script_content_span = Some(script.content_span);
             }
             Err(errs) => diags.extend(errs),
@@ -54,11 +54,11 @@ pub(crate) fn parse_js<'a>(
 
 /// Find the `extend` property span inside an already-parsed CE config ObjectExpression.
 /// OXC spans are relative to the expression start, so we adjust by `offset`.
-fn find_ce_extend_span(result: &JsParseResult<'_>, offset: u32) -> Option<svelte_span::Span> {
+fn find_ce_extend_span(result: &ParserResult<'_>, offset: u32) -> Option<svelte_span::Span> {
     use oxc_ast::ast::{ObjectPropertyKind, PropertyKey};
     use oxc_span::GetSpan as _;
 
-    let expr = result.parsed.exprs.get(&offset)?;
+    let expr = result.exprs.get(&offset)?;
     let Expression::ObjectExpression(obj) = expr else { return None };
     for prop_kind in &obj.properties {
         let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
@@ -78,13 +78,13 @@ fn parse_span<'a>(
     component: &Component,
     span: svelte_span::Span,
     typescript: bool,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
     match parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
-        Ok(expr) => { result.parsed.exprs.insert(span.start, expr); }
+        Ok(expr) => { result.exprs.insert(span.start, expr); }
         Err(diag) => diags.push(diag),
     }
 }
@@ -99,7 +99,7 @@ fn parse_binding_pattern<'a>(
     component: &Component,
     span: svelte_span::Span,
     typescript: bool,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let source = component.source_text(span);
@@ -108,7 +108,7 @@ fn parse_binding_pattern<'a>(
         let wrapped = format!("({} = 1)", trimmed);
         let arena_source: &'a str = alloc.alloc_str(&wrapped);
         match parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
-            Ok(expr) => { result.parsed.exprs.insert(span.start, expr); }
+            Ok(expr) => { result.exprs.insert(span.start, expr); }
             Err(diag) => diags.push(diag),
         }
     } else {
@@ -121,7 +121,7 @@ fn walk_fragment<'a>(
     fragment: &Fragment,
     component: &Component,
     typescript: bool,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for node in &fragment.nodes {
@@ -134,7 +134,7 @@ fn walk_node<'a>(
     node: &Node,
     component: &Component,
     typescript: bool,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     match node {
@@ -162,12 +162,12 @@ fn walk_node<'a>(
                 parse_span(alloc, component, key_span, typescript, result, diags);
             }
 
-            // Pre-parse destructured context pattern so codegen doesn't need to
+            // Pre-parse destructured context pattern so codegen can extract bindings.
             let ctx_text = component.source_text(block.context_span);
             if ctx_text.starts_with('{') || ctx_text.starts_with('[') {
                 let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
-                if let Some(binding) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
-                    result.parsed.each_contexts.insert(block.context_span.start, binding);
+                if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                    result.stmts.insert(block.context_span.start, stmt);
                 }
             }
 
@@ -179,8 +179,11 @@ fn walk_node<'a>(
         }
         Node::SnippetBlock(block) => {
             if let Some(span) = block.params_span {
-                let params = crate::parse_js::parse_snippet_params(component.source_text(span));
-                result.snippet_params.insert(span.start, params);
+                let params_text = component.source_text(span);
+                let arena_params: &'a str = alloc.alloc_str(params_text);
+                if let Some(stmt) = parse_snippet_params_with_alloc(alloc, arena_params) {
+                    result.stmts.insert(span.start, stmt);
+                }
             }
             walk_fragment(alloc, &block.body, component, typescript, result, diags);
         }
@@ -213,13 +216,13 @@ fn walk_node<'a>(
         }
         Node::ConstTag(tag) => {
             // TS type annotations (e.g. `doubled: number = expr`) require statement-level
-            // parsing. Wrap as `const SOURCE;` and extract init expression + names.
+            // parsing. Wrap as `const SOURCE;` and store the full Statement.
+            // Scope building and codegen extract names / init expression from it directly.
             let source = component.source_text(tag.expression_span);
             let arena_source: &'a str = alloc.alloc_str(source);
             match parse_const_declaration_with_alloc(alloc, arena_source, tag.expression_span.start, typescript) {
-                Ok((names, init_expr)) => {
-                    result.parsed.exprs.insert(tag.expression_span.start, init_expr);
-                    result.const_tag_names.insert(tag.expression_span.start, names);
+                Ok(stmt) => {
+                    result.stmts.insert(tag.expression_span.start, stmt);
                 }
                 Err(diag) => diags.push(diag),
             }
@@ -262,7 +265,7 @@ fn walk_attrs<'a>(
     attrs: &[Attribute],
     component: &Component,
     typescript: bool,
-    result: &mut JsParseResult<'a>,
+    result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {

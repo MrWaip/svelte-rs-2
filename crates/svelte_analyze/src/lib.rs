@@ -24,7 +24,7 @@ pub(crate) mod walker;
 pub use data::{
     AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
     EventHandlerMode, ExpressionInfo, ExpressionKind, LoweredTextPart, ConstTagData, ContentStrategy,
-    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs,
+    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParserResult,
     PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
@@ -34,46 +34,34 @@ pub use utils::{is_delegatable_event, is_capture_event, strip_capture_event, is_
 
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
-use svelte_parser::JsParseResult;
-
 /// Run all analysis passes over a parsed component.
 pub fn analyze<'a>(
     component: &Component,
-    js_result: JsParseResult<'a>,
-) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
-    analyze_with_options(component, js_result, false)
+    parsed: ParserResult<'a>,
+) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
+    analyze_with_options(component, parsed, false)
 }
 
 /// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
     component: &Component,
-    js_result: JsParseResult<'a>,
+    mut parsed: ParserResult<'a>,
     custom_element: bool,
-) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>) {
+) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty(component.node_count);
     data.custom_element = custom_element;
 
-    let script_content_span = js_result.script_content_span;
-    let typescript = js_result.typescript;
-    let const_tag_names = js_result.const_tag_names;
-    let snippet_params = js_result.snippet_params;
-    let mut parsed = js_result.parsed;
-
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
     js_analyze::classify_render_tags(&mut parsed, component, &mut data);
-
-    // Transfer parser-extracted metadata into AnalysisData
-    js_analyze::transfer_const_tag_names(&const_tag_names, component, &mut data);
-    js_analyze::transfer_snippet_params(&snippet_params, component, &mut data);
 
     // Extract AwaitBlock binding metadata from parsed expressions
     js_analyze::prepare_template_bindings(&mut parsed, component, &mut data);
 
     // Extract script info from pre-parsed Program AST
     let script_info = parsed.program.as_ref().and_then(|program| {
-        let span = script_content_span?;
+        let span = parsed.script_content_span?;
         let source = component.source_text(span);
         Some(script_info::extract_script_info(program, span.start, source))
     });
@@ -84,7 +72,7 @@ pub fn analyze_with_options<'a>(
     data.scoping = ComponentScoping::new(script_scoping);
 
     // Extract expression info + classify shorthand/clsx/snippets/render_tag_args/CE config
-    js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
+    js_analyze::extract_all_expressions(&parsed, component, &mut data, parsed.typescript);
 
     // Classify per-expression needs_context (import/prop member access, calls)
     // then aggregate into module-level flag for $.push/$.pop
@@ -95,7 +83,7 @@ pub fn analyze_with_options<'a>(
             .any(|info| info.needs_context);
     }
 
-    let scoping_built = scope::build_scoping(component, &mut data);
+    let scoping_built = scope::build_scoping(component, &mut data, &parsed.stmts);
     if let Some(ref program) = parsed.program {
         scope::mark_nested_runes(program, &mut data.scoping);
     }

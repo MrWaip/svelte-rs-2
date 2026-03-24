@@ -8,19 +8,15 @@
 
 use std::cell::Cell;
 
-use compact_str::CompactString;
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, PropertyKey};
+use oxc_ast::ast::Expression;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::SourceType;
 use oxc_syntax::node::NodeId;
 
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
-use crate::types::{
-    AwaitBindingInfo, DestructureKind, EachBindingEntry,
-    EachContextBinding,
-};
+use crate::types::{AwaitBindingInfo, DestructureKind};
 
 // ===========================================================================
 // OXC parsing utilities
@@ -86,13 +82,14 @@ pub fn parse_script_with_alloc<'a>(
 ///
 /// `source` is the assignment text without `const` keyword
 /// (e.g. `"doubled = item * 2"` or `"{a, b}: T = obj"`).
-/// Wraps as `const SOURCE;` for OXC, extracts binding names and init expression.
+/// Wraps as `const SOURCE;` for OXC and returns the full Statement.
+/// Scope building and codegen extract binding names / init expression from it directly.
 pub fn parse_const_declaration_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<(Vec<CompactString>, Expression<'a>), Diagnostic> {
+) -> Result<oxc_ast::ast::Statement<'a>, Diagnostic> {
     let wrapped_owned = format!("const {};", source);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
@@ -113,42 +110,34 @@ pub fn parse_const_declaration_with_alloc<'a>(
     }
 
     let program = result.program;
-    let stmt = program.body.into_iter().next().ok_or_else(|| {
+    let mut stmt = program.body.into_iter().next().ok_or_else(|| {
         Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
     })?;
 
-    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
-        return Err(Diagnostic::invalid_expression(Span::new(
-            offset,
-            offset + source.len() as u32,
-        )));
-    };
-
-    let mut declarator = var_decl.declarations.remove(0);
-
-    let mut names = Vec::new();
-    crate::types::extract_all_binding_names(&declarator.id, &mut names);
-
-    let mut init = declarator.init.take().ok_or_else(|| {
-        Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-    })?;
-
+    // Strip TS type annotations from the init expression so codegen gets plain JS.
     if typescript {
-        strip_ts_expression(&mut init, alloc);
+        if let oxc_ast::ast::Statement::VariableDeclaration(ref mut var_decl) = stmt {
+            if let Some(declarator) = var_decl.declarations.first_mut() {
+                if let Some(ref mut init) = declarator.init {
+                    strip_ts_expression(init, alloc);
+                }
+            }
+        }
     }
 
-    Ok((names, init))
+    Ok(stmt)
 }
 
 /// Parse an each-block destructuring context pattern via OXC into a caller-provided allocator.
 ///
-/// Wraps as `var PATTERN = x;`, parses via OXC, walks `BindingPattern` to extract
-/// binding names, property keys, and default expressions.
+/// Wraps as `var PATTERN = x;` and returns the full Statement.
+/// Codegen extracts binding names, property keys, and default expressions via shallow destructure.
+/// Returns `None` for parse errors (pattern is invalid).
 pub(crate) fn parse_each_context_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     typescript: bool,
-) -> Option<EachContextBinding<'a>> {
+) -> Option<oxc_ast::ast::Statement<'a>> {
     let trimmed = source.trim();
     let wrapped_owned = format!("var {} = x;", trimmed);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
@@ -164,79 +153,7 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
         return None;
     }
 
-    let program = result.program;
-    let stmt = program.body.into_iter().next()?;
-    let oxc_ast::ast::Statement::VariableDeclaration(mut var_decl) = stmt else {
-        return None;
-    };
-    let declarator = var_decl.declarations.remove(0);
-
-    match declarator.id {
-        oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
-            let mut bindings = Vec::new();
-            for prop in obj.unbox().properties {
-                let key_name = match &prop.key {
-                    PropertyKey::StaticIdentifier(id) => Some(CompactString::from(id.name.as_str())),
-                    _ => None,
-                };
-                match prop.value {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        let name = CompactString::from(id.name.as_str());
-                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
-                        bindings.push(EachBindingEntry { name, key_name: key, default_expr: None });
-                    }
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                        let assign = assign.unbox();
-                        let name = match assign.left {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                CompactString::from(id.name.as_str())
-                            }
-                            _ => continue,
-                        };
-                        let key = if key_name.as_ref() == Some(&name) { None } else { key_name };
-                        bindings.push(EachBindingEntry {
-                            name,
-                            key_name: key,
-                            default_expr: Some(assign.right),
-                        });
-                    }
-                    _ => continue,
-                }
-            }
-            Some(EachContextBinding { is_array: false, bindings })
-        }
-        oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
-            let mut bindings = Vec::new();
-            for elem in arr.unbox().elements.into_iter().flatten() {
-                match elem {
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                        bindings.push(EachBindingEntry {
-                            name: CompactString::from(id.name.as_str()),
-                            key_name: None,
-                            default_expr: None,
-                        });
-                    }
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
-                        let assign = assign.unbox();
-                        let name = match assign.left {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                CompactString::from(id.name.as_str())
-                            }
-                            _ => continue,
-                        };
-                        bindings.push(EachBindingEntry {
-                            name,
-                            key_name: None,
-                            default_expr: Some(assign.right),
-                        });
-                    }
-                    _ => continue,
-                }
-            }
-            Some(EachContextBinding { is_array: true, bindings })
-        }
-        _ => None,
-    }
+    result.program.body.into_iter().next()
 }
 
 /// Parse an await binding pattern via OXC.
@@ -296,37 +213,22 @@ pub fn parse_await_binding(text: &str) -> AwaitBindingInfo {
 }
 
 
-/// Parse snippet parameter names from the raw params text (e.g. `"a, b"` or `"{ name }, count"`).
+/// Parse snippet parameters from the raw params text into a caller-provided allocator.
 ///
-/// Uses OXC to parse `function f(PARAMS) {}` so destructuring patterns and default
-/// values with commas are handled correctly. Falls back to a simple comma split on
-/// parse failure.
-pub fn parse_snippet_params(params_text: &str) -> Vec<String> {
-    let alloc = Allocator::default();
-    let source = format!("function f({}) {{}}", params_text);
-    let result = OxcParser::new(&alloc, &source, SourceType::default()).parse();
-
-    if result.errors.is_empty() {
-        if let Some(oxc_ast::ast::Statement::FunctionDeclaration(func)) =
-            result.program.body.first()
-        {
-            let mut names: Vec<CompactString> = Vec::new();
-            for param in &func.params.items {
-                crate::types::extract_all_binding_names(&param.pattern, &mut names);
-            }
-            if let Some(rest) = &func.params.rest {
-                crate::types::extract_all_binding_names(&rest.rest.argument, &mut names);
-            }
-            return names.iter().map(|n| n.to_string()).collect();
-        }
+/// Wraps as `function f(PARAMS) {}` and returns the full Statement. Scope building and
+/// codegen extract parameter names / patterns from it directly.
+/// Returns `None` on parse failure (params text is malformed).
+pub fn parse_snippet_params_with_alloc<'a>(
+    alloc: &'a Allocator,
+    params_text: &'a str,
+) -> Option<oxc_ast::ast::Statement<'a>> {
+    let wrapped_owned = format!("function f({}) {{}}", params_text);
+    let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
+    let result = OxcParser::new(alloc, wrapped_str, SourceType::default()).parse();
+    if !result.errors.is_empty() {
+        return None;
     }
-
-    // Fallback: simple comma split for trivial cases (should rarely trigger)
-    params_text
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+    result.program.body.into_iter().next()
 }
 
 /// Unwrap TypeScript expression wrappers in-place, extracting the inner JS expression.

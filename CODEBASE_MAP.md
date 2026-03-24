@@ -6,9 +6,9 @@ Rust компилятор Svelte v5. Компилирует `.svelte` → client
 
 ```
 source: &str
-  → svelte_parser::parse_with_js(alloc, source) → (Component, JsParseResult<'a>, Vec<Diagnostic>)
-  → svelte_analyze::analyze(component, js_result) → (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
-  → svelte_transform::transform_component → (mutates ParsedExprs in-place)
+  → svelte_parser::parse_with_js(alloc, source) → (Component, ParserResult<'a>, Vec<Diagnostic>)
+  → svelte_analyze::analyze(component, parsed) → (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
+  → svelte_transform::transform_component → (mutates ParserResult in-place)
   → svelte_codegen_client::generate → String (JS)
 ```
 
@@ -117,11 +117,11 @@ struct NodeIdAllocator  // используется только внутри п
 ### `svelte_parser`
 `crates/svelte_parser/src/lib.rs`
 
-Shared domain types (`RuneKind`, `ScriptInfo`, `ParsedExprs`, `JsParseResult`, etc.) и parser + JS pre-parsing.
+Shared domain types (`RuneKind`, `ScriptInfo`, `ParserResult`, etc.) и parser + JS pre-parsing.
 
 ```rust
 // Публичный API
-fn parse_with_js<'a>(alloc: &'a Allocator, source: &str) -> (Component, JsParseResult<'a>, Vec<Diagnostic>)
+fn parse_with_js<'a>(alloc: &'a Allocator, source: &str) -> (Component, ParserResult<'a>, Vec<Diagnostic>)
 Parser::new(source: &str).parse() -> (Component, Vec<Diagnostic>)
 
 // Shared types (types.rs)
@@ -129,8 +129,8 @@ struct ScriptInfo { declarations, props_declaration, exports, has_effects, has_c
 struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune: Option<RuneKind>, rune_init_refs }
 enum DeclarationKind { Let, Const, Var, Function }
 enum RuneKind { State, StateRaw, Derived, DerivedBy, Effect, EffectTracking, Props, Bindable, StateEager, EffectPending, Inspect, Host, PropsId }
-struct ParsedExprs<'a> { exprs, attr_exprs, concat_part_exprs, key_exprs, script_program, ... }
-struct JsParseResult<'a> { parsed: ParsedExprs, const_tag_names, await_values, script_info, ... }
+struct ParserResult<'a> { program, exprs, stmts, script_content_span, typescript }
+// stmts keyed by span.start: ConstTag→VariableDeclaration, SnippetBlock→FunctionDeclaration, EachBlock→VariableDeclaration
 ```
 
 Внутри: `scanner/mod.rs` + `scanner/token.rs`, `parse_js.rs`.

@@ -14,7 +14,7 @@ use oxc_ast_visit::walk_mut::{walk_arrow_function_expression, walk_expression};
 use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParsedExprs};
+use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParserResult};
 use svelte_ast::{
     Attribute, Component, ConcatPart, Fragment, Node,
 };
@@ -36,7 +36,7 @@ pub fn transform_component<'a>(
     alloc: &'a Allocator,
     component: &Component,
     analysis: &AnalysisData,
-    parsed: &mut ParsedExprs<'a>,
+    parsed: &mut ParserResult<'a>,
     ident_gen: &mut IdentGen,
 ) -> TransformData {
     let root_scope = analysis.scoping.root_scope_id();
@@ -67,7 +67,7 @@ fn walk_fragment<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     fragment: &Fragment,
     component: &Component,
-    parsed: &mut ParsedExprs<'a>,
+    parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
     for node in &fragment.nodes {
@@ -79,7 +79,7 @@ fn walk_node<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     node: &Node,
     component: &Component,
-    parsed: &mut ParsedExprs<'a>,
+    parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
     match node {
@@ -126,7 +126,13 @@ fn walk_node<'a>(
             transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
         }
         Node::ConstTag(tag) => {
-            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
+            // Init expression lives in stmts (not exprs) — transform it in-place.
+            let offset = tag.expression_span.start;
+            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed.stmts.get_mut(&offset) {
+                if let Some(init) = decl.declarations.first_mut().and_then(|d| d.init.as_mut()) {
+                    transform_expr(ctx, init, scope);
+                }
+            }
 
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {
@@ -193,7 +199,7 @@ fn walk_node<'a>(
 fn transform_expr_at<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     offset: u32,
-    parsed: &mut ParsedExprs<'a>,
+    parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
     if let Some(expr) = parsed.exprs.get_mut(&offset) {
@@ -205,7 +211,7 @@ fn transform_expr_at<'a>(
 fn transform_attrs<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     attrs: &[Attribute],
-    parsed: &mut ParsedExprs<'a>,
+    parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
     for attr in attrs {

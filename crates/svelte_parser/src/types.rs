@@ -1,9 +1,9 @@
 //! Shared types and OXC utilities for the Svelte compiler.
 //!
-//! Leaf crate providing parsing result types (`ParsedExprs`, `JsParseResult`, etc.)
+//! Leaf crate providing parsing result types (`ParserResult`, etc.)
 //! and OXC parsing helpers used across parser, analyze, transform, and codegen.
 
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Statement};
 
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
@@ -16,80 +16,39 @@ fn compact(s: &str) -> CompactString {
 }
 
 // ---------------------------------------------------------------------------
-// ParsedExprs — parsed JS expression ASTs in a shared OXC allocator
-// ---------------------------------------------------------------------------
-
-/// Parsed JS expression ASTs, stored in a shared OXC allocator.
-/// Separate from AnalysisData to avoid lifetime propagation.
-/// All expressions keyed by source offset (span.start).
-pub struct ParsedExprs<'a> {
-    /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
-    pub program: Option<oxc_ast::ast::Program<'a>>,
-    /// All parsed expressions keyed by source byte offset.
-    pub exprs: FxHashMap<u32, Expression<'a>>,
-    /// Parsed each-block destructuring contexts, keyed by context_span.start.
-    pub each_contexts: FxHashMap<u32, EachContextBinding<'a>>,
-}
-
-impl<'a> ParsedExprs<'a> {
-    pub fn new() -> Self {
-        Self {
-            program: None,
-            exprs: FxHashMap::default(),
-            each_contexts: FxHashMap::default(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// JsParseResult — intermediate JS parsing results passed from parser to analyze
+// ParserResult — all JS parse results from parser to downstream crates
 // ---------------------------------------------------------------------------
 
 /// All data produced by JS expression parsing.
 /// Created by `svelte_parser::parse_with_js()`, consumed by `svelte_analyze::analyze()`.
-pub struct JsParseResult<'a> {
-    pub parsed: ParsedExprs<'a>,
+/// Replaces the former `ParsedExprs` + `JsParseResult` split.
+pub struct ParserResult<'a> {
+    /// Pre-parsed script Program AST. Consumed by codegen via `Option::take()`.
+    pub program: Option<oxc_ast::ast::Program<'a>>,
+    /// All parsed expressions keyed by source byte offset.
+    pub exprs: FxHashMap<u32, Expression<'a>>,
+    /// Parsed statements for ConstTag, SnippetBlock, and EachBlock contexts.
+    /// Keys:
+    ///   ConstTag       → expression_span.start → Statement::VariableDeclaration (`const EXPR;`)
+    ///   SnippetBlock   → params_span.start     → Statement::FunctionDeclaration (`function f(PARAMS){}`)
+    ///   EachBlock      → context_span.start    → Statement::VariableDeclaration (`var PATTERN = x;`)
+    pub stmts: FxHashMap<u32, Statement<'a>>,
     /// Script content span for analyze to re-parse metadata.
     pub script_content_span: Option<Span>,
     /// Whether the script block uses TypeScript.
     pub typescript: bool,
-    /// ConstTag binding names extracted during OXC parsing, keyed by expression_span.start.
-    /// Stored here (not ParsedExprs) because these are extracted metadata, not OXC AST.
-    pub const_tag_names: FxHashMap<u32, Vec<compact_str::CompactString>>,
-    /// Snippet parameter names extracted during OXC parsing, keyed by params_span.start.
-    pub snippet_params: FxHashMap<u32, Vec<String>>,
 }
 
-impl<'a> JsParseResult<'a> {
+impl<'a> ParserResult<'a> {
     pub fn new() -> Self {
         Self {
-            parsed: ParsedExprs::new(),
+            program: None,
+            exprs: FxHashMap::default(),
+            stmts: FxHashMap::default(),
             script_content_span: None,
             typescript: false,
-            const_tag_names: FxHashMap::default(),
-            snippet_params: FxHashMap::default(),
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Each context binding info (used by codegen, not stored in ParsedExprs)
-// ---------------------------------------------------------------------------
-
-/// Parsed destructuring context for `{#each items as { name, value }}` or `[a, b]`.
-pub struct EachContextBinding<'a> {
-    pub is_array: bool,
-    pub bindings: Vec<EachBindingEntry<'a>>,
-}
-
-/// Single entry in a parsed destructuring context pattern.
-pub struct EachBindingEntry<'a> {
-    /// Binding name (alias if renamed, e.g. `alias` for `{ prop: alias }`).
-    pub name: CompactString,
-    /// Property key for object patterns (None = shorthand, i.e. `name == key_name`).
-    pub key_name: Option<CompactString>,
-    /// Pre-parsed default expression (e.g. `'N/A'` for `{ value = 'N/A' }`).
-    pub default_expr: Option<Expression<'a>>,
 }
 
 // ---------------------------------------------------------------------------
