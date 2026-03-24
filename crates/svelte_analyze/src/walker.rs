@@ -7,47 +7,82 @@ use svelte_ast::{
 
 use crate::data::{AnalysisData, FragmentKey};
 
-/// Trait for template analysis visitors.
+// ---------------------------------------------------------------------------
+// TemplateVisitor trait + composite tuple impls — generated from one source
+// ---------------------------------------------------------------------------
+
+/// Generates `trait TemplateVisitor` with default no-op methods and composite
+/// tuple impls for 2–5 element tuples.
 ///
-/// Each analysis pass implements only the visit methods it cares about.
-/// All methods have default no-op implementations. The `walk_template` function
-/// handles structural recursion and scope tracking — visitors never need to
-/// recurse manually.
-///
-/// Multiple visitors can be combined into a single tree traversal using tuple
-/// composite visitors: `(VisitorA, VisitorB)` implements `TemplateVisitor` and
-/// dispatches to both visitors at each node.
-#[allow(unused_variables)]
-pub(crate) trait TemplateVisitor {
-    fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_const_tag(&mut self, tag: &ConstTag, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_debug_tag(&mut self, tag: &DebugTag, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_svelte_window(&mut self, w: &SvelteWindow, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_svelte_document(&mut self, doc: &SvelteDocument, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {}
-    /// Called after element children have been walked. Use for bottom-up computations.
-    fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {}
-    /// Called after each block body has been walked. Use with `visit_each_block` for stack-based context.
-    fn leave_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {}
-    /// Called after snippet block body has been walked. Use with `visit_snippet_block` for stack-based context.
-    fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {}
+/// Adding a new visit/leave method: add one `fn` line here.
+/// The trait definition AND all composite delegation are updated in one place.
+macro_rules! define_template_visitor {
+    ($(fn $method:ident(&mut self $(, $arg:ident : $ty:ty)*);)*) => {
+        /// Trait for template analysis visitors.
+        ///
+        /// Each analysis pass implements only the visit methods it cares about.
+        /// All methods have default no-op implementations. The `walk_template` function
+        /// handles structural recursion and scope tracking — visitors never need to
+        /// recurse manually.
+        ///
+        /// Multiple visitors can be combined into a single tree traversal using tuple
+        /// composite visitors: `(VisitorA, VisitorB)` implements `TemplateVisitor` and
+        /// dispatches to both visitors at each node.
+        #[allow(unused_variables)]
+        pub(crate) trait TemplateVisitor {
+            $(fn $method(&mut self $(, $arg: $ty)*) {})*
+        }
+
+        impl<A: TemplateVisitor, B: TemplateVisitor> TemplateVisitor for (A, B) {
+            $(fn $method(&mut self $(, $arg: $ty)*) {
+                self.0.$method($($arg),*); self.1.$method($($arg),*);
+            })*
+        }
+        impl<A: TemplateVisitor, B: TemplateVisitor, C: TemplateVisitor> TemplateVisitor for (A, B, C) {
+            $(fn $method(&mut self $(, $arg: $ty)*) {
+                self.0.$method($($arg),*); self.1.$method($($arg),*); self.2.$method($($arg),*);
+            })*
+        }
+        impl<A: TemplateVisitor, B: TemplateVisitor, C: TemplateVisitor, D: TemplateVisitor> TemplateVisitor for (A, B, C, D) {
+            $(fn $method(&mut self $(, $arg: $ty)*) {
+                self.0.$method($($arg),*); self.1.$method($($arg),*); self.2.$method($($arg),*); self.3.$method($($arg),*);
+            })*
+        }
+        impl<A: TemplateVisitor, B: TemplateVisitor, C: TemplateVisitor, D: TemplateVisitor, E: TemplateVisitor> TemplateVisitor for (A, B, C, D, E) {
+            $(fn $method(&mut self $(, $arg: $ty)*) {
+                self.0.$method($($arg),*); self.1.$method($($arg),*); self.2.$method($($arg),*); self.3.$method($($arg),*); self.4.$method($($arg),*);
+            })*
+        }
+    };
+}
+
+define_template_visitor! {
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_const_tag(&mut self, tag: &ConstTag, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_debug_tag(&mut self, tag: &DebugTag, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData);
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_svelte_window(&mut self, w: &SvelteWindow, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_svelte_document(&mut self, doc: &SvelteDocument, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData);
+    fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData);
+    fn leave_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData);
+    fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData);
 }
 
 /// Walk a template fragment, dispatching to the visitor at each node.
@@ -179,103 +214,3 @@ pub(crate) fn walk_template<V: TemplateVisitor>(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Composite visitor — tuple impls
-// ---------------------------------------------------------------------------
-
-/// Delegates all `TemplateVisitor` methods to tuple elements `self.$idx`.
-macro_rules! delegate_visitor_methods {
-    ($($idx:tt),+) => {
-        fn visit_expression_tag(&mut self, tag: &ExpressionTag, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_expression_tag(tag, scope, data);)+
-        }
-        fn visit_render_tag(&mut self, tag: &RenderTag, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_render_tag(tag, scope, data);)+
-        }
-        fn visit_html_tag(&mut self, tag: &HtmlTag, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_html_tag(tag, scope, data);)+
-        }
-        fn visit_const_tag(&mut self, tag: &ConstTag, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_const_tag(tag, scope, data);)+
-        }
-        fn visit_debug_tag(&mut self, tag: &DebugTag, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_debug_tag(tag, scope, data);)+
-        }
-        fn visit_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_element(el, scope, data);)+
-        }
-        fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_if_block(block, scope, data);)+
-        }
-        fn visit_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_each_block(block, parent_scope, body_scope, data);)+
-        }
-        fn visit_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_snippet_block(block, scope, data);)+
-        }
-        fn visit_key_block(&mut self, block: &KeyBlock, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_key_block(block, scope, data);)+
-        }
-        fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_svelte_element(el, scope, data);)+
-        }
-        fn visit_svelte_window(&mut self, w: &SvelteWindow, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_svelte_window(w, scope, data);)+
-        }
-        fn visit_svelte_document(&mut self, doc: &SvelteDocument, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_svelte_document(doc, scope, data);)+
-        }
-        fn visit_svelte_body(&mut self, body: &SvelteBody, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_svelte_body(body, scope, data);)+
-        }
-        fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_svelte_boundary(boundary, scope, data);)+
-        }
-        fn visit_await_block(&mut self, block: &AwaitBlock, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_await_block(block, scope, data);)+
-        }
-        fn visit_attribute(&mut self, attr: &Attribute, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_attribute(attr, el, scope, data);)+
-        }
-        fn visit_bind_directive(&mut self, dir: &BindDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_bind_directive(dir, el, scope, data);)+
-        }
-        fn visit_use_directive(&mut self, dir: &UseDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_use_directive(dir, el, scope, data);)+
-        }
-        fn visit_transition_directive(&mut self, dir: &TransitionDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_transition_directive(dir, el, scope, data);)+
-        }
-        fn visit_animate_directive(&mut self, dir: &AnimateDirective, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_animate_directive(dir, el, scope, data);)+
-        }
-        fn visit_attach_tag(&mut self, tag: &AttachTag, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_attach_tag(tag, el, scope, data);)+
-        }
-        fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.visit_component_attribute(attr, cn, scope, data);)+
-        }
-        fn leave_element(&mut self, el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.leave_element(el, scope, data);)+
-        }
-        fn leave_each_block(&mut self, block: &EachBlock, parent_scope: ScopeId, body_scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.leave_each_block(block, parent_scope, body_scope, data);)+
-        }
-        fn leave_snippet_block(&mut self, block: &SnippetBlock, scope: ScopeId, data: &mut AnalysisData) {
-            $(self.$idx.leave_snippet_block(block, scope, data);)+
-        }
-    };
-}
-
-macro_rules! impl_composite_visitor {
-    ($($T:ident : $idx:tt),+) => {
-        impl<$($T: TemplateVisitor),+> TemplateVisitor for ($($T,)+) {
-            delegate_visitor_methods!($($idx),+);
-        }
-    };
-}
-
-impl_composite_visitor!(A: 0, B: 1);
-impl_composite_visitor!(A: 0, B: 1, C: 2);
-impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3);
-impl_composite_visitor!(A: 0, B: 1, C: 2, D: 3, E: 4);

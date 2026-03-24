@@ -61,63 +61,30 @@ pub(crate) fn classify_render_tags(
     component: &Component,
     data: &mut AnalysisData,
 ) {
-    classify_render_tags_in_fragment(&component.fragment, parsed, data);
+    let root = data.scoping.root_scope_id();
+    let mut visitor = RenderTagClassifier { parsed };
+    crate::walker::walk_template(&component.fragment, data, root, &mut visitor);
 }
 
-fn classify_render_tags_in_fragment(
-    fragment: &Fragment,
-    parsed: &mut ParsedExprs<'_>,
-    data: &mut AnalysisData,
-) {
-    for node in &fragment.nodes {
-        match node {
-            Node::RenderTag(tag) => {
-                let offset = tag.expression_span.start;
-                if matches!(parsed.exprs.get(&offset), Some(Expression::ChainExpression(_))) {
-                    data.render_tag_is_chain.insert(tag.id);
-                    if let Some(Expression::ChainExpression(chain)) = parsed.exprs.remove(&offset) {
-                        if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
-                            parsed.exprs.insert(offset, Expression::CallExpression(call));
-                        }
-                    }
-                }
-                if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
-                    if let Expression::Identifier(ident) = &call.callee {
-                        data.render_tag_callee_name.insert(tag.id, ident.name.to_string());
-                    }
+struct RenderTagClassifier<'a, 'b> {
+    parsed: &'b mut ParsedExprs<'a>,
+}
+
+impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
+    fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+        let offset = tag.expression_span.start;
+        if matches!(self.parsed.exprs.get(&offset), Some(Expression::ChainExpression(_))) {
+            data.render_tag_is_chain.insert(tag.id);
+            if let Some(Expression::ChainExpression(chain)) = self.parsed.exprs.remove(&offset) {
+                if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
+                    self.parsed.exprs.insert(offset, Expression::CallExpression(call));
                 }
             }
-            Node::Element(el) => classify_render_tags_in_fragment(&el.fragment, parsed, data),
-            Node::ComponentNode(cn) => classify_render_tags_in_fragment(&cn.fragment, parsed, data),
-            Node::IfBlock(block) => {
-                classify_render_tags_in_fragment(&block.consequent, parsed, data);
-                if let Some(alt) = &block.alternate {
-                    classify_render_tags_in_fragment(alt, parsed, data);
-                }
+        }
+        if let Some(Expression::CallExpression(call)) = self.parsed.exprs.get(&offset) {
+            if let Expression::Identifier(ident) = &call.callee {
+                data.render_tag_callee_name.insert(tag.id, ident.name.to_string());
             }
-            Node::EachBlock(block) => {
-                classify_render_tags_in_fragment(&block.body, parsed, data);
-                if let Some(fb) = &block.fallback {
-                    classify_render_tags_in_fragment(fb, parsed, data);
-                }
-            }
-            Node::SnippetBlock(block) => classify_render_tags_in_fragment(&block.body, parsed, data),
-            Node::KeyBlock(block) => classify_render_tags_in_fragment(&block.fragment, parsed, data),
-            Node::AwaitBlock(block) => {
-                if let Some(ref p) = block.pending {
-                    classify_render_tags_in_fragment(p, parsed, data);
-                }
-                if let Some(ref t) = block.then {
-                    classify_render_tags_in_fragment(t, parsed, data);
-                }
-                if let Some(ref c) = block.catch {
-                    classify_render_tags_in_fragment(c, parsed, data);
-                }
-            }
-            Node::SvelteHead(head) => classify_render_tags_in_fragment(&head.fragment, parsed, data),
-            Node::SvelteElement(el) => classify_render_tags_in_fragment(&el.fragment, parsed, data),
-            Node::SvelteBoundary(b) => classify_render_tags_in_fragment(&b.fragment, parsed, data),
-            _ => {}
         }
     }
 }
