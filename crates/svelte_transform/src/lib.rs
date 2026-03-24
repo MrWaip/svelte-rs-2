@@ -250,7 +250,7 @@ fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
             _ => None,
         },
         Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::SpreadAttribute(a) => Some(a.expression_span.start + 3),
+        Attribute::SpreadAttribute(a) => Some(a.expression_span.start),
         Attribute::Shorthand(a) => Some(a.expression_span.start),
         Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
         Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),

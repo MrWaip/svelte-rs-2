@@ -270,12 +270,7 @@ fn walk_attrs<'a>(
                 }
             }
             Attribute::SpreadAttribute(a) => {
-                debug_assert!(
-                    a.expression_span.end >= a.expression_span.start + 3,
-                    "spread expression span too short to contain '...'"
-                );
-                let span = svelte_span::Span::new(a.expression_span.start + 3, a.expression_span.end);
-                parse_span(alloc, component, span, typescript, result, diags);
+                parse_span(alloc, component, a.expression_span, typescript, result, diags);
             }
             Attribute::Shorthand(a) => {
                 parse_span(alloc, component, a.expression_span, typescript, result, diags);

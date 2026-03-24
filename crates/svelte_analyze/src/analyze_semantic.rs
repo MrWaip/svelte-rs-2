@@ -81,7 +81,7 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
         scan_concat_arrows(&attr.parts, &mut data.scoping, self.parsed, scope);
     }
     fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, scope: ScopeId, data: &mut AnalysisData) {
-        scan_attr_arrows_by_offset(Some(attr.expression_span.start + 3), &mut data.scoping, self.parsed, scope);
+        scan_attr_arrows_by_offset(Some(attr.expression_span.start), &mut data.scoping, self.parsed, scope);
     }
     fn visit_shorthand(&mut self, attr: &Shorthand, scope: ScopeId, data: &mut AnalysisData) {
         scan_attr_arrows_by_offset(Some(attr.expression_span.start), &mut data.scoping, self.parsed, scope);
@@ -283,7 +283,7 @@ fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
             _ => None,
         },
         Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::SpreadAttribute(a) => Some(a.expression_span.start + 3),
+        Attribute::SpreadAttribute(a) => Some(a.expression_span.start),
         Attribute::Shorthand(a) => Some(a.expression_span.start),
         Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
         Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),

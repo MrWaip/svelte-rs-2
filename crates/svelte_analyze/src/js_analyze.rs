@@ -249,7 +249,7 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
     }
 
     fn visit_spread_attribute(&mut self, attr: &svelte_ast::SpreadAttribute, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
-        insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start + 3);
+        insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start);
     }
 
     fn visit_shorthand(&mut self, attr: &svelte_ast::Shorthand, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
