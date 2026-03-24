@@ -89,9 +89,155 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
     }
 }
 
+/// Extract binding metadata from AwaitBlock parsed expressions.
+///
+/// The parser stores binding patterns as Identifier (simple) or
+/// `(PATTERN = 1)` AssignmentExpression (destructured). This pass extracts
+/// `AwaitBindingInfo` and removes the binding expression from `parsed.exprs`.
+///
+/// ConstTag names are handled separately — they come from `JsParseResult.const_tag_names`
+/// (extracted during OXC statement parsing to support TS type annotations).
+pub(crate) fn prepare_template_bindings(
+    parsed: &mut ParsedExprs<'_>,
+    component: &Component,
+    data: &mut AnalysisData,
+) {
+    let root = data.scoping.root_scope_id();
+    let mut visitor = BindingPreparer { parsed };
+    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+}
+
+struct BindingPreparer<'a, 'b> {
+    parsed: &'b mut ParsedExprs<'a>,
+}
+
+impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
+    fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+        if let Some(val_span) = block.value_span {
+            if let Some(info) = extract_await_binding_info(self.parsed, val_span.start) {
+                data.await_bindings.values.insert(block.id, info);
+            }
+        }
+        if let Some(err_span) = block.error_span {
+            if let Some(info) = extract_await_binding_info(self.parsed, err_span.start) {
+                data.await_bindings.errors.insert(block.id, info);
+            }
+        }
+    }
+}
+
+/// Transfer ConstTag names from JsParseResult into AnalysisData.
+pub(crate) fn transfer_const_tag_names(
+    const_tag_names: &rustc_hash::FxHashMap<u32, Vec<compact_str::CompactString>>,
+    component: &Component,
+    data: &mut AnalysisData,
+) {
+    let root = data.scoping.root_scope_id();
+    let mut visitor = ConstTagNameTransfer { const_tag_names };
+    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+}
+
+struct ConstTagNameTransfer<'a> {
+    const_tag_names: &'a rustc_hash::FxHashMap<u32, Vec<compact_str::CompactString>>,
+}
+
+impl crate::walker::TemplateVisitor for ConstTagNameTransfer<'_> {
+    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+        if let Some(names) = self.const_tag_names.get(&tag.expression_span.start) {
+            data.const_tags.names.insert(tag.id, names.iter().map(|n| n.to_string()).collect());
+        }
+    }
+}
+
+/// Extract binding names from an OXC AssignmentTarget (left side of assignment).
+fn extract_names_from_assignment_target(target: &oxc_ast::ast::AssignmentTarget) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_assignment_target_names(target, &mut names);
+    names
+}
+
+fn collect_assignment_target_names(target: &oxc_ast::ast::AssignmentTarget, names: &mut Vec<String>) {
+    use oxc_ast::ast::{AssignmentTarget, AssignmentTargetProperty, AssignmentTargetMaybeDefault};
+    match target {
+        AssignmentTarget::AssignmentTargetIdentifier(ident) => {
+            names.push(ident.name.to_string());
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            for prop in &obj.properties {
+                match prop {
+                    AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(p) => {
+                        names.push(p.binding.name.to_string());
+                    }
+                    AssignmentTargetProperty::AssignmentTargetPropertyProperty(p) => {
+                        collect_maybe_default_names(&p.binding, names);
+                    }
+                }
+            }
+            if let Some(rest) = &obj.rest {
+                collect_assignment_target_names(&rest.target, names);
+            }
+        }
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            for elem in arr.elements.iter().flatten() {
+                collect_maybe_default_names(elem, names);
+            }
+            if let Some(rest) = &arr.rest {
+                collect_assignment_target_names(&rest.target, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_maybe_default_names(target: &oxc_ast::ast::AssignmentTargetMaybeDefault, names: &mut Vec<String>) {
+    use oxc_ast::ast::AssignmentTargetMaybeDefault;
+    match target {
+        AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => {
+            collect_assignment_target_names(&d.binding, names);
+        }
+        _ => {
+            if let Some(inner) = target.as_assignment_target() {
+                collect_assignment_target_names(inner, names);
+            }
+        }
+    }
+}
+
+/// Extract AwaitBindingInfo from a parsed binding expression and remove it from `exprs`.
+fn extract_await_binding_info(parsed: &mut ParsedExprs<'_>, offset: u32) -> Option<svelte_parser::AwaitBindingInfo> {
+    use svelte_parser::{AwaitBindingInfo, DestructureKind};
+
+    let expr = parsed.exprs.remove(&offset)?;
+    // Unwrap ParenthesizedExpression from `(PATTERN = 1)` wrapping
+    let inner = match &expr {
+        Expression::ParenthesizedExpression(paren) => &paren.expression,
+        other => other,
+    };
+    match inner {
+        Expression::Identifier(ident) => {
+            Some(AwaitBindingInfo::Simple(ident.name.to_string()))
+        }
+        Expression::AssignmentExpression(assign) => {
+            use oxc_ast::ast::AssignmentTarget;
+            match &assign.left {
+                AssignmentTarget::ObjectAssignmentTarget(_) => {
+                    let names = extract_names_from_assignment_target(&assign.left);
+                    Some(AwaitBindingInfo::Destructured { kind: DestructureKind::Object, names })
+                }
+                AssignmentTarget::ArrayAssignmentTarget(_) => {
+                    let names = extract_names_from_assignment_target(&assign.left);
+                    Some(AwaitBindingInfo::Destructured { kind: DestructureKind::Array, names })
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Extract ExpressionInfo for all parsed template and attribute expressions.
-/// Also classifies: expression shorthand, needs_clsx, const_tag_names,
-/// snippet_param_names, await_values/errors, CE config.
+/// Also classifies: expression shorthand, needs_clsx, snippet_param_names,
+/// render_tag_args, CE config.
 pub(crate) fn extract_all_expressions(
     parsed: &ParsedExprs<'_>,
     component: &Component,
@@ -146,26 +292,12 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
     }
 
     fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+        // Binding info already extracted by prepare_template_bindings
         insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
-
-        if let Some(val_span) = block.value_span {
-            let binding_text = self.component.source_text(val_span);
-            let info = svelte_parser::parse_await_binding(binding_text);
-            data.await_bindings.values.insert(block.id, info);
-        }
-        if let Some(err_span) = block.error_span {
-            let binding_text = self.component.source_text(err_span);
-            let info = svelte_parser::parse_await_binding(binding_text);
-            data.await_bindings.errors.insert(block.id, info);
-        }
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
-
-        if let Some(names) = self.parsed.const_tag_names.get(&tag.expression_span.start) {
-            data.const_tags.names.insert(tag.id, names.clone());
-        }
     }
 
     fn visit_snippet_block(&mut self, block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {

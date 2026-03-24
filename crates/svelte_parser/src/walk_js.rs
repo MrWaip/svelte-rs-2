@@ -89,6 +89,33 @@ fn parse_span<'a>(
     }
 }
 
+/// Parse a binding pattern (e.g. `value`, `{name, age}`) and store as expression.
+///
+/// Simple identifiers are parsed directly. Destructured patterns are wrapped as
+/// `(PATTERN = 1)` following the reference compiler's `read_pattern` approach,
+/// producing an AssignmentExpression whose `.left` is the pattern.
+fn parse_binding_pattern<'a>(
+    alloc: &'a Allocator,
+    component: &Component,
+    span: svelte_span::Span,
+    typescript: bool,
+    result: &mut JsParseResult<'a>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let source = component.source_text(span);
+    let trimmed = source.trim();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        let wrapped = format!("({} = 1)", trimmed);
+        let arena_source: &'a str = alloc.alloc_str(&wrapped);
+        match parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
+            Ok(expr) => { result.parsed.exprs.insert(span.start, expr); }
+            Err(diag) => diags.push(diag),
+        }
+    } else {
+        parse_span(alloc, component, span, typescript, result, diags);
+    }
+}
+
 fn walk_fragment<'a>(
     alloc: &'a Allocator,
     fragment: &Fragment,
@@ -166,6 +193,10 @@ fn walk_node<'a>(
         Node::AwaitBlock(block) => {
             parse_span(alloc, component, block.expression_span, typescript, result, diags);
 
+            for binding_span in [block.value_span, block.error_span].into_iter().flatten() {
+                parse_binding_pattern(alloc, component, binding_span, typescript, result, diags);
+            }
+
             if let Some(ref p) = block.pending {
                 walk_fragment(alloc, p, component, typescript, result, diags);
             }
@@ -177,15 +208,14 @@ fn walk_node<'a>(
             }
         }
         Node::ConstTag(tag) => {
+            // TS type annotations (e.g. `doubled: number = expr`) require statement-level
+            // parsing. Wrap as `const SOURCE;` and extract init expression + names.
             let source = component.source_text(tag.expression_span);
             let arena_source: &'a str = alloc.alloc_str(source);
             match parse_const_declaration_with_alloc(alloc, arena_source, tag.expression_span.start, typescript) {
                 Ok((names, init_expr)) => {
                     result.parsed.exprs.insert(tag.expression_span.start, init_expr);
-                    result.parsed.const_tag_names.insert(
-                        tag.expression_span.start,
-                        names.into_iter().map(|n| n.to_string()).collect(),
-                    );
+                    result.const_tag_names.insert(tag.expression_span.start, names);
                 }
                 Err(diag) => diags.push(diag),
             }

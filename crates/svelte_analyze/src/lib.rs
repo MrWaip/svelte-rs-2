@@ -57,10 +57,17 @@ pub fn analyze_with_options<'a>(
 
     let script_content_span = js_result.script_content_span;
     let typescript = js_result.typescript;
+    let const_tag_names = js_result.const_tag_names;
     let mut parsed = js_result.parsed;
 
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
     js_analyze::classify_render_tags(&mut parsed, component, &mut data);
+
+    // Transfer ConstTag names from parser results into AnalysisData
+    js_analyze::transfer_const_tag_names(&const_tag_names, component, &mut data);
+
+    // Extract AwaitBlock binding metadata from parsed expressions
+    js_analyze::prepare_template_bindings(&mut parsed, component, &mut data);
 
     // Extract script info from pre-parsed Program AST
     let script_info = parsed.program.as_ref().and_then(|program| {
@@ -74,7 +81,7 @@ pub fn analyze_with_options<'a>(
         .and_then(|si| js_analyze::analyze_script(&parsed, &mut data, si));
     data.scoping = ComponentScoping::new(script_scoping);
 
-    // Extract expression info + classify shorthand/clsx/snippets/const_tags/await_bindings/render_tag_args/CE config
+    // Extract expression info + classify shorthand/clsx/snippets/render_tag_args/CE config
     js_analyze::extract_all_expressions(&parsed, component, &mut data, typescript);
 
     // Classify per-expression needs_context (import/prop member access, calls)

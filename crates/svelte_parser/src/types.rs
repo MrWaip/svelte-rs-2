@@ -29,8 +29,6 @@ pub struct ParsedExprs<'a> {
     pub exprs: FxHashMap<u32, Expression<'a>>,
     /// Parsed each-block destructuring contexts, keyed by context_span.start.
     pub each_contexts: FxHashMap<u32, EachContextBinding<'a>>,
-    /// ConstTag binding names, keyed by expression_span.start.
-    pub const_tag_names: FxHashMap<u32, Vec<String>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -39,7 +37,6 @@ impl<'a> ParsedExprs<'a> {
             program: None,
             exprs: FxHashMap::default(),
             each_contexts: FxHashMap::default(),
-            const_tag_names: FxHashMap::default(),
         }
     }
 }
@@ -56,6 +53,9 @@ pub struct JsParseResult<'a> {
     pub script_content_span: Option<Span>,
     /// Whether the script block uses TypeScript.
     pub typescript: bool,
+    /// ConstTag binding names extracted during OXC parsing, keyed by expression_span.start.
+    /// Stored here (not ParsedExprs) because these are extracted metadata, not OXC AST.
+    pub const_tag_names: FxHashMap<u32, Vec<compact_str::CompactString>>,
 }
 
 impl<'a> JsParseResult<'a> {
@@ -64,6 +64,7 @@ impl<'a> JsParseResult<'a> {
             parsed: ParsedExprs::new(),
             script_content_span: None,
             typescript: false,
+            const_tag_names: FxHashMap::default(),
         }
     }
 }

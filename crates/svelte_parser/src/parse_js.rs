@@ -84,18 +84,16 @@ pub fn parse_script_with_alloc<'a>(
 
 /// Parse a `{@const name = expr}` declaration via OXC.
 ///
-/// `source` is the full declaration text including `const` keyword
-/// (e.g. `"const doubled = item * 2"`).
-/// `offset` is `expression_span.start` in the original .svelte file.
-///
-/// Returns binding names and the init `Expression` AST (no references — analyze extracts those).
+/// `source` is the assignment text without `const` keyword
+/// (e.g. `"doubled = item * 2"` or `"{a, b}: T = obj"`).
+/// Wraps as `const SOURCE;` for OXC, extracts binding names and init expression.
 pub fn parse_const_declaration_with_alloc<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
 ) -> Result<(Vec<CompactString>, Expression<'a>), Diagnostic> {
-    let wrapped_owned = format!("{};", source);
+    let wrapped_owned = format!("const {};", source);
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped_owned);
 
     let src_type = if typescript {
