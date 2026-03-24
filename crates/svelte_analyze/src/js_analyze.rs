@@ -251,7 +251,7 @@ pub(crate) fn extract_all_expressions(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = ExpressionExtractor { parsed };
-    let mut ctx = crate::walker::VisitContext::new(root, data);
+    let mut ctx = crate::walker::VisitContext::with_parsed(root, data, parsed);
     crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 
     // Extract CE config (not template-related)

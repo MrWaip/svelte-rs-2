@@ -1,3 +1,4 @@
+use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::ScopeId;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
@@ -9,7 +10,7 @@ use svelte_ast::{
 };
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, FragmentKey};
+use crate::data::{AnalysisData, FragmentKey, ParserResult};
 
 // ---------------------------------------------------------------------------
 // ParentKind / ParentRef
@@ -78,11 +79,15 @@ pub(crate) struct ParentRef {
 
 /// Context passed to all TemplateVisitor methods.
 ///
-/// Bundles scope, mutable analysis data, and a parent stack so visitors
-/// don't need to track parent context manually.
+/// Bundles scope, mutable analysis data, an optional parsed-expression store,
+/// and a parent stack so visitors don't need to track parent context manually.
 pub(crate) struct VisitContext<'a> {
     pub scope: ScopeId,
     pub data: &'a mut AnalysisData,
+    /// Parsed JS expressions/statements. When set, the walker dispatches
+    /// `visit_js_expression` / `visit_js_statement` after looking up the
+    /// parsed AST node by span offset.
+    parsed: Option<&'a ParserResult<'a>>,
     parents: Vec<ParentRef>,
 }
 
@@ -91,6 +96,20 @@ impl<'a> VisitContext<'a> {
         Self {
             scope,
             data,
+            parsed: None,
+            parents: Vec::new(),
+        }
+    }
+
+    pub fn with_parsed(
+        scope: ScopeId,
+        data: &'a mut AnalysisData,
+        parsed: &'a ParserResult<'a>,
+    ) -> Self {
+        Self {
+            scope,
+            data,
+            parsed: Some(parsed),
             parents: Vec::new(),
         }
     }
@@ -167,6 +186,10 @@ pub(crate) trait TemplateVisitor {
     fn visit_statement(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {}
     fn leave_statement(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {}
 
+    // --- Parsed JS AST visits (only fire when VisitContext has parsed expressions) ---
+    fn visit_js_expression(&mut self, node_id: NodeId, expr: &Expression<'_>, ctx: &mut VisitContext<'_>) {}
+    fn visit_js_statement(&mut self, node_id: NodeId, stmt: &Statement<'_>, ctx: &mut VisitContext<'_>) {}
+
     // --- Leave hooks ---
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {}
     fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {}
@@ -184,7 +207,12 @@ fn dispatch_expr(
     span: Span,
     ctx: &mut VisitContext<'_>,
 ) {
+    // Copy parsed ref out so we can pass ctx mutably alongside expr
+    let parsed = ctx.parsed;
     for v in visitors.iter_mut() { v.visit_expression(id, span, ctx); }
+    if let Some(expr) = parsed.and_then(|p| p.exprs.get(&span.start)) {
+        for v in visitors.iter_mut() { v.visit_js_expression(id, expr, ctx); }
+    }
     for v in visitors.iter_mut() { v.leave_expression(id, span, ctx); }
 }
 
@@ -207,7 +235,11 @@ fn dispatch_stmt(
     span: Span,
     ctx: &mut VisitContext<'_>,
 ) {
+    let parsed = ctx.parsed;
     for v in visitors.iter_mut() { v.visit_statement(id, span, ctx); }
+    if let Some(stmt) = parsed.and_then(|p| p.stmts.get(&span.start)) {
+        for v in visitors.iter_mut() { v.visit_js_statement(id, stmt, ctx); }
+    }
     for v in visitors.iter_mut() { v.leave_statement(id, span, ctx); }
 }
 
