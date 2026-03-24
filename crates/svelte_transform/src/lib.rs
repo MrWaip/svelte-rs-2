@@ -386,7 +386,7 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 let base_name = root_name[1..].to_string();
                 let alloc = self.ctx.alloc;
                 walk_simple_target_member_objects(self, &mut upd.argument);
-                replace_simple_target_root(&mut upd.argument, rune_refs::make_untrack(alloc, &root_name));
+                rune_refs::replace_expr_root_in_simple_target(&mut upd.argument, rune_refs::make_untrack(alloc, &root_name));
                 // Swap out the entire UpdateExpression to break the borrow on `upd`
                 let placeholder = rune_refs::make_rune_get(alloc, "");
                 let mutation = std::mem::replace(it, placeholder);
@@ -406,7 +406,7 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 let alloc = self.ctx.alloc;
                 self.visit_expression(&mut assign.right);
                 walk_target_member_objects(self, &mut assign.left);
-                replace_target_root(&mut assign.left, rune_refs::make_untrack(alloc, &root_name));
+                rune_refs::replace_expr_root_in_assign_target(&mut assign.left, rune_refs::make_untrack(alloc, &root_name));
                 // Swap out the entire AssignmentExpression to break the borrow on `assign`
                 let placeholder = rune_refs::make_rune_get(alloc, "");
                 let mutation = std::mem::replace(it, placeholder);
@@ -520,17 +520,8 @@ fn extract_member_root_store_assign<'b>(
     target: &'b AssignmentTarget<'_>,
     scoping: &ComponentScoping,
 ) -> Option<&'b str> {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => {
-            let name = rune_refs::find_expr_root_name(&m.object)?;
-            scoping.is_store_ref(name).then_some(name)
-        }
-        AssignmentTarget::ComputedMemberExpression(m) => {
-            let name = rune_refs::find_expr_root_name(&m.object)?;
-            scoping.is_store_ref(name).then_some(name)
-        }
-        _ => None,
-    }
+    let name = rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+    scoping.is_store_ref(name).then_some(name)
 }
 
 /// Check if a SimpleAssignmentTarget is a member expression with a store ref root.
@@ -538,17 +529,8 @@ fn extract_member_root_store_simple<'b>(
     target: &'b SimpleAssignmentTarget<'_>,
     scoping: &ComponentScoping,
 ) -> Option<&'b str> {
-    match target {
-        SimpleAssignmentTarget::StaticMemberExpression(m) => {
-            let name = rune_refs::find_expr_root_name(&m.object)?;
-            scoping.is_store_ref(name).then_some(name)
-        }
-        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
-            let name = rune_refs::find_expr_root_name(&m.object)?;
-            scoping.is_store_ref(name).then_some(name)
-        }
-        _ => None,
-    }
+    let name = rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+    scoping.is_store_ref(name).then_some(name)
 }
 
 /// Walk and transform computed member expression objects in an AssignmentTarget chain,
@@ -557,16 +539,12 @@ fn walk_target_member_objects<'a>(
     visitor: &mut ExprTransformer<'a, '_, '_>,
     target: &mut AssignmentTarget<'a>,
 ) {
-    match target {
-        AssignmentTarget::StaticMemberExpression(m) => {
-            walk_expr_member_objects(visitor, &mut m.object);
-        }
-        AssignmentTarget::ComputedMemberExpression(m) => {
-            // Transform the computed expression itself
-            visitor.visit_expression(&mut m.expression);
-            walk_expr_member_objects(visitor, &mut m.object);
-        }
-        _ => {}
+    // Handle computed expression at the target level
+    if let Some(MemberExpression::ComputedMemberExpression(m)) = target.as_member_expression_mut() {
+        visitor.visit_expression(&mut m.expression);
+    }
+    if let Some(member) = target.as_member_expression_mut() {
+        walk_expr_member_objects(visitor, member.object_mut());
     }
 }
 
@@ -575,46 +553,26 @@ fn walk_simple_target_member_objects<'a>(
     visitor: &mut ExprTransformer<'a, '_, '_>,
     target: &mut SimpleAssignmentTarget<'a>,
 ) {
-    match target {
-        SimpleAssignmentTarget::StaticMemberExpression(m) => {
-            walk_expr_member_objects(visitor, &mut m.object);
-        }
-        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
-            visitor.visit_expression(&mut m.expression);
-            walk_expr_member_objects(visitor, &mut m.object);
-        }
-        _ => {}
+    if let Some(MemberExpression::ComputedMemberExpression(m)) = target.as_member_expression_mut() {
+        visitor.visit_expression(&mut m.expression);
+    }
+    if let Some(member) = target.as_member_expression_mut() {
+        walk_expr_member_objects(visitor, member.object_mut());
     }
 }
 
-/// Recursively walk member chain objects (Expression side), transforming computed
+/// Walk member chain objects (Expression side), transforming computed
 /// properties but NOT the root identifier.
 fn walk_expr_member_objects<'a>(
     visitor: &mut ExprTransformer<'a, '_, '_>,
     expr: &mut Expression<'a>,
 ) {
-    match expr {
-        Expression::StaticMemberExpression(m) => {
-            if !matches!(m.object, Expression::Identifier(_)) {
-                walk_expr_member_objects(visitor, &mut m.object);
-            }
-        }
-        Expression::ComputedMemberExpression(m) => {
+    let mut current = expr;
+    while let Some(member) = current.as_member_expression_mut() {
+        if let MemberExpression::ComputedMemberExpression(m) = member {
             visitor.visit_expression(&mut m.expression);
-            if !matches!(m.object, Expression::Identifier(_)) {
-                walk_expr_member_objects(visitor, &mut m.object);
-            }
         }
-        _ => {}
+        current = member.object_mut();
     }
 }
 
-/// Replace the root identifier in an AssignmentTarget member chain with a replacement expression.
-fn replace_target_root<'a>(target: &mut AssignmentTarget<'a>, replacement: Expression<'a>) {
-    rune_refs::replace_expr_root_in_assign_target(target, replacement);
-}
-
-/// Replace the root identifier in a SimpleAssignmentTarget member chain.
-fn replace_simple_target_root<'a>(target: &mut SimpleAssignmentTarget<'a>, replacement: Expression<'a>) {
-    rune_refs::replace_expr_root_in_simple_target(target, replacement);
-}
