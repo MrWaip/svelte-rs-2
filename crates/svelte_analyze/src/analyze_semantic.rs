@@ -1,10 +1,12 @@
-use oxc_ast::ast::{ArrowFunctionExpression, BindingPattern, Expression, FormalParameters};
+use oxc_ast::ast::{ArrowFunctionExpression, Expression, FormalParameters};
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, AwaitBlock, ComponentNode, ConcatPart, EachBlock, Element, ExpressionTag,
-    HtmlTag, IfBlock, KeyBlock, RenderTag, SvelteBody, SvelteBoundary, SvelteDocument,
-    SvelteElement, SvelteWindow,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
+    ComponentNode, ConcatPart, ConcatenationAttribute, EachBlock, ExpressionAttribute,
+    ExpressionTag, HtmlTag, IfBlock, KeyBlock, OnDirectiveLegacy, RenderTag, Shorthand,
+    SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument,
+    SvelteElement, SvelteWindow, TransitionDirective, UseDirective,
 };
 use svelte_parser::ParsedExprs;
 
@@ -73,12 +75,54 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
         scan_expr_arrows(self.parsed.exprs.get(&block.expression_span.start), &mut data.scoping, scope);
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, _el: &Element, scope: ScopeId, data: &mut AnalysisData) {
-        scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(Some(attr.expression_span.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        scan_concat_arrows(&attr.parts, &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(Some(attr.expression_span.start + 3), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_shorthand(&mut self, attr: &Shorthand, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(Some(attr.expression_span.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_class_directive(&mut self, dir: &ClassDirective, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_style_directive(&mut self, dir: &StyleDirective, scope: ScopeId, data: &mut AnalysisData) {
+        let offset = match &dir.value {
+            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
+            _ => None,
+        };
+        scan_attr_arrows_by_offset(offset, &mut data.scoping, self.parsed, scope);
+        if let svelte_ast::StyleDirectiveValue::Concatenation(parts) = &dir.value {
+            scan_concat_arrows(parts, &mut data.scoping, self.parsed, scope);
+        }
+    }
+    fn visit_bind_directive(&mut self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_use_directive(&mut self, dir: &UseDirective, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(dir.expression_span.map(|s| s.start), &mut data.scoping, self.parsed, scope);
+    }
+    fn visit_attach_tag(&mut self, tag: &AttachTag, scope: ScopeId, data: &mut AnalysisData) {
+        scan_attr_arrows_by_offset(Some(tag.expression_span.start), &mut data.scoping, self.parsed, scope);
     }
 
-    fn visit_component_attribute(&mut self, attr: &Attribute, _cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
-        scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+    fn visit_component_node(&mut self, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &cn.attributes {
+            scan_single_attr_arrows(attr, &mut data.scoping, self.parsed, scope);
+        }
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, scope: ScopeId, data: &mut AnalysisData) {
@@ -200,6 +244,32 @@ fn scan_single_attr_arrows(
             if let ConcatPart::Dynamic(span) = part {
                 scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
             }
+        }
+    }
+}
+
+/// Scan an attribute for arrow scopes using just the expression offset.
+fn scan_attr_arrows_by_offset(
+    offset: Option<u32>,
+    scoping: &mut ComponentScoping,
+    parsed: &ParsedExprs<'_>,
+    scope: ScopeId,
+) {
+    if let Some(offset) = offset {
+        scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
+    }
+}
+
+/// Scan concat parts for arrow scopes.
+fn scan_concat_arrows(
+    parts: &[ConcatPart],
+    scoping: &mut ComponentScoping,
+    parsed: &ParsedExprs<'_>,
+    scope: ScopeId,
+) {
+    for part in parts {
+        if let ConcatPart::Dynamic(span) = part {
+            scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
         }
     }
 }

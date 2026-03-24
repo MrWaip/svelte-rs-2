@@ -1,7 +1,10 @@
 use oxc_semantic::{ReferenceFlags as OxcReferenceFlags, ScopeId};
 use svelte_ast::{
-    Attribute, BindDirective, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock,
-    KeyBlock, NodeId, RenderTag, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    AnimateDirective, AttachTag, Attribute, BindDirective, ClassDirective, ComponentNode,
+    ConcatenationAttribute, EachBlock, ExpressionAttribute, ExpressionTag, HtmlTag,
+    IfBlock, KeyBlock, NodeId, OnDirectiveLegacy, RenderTag, Shorthand, SpreadAttribute,
+    StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    TransitionDirective, UseDirective,
 };
 
 use crate::data::AnalysisData;
@@ -105,37 +108,51 @@ impl TemplateVisitor for ResolveReferencesVisitor<'_> {
         resolve_expr_refs(tag.id, scope, data);
     }
 
-    fn visit_attribute(
-        &mut self,
-        attr: &Attribute,
-        _el: &Element,
-        scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        resolve_attr_refs(attr.id(), scope, data);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(attr.id, scope, data);
     }
-
-    fn visit_component_attribute(
-        &mut self,
-        attr: &Attribute,
-        _cn: &ComponentNode,
-        scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        resolve_attr_refs(attr.id(), scope, data);
-        if let Attribute::BindDirective(dir) = attr {
-            self.resolve_bind(dir, scope, data);
-        }
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(attr.id, scope, data);
     }
-
-    fn visit_bind_directive(
-        &mut self,
-        dir: &BindDirective,
-        _el: &Element,
-        scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(attr.id, scope, data);
+    }
+    fn visit_shorthand(&mut self, attr: &Shorthand, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(attr.id, scope, data);
+    }
+    fn visit_class_directive(&mut self, dir: &ClassDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_style_directive(&mut self, dir: &StyleDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_bind_directive(&mut self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
         self.resolve_bind(dir, scope, data);
+    }
+    fn visit_use_directive(&mut self, dir: &UseDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(dir.id, scope, data);
+    }
+    fn visit_attach_tag(&mut self, tag: &AttachTag, scope: ScopeId, data: &mut AnalysisData) {
+        resolve_attr_refs(tag.id, scope, data);
+    }
+
+    fn visit_component_node(&mut self, cn: &ComponentNode, scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &cn.attributes {
+            resolve_attr_refs(attr.id(), scope, data);
+            if let Attribute::BindDirective(dir) = attr {
+                self.resolve_bind(dir, scope, data);
+            }
+        }
     }
 
     fn visit_svelte_element(

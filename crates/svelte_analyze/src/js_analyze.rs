@@ -63,7 +63,7 @@ pub(crate) fn classify_render_tags(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = RenderTagClassifier { parsed };
-    crate::walker::walk_template(&component.fragment, data, root, &mut visitor);
+    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
 }
 
 struct RenderTagClassifier<'a, 'b> {

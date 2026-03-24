@@ -1,6 +1,6 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, ComponentNode, EachBlock, Element,
+    Attribute, BindDirective, ClassDirective, EachBlock, Element,
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
@@ -134,43 +134,29 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     fn visit_bind_directive(
         &mut self,
         dir: &BindDirective,
-        _el: &Element,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        self.classify_bind(dir, data);
-    }
-
-    fn visit_attribute(
-        &mut self,
-        attr: &Attribute,
-        _el: &Element,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        match attr {
-            Attribute::ClassDirective(dir) => self.classify_class(dir, data),
-            Attribute::StyleDirective(dir) => self.classify_style(dir, data),
-            _ => {}
-        }
-    }
-
-    fn visit_component_attribute(
-        &mut self,
-        attr: &Attribute,
-        _cn: &ComponentNode,
         scope: ScopeId,
         data: &mut AnalysisData,
     ) {
-        match attr {
-            Attribute::BindDirective(dir) => {
-                self.classify_bind(dir, data);
-                self.classify_bind_this(dir, scope, data);
-            }
-            Attribute::ClassDirective(dir) => self.classify_class(dir, data),
-            Attribute::StyleDirective(dir) => self.classify_style(dir, data),
-            _ => {}
-        }
+        self.classify_bind(dir, data);
+        self.classify_bind_this(dir, scope, data);
+    }
+
+    fn visit_class_directive(
+        &mut self,
+        dir: &ClassDirective,
+        _scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        self.classify_class(dir, data);
+    }
+
+    fn visit_style_directive(
+        &mut self,
+        dir: &StyleDirective,
+        _scope: ScopeId,
+        data: &mut AnalysisData,
+    ) {
+        self.classify_style(dir, data);
     }
 
     fn visit_svelte_window(

@@ -94,11 +94,9 @@ pub fn analyze_with_options<'a>(
     // Combined walk: arrow scope registration + each-block index usage + reference resolution
     {
         let root = data.scoping.root_scope_id();
-        let mut visitor = (
-            analyze_semantic::JsMetadataVisitor { component, parsed: &parsed },
-            resolve_references::make_visitor(component, scoping_built),
-        );
-        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
+        let mut v1 = analyze_semantic::JsMetadataVisitor { component, parsed: &parsed };
+        let mut v2 = resolve_references::make_visitor(component, scoping_built);
+        walker::walk_template(&component.fragment, &mut data, root, &mut [&mut v1, &mut v2]);
     }
     post_resolve::run_post_resolve_passes(component, &mut data);
     resolve_render_tag_prop_sources(&mut data);
@@ -131,14 +129,12 @@ pub fn analyze_with_options<'a>(
                 }
             })
             .collect();
-        let mut visitor = (
-            reactivity::ReactivityVisitor,
-            element_flags::ElementFlagsVisitor::new(&component.source),
-            hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
-            bind_semantics::BindSemanticsVisitor::new(&component.source),
-            content_types::ContentAndVarVisitor { source: &component.source },
-        );
-        walker::walk_template(&component.fragment, &mut data, root, &mut visitor);
+        let mut v1 = reactivity::ReactivityVisitor::new();
+        let mut v2 = element_flags::ElementFlagsVisitor::new(&component.source);
+        let mut v3 = hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
+        let mut v4 = bind_semantics::BindSemanticsVisitor::new(&component.source);
+        let mut v5 = content_types::ContentAndVarVisitor { source: &component.source };
+        walker::walk_template(&component.fragment, &mut data, root, &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5]);
     }
 
     // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)

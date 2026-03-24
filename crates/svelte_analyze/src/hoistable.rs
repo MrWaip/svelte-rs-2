@@ -5,8 +5,10 @@
 use oxc_semantic::{ScopeId, SymbolId};
 use rustc_hash::FxHashSet;
 use svelte_ast::{
-    Attribute, ComponentNode, EachBlock, Element, ExpressionTag, HtmlTag, IfBlock, NodeId,
-    RenderTag, SnippetBlock,
+    AnimateDirective, AttachTag, BindDirective, ClassDirective, ComponentNode,
+    ConcatenationAttribute, EachBlock, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock,
+    NodeId, OnDirectiveLegacy, RenderTag, Shorthand, SnippetBlock, SpreadAttribute,
+    StyleDirective, TransitionDirective, UseDirective,
 };
 
 use crate::data::AnalysisData;
@@ -117,23 +119,46 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
         self.check_expr(&block.id, data);
     }
 
-    fn visit_attribute(
-        &mut self,
-        attr: &Attribute,
-        _el: &Element,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        self.check_attr_expr(attr.id(), data);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(attr.id, data);
+    }
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(attr.id, data);
+    }
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(attr.id, data);
+    }
+    fn visit_shorthand(&mut self, attr: &Shorthand, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(attr.id, data);
+    }
+    fn visit_class_directive(&mut self, dir: &ClassDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_style_directive(&mut self, dir: &StyleDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_bind_directive(&mut self, dir: &BindDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_use_directive(&mut self, dir: &UseDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(dir.id, data);
+    }
+    fn visit_attach_tag(&mut self, tag: &AttachTag, _scope: ScopeId, data: &mut AnalysisData) {
+        self.check_attr_expr(tag.id, data);
     }
 
-    fn visit_component_attribute(
-        &mut self,
-        attr: &Attribute,
-        _cn: &ComponentNode,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        self.check_attr_expr(attr.id(), data);
+    fn visit_component_node(&mut self, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &cn.attributes {
+            self.check_attr_expr(attr.id(), data);
+        }
     }
 }

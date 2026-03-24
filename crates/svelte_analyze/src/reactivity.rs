@@ -1,15 +1,30 @@
 use oxc_semantic::ScopeId;
 use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ComponentNode, ConstTag, EachBlock,
-    Element, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag, SvelteBoundary,
+    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
+    ConcatenationAttribute, ComponentNode, ConstTag, EachBlock,
+    Element, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, NodeId, RenderTag,
+    Shorthand, SpreadAttribute, StyleDirective, SvelteBoundary,
     TransitionDirective, UseDirective,
 };
 use crate::data::{AnalysisData, ExpressionKind};
 use crate::walker::TemplateVisitor;
 
-pub(crate) struct ReactivityVisitor;
+pub(crate) struct ReactivityVisitor {
+    /// Track current element for directive visits that need to set needs_ref
+    current_element_id: Option<NodeId>,
+}
 
 impl ReactivityVisitor {
+    pub(crate) fn new() -> Self {
+        Self { current_element_id: None }
+    }
+
+    fn mark_element_needs_ref(&self, data: &mut AnalysisData) {
+        if let Some(el_id) = self.current_element_id {
+            data.element_flags.needs_ref.insert(el_id);
+        }
+    }
+
     fn expr_is_dynamic(
         &self,
         node_id: &NodeId,
@@ -81,35 +96,77 @@ impl TemplateVisitor for ReactivityVisitor {
         }
     }
 
-    fn visit_attribute(&mut self, attr: &Attribute, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        let attr_id = attr.id();
-        if attr_is_dynamic(attr, data) {
-            data.element_flags.dynamic_attrs.insert(attr_id);
-            data.element_flags.needs_ref.insert(el.id);
-            if matches!(attr, Attribute::ClassDirective(_)) {
-                data.element_flags.has_dynamic_class_directives.insert(el.id);
+    fn visit_element(&mut self, el: &Element, _scope: ScopeId, _data: &mut AnalysisData) {
+        self.current_element_id = Some(el.id);
+    }
+
+    fn leave_element(&mut self, _el: &Element, _scope: ScopeId, _data: &mut AnalysisData) {
+        self.current_element_id = None;
+    }
+
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(attr.id, data) {
+            data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(data);
+        }
+    }
+
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(attr.id, data) {
+            data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(data);
+        }
+    }
+
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(attr.id, data) {
+            data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(data);
+        }
+    }
+
+    fn visit_shorthand(&mut self, attr: &Shorthand, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(attr.id, data) {
+            data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(data);
+        }
+    }
+
+    fn visit_class_directive(&mut self, dir: &ClassDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(dir.id, data) {
+            data.element_flags.dynamic_attrs.insert(dir.id);
+            self.mark_element_needs_ref(data);
+            if let Some(el_id) = self.current_element_id {
+                data.element_flags.has_dynamic_class_directives.insert(el_id);
             }
         }
     }
 
-    fn visit_bind_directive(&mut self, _dir: &BindDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.element_flags.needs_ref.insert(el.id);
+    fn visit_style_directive(&mut self, dir: &StyleDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        if attr_id_is_dynamic(dir.id, data) {
+            data.element_flags.dynamic_attrs.insert(dir.id);
+            self.mark_element_needs_ref(data);
+        }
     }
 
-    fn visit_use_directive(&mut self, _dir: &UseDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.element_flags.needs_ref.insert(el.id);
+    fn visit_bind_directive(&mut self, _dir: &BindDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.mark_element_needs_ref(data);
     }
 
-    fn visit_transition_directive(&mut self, _dir: &TransitionDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.element_flags.needs_ref.insert(el.id);
+    fn visit_use_directive(&mut self, _dir: &UseDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.mark_element_needs_ref(data);
     }
 
-    fn visit_animate_directive(&mut self, _dir: &AnimateDirective, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.element_flags.needs_ref.insert(el.id);
+    fn visit_transition_directive(&mut self, _dir: &TransitionDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.mark_element_needs_ref(data);
     }
 
-    fn visit_attach_tag(&mut self, _tag: &AttachTag, el: &Element, _scope: ScopeId, data: &mut AnalysisData) {
-        data.element_flags.needs_ref.insert(el.id);
+    fn visit_animate_directive(&mut self, _dir: &AnimateDirective, _scope: ScopeId, data: &mut AnalysisData) {
+        self.mark_element_needs_ref(data);
+    }
+
+    fn visit_attach_tag(&mut self, _tag: &AttachTag, _scope: ScopeId, data: &mut AnalysisData) {
+        self.mark_element_needs_ref(data);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, _scope: ScopeId, data: &mut AnalysisData) {
@@ -135,11 +192,12 @@ impl TemplateVisitor for ReactivityVisitor {
         data.dynamic_nodes.insert(block.id);
     }
 
-    fn visit_component_attribute(&mut self, attr: &Attribute, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
-        if component_attr_is_dynamic(attr, data) {
-            data.element_flags.dynamic_attrs.insert(attr.id());
+    fn visit_component_node(&mut self, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+        for attr in &cn.attributes {
+            if component_attr_is_dynamic(attr, data) {
+                data.element_flags.dynamic_attrs.insert(attr.id());
+            }
         }
-        let _ = cn;
     }
 
     fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, _scope: ScopeId, data: &mut AnalysisData) {
@@ -185,19 +243,13 @@ fn component_attr_is_dynamic(
 }
 
 
-// Attributes are dynamic for any rune reference or prop access — they can
-// change between renders and need a template_effect to stay up-to-date.
-fn attr_is_dynamic(
-    attr: &Attribute,
+// Per-variant visit methods already exclude String/Boolean, so this
+// takes a NodeId directly.
+fn attr_id_is_dynamic(
+    attr_id: NodeId,
     data: &AnalysisData,
 ) -> bool {
-    if matches!(
-        attr,
-        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
-    ) {
-        return false;
-    }
-    if let Some(info) = data.attr_expressions.get(attr.id()) {
+    if let Some(info) = data.attr_expressions.get(attr_id) {
         return info.references.iter().any(|r| {
             let Some(sym_id) = r.symbol_id else { return false; };
             // Non-source props are always dynamic (accessed as $$props.name)
