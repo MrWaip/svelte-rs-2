@@ -250,7 +250,11 @@ pub(crate) fn extract_all_expressions(
     data: &mut AnalysisData,
 ) {
     let root = data.scoping.root_scope_id();
-    let mut visitor = ExpressionExtractor { parsed, pending_render_tag: None };
+    let mut visitor = ExpressionExtractor {
+        pending_render_tag: None,
+        pending_shorthand: None,
+        pending_clsx: false,
+    };
     let mut ctx = crate::walker::VisitContext::with_parsed(root, data, parsed);
     crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 
@@ -267,13 +271,14 @@ pub(crate) fn extract_all_expressions(
     }
 }
 
-struct ExpressionExtractor<'a, 'b> {
-    parsed: &'b ParserResult<'a>,
+struct ExpressionExtractor {
     pending_render_tag: Option<NodeId>,
+    pending_shorthand: Option<(NodeId, String)>,
+    pending_clsx: bool,
 }
 
-impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
-    // --- Generic expression hook replaces 16 boilerplate visit methods ---
+impl crate::walker::TemplateVisitor for ExpressionExtractor {
+    // --- Offset storage ---
 
     fn visit_expression(
         &mut self,
@@ -282,19 +287,60 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
-            // Attribute expression — skip if already populated (e.g. concat merge)
             if !ctx.data.attr_expr_offsets.contains_key(node_id) {
-                insert_attr_expr_info(self.parsed, ctx.data, node_id, span.start);
+                ctx.data.attr_expr_offsets.insert(node_id, span.start);
             }
-        } else {
-            // Template node expression — skip if already populated (e.g. EachBlock key after collection)
-            if !ctx.data.node_expr_offsets.contains_key(node_id) {
-                insert_node_expr_info(self.parsed, ctx.data, node_id, span.start);
+        } else if !ctx.data.node_expr_offsets.contains_key(node_id) {
+            ctx.data.node_expr_offsets.insert(node_id, span.start);
+        }
+    }
+
+    // --- Parsed expression analysis ---
+
+    fn visit_js_expression(
+        &mut self,
+        node_id: svelte_ast::NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
+        // Store ExpressionInfo (replaces insert_node_expr_info / insert_attr_expr_info)
+        if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
+            if !ctx.data.attr_expressions.contains_key(node_id) {
+                ctx.data.attr_expressions.insert(node_id, analyze_expression(expr));
+            }
+        } else if !ctx.data.expressions.contains_key(node_id) {
+            ctx.data.expressions.insert(node_id, analyze_expression(expr));
+        }
+
+        // Render tag: classify arguments
+        if self.pending_render_tag.take() == Some(node_id) {
+            classify_render_tag_args(expr, ctx.data, node_id);
+        }
+
+        // Shorthand detection (set by visit_expression_attribute / visit_class_directive / visit_style_directive)
+        if let Some((attr_id, name)) = self.pending_shorthand.take() {
+            if let Expression::Identifier(ident) = expr {
+                if ident.name.as_str() == name {
+                    ctx.data.element_flags.expression_shorthand.insert(attr_id);
+                }
+            }
+        }
+
+        // Clsx detection for class={expr}
+        if self.pending_clsx {
+            self.pending_clsx = false;
+            if !matches!(
+                expr,
+                Expression::StringLiteral(_)
+                    | Expression::TemplateLiteral(_)
+                    | Expression::BinaryExpression(_)
+            ) {
+                ctx.data.element_flags.needs_clsx.insert(node_id);
             }
         }
     }
 
-    // --- Methods kept for extra logic beyond basic expression analysis ---
+    // --- Hooks that set pending state for visit_js_expression ---
 
     fn visit_render_tag(
         &mut self,
@@ -304,53 +350,24 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         self.pending_render_tag = Some(tag.id);
     }
 
-    fn visit_js_expression(
-        &mut self,
-        node_id: svelte_ast::NodeId,
-        expr: &Expression<'_>,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        if self.pending_render_tag.take() == Some(node_id) {
-            classify_render_tag_args(expr, ctx.data, node_id);
-        }
-    }
-
     fn visit_const_tag(
         &mut self,
         tag: &svelte_ast::ConstTag,
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        // ConstTag is a statement — visit_expression doesn't fire for it.
+        // ConstTag is a statement — visit_expression/visit_js_expression don't fire.
         // Store offset so codegen can look up the parsed statement.
-        insert_node_expr_info(self.parsed, ctx.data, tag.id, tag.expression_span.start);
+        ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
     }
 
     fn visit_expression_attribute(
         &mut self,
         attr: &svelte_ast::ExpressionAttribute,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        // Detect semantic shorthand: expression is a simple identifier matching attr name
-        if let Some(Expression::Identifier(ident)) =
-            self.parsed.exprs.get(&attr.expression_span.start)
-        {
-            if ident.name.as_str() == attr.name {
-                ctx.data.element_flags.expression_shorthand.insert(attr.id);
-            }
-        }
-        // class={[...]} or class={{...}} or class={x} need clsx to resolve
+        self.pending_shorthand = Some((attr.id, attr.name.clone()));
         if attr.name == "class" {
-            if let Some(expr) = self.parsed.exprs.get(&attr.expression_span.start) {
-                let needs = !matches!(
-                    expr,
-                    Expression::StringLiteral(_)
-                        | Expression::TemplateLiteral(_)
-                        | Expression::BinaryExpression(_)
-                );
-                if needs {
-                    ctx.data.element_flags.needs_clsx.insert(attr.id);
-                }
-            }
+            self.pending_clsx = true;
         }
     }
 
@@ -359,22 +376,20 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         attr: &svelte_ast::ConcatenationAttribute,
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        // Merge all dynamic parts into one ExpressionInfo before visit_expression fires per-part
-        insert_concat_expr_info(self.parsed, ctx.data, attr.id, &attr.parts);
+        // Merge all dynamic parts into one ExpressionInfo before per-part visit_js_expression
+        if let Some(parsed) = ctx.parsed() {
+            insert_concat_expr_info(parsed, ctx.data, attr.id, &attr.parts);
+        }
     }
 
     fn visit_class_directive(
         &mut self,
         dir: &svelte_ast::ClassDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        // Shorthand class:name has no expression_span — visit_expression won't fire
-        if let Some(span) = dir.expression_span {
-            if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&span.start) {
-                if ident.name.as_str() == dir.name {
-                    ctx.data.element_flags.expression_shorthand.insert(dir.id);
-                }
-            }
+        // Only non-shorthand directives have an expression to check
+        if dir.expression_span.is_some() {
+            self.pending_shorthand = Some((dir.id, dir.name.clone()));
         }
     }
 
@@ -385,47 +400,16 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
     ) {
         use svelte_ast::StyleDirectiveValue;
         match &dir.value {
-            StyleDirectiveValue::Expression(span) => {
-                if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&span.start) {
-                    if ident.name.as_str() == dir.name {
-                        ctx.data.element_flags.expression_shorthand.insert(dir.id);
-                    }
-                }
+            StyleDirectiveValue::Expression(_) => {
+                self.pending_shorthand = Some((dir.id, dir.name.clone()));
             }
             StyleDirectiveValue::Concatenation(parts) => {
-                // Merge before visit_expression fires per-part
-                insert_concat_expr_info(self.parsed, ctx.data, dir.id, parts);
+                if let Some(parsed) = ctx.parsed() {
+                    insert_concat_expr_info(parsed, ctx.data, dir.id, parts);
+                }
             }
             StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
         }
-    }
-}
-
-/// Look up a parsed expression by offset and store ExpressionInfo for a template node.
-fn insert_node_expr_info(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    node_id: NodeId,
-    offset: u32,
-) {
-    data.node_expr_offsets.insert(node_id, offset);
-    if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr);
-        data.expressions.insert(node_id, info);
-    }
-}
-
-/// Look up a parsed expression by offset and store ExpressionInfo for an attribute.
-fn insert_attr_expr_info(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    attr_id: NodeId,
-    offset: u32,
-) {
-    data.attr_expr_offsets.insert(attr_id, offset);
-    if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr);
-        data.attr_expressions.insert(attr_id, info);
     }
 }
 

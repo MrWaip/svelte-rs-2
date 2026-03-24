@@ -114,6 +114,13 @@ impl<'a> VisitContext<'a> {
         }
     }
 
+    /// Parsed JS expressions/statements, if set.
+    /// Returns a copy of the inner reference — does NOT borrow self,
+    /// so callers can use `ctx.data` mutably alongside the result.
+    pub fn parsed(&self) -> Option<&'a ParserResult<'a>> {
+        self.parsed
+    }
+
     /// Immediate parent node/attribute, if any.
     pub fn parent(&self) -> Option<ParentRef> {
         self.parents.last().copied()
