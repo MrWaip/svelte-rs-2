@@ -225,9 +225,9 @@ fn html_tag_complex_expression() {
 
 // --- ConstTag tests ---
 
-fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_decl: &str) {
+fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_expr: &str) {
     if let Node::ConstTag(ref ct) = fragment.nodes[index] {
-        assert_eq!(c.source_text(ct.declaration_span), expected_decl);
+        assert_eq!(c.source_text(ct.expression_span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
     }
@@ -237,7 +237,7 @@ fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_d
 fn const_tag_basic() {
     let c = parse("{#each items as item}{@const doubled = item * 2}<p>{doubled}</p>{/each}");
     if let Node::EachBlock(ref eb) = c.fragment.nodes[0] {
-        assert_const_tag(&c, &eb.body, 0, "doubled = item * 2");
+        assert_const_tag(&c, &eb.body, 0, "const doubled = item * 2");
     } else {
         panic!("expected EachBlock at index 0");
     }
@@ -247,7 +247,7 @@ fn const_tag_basic() {
 fn const_tag_in_if_block() {
     let c = parse("{#if show}{@const x = count + 1}<p>{x}</p>{/if}");
     if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
-        assert_const_tag(&c, &ib.consequent, 0, "x = count + 1");
+        assert_const_tag(&c, &ib.consequent, 0, "const x = count + 1");
     } else {
         panic!("expected IfBlock at index 0");
     }
@@ -818,7 +818,7 @@ mod js_parse_tests {
     #[test]
     fn parse_const_declaration_simple() {
         let alloc = Allocator::default();
-        let source = alloc.alloc_str("doubled = item * 2");
+        let source = alloc.alloc_str("const doubled = item * 2");
         let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("doubled")]);
     }
@@ -826,7 +826,7 @@ mod js_parse_tests {
     #[test]
     fn parse_const_declaration_destructuring() {
         let alloc = Allocator::default();
-        let source = alloc.alloc_str("{a, b} = obj");
+        let source = alloc.alloc_str("const {a, b} = obj");
         let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a"), compact("b")]);
     }
@@ -834,7 +834,7 @@ mod js_parse_tests {
     #[test]
     fn parse_const_declaration_multiple_equals() {
         let alloc = Allocator::default();
-        let source = alloc.alloc_str("a = b === c");
+        let source = alloc.alloc_str("const a = b === c");
         let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
         assert_eq!(names, vec![compact("a")]);
     }

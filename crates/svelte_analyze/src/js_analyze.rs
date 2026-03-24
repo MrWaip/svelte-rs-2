@@ -161,11 +161,11 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
-        let ref_offset = tag.declaration_span.start.wrapping_sub(6);
-        insert_node_expr_info(self.parsed, data, tag.id, ref_offset);
+        insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
 
-        let names = extract_const_tag_names(self.component.source_text(tag.declaration_span), self.typescript);
-        data.const_tags.names.insert(tag.id, names);
+        if let Some(names) = self.parsed.const_tag_names.get(&tag.expression_span.start) {
+            data.const_tags.names.insert(tag.id, names.clone());
+        }
     }
 
     fn visit_snippet_block(&mut self, block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
@@ -339,34 +339,6 @@ fn insert_concat_expr_info(
         needs_context: false,
     };
     data.attr_expressions.insert(attr_id, merged);
-}
-
-/// Extract binding names from a const declaration using a temporary OXC allocator.
-fn extract_const_tag_names(decl_text: &str, typescript: bool) -> Vec<String> {
-    use oxc_parser::Parser as OxcParser;
-    use oxc_span::SourceType;
-
-    let alloc = oxc_allocator::Allocator::default();
-    let wrapped = format!("const {};", decl_text);
-    let wrapped_str: &str = alloc.alloc_str(&wrapped);
-
-    let src_type = if typescript {
-        SourceType::default().with_typescript(true).with_module(true)
-    } else {
-        SourceType::default()
-    };
-    let result = OxcParser::new(&alloc, wrapped_str, src_type).parse();
-
-    if result.errors.is_empty() {
-        if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = result.program.body.first() {
-            if let Some(declarator) = decl.declarations.first() {
-                let mut names = Vec::new();
-                svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
-                return names.iter().map(|n| n.to_string()).collect();
-            }
-        }
-    }
-    Vec::new()
 }
 
 

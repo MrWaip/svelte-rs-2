@@ -39,8 +39,7 @@ impl TemplateVisitor for JsMetadataVisitor<'_> {
     }
 
     fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, scope: ScopeId, data: &mut AnalysisData) {
-        let ref_offset = tag.declaration_span.start.wrapping_sub(6);
-        scan_expr_arrows(self.parsed.exprs.get(&ref_offset), &mut data.scoping, scope);
+        scan_expr_arrows(self.parsed.exprs.get(&tag.expression_span.start), &mut data.scoping, scope);
     }
 
     fn visit_if_block(&mut self, block: &IfBlock, scope: ScopeId, data: &mut AnalysisData) {

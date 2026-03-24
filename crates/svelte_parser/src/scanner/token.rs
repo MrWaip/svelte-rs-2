@@ -213,7 +213,7 @@ pub struct HtmlTagToken {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConstTagToken {
-    pub declaration_span: Span,
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]

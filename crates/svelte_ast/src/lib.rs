@@ -295,8 +295,8 @@ pub struct HtmlTag {
 pub struct ConstTag {
     pub id: NodeId,
     pub span: Span,
-    /// Span of the declaration text: `doubled = item * 2` in `{@const doubled = item * 2}`.
-    pub declaration_span: Span,
+    /// Span of the full declaration: `const doubled = item * 2` in `{@const doubled = item * 2}`.
+    pub expression_span: Span,
 }
 
 // ---------------------------------------------------------------------------

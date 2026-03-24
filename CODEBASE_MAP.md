@@ -71,7 +71,7 @@ enum Node {
     SnippetBlock(SnippetBlock),   // id, span, params_span?, body
     RenderTag(RenderTag),         // id, span, expression_span
     HtmlTag(HtmlTag),             // id, span, expression_span
-    ConstTag(ConstTag),           // id, span, declaration_span
+    ConstTag(ConstTag),           // id, span, expression_span
     DebugTag(DebugTag),           // id, span, expression_spans
     KeyBlock(KeyBlock),           // id, span, expression_span, fragment
     SvelteHead(SvelteHead),       // id, span, fragment

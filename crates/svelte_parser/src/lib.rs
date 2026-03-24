@@ -348,7 +348,7 @@ impl<'a> Parser<'a> {
                     let node = Node::ConstTag(ConstTag {
                         id: self.ids.next(),
                         span: token.span,
-                        declaration_span: ct.declaration_span,
+                        expression_span: ct.expression_span,
                     });
                     push_child(&mut children_stack, node);
                 }

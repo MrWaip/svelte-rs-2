@@ -29,6 +29,8 @@ pub struct ParsedExprs<'a> {
     pub exprs: FxHashMap<u32, Expression<'a>>,
     /// Parsed each-block destructuring contexts, keyed by context_span.start.
     pub each_contexts: FxHashMap<u32, EachContextBinding<'a>>,
+    /// ConstTag binding names, keyed by expression_span.start.
+    pub const_tag_names: FxHashMap<u32, Vec<String>>,
 }
 
 impl<'a> ParsedExprs<'a> {
@@ -37,6 +39,7 @@ impl<'a> ParsedExprs<'a> {
             program: None,
             exprs: FxHashMap::default(),
             each_contexts: FxHashMap::default(),
+            const_tag_names: FxHashMap::default(),
         }
     }
 }

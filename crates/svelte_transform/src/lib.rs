@@ -126,8 +126,7 @@ fn walk_node<'a>(
             transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
         }
         Node::ConstTag(tag) => {
-            let ref_offset = tag.declaration_span.start.wrapping_sub(6);
-            transform_expr_at(ctx, ref_offset, parsed, scope);
+            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
 
             let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
             if names.len() > 1 {

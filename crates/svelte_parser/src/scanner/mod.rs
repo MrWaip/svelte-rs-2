@@ -1227,11 +1227,12 @@ impl<'a> Scanner<'a> {
                 Ok(())
             }
             "const" => {
+                let const_start = start;
                 self.skip_whitespace();
-                let declaration_span = self.collect_js_expression()?;
+                let decl_span = self.collect_js_expression()?;
 
                 self.add_token(TokenType::ConstTag(token::ConstTagToken {
-                    declaration_span,
+                    expression_span: Span::new(const_start as u32, decl_span.end),
                 }));
 
                 Ok(())
@@ -2184,7 +2185,7 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::ConstTag(_)));
         if let TokenType::ConstTag(ref ct) = tokens[0].token_type {
-            assert_eq!(ct.declaration_span.source_text(source), "doubled = item * 2");
+            assert_eq!(ct.expression_span.source_text(source), "const doubled = item * 2");
         }
     }
 

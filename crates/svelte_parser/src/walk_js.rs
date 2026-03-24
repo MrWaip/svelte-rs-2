@@ -177,13 +177,15 @@ fn walk_node<'a>(
             }
         }
         Node::ConstTag(tag) => {
-            let decl_text = component.source_text(tag.declaration_span);
-            let arena_source: &'a str = alloc.alloc_str(decl_text);
-            match parse_const_declaration_with_alloc(alloc, arena_source, tag.declaration_span.start, typescript) {
-                Ok((_names, init_expr)) => {
-                    // Adjusted offset for the "const " prefix that was wrapped around the source
-                    let ref_offset = tag.declaration_span.start.wrapping_sub(6);
-                    result.parsed.exprs.insert(ref_offset, init_expr);
+            let source = component.source_text(tag.expression_span);
+            let arena_source: &'a str = alloc.alloc_str(source);
+            match parse_const_declaration_with_alloc(alloc, arena_source, tag.expression_span.start, typescript) {
+                Ok((names, init_expr)) => {
+                    result.parsed.exprs.insert(tag.expression_span.start, init_expr);
+                    result.parsed.const_tag_names.insert(
+                        tag.expression_span.start,
+                        names.into_iter().map(|n| n.to_string()).collect(),
+                    );
                 }
                 Err(diag) => diags.push(diag),
             }
