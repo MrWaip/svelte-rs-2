@@ -56,6 +56,8 @@ pub struct JsParseResult<'a> {
     /// ConstTag binding names extracted during OXC parsing, keyed by expression_span.start.
     /// Stored here (not ParsedExprs) because these are extracted metadata, not OXC AST.
     pub const_tag_names: FxHashMap<u32, Vec<compact_str::CompactString>>,
+    /// Snippet parameter names extracted during OXC parsing, keyed by params_span.start.
+    pub snippet_params: FxHashMap<u32, Vec<String>>,
 }
 
 impl<'a> JsParseResult<'a> {
@@ -65,6 +67,7 @@ impl<'a> JsParseResult<'a> {
             script_content_span: None,
             typescript: false,
             const_tag_names: FxHashMap::default(),
+            snippet_params: FxHashMap::default(),
         }
     }
 }

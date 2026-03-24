@@ -149,6 +149,31 @@ impl crate::walker::TemplateVisitor for ConstTagNameTransfer<'_> {
     }
 }
 
+/// Transfer snippet param names from JsParseResult into AnalysisData.
+pub(crate) fn transfer_snippet_params(
+    snippet_params: &rustc_hash::FxHashMap<u32, Vec<String>>,
+    component: &Component,
+    data: &mut AnalysisData,
+) {
+    let root = data.scoping.root_scope_id();
+    let mut visitor = SnippetParamTransfer { snippet_params };
+    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+}
+
+struct SnippetParamTransfer<'a> {
+    snippet_params: &'a rustc_hash::FxHashMap<u32, Vec<String>>,
+}
+
+impl crate::walker::TemplateVisitor for SnippetParamTransfer<'_> {
+    fn visit_snippet_block(&mut self, block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
+        if let Some(span) = block.params_span {
+            if let Some(params) = self.snippet_params.get(&span.start) {
+                data.snippets.params.insert(block.id, params.clone());
+            }
+        }
+    }
+}
+
 /// Extract binding names from an OXC AssignmentTarget (left side of assignment).
 fn extract_names_from_assignment_target(target: &oxc_ast::ast::AssignmentTarget) -> Vec<String> {
     let mut names = Vec::new();
@@ -300,11 +325,8 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
         insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
     }
 
-    fn visit_snippet_block(&mut self, block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {
-        if let Some(span) = block.params_span {
-            let params = svelte_parser::parse_snippet_params(self.component.source_text(span));
-            data.snippets.params.insert(block.id, params);
-        }
+    fn visit_snippet_block(&mut self, _block: &svelte_ast::SnippetBlock, _scope: oxc_semantic::ScopeId, _data: &mut AnalysisData) {
+        // Snippet params transferred by transfer_snippet_params before this pass
     }
 
     fn visit_svelte_element(&mut self, el: &svelte_ast::SvelteElement, _scope: oxc_semantic::ScopeId, data: &mut AnalysisData) {

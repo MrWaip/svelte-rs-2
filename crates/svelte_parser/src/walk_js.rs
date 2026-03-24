@@ -178,6 +178,10 @@ fn walk_node<'a>(
             }
         }
         Node::SnippetBlock(block) => {
+            if let Some(span) = block.params_span {
+                let params = crate::parse_js::parse_snippet_params(component.source_text(span));
+                result.snippet_params.insert(span.start, params);
+            }
             walk_fragment(alloc, &block.body, component, typescript, result, diags);
         }
         Node::RenderTag(tag) => {

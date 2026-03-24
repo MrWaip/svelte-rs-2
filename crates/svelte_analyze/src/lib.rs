@@ -58,13 +58,15 @@ pub fn analyze_with_options<'a>(
     let script_content_span = js_result.script_content_span;
     let typescript = js_result.typescript;
     let const_tag_names = js_result.const_tag_names;
+    let snippet_params = js_result.snippet_params;
     let mut parsed = js_result.parsed;
 
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
     js_analyze::classify_render_tags(&mut parsed, component, &mut data);
 
-    // Transfer ConstTag names from parser results into AnalysisData
+    // Transfer parser-extracted metadata into AnalysisData
     js_analyze::transfer_const_tag_names(&const_tag_names, component, &mut data);
+    js_analyze::transfer_snippet_params(&snippet_params, component, &mut data);
 
     // Extract AwaitBlock binding metadata from parsed expressions
     js_analyze::prepare_template_bindings(&mut parsed, component, &mut data);
