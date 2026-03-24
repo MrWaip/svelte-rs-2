@@ -202,10 +202,10 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
     }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.analysis.await_bindings.value(id)
     }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.analysis.await_bindings.error(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {

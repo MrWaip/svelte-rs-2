@@ -5,15 +5,42 @@
 
 use compact_str::CompactString;
 use oxc_ast::ast::{CallExpression, Expression};
-use oxc_ast_visit::Visit;
+use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan as _;
 
 use rustc_hash::FxHashSet;
 use svelte_span::Span;
 
+use crate::data::BindingNameCollector;
 use crate::script_types::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
+
+struct SimpleExprChecker(bool);
+
+impl<'a> Visit<'a> for SimpleExprChecker {
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        match expr {
+            Expression::NumericLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::Identifier(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_) => {}
+            Expression::ConditionalExpression(_)
+            | Expression::BinaryExpression(_)
+            | Expression::LogicalExpression(_) => walk::walk_expression(self, expr),
+            _ => self.0 = false,
+        }
+    }
+}
+
+fn is_simple_expr(expr: &Expression<'_>) -> bool {
+    let mut checker = SimpleExprChecker(true);
+    checker.visit_expression(expr);
+    checker.0
+}
 
 /// Extract structural metadata from a parsed script Program AST.
 /// Pure syntax extraction — no semantic analysis (scoping, store detection, etc.).
@@ -317,9 +344,9 @@ fn collect_var_declarations(
 
                     *props_declaration = Some(PropsDeclaration { props });
                 } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
-                    let mut names = Vec::new();
-                    svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
-                    for name in names {
+                    let mut collector = BindingNameCollector(Vec::new());
+                    collector.visit_binding_pattern(&declarator.id);
+                    for name in collector.0 {
                         let decl_span = Span::new(
                             declarator.span.start + offset,
                             declarator.span.end + offset,
@@ -339,9 +366,9 @@ fn collect_var_declarations(
                 let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
                 if let Some(rune_kind) = rune {
                     if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
-                        let mut names = Vec::new();
-                        svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
-                        for name in names {
+                        let mut collector = BindingNameCollector(Vec::new());
+                        collector.visit_binding_pattern(&declarator.id);
+                        for name in collector.0 {
                             let decl_span = Span::new(
                                 declarator.span.start + offset,
                                 declarator.span.end + offset,
@@ -399,7 +426,7 @@ fn extract_prop_default(
                             (
                                 Some(Span::new(sp.start + offset, sp.end + offset)),
                                 Some(text.to_string()),
-                                svelte_parser::is_simple_expr(expr),
+                                is_simple_expr(expr),
                             )
                         } else {
                             (None, None, true)
@@ -410,7 +437,7 @@ fn extract_prop_default(
         }
         let sp = right.span();
         let text = &source[sp.start as usize..sp.end as usize];
-        let is_simple = svelte_parser::is_simple_expr(right);
+        let is_simple = is_simple_expr(right);
         (
             Some(Span::new(sp.start + offset, sp.end + offset)),
             Some(text.to_string()),

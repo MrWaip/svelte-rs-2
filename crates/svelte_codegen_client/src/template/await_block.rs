@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
-use svelte_parser::{AwaitBindingInfo, DestructureKind};
+use svelte_analyze::{AwaitBindingInfo, DestructureKind};
 
 use crate::builder::Arg;
 use crate::context::Ctx;

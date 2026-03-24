@@ -22,10 +22,11 @@ mod validate;
 pub(crate) mod walker;
 
 pub use data::{
-    AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo,
-    ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData, ElementFlags, EventHandlerMode,
-    ExpressionInfo, ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment,
-    LoweredTextPart, ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
+    AnalysisData, AwaitBindingData, AwaitBindingInfo, ClassDirectiveInfo, ComponentBindMode,
+    ComponentPropInfo, ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData,
+    DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo, ExpressionKind, FragmentData,
+    FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis,
+    PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use ident_gen::IdentGen;
 pub use scope::ComponentScoping;

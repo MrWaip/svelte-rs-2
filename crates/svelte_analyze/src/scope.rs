@@ -6,7 +6,7 @@ use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlag
 use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
 use crate::script_types::RuneKind;
 
-use crate::data::{AnalysisData, EachBlockData, FragmentKey};
+use crate::data::{AnalysisData, BindingNameCollector, EachBlockData, FragmentKey};
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -613,14 +613,14 @@ fn walk_template_scopes<'a>(
                 if let Some(span) = block.params_span {
                     if let Some(oxc_ast::ast::Statement::FunctionDeclaration(func)) = stmts.get(&span.start) {
                         for param in &func.params.items {
-                            let mut names = Vec::new();
-                            svelte_parser::extract_all_binding_names(&param.pattern, &mut names);
-                            param_names.extend(names.iter().map(|n| n.to_string()));
+                            let mut collector = BindingNameCollector(Vec::new());
+                            collector.visit_binding_pattern(&param.pattern);
+                            param_names.extend(collector.0.iter().map(|n| n.to_string()));
                         }
                         if let Some(rest) = &func.params.rest {
-                            let mut names = Vec::new();
-                            svelte_parser::extract_all_binding_names(&rest.rest.argument, &mut names);
-                            param_names.extend(names.iter().map(|n| n.to_string()));
+                            let mut collector = BindingNameCollector(Vec::new());
+                            collector.visit_binding_pattern(&rest.rest.argument);
+                            param_names.extend(collector.0.iter().map(|n| n.to_string()));
                         }
                     }
                 }
@@ -657,9 +657,9 @@ fn walk_template_scopes<'a>(
                 // Extract binding names from the pre-parsed VariableDeclaration Statement.
                 if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = stmts.get(&tag.expression_span.start) {
                     if let Some(declarator) = decl.declarations.first() {
-                        let mut names = Vec::new();
-                        svelte_parser::extract_all_binding_names(&declarator.id, &mut names);
-                        let name_strings: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+                        let mut collector = BindingNameCollector(Vec::new());
+                        collector.visit_binding_pattern(&declarator.id);
+                        let name_strings: Vec<String> = collector.0.iter().map(|n| n.to_string()).collect();
                         let is_destructured = name_strings.len() > 1;
                         for name in &name_strings {
                             let sym_id = scoping.add_binding(current_scope, name);

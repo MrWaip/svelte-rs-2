@@ -1,4 +1,6 @@
 use compact_str::CompactString;
+use oxc_ast::ast::BindingIdentifier;
+use oxc_ast_visit::Visit;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
@@ -9,6 +11,43 @@ use crate::scope::{ComponentScoping, SymbolId};
 use crate::script_types::{ExportInfo, ScriptInfo};
 
 pub use svelte_parser::ParserResult;
+
+// ---------------------------------------------------------------------------
+// AwaitBindingInfo / DestructureKind — binding patterns for await blocks
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub enum AwaitBindingInfo {
+    Simple(String),
+    Destructured { kind: DestructureKind, names: Vec<String> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestructureKind {
+    Object,
+    Array,
+}
+
+impl AwaitBindingInfo {
+    pub fn names(&self) -> &[String] {
+        match self {
+            Self::Simple(name) => std::slice::from_ref(name),
+            Self::Destructured { names, .. } => names,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BindingNameCollector — OXC Visit-based replacement for extract_all_binding_names
+// ---------------------------------------------------------------------------
+
+pub(crate) struct BindingNameCollector(pub Vec<CompactString>);
+
+impl<'a> Visit<'a> for BindingNameCollector {
+    fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+        self.0.push(CompactString::from(it.name.as_str()));
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Expression analysis types (created in js_analyze, stored in AnalysisData)
@@ -497,9 +536,9 @@ impl EachBlockData {
 /// Await block binding patterns, parsed via OXC in the `parse_js` pass.
 pub struct AwaitBindingData {
     /// Then binding info, keyed by AwaitBlock NodeId.
-    pub(crate) values: NodeTable<svelte_parser::AwaitBindingInfo>,
+    pub(crate) values: NodeTable<AwaitBindingInfo>,
     /// Catch binding info, keyed by AwaitBlock NodeId.
-    pub(crate) errors: NodeTable<svelte_parser::AwaitBindingInfo>,
+    pub(crate) errors: NodeTable<AwaitBindingInfo>,
 }
 
 impl AwaitBindingData {
@@ -510,10 +549,10 @@ impl AwaitBindingData {
         }
     }
 
-    pub fn value(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn value(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
         self.values.get(id)
     }
-    pub fn error(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn error(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
         self.errors.get(id)
     }
 }

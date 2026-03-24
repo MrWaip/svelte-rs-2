@@ -16,7 +16,8 @@ use smallvec::SmallVec;
 use svelte_ast::{Component, ConcatPart, NodeId};
 
 use crate::data::{
-    AnalysisData, ExpressionInfo, ExpressionKind, ParserResult, Reference, ReferenceFlags,
+    AnalysisData, AwaitBindingInfo, DestructureKind, ExpressionInfo, ExpressionKind, ParserResult,
+    Reference, ReferenceFlags,
 };
 
 // ---------------------------------------------------------------------------
@@ -207,9 +208,7 @@ fn collect_maybe_default_names(
 fn extract_await_binding_info(
     parsed: &mut ParserResult<'_>,
     offset: u32,
-) -> Option<svelte_parser::AwaitBindingInfo> {
-    use svelte_parser::{AwaitBindingInfo, DestructureKind};
-
+) -> Option<AwaitBindingInfo> {
     let expr = parsed.exprs.remove(&offset)?;
     // Unwrap ParenthesizedExpression from `(PATTERN = 1)` wrapping
     let inner = match &expr {

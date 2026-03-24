@@ -816,42 +816,6 @@ mod js_parse_tests {
     }
 
     #[test]
-    fn parse_const_declaration_simple() {
-        use oxc_ast::ast::Statement;
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("doubled = item * 2");
-        let stmt = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        let Statement::VariableDeclaration(decl) = &stmt else { panic!("expected var decl") };
-        let mut names = Vec::new();
-        crate::types::extract_all_binding_names(&decl.declarations[0].id, &mut names);
-        assert_eq!(names, vec![compact("doubled")]);
-    }
-
-    #[test]
-    fn parse_const_declaration_destructuring() {
-        use oxc_ast::ast::Statement;
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("{a, b} = obj");
-        let stmt = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        let Statement::VariableDeclaration(decl) = &stmt else { panic!("expected var decl") };
-        let mut names = Vec::new();
-        crate::types::extract_all_binding_names(&decl.declarations[0].id, &mut names);
-        assert_eq!(names, vec![compact("a"), compact("b")]);
-    }
-
-    #[test]
-    fn parse_const_declaration_multiple_equals() {
-        use oxc_ast::ast::Statement;
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("a = b === c");
-        let stmt = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        let Statement::VariableDeclaration(decl) = &stmt else { panic!("expected var decl") };
-        let mut names = Vec::new();
-        crate::types::extract_all_binding_names(&decl.declarations[0].id, &mut names);
-        assert_eq!(names, vec![compact("a")]);
-    }
-
-    #[test]
     fn parse_script_exports() {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
