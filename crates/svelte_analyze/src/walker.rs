@@ -65,6 +65,59 @@ impl ParentKind {
                 | Self::AttachTag
         )
     }
+
+    /// Directives that require a DOM element reference.
+    /// Exhaustive match — adding a new variant forces a decision here.
+    pub fn needs_element_ref(&self) -> bool {
+        match self {
+            Self::BindDirective
+            | Self::UseDirective
+            | Self::TransitionDirective
+            | Self::AnimateDirective
+            | Self::AttachTag => true,
+
+            Self::Element
+            | Self::IfBlock
+            | Self::EachBlock
+            | Self::SnippetBlock
+            | Self::ComponentNode
+            | Self::KeyBlock
+            | Self::SvelteHead
+            | Self::SvelteElement
+            | Self::SvelteWindow
+            | Self::SvelteDocument
+            | Self::SvelteBody
+            | Self::SvelteBoundary
+            | Self::AwaitBlock
+            | Self::ExpressionAttribute
+            | Self::ConcatenationAttribute
+            | Self::SpreadAttribute
+            | Self::Shorthand
+            | Self::ClassDirective
+            | Self::StyleDirective
+            | Self::OnDirectiveLegacy => false,
+        }
+    }
+
+    /// Map Attribute variant → ParentKind. None for String/Boolean.
+    /// Exhaustive match — new Attribute variants force an update.
+    pub fn from_attr(attr: &Attribute) -> Option<Self> {
+        match attr {
+            Attribute::ExpressionAttribute(_) => Some(Self::ExpressionAttribute),
+            Attribute::ConcatenationAttribute(_) => Some(Self::ConcatenationAttribute),
+            Attribute::SpreadAttribute(_) => Some(Self::SpreadAttribute),
+            Attribute::Shorthand(_) => Some(Self::Shorthand),
+            Attribute::ClassDirective(_) => Some(Self::ClassDirective),
+            Attribute::StyleDirective(_) => Some(Self::StyleDirective),
+            Attribute::BindDirective(_) => Some(Self::BindDirective),
+            Attribute::UseDirective(_) => Some(Self::UseDirective),
+            Attribute::OnDirectiveLegacy(_) => Some(Self::OnDirectiveLegacy),
+            Attribute::TransitionDirective(_) => Some(Self::TransitionDirective),
+            Attribute::AnimateDirective(_) => Some(Self::AnimateDirective),
+            Attribute::AttachTag(_) => Some(Self::AttachTag),
+            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -131,6 +184,13 @@ impl<'a> VisitContext<'a> {
         self.parents.iter().rev()
     }
 
+    /// Nearest enclosing Element in the parent stack, if any.
+    pub fn nearest_element(&self) -> Option<NodeId> {
+        self.ancestors()
+            .find(|p| p.kind == ParentKind::Element)
+            .map(|p| p.id)
+    }
+
     fn push(&mut self, r: ParentRef) {
         self.parents.push(r);
     }
@@ -172,6 +232,9 @@ pub(crate) trait TemplateVisitor {
     fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_>) {}
     fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, ctx: &mut VisitContext<'_>) {}
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_>) {}
+
+    // --- General attribute visit (fires for every attribute variant) ---
+    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {}
 
     // --- Attribute visits (dispatched for ALL nodes with attributes) ---
     fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, ctx: &mut VisitContext<'_>) {}
@@ -467,6 +530,7 @@ fn walk_attributes(
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
     for attr in attrs {
+        for v in visitors.iter_mut() { v.visit_attribute(attr, ctx); }
         match attr {
             Attribute::ExpressionAttribute(a) => {
                 for v in visitors.iter_mut() { v.visit_expression_attribute(a, ctx); }
