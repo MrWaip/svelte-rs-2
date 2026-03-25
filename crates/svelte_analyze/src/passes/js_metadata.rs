@@ -1,333 +1,55 @@
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, FormalParameters};
 use oxc_ast_visit::Visit;
-use oxc_semantic::ScopeId;
-use svelte_ast::{
-    AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
-    ComponentNode, ConcatPart, ConcatenationAttribute, EachBlock, ExpressionAttribute,
-    ExpressionTag, HtmlTag, IfBlock, KeyBlock, OnDirectiveLegacy, RenderTag, Shorthand,
-    SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
-    SvelteWindow, TransitionDirective, UseDirective,
-};
-use svelte_parser::ParserResult;
+use svelte_ast::{Attribute, EachBlock, NodeId};
 
-use crate::types::data::AnalysisData;
 use crate::passes::js_analyze::analyze_expression;
 use crate::scope::ComponentScoping;
-use crate::walker::TemplateVisitor;
+use crate::types::data::AnalysisData;
+use crate::walker::{TemplateVisitor, VisitContext};
 
 // ---------------------------------------------------------------------------
 // JsMetadataVisitor — arrow scope registration + each-block index usage
 // Merged into resolve_references composite walk.
+//
+// Arrow scanning is handled generically via visit_js_expression:
+// the walker dispatches it for every parsed expression in the template,
+// so no per-node-type boilerplate is needed.
 // ---------------------------------------------------------------------------
 
 pub(crate) struct JsMetadataVisitor<'a> {
     pub component: &'a svelte_ast::Component,
-    pub parsed: &'a ParserResult<'a>,
 }
 
 impl TemplateVisitor for JsMetadataVisitor<'_> {
-    fn visit_expression_tag(
+    fn visit_js_expression(
         &mut self,
-        tag: &ExpressionTag,
-        ctx: &mut crate::walker::VisitContext<'_>,
+        _id: NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_>,
     ) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&tag.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
+        let mut collector = ArrowScopeCollector {
+            scoping: &mut ctx.data.scoping,
+            scope: ctx.scope,
+        };
+        collector.visit_expression(expr);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut crate::walker::VisitContext<'_>) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&tag.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut crate::walker::VisitContext<'_>) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&tag.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_const_tag(
-        &mut self,
-        tag: &svelte_ast::ConstTag,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&tag.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut crate::walker::VisitContext<'_>) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&block.test_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_each_block(
-        &mut self,
-        block: &EachBlock,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&block.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-
-        // Each-block index usage detection
-        if let Some(idx_span) = block.index_span {
-            let idx_name = self.component.source_text(idx_span);
-            if let Some(key_span) = block.key_span {
-                if let Some(key_expr) = self.parsed.exprs.get(&key_span.start) {
-                    let info = analyze_expression(key_expr);
-                    if info.references.iter().any(|r| r.name.as_str() == idx_name) {
-                        ctx.data.each_blocks.key_uses_index.insert(block.id);
-                    }
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+        let Some(idx_span) = block.index_span else {
+            return;
+        };
+        let idx_name = self.component.source_text(idx_span);
+        if let Some(key_span) = block.key_span {
+            let parsed = ctx.parsed().unwrap();
+            if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
+                let info = analyze_expression(key_expr);
+                if info.references.iter().any(|r| r.name.as_str() == idx_name) {
+                    ctx.data.each_blocks.key_uses_index.insert(block.id);
                 }
             }
-            if check_fragment_uses_name(&block.body, idx_name, ctx.data) {
-                ctx.data.each_blocks.body_uses_index.insert(block.id);
-            }
         }
-    }
-
-    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut crate::walker::VisitContext<'_>) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&block.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_await_block(
-        &mut self,
-        block: &AwaitBlock,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_expr_arrows(
-            self.parsed.exprs.get(&block.expression_span.start),
-            &mut ctx.data.scoping,
-            ctx.scope,
-        );
-    }
-
-    fn visit_expression_attribute(
-        &mut self,
-        attr: &ExpressionAttribute,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            Some(attr.expression_span.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_concatenation_attribute(
-        &mut self,
-        attr: &ConcatenationAttribute,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_concat_arrows(&attr.parts, &mut ctx.data.scoping, self.parsed, ctx.scope);
-    }
-    fn visit_spread_attribute(
-        &mut self,
-        attr: &SpreadAttribute,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            Some(attr.expression_span.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_shorthand(
-        &mut self,
-        attr: &Shorthand,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            Some(attr.expression_span.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_class_directive(
-        &mut self,
-        dir: &ClassDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_style_directive(
-        &mut self,
-        dir: &StyleDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        let offset = match &dir.value {
-            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
-            _ => None,
-        };
-        scan_attr_arrows_by_offset(offset, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        if let svelte_ast::StyleDirectiveValue::Concatenation(parts) = &dir.value {
-            scan_concat_arrows(parts, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-    fn visit_bind_directive(
-        &mut self,
-        dir: &BindDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_use_directive(
-        &mut self,
-        dir: &UseDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_on_directive_legacy(
-        &mut self,
-        dir: &OnDirectiveLegacy,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_transition_directive(
-        &mut self,
-        dir: &TransitionDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_animate_directive(
-        &mut self,
-        dir: &AnimateDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            dir.expression_span.map(|s| s.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-    fn visit_attach_tag(
-        &mut self,
-        tag: &AttachTag,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        scan_attr_arrows_by_offset(
-            Some(tag.expression_span.start),
-            &mut ctx.data.scoping,
-            self.parsed,
-            ctx.scope,
-        );
-    }
-
-    fn visit_component_node(
-        &mut self,
-        cn: &ComponentNode,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        for attr in &cn.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-
-    fn visit_svelte_element(
-        &mut self,
-        el: &SvelteElement,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        if !el.static_tag {
-            scan_expr_arrows(
-                self.parsed.exprs.get(&el.tag_span.start),
-                &mut ctx.data.scoping,
-                ctx.scope,
-            );
-        }
-        for attr in &el.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-
-    fn visit_svelte_window(
-        &mut self,
-        w: &SvelteWindow,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        for attr in &w.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-
-    fn visit_svelte_document(
-        &mut self,
-        doc: &SvelteDocument,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        for attr in &doc.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-
-    fn visit_svelte_body(
-        &mut self,
-        body: &SvelteBody,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        for attr in &body.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
-        }
-    }
-
-    fn visit_svelte_boundary(
-        &mut self,
-        boundary: &SvelteBoundary,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        for attr in &boundary.attributes {
-            scan_single_attr_arrows(attr, &mut ctx.data.scoping, self.parsed, ctx.scope);
+        if check_fragment_uses_name(&block.body, idx_name, ctx.data) {
+            ctx.data.each_blocks.body_uses_index.insert(block.id);
         }
     }
 }
@@ -423,100 +145,12 @@ fn check_fragment_uses_name(
 }
 
 // ---------------------------------------------------------------------------
-// Arrow scope helpers
+// Arrow scope collector
 // ---------------------------------------------------------------------------
-
-/// Scan a single attribute for arrow function scopes.
-fn scan_single_attr_arrows(
-    attr: &Attribute,
-    scoping: &mut ComponentScoping,
-    parsed: &ParserResult<'_>,
-    scope: ScopeId,
-) {
-    let expr_offset = get_attr_expr_offset(attr);
-    if let Some(offset) = expr_offset {
-        scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
-    }
-    // Also scan concat part expressions
-    let concat_parts: Option<&[ConcatPart]> = match attr {
-        Attribute::ConcatenationAttribute(a) => Some(&a.parts),
-        Attribute::StyleDirective(a) => match &a.value {
-            svelte_ast::StyleDirectiveValue::Concatenation(parts) => Some(parts),
-            _ => None,
-        },
-        _ => None,
-    };
-    if let Some(parts) = concat_parts {
-        for part in parts {
-            if let ConcatPart::Dynamic(span) = part {
-                scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
-            }
-        }
-    }
-}
-
-/// Scan an attribute for arrow scopes using just the expression offset.
-fn scan_attr_arrows_by_offset(
-    offset: Option<u32>,
-    scoping: &mut ComponentScoping,
-    parsed: &ParserResult<'_>,
-    scope: ScopeId,
-) {
-    if let Some(offset) = offset {
-        scan_expr_arrows(parsed.exprs.get(&offset), scoping, scope);
-    }
-}
-
-/// Scan concat parts for arrow scopes.
-fn scan_concat_arrows(
-    parts: &[ConcatPart],
-    scoping: &mut ComponentScoping,
-    parsed: &ParserResult<'_>,
-    scope: ScopeId,
-) {
-    for part in parts {
-        if let ConcatPart::Dynamic(span) = part {
-            scan_expr_arrows(parsed.exprs.get(&span.start), scoping, scope);
-        }
-    }
-}
-
-/// Get the offset for an attribute's primary expression.
-fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
-    match attr {
-        Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
-        Attribute::ClassDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::StyleDirective(a) => match &a.value {
-            svelte_ast::StyleDirectiveValue::Expression(span) => Some(span.start),
-            _ => None,
-        },
-        Attribute::BindDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::SpreadAttribute(a) => Some(a.expression_span.start),
-        Attribute::Shorthand(a) => Some(a.expression_span.start),
-        Attribute::UseDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::OnDirectiveLegacy(a) => a.expression_span.map(|s| s.start),
-        Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
-        Attribute::AttachTag(a) => Some(a.expression_span.start),
-        Attribute::StringAttribute(_)
-        | Attribute::BooleanAttribute(_)
-        | Attribute::ConcatenationAttribute(_) => None,
-    }
-}
-
-fn scan_expr_arrows<'a>(
-    expr: Option<&Expression<'a>>,
-    scoping: &mut ComponentScoping,
-    scope: ScopeId,
-) {
-    let Some(expr) = expr else { return };
-    let mut collector = ArrowScopeCollector { scoping, scope };
-    collector.visit_expression(expr);
-}
 
 struct ArrowScopeCollector<'s> {
     scoping: &'s mut ComponentScoping,
-    scope: ScopeId,
+    scope: oxc_semantic::ScopeId,
 }
 
 impl<'a> Visit<'a> for ArrowScopeCollector<'_> {
