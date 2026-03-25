@@ -68,6 +68,14 @@ pub struct ExpressionInfo {
     /// Expression requires component context (unsafe member/call/new on import/prop).
     /// Aggregated into `AnalysisData::needs_context` for `$.push`/`$.pop`.
     pub needs_context: bool,
+    /// Dynamic in template or element-attribute context.
+    /// For `expressions`: template semantics (state runes, dynamic bindings, stores, class fields).
+    /// For `attr_expressions`: element-attribute semantics (prop_non_source OR is_dynamic_by_id).
+    pub is_dynamic: bool,
+    /// Dynamic in component/boundary attribute context (Svelte's `has_state` semantics).
+    /// Any reference to a rune or non-root-scope binding.
+    /// Only meaningful for `attr_expressions`; for regular `expressions`, equals `is_dynamic`.
+    pub has_state: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -101,6 +101,7 @@ pub fn analyze_with_options<'a>(
     resolve_render_tag_prop_sources(&mut data);
     resolve_render_tag_dynamic(&mut data);
     data.scoping.precompute_dynamic_cache();
+    passes::js_analyze::classify_expression_dynamicity(&mut data);
     passes::lower::lower(component, &mut data);
 
     // Single composite walk: reactivity + element flags + hoistable snippets +

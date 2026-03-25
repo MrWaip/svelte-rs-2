@@ -437,6 +437,8 @@ fn insert_concat_expr_info(
         has_state_rune: false,
         has_store_member_mutation: false,
         needs_context: false,
+        is_dynamic: false,
+        has_state: false,
     };
     data.attr_expressions.insert(attr_id, merged);
 }
@@ -789,6 +791,89 @@ pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
     }
 }
 
+/// Classify `is_dynamic` and `has_state` for all expressions.
+/// Must run after `resolve_references` and `precompute_dynamic_cache`.
+pub(crate) fn classify_expression_dynamicity(data: &mut AnalysisData) {
+    let root = data.scoping.root_scope_id();
+    let has_class_state = data.has_class_state_fields;
+
+    for info in data.expressions.values_mut() {
+        info.is_dynamic = is_dynamic_template(info, &data.scoping, root, has_class_state);
+        info.has_state = info.is_dynamic;
+    }
+
+    for info in data.attr_expressions.values_mut() {
+        info.is_dynamic = is_dynamic_element_attr(info, &data.scoping);
+        info.has_state = has_state_component_attr(info, &data.scoping, root);
+    }
+}
+
+/// Template expression dynamicity: state runes, stores, dynamic bindings, class state fields.
+fn is_dynamic_template(
+    info: &ExpressionInfo,
+    scoping: &crate::scope::ComponentScoping,
+    root: oxc_semantic::ScopeId,
+    has_class_state_fields: bool,
+) -> bool {
+    if info.has_state_rune || info.needs_context {
+        return true;
+    }
+
+    // MemberExpressions: any resolved local binding → dynamic.
+    if matches!(info.kind, ExpressionKind::MemberExpression) {
+        return info.references.iter().any(|r| {
+            scoping.is_store_ref(&r.name) || r.symbol_id.is_some()
+        });
+    }
+
+    info.references.iter().any(|r| {
+        if scoping.is_store_ref(&r.name) {
+            return true;
+        }
+        if let Some(sym_id) = r.symbol_id {
+            if scoping.is_dynamic_by_id(sym_id) {
+                return true;
+            }
+            // When class state fields exist, member access on local bindings
+            // is potentially reactive (getters call $.get internally).
+            if has_class_state_fields
+                && scoping.symbol_scope_id(sym_id) == root
+                && !scoping.is_rune(sym_id)
+            {
+                return true;
+            }
+        }
+        false
+    })
+}
+
+/// Element attribute dynamicity: non-source props or mutated bindings.
+fn is_dynamic_element_attr(
+    info: &ExpressionInfo,
+    scoping: &crate::scope::ComponentScoping,
+) -> bool {
+    info.references.iter().any(|r| {
+        let Some(sym_id) = r.symbol_id else { return false };
+        scoping.prop_non_source_name(sym_id).is_some() || scoping.is_dynamic_by_id(sym_id)
+    })
+}
+
+/// Component/boundary attribute dynamicity (Svelte's `has_state` semantics):
+/// any reference to a rune or non-root-scope binding.
+fn has_state_component_attr(
+    info: &ExpressionInfo,
+    scoping: &crate::scope::ComponentScoping,
+    root: oxc_semantic::ScopeId,
+) -> bool {
+    info.references.iter().any(|r| {
+        if let Some(sym_id) = r.symbol_id {
+            scoping.symbol_scope_id(sym_id) != root || scoping.is_rune(sym_id)
+        } else {
+            false
+        }
+    })
+}
+
 /// Unwrap a rune call to get its first argument expression.
 /// E.g., `$derived(expr)` → `expr`, `$state(expr)` → `expr`.
 /// Non-rune expressions pass through unchanged.
@@ -987,6 +1072,8 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
         has_state_rune: analyzer.has_state_rune,
         has_store_member_mutation: analyzer.has_store_member_mutation,
         needs_context: false,
+        is_dynamic: false,
+        has_state: false,
     }
 }
 
