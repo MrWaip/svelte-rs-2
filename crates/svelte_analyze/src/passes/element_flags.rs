@@ -1,24 +1,18 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, ComponentNode, Element, ExpressionAttribute,
-    SpreadAttribute, StyleDirective, UseDirective,
-};
+use svelte_ast::{Attribute, ComponentNode};
 use svelte_span::Span;
 
 use crate::types::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
-use crate::walker::TemplateVisitor;
+use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
-    /// Tracks the current Element's tag name for "input"-specific checks.
-    /// Set in visit_element, cleared in leave_element.
-    current_element_name: Option<String>,
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
     pub fn new(source: &'src str) -> Self {
-        Self { source, current_element_name: None }
+        Self { source }
     }
 
     fn source_text(&self, span: Span) -> &str {
@@ -27,95 +21,69 @@ impl<'src> ElementFlagsVisitor<'src> {
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
-    fn visit_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_>) {
-        self.current_element_name = Some(el.name.clone());
-        // String/Boolean attributes aren't dispatched by the walker, so handle them here
-        for attr in &el.attributes {
-            match attr {
-                Attribute::StringAttribute(sa) if sa.name == "class" => {
-                    ctx.data.element_flags.static_class.insert(el.id, self.source_text(sa.value_span).to_string());
+    fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
+        let Some(el_id) = ctx.nearest_element() else { return };
+        match attr {
+            Attribute::StringAttribute(sa) if sa.name == "class" => {
+                ctx.data.element_flags.static_class.insert(el_id, self.source_text(sa.value_span).to_string());
+            }
+            Attribute::StringAttribute(sa) if sa.name == "style" => {
+                ctx.data.element_flags.static_style.insert(el_id, self.source_text(sa.value_span).to_string());
+            }
+            Attribute::SpreadAttribute(_) => {
+                ctx.data.element_flags.has_spread.insert(el_id);
+            }
+            Attribute::ClassDirective(cd) => {
+                ctx.data.element_flags.class_directive_info
+                    .get_or_default(el_id)
+                    .push(ClassDirectiveInfo {
+                        id: cd.id,
+                        name: cd.name.clone(),
+                        has_expression: cd.expression_span.is_some(),
+                    });
+            }
+            Attribute::StyleDirective(sd) => {
+                ctx.data.element_flags.style_directives
+                    .get_or_default(el_id)
+                    .push(sd.clone());
+            }
+            Attribute::ExpressionAttribute(ea) => {
+                if ea.name == "class" {
+                    ctx.data.element_flags.class_attr_id.insert(el_id, ea.id);
                 }
-                Attribute::StringAttribute(sa) if sa.name == "style" => {
-                    ctx.data.element_flags.static_style.insert(el.id, self.source_text(sa.value_span).to_string());
+                if ea.name == "value" && ctx.element_name() == Some("input") {
+                    ctx.data.element_flags.needs_input_defaults.insert(el_id);
                 }
-                _ => {}
+                if let Some(raw) = ea.event_name.as_deref() {
+                    let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw) {
+                        (base, true)
+                    } else {
+                        (raw, false)
+                    };
+                    let passive = crate::utils::is_passive_event(name);
+                    let mode = if !capture && crate::utils::is_delegatable_event(name) {
+                        EventHandlerMode::Delegated { passive }
+                    } else {
+                        EventHandlerMode::Direct { capture, passive }
+                    };
+                    ctx.data.element_flags.event_handler_mode.insert(ea.id, mode);
+                }
             }
-        }
-    }
-
-    fn leave_element(&mut self, _el: &Element, _ctx: &mut crate::walker::VisitContext<'_>) {
-        self.current_element_name = None;
-    }
-
-    fn visit_spread_attribute(&mut self, _attr: &SpreadAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            ctx.data.element_flags.has_spread.insert(el_id);
-        }
-    }
-
-    fn visit_class_directive(&mut self, cd: &ClassDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            ctx.data.element_flags.class_directive_info
-                .get_or_default(el_id)
-                .push(ClassDirectiveInfo {
-                    id: cd.id,
-                    name: cd.name.clone(),
-                    has_expression: cd.expression_span.is_some(),
-                });
-        }
-    }
-
-    fn visit_style_directive(&mut self, sd: &StyleDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            ctx.data.element_flags.style_directives
-                .get_or_default(el_id)
-                .push(sd.clone());
-        }
-    }
-
-    fn visit_expression_attribute(&mut self, ea: &ExpressionAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            if ea.name == "class" {
-                ctx.data.element_flags.class_attr_id.insert(el_id, ea.id);
+            Attribute::BindDirective(bd) => {
+                if ctx.element_name() == Some("input")
+                    && matches!(bd.name.as_str(), "value" | "checked" | "group")
+                {
+                    ctx.data.element_flags.needs_input_defaults.insert(el_id);
+                }
             }
-            if ea.name == "value" && self.current_element_name.as_deref() == Some("input") {
-                ctx.data.element_flags.needs_input_defaults.insert(el_id);
+            Attribute::UseDirective(_) => {
+                ctx.data.element_flags.has_use_directive.insert(el_id);
             }
-            if ea.event_name.is_some() {
-                let raw = ea.event_name.as_deref().unwrap();
-                let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw) {
-                    (base, true)
-                } else {
-                    (raw, false)
-                };
-                let passive = crate::utils::is_passive_event(name);
-                let mode = if !capture && crate::utils::is_delegatable_event(name) {
-                    EventHandlerMode::Delegated { passive }
-                } else {
-                    EventHandlerMode::Direct { capture, passive }
-                };
-                ctx.data.element_flags.event_handler_mode.insert(ea.id, mode);
-            }
+            _ => {}
         }
     }
 
-    fn visit_bind_directive(&mut self, bd: &BindDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            if self.current_element_name.as_deref() == Some("input")
-                && matches!(bd.name.as_str(), "value" | "checked" | "group")
-            {
-                ctx.data.element_flags.needs_input_defaults.insert(el_id);
-            }
-        }
-    }
-
-    fn visit_use_directive(&mut self, _dir: &UseDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = ctx.nearest_element() {
-            ctx.data.element_flags.has_use_directive.insert(el_id);
-        }
-    }
-
-    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut crate::walker::VisitContext<'_>) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         let data = &mut *ctx.data;
         for attr in &cn.attributes {
             let kind = match attr {

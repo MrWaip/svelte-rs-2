@@ -147,6 +147,8 @@ pub(crate) struct VisitContext<'a> {
     /// parsed AST node by span offset.
     parsed: Option<&'a ParserResult<'a>>,
     parents: Vec<ParentRef>,
+    /// Tag name of the nearest enclosing Element (managed by walker).
+    element_name: Option<String>,
 }
 
 impl<'a> VisitContext<'a> {
@@ -156,6 +158,7 @@ impl<'a> VisitContext<'a> {
             data,
             parsed: None,
             parents: Vec::new(),
+            element_name: None,
         }
     }
 
@@ -169,6 +172,7 @@ impl<'a> VisitContext<'a> {
             data,
             parsed: Some(parsed),
             parents: Vec::new(),
+            element_name: None,
         }
     }
 
@@ -187,6 +191,12 @@ impl<'a> VisitContext<'a> {
     /// Ancestors from innermost to outermost.
     pub fn ancestors(&self) -> impl Iterator<Item = &ParentRef> {
         self.parents.iter().rev()
+    }
+
+    /// Tag name of the nearest enclosing Element (e.g. "div", "input").
+    /// None when not inside an Element or inside a SvelteElement (dynamic tag).
+    pub fn element_name(&self) -> Option<&str> {
+        self.element_name.as_deref()
     }
 
     /// Nearest enclosing Element or SvelteElement in the parent stack, if any.
@@ -364,10 +374,12 @@ pub(crate) fn walk_template(
             }
             Node::Element(el) => {
                 for v in visitors.iter_mut() { v.visit_element(el, ctx); }
+                let prev_name = ctx.element_name.replace(el.name.clone());
                 ctx.push(ParentRef { id: el.id, kind: ParentKind::Element });
                 walk_attributes(&el.attributes, ctx, visitors);
                 walk_template(&el.fragment, ctx, visitors);
                 ctx.pop();
+                ctx.element_name = prev_name;
                 for v in visitors.iter_mut() { v.leave_element(el, ctx); }
             }
             Node::IfBlock(block) => {
