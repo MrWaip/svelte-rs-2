@@ -225,6 +225,7 @@ fn collect_func_declaration(
             init_span: None,
             is_rune: None,
             rune_init_refs: vec![],
+            init_literal: None,
         });
     }
 }
@@ -249,21 +250,28 @@ fn collect_var_declarations(
                 let name = CompactString::from(ident.name.as_str());
                 let decl_span = Span::new(ident.span.start + offset, ident.span.end + offset);
 
-                let (init_span, is_rune, rune_init_refs) = if let Some(init) = &declarator.init {
-                    let init_sp = Span::new(
-                        init.span().start + offset,
-                        init.span().end + offset,
-                    );
-                    let rune = detect_rune(init);
-                    let refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
-                        collect_derived_refs(init)
+                let (init_span, is_rune, rune_init_refs, init_literal) =
+                    if let Some(init) = &declarator.init {
+                        let init_sp = Span::new(
+                            init.span().start + offset,
+                            init.span().end + offset,
+                        );
+                        let rune = detect_rune(init);
+                        let refs =
+                            if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
+                                collect_derived_refs(init)
+                            } else {
+                                vec![]
+                            };
+                        let literal = if rune.is_some() {
+                            extract_call_arg_literal(init)
+                        } else {
+                            extract_literal(init)
+                        };
+                        (Some(init_sp), rune, refs, literal)
                     } else {
-                        vec![]
+                        (None, None, vec![], None)
                     };
-                    (Some(init_sp), rune, refs)
-                } else {
-                    (None, None, vec![])
-                };
 
                 declarations.push(DeclarationInfo {
                     name,
@@ -272,6 +280,7 @@ fn collect_var_declarations(
                     init_span,
                     is_rune,
                     rune_init_refs,
+                    init_literal,
                 });
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj_pat) => {
@@ -300,6 +309,7 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::Props),
                             rune_init_refs: vec![],
+                            init_literal: None,
                         });
 
                         props.push(PropInfo {
@@ -329,6 +339,7 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::Props),
                                 rune_init_refs: vec![],
+                                init_literal: None,
                             });
                             props.push(PropInfo {
                                 local_name: rest_name.clone(),
@@ -358,6 +369,7 @@ fn collect_var_declarations(
                             init_span: None,
                             is_rune: Some(RuneKind::StateRaw),
                             rune_init_refs: vec![],
+                            init_literal: None,
                         });
                     }
                 }
@@ -380,6 +392,7 @@ fn collect_var_declarations(
                                 init_span: None,
                                 is_rune: Some(RuneKind::StateRaw),
                                 rune_init_refs: vec![],
+                                init_literal: None,
                             });
                         }
                     }
@@ -388,6 +401,26 @@ fn collect_var_declarations(
             _ => {}
         }
     }
+}
+
+/// Extract a literal value from an OXC expression (string, number, boolean).
+fn extract_literal(expr: &Expression<'_>) -> Option<CompactString> {
+    match expr {
+        Expression::StringLiteral(s) => Some(CompactString::from(s.value.as_str())),
+        Expression::BooleanLiteral(b) => Some(CompactString::from(if b.value { "true" } else { "false" })),
+        Expression::NumericLiteral(n) => n.raw.as_ref().map(|r| CompactString::from(r.as_str())),
+        _ => None,
+    }
+}
+
+/// Extract a literal value from the first argument of a call expression (e.g. `$state(42)` → `"42"`).
+fn extract_call_arg_literal(expr: &Expression<'_>) -> Option<CompactString> {
+    let Expression::CallExpression(call) = expr else {
+        return None;
+    };
+    let arg = call.arguments.first()?;
+    let arg_expr = arg.as_expression()?;
+    extract_literal(arg_expr)
 }
 
 fn extract_property_key_name(key: &oxc_ast::ast::PropertyKey<'_>) -> Option<CompactString> {

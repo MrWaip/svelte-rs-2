@@ -1,18 +1,17 @@
-use svelte_ast::Component;
 use crate::types::script::{DeclarationKind, RuneKind};
 
 use crate::types::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 
 /// Run all passes that depend on resolve_references but are independent of each other.
 /// Combines known value collection, props analysis, and needs_context aggregation.
-pub fn run_post_resolve_passes(component: &Component, data: &mut AnalysisData) {
-    analyze_declarations(component, data);
+pub fn run_post_resolve_passes(data: &mut AnalysisData) {
+    analyze_declarations(data);
     aggregate_store_needs_context(data);
 }
 
 /// Single pass over script declarations for both known-value collection and props-id detection.
 /// Then processes props_declaration separately (only needed for props analysis).
-fn analyze_declarations(component: &Component, data: &mut AnalysisData) {
+fn analyze_declarations(data: &mut AnalysisData) {
     let script = match &data.script {
         Some(s) => s,
         None => return,
@@ -21,13 +20,11 @@ fn analyze_declarations(component: &Component, data: &mut AnalysisData) {
 
     // Single pass: known_values + props_id detection
     for decl in &script.declarations {
-        // --- props_id detection (from props.rs) ---
         if decl.is_rune == Some(RuneKind::PropsId) && data.props_id.is_none() {
             data.props_id = Some(decl.name.to_string());
         }
 
-        // --- known_values logic ---
-        let Some(init_span) = decl.init_span else {
+        let Some(ref lit) = decl.init_literal else {
             continue;
         };
 
@@ -45,22 +42,11 @@ fn analyze_declarations(component: &Component, data: &mut AnalysisData) {
             continue;
         }
 
-        let src = component.source_text(init_span).trim();
-
-        let literal_src = if is_foldable_rune {
-            extract_rune_arg(src)
-        } else {
-            Some(src)
-        };
-
-        if let Some(lit) = literal_src.and_then(try_eval_literal) {
-            if let Some(sym_id) = data.scoping.find_binding(root, &decl.name) {
-                data.scoping.set_known_value(sym_id, lit);
-            }
+        if let Some(sym_id) = sym_id {
+            data.scoping.set_known_value(sym_id, lit.to_string());
         }
     }
 
-    // --- props analysis (from props.rs) ---
     analyze_props_declaration(data);
 }
 
@@ -112,34 +98,6 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
     data.props = Some(PropsAnalysis { props, has_bindable });
-}
-
-fn extract_rune_arg(src: &str) -> Option<&str> {
-    let open = src.find('(')?;
-    let close = src.rfind(')')?;
-    if close <= open + 1 {
-        return None;
-    }
-    Some(src[open + 1..close].trim())
-}
-
-fn try_eval_literal(src: &str) -> Option<String> {
-    if (src.starts_with('"') && src.ends_with('"'))
-        || (src.starts_with('\'') && src.ends_with('\''))
-        || (src.starts_with('`') && src.ends_with('`'))
-    {
-        return Some(src[1..src.len() - 1].to_string());
-    }
-
-    if src == "true" || src == "false" {
-        return Some(src.to_string());
-    }
-
-    if src.parse::<f64>().is_ok() {
-        return Some(src.to_string());
-    }
-
-    None
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
