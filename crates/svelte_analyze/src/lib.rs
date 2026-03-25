@@ -141,6 +141,7 @@ pub fn analyze_with_options<'a>(
             &mut ctx,
             &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5],
         );
+        v3.finish(&mut data);
     }
 
     // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
