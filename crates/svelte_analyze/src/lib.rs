@@ -106,10 +106,10 @@ pub fn analyze_with_options<'a>(
             parsed: &parsed,
         };
         let mut v2 = resolve_references::make_visitor(component, scoping_built);
+        let mut ctx = walker::VisitContext::new(root, &mut data);
         walker::walk_template(
             &component.fragment,
-            &mut data,
-            root,
+            &mut ctx,
             &mut [&mut v1, &mut v2],
         );
     }
@@ -152,10 +152,10 @@ pub fn analyze_with_options<'a>(
         let mut v5 = content_types::ContentAndVarVisitor {
             source: &component.source,
         };
+        let mut ctx = walker::VisitContext::new(root, &mut data);
         walker::walk_template(
             &component.fragment,
-            &mut data,
-            root,
+            &mut ctx,
             &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5],
         );
     }

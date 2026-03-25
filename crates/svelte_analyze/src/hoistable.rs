@@ -2,7 +2,7 @@
 //!
 //! A snippet is hoistable if its body doesn't reference any script-declared variables.
 
-use oxc_semantic::{ScopeId, SymbolId};
+use oxc_semantic::SymbolId;
 use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, AttachTag, BindDirective, ClassDirective, ComponentNode,
@@ -66,8 +66,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     fn visit_snippet_block(
         &mut self,
         block: &SnippetBlock,
-        _scope: ScopeId,
-        _data: &mut AnalysisData,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         if self.top_level_ids.contains(&block.id) {
             self.current_root = Some(block.id);
@@ -77,12 +76,11 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     fn leave_snippet_block(
         &mut self,
         block: &SnippetBlock,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         if self.top_level_ids.contains(&block.id) {
             if !self.tainted.contains(&block.id) {
-                data.snippets.hoistable.insert(block.id);
+                ctx.data.snippets.hoistable.insert(block.id);
             }
             self.current_root = None;
         }
@@ -91,74 +89,71 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     fn visit_expression_tag(
         &mut self,
         tag: &ExpressionTag,
-        _scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        self.check_expr(&tag.id, data);
+        self.check_expr(&tag.id, ctx.data);
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_expr(&tag.id, data);
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_expr(&tag.id, ctx.data);
     }
 
-    fn visit_html_tag(&mut self, tag: &HtmlTag, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_expr(&tag.id, data);
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_expr(&tag.id, ctx.data);
     }
 
-    fn visit_if_block(&mut self, block: &IfBlock, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_expr(&block.id, data);
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_expr(&block.id, ctx.data);
     }
 
     fn visit_each_block(
         &mut self,
         block: &EachBlock,
-        _parent_scope: ScopeId,
-        _body_scope: ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        self.check_expr(&block.id, data);
+        self.check_expr(&block.id, ctx.data);
     }
 
-    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(attr.id, data);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(attr.id, ctx.data);
     }
-    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(attr.id, data);
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(attr.id, ctx.data);
     }
-    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(attr.id, data);
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(attr.id, ctx.data);
     }
-    fn visit_shorthand(&mut self, attr: &Shorthand, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(attr.id, data);
+    fn visit_shorthand(&mut self, attr: &Shorthand, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(attr.id, ctx.data);
     }
-    fn visit_class_directive(&mut self, dir: &ClassDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_style_directive(&mut self, dir: &StyleDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_bind_directive(&mut self, dir: &BindDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_use_directive(&mut self, dir: &UseDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_transition_directive(&mut self, dir: &TransitionDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_transition_directive(&mut self, dir: &TransitionDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_animate_directive(&mut self, dir: &AnimateDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(dir.id, data);
+    fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(dir.id, ctx.data);
     }
-    fn visit_attach_tag(&mut self, tag: &AttachTag, _scope: ScopeId, data: &mut AnalysisData) {
-        self.check_attr_expr(tag.id, data);
+    fn visit_attach_tag(&mut self, tag: &AttachTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.check_attr_expr(tag.id, ctx.data);
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut crate::walker::VisitContext<'_>) {
         for attr in &cn.attributes {
-            self.check_attr_expr(attr.id(), data);
+            self.check_attr_expr(attr.id(), ctx.data);
         }
     }
 }

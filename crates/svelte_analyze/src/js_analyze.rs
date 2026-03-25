@@ -65,7 +65,8 @@ pub(crate) fn classify_render_tags(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = RenderTagClassifier { parsed };
-    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+    let mut ctx = crate::walker::VisitContext::new(root, data);
+    crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 }
 
 struct RenderTagClassifier<'a, 'b> {
@@ -76,15 +77,14 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
     fn visit_render_tag(
         &mut self,
         tag: &svelte_ast::RenderTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         let offset = tag.expression_span.start;
         if matches!(
             self.parsed.exprs.get(&offset),
             Some(Expression::ChainExpression(_))
         ) {
-            data.render_tag_is_chain.insert(tag.id);
+            ctx.data.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.exprs.remove(&offset) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
                     self.parsed
@@ -95,7 +95,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
         }
         if let Some(Expression::CallExpression(call)) = self.parsed.exprs.get(&offset) {
             if let Expression::Identifier(ident) = &call.callee {
-                data.render_tag_callee_name
+                ctx.data.render_tag_callee_name
                     .insert(tag.id, ident.name.to_string());
             }
         }
@@ -117,7 +117,8 @@ pub(crate) fn prepare_template_bindings(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = BindingPreparer { parsed };
-    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+    let mut ctx = crate::walker::VisitContext::new(root, data);
+    crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 }
 
 struct BindingPreparer<'a, 'b> {
@@ -128,17 +129,16 @@ impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
     fn visit_await_block(
         &mut self,
         block: &svelte_ast::AwaitBlock,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         if let Some(val_span) = block.value_span {
             if let Some(info) = extract_await_binding_info(self.parsed, val_span.start) {
-                data.await_bindings.values.insert(block.id, info);
+                ctx.data.await_bindings.values.insert(block.id, info);
             }
         }
         if let Some(err_span) = block.error_span {
             if let Some(info) = extract_await_binding_info(self.parsed, err_span.start) {
-                data.await_bindings.errors.insert(block.id, info);
+                ctx.data.await_bindings.errors.insert(block.id, info);
             }
         }
     }
@@ -250,8 +250,13 @@ pub(crate) fn extract_all_expressions(
     data: &mut AnalysisData,
 ) {
     let root = data.scoping.root_scope_id();
-    let mut visitor = ExpressionExtractor { parsed };
-    crate::walker::walk_template(&component.fragment, data, root, &mut [&mut visitor]);
+    let mut visitor = ExpressionExtractor {
+        pending_render_tag: None,
+        pending_shorthand: None,
+        pending_clsx: false,
+    };
+    let mut ctx = crate::walker::VisitContext::with_parsed(root, data, parsed);
+    crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 
     // Extract CE config (not template-related)
     if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
@@ -266,297 +271,145 @@ pub(crate) fn extract_all_expressions(
     }
 }
 
-struct ExpressionExtractor<'a, 'b> {
-    parsed: &'b ParserResult<'a>,
+struct ExpressionExtractor {
+    pending_render_tag: Option<NodeId>,
+    pending_shorthand: Option<(NodeId, String)>,
+    pending_clsx: bool,
 }
 
-impl crate::walker::TemplateVisitor for ExpressionExtractor<'_, '_> {
-    fn visit_expression_tag(
+impl crate::walker::TemplateVisitor for ExpressionExtractor {
+    // --- Offset storage ---
+
+    fn visit_expression(
         &mut self,
-        tag: &svelte_ast::ExpressionTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        node_id: svelte_ast::NodeId,
+        span: svelte_span::Span,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
+        if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
+            if !ctx.data.attr_expr_offsets.contains_key(node_id) {
+                ctx.data.attr_expr_offsets.insert(node_id, span.start);
+            }
+        } else if !ctx.data.node_expr_offsets.contains_key(node_id) {
+            ctx.data.node_expr_offsets.insert(node_id, span.start);
+        }
     }
 
-    fn visit_if_block(
+    // --- Parsed expression analysis ---
+
+    fn visit_js_expression(
         &mut self,
-        block: &svelte_ast::IfBlock,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        node_id: svelte_ast::NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        insert_node_expr_info(self.parsed, data, block.id, block.test_span.start);
+        // Store ExpressionInfo (replaces insert_node_expr_info / insert_attr_expr_info)
+        if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
+            if !ctx.data.attr_expressions.contains_key(node_id) {
+                ctx.data.attr_expressions.insert(node_id, analyze_expression(expr));
+            }
+        } else if !ctx.data.expressions.contains_key(node_id) {
+            ctx.data.expressions.insert(node_id, analyze_expression(expr));
+        }
+
+        // Render tag: classify arguments
+        if self.pending_render_tag.take() == Some(node_id) {
+            classify_render_tag_args(expr, ctx.data, node_id);
+        }
+
+        // Shorthand detection (set by visit_expression_attribute / visit_class_directive / visit_style_directive)
+        if let Some((attr_id, name)) = self.pending_shorthand.take() {
+            if let Expression::Identifier(ident) = expr {
+                if ident.name.as_str() == name {
+                    ctx.data.element_flags.expression_shorthand.insert(attr_id);
+                }
+            }
+        }
+
+        // Clsx detection for class={expr}
+        if self.pending_clsx {
+            self.pending_clsx = false;
+            if !matches!(
+                expr,
+                Expression::StringLiteral(_)
+                    | Expression::TemplateLiteral(_)
+                    | Expression::BinaryExpression(_)
+            ) {
+                ctx.data.element_flags.needs_clsx.insert(node_id);
+            }
+        }
     }
 
-    fn visit_each_block(
-        &mut self,
-        block: &svelte_ast::EachBlock,
-        _parent_scope: oxc_semantic::ScopeId,
-        _body_scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
-    }
+    // --- Hooks that set pending state for visit_js_expression ---
 
     fn visit_render_tag(
         &mut self,
         tag: &svelte_ast::RenderTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
-        classify_render_tag_args(self.parsed, data, tag);
-    }
-
-    fn visit_html_tag(
-        &mut self,
-        tag: &svelte_ast::HtmlTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
-    }
-
-    fn visit_key_block(
-        &mut self,
-        block: &svelte_ast::KeyBlock,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
-    }
-
-    fn visit_await_block(
-        &mut self,
-        block: &svelte_ast::AwaitBlock,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        // Binding info already extracted by prepare_template_bindings
-        insert_node_expr_info(self.parsed, data, block.id, block.expression_span.start);
+        self.pending_render_tag = Some(tag.id);
     }
 
     fn visit_const_tag(
         &mut self,
         tag: &svelte_ast::ConstTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        insert_node_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
+        // ConstTag is a statement — visit_expression/visit_js_expression don't fire.
+        // Store offset so codegen can look up the parsed statement.
+        ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
     }
-
-    fn visit_snippet_block(
-        &mut self,
-        _block: &svelte_ast::SnippetBlock,
-        _scope: oxc_semantic::ScopeId,
-        _data: &mut AnalysisData,
-    ) {
-        // Snippet params transferred by transfer_snippet_params before this pass
-    }
-
-    fn visit_svelte_element(
-        &mut self,
-        el: &svelte_ast::SvelteElement,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if !el.static_tag {
-            insert_node_expr_info(self.parsed, data, el.id, el.tag_span.start);
-        }
-    }
-
-    // --- Attribute visits ---
 
     fn visit_expression_attribute(
         &mut self,
         attr: &svelte_ast::ExpressionAttribute,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        let attr_id = attr.id;
-        insert_attr_expr_info(self.parsed, data, attr_id, attr.expression_span.start);
-
-        // Detect semantic shorthand: expression is a simple identifier matching attr name
-        if let Some(Expression::Identifier(ident)) =
-            self.parsed.exprs.get(&attr.expression_span.start)
-        {
-            if ident.name.as_str() == attr.name {
-                data.element_flags.expression_shorthand.insert(attr_id);
-            }
-        }
-        // class={[...]} or class={{...}} or class={x} need clsx to resolve
+        self.pending_shorthand = Some((attr.id, attr.name.clone()));
         if attr.name == "class" {
-            if let Some(expr) = self.parsed.exprs.get(&attr.expression_span.start) {
-                let needs = !matches!(
-                    expr,
-                    Expression::StringLiteral(_)
-                        | Expression::TemplateLiteral(_)
-                        | Expression::BinaryExpression(_)
-                );
-                if needs {
-                    data.element_flags.needs_clsx.insert(attr_id);
-                }
-            }
+            self.pending_clsx = true;
         }
     }
 
     fn visit_concatenation_attribute(
         &mut self,
         attr: &svelte_ast::ConcatenationAttribute,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        insert_concat_expr_info(self.parsed, data, attr.id, &attr.parts);
+        // Merge all dynamic parts into one ExpressionInfo before per-part visit_js_expression
+        if let Some(parsed) = ctx.parsed() {
+            insert_concat_expr_info(parsed, ctx.data, attr.id, &attr.parts);
+        }
     }
 
     fn visit_class_directive(
         &mut self,
         dir: &svelte_ast::ClassDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        _ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-            if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&span.start) {
-                if ident.name.as_str() == dir.name {
-                    data.element_flags.expression_shorthand.insert(dir.id);
-                }
-            }
+        // Only non-shorthand directives have an expression to check
+        if dir.expression_span.is_some() {
+            self.pending_shorthand = Some((dir.id, dir.name.clone()));
         }
     }
 
     fn visit_style_directive(
         &mut self,
         dir: &svelte_ast::StyleDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
+        ctx: &mut crate::walker::VisitContext<'_>,
     ) {
         use svelte_ast::StyleDirectiveValue;
         match &dir.value {
-            StyleDirectiveValue::Expression(span) => {
-                insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-                if let Some(Expression::Identifier(ident)) = self.parsed.exprs.get(&span.start) {
-                    if ident.name.as_str() == dir.name {
-                        data.element_flags.expression_shorthand.insert(dir.id);
-                    }
-                }
+            StyleDirectiveValue::Expression(_) => {
+                self.pending_shorthand = Some((dir.id, dir.name.clone()));
             }
             StyleDirectiveValue::Concatenation(parts) => {
-                insert_concat_expr_info(self.parsed, data, dir.id, parts);
+                if let Some(parsed) = ctx.parsed() {
+                    insert_concat_expr_info(parsed, ctx.data, dir.id, parts);
+                }
             }
             StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
         }
-    }
-
-    fn visit_bind_directive(
-        &mut self,
-        dir: &svelte_ast::BindDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-        }
-    }
-
-    fn visit_spread_attribute(
-        &mut self,
-        attr: &svelte_ast::SpreadAttribute,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start);
-    }
-
-    fn visit_shorthand(
-        &mut self,
-        attr: &svelte_ast::Shorthand,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_attr_expr_info(self.parsed, data, attr.id, attr.expression_span.start);
-    }
-
-    fn visit_use_directive(
-        &mut self,
-        dir: &svelte_ast::UseDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-        }
-    }
-
-    fn visit_on_directive_legacy(
-        &mut self,
-        dir: &svelte_ast::OnDirectiveLegacy,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-        }
-    }
-
-    fn visit_transition_directive(
-        &mut self,
-        dir: &svelte_ast::TransitionDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-        }
-    }
-
-    fn visit_animate_directive(
-        &mut self,
-        dir: &svelte_ast::AnimateDirective,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        if let Some(span) = dir.expression_span {
-            insert_attr_expr_info(self.parsed, data, dir.id, span.start);
-        }
-    }
-
-    fn visit_attach_tag(
-        &mut self,
-        tag: &svelte_ast::AttachTag,
-        _scope: oxc_semantic::ScopeId,
-        data: &mut AnalysisData,
-    ) {
-        insert_attr_expr_info(self.parsed, data, tag.id, tag.expression_span.start);
-    }
-}
-
-/// Look up a parsed expression by offset and store ExpressionInfo for a template node.
-fn insert_node_expr_info(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    node_id: NodeId,
-    offset: u32,
-) {
-    data.node_expr_offsets.insert(node_id, offset);
-    if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr);
-        data.expressions.insert(node_id, info);
-    }
-}
-
-/// Look up a parsed expression by offset and store ExpressionInfo for an attribute.
-fn insert_attr_expr_info(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    attr_id: NodeId,
-    offset: u32,
-) {
-    data.attr_expr_offsets.insert(attr_id, offset);
-    if let Some(expr) = parsed.exprs.get(&offset) {
-        let info = analyze_expression(expr);
-        data.attr_expressions.insert(attr_id, info);
     }
 }
 
@@ -590,18 +443,17 @@ fn insert_concat_expr_info(
 
 /// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
 fn classify_render_tag_args(
-    parsed: &ParserResult<'_>,
+    expr: &Expression<'_>,
     data: &mut AnalysisData,
-    tag: &svelte_ast::RenderTag,
+    tag_id: NodeId,
 ) {
-    let offset = tag.expression_span.start;
-    if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&offset) {
+    if let Expression::CallExpression(call) = expr {
         let flags: Vec<bool> = call
             .arguments
             .iter()
             .map(|arg| expression_has_call(arg.to_expression()))
             .collect();
-        data.render_tag_arg_has_call.insert(tag.id, flags);
+        data.render_tag_arg_has_call.insert(tag_id, flags);
 
         let idents: Vec<Option<String>> = call
             .arguments
@@ -614,7 +466,7 @@ fn classify_render_tag_args(
                 }
             })
             .collect();
-        data.render_tag_arg_idents.insert(tag.id, idents);
+        data.render_tag_arg_idents.insert(tag_id, idents);
     }
 }
 

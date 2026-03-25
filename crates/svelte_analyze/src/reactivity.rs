@@ -1,4 +1,3 @@
-use oxc_semantic::ScopeId;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
     ConcatenationAttribute, ComponentNode, ConstTag, EachBlock,
@@ -72,140 +71,140 @@ impl ReactivityVisitor {
 }
 
 impl TemplateVisitor for ReactivityVisitor {
-    fn visit_expression_tag(&mut self, tag: &ExpressionTag, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data) {
-            data.dynamic_nodes.insert(tag.id);
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&tag.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_render_tag(&mut self, tag: &RenderTag, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data) {
-            data.dynamic_nodes.insert(tag.id);
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&tag.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_html_tag(&mut self, tag: &HtmlTag, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data) {
-            data.dynamic_nodes.insert(tag.id);
+    fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&tag.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_const_tag(&mut self, tag: &ConstTag, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&tag.id, data) {
-            data.dynamic_nodes.insert(tag.id);
+    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&tag.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(tag.id);
         }
     }
 
-    fn visit_element(&mut self, el: &Element, _scope: ScopeId, _data: &mut AnalysisData) {
+    fn visit_element(&mut self, el: &Element, _ctx: &mut crate::walker::VisitContext<'_>) {
         self.current_element_id = Some(el.id);
     }
 
-    fn leave_element(&mut self, _el: &Element, _scope: ScopeId, _data: &mut AnalysisData) {
+    fn leave_element(&mut self, _el: &Element, _ctx: &mut crate::walker::VisitContext<'_>) {
         self.current_element_id = None;
     }
 
-    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(attr.id, data) {
-            data.element_flags.dynamic_attrs.insert(attr.id);
-            self.mark_element_needs_ref(data);
+    fn visit_expression_attribute(&mut self, attr: &ExpressionAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(attr.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(ctx.data);
         }
     }
 
-    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(attr.id, data) {
-            data.element_flags.dynamic_attrs.insert(attr.id);
-            self.mark_element_needs_ref(data);
+    fn visit_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(attr.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(ctx.data);
         }
     }
 
-    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(attr.id, data) {
-            data.element_flags.dynamic_attrs.insert(attr.id);
-            self.mark_element_needs_ref(data);
+    fn visit_spread_attribute(&mut self, attr: &SpreadAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(attr.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(ctx.data);
         }
     }
 
-    fn visit_shorthand(&mut self, attr: &Shorthand, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(attr.id, data) {
-            data.element_flags.dynamic_attrs.insert(attr.id);
-            self.mark_element_needs_ref(data);
+    fn visit_shorthand(&mut self, attr: &Shorthand, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(attr.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(attr.id);
+            self.mark_element_needs_ref(ctx.data);
         }
     }
 
-    fn visit_class_directive(&mut self, dir: &ClassDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(dir.id, data) {
-            data.element_flags.dynamic_attrs.insert(dir.id);
-            self.mark_element_needs_ref(data);
+    fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(dir.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(dir.id);
+            self.mark_element_needs_ref(ctx.data);
             if let Some(el_id) = self.current_element_id {
-                data.element_flags.has_dynamic_class_directives.insert(el_id);
+                ctx.data.element_flags.has_dynamic_class_directives.insert(el_id);
             }
         }
     }
 
-    fn visit_style_directive(&mut self, dir: &StyleDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        if attr_id_is_dynamic(dir.id, data) {
-            data.element_flags.dynamic_attrs.insert(dir.id);
-            self.mark_element_needs_ref(data);
+    fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        if attr_id_is_dynamic(dir.id, ctx.data) {
+            ctx.data.element_flags.dynamic_attrs.insert(dir.id);
+            self.mark_element_needs_ref(ctx.data);
         }
     }
 
-    fn visit_bind_directive(&mut self, _dir: &BindDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.mark_element_needs_ref(data);
+    fn visit_bind_directive(&mut self, _dir: &BindDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.mark_element_needs_ref(ctx.data);
     }
 
-    fn visit_use_directive(&mut self, _dir: &UseDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.mark_element_needs_ref(data);
+    fn visit_use_directive(&mut self, _dir: &UseDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.mark_element_needs_ref(ctx.data);
     }
 
-    fn visit_transition_directive(&mut self, _dir: &TransitionDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.mark_element_needs_ref(data);
+    fn visit_transition_directive(&mut self, _dir: &TransitionDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.mark_element_needs_ref(ctx.data);
     }
 
-    fn visit_animate_directive(&mut self, _dir: &AnimateDirective, _scope: ScopeId, data: &mut AnalysisData) {
-        self.mark_element_needs_ref(data);
+    fn visit_animate_directive(&mut self, _dir: &AnimateDirective, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.mark_element_needs_ref(ctx.data);
     }
 
-    fn visit_attach_tag(&mut self, _tag: &AttachTag, _scope: ScopeId, data: &mut AnalysisData) {
-        self.mark_element_needs_ref(data);
+    fn visit_attach_tag(&mut self, _tag: &AttachTag, ctx: &mut crate::walker::VisitContext<'_>) {
+        self.mark_element_needs_ref(ctx.data);
     }
 
-    fn visit_if_block(&mut self, block: &IfBlock, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&block.id, data) {
-            data.dynamic_nodes.insert(block.id);
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&block.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_each_block(&mut self, block: &EachBlock, _parent_scope: ScopeId, _body_scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&block.id, data) {
-            data.dynamic_nodes.insert(block.id);
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&block.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_key_block(&mut self, block: &KeyBlock, _scope: ScopeId, data: &mut AnalysisData) {
-        if self.expr_is_dynamic(&block.id, data) {
-            data.dynamic_nodes.insert(block.id);
+    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut crate::walker::VisitContext<'_>) {
+        if self.expr_is_dynamic(&block.id, ctx.data) {
+            ctx.data.dynamic_nodes.insert(block.id);
         }
     }
 
-    fn visit_await_block(&mut self, block: &AwaitBlock, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut crate::walker::VisitContext<'_>) {
         // Await blocks are always dynamic
-        data.dynamic_nodes.insert(block.id);
+        ctx.data.dynamic_nodes.insert(block.id);
     }
 
-    fn visit_component_node(&mut self, cn: &ComponentNode, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut crate::walker::VisitContext<'_>) {
         for attr in &cn.attributes {
-            if component_attr_is_dynamic(attr, data) {
-                data.element_flags.dynamic_attrs.insert(attr.id());
+            if component_attr_is_dynamic(attr, ctx.data) {
+                ctx.data.element_flags.dynamic_attrs.insert(attr.id());
             }
         }
     }
 
-    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, _scope: ScopeId, data: &mut AnalysisData) {
+    fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, ctx: &mut crate::walker::VisitContext<'_>) {
         // Boundary attributes use the same has_state semantics as component props —
         // reactive expressions get getters so the boundary can re-read reactively.
         for attr in &boundary.attributes {
-            if component_attr_is_dynamic(attr, data) {
-                data.element_flags.dynamic_attrs.insert(attr.id());
+            if component_attr_is_dynamic(attr, ctx.data) {
+                ctx.data.element_flags.dynamic_attrs.insert(attr.id());
             }
         }
     }
