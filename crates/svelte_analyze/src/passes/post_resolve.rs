@@ -4,10 +4,10 @@ use crate::types::script::{DeclarationKind, RuneKind};
 use crate::types::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 
 /// Run all passes that depend on resolve_references but are independent of each other.
-/// Combines store detection, known value collection, and props analysis.
+/// Combines known value collection, props analysis, and needs_context aggregation.
 pub fn run_post_resolve_passes(component: &Component, data: &mut AnalysisData) {
-    detect_store_subscriptions(data);
     analyze_declarations(component, data);
+    aggregate_store_needs_context(data);
 }
 
 /// Single pass over script declarations for both known-value collection and props-id detection.
@@ -142,75 +142,17 @@ fn try_eval_literal(src: &str) -> Option<String> {
     None
 }
 
-// --- inlined from store_subscriptions.rs ---
-
-/// Detect store subscriptions by scanning template and script references.
-///
-/// A store subscription exists when:
-/// 1. An expression references `$X` (dollar-prefixed identifier)
-/// 2. `X` is declared at root scope
-/// 3. `X` is NOT a rune
-///
-/// Populates `data.scoping.store_syms` (sym_id → base_name).
-pub fn detect_store_subscriptions(data: &mut AnalysisData) {
-    let root = data.scoping.root_scope_id();
-
-    // Collect candidate names first to avoid borrow conflict
-    let mut candidates: Vec<String> = Vec::new();
-
-    // Template expression references
-    for info in data.expressions.values() {
-        for r in &info.references {
-            collect_store_candidate(&r.name, &mut candidates);
-        }
+/// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
+fn aggregate_store_needs_context(data: &mut AnalysisData) {
+    if data.needs_context {
+        return;
     }
 
-    // Attribute expression references
-    for info in data.attr_expressions.values() {
-        for r in &info.references {
-            collect_store_candidate(&r.name, &mut candidates);
-        }
-    }
+    let has_deep = data.expressions.values().any(|i| i.has_store_member_mutation)
+        || data.attr_expressions.values().any(|i| i.has_store_member_mutation)
+        || data.has_store_member_mutations;
 
-    // Script body references (from svelte_types store_candidates)
-    if let Some(script) = &data.script {
-        for name in &script.store_candidates {
-            candidates.push(name.to_string());
-        }
-    }
-
-    // Now check and mark with mutable access to scoping
-    for name in candidates {
-        // Dedup: skip if already marked
-        let Some(sym_id) = data.scoping.find_binding(root, &name) else {
-            continue;
-        };
-        if data.scoping.is_store(sym_id) {
-            continue;
-        }
-        if data.scoping.is_rune(sym_id) {
-            continue;
-        }
-        data.scoping.mark_store(sym_id, name);
-    }
-
-    // $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations
-    if !data.needs_context {
-        let has_deep = data.expressions.values().any(|i| i.has_store_member_mutation)
-            || data.attr_expressions.values().any(|i| i.has_store_member_mutation);
-        if has_deep {
-            data.needs_context = true;
-        }
-    }
-
-    // Also check script-level deep mutations
-    if !data.needs_context && data.has_store_member_mutations {
+    if has_deep {
         data.needs_context = true;
-    }
-}
-
-fn collect_store_candidate(name: &str, candidates: &mut Vec<String>) {
-    if name.starts_with('$') && name.len() > 1 {
-        candidates.push(name[1..].to_string());
     }
 }

@@ -2,6 +2,7 @@ use oxc_semantic::{ReferenceFlags as OxcReferenceFlags, ScopeId};
 use svelte_ast::{BindDirective, Component, NodeId, RenderTag};
 use svelte_span::Span;
 
+use crate::ComponentScoping;
 use crate::types::data::AnalysisData;
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -34,6 +35,11 @@ fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
             }
         }
     }
+    // Store detection: $X → mark X as store (after mutable borrow of info is released)
+    let info = data.expressions.get(node_id).unwrap();
+    for r in &info.references {
+        try_mark_store(&r.name, &mut data.scoping);
+    }
 }
 
 /// Resolve references in an attribute expression.
@@ -50,6 +56,37 @@ fn resolve_attr_refs(attr_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
                 data.scoping.register_template_reference(sym_id, OxcReferenceFlags::Write);
             }
         }
+    }
+    let info = data.attr_expressions.get(attr_id).unwrap();
+    for r in &info.references {
+        try_mark_store(&r.name, &mut data.scoping);
+    }
+}
+
+/// If `name` is `$X`, mark `X` as a store subscription (if it's a root-scope non-rune binding).
+fn try_mark_store(name: &str, scoping: &mut ComponentScoping) {
+    if !name.starts_with('$') || name.len() <= 1 {
+        return;
+    }
+    let base = &name[1..];
+    let root = scoping.root_scope_id();
+    let Some(sym_id) = scoping.find_binding(root, base) else {
+        return;
+    };
+    if !scoping.is_rune(sym_id) && !scoping.is_store(sym_id) {
+        scoping.mark_store(sym_id, base.to_string());
+    }
+}
+
+/// Resolve script-level store subscriptions from OXC unresolved references.
+/// Called after the template walk, when ComponentScoping is fully built.
+pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
+    let candidates: Vec<String> = match &data.script {
+        Some(s) => s.store_candidates.iter().map(|n| format!("${n}")).collect(),
+        None => return,
+    };
+    for name in &candidates {
+        try_mark_store(name, &mut data.scoping);
     }
 }
 

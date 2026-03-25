@@ -97,6 +97,7 @@ pub fn analyze_with_options<'a>(
             &mut [&mut v1, &mut v2],
         );
     }
+    passes::resolve_references::resolve_script_stores(&mut data);
     passes::post_resolve::run_post_resolve_passes(component, &mut data);
     resolve_render_tag_prop_sources(&mut data);
     resolve_render_tag_dynamic(&mut data);
