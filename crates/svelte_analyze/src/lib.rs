@@ -85,7 +85,7 @@ pub fn analyze_with_options<'a>(
     // Combined walk: arrow scope registration + each-block index usage + reference resolution
     {
         let root = data.scoping.root_scope_id();
-        let mut v1 = passes::js_metadata::JsMetadataVisitor { component };
+        let mut v1 = passes::js_metadata::JsMetadataVisitor;
         let mut v2 = passes::resolve_references::make_visitor(component, scoping_built);
         let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
         walker::walk_template(

@@ -411,6 +411,21 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor {
             StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
         }
     }
+
+    fn visit_each_block(
+        &mut self,
+        block: &svelte_ast::EachBlock,
+        ctx: &mut crate::walker::VisitContext<'_>,
+    ) {
+        // Extract key expression info separately — expressions[block.id] holds the iterable
+        if let Some(key_span) = block.key_span {
+            if let Some(parsed) = ctx.parsed() {
+                if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
+                    ctx.data.each_blocks.key_infos.insert(block.id, analyze_expression(key_expr));
+                }
+            }
+        }
+    }
 }
 
 /// Merge ExpressionInfo from all dynamic concatenation parts into a single entry.

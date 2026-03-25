@@ -491,6 +491,10 @@ impl TitleElementData {
 pub struct EachBlockData {
     pub(crate) context_names: NodeTable<String>,
     pub(crate) index_names: NodeTable<String>,
+    /// SymbolId of the index variable (for post-resolve SymbolId-based lookups).
+    pub(crate) index_syms: NodeTable<SymbolId>,
+    /// Analyzed key expression (stored separately because expressions[block.id] holds the iterable).
+    pub(crate) key_infos: NodeTable<ExpressionInfo>,
     /// Key expression references the index variable (needs index param in key arrow).
     pub(crate) key_uses_index: NodeBitSet,
     /// Context is a destructuring pattern (`{ name, value }` or `[a, b]`).
@@ -508,6 +512,8 @@ impl EachBlockData {
         Self {
             context_names: NodeTable::new(node_count),
             index_names: NodeTable::new(node_count),
+            index_syms: NodeTable::new(node_count),
+            key_infos: NodeTable::new(node_count),
             key_uses_index: NodeBitSet::new(node_count),
             is_destructured: NodeBitSet::new(node_count),
             body_uses_index: NodeBitSet::new(node_count),

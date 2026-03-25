@@ -6,6 +6,7 @@ use crate::types::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 /// Combines known value collection, props analysis, and needs_context aggregation.
 pub fn run_post_resolve_passes(data: &mut AnalysisData) {
     analyze_declarations(data);
+    detect_each_index_usage(data);
     aggregate_store_needs_context(data);
 }
 
@@ -98,6 +99,42 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
     data.props = Some(PropsAnalysis { props, has_bindable });
+}
+
+/// Detect each-block index variable usage via resolved SymbolIds.
+/// Index variables are only in scope inside the body, so any resolved reference
+/// to the index SymbolId must be within the body.
+fn detect_each_index_usage(data: &mut AnalysisData) {
+    let syms: Vec<_> = data
+        .each_blocks
+        .index_syms
+        .iter()
+        .map(|(id, sym)| (id, *sym))
+        .collect();
+    for (block_id, idx_sym) in syms {
+        let body_uses = data
+            .expressions
+            .values()
+            .chain(data.attr_expressions.values())
+            .any(|info| {
+                info.references
+                    .iter()
+                    .any(|r| r.symbol_id == Some(idx_sym))
+            });
+        if body_uses {
+            data.each_blocks.body_uses_index.insert(block_id);
+        }
+
+        if let Some(key_info) = data.each_blocks.key_infos.get(block_id) {
+            if key_info
+                .references
+                .iter()
+                .any(|r| r.symbol_id == Some(idx_sym))
+            {
+                data.each_blocks.key_uses_index.insert(block_id);
+            }
+        }
+    }
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.

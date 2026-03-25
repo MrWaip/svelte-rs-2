@@ -565,6 +565,7 @@ fn walk_template_scopes<'a>(
                     let idx_sym = scoping.add_binding(child_scope, idx_name);
                     scoping.mark_each_block_var(idx_sym);
                     each_blocks.index_names.insert(block.id, idx_name.to_string());
+                    each_blocks.index_syms.insert(block.id, idx_sym);
                 }
 
                 // Detect animate: directive on direct child elements
