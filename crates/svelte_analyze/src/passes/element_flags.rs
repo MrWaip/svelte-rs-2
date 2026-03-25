@@ -2,7 +2,7 @@
 
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, ComponentNode, Element, ExpressionAttribute,
-    NodeId, SpreadAttribute, StyleDirective, SvelteElement, UseDirective,
+    SpreadAttribute, StyleDirective, UseDirective,
 };
 use svelte_span::Span;
 
@@ -11,13 +11,14 @@ use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
-    current_element_id: Option<NodeId>,
+    /// Tracks the current Element's tag name for "input"-specific checks.
+    /// Set in visit_element, cleared in leave_element.
     current_element_name: Option<String>,
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
     pub fn new(source: &'src str) -> Self {
-        Self { source, current_element_id: None, current_element_name: None }
+        Self { source, current_element_name: None }
     }
 
     fn source_text(&self, span: Span) -> &str {
@@ -27,7 +28,6 @@ impl<'src> ElementFlagsVisitor<'src> {
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_element(&mut self, el: &Element, ctx: &mut crate::walker::VisitContext<'_>) {
-        self.current_element_id = Some(el.id);
         self.current_element_name = Some(el.name.clone());
         // String/Boolean attributes aren't dispatched by the walker, so handle them here
         for attr in &el.attributes {
@@ -44,18 +44,17 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn leave_element(&mut self, _el: &Element, _ctx: &mut crate::walker::VisitContext<'_>) {
-        self.current_element_id = None;
         self.current_element_name = None;
     }
 
     fn visit_spread_attribute(&mut self, _attr: &SpreadAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             ctx.data.element_flags.has_spread.insert(el_id);
         }
     }
 
     fn visit_class_directive(&mut self, cd: &ClassDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             ctx.data.element_flags.class_directive_info
                 .get_or_default(el_id)
                 .push(ClassDirectiveInfo {
@@ -67,7 +66,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_style_directive(&mut self, sd: &StyleDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             ctx.data.element_flags.style_directives
                 .get_or_default(el_id)
                 .push(sd.clone());
@@ -75,7 +74,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_expression_attribute(&mut self, ea: &ExpressionAttribute, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             if ea.name == "class" {
                 ctx.data.element_flags.class_attr_id.insert(el_id, ea.id);
             }
@@ -101,7 +100,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_bind_directive(&mut self, bd: &BindDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             if self.current_element_name.as_deref() == Some("input")
                 && matches!(bd.name.as_str(), "value" | "checked" | "group")
             {
@@ -111,7 +110,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_use_directive(&mut self, _dir: &UseDirective, ctx: &mut crate::walker::VisitContext<'_>) {
-        if let Some(el_id) = self.current_element_id {
+        if let Some(el_id) = ctx.nearest_element() {
             ctx.data.element_flags.has_use_directive.insert(el_id);
         }
     }
@@ -150,7 +149,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ComponentPropKind::BindThis { bind_id: b.id }
                 }
                 Attribute::BindDirective(b) => {
-                    // Non-bind:this: classify getter/setter pattern
                     let root = data.scoping.root_scope_id();
                     let mode = data.scoping.find_binding(root, &b.name)
                         .map(|sym| {
@@ -169,42 +167,12 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         mode,
                     }
                 }
-                // Directives that don't become props
                 _ => continue,
             };
             let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());
             data.element_flags.component_props
                 .get_or_default(cn.id)
                 .push(ComponentPropInfo { kind, is_dynamic });
-        }
-    }
-
-    /// SvelteElement attributes aren't dispatched through visit_attribute
-    /// (which takes &Element), so collect class directives here.
-    fn visit_svelte_element(
-        &mut self,
-        el: &SvelteElement,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        let data = &mut *ctx.data;
-        for attr in &el.attributes {
-            match attr {
-                Attribute::ClassDirective(cd) => {
-                    data.element_flags.class_directive_info
-                        .get_or_default(el.id)
-                        .push(ClassDirectiveInfo {
-                            id: cd.id,
-                            name: cd.name.clone(),
-                            has_expression: cd.expression_span.is_some(),
-                        });
-                }
-                Attribute::StyleDirective(sd) => {
-                    data.element_flags.style_directives
-                        .get_or_default(el.id)
-                        .push(sd.clone());
-                }
-                _ => {}
-            }
         }
     }
 }

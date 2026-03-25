@@ -48,6 +48,11 @@ pub(crate) enum ParentKind {
 }
 
 impl ParentKind {
+    /// Element or SvelteElement — nodes that render a DOM element.
+    pub fn is_element(&self) -> bool {
+        matches!(self, Self::Element | Self::SvelteElement)
+    }
+
     pub fn is_attr(&self) -> bool {
         matches!(
             self,
@@ -184,10 +189,10 @@ impl<'a> VisitContext<'a> {
         self.parents.iter().rev()
     }
 
-    /// Nearest enclosing Element in the parent stack, if any.
+    /// Nearest enclosing Element or SvelteElement in the parent stack, if any.
     pub fn nearest_element(&self) -> Option<NodeId> {
         self.ancestors()
-            .find(|p| p.kind == ParentKind::Element)
+            .find(|p| p.kind.is_element())
             .map(|p| p.id)
     }
 
