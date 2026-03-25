@@ -10,7 +10,7 @@ pub use data::TransformData;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
-use oxc_ast_visit::walk_mut::{walk_arrow_function_expression, walk_expression};
+use oxc_ast_visit::walk_mut::{self, walk_arrow_function_expression, walk_expression};
 use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
@@ -284,8 +284,8 @@ fn get_directive_name_offset(attr: &Attribute) -> Option<u32> {
 
 /// Transform an expression tree in-place using OXC's VisitMut.
 ///
-/// Arrow function parameters are registered as scoped bindings during analysis
-/// (`register_arrow_scopes`), so `find_binding` naturally resolves them — no
+/// JS scopes (arrows, functions, for-loops, blocks, catch) are registered
+/// during analysis, so `find_binding` naturally resolves local bindings — no
 /// separate shadow stack needed.
 fn transform_expr<'a>(
     ctx: &mut TransformCtx<'a, '_>,
@@ -327,7 +327,7 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 == self.ctx.analysis.scoping.root_scope_id();
 
             if !is_root {
-                if self.ctx.analysis.scoping.is_arrow_param(sym_id)
+                if self.ctx.analysis.scoping.is_expr_local(sym_id)
                     || self.ctx.analysis.scoping.is_snippet_name(sym_id)
                     || self.ctx.analysis.scoping.is_each_non_reactive(sym_id)
                 {
@@ -507,9 +507,15 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
 
     fn visit_arrow_function_expression(&mut self, it: &mut ArrowFunctionExpression<'a>) {
         let parent_scope = self.scope;
-        self.scope = self.ctx.analysis.scoping.arrow_scope(it.span.start)
-            .unwrap_or(self.scope);
+        self.scope = it.scope_id.get().unwrap_or(self.scope);
         walk_arrow_function_expression(self, it);
+        self.scope = parent_scope;
+    }
+
+    fn visit_function(&mut self, it: &mut Function<'a>, flags: oxc_syntax::scope::ScopeFlags) {
+        let parent_scope = self.scope;
+        self.scope = it.scope_id.get().unwrap_or(self.scope);
+        walk_mut::walk_function(self, it, flags);
         self.scope = parent_scope;
     }
 }

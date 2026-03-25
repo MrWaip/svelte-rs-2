@@ -43,8 +43,9 @@ pub struct ComponentScoping {
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
     /// SymbolId → parent ConstTag NodeId for destructured const bindings
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
-    /// Arrow function span.start → child ScopeId (for arrow params inside JS expressions)
-    arrow_scopes: FxHashMap<u32, ScopeId>,
+    /// All scopes created for JS constructs inside template expressions
+    /// (arrows, functions, for-loops, blocks, catch clauses).
+    expr_local_scopes: FxHashSet<ScopeId>,
     /// Pre-computed set of dynamic rune symbols (populated by `precompute_dynamic_cache`).
     /// When `Some`, `is_dynamic_by_id` uses O(1) lookup instead of recursive walk.
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
@@ -78,7 +79,7 @@ impl ComponentScoping {
             each_non_reactive_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
             const_alias_tags: FxHashMap::default(),
-            arrow_scopes: FxHashMap::default(),
+            expr_local_scopes: FxHashSet::default(),
             dynamic_sym_cache: None,
         }
     }
@@ -371,23 +372,16 @@ impl ComponentScoping {
         self.const_alias_tags.get(&sym_id).copied()
     }
 
-    pub fn arrow_scope(&self, span_start: u32) -> Option<ScopeId> {
-        self.arrow_scopes.get(&span_start).copied()
-    }
-
-    /// True if this symbol was declared as an arrow function parameter.
-    pub fn is_arrow_param(&self, sym_id: SymbolId) -> bool {
+    /// True if this symbol was declared inside a template expression
+    /// (arrow/function param, for-loop var, block-scoped var, catch param).
+    pub fn is_expr_local(&self, sym_id: SymbolId) -> bool {
         let scope = self.symbol_scope_id(sym_id);
-        self.arrow_scopes.values().any(|&s| s == scope)
+        self.expr_local_scopes.contains(&scope)
     }
 
-    pub fn register_arrow_scope(&mut self, span_start: u32, parent: ScopeId, param_names: &[String]) -> ScopeId {
-        let scope = self.add_child_scope(parent);
-        for name in param_names {
-            self.add_binding(scope, name);
-        }
-        self.arrow_scopes.insert(span_start, scope);
-        scope
+    /// Register a scope as expression-local.
+    pub fn register_expr_local_scope(&mut self, scope: ScopeId) {
+        self.expr_local_scopes.insert(scope);
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
