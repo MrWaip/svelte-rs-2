@@ -11,7 +11,7 @@ use svelte_ast::{
     StyleDirective, TransitionDirective, UseDirective,
 };
 
-use crate::data::AnalysisData;
+use crate::types::data::AnalysisData;
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct HoistableSnippetsVisitor {

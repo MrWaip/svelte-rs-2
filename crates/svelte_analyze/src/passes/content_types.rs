@@ -1,6 +1,6 @@
 use svelte_ast::{Attribute, Element};
 
-use crate::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
+use crate::types::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
 use crate::walker::TemplateVisitor;
 
 /// Visitor that computes content_type + has_dynamic_children + needs_var
@@ -102,7 +102,7 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
 
 fn item_is_dynamic(
     item: &FragmentItem,
-    dynamic_nodes: &crate::node_table::NodeBitSet,
+    dynamic_nodes: &crate::types::node_table::NodeBitSet,
 ) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {

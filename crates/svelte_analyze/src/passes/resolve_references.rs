@@ -7,14 +7,14 @@ use svelte_ast::{
     TransitionDirective, UseDirective,
 };
 
-use crate::data::AnalysisData;
+use crate::types::data::AnalysisData;
 use crate::walker::{TemplateVisitor, VisitContext};
 
 use svelte_ast::Component;
 
 /// Create a ResolveReferencesVisitor for use in a composite walk.
 /// Consumes `ScopingBuilt` marker to enforce ordering.
-pub(crate) fn make_visitor(component: &Component, _scoping: crate::markers::ScopingBuilt) -> ResolveReferencesVisitor<'_> {
+pub(crate) fn make_visitor(component: &Component, _scoping: crate::types::markers::ScopingBuilt) -> ResolveReferencesVisitor<'_> {
     ResolveReferencesVisitor { component }
 }
 
@@ -31,8 +31,8 @@ fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == crate::data::ReferenceFlags::Write
-                || r.flags == crate::data::ReferenceFlags::ReadWrite
+            if r.flags == crate::types::data::ReferenceFlags::Write
+                || r.flags == crate::types::data::ReferenceFlags::ReadWrite
             {
                 data.scoping
                     .register_template_reference(sym_id, OxcReferenceFlags::Write);
@@ -53,8 +53,8 @@ fn resolve_attr_refs(
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == crate::data::ReferenceFlags::Write
-                || r.flags == crate::data::ReferenceFlags::ReadWrite
+            if r.flags == crate::types::data::ReferenceFlags::Write
+                || r.flags == crate::types::data::ReferenceFlags::ReadWrite
             {
                 data.scoping
                     .register_template_reference(sym_id, OxcReferenceFlags::Write);

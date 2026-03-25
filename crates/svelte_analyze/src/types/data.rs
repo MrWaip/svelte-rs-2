@@ -6,9 +6,9 @@ use smallvec::SmallVec;
 use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
-use crate::node_table::{NodeBitSet, NodeTable};
+use super::node_table::{NodeBitSet, NodeTable};
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::script_types::{ExportInfo, ScriptInfo};
+use super::script::{ExportInfo, ScriptInfo};
 
 pub use svelte_parser::ParserResult;
 

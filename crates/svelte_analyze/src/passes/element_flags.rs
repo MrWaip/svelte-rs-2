@@ -6,7 +6,7 @@ use svelte_ast::{
 };
 use svelte_span::Span;
 
-use crate::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
+use crate::types::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ElementFlagsVisitor<'src> {

@@ -452,8 +452,8 @@ fn each_block_index_is_dynamic() {
 // ---------------------------------------------------------------------------
 
 mod expression_info_tests {
-    use crate::data::{ExpressionInfo, ExpressionKind, ReferenceFlags};
-    use crate::js_analyze::analyze_expression;
+    use crate::types::data::{ExpressionInfo, ExpressionKind, ReferenceFlags};
+    use crate::passes::js_analyze::analyze_expression;
     use compact_str::CompactString;
     use oxc_allocator::Allocator;
     use oxc_parser::Parser as OxcParser;

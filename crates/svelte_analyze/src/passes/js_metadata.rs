@@ -10,8 +10,8 @@ use svelte_ast::{
 };
 use svelte_parser::ParserResult;
 
-use crate::data::AnalysisData;
-use crate::js_analyze::analyze_expression;
+use crate::types::data::AnalysisData;
+use crate::passes::js_analyze::analyze_expression;
 use crate::scope::ComponentScoping;
 use crate::walker::TemplateVisitor;
 

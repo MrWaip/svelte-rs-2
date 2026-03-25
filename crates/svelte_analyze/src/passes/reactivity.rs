@@ -5,7 +5,7 @@ use svelte_ast::{
     Shorthand, SpreadAttribute, StyleDirective, SvelteBoundary,
     TransitionDirective, UseDirective,
 };
-use crate::data::{AnalysisData, ExpressionKind};
+use crate::types::data::{AnalysisData, ExpressionKind};
 use crate::walker::TemplateVisitor;
 
 pub(crate) struct ReactivityVisitor {

@@ -4,9 +4,9 @@ pub use oxc_semantic::{ScopeId, SymbolId};
 use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
-use crate::script_types::RuneKind;
+use crate::types::script::RuneKind;
 
-use crate::data::{AnalysisData, BindingNameCollector, EachBlockData, FragmentKey};
+use crate::types::data::{AnalysisData, BindingNameCollector, EachBlockData, FragmentKey};
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -441,7 +441,7 @@ pub(crate) fn build_scoping(
     component: &Component,
     data: &mut AnalysisData,
     stmts: &rustc_hash::FxHashMap<u32, oxc_ast::ast::Statement<'_>>,
-) -> crate::markers::ScopingBuilt {
+) -> crate::types::markers::ScopingBuilt {
     // Mark runes from script declarations
     if let Some(script_info) = &data.script {
         for decl in &script_info.declarations {
@@ -468,10 +468,10 @@ pub(crate) fn build_scoping(
     // Walk template to add each-block/snippet scopes and const bindings.
     // Take side tables temporarily to avoid split borrow on `data`.
     let root = data.scoping.root_scope_id();
-    let await_bindings = std::mem::replace(&mut data.await_bindings, crate::data::AwaitBindingData::new(0));
+    let await_bindings = std::mem::replace(&mut data.await_bindings, crate::types::data::AwaitBindingData::new(0));
     walk_template_scopes(&component.fragment, component, &mut data.scoping, root, stmts, &mut data.const_tags, &mut data.snippets, &mut data.each_blocks, &await_bindings);
     data.await_bindings = await_bindings;
-    crate::markers::ScopingBuilt::new()
+    crate::types::markers::ScopingBuilt::new()
 }
 
 /// Mark runes declared in nested function scopes ($derived, $state, etc.).
@@ -492,7 +492,7 @@ struct NestedRuneVisitor<'s> {
 impl<'a> Visit<'a> for NestedRuneVisitor<'_> {
     fn visit_variable_declarator(&mut self, declarator: &oxc_ast::ast::VariableDeclarator<'a>) {
         let Some(init) = &declarator.init else { return };
-        let Some(rune_kind) = crate::script_info::detect_rune(init) else { return };
+        let Some(rune_kind) = crate::utils::script_info::detect_rune(init) else { return };
         if !matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw) {
             return;
         }
@@ -510,10 +510,10 @@ fn walk_template_scopes<'a>(
     scoping: &mut ComponentScoping,
     current_scope: ScopeId,
     stmts: &rustc_hash::FxHashMap<u32, oxc_ast::ast::Statement<'a>>,
-    const_tags: &mut crate::data::ConstTagData,
-    snippets: &mut crate::data::SnippetData,
+    const_tags: &mut crate::types::data::ConstTagData,
+    snippets: &mut crate::types::data::SnippetData,
     each_blocks: &mut EachBlockData,
-    await_bindings: &crate::data::AwaitBindingData,
+    await_bindings: &crate::types::data::AwaitBindingData,
 ) {
     for node in &fragment.nodes {
         match node {

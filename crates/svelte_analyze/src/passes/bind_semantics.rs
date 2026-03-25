@@ -4,7 +4,7 @@ use svelte_ast::{
     StyleDirective, StyleDirectiveValue, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow,
 };
 
-use crate::data::AnalysisData;
+use crate::types::data::AnalysisData;
 use crate::walker::{TemplateVisitor, VisitContext};
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
@@ -91,7 +91,7 @@ impl<'s> BindSemanticsVisitor<'s> {
 
         // Non-shorthand: use pre-resolved SymbolId from attr_expressions
         let Some(info) = data.attr_expressions.get(dir.id) else { return };
-        if !matches!(info.kind, crate::data::ExpressionKind::Identifier(_)) { return }
+        if !matches!(info.kind, crate::types::data::ExpressionKind::Identifier(_)) { return }
 
         if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {
             if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {

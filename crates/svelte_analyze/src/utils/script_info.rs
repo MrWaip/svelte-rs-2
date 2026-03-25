@@ -11,8 +11,8 @@ use oxc_span::GetSpan as _;
 use rustc_hash::FxHashSet;
 use svelte_span::Span;
 
-use crate::data::BindingNameCollector;
-use crate::script_types::{
+use crate::types::data::BindingNameCollector;
+use crate::types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 

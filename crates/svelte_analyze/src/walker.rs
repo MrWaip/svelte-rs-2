@@ -10,7 +10,7 @@ use svelte_ast::{
 };
 use svelte_span::Span;
 
-use crate::data::{AnalysisData, FragmentKey, ParserResult};
+use crate::types::data::{AnalysisData, FragmentKey, ParserResult};
 
 // ---------------------------------------------------------------------------
 // ParentKind / ParentRef

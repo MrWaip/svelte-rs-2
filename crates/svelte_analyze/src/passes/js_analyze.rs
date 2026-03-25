@@ -3,7 +3,7 @@
 //! These functions produce metadata (`ExpressionInfo`, `ScriptInfo`, etc.)
 //! from OXC AST nodes. They are internal to the analyze crate.
 
-use crate::script_types::{RuneKind, ScriptInfo};
+use crate::types::script::{RuneKind, ScriptInfo};
 use compact_str::CompactString;
 use oxc_ast::ast::{AssignmentTarget, CallExpression, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::walk::{
@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 
 use svelte_ast::{Component, ConcatPart, NodeId};
 
-use crate::data::{
+use crate::types::data::{
     AnalysisData, AwaitBindingInfo, DestructureKind, ExpressionInfo, ExpressionKind, ParserResult,
     Reference, ReferenceFlags,
 };
@@ -37,7 +37,7 @@ pub(crate) fn analyze_script(
     };
 
     let sem = oxc_semantic::SemanticBuilder::new().build(program);
-    crate::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
+    crate::utils::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     // Classify script body in a single pass: effects, class state fields,
     // store mutations, proxy state inits.
@@ -265,7 +265,7 @@ pub(crate) fn extract_all_expressions(
         .and_then(|o| o.custom_element.as_ref())
     {
         if let Some(expr) = parsed.exprs.get(&span.start) {
-            let config = crate::ce_config::extract_ce_config_from_expr(expr, span.start);
+            let config = crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
             data.ce_config = Some(config);
         }
     }
@@ -544,7 +544,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 
     fn visit_property_definition(&mut self, prop: &oxc_ast::ast::PropertyDefinition<'a>) {
         if let Some(value) = &prop.value {
-            if let Some(kind) = crate::script_info::detect_rune(value) {
+            if let Some(kind) = crate::utils::script_info::detect_rune(value) {
                 if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
                     self.has_class_state_fields = true;
                 }
@@ -562,7 +562,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
         for stmt in &body.statements {
             if let oxc_ast::ast::Statement::ExpressionStatement(es) = stmt {
                 if let Expression::AssignmentExpression(assign) = &es.expression {
-                    if let Some(kind) = crate::script_info::detect_rune(&assign.right) {
+                    if let Some(kind) = crate::utils::script_info::detect_rune(&assign.right) {
                         if matches!(kind, RuneKind::State | RuneKind::StateRaw) {
                             self.has_class_state_fields = true;
                         }
@@ -585,7 +585,7 @@ impl ScriptBodyAnalyzer<'_> {
             let Some(init) = &declarator.init else {
                 continue;
             };
-            let rune = crate::script_info::detect_rune(init);
+            let rune = crate::utils::script_info::detect_rune(init);
             if !matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
                 continue;
             }
@@ -795,10 +795,10 @@ pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
 fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
     if let Expression::CallExpression(call) = expr {
         let is_rune = match &call.callee {
-            Expression::Identifier(id) => crate::script_info::is_rune_name(&id.name),
+            Expression::Identifier(id) => crate::utils::script_info::is_rune_name(&id.name),
             Expression::StaticMemberExpression(m) => {
                 if let Expression::Identifier(obj) = &m.object {
-                    crate::script_info::is_rune_name(&obj.name)
+                    crate::utils::script_info::is_rune_name(&obj.name)
                 } else {
                     false
                 }
@@ -941,7 +941,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if self.fn_depth == 0 {
             self.has_call = true;
-            if let Some(rune) = crate::script_info::detect_rune_from_call(call) {
+            if let Some(rune) = crate::utils::script_info::detect_rune_from_call(call) {
                 if matches!(rune, RuneKind::EffectPending | RuneKind::StateEager) {
                     self.has_state_rune = true;
                 }
