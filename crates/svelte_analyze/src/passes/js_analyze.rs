@@ -5,9 +5,14 @@
 
 use crate::types::script::{RuneKind, ScriptInfo};
 use compact_str::CompactString;
-use oxc_ast::ast::{AssignmentTarget, CallExpression, Expression, SimpleAssignmentTarget};
+use oxc_ast::ast::{
+    AssignmentTargetPropertyIdentifier, CallExpression, Expression, MemberExpression,
+    SimpleAssignmentTarget,
+};
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_call_expression, walk_expression, walk_function,
+    walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
+    walk_expression, walk_function, walk_member_expression, walk_simple_assignment_target,
+    walk_update_expression,
 };
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
@@ -360,55 +365,41 @@ impl crate::walker::TemplateVisitor for ExpressionExtractor {
         ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
     }
 
-    fn visit_expression_attribute(
+    fn visit_attribute(
         &mut self,
-        attr: &svelte_ast::ExpressionAttribute,
-        _ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        self.pending_shorthand = Some((attr.id, attr.name.clone()));
-        if attr.name == "class" {
-            self.pending_clsx = true;
-        }
-    }
-
-    fn visit_concatenation_attribute(
-        &mut self,
-        attr: &svelte_ast::ConcatenationAttribute,
+        attr: &svelte_ast::Attribute,
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
-        // Merge all dynamic parts into one ExpressionInfo before per-part visit_js_expression
-        if let Some(parsed) = ctx.parsed() {
-            insert_concat_expr_info(parsed, ctx.data, attr.id, &attr.parts);
-        }
-    }
-
-    fn visit_class_directive(
-        &mut self,
-        dir: &svelte_ast::ClassDirective,
-        _ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        // Only non-shorthand directives have an expression to check
-        if dir.expression_span.is_some() {
-            self.pending_shorthand = Some((dir.id, dir.name.clone()));
-        }
-    }
-
-    fn visit_style_directive(
-        &mut self,
-        dir: &svelte_ast::StyleDirective,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        use svelte_ast::StyleDirectiveValue;
-        match &dir.value {
-            StyleDirectiveValue::Expression(_) => {
-                self.pending_shorthand = Some((dir.id, dir.name.clone()));
-            }
-            StyleDirectiveValue::Concatenation(parts) => {
-                if let Some(parsed) = ctx.parsed() {
-                    insert_concat_expr_info(parsed, ctx.data, dir.id, parts);
+        use svelte_ast::{Attribute, StyleDirectiveValue};
+        match attr {
+            Attribute::ExpressionAttribute(ea) => {
+                self.pending_shorthand = Some((ea.id, ea.name.clone()));
+                if ea.name == "class" {
+                    self.pending_clsx = true;
                 }
             }
-            StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
+            Attribute::ConcatenationAttribute(ca) => {
+                if let Some(parsed) = ctx.parsed() {
+                    insert_concat_expr_info(parsed, ctx.data, ca.id, &ca.parts);
+                }
+            }
+            Attribute::ClassDirective(cd) => {
+                if cd.expression_span.is_some() {
+                    self.pending_shorthand = Some((cd.id, cd.name.clone()));
+                }
+            }
+            Attribute::StyleDirective(sd) => match &sd.value {
+                StyleDirectiveValue::Expression(_) => {
+                    self.pending_shorthand = Some((sd.id, sd.name.clone()));
+                }
+                StyleDirectiveValue::Concatenation(parts) => {
+                    if let Some(parsed) = ctx.parsed() {
+                        insert_concat_expr_info(parsed, ctx.data, sd.id, parts);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
         }
     }
 
@@ -532,7 +523,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 if is_effect_call(&es.expression) {
                     self.has_effects = true;
                 }
-                if has_store_member_mutation(&es.expression) {
+                if analyze_expression(&es.expression).has_store_member_mutation {
                     self.has_store_member_mutations = true;
                 }
             }
@@ -936,6 +927,9 @@ struct ExpressionAnalyzer {
     /// are not updated (matching Svelte semantics: function bodies are opaque
     /// for call/rune detection).
     fn_depth: u32,
+    /// OXC-style reference flag propagation. Set before visiting assignment targets,
+    /// consumed in `visit_identifier_reference`. `None` = default Read.
+    current_flags: Option<ReferenceFlags>,
 }
 
 impl<'a> Visit<'a> for ExpressionAnalyzer {
@@ -976,66 +970,59 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     }
 
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        let flags = self.current_flags.take().unwrap_or(ReferenceFlags::Read);
         self.references.push(Reference {
             name: CompactString::from(ident.name.as_str()),
-            flags: ReferenceFlags::Read,
+            flags,
             symbol_id: None,
         });
     }
 
     fn visit_assignment_expression(&mut self, assign: &oxc_ast::ast::AssignmentExpression<'a>) {
-        // LHS: identifier → Write ref; member chain → Read root + store mutation check
-        match &assign.left {
-            AssignmentTarget::AssignmentTargetIdentifier(ident) => {
-                self.references.push(Reference {
-                    name: CompactString::from(ident.name.as_str()),
-                    flags: ReferenceFlags::Write,
-                    symbol_id: None,
-                });
-            }
-            AssignmentTarget::StaticMemberExpression(m) => {
-                if member_root_is_store(&m.object) {
-                    self.has_store_member_mutation = true;
-                }
-                self.visit_expression(&m.object);
-            }
-            AssignmentTarget::ComputedMemberExpression(m) => {
-                if member_root_is_store(&m.object) {
-                    self.has_store_member_mutation = true;
-                }
-                self.visit_expression(&m.object);
-                self.visit_expression(&m.expression);
-            }
-            _ => {}
+        if !assign.operator.is_assign() {
+            self.current_flags = Some(ReferenceFlags::ReadWrite);
         }
-        // RHS: full walk
-        self.visit_expression(&assign.right);
+        walk_assignment_expression(self, assign);
+    }
+
+    fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
+        if !self.current_flags.as_ref().is_some_and(|f| f.is_write()) {
+            self.current_flags = Some(ReferenceFlags::Write);
+        }
+        walk_simple_assignment_target(self, it);
+    }
+
+    fn visit_assignment_target_property_identifier(
+        &mut self,
+        it: &AssignmentTargetPropertyIdentifier<'a>,
+    ) {
+        self.current_flags = Some(ReferenceFlags::Write);
+        self.visit_identifier_reference(&it.binding);
+        if let Some(init) = &it.init {
+            self.visit_expression(init);
+        }
+    }
+
+    fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+        // Store member mutation: assignment target is a member chain rooted at $store
+        if self.current_flags.as_ref().is_some_and(|f| f.is_write()) {
+            let root_expr = match expr {
+                MemberExpression::StaticMemberExpression(m) => Some(&m.object),
+                MemberExpression::ComputedMemberExpression(m) => Some(&m.object),
+                _ => None,
+            };
+            if root_expr.is_some_and(|e| member_root_is_store(e)) {
+                self.has_store_member_mutation = true;
+            }
+        }
+        // Root object is Read, not Write (same as OXC SemanticBuilder)
+        self.current_flags = None;
+        walk_member_expression(self, expr);
     }
 
     fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
-        match &upd.argument {
-            SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) => {
-                self.references.push(Reference {
-                    name: CompactString::from(ident.name.as_str()),
-                    flags: ReferenceFlags::Write,
-                    symbol_id: None,
-                });
-            }
-            SimpleAssignmentTarget::StaticMemberExpression(m) => {
-                if member_root_is_store(&m.object) {
-                    self.has_store_member_mutation = true;
-                }
-                self.visit_expression(&m.object);
-            }
-            SimpleAssignmentTarget::ComputedMemberExpression(m) => {
-                if member_root_is_store(&m.object) {
-                    self.has_store_member_mutation = true;
-                }
-                self.visit_expression(&m.object);
-                self.visit_expression(&m.expression);
-            }
-            _ => {}
-        }
+        self.current_flags = Some(ReferenceFlags::ReadWrite);
+        walk_update_expression(self, upd);
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
@@ -1077,6 +1064,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
         has_side_effects: false,
         depth: 0,
         fn_depth: 0,
+        current_flags: None,
     };
     analyzer.visit_expression(expr);
     ExpressionInfo {
@@ -1128,48 +1116,6 @@ fn expression_has_call(expr: &Expression<'_>) -> bool {
     };
     check.visit_expression(expr);
     check.found
-}
-
-/// Lightweight check for store member mutations (e.g. `$store.field = x`).
-/// Uses a dedicated visitor instead of the full ExpressionAnalyzer.
-fn has_store_member_mutation(expr: &Expression<'_>) -> bool {
-    struct StoreMutationCheck(bool);
-    impl<'a> Visit<'a> for StoreMutationCheck {
-        fn visit_assignment_expression(&mut self, assign: &oxc_ast::ast::AssignmentExpression<'a>) {
-            match &assign.left {
-                AssignmentTarget::StaticMemberExpression(m) if member_root_is_store(&m.object) => {
-                    self.0 = true
-                }
-                AssignmentTarget::ComputedMemberExpression(m)
-                    if member_root_is_store(&m.object) =>
-                {
-                    self.0 = true
-                }
-                _ => {}
-            }
-            if !self.0 {
-                self.visit_expression(&assign.right);
-            }
-        }
-        fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
-            match &upd.argument {
-                SimpleAssignmentTarget::StaticMemberExpression(m)
-                    if member_root_is_store(&m.object) =>
-                {
-                    self.0 = true
-                }
-                SimpleAssignmentTarget::ComputedMemberExpression(m)
-                    if member_root_is_store(&m.object) =>
-                {
-                    self.0 = true
-                }
-                _ => {}
-            }
-        }
-    }
-    let mut check = StoreMutationCheck(false);
-    check.visit_expression(expr);
-    check.0
 }
 
 /// Check if the root of a member expression chain is a $-prefixed identifier.

@@ -28,9 +28,7 @@ fn resolve_expr_refs(node_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == crate::types::data::ReferenceFlags::Write
-                || r.flags == crate::types::data::ReferenceFlags::ReadWrite
-            {
+            if r.flags.is_write() {
                 data.scoping.register_template_reference(sym_id, OxcReferenceFlags::Write);
             }
         }
@@ -50,9 +48,7 @@ fn resolve_attr_refs(attr_id: NodeId, scope: ScopeId, data: &mut AnalysisData) {
     for r in &mut info.references {
         if let Some(sym_id) = data.scoping.find_binding(scope, &r.name) {
             r.symbol_id = Some(sym_id);
-            if r.flags == crate::types::data::ReferenceFlags::Write
-                || r.flags == crate::types::data::ReferenceFlags::ReadWrite
-            {
+            if r.flags.is_write() {
                 data.scoping.register_template_reference(sym_id, OxcReferenceFlags::Write);
             }
         }

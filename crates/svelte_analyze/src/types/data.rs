@@ -93,6 +93,12 @@ pub enum ReferenceFlags {
     ReadWrite,
 }
 
+impl ReferenceFlags {
+    pub fn is_write(self) -> bool {
+        matches!(self, Self::Write | Self::ReadWrite)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpressionKind {
     Identifier(CompactString),
