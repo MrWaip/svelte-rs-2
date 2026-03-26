@@ -56,7 +56,11 @@ impl<'a> Visit<'a> for BindingNameCollector {
 #[derive(Debug, Clone)]
 pub struct ExpressionInfo {
     pub kind: ExpressionKind,
-    pub references: SmallVec<[Reference; 2]>,
+    /// Resolved SymbolIds referenced in this expression.
+    /// Populated by `resolve_references` from OXC reference_id on AST nodes.
+    pub ref_symbols: SmallVec<[SymbolId; 2]>,
+    /// Expression references a `$X` store subscription.
+    pub has_store_ref: bool,
     pub has_side_effects: bool,
     pub has_call: bool,
     /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
@@ -76,27 +80,6 @@ pub struct ExpressionInfo {
     /// Any reference to a rune or non-root-scope binding.
     /// Only meaningful for `attr_expressions`; for regular `expressions`, equals `is_dynamic`.
     pub has_state: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Reference {
-    pub(crate) name: CompactString,
-    pub(crate) flags: ReferenceFlags,
-    /// Resolved after `resolve_references` pass. `None` for globals/unresolved.
-    pub(crate) symbol_id: Option<SymbolId>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReferenceFlags {
-    Read,
-    Write,
-    ReadWrite,
-}
-
-impl ReferenceFlags {
-    pub fn is_write(self) -> bool {
-        matches!(self, Self::Write | Self::ReadWrite)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -806,9 +789,8 @@ impl AnalysisData {
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.attr_expressions
             .get(attr_id)
-            .and_then(|info| info.references.first())
-            .and_then(|r| r.symbol_id)
-            .is_some_and(|sym| self.import_syms.contains(&sym))
+            .and_then(|info| info.ref_symbols.first())
+            .is_some_and(|&sym| self.import_syms.contains(&sym))
     }
     pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> {
         self.render_tag_arg_has_call.get(id).map(|v| v.as_slice())
@@ -835,7 +817,7 @@ impl AnalysisData {
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expressions
             .get(id)
-            .is_some_and(|e| e.has_call && e.references.iter().any(|r| r.symbol_id.is_some()))
+            .is_some_and(|e| e.has_call && !e.ref_symbols.is_empty())
     }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).

@@ -66,8 +66,40 @@ pub fn analyze_with_options<'a>(
     // Extract expression info + classify shorthand/clsx/snippets/render_tag_args/CE config
     passes::js_analyze::extract_all_expressions(&parsed, component, &mut data);
 
-    // Classify per-expression needs_context (import/prop member access, calls)
-    // then aggregate into module-level flag for $.push/$.pop
+    let scoping_built = scope::build_scoping(component, &mut data, &parsed.stmts);
+    if let Some(ref program) = parsed.program {
+        scope::mark_nested_runes(program, &mut data.scoping);
+    }
+    data.import_syms = data.scoping.collect_import_syms();
+
+    // Mini-SemanticBuilder: scopes + bindings + OXC references for template JS
+    {
+        let root = data.scoping.root_scope_id();
+        let mut v1 = passes::template_semantic::TemplateSemanticVisitor;
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        walker::walk_template(
+            &component.fragment,
+            &mut ctx,
+            &mut [&mut v1],
+        );
+    }
+    data.scoping.build_template_scope_set();
+    mark_const_tag_bindings(&mut data);
+
+    // Collect ref_symbols from OXC references + store detection + bind resolution
+    {
+        let root = data.scoping.root_scope_id();
+        let mut v2 = passes::collect_symbols::make_visitor(component, scoping_built);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        walker::walk_template(
+            &component.fragment,
+            &mut ctx,
+            &mut [&mut v2],
+        );
+    }
+    passes::collect_symbols::resolve_script_stores(&mut data);
+
+    // needs_context requires ref_symbols — must run after collect_symbols
     passes::js_analyze::classify_expression_needs_context(&mut data);
     if !data.needs_context {
         data.needs_context = data
@@ -77,24 +109,6 @@ pub fn analyze_with_options<'a>(
             .any(|info| info.needs_context);
     }
 
-    let scoping_built = scope::build_scoping(component, &mut data, &parsed.stmts);
-    if let Some(ref program) = parsed.program {
-        scope::mark_nested_runes(program, &mut data.scoping);
-    }
-    data.import_syms = data.scoping.collect_import_syms();
-    // Combined walk: arrow scope registration + each-block index usage + reference resolution
-    {
-        let root = data.scoping.root_scope_id();
-        let mut v1 = passes::js_metadata::JsMetadataVisitor;
-        let mut v2 = passes::resolve_references::make_visitor(component, scoping_built);
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v1, &mut v2],
-        );
-    }
-    passes::resolve_references::resolve_script_stores(&mut data);
     passes::post_resolve::run_post_resolve_passes(&mut data);
     resolve_render_tag_prop_sources(&mut data);
     resolve_render_tag_dynamic(&mut data);
@@ -197,6 +211,33 @@ pub fn analyze_module(
     }
 
     (data, diags)
+}
+
+/// Mark const tag bindings with RuneKind::Derived and const_alias after
+/// JsMetadataVisitor has created the actual SymbolIds.
+/// Scope is derived from const_tags.by_fragment + fragment_scopes.
+fn mark_const_tag_bindings(data: &mut AnalysisData) {
+    use types::script::RuneKind;
+    let pairs: Vec<_> = data.const_tags.by_fragment.iter()
+        .filter_map(|(frag_key, tag_ids)| {
+            let scope = data.scoping.fragment_scope(frag_key)?;
+            Some((scope, tag_ids.clone()))
+        })
+        .collect();
+    for (scope, tag_ids) in pairs {
+        for tag_id in tag_ids {
+            let Some(names) = data.const_tags.names(tag_id).cloned() else { continue };
+            let is_destructured = names.len() > 1;
+            for name in &names {
+                if let Some(sym_id) = data.scoping.find_binding(scope, name) {
+                    data.scoping.mark_rune(sym_id, RuneKind::Derived);
+                    if is_destructured {
+                        data.scoping.mark_const_alias(sym_id, tag_id);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Resolve render tag argument identifiers to prop-source getter names.

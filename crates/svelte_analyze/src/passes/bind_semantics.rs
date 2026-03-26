@@ -31,9 +31,9 @@ impl<'s> BindSemanticsVisitor<'s> {
         let Some(info) = data.attr_expressions.get(dir.id) else { return };
 
         let each_vars: Vec<String> = info
-            .references
+            .ref_symbols
             .iter()
-            .filter_map(|r| r.symbol_id)
+            .copied()
             .filter(|&sym| data.scoping.is_each_block_var(sym))
             .map(|sym| data.scoping.symbol_name(sym).to_string())
             .collect();
@@ -54,7 +54,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         let Some(info) = data.attr_expressions.get(dir.id) else { return };
         if !matches!(info.kind, crate::types::data::ExpressionKind::Identifier(_)) { return }
 
-        if let Some(sym_id) = info.references.first().and_then(|r| r.symbol_id) {
+        if let Some(&sym_id) = info.ref_symbols.first() {
             if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
                 data.bind_semantics.mutable_rune_targets.insert(dir.id);
             }
@@ -96,9 +96,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         ctx: &mut VisitContext<'_>,
     ) {
         if let Some(info) = ctx.data.expressions.get(block.id) {
-            if info.references.iter().any(|r| {
-                r.symbol_id.is_some_and(|s| ctx.data.scoping.is_prop_source(s))
-            }) {
+            if info.ref_symbols.iter().any(|&s| ctx.data.scoping.is_prop_source(s)) {
                 ctx.data.bind_semantics.prop_source_nodes.insert(block.id);
             }
         }
@@ -127,9 +125,9 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             // Find ancestor each-blocks whose context vars are referenced in bind:group
             let referenced_syms: Vec<_> = ctx.data.attr_expressions.get(bg.id)
                 .map(|info| {
-                    info.references
+                    info.ref_symbols
                         .iter()
-                        .filter_map(|r| r.symbol_id)
+                        .copied()
                         .filter(|&sym| ctx.data.scoping.is_each_block_var(sym))
                         .collect()
                 })
@@ -138,7 +136,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             if !referenced_syms.is_empty() {
                 let ancestor_eaches: Vec<_> = ctx.ancestors()
                     .filter(|p| p.kind == ParentKind::EachBlock)
-                    .map(|p| (p.id, ctx.data.scoping.node_scope(p.id).unwrap_or(ctx.scope)))
+                    .map(|p| (p.id, ctx.data.scoping.fragment_scope(&crate::types::data::FragmentKey::EachBody(p.id)).unwrap_or(ctx.scope)))
                     .collect();
 
                 let mut parent_eaches = Vec::new();

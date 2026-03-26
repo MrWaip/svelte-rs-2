@@ -1,7 +1,7 @@
 use oxc_ast_visit::Visit;
 use rustc_hash::{FxHashMap, FxHashSet};
 pub use oxc_semantic::{ScopeId, SymbolId};
-use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags, Scoping, SymbolFlags};
+use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceId, ScopeFlags, Scoping, SymbolFlags};
 
 use svelte_ast::{Attribute, Component, Fragment, Node, NodeId};
 use crate::types::script::RuneKind;
@@ -24,10 +24,6 @@ pub struct Rune {
 pub struct ComponentScoping {
     scoping: Scoping,
     runes: FxHashMap<SymbolId, Rune>,
-    /// Our AST NodeId → OXC ScopeId for scope-introducing nodes (each blocks, snippets, await then).
-    node_scopes: FxHashMap<NodeId, ScopeId>,
-    /// AwaitBlock NodeId → ScopeId for the catch fragment (separate from node_scopes which stores then scope).
-    await_catch_scopes: FxHashMap<NodeId, ScopeId>,
     // SymbolId-keyed classification fields (single source of truth for semantic decisions)
     prop_source_syms: FxHashSet<SymbolId>,
     prop_non_source_names: FxHashMap<SymbolId, String>,
@@ -39,13 +35,14 @@ pub struct ComponentScoping {
     each_block_syms: FxHashSet<SymbolId>,
     /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization).
     each_non_reactive_syms: FxHashSet<SymbolId>,
-    /// FragmentKey → ScopeId for scope-introducing fragments (IfBlock branches, KeyBlock, etc.)
+    /// Unified scope index: FragmentKey → ScopeId for all template-introduced scopes
+    /// (EachBody, SnippetBody, IfConsequent, IfAlternate, AwaitThen, AwaitCatch, etc.)
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
+    /// Derived from fragment_scopes — O(1) membership check for template scopes.
+    /// Built by `build_template_scope_set()` after `build_scoping`.
+    template_scope_set: FxHashSet<ScopeId>,
     /// SymbolId → parent ConstTag NodeId for destructured const bindings
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
-    /// All scopes created for JS constructs inside template expressions
-    /// (arrows, functions, for-loops, blocks, catch clauses).
-    expr_local_scopes: FxHashSet<ScopeId>,
     /// Pre-computed set of dynamic rune symbols (populated by `precompute_dynamic_cache`).
     /// When `Some`, `is_dynamic_by_id` uses O(1) lookup instead of recursive walk.
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
@@ -67,8 +64,6 @@ impl ComponentScoping {
         Self {
             scoping,
             runes: FxHashMap::default(),
-            node_scopes: FxHashMap::default(),
-            await_catch_scopes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
             store_syms: FxHashMap::default(),
@@ -78,8 +73,8 @@ impl ComponentScoping {
             each_block_syms: FxHashSet::default(),
             each_non_reactive_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
+            template_scope_set: FxHashSet::default(),
             const_alias_tags: FxHashMap::default(),
-            expr_local_scopes: FxHashSet::default(),
             dynamic_sym_cache: None,
         }
     }
@@ -95,20 +90,18 @@ impl ComponentScoping {
             .add_scope(Some(parent), OxcNodeId::DUMMY, ScopeFlags::empty())
     }
 
+    /// Compatibility shim: looks up EachBody, SnippetBody, or AwaitThen scope.
+    /// TODO: migrate callers in svelte_transform to use fragment_scope() directly.
     pub fn node_scope(&self, node_id: NodeId) -> Option<ScopeId> {
-        self.node_scopes.get(&node_id).copied()
+        self.fragment_scope(&FragmentKey::EachBody(node_id))
+            .or_else(|| self.fragment_scope(&FragmentKey::SnippetBody(node_id)))
+            .or_else(|| self.fragment_scope(&FragmentKey::AwaitThen(node_id)))
     }
 
-    pub fn set_node_scope(&mut self, node_id: NodeId, scope_id: ScopeId) {
-        self.node_scopes.insert(node_id, scope_id);
-    }
-
-    pub fn set_await_catch_scope(&mut self, node_id: NodeId, scope_id: ScopeId) {
-        self.await_catch_scopes.insert(node_id, scope_id);
-    }
-
+    /// Compatibility shim: looks up AwaitCatch scope.
+    /// TODO: migrate callers in svelte_transform to use fragment_scope() directly.
     pub fn await_catch_scope(&self, node_id: NodeId) -> Option<ScopeId> {
-        self.await_catch_scopes.get(&node_id).copied()
+        self.fragment_scope(&FragmentKey::AwaitCatch(node_id))
     }
 
     // -- Symbol management --
@@ -171,13 +164,19 @@ impl ComponentScoping {
         self.runes.contains_key(&id)
     }
 
-    /// Register a template reference into OXC Scoping.
-    /// For Write/ReadWrite refs, `symbol_is_mutated()` will return true.
-    pub fn register_template_reference(&mut self, sym_id: SymbolId, flags: OxcReferenceFlags) {
-        let scope = self.scoping.symbol_scope_id(sym_id);
-        let reference = OxcReference::new(OxcNodeId::DUMMY, scope, flags);
-        let ref_id = self.scoping.create_reference(reference);
+    /// Store a Reference object and return its ReferenceId.
+    pub fn create_reference(&mut self, reference: OxcReference) -> ReferenceId {
+        self.scoping.create_reference(reference)
+    }
+
+    /// Record that a ReferenceId resolves to a SymbolId.
+    pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
         self.scoping.add_resolved_reference(sym_id, ref_id);
+    }
+
+    /// Get a reference by ReferenceId.
+    pub fn get_reference(&self, ref_id: ReferenceId) -> &OxcReference {
+        self.scoping.get_reference(ref_id)
     }
 
     // -- Convenience: SymbolId-based dynamism check --
@@ -374,14 +373,17 @@ impl ComponentScoping {
 
     /// True if this symbol was declared inside a template expression
     /// (arrow/function param, for-loop var, block-scoped var, catch param).
+    /// True if this symbol was declared inside a JS construct in a template expression
+    /// (arrow/function param, for-loop var, block-scoped var, catch param).
+    /// Derived: non-root scope that isn't a template-introduced scope.
     pub fn is_expr_local(&self, sym_id: SymbolId) -> bool {
         let scope = self.symbol_scope_id(sym_id);
-        self.expr_local_scopes.contains(&scope)
+        scope != self.root_scope_id() && !self.template_scope_set.contains(&scope)
     }
 
-    /// Register a scope as expression-local.
-    pub fn register_expr_local_scope(&mut self, scope: ScopeId) {
-        self.expr_local_scopes.insert(scope);
+    /// Build the template_scope_set from fragment_scopes. Must be called after build_scoping.
+    pub(crate) fn build_template_scope_set(&mut self) {
+        self.template_scope_set = self.fragment_scopes.values().copied().collect();
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
@@ -513,7 +515,7 @@ fn walk_template_scopes<'a>(
         match node {
             Node::EachBlock(block) => {
                 let child_scope = scoping.add_child_scope(current_scope);
-                scoping.set_node_scope(block.id, child_scope);
+                scoping.set_fragment_scope(FragmentKey::EachBody(block.id), child_scope);
 
                 let context_text = component.source_text(block.context_span);
                 let is_destructured = context_text.starts_with('{') || context_text.starts_with('[');
@@ -602,7 +604,7 @@ fn walk_template_scopes<'a>(
                 scoping.mark_snippet_name(name_sym);
                 // Create a child scope for snippet params — they shadow outer bindings.
                 let snippet_scope = scoping.add_child_scope(current_scope);
-                scoping.set_node_scope(block.id, snippet_scope);
+                scoping.set_fragment_scope(FragmentKey::SnippetBody(block.id), snippet_scope);
                 // Extract param names from the pre-parsed FunctionDeclaration Statement.
                 let mut param_names: Vec<String> = Vec::new();
                 if let Some(span) = block.params_span {
@@ -649,20 +651,15 @@ fn walk_template_scopes<'a>(
                 walk_template_scopes(&b.fragment, component, scoping, child_scope, stmts, const_tags, snippets, each_blocks, await_bindings);
             }
             Node::ConstTag(tag) => {
-                // Extract binding names from the pre-parsed VariableDeclaration Statement.
+                // Collect binding names only — actual bindings are created by
+                // JsMetadataVisitor when it visits the parsed Statement.
+                // Rune/const_alias marks are applied in mark_const_tag_bindings()
+                // after JsMetadataVisitor has run.
                 if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = stmts.get(&tag.expression_span.start) {
                     if let Some(declarator) = decl.declarations.first() {
                         let mut collector = BindingNameCollector(Vec::new());
                         collector.visit_binding_pattern(&declarator.id);
                         let name_strings: Vec<String> = collector.0.iter().map(|n| n.to_string()).collect();
-                        let is_destructured = name_strings.len() > 1;
-                        for name in &name_strings {
-                            let sym_id = scoping.add_binding(current_scope, name);
-                            scoping.mark_rune(sym_id, RuneKind::Derived);
-                            if is_destructured {
-                                scoping.mark_const_alias(sym_id, tag.id);
-                            }
-                        }
                         const_tags.names.insert(tag.id, name_strings);
                     }
                 }
@@ -679,7 +676,7 @@ fn walk_template_scopes<'a>(
                 if let Some(ref t) = block.then {
                     if let Some(info) = await_bindings.value(block.id) {
                         let then_scope = scoping.add_child_scope(current_scope);
-                        scoping.set_node_scope(block.id, then_scope);
+                        scoping.set_fragment_scope(FragmentKey::AwaitThen(block.id), then_scope);
                         for name in info.names() {
                             scoping.add_binding(then_scope, name);
                         }
@@ -693,7 +690,7 @@ fn walk_template_scopes<'a>(
                 if let Some(ref c) = block.catch {
                     if let Some(info) = await_bindings.error(block.id) {
                         let catch_scope = scoping.add_child_scope(current_scope);
-                        scoping.set_await_catch_scope(block.id, catch_scope);
+                        scoping.set_fragment_scope(FragmentKey::AwaitCatch(block.id), catch_scope);
                         for name in info.names() {
                             scoping.add_binding(catch_scope, name);
                         }

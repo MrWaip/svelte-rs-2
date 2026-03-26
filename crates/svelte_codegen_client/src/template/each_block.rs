@@ -52,7 +52,7 @@ pub(crate) fn gen_each_block<'a>(
     // EACH_ITEM_REACTIVE: collection references external state
     // In runes mode: skip when key_is_item (item identity is the key)
     let expr_has_refs = ctx.expression(block_id)
-        .is_some_and(|info| !info.references.is_empty());
+        .is_some_and(|info| !info.ref_symbols.is_empty());
     if expr_has_refs && !key_is_item {
         flags |= EACH_ITEM_REACTIVE;
     }

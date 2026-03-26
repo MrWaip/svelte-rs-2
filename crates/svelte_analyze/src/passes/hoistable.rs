@@ -52,9 +52,9 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
         };
         if let Some(info) = info {
             if info
-                .references
+                .ref_symbols
                 .iter()
-                .any(|r| r.symbol_id.is_some_and(|s| self.script_syms.contains(&s)))
+                .any(|s| self.script_syms.contains(s))
             {
                 self.tainted.insert(root_id);
             }

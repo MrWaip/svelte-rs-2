@@ -22,7 +22,6 @@ use svelte_ast::{Component, ConcatPart, NodeId};
 
 use crate::types::data::{
     AnalysisData, AwaitBindingInfo, DestructureKind, ExpressionInfo, ExpressionKind, ParserResult,
-    Reference, ReferenceFlags,
 };
 
 // ---------------------------------------------------------------------------
@@ -426,18 +425,19 @@ fn insert_concat_expr_info(
     attr_id: NodeId,
     parts: &[ConcatPart],
 ) {
-    let mut all_refs = SmallVec::new();
+    let mut has_store_ref = false;
     for part in parts {
         if let ConcatPart::Dynamic(span) = part {
             if let Some(expr) = parsed.exprs.get(&span.start) {
                 let info = analyze_expression(expr);
-                all_refs.extend(info.references);
+                has_store_ref |= info.has_store_ref;
             }
         }
     }
     let merged = ExpressionInfo {
         kind: ExpressionKind::Other,
-        references: all_refs,
+        ref_symbols: SmallVec::new(),
+        has_store_ref,
         has_side_effects: false,
         has_call: false,
         has_state_rune: false,
@@ -784,12 +784,10 @@ pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
     {
         info.needs_context = match &info.kind {
             ExpressionKind::MemberExpression | ExpressionKind::CallExpression { .. } => {
-                info.references.iter().any(|r| {
-                    data.scoping.find_binding(root, &r.name).is_some_and(|sym| {
-                        data.scoping.is_import(sym)
-                            || data.scoping.is_prop_source(sym)
-                            || data.scoping.prop_non_source_name(sym).is_some()
-                    })
+                info.ref_symbols.iter().any(|&sym| {
+                    data.scoping.is_import(sym)
+                        || data.scoping.is_prop_source(sym)
+                        || data.scoping.prop_non_source_name(sym).is_some()
                 })
             }
             _ => false,
@@ -827,27 +825,23 @@ fn is_dynamic_template(
 
     // MemberExpressions: any resolved local binding → dynamic.
     if matches!(info.kind, ExpressionKind::MemberExpression) {
-        return info.references.iter().any(|r| {
-            scoping.is_store_ref(&r.name) || r.symbol_id.is_some()
-        });
+        return info.has_store_ref || !info.ref_symbols.is_empty();
     }
 
-    info.references.iter().any(|r| {
-        if scoping.is_store_ref(&r.name) {
+    if info.has_store_ref {
+        return true;
+    }
+    info.ref_symbols.iter().any(|&sym_id| {
+        if scoping.is_dynamic_by_id(sym_id) {
             return true;
         }
-        if let Some(sym_id) = r.symbol_id {
-            if scoping.is_dynamic_by_id(sym_id) {
-                return true;
-            }
-            // When class state fields exist, member access on local bindings
-            // is potentially reactive (getters call $.get internally).
-            if has_class_state_fields
-                && scoping.symbol_scope_id(sym_id) == root
-                && !scoping.is_rune(sym_id)
-            {
-                return true;
-            }
+        // When class state fields exist, member access on local bindings
+        // is potentially reactive (getters call $.get internally).
+        if has_class_state_fields
+            && scoping.symbol_scope_id(sym_id) == root
+            && !scoping.is_rune(sym_id)
+        {
+            return true;
         }
         false
     })
@@ -858,8 +852,7 @@ fn is_dynamic_element_attr(
     info: &ExpressionInfo,
     scoping: &crate::scope::ComponentScoping,
 ) -> bool {
-    info.references.iter().any(|r| {
-        let Some(sym_id) = r.symbol_id else { return false };
+    info.ref_symbols.iter().any(|&sym_id| {
         scoping.prop_non_source_name(sym_id).is_some() || scoping.is_dynamic_by_id(sym_id)
     })
 }
@@ -871,12 +864,8 @@ fn has_state_component_attr(
     scoping: &crate::scope::ComponentScoping,
     root: oxc_semantic::ScopeId,
 ) -> bool {
-    info.references.iter().any(|r| {
-        if let Some(sym_id) = r.symbol_id {
-            scoping.symbol_scope_id(sym_id) != root || scoping.is_rune(sym_id)
-        } else {
-            false
-        }
+    info.ref_symbols.iter().any(|&sym_id| {
+        scoping.symbol_scope_id(sym_id) != root || scoping.is_rune(sym_id)
     })
 }
 
@@ -912,14 +901,15 @@ fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 // ---------------------------------------------------------------------------
 
 /// Single-pass expression analyzer using OXC Visit infrastructure.
-/// Collects all expression metadata in one walk: kind classification,
-/// references, has_call, has_state_rune, has_store_member_mutation, has_side_effects.
+/// Collects expression metadata in one walk: kind classification,
+/// has_call, has_state_rune, has_store_member_mutation, has_store_ref, has_side_effects.
+/// Does NOT collect references — JsMetadataVisitor handles bindings + OXC references.
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
-    references: SmallVec<[Reference; 2]>,
     has_call: bool,
     has_state_rune: bool,
     has_store_member_mutation: bool,
+    has_store_ref: bool,
     has_side_effects: bool,
     /// Expression nesting depth. 0 = root expression (used for classification).
     depth: u32,
@@ -927,9 +917,8 @@ struct ExpressionAnalyzer {
     /// are not updated (matching Svelte semantics: function bodies are opaque
     /// for call/rune detection).
     fn_depth: u32,
-    /// OXC-style reference flag propagation. Set before visiting assignment targets,
-    /// consumed in `visit_identifier_reference`. `None` = default Read.
-    current_flags: Option<ReferenceFlags>,
+    /// Tracks write context for has_store_member_mutation detection.
+    in_write_position: bool,
 }
 
 impl<'a> Visit<'a> for ExpressionAnalyzer {
@@ -970,25 +959,19 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     }
 
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        let flags = self.current_flags.take().unwrap_or(ReferenceFlags::Read);
-        self.references.push(Reference {
-            name: CompactString::from(ident.name.as_str()),
-            flags,
-            symbol_id: None,
-        });
+        let name = ident.name.as_str();
+        if name.starts_with('$') && name.len() > 1 {
+            self.has_store_ref = true;
+        }
+        self.in_write_position = false;
     }
 
     fn visit_assignment_expression(&mut self, assign: &oxc_ast::ast::AssignmentExpression<'a>) {
-        if !assign.operator.is_assign() {
-            self.current_flags = Some(ReferenceFlags::ReadWrite);
-        }
         walk_assignment_expression(self, assign);
     }
 
     fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
-        if !self.current_flags.as_ref().is_some_and(|f| f.is_write()) {
-            self.current_flags = Some(ReferenceFlags::Write);
-        }
+        self.in_write_position = true;
         walk_simple_assignment_target(self, it);
     }
 
@@ -996,7 +979,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
         &mut self,
         it: &AssignmentTargetPropertyIdentifier<'a>,
     ) {
-        self.current_flags = Some(ReferenceFlags::Write);
+        self.in_write_position = true;
         self.visit_identifier_reference(&it.binding);
         if let Some(init) = &it.init {
             self.visit_expression(init);
@@ -1004,8 +987,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
     }
 
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-        // Store member mutation: assignment target is a member chain rooted at $store
-        if self.current_flags.as_ref().is_some_and(|f| f.is_write()) {
+        if self.in_write_position {
             let root_expr = match expr {
                 MemberExpression::StaticMemberExpression(m) => Some(&m.object),
                 MemberExpression::ComputedMemberExpression(m) => Some(&m.object),
@@ -1015,13 +997,12 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
                 self.has_store_member_mutation = true;
             }
         }
-        // Root object is Read, not Write (same as OXC SemanticBuilder)
-        self.current_flags = None;
+        self.in_write_position = false;
         walk_member_expression(self, expr);
     }
 
     fn visit_update_expression(&mut self, upd: &oxc_ast::ast::UpdateExpression<'a>) {
-        self.current_flags = Some(ReferenceFlags::ReadWrite);
+        self.in_write_position = true;
         walk_update_expression(self, upd);
     }
 
@@ -1057,19 +1038,20 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
 pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
         kind: ExpressionKind::Other,
-        references: SmallVec::new(),
         has_call: false,
         has_state_rune: false,
         has_store_member_mutation: false,
+        has_store_ref: false,
         has_side_effects: false,
         depth: 0,
         fn_depth: 0,
-        current_flags: None,
+        in_write_position: false,
     };
     analyzer.visit_expression(expr);
     ExpressionInfo {
         kind: analyzer.kind,
-        references: analyzer.references,
+        ref_symbols: SmallVec::new(), // populated later by resolve_references
+        has_store_ref: analyzer.has_store_ref,
         has_side_effects: analyzer.has_side_effects,
         has_call: analyzer.has_call,
         has_state_rune: analyzer.has_state_rune,

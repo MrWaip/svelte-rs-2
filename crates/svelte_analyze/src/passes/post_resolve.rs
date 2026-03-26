@@ -116,20 +116,13 @@ fn detect_each_index_usage(data: &mut AnalysisData) {
             .expressions
             .values()
             .chain(data.attr_expressions.values())
-            .any(|info| {
-                info.references
-                    .iter()
-                    .any(|r| r.symbol_id == Some(idx_sym))
-            });
+            .any(|info| info.ref_symbols.contains(&idx_sym));
         if body_uses {
             data.each_blocks.body_uses_index.insert(block_id);
         }
 
         if let Some(key_info) = data.each_blocks.key_infos.get(block_id) {
-            if key_info
-                .references
-                .iter()
-                .any(|r| r.symbol_id == Some(idx_sym))
+            if key_info.ref_symbols.contains(&idx_sym)
             {
                 data.each_blocks.key_uses_index.insert(block_id);
             }

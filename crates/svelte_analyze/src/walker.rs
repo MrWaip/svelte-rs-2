@@ -399,7 +399,7 @@ pub(crate) fn walk_template(
                 ctx.pop();
             }
             Node::EachBlock(block) => {
-                let body_scope = ctx.data.scoping.node_scope(block.id).unwrap_or(ctx.scope);
+                let body_scope = ctx.data.scoping.fragment_scope(&FragmentKey::EachBody(block.id)).unwrap_or(ctx.scope);
                 for v in visitors.iter_mut() { v.visit_each_block(block, ctx); }
                 dispatch_expr(visitors, block.id, block.expression_span, ctx);
                 ctx.push(ParentRef { id: block.id, kind: ParentKind::EachBlock });
@@ -416,7 +416,7 @@ pub(crate) fn walk_template(
                 for v in visitors.iter_mut() { v.leave_each_block(block, ctx); }
             }
             Node::SnippetBlock(block) => {
-                let body_scope = ctx.data.scoping.node_scope(block.id).unwrap_or(ctx.scope);
+                let body_scope = ctx.data.scoping.fragment_scope(&FragmentKey::SnippetBody(block.id)).unwrap_or(ctx.scope);
                 for v in visitors.iter_mut() { v.visit_snippet_block(block, ctx); }
                 ctx.push(ParentRef { id: block.id, kind: ParentKind::SnippetBlock });
                 let saved = ctx.scope;
@@ -523,12 +523,12 @@ pub(crate) fn walk_template(
                     walk_template(p, ctx, visitors);
                 }
                 if let Some(ref t) = block.then {
-                    let then_scope = ctx.data.scoping.node_scope(block.id).unwrap_or(saved);
+                    let then_scope = ctx.data.scoping.fragment_scope(&FragmentKey::AwaitThen(block.id)).unwrap_or(saved);
                     ctx.scope = then_scope;
                     walk_template(t, ctx, visitors);
                 }
                 if let Some(ref c) = block.catch {
-                    let catch_scope = ctx.data.scoping.await_catch_scope(block.id).unwrap_or(saved);
+                    let catch_scope = ctx.data.scoping.fragment_scope(&FragmentKey::AwaitCatch(block.id)).unwrap_or(saved);
                     ctx.scope = catch_scope;
                     walk_template(c, ctx, visitors);
                 }

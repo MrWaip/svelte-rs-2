@@ -452,7 +452,7 @@ fn each_block_index_is_dynamic() {
 // ---------------------------------------------------------------------------
 
 mod expression_info_tests {
-    use crate::types::data::{ExpressionInfo, ExpressionKind, ReferenceFlags};
+    use crate::types::data::{ExpressionInfo, ExpressionKind};
     use crate::passes::js_analyze::analyze_expression;
     use compact_str::CompactString;
     use oxc_allocator::Allocator;
@@ -479,22 +479,22 @@ mod expression_info_tests {
     fn analyze_simple_identifier() {
         let info = parse_and_analyze("count", 0).unwrap();
         assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
+        // ref_symbols populated later by resolve_references (not during analyze_expression)
+        assert!(!info.has_store_ref);
     }
 
     #[test]
     fn analyze_binary_expression() {
         let info = parse_and_analyze("count + 1", 0).unwrap();
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
+        assert!(!info.has_store_ref);
+        assert!(!info.has_call);
     }
 
     #[test]
     fn analyze_call_expression() {
         let info = parse_and_analyze("foo(a, b)", 0).unwrap();
         assert!(matches!(info.kind, ExpressionKind::CallExpression { .. }));
-        assert_eq!(info.references.len(), 3);
+        assert!(info.has_call);
         assert!(info.has_side_effects);
     }
 
@@ -502,9 +502,12 @@ mod expression_info_tests {
     fn analyze_assignment() {
         let info = parse_and_analyze("count = 10", 0).unwrap();
         assert_eq!(info.kind, ExpressionKind::Assignment);
-        assert!(info
-            .references
-            .iter()
-            .any(|r| r.name == "count" && matches!(r.flags, ReferenceFlags::Write)));
+        assert!(info.has_side_effects);
+    }
+
+    #[test]
+    fn analyze_store_ref() {
+        let info = parse_and_analyze("$count + 1", 0).unwrap();
+        assert!(info.has_store_ref);
     }
 }
