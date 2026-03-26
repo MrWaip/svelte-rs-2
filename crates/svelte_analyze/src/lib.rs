@@ -102,8 +102,23 @@ pub fn analyze_with_options<'a>(
     passes::js_analyze::classify_expression_dynamicity(&mut data);
     passes::lower::lower(component, &mut data);
 
-    // Single composite walk: reactivity + element flags + hoistable snippets +
-    // bind semantics + content classification + needs_var (bottom-up via leave_element)
+    // Walk 1: Reactivity — produces dynamic_nodes, dynamic_attrs, needs_ref.
+    // Must complete before Walk 2 because ElementFlagsVisitor and
+    // ContentAndVarVisitor read these outputs.
+    {
+        let root = data.scoping.root_scope_id();
+        let mut v1 = passes::reactivity::ReactivityVisitor::new();
+        let mut ctx = walker::VisitContext::new(root, &mut data);
+        walker::walk_template(
+            &component.fragment,
+            &mut ctx,
+            &mut [&mut v1],
+        );
+    }
+
+    // Walk 2: Element flags + hoistable snippets + bind semantics +
+    // content classification + needs_var (bottom-up via leave_element).
+    // Depends on dynamic_attrs/dynamic_nodes/needs_ref from Walk 1.
     {
         let root = data.scoping.root_scope_id();
         let script_syms: rustc_hash::FxHashSet<crate::scope::SymbolId> = data
@@ -128,7 +143,6 @@ pub fn analyze_with_options<'a>(
                 }
             })
             .collect();
-        let mut v1 = passes::reactivity::ReactivityVisitor::new();
         let mut v2 = passes::element_flags::ElementFlagsVisitor::new(&component.source);
         let mut v3 = passes::hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
         let mut v4 = passes::bind_semantics::BindSemanticsVisitor::new(&component.source);
@@ -139,7 +153,7 @@ pub fn analyze_with_options<'a>(
         walker::walk_template(
             &component.fragment,
             &mut ctx,
-            &mut [&mut v1, &mut v2, &mut v3, &mut v4, &mut v5],
+            &mut [&mut v2, &mut v3, &mut v4, &mut v5],
         );
         v3.finish(&mut data);
     }
