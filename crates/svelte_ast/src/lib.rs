@@ -805,6 +805,11 @@ impl AstStore {
         Self { nodes: Vec::new() }
     }
 
+    /// Create a store pre-allocated for the expected number of nodes.
+    pub fn with_capacity(cap: usize) -> Self {
+        Self { nodes: Vec::with_capacity(cap) }
+    }
+
     /// Push a template node into the store. Sets the node's id to match its index.
     pub fn push(&mut self, mut node: Node) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
@@ -829,6 +834,14 @@ impl AstStore {
     /// Get a mutable node by id. Panics if the slot is empty.
     pub fn get_mut(&mut self, id: NodeId) -> &mut Node {
         self.nodes[id.0 as usize].as_mut()
+            .unwrap_or_else(|| panic!("no node at {:?}", id))
+    }
+
+    /// Take a node out of the store, leaving the slot empty.
+    /// Panics if the slot is already empty.
+    pub fn take(&mut self, id: NodeId) -> Node {
+        self.nodes[id.0 as usize]
+            .take()
             .unwrap_or_else(|| panic!("no node at {:?}", id))
     }
 
