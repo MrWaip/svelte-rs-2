@@ -1,6 +1,6 @@
 # Phase Boundary Audit Report
 
-Generated: 2026-03-27
+Generated: 2026-03-27 (validated for false positives)
 
 ---
 
@@ -11,15 +11,16 @@ Generated: 2026-03-27
 - **Complexity**: M
 - **Where**:
   - `crates/svelte_codegen_client/src/builder.rs:905-915` (definition)
-  - `crates/svelte_codegen_client/src/template/component.rs:274` (bind setter)
-  - `crates/svelte_codegen_client/src/template/component.rs:284` (bind getter)
-  - `crates/svelte_codegen_client/src/script/mod.rs:68` (prop defaults)
+  - `crates/svelte_codegen_client/src/template/component.rs:284` (bind getter — re-parses source text from `source_text(span)`)
+  - `crates/svelte_codegen_client/src/script/mod.rs:68` (prop defaults — re-parses `default_text` extracted from source in analyze)
   - `crates/svelte_codegen_client/src/script/mod.rs:156` (prop defaults, fallback path)
   - `crates/svelte_codegen_client/src/lib.rs:149` (CE prop defaults)
-- **Occurrence count**: 5 call sites
-- **What is aggregated**: Codegen creates a new `oxc_parser::Parser` to parse JS expressions from text strings at runtime
-- **Proposed type**: Pre-parse prop defaults and bind expressions during `svelte_parser::parse_with_js`, store in `ParsedExprs` keyed by span. For bind setters/getters, build AST directly via Builder methods instead of format+parse
+- **Occurrence count**: 4 call sites
+- **What is aggregated**: Codegen creates a new `oxc_parser::Parser` to parse JS expressions from text strings at runtime. Analyze already has the parsed AST (e.g. `assign.right` in `script_info.rs:449`) but discards it and stores only text
+- **Proposed type**: Pre-parse prop defaults and bind expressions during `svelte_parser::parse_with_js`, store in `ParsedExprs` keyed by span
 - **Target layer**: parser
+
+> **Validated**: bind setter at `component.rs:274` removed — it parses GENERATED text (`format!("{var_name} = $$value")`), not source. That is legitimate AST construction.
 
 ### #2 — Script re-parse fallback
 - **Class**: 1
@@ -42,7 +43,7 @@ Generated: 2026-03-27
   - `crates/svelte_codegen_client/src/template/events.rs:187` (call site)
   - `crates/svelte_codegen_client/src/template/events.rs:391` (call site)
 - **Occurrence count**: 2 call sites in codegen
-- **What is aggregated**: `OnDirectiveModifiers::from_modifiers()` iterates `Vec<String>` and matches `m.as_str()` against known modifier names
+- **What is aggregated**: `OnDirectiveModifiers::from_modifiers()` iterates `Vec<String>` and matches `m.as_str()` against known modifier names to populate boolean fields
 - **Proposed type**: Parse modifiers into `OnDirectiveModifiers` struct during parser phase, store as field on `OnDirectiveLegacy`
 - **Target layer**: parser
 
@@ -53,28 +54,16 @@ Generated: 2026-03-27
   - `crates/svelte_analyze/src/passes/element_flags.rs:112`
   - `crates/svelte_codegen_client/src/template/attributes.rs:487`
 - **Occurrence count**: 2
-- **What is aggregated**: Shorthand attribute name extracted from source text span and trimmed
+- **What is aggregated**: Shorthand attribute name extracted from source text span and trimmed. The `Shorthand` struct only has `id` and `expression_span`, no `name` field
 - **Proposed type**: Add `name: &'a str` field to `Shorthand` attribute struct, populate during parsing
 - **Target layer**: parser
 
-### #5 — `strip_capture_event()` string slicing
-- **Class**: 2
-- **Complexity**: M
-- **Where**:
-  - `crates/svelte_analyze/src/utils/events.rs:39-44` (utility)
-  - `crates/svelte_analyze/src/passes/element_flags.rs:58` (call site)
-  - `crates/svelte_codegen_client/src/template/attributes.rs:92` (call site)
-- **Occurrence count**: 2 call sites (analyze + codegen)
-- **What is aggregated**: `&name[..name.len()-7]` to strip "capture" suffix, `name.ends_with("capture")` to detect
-- **Proposed type**: Add `capture: bool` + `base_event_name: &str` fields to event attribute AST, populate during parsing
-- **Target layer**: parser
-
-### #6 — Each block collection name from source text
+### #5 — Each block collection name from source text
 - **Class**: 2
 - **Complexity**: S
 - **Where**: `crates/svelte_codegen_client/src/template/each_block.rs:98`
 - **Occurrence count**: 1
-- **What is aggregated**: `source_text(expr_span).trim()` to get getter name for prop source
+- **What is aggregated**: `source_text(expr_span).trim()` to get getter name for prop source. The parsed expression IS available via `get_node_expr()` (used in the `!is_prop_source` branch at line 101) but ignored here
 - **Proposed type**: Use pre-parsed/transformed expression from `ParsedExprs` instead of re-extracting from source
 - **Target layer**: codegen refactor
 
@@ -82,27 +71,16 @@ Generated: 2026-03-27
 
 ## Class 3: AST Re-traversal in Codegen
 
-### #7 — Bubble events detection
+### #6 — Bubble events detection
 - **Class**: 3
 - **Complexity**: S
 - **Where**: `crates/svelte_codegen_client/src/lib.rs:202-211`
 - **Occurrence count**: 1
-- **What is aggregated**: `.iter().any()` over top-level fragment nodes checking for `OnDirectiveLegacy` with no expression on `<svelte:window>` / `<svelte:document>`
+- **What is aggregated**: `.iter().any()` over top-level fragment nodes checking for `OnDirectiveLegacy` with no expression on `<svelte:window>` / `<svelte:document>`. Used to determine function parameters
 - **Proposed type**: `fn has_bubble_events(&self) -> bool` accessor on `AnalysisData`
 - **Target layer**: analyze
 
-### #8 — Bind:this double lookup
-- **Class**: 3
-- **Complexity**: S
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/component.rs:206-208`
-  - `crates/svelte_codegen_client/src/template/component.rs:217-219`
-- **Occurrence count**: 2 lookups of same attribute in same function
-- **What is aggregated**: `.iter().find_map()` over component attributes to find `BindDirective` by `NodeId`, done twice
-- **Proposed type**: Indexed lookup table for bind directives in `ElementFlags`, or single lookup with local caching
-- **Target layer**: analyze
-
-### #9 — Sole static class detection on `<svelte:element>`
+### #7 — Sole static class detection on `<svelte:element>`
 - **Class**: 3
 - **Complexity**: S
 - **Where**: `crates/svelte_codegen_client/src/template/svelte_element.rs:57-69`
@@ -111,7 +89,7 @@ Generated: 2026-03-27
 - **Proposed type**: `fn sole_static_class(&self, id: NodeId) -> Option<&str>` on `ElementFlags`
 - **Target layer**: analyze
 
-### #10 — SVG namespace detection on `<svelte:element>`
+### #8 — SVG namespace detection on `<svelte:element>`
 - **Class**: 3
 - **Complexity**: S
 - **Where**: `crates/svelte_codegen_client/src/template/svelte_element.rs:40-47`
@@ -120,18 +98,7 @@ Generated: 2026-03-27
 - **Proposed type**: `fn is_svg_ns(&self, id: NodeId) -> bool` on `ElementFlags`
 - **Target layer**: analyze
 
-### #11 — Props declaration detection in codegen
-- **Class**: 3
-- **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/script/props.rs:12-24` (`is_props_declaration`)
-  - `crates/svelte_codegen_client/src/script/props.rs:27-40` (`is_props_id_declaration`)
-- **Occurrence count**: 2 functions
-- **What is aggregated**: `.iter().any()` over `VariableDeclaration` checking for `$props()` / `$props.id()` patterns — already detected during `extract_script_info` in analyze
-- **Proposed type**: Use pre-computed data from `ComponentScoping` instead of re-detecting
-- **Target layer**: analyze
-
-### #12 — Transition "global" modifier check
+### #9 — Transition "global" modifier check
 - **Class**: 3
 - **Complexity**: S
 - **Where**: `crates/svelte_codegen_client/src/template/events.rs:103`
@@ -140,49 +107,22 @@ Generated: 2026-03-27
 - **Proposed type**: `has_global_modifier: bool` on `TransitionDirective` AST or side table
 - **Target layer**: parser
 
-### #13 — Custom element props deduplication
-- **Class**: 3
-- **Complexity**: S
-- **Where**: `crates/svelte_codegen_client/src/custom_element.rs:105-127`
-- **Occurrence count**: 1
-- **What is aggregated**: `Vec<&str>` of CE config prop names iterated with `.iter().any()` in a loop
-- **Proposed type**: Pre-compute CE prop name set as `FxHashSet` in analyze, or at minimum use `FxHashSet` locally
-- **Target layer**: analyze
-
 ---
 
-## Class 4: Derived Flags Without a Name
+## Removed (False Positives)
 
-### #14 — Event modifier capture/passive argument routing
-- **Class**: 4
-- **Complexity**: M
-- **Where**:
-  - `crates/svelte_codegen_client/src/template/events.rs:202-207`
-  - `crates/svelte_codegen_client/src/template/events.rs:405-410`
-  - `crates/svelte_codegen_client/src/template/events.rs:442-447`
-  - `crates/svelte_codegen_client/src/template/attributes.rs:121-126`
-- **Occurrence count**: 4 across 2 files
-- **What is aggregated**: `capture || passive.is_some()` to decide whether to push args, then individual flag values for arg content
-- **Proposed type**: `enum EventModifierFlags { None, CaptureOnly(bool), CaptureAndPassive(bool, bool) }` in analyze
-- **Target layer**: analyze
+The following findings from the initial scan were invalidated during validation:
 
-### #15 — Title element nullish coalesce decision
-- **Class**: 4
-- **Complexity**: S
-- **Where**: `crates/svelte_codegen_client/src/template/title_element.rs:56-62`
-- **Occurrence count**: 1
-- **What is aggregated**: `has_state && items.first().is_some_and(|item| matches!(item, TextConcat { parts, .. } if parts.len() == 1 && matches!(parts[0], Expr(_))))`
-- **Proposed type**: `needs_nullish_coalesce: bool` on `TitleElementData` or similar
-- **Target layer**: analyze
-
-### #16 — Dynamic/import attribute routing
-- **Class**: 4
-- **Complexity**: S
-- **Where**: `crates/svelte_codegen_client/src/template/svelte_boundary.rs:104-108`
-- **Occurrence count**: 1
-- **What is aggregated**: `*is_dynamic || is_import` to decide `ObjProp::Getter` vs `ObjProp::KeyValue`
-- **Proposed type**: `enum ComponentPropValueMode { Static, Dynamic, Import }` in analyze
-- **Target layer**: analyze
+| Original # | Finding | Reason for removal |
+|---|---|---|
+| #1 (partial) | Bind setter `component.rs:274` | Parses **generated** text (`"x = $$value"`), not source — legitimate AST construction |
+| #5 | `strip_capture_event()` string slicing | Semantic classification already done in analyze → `EventHandlerMode`; codegen extracts base name for output argument |
+| #8 | Bind:this double lookup | Two-phase pattern: 1st lookup consumes expression from side table, 2nd gets metadata — not duplication |
+| #11 | Props declaration detection (`script/props.rs`) | Functions belong to script **transform** phase, not codegen — re-examining parsed OXC AST to transform declarations is appropriate |
+| #13 | CE props deduplication | Output filtering/routing during generation, not data collection for classification |
+| #14 | Event modifier capture/passive routing | Output **formatting** with pre-computed flags; patterns differ across locations (different variable sources) |
+| #15 | Title element nullish coalesce | One-off check in single location on pre-computed data — no repetition |
+| #16 | Dynamic/import attribute routing | Single occurrence (doesn't meet 2+ threshold); flags pre-computed by analyze |
 
 ---
 
@@ -206,16 +146,19 @@ Generated: 2026-03-27
 | Class | Count | S | M | L |
 |---|---|---|---|---|
 | 1 — Full Re-parse | 2 | 1 | 1 | 0 |
-| 2 — String Re-parsing | 4 | 2 | 2 | 0 |
-| 3 — AST Re-traversal | 7 | 6 | 1 | 0 |
-| 4 — Derived Flags | 3 | 2 | 1 | 0 |
-| **Total** | **16** | **11** | **5** | **0** |
+| 2 — String Re-parsing | 3 | 2 | 1 | 0 |
+| 3 — AST Re-traversal | 4 | 4 | 0 | 0 |
+| 4 — Derived Flags | 0 | 0 | 0 | 0 |
+| **Total** | **9** | **7** | **2** | **0** |
 
 ### Recommended migration order
 
-1. **#14** (M) — Event modifier flags: 4 occurrences, highest repetition
-2. **#1** (M) — `parse_expression()`: 5 call sites, most severe class
-3. **#11** (M) — Props declaration re-detection: duplicates existing analyze work
-4. **#3** (M) — Event modifier string parsing: related to #14
-5. **#5** (M) — Capture event string slicing: related to #3
-6. Remaining S-complexity items in any order
+1. **#1** (M) — `parse_expression()`: 4 call sites, most severe class — pre-parse prop defaults in parser
+2. **#3** (M) — Event modifier string parsing: 2 call sites — parse modifiers to struct in parser
+3. **#6** (S) — Bubble events: add `has_bubble_events` bool to AnalysisData
+4. **#7** (S) — Sole static class: add accessor to ElementFlags
+5. **#8** (S) — SVG namespace: add accessor to ElementFlags
+6. **#9** (S) — Transition global modifier: add bool to AST or side table
+7. **#2** (S) — Script re-parse fallback: require pre-parsed program
+8. **#4** (S) — Shorthand name: add `name` field to AST
+9. **#5** (S) — Each block collection: use `ParsedExprs` instead of source text
