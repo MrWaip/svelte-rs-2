@@ -105,6 +105,8 @@ Produce a concrete plan:
 
 If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
 
+**Quality verification in plan:** for each proposed change, verify it satisfies the **Quality checklist** in CLAUDE.md. If a change would violate any of the 5 points, redesign it before presenting the plan.
+
 **Present the plan and wait for approval before proceeding.**
 
 ---
@@ -149,13 +151,15 @@ Rules:
 If new syntax is needed (identified in Step 3):
 1. Add types to `crates/svelte_ast/src/lib.rs`
 2. Add parsing to `crates/svelte_parser/src/lib.rs`
-3. Add parser tests following `/test-pattern`
+3. Add parser unit tests following the **Unit test pattern** in CLAUDE.md
 
 ### Step 7: Analysis & Codegen
 
 If new metadata is needed (identified in Step 3):
 1. Add or extend a pass in `crates/svelte_analyze/src/`
-2. Add analyze tests following `/test-pattern`
+2. Add analyze unit tests following the **Unit test pattern** in CLAUDE.md
+
+**Unit tests are mandatory for every new analysis pass or parser change.** Use existing `assert_*` helpers or add new ones — no manual field access in test bodies.
 
 Implement codegen in the corresponding `svelte_codegen_client` module (see navigation table in CLAUDE.md).
 
@@ -165,6 +169,8 @@ Key differences from Svelte:
 - Store `Span`, re-parse in codegen via `svelte_types` — not stored expressions
 
 ### Step 8: Verify & Finalize
+
+**Quality gate:** verify all new and modified code against the **Quality checklist** in CLAUDE.md. All 5 points must hold before proceeding to test verification.
 
 **Verify each test case individually:**
 ```

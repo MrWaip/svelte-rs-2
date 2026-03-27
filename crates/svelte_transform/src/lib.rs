@@ -238,7 +238,7 @@ fn transform_attrs<'a>(
         };
         if let Some(parts) = concat_parts {
             for part in parts {
-                if let ConcatPart::Dynamic(span) = part {
+                if let ConcatPart::Dynamic { span, .. } = part {
                     transform_expr_at(ctx, span.start, parsed, scope);
                 }
             }
@@ -303,6 +303,26 @@ struct ExprTransformer<'a, 'b, 'c> {
 
 impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        // Rest prop member access: props.label → $$props.label
+        // Resolved via reference_id (set by TemplateSemanticVisitor during analysis)
+        if let Expression::StaticMemberExpression(member) = it {
+            if let Expression::Identifier(id) = &member.object {
+                let sym_id = id.reference_id.get()
+                    .and_then(|ref_id| self.ctx.analysis.scoping.get_reference(ref_id).symbol_id());
+                if let Some(sym_id) = sym_id {
+                    if self.ctx.analysis.scoping.is_rest_prop(sym_id)
+                        && !self.ctx.analysis.scoping.is_rest_prop_excluded(&member.property.name)
+                    {
+                        let Expression::StaticMemberExpression(member) = it else { unreachable!() };
+                        let ast = oxc_ast::AstBuilder::new(self.ctx.alloc);
+                        member.object = ast.expression_identifier(oxc_span::SPAN, ast.atom("$$props"));
+                        walk_expression(self, it);
+                        return;
+                    }
+                }
+            }
+        }
+
         // Identifier: leaf node, handle directly
         if let Expression::Identifier(id) = it {
             let name = id.name.as_str();

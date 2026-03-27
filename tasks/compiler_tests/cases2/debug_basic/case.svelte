@@ -4,3 +4,5 @@
 </script>
 
 {@debug x, y}
+{@debug x}
+{@debug}

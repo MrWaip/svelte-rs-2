@@ -482,8 +482,10 @@ impl TitleElementData {
 pub struct EachBlockData {
     /// SymbolId of the index variable.
     pub(crate) index_syms: NodeTable<SymbolId>,
-    /// Analyzed key expression (stored separately because expressions[block.id] holds the iterable).
-    pub(crate) key_infos: NodeTable<ExpressionInfo>,
+    /// Reverse lookup: index SymbolId → block NodeId. Built from index_syms before Walk 3.
+    pub(crate) index_sym_to_block: FxHashMap<SymbolId, NodeId>,
+    /// NodeId of the key expression (block.id → key_id).
+    pub(crate) key_node_ids: NodeTable<NodeId>,
     /// Key expression references the index variable (needs index param in key arrow).
     pub(crate) key_uses_index: NodeBitSet,
     /// Context is a destructuring pattern (`{ name, value }` or `[a, b]`).
@@ -500,13 +502,21 @@ impl EachBlockData {
     pub fn new(node_count: u32) -> Self {
         Self {
             index_syms: NodeTable::new(node_count),
-            key_infos: NodeTable::new(node_count),
+            index_sym_to_block: FxHashMap::default(),
+            key_node_ids: NodeTable::new(node_count),
             key_uses_index: NodeBitSet::new(node_count),
             is_destructured: NodeBitSet::new(node_count),
             body_uses_index: NodeBitSet::new(node_count),
             key_is_item: NodeBitSet::new(node_count),
             has_animate: NodeBitSet::new(node_count),
         }
+    }
+
+    /// Build reverse lookup from index_syms. Call after Walk 2 populates index_syms.
+    pub(crate) fn build_index_lookup(&mut self) {
+        self.index_sym_to_block = self.index_syms.iter()
+            .map(|(block_id, &sym)| (sym, block_id))
+            .collect();
     }
 
     pub fn index_sym(&self, id: NodeId) -> Option<SymbolId> {

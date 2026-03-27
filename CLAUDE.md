@@ -41,23 +41,33 @@ trait impls, and gives false positives on string/comment matches.
 
 ## Testing
 
-All tests in `crates/svelte_parser` must follow the span-based pattern described in `/test-pattern`.
+### Unit test pattern
+
+Every unit test follows the same structure: **parse → assert via helpers**. No manual field access, no `.unwrap()` chains in test bodies.
+
+```rust
+#[test]
+fn test_name() {
+    let actual = parse_or_analyze("input");
+    assert_foo(&actual, "expected");
+    assert_bar(&actual, expected_value);
+}
+```
 
 Rules:
-- Use `assert_node`, `assert_script`, `assert_if_block` helpers (defined in the test module)
-- Prefer `assert_<node_type>` helpers for repeated structural checks. One-off field access or `if let` is acceptable when the check is unique to a single test.
-- Add new `assert_<node_type>` helpers when new node types need testing
+- Each crate has a `parse_*` or `analyze_*` entry function that returns the data under test
+- All assertions go through `assert_*` helpers defined in the test module
+- Prefer `assert_<thing>` helpers for repeated checks. One-off field access is acceptable only when the check is truly unique to a single test.
+- Add new `assert_*` helpers when new features need testing — don't inline field access
 - Exception: `assert!(result.is_err())` for error tests needs no helper
 
 When writing or modifying any test in `svelte_parser`, apply `/test-pattern` automatically.
 
-### svelte_analyze tests
+### Where tests live
 
-Tests live in `crates/svelte_analyze/src/tests.rs`. Each test parses a `.svelte` snippet via `parse_with_js()`, runs `analyze()`, and asserts on `AnalysisData` fields. Follow `/test-pattern` for helpers and structure.
-
-### svelte_codegen_client tests
-
-Compiler tests live in `tasks/compiler_tests/cases2/`. Each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual).
+- **Parser** — `crates/svelte_parser` tests, span-based pattern per `/test-pattern`
+- **Analyze** — `crates/svelte_analyze/src/tests.rs`, entry: `analyze_source()` → `(Component, AnalysisData)`
+- **Compiler integration** — `tasks/compiler_tests/cases2/`, each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual)
 
 ## Just commands
 
@@ -190,6 +200,16 @@ Additional rules:
 - `unwrap_or_else(|| panic!(...))` only for internal invariants, never for user errors. User errors → `Diagnostic`.
 - Repeating `match` patterns on an enum → extract into a method on that enum.
 - Comments answer "why", never describe what the line does.
+
+### Quality checklist — apply to every change
+
+Before considering work complete, verify each point:
+
+1. **Systematic, no compromises** — if a proper fix requires changes in another layer or refactoring existing code, do it. No `// TODO`, `// HACK`, or "good enough for now" workarounds. Refactoring is always allowed when it leads to the correct solution.
+2. **OXC Visit / Template Visit** — all JS AST traversal uses OXC visitor infrastructure (`Visit`, `VisitMut`, `Traverse`). All template traversal uses `TemplateVisitor`. No manual recursive matching on `Expression::*` or template node variants. Use the most specific `visit_*` method available (e.g., `visit_call_expression`, `visit_identifier_reference`, `visit_binding_identifier`) instead of broad `visit_expression` with manual dispatch inside.
+3. **SymbolId / ReferenceId for identifiers** — no string-based identifier lookups (`FxHashSet<String>`, name comparisons). Use `SymbolId` from `ComponentScoping`, `ReferenceId` from expression analysis.
+4. **Full JS syntax coverage** — new code must handle all JS expression/statement variants, not just common ones. This is why (2) matters — visitors guarantee coverage.
+5. **No implicit dependencies or contracts** — data flows through explicit types and function signatures. No "codegen assumes analyze ran pass X first" without a type-level guarantee (e.g., `AnalysisData` field existence).
 
 ### Phase boundaries: fat analyze, dumb codegen
 

@@ -13,5 +13,13 @@ export default function App($$anchor, $$props) {
 		});
 		debugger;
 	});
+	$.template_effect(() => {
+		console.log({ x: $.snapshot(x) });
+		debugger;
+	});
+	$.template_effect(() => {
+		console.log({});
+		debugger;
+	});
 	return $.pop($$exports);
 }

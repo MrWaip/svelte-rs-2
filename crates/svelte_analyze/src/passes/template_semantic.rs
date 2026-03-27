@@ -4,10 +4,10 @@ use oxc_semantic::{
     NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags,
     ScopeFlags,
 };
-use svelte_ast::NodeId;
+use svelte_ast::{BindDirective, NodeId};
 
 use crate::scope::ComponentScoping;
-use crate::walker::{TemplateVisitor, VisitContext};
+use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 
 // ---------------------------------------------------------------------------
 // TemplateSemanticVisitor — mini-SemanticBuilder for template JS
@@ -24,16 +24,37 @@ use crate::walker::{TemplateVisitor, VisitContext};
 pub(crate) struct TemplateSemanticVisitor;
 
 impl TemplateVisitor for TemplateSemanticVisitor {
+    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+        if !dir.shorthand {
+            return;
+        }
+        // Shorthand bind:name — no parsed expression, create Write ref by name
+        if let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, dir.name.as_str()) {
+            let mut reference =
+                OxcReference::new(OxcNodeId::DUMMY, ctx.scope, OxcReferenceFlags::Write);
+            reference.set_symbol_id(sym_id);
+            let ref_id = ctx.data.scoping.create_reference(reference);
+            ctx.data.scoping.add_resolved_reference(sym_id, ref_id);
+        }
+    }
+
     fn visit_js_expression(
         &mut self,
         _id: NodeId,
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_>,
     ) {
+        // bind:value={name} — top-level identifier gets Write reference
+        let bind_write = ctx.parent().is_some_and(|p| p.kind == ParentKind::BindDirective)
+            && matches!(expr, Expression::Identifier(_));
         let mut collector = SemanticCollector {
             scoping: &mut ctx.data.scoping,
             scope: ctx.scope,
-            current_ref_flags: None,
+            current_ref_flags: if bind_write {
+                Some(OxcReferenceFlags::Write)
+            } else {
+                None
+            },
         };
         collector.visit_expression(expr);
     }

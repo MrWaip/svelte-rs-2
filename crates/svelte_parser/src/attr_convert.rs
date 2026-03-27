@@ -39,18 +39,7 @@ impl<'a> Parser<'a> {
                             })
                         }
                         token::AttributeValue::Concatenation(concat) => {
-                            let parts = concat
-                                .parts
-                                .iter()
-                                .map(|part| match part {
-                                    token::ConcatenationPart::String(span) => ConcatPart::Static(
-                                        span.source_text(self.source).to_string(),
-                                    ),
-                                    token::ConcatenationPart::Expression(et) => {
-                                        ConcatPart::Dynamic(et.expression_span)
-                                    }
-                                })
-                                .collect();
+                            let parts = self.convert_concat_parts(&concat.parts);
 
                             Attribute::ConcatenationAttribute(ConcatenationAttribute {
                                 id: self.ids.next(),
@@ -114,19 +103,7 @@ impl<'a> Parser<'a> {
                             ),
                             token::AttributeValue::Concatenation(c) => {
                                 StyleDirectiveValue::Concatenation(
-                                    c.parts
-                                        .iter()
-                                        .map(|p| match p {
-                                            token::ConcatenationPart::String(span) => {
-                                                ConcatPart::Static(
-                                                    span.source_text(self.source).to_string(),
-                                                )
-                                            }
-                                            token::ConcatenationPart::Expression(et) => {
-                                                ConcatPart::Dynamic(et.expression_span)
-                                            }
-                                        })
-                                        .collect(),
+                                    self.convert_concat_parts(&c.parts),
                                 )
                             }
                             token::AttributeValue::Empty => {
@@ -258,5 +235,20 @@ impl<'a> Parser<'a> {
             // Missing `this` attribute — use empty span as fallback
             (Span::new(0, 0), false)
         }
+    }
+
+    fn convert_concat_parts(&mut self, parts: &[token::ConcatenationPart]) -> Vec<ConcatPart> {
+        parts
+            .iter()
+            .map(|part| match part {
+                token::ConcatenationPart::String(span) => {
+                    ConcatPart::Static(span.source_text(self.source).to_string())
+                }
+                token::ConcatenationPart::Expression(et) => ConcatPart::Dynamic {
+                    id: self.ids.next(),
+                    span: et.expression_span,
+                },
+            })
+            .collect()
     }
 }

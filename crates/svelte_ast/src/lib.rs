@@ -248,6 +248,8 @@ pub struct EachBlock {
     pub index_span: Option<Span>,
     /// Span of the key expression, if any.
     pub key_span: Option<Span>,
+    /// Unique NodeId for the key expression (separate from block id to avoid NodeId collision).
+    pub key_id: Option<NodeId>,
     pub body: Fragment,
     pub fallback: Option<Fragment>,
 }
@@ -512,8 +514,8 @@ pub struct ConcatenationAttribute {
 pub enum ConcatPart {
     /// Static text portion.
     Static(String),
-    /// Dynamic expression portion — span of the JS expression.
-    Dynamic(Span),
+    /// Dynamic expression portion with its own NodeId to avoid sharing the parent attribute's id.
+    Dynamic { id: NodeId, span: Span },
 }
 
 /// {name} — shorthand attribute.

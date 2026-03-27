@@ -18,7 +18,7 @@ use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 
-use svelte_ast::{Component, ConcatPart, NodeId};
+use svelte_ast::{Component, NodeId};
 
 use crate::types::data::{
     AnalysisData, AwaitBindingInfo, DestructureKind, ExpressionInfo, ExpressionKind, ParserResult,
@@ -54,7 +54,7 @@ pub(crate) fn analyze_script(
     data.exports = std::mem::take(&mut script_info.exports);
     data.needs_context = has_effects
         || has_class_state_fields
-        || script_body_needs_context(program, sem.semantic.scoping(), &script_info);
+        || NeedsContextVisitor::check(program, sem.semantic.scoping(), &script_info);
     data.has_class_state_fields = has_class_state_fields;
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
@@ -158,197 +158,8 @@ fn extract_await_binding_info(
     }
 }
 
-/// Extract ExpressionInfo for all parsed template and attribute expressions.
-/// Also classifies: expression shorthand, needs_clsx, snippet_param_names,
-/// render_tag_args, CE config.
-// ExpressionExtractor and BindingPreparer are used as composite visitors in lib.rs
-
-pub(crate) struct ExpressionExtractor {
-    pending_render_tag: Option<NodeId>,
-    pending_shorthand: Option<(NodeId, String)>,
-    pending_clsx: bool,
-}
-
-impl ExpressionExtractor {
-    pub(crate) fn new() -> Self {
-        Self {
-            pending_render_tag: None,
-            pending_shorthand: None,
-            pending_clsx: false,
-        }
-    }
-}
-
-impl crate::walker::TemplateVisitor for ExpressionExtractor {
-    // --- Offset storage ---
-
-    fn visit_expression(
-        &mut self,
-        node_id: svelte_ast::NodeId,
-        span: svelte_span::Span,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
-            if !ctx.data.attr_expr_offsets.contains_key(node_id) {
-                ctx.data.attr_expr_offsets.insert(node_id, span.start);
-            }
-        } else if !ctx.data.node_expr_offsets.contains_key(node_id) {
-            ctx.data.node_expr_offsets.insert(node_id, span.start);
-        }
-    }
-
-    // --- Parsed expression analysis ---
-
-    fn visit_js_expression(
-        &mut self,
-        node_id: svelte_ast::NodeId,
-        expr: &Expression<'_>,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        // Store ExpressionInfo (replaces insert_node_expr_info / insert_attr_expr_info)
-        if ctx.parent().map_or(false, |p| p.kind.is_attr()) {
-            if !ctx.data.attr_expressions.contains_key(node_id) {
-                ctx.data.attr_expressions.insert(node_id, analyze_expression(expr));
-            }
-        } else if !ctx.data.expressions.contains_key(node_id) {
-            ctx.data.expressions.insert(node_id, analyze_expression(expr));
-        }
-
-        // Render tag: classify arguments
-        if self.pending_render_tag.take() == Some(node_id) {
-            classify_render_tag_args(expr, ctx.data, node_id);
-        }
-
-        // Shorthand detection (set by visit_expression_attribute / visit_class_directive / visit_style_directive)
-        if let Some((attr_id, name)) = self.pending_shorthand.take() {
-            if let Expression::Identifier(ident) = expr {
-                if ident.name.as_str() == name {
-                    ctx.data.element_flags.expression_shorthand.insert(attr_id);
-                }
-            }
-        }
-
-        // Clsx detection for class={expr}
-        if self.pending_clsx {
-            self.pending_clsx = false;
-            if !matches!(
-                expr,
-                Expression::StringLiteral(_)
-                    | Expression::TemplateLiteral(_)
-                    | Expression::BinaryExpression(_)
-            ) {
-                ctx.data.element_flags.needs_clsx.insert(node_id);
-            }
-        }
-    }
-
-    // --- Hooks that set pending state for visit_js_expression ---
-
-    fn visit_render_tag(
-        &mut self,
-        tag: &svelte_ast::RenderTag,
-        _ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        self.pending_render_tag = Some(tag.id);
-    }
-
-    fn visit_const_tag(
-        &mut self,
-        tag: &svelte_ast::ConstTag,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        // ConstTag is a statement — visit_expression/visit_js_expression don't fire.
-        // Store offset so codegen can look up the parsed statement.
-        ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
-    }
-
-    fn visit_attribute(
-        &mut self,
-        attr: &svelte_ast::Attribute,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        use svelte_ast::{Attribute, StyleDirectiveValue};
-        match attr {
-            Attribute::ExpressionAttribute(ea) => {
-                self.pending_shorthand = Some((ea.id, ea.name.clone()));
-                if ea.name == "class" {
-                    self.pending_clsx = true;
-                }
-            }
-            Attribute::ConcatenationAttribute(ca) => {
-                if let Some(parsed) = ctx.parsed() {
-                    insert_concat_expr_info(parsed, ctx.data, ca.id, &ca.parts);
-                }
-            }
-            Attribute::ClassDirective(cd) => {
-                if cd.expression_span.is_some() {
-                    self.pending_shorthand = Some((cd.id, cd.name.clone()));
-                }
-            }
-            Attribute::StyleDirective(sd) => match &sd.value {
-                StyleDirectiveValue::Expression(_) => {
-                    self.pending_shorthand = Some((sd.id, sd.name.clone()));
-                }
-                StyleDirectiveValue::Concatenation(parts) => {
-                    if let Some(parsed) = ctx.parsed() {
-                        insert_concat_expr_info(parsed, ctx.data, sd.id, parts);
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-
-    fn visit_each_block(
-        &mut self,
-        block: &svelte_ast::EachBlock,
-        ctx: &mut crate::walker::VisitContext<'_>,
-    ) {
-        // Extract key expression info separately — expressions[block.id] holds the iterable
-        if let Some(key_span) = block.key_span {
-            if let Some(parsed) = ctx.parsed() {
-                if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
-                    ctx.data.each_blocks.key_infos.insert(block.id, analyze_expression(key_expr));
-                }
-            }
-        }
-    }
-}
-
-/// Merge ExpressionInfo from all dynamic concatenation parts into a single entry.
-fn insert_concat_expr_info(
-    parsed: &ParserResult<'_>,
-    data: &mut AnalysisData,
-    attr_id: NodeId,
-    parts: &[ConcatPart],
-) {
-    let mut has_store_ref = false;
-    for part in parts {
-        if let ConcatPart::Dynamic(span) = part {
-            if let Some(expr) = parsed.exprs.get(&span.start) {
-                let info = analyze_expression(expr);
-                has_store_ref |= info.has_store_ref;
-            }
-        }
-    }
-    let merged = ExpressionInfo {
-        kind: ExpressionKind::Other,
-        ref_symbols: SmallVec::new(),
-        has_store_ref,
-        has_side_effects: false,
-        has_call: false,
-        has_state_rune: false,
-        has_store_member_mutation: false,
-        needs_context: false,
-        is_dynamic: false,
-        has_state: false,
-    };
-    data.attr_expressions.insert(attr_id, merged);
-}
-
 /// Extract render tag argument metadata (has_call flags, ident names) from a parsed CallExpression.
-fn classify_render_tag_args(
+pub(crate) fn classify_render_tag_args(
     expr: &Expression<'_>,
     data: &mut AnalysisData,
     tag_id: NodeId,
@@ -552,110 +363,113 @@ fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
 // needs_context detection (matches Svelte reference 2-analyze visitors)
 // ---------------------------------------------------------------------------
 
-/// Walk top-level script body to detect expressions that require component context.
-/// Checks for: NewExpression, CallExpression with non-safe callee,
-/// MemberExpression with non-safe root.
-fn script_body_needs_context(
-    program: &oxc_ast::ast::Program<'_>,
-    scoping: &oxc_semantic::Scoping,
-    script_info: &ScriptInfo,
-) -> bool {
-    // Collect prop declaration names for is_safe_identifier check
-    let prop_names: rustc_hash::FxHashSet<&str> = script_info
-        .declarations
-        .iter()
-        .filter(|d| d.is_rune == Some(RuneKind::Props))
-        .map(|d| d.name.as_str())
-        .collect();
-
-    for stmt in &program.body {
-        if stmt_needs_context(stmt, scoping, &prop_names) {
-            return true;
-        }
-    }
-    false
+/// OXC Visit that walks the entire script AST to detect expressions requiring
+/// component context. Matches reference MemberExpression.js, CallExpression.js,
+/// NewExpression.js + is_safe_identifier.
+struct NeedsContextVisitor<'a> {
+    scoping: &'a oxc_semantic::Scoping,
+    /// SymbolIds of prop/rest-prop bindings — unsafe for context purposes
+    unsafe_prop_syms: rustc_hash::FxHashSet<oxc_semantic::SymbolId>,
+    needs_context: bool,
 }
 
-fn stmt_needs_context(
-    stmt: &oxc_ast::ast::Statement<'_>,
-    scoping: &oxc_semantic::Scoping,
-    prop_names: &rustc_hash::FxHashSet<&str>,
-) -> bool {
-    match stmt {
-        oxc_ast::ast::Statement::VariableDeclaration(decl) => {
-            for declarator in &decl.declarations {
-                if let Some(init) = &declarator.init {
-                    // Skip rune wrappers — check inner expression for $state/$derived/etc.
-                    let inner = unwrap_rune_arg(init);
-                    if expr_needs_context(inner, scoping, prop_names) {
-                        return true;
+impl<'a> NeedsContextVisitor<'a> {
+    /// Walk the entire program to determine if script body needs component context.
+    fn check(
+        program: &oxc_ast::ast::Program<'a>,
+        scoping: &'a oxc_semantic::Scoping,
+        script_info: &ScriptInfo,
+    ) -> bool {
+        let root = scoping.root_scope_id();
+        let mut unsafe_prop_syms = rustc_hash::FxHashSet::default();
+
+        // Resolve prop declaration names to SymbolIds
+        for d in &script_info.declarations {
+            if d.is_rune == Some(RuneKind::Props) {
+                if let Some(sym) = scoping.find_binding(root, d.name.as_str().into()) {
+                    unsafe_prop_syms.insert(sym);
+                }
+            }
+        }
+        // Rest prop bindings are also unsafe (they proxy $$props)
+        if let Some(ref decl) = script_info.props_declaration {
+            for p in &decl.props {
+                if p.is_rest {
+                    if let Some(sym) = scoping.find_binding(root, p.local_name.as_str().into()) {
+                        unsafe_prop_syms.insert(sym);
                     }
                 }
             }
-            false
         }
-        oxc_ast::ast::Statement::ExpressionStatement(es) => {
-            expr_needs_context(&es.expression, scoping, prop_names)
-        }
-        _ => false,
-    }
-}
 
-fn expr_needs_context(
-    expr: &Expression<'_>,
-    scoping: &oxc_semantic::Scoping,
-    prop_names: &rustc_hash::FxHashSet<&str>,
-) -> bool {
-    match expr {
-        Expression::NewExpression(_) => true,
-        Expression::CallExpression(call) => !is_safe_identifier(&call.callee, scoping, prop_names),
-        Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => {
-            !is_safe_identifier(expr, scoping, prop_names)
-        }
-        _ => false,
+        let mut visitor = Self { scoping, unsafe_prop_syms, needs_context: false };
+        visitor.visit_program(program);
+        visitor.needs_context
     }
-}
 
-/// A 'safe' identifier means foo in foo.bar or foo() will not call functions
-/// that require component context. Mirrors reference utils.js:is_safe_identifier.
-fn is_safe_identifier(
-    expr: &Expression<'_>,
-    scoping: &oxc_semantic::Scoping,
-    prop_names: &rustc_hash::FxHashSet<&str>,
-) -> bool {
-    // Walk member chain to root
-    let mut node = expr;
-    loop {
+    /// Resolve an identifier reference to its SymbolId via OXC semantic.
+    fn resolve_ref(&self, ident: &oxc_ast::ast::IdentifierReference<'_>) -> Option<oxc_semantic::SymbolId> {
+        let ref_id = ident.reference_id.get()?;
+        self.scoping.get_reference(ref_id).symbol_id()
+    }
+
+    /// Check if a root identifier is "safe" (won't trigger context-requiring behavior).
+    /// Unsafe: imports, props, rest props. Safe: locals, globals.
+    fn is_safe_sym(&self, ident: &oxc_ast::ast::IdentifierReference<'_>) -> bool {
+        let Some(sym_id) = self.resolve_ref(ident) else {
+            // Unresolved reference = global (Math, console, etc.) — safe
+            return true;
+        };
+        !self.unsafe_prop_syms.contains(&sym_id)
+            && !self.scoping.symbol_flags(sym_id).contains(oxc_semantic::SymbolFlags::Import)
+    }
+
+    /// Walk a member chain to its root and check if the root identifier is safe.
+    fn is_safe_expression_root(&self, expr: &Expression<'_>) -> bool {
+        let mut node = expr;
+        loop {
+            match node {
+                Expression::StaticMemberExpression(m) => node = &m.object,
+                Expression::ComputedMemberExpression(m) => node = &m.object,
+                _ => break,
+            }
+        }
         match node {
-            Expression::StaticMemberExpression(m) => node = &m.object,
-            Expression::ComputedMemberExpression(m) => node = &m.object,
-            _ => break,
+            Expression::Identifier(ident) => self.is_safe_sym(ident),
+            _ => false,
+        }
+    }
+}
+
+impl<'a> Visit<'a> for NeedsContextVisitor<'a> {
+    fn visit_new_expression(&mut self, _it: &oxc_ast::ast::NewExpression<'a>) {
+        self.needs_context = true;
+    }
+
+    fn visit_call_expression(&mut self, it: &oxc_ast::ast::CallExpression<'a>) {
+        if !self.is_safe_expression_root(&it.callee) {
+            self.needs_context = true;
+        }
+        if !self.needs_context {
+            walk_call_expression(self, it);
         }
     }
 
-    let Expression::Identifier(ident) = node else {
-        return false;
-    };
-    let name = ident.name.as_str();
-
-    // Prop bindings are not safe (they come from parent context)
-    if prop_names.contains(name) {
-        return false;
-    }
-
-    // Check OXC scoping for the identifier
-    let root_scope = scoping.root_scope_id();
-    if let Some(sym_id) = scoping.find_binding(root_scope, name.into()) {
-        let flags = scoping.symbol_flags(sym_id);
-        // Imports are not safe — they may call functions needing context
-        if flags.contains(oxc_semantic::SymbolFlags::Import) {
-            return false;
+    fn visit_member_expression(&mut self, it: &MemberExpression<'a>) {
+        let obj = match it {
+            MemberExpression::StaticMemberExpression(m) => &m.object,
+            MemberExpression::ComputedMemberExpression(m) => &m.object,
+            _ => {
+                walk_member_expression(self, it);
+                return;
+            }
+        };
+        if !self.is_safe_expression_root(obj) {
+            self.needs_context = true;
         }
-        // Local binding (not import, not prop) — safe
-        true
-    } else {
-        // No binding = global (Map, console, etc.) — safe
-        true
+        if !self.needs_context {
+            walk_member_expression(self, it);
+        }
     }
 }
 

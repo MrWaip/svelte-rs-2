@@ -272,7 +272,7 @@ fn walk_attrs<'a>(
             }
             Attribute::ConcatenationAttribute(a) => {
                 for part in &a.parts {
-                    if let ConcatPart::Dynamic(span) = part {
+                    if let ConcatPart::Dynamic { span, .. } = part {
                         parse_span(alloc, component, *span, typescript, result, diags);
                     }
                 }
@@ -290,7 +290,7 @@ fn walk_attrs<'a>(
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
                         for part in parts {
-                            if let ConcatPart::Dynamic(span) = part {
+                            if let ConcatPart::Dynamic { span, .. } = part {
                                 parse_span(alloc, component, *span, typescript, result, diags);
                             }
                         }
