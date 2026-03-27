@@ -146,17 +146,20 @@ pub(crate) struct VisitContext<'a> {
     /// `visit_js_expression` / `visit_js_statement` after looking up the
     /// parsed AST node by span offset.
     parsed: Option<&'a ParserResult<'a>>,
+    /// Flat node store for resolving NodeId → &Node.
+    pub store: &'a svelte_ast::AstStore,
     parents: Vec<ParentRef>,
     /// Tag name of the nearest enclosing Element (managed by walker).
     element_name: Option<String>,
 }
 
 impl<'a> VisitContext<'a> {
-    pub fn new(scope: ScopeId, data: &'a mut AnalysisData) -> Self {
+    pub fn new(scope: ScopeId, data: &'a mut AnalysisData, store: &'a svelte_ast::AstStore) -> Self {
         Self {
             scope,
             data,
             parsed: None,
+            store,
             parents: Vec::new(),
             element_name: None,
         }
@@ -165,12 +168,14 @@ impl<'a> VisitContext<'a> {
     pub fn with_parsed(
         scope: ScopeId,
         data: &'a mut AnalysisData,
+        store: &'a svelte_ast::AstStore,
         parsed: &'a ParserResult<'a>,
     ) -> Self {
         Self {
             scope,
             data,
             parsed: Some(parsed),
+            store,
             parents: Vec::new(),
             element_name: None,
         }
@@ -367,7 +372,8 @@ pub(crate) fn walk_template(
     ctx: &mut VisitContext<'_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
-    for node in &fragment.nodes {
+    for &id in &fragment.nodes {
+        let node = ctx.store.get(id);
         match node {
             Node::ExpressionTag(tag) => {
                 for v in visitors.iter_mut() { v.visit_expression_tag(tag, ctx); }

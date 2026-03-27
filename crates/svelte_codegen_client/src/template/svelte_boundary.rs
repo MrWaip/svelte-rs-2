@@ -75,7 +75,8 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // and collect all snippet block IDs for hoisting.
     let boundary = ctx.svelte_boundary(id);
     let mut hoisted_snippet_ids: Vec<(NodeId, Option<&str>)> = Vec::new();
-    for node in &boundary.fragment.nodes {
+    for &nid in &boundary.fragment.nodes {
+        let node = ctx.component.store.get(nid);
         if let svelte_ast::Node::SnippetBlock(block) = node {
             let name = block.name(ctx.source);
             let prop_name = if name == "failed" || name == "pending" {
