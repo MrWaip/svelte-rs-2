@@ -6,7 +6,7 @@ export default function App($$anchor, $$props) {
 	$.push($$props, true, App);
 	let count = $.tag($.state(0), "count");
 	function handleClick() {
-		return $.trace(() => "handleClick ((unknown):3:1)", () => {
+		return $.trace(() => "custom label", () => {
 			$.update(count);
 		});
 	}
