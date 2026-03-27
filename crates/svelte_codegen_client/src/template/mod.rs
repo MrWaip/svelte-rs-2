@@ -111,7 +111,8 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut svelte_body_ids = Vec::new();
     let mut instance_snippet_ids = Vec::new();
     let mut hoistable_snippet_ids = Vec::new();
-    for node in &ctx.component.fragment.nodes {
+    for &id in &ctx.component.fragment.nodes {
+        let node = ctx.component.store.get(id);
         match node {
             svelte_ast::Node::SvelteHead(h) => svelte_head_ids.push(h.id),
             svelte_ast::Node::SvelteWindow(w) => svelte_window_ids.push(w.id),
@@ -538,7 +539,8 @@ fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &s
 /// Recursively collect location arrays for child elements in a fragment.
 fn build_child_element_locs<'a>(ctx: &mut Ctx<'a>, fragment: &svelte_ast::Fragment) -> Vec<Expression<'a>> {
     let mut locs = Vec::new();
-    for node in &fragment.nodes {
+    for &id in &fragment.nodes {
+        let node = ctx.component.store.get(id);
         if let Node::Element(el) = node {
             locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
         }

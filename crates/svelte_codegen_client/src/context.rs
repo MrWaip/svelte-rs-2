@@ -2,63 +2,11 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
 use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParserResult};
-use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
+use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_analyze::ExpressionInfo;
 use svelte_transform::TransformData;
 
 use crate::builder::Builder;
-
-/// Dense Vec-based index for O(1) node lookup by NodeId (no hashing overhead).
-struct NodeIndex<'a> {
-    nodes: Vec<Option<&'a Node>>,
-}
-
-impl<'a> NodeIndex<'a> {
-    fn build(fragment: &'a Fragment, node_count: u32) -> Self {
-        let mut index = Self {
-            nodes: vec![None; node_count as usize],
-        };
-        index.walk(fragment);
-        index
-    }
-
-    fn walk(&mut self, fragment: &'a Fragment) {
-        for node in &fragment.nodes {
-            match node {
-                Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
-                _ => {
-                    let id = node.node_id().0 as usize;
-                    if id < self.nodes.len() {
-                        self.nodes[id] = Some(node);
-                    }
-                }
-            }
-            match node {
-                Node::Element(el) => self.walk(&el.fragment),
-                Node::ComponentNode(cn) => self.walk(&cn.fragment),
-                Node::IfBlock(b) => {
-                    self.walk(&b.consequent);
-                    if let Some(alt) = &b.alternate { self.walk(alt); }
-                }
-                Node::EachBlock(b) => {
-                    self.walk(&b.body);
-                    if let Some(fb) = &b.fallback { self.walk(fb); }
-                }
-                Node::SnippetBlock(b) => self.walk(&b.body),
-                Node::KeyBlock(b) => self.walk(&b.fragment),
-                Node::SvelteHead(h) => self.walk(&h.fragment),
-                Node::SvelteElement(el) => self.walk(&el.fragment),
-                Node::SvelteBoundary(b) => self.walk(&b.fragment),
-                Node::AwaitBlock(b) => {
-                    if let Some(ref p) = b.pending { self.walk(p); }
-                    if let Some(ref t) = b.then { self.walk(t); }
-                    if let Some(ref c) = b.catch { self.walk(c); }
-                }
-                _ => {}
-            }
-        }
-    }
-}
 
 /// Central codegen context. Holds refs to allocator, builder, component, analysis,
 /// and mutable state (ident counter, node index).
@@ -75,9 +23,6 @@ pub struct Ctx<'a> {
     ident_gen: &'a mut IdentGen,
     /// Template declarations from nested fragments, hoisted to module scope.
     pub module_hoisted: Vec<Statement<'a>>,
-
-    // -- Node index (O(1) lookup by NodeId) --
-    index: NodeIndex<'a>,
 
     // -- Bind group --
     pub needs_binding_group: bool,
@@ -119,7 +64,6 @@ impl<'a> Ctx<'a> {
         source: &'a str,
         filename: &str,
     ) -> Self {
-        let index = NodeIndex::build(&component.fragment, component.node_count);
         let name = allocator.alloc_str(name);
         let filename = allocator.alloc_str(filename);
 
@@ -132,7 +76,6 @@ impl<'a> Ctx<'a> {
             parsed,
             ident_gen,
             module_hoisted: Vec::new(),
-            index,
             dev,
             needs_binding_group: false,
             group_index_names: FxHashMap::default(),
@@ -148,26 +91,19 @@ impl<'a> Ctx<'a> {
 
     // -- Node lookups (O(1)) --
 
-    pub fn element(&self, id: NodeId) -> &'a Element { self.get_node(id, "element", Node::as_element) }
-    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode { self.get_node(id, "component node", Node::as_component_node) }
-    pub fn if_block(&self, id: NodeId) -> &'a IfBlock { self.get_node(id, "if block", Node::as_if_block) }
-    pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.get_node(id, "each block", Node::as_each_block) }
-    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.get_node(id, "snippet block", Node::as_snippet_block) }
-    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.get_node(id, "render tag", Node::as_render_tag) }
-    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock { self.get_node(id, "key block", Node::as_key_block) }
-    pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.get_node(id, "svelte element", Node::as_svelte_element) }
-    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.get_node(id, "svelte boundary", Node::as_svelte_boundary) }
-    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.get_node(id, "await block", Node::as_await_block) }
-    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.get_node(id, "svelte window", Node::as_svelte_window) }
-    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.get_node(id, "svelte document", Node::as_svelte_document) }
-    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.get_node(id, "svelte body", Node::as_svelte_body) }
-    fn get_node<T>(&self, id: NodeId, label: &str, extract: fn(&Node) -> Option<&T>) -> &'a T {
-        let node = self.index.nodes.get(id.0 as usize)
-            .and_then(|slot| slot.as_ref())
-            .unwrap_or_else(|| panic!("{} {:?} not found in index", label, id));
-        extract(node)
-            .unwrap_or_else(|| panic!("{} {:?} is wrong node type", label, id))
-    }
+    pub fn element(&self, id: NodeId) -> &'a Element { self.component.store.element(id) }
+    pub fn component_node(&self, id: NodeId) -> &'a ComponentNode { self.component.store.component_node(id) }
+    pub fn if_block(&self, id: NodeId) -> &'a IfBlock { self.component.store.if_block(id) }
+    pub fn each_block(&self, id: NodeId) -> &'a EachBlock { self.component.store.each_block(id) }
+    pub fn snippet_block(&self, id: NodeId) -> &'a SnippetBlock { self.component.store.snippet_block(id) }
+    pub fn render_tag(&self, id: NodeId) -> &'a RenderTag { self.component.store.render_tag(id) }
+    pub fn key_block(&self, id: NodeId) -> &'a KeyBlock { self.component.store.key_block(id) }
+    pub fn svelte_element(&self, id: NodeId) -> &'a SvelteElement { self.component.store.svelte_element(id) }
+    pub fn svelte_boundary(&self, id: NodeId) -> &'a SvelteBoundary { self.component.store.svelte_boundary(id) }
+    pub fn await_block(&self, id: NodeId) -> &'a AwaitBlock { self.component.store.await_block(id) }
+    pub fn svelte_window(&self, id: NodeId) -> &'a SvelteWindow { self.component.store.svelte_window(id) }
+    pub fn svelte_document(&self, id: NodeId) -> &'a SvelteDocument { self.component.store.svelte_document(id) }
+    pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.component.store.svelte_body(id) }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
         self.analysis.fragments.lowered(key)
@@ -255,7 +191,7 @@ impl<'a> Ctx<'a> {
 
     // -- DebugTag shortcuts --
 
-    pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.get_node(id, "debug tag", Node::as_debug_tag) }
+    pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.component.store.debug_tag(id) }
     pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.debug_tags.by_fragment(key) }
 
     // -- EachBlock shortcuts --

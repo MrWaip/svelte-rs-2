@@ -9,8 +9,18 @@ fn parse(source: &str) -> Component {
     component
 }
 
+/// Get a node reference from the component's root fragment by index.
+fn node_at<'a>(c: &'a Component, index: usize) -> &'a Node {
+    c.store.get(c.fragment.nodes[index])
+}
+
+/// Get a node reference from any fragment by index.
+fn frag_node_at<'a>(c: &'a Component, fragment: &Fragment, index: usize) -> &'a Node {
+    c.store.get(fragment.nodes[index])
+}
+
 fn assert_node(c: &Component, index: usize, expected: &str) {
-    assert_eq!(c.source_text(c.fragment.nodes[index].span()), expected);
+    assert_eq!(c.source_text(node_at(c, index).span()), expected);
 }
 
 fn assert_script(c: &Component, expected: &str) {
@@ -19,7 +29,7 @@ fn assert_script(c: &Component, expected: &str) {
 }
 
 fn assert_if_block(c: &Component, index: usize, expected_test: &str) {
-    if let Node::IfBlock(ref ib) = c.fragment.nodes[index] {
+    if let Node::IfBlock(ref ib) = node_at(c, index) {
         assert_eq!(c.source_text(ib.test_span), expected_test);
     } else {
         panic!("expected IfBlock at index {index}");
@@ -113,7 +123,7 @@ fn unclosed_element_returns_diagnostic() {
     );
     // AST should still contain the auto-closed element
     assert_eq!(component.fragment.nodes.len(), 1);
-    assert!(component.fragment.nodes[0].is_element());
+    assert!(component.store.get(component.fragment.nodes[0]).is_element());
 }
 
 #[test]
@@ -151,7 +161,7 @@ fn assert_snippet_block(
     expected_name: &str,
     expected_expression: &str,
 ) {
-    if let Node::SnippetBlock(ref sb) = c.fragment.nodes[index] {
+    if let Node::SnippetBlock(ref sb) = node_at(c, index) {
         assert_eq!(sb.name(&c.source), expected_name);
         assert_eq!(c.source_text(sb.expression_span), expected_expression);
     } else {
@@ -160,7 +170,7 @@ fn assert_snippet_block(
 }
 
 fn assert_render_tag(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::RenderTag(ref rt) = c.fragment.nodes[index] {
+    if let Node::RenderTag(ref rt) = node_at(c, index) {
         assert_eq!(c.source_text(rt.expression_span), expected_expr);
     } else {
         panic!("expected RenderTag at index {index}");
@@ -218,7 +228,7 @@ fn snippet_and_render_together() {
 // --- HtmlTag tests ---
 
 fn assert_html_tag(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::HtmlTag(ref ht) = c.fragment.nodes[index] {
+    if let Node::HtmlTag(ref ht) = node_at(c, index) {
         assert_eq!(c.source_text(ht.expression_span), expected_expr);
     } else {
         panic!("expected HtmlTag at index {index}");
@@ -240,7 +250,7 @@ fn html_tag_complex_expression() {
 // --- ConstTag tests ---
 
 fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_expr: &str) {
-    if let Node::ConstTag(ref ct) = fragment.nodes[index] {
+    if let Node::ConstTag(ref ct) = frag_node_at(c, fragment, index) {
         assert_eq!(c.source_text(ct.expression_span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
@@ -250,7 +260,7 @@ fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_e
 #[test]
 fn const_tag_basic() {
     let c = parse("{#each items as item}{@const doubled = item * 2}<p>{doubled}</p>{/each}");
-    if let Node::EachBlock(ref eb) = c.fragment.nodes[0] {
+    if let Node::EachBlock(ref eb) = node_at(&c, 0) {
         assert_const_tag(&c, &eb.body, 0, "doubled = item * 2");
     } else {
         panic!("expected EachBlock at index 0");
@@ -260,7 +270,7 @@ fn const_tag_basic() {
 #[test]
 fn const_tag_in_if_block() {
     let c = parse("{#if show}{@const x = count + 1}<p>{x}</p>{/if}");
-    if let Node::IfBlock(ref ib) = c.fragment.nodes[0] {
+    if let Node::IfBlock(ref ib) = node_at(&c, 0) {
         assert_const_tag(&c, &ib.consequent, 0, "x = count + 1");
     } else {
         panic!("expected IfBlock at index 0");
@@ -270,7 +280,7 @@ fn const_tag_in_if_block() {
 // --- KeyBlock tests ---
 
 fn assert_key_block(c: &Component, index: usize, expected_expr: &str) {
-    if let Node::KeyBlock(ref kb) = c.fragment.nodes[index] {
+    if let Node::KeyBlock(ref kb) = node_at(c, index) {
         assert_eq!(c.source_text(kb.expression_span), expected_expr);
     } else {
         panic!("expected KeyBlock at index {index}");
@@ -336,7 +346,7 @@ fn duplicate_style_tag_returns_diagnostic() {
 // --- Each block key tests (Bug #3) ---
 
 fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {
-    if let Node::EachBlock(ref eb) = c.fragment.nodes[index] {
+    if let Node::EachBlock(ref eb) = node_at(c, index) {
         assert_eq!(c.source_text(eb.expression_span), expected_expr);
         let actual_key = eb.key_span.map(|s| c.source_text(s));
         assert_eq!(actual_key, expected_key);
@@ -375,7 +385,7 @@ fn deeply_nested_blocks() {
 fn class_directive_on_element() {
     let c = parse("<div class:active={isActive}>text</div>");
     assert_node(&c, 0, "<div class:active={isActive}>text</div>");
-    if let Node::Element(ref el) = c.fragment.nodes[0] {
+    if let Node::Element(ref el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -390,7 +400,7 @@ fn class_directive_on_element() {
 fn bind_directive_on_element() {
     let c = parse("<input bind:value={name}/>");
     assert_node(&c, 0, "<input bind:value={name}/>");
-    if let Node::Element(ref el) = c.fragment.nodes[0] {
+    if let Node::Element(ref el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -404,7 +414,7 @@ fn bind_directive_on_element() {
 #[test]
 fn spread_attribute_on_element() {
     let c = parse("<div {...props}>text</div>");
-    if let Node::Element(ref el) = c.fragment.nodes[0] {
+    if let Node::Element(ref el) = node_at(&c, 0) {
         assert_eq!(el.attributes.len(), 1);
         assert!(matches!(
             el.attributes[0],
@@ -427,7 +437,7 @@ fn recovery_unclosed_element_with_text() {
     assert!(!diags.is_empty());
     // Auto-closed: div contains span, span contains text
     assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.fragment.nodes[0].is_element());
+    assert!(c.store.get(c.fragment.nodes[0]).is_element());
 }
 
 #[test]
@@ -444,7 +454,7 @@ fn recovery_unclosed_if_block() {
     assert!(!diags.is_empty());
     // Should produce an auto-closed IfBlock
     assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.fragment.nodes[0].is_if_block());
+    assert!(c.store.get(c.fragment.nodes[0]).is_if_block());
 }
 
 #[test]
@@ -471,7 +481,7 @@ fn recovery_text_only() {
     let (c, diags) = parse_with_diagnostics("just text");
     assert!(diags.is_empty());
     assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.fragment.nodes[0].is_text());
+    assert!(c.store.get(c.fragment.nodes[0]).is_text());
 }
 
 #[test]
@@ -480,7 +490,7 @@ fn recovery_close_tag_no_matching_open() {
     assert!(!diags.is_empty());
     // Error node for the orphan close tag
     assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(matches!(c.fragment.nodes[0], Node::Error(_)));
+    assert!(matches!(c.store.get(c.fragment.nodes[0]), Node::Error(_)));
 }
 
 #[test]
@@ -492,7 +502,7 @@ fn recovery_duplicate_script_continues() {
     // First script is kept, second is skipped, div is parsed
     assert!(c.script.is_some());
     assert_eq!(c.fragment.nodes.len(), 1);
-    assert!(c.fragment.nodes[0].is_element());
+    assert!(c.store.get(c.fragment.nodes[0]).is_element());
 }
 
 #[test]
@@ -503,7 +513,7 @@ fn recovery_unclosed_each_block() {
 }
 
 fn assert_element(c: &Component, index: usize, name: &str, self_closing: bool) {
-    if let Node::Element(ref el) = c.fragment.nodes[index] {
+    if let Node::Element(ref el) = node_at(c, index) {
         assert_eq!(el.name, name, "expected element name '{name}'");
         assert_eq!(
             el.self_closing, self_closing,
@@ -814,7 +824,7 @@ fn svelte_options_preserves_attributes() {
 // --- DebugTag tests ---
 
 fn assert_debug_tag(c: &Component, fragment: &Fragment, index: usize, expected_ids: &[&str]) {
-    if let Node::DebugTag(ref dt) = fragment.nodes[index] {
+    if let Node::DebugTag(ref dt) = frag_node_at(c, fragment, index) {
         let actual: Vec<&str> = dt.identifiers.iter().map(|s| c.source_text(*s)).collect();
         assert_eq!(actual, expected_ids);
     } else {
