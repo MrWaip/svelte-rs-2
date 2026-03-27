@@ -67,13 +67,12 @@ pub fn analyze_with_options<'a>(
         passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
     }
 
-    // Await binding metadata + expression info — composite walker (one tree walk)
+    // Await binding metadata (independent of expression analysis)
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::js_analyze::BindingPreparer;
-        let mut v2 = passes::js_analyze::ExpressionExtractor::new();
         let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
-        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1, &mut v2]);
+        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
     }
     // CE config (not template-related, extracted separately)
     if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
@@ -107,10 +106,11 @@ pub fn analyze_with_options<'a>(
     }
     data.scoping.build_template_scope_set();
 
-    // Collect ref_symbols from OXC references + store detection + bind resolution
+    // Collect ref_symbols from OXC references + store detection + index usage detection
+    data.each_blocks.build_index_lookup();
     {
         let root = data.scoping.root_scope_id();
-        let mut v2 = passes::collect_symbols::make_visitor(component, scoping_built);
+        let mut v2 = passes::collect_symbols::make_visitor(scoping_built);
         let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
         walker::walk_template(
             &component.fragment,

@@ -24,6 +24,8 @@ For each target finding:
    - Order of changes (respecting data flow: upstream types before downstream consumers)
    - What gets deleted vs what gets added
 
+**Quality verification in plan:** for each proposed change, verify it satisfies the **Quality checklist** in CLAUDE.md. If a change would violate any of the 5 points, redesign it before presenting.
+
 **Present the plan and wait for approval before writing any code.**
 
 If the fix description is ambiguous, flag it here instead of guessing.
@@ -32,6 +34,8 @@ If a single finding requires changes across 5+ files, plan the first step only a
 ## Step 3: Implement
 
 Apply the approved plan. Follow the design principle from CLAUDE.md: match JS output exactly, implement internals in idiomatic Rust.
+
+Before running tests, verify the implementation against the **Quality checklist** in CLAUDE.md. All 5 points must hold.
 
 After each finding (when running `all`): run `just test-all`. Tests must pass before moving to the next finding.
 

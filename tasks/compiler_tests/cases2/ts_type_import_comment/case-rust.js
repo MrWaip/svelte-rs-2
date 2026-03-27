@@ -2,6 +2,7 @@ import * as $ from "svelte/internal/client";
 import { foo } from "./foo";
 var root = $.from_html(`<p></p>`);
 export default function App($$anchor) {
+	// this comment should move
 	let count = 0;
 	var p = root();
 	p.textContent = "0";

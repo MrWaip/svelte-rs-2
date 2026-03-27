@@ -6,7 +6,7 @@ use oxc_ast::ast::{
     PropertyDefinitionType, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, GetSpanMut};
-use oxc_traverse::{Traverse, TraverseCtx};
+use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 use svelte_analyze::RuneKind;
 
@@ -786,6 +786,28 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 if let Some(callee_name) = new_callee {
                     let Expression::CallExpression(call) = node else { unreachable!() };
                     call.callee = self.b.rid_expr(callee_name);
+                }
+            }
+            Expression::StaticMemberExpression(member) => {
+                // Rest prop member access: props.label → $$props.label
+                if let Expression::Identifier(id) = &member.object {
+                    if self.is_rest_prop_ref(id)
+                        && !self.component_scoping.is_rest_prop_excluded(&member.property.name)
+                    {
+                        // Skip rewriting when this member expression is directly the LHS
+                        // of assignment/update. Only check immediate parent — not the
+                        // full ancestor chain (e.g. `obj[props.label] = 5` should rewrite).
+                        let is_lhs = matches!(
+                            ctx.parent(),
+                            Ancestor::AssignmentExpressionLeft(_)
+                                | Ancestor::UpdateExpressionArgument(_)
+                        );
+                        if !is_lhs {
+                            let Expression::StaticMemberExpression(member) = node else { unreachable!() };
+                            member.object = self.b.rid_expr("$$props");
+                            return;
+                        }
+                    }
                 }
             }
             Expression::Identifier(id) => {

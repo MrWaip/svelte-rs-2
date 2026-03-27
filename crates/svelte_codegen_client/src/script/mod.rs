@@ -9,7 +9,7 @@ use oxc_ast::ast::{Expression, Program, Statement};
 use oxc_ast::Comment;
 use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
-use oxc_span::SourceType;
+use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::traverse_mut;
 
 use svelte_analyze::{ComponentScoping, PropsAnalysis};
@@ -188,6 +188,12 @@ fn transform_script_text<'a>(
 
     let has_tracing = transformer.has_tracing;
 
+    // After TS stripping, comments attached to removed statements become orphaned.
+    // Re-attach them to the next remaining statement so OXC codegen can print them.
+    if is_ts {
+        reattach_orphaned_comments(&mut program);
+    }
+
     let comments: Vec<Comment> = program.comments.iter().copied().collect();
     let source_text = program.source_text;
     let program_span_end = program.span.end;
@@ -257,6 +263,10 @@ fn transform_program<'a>(
 
     let has_tracing = transformer.has_tracing;
 
+    if is_ts {
+        reattach_orphaned_comments(&mut program);
+    }
+
     let comments: Vec<Comment> = program.comments.iter().copied().collect();
     let source_text = program.source_text;
     let program_span_end = program.span.end;
@@ -272,6 +282,27 @@ fn transform_program<'a>(
     }
 
     ScriptOutput { imports, body, has_tracing, comments, source_text, program_span_end }
+}
+
+/// After TS type-only statements are removed, comments whose `attached_to`
+/// no longer matches any statement become invisible to OXC codegen.
+/// Re-attach them to the next remaining statement by span position.
+fn reattach_orphaned_comments(program: &mut Program<'_>) {
+    // Collect start positions of all remaining statements (sorted)
+    let mut stmt_starts: Vec<u32> = program.body.iter().map(|s| s.span().start).collect();
+    stmt_starts.sort_unstable();
+
+    for comment in program.comments.iter_mut() {
+        if stmt_starts.binary_search(&comment.attached_to).is_ok() {
+            continue; // still attached to a valid statement
+        }
+        // Find the next statement after this comment's position
+        let pos = comment.span.end;
+        let next = stmt_starts.iter().find(|&&s| s >= pos).copied();
+        if let Some(next_start) = next {
+            comment.attached_to = next_start;
+        }
+    }
 }
 
 pub(super) enum PropKind {
@@ -407,6 +438,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         } else {
             None
         }
+    }
+
+    /// Check if a reference identifier refers to the rest prop binding.
+    pub(super) fn is_rest_prop_ref(&self, id: &oxc_ast::ast::IdentifierReference<'a>) -> bool {
+        let Some(ref_id) = id.reference_id.get() else { return false };
+        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else { return false };
+        self.component_scoping.is_rest_prop(sym_id)
     }
 
     /// Walk an AssignmentTarget member chain to find root store ref.

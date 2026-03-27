@@ -139,7 +139,7 @@ pub(crate) fn build_attr_concat<'a>(
     for part in parts {
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
-            AstConcatPart::Dynamic(span) => {
+            AstConcatPart::Dynamic { span, .. } => {
                 let expr = get_concat_part_expr(ctx, span.start);
                 tpl_parts.push(TemplatePart::Expr(expr));
             }

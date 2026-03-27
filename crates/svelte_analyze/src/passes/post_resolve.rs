@@ -6,7 +6,6 @@ use crate::types::data::{AnalysisData, PropAnalysis, PropsAnalysis};
 /// Combines known value collection, props analysis, and needs_context aggregation.
 pub fn run_post_resolve_passes(data: &mut AnalysisData) {
     analyze_declarations(data);
-    detect_each_index_usage(data);
     aggregate_store_needs_context(data);
 }
 
@@ -77,6 +76,13 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
                         data.scoping.mark_prop_non_source(sym_id, p.prop_name.to_string());
                     }
                 }
+            } else if let Some(sym_id) = sym_id {
+                // Collect all previously seen (non-rest) prop names as excluded set
+                let excluded = decl.props.iter()
+                    .take_while(|prev| !prev.is_rest)
+                    .map(|prev| prev.prop_name.to_string())
+                    .collect();
+                data.scoping.mark_rest_prop(sym_id, excluded);
             }
 
             let is_lazy_default = p.default_span.is_some() && !p.is_simple_default;
@@ -99,35 +105,6 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
     data.props = Some(PropsAnalysis { props, has_bindable });
-}
-
-/// Detect each-block index variable usage via resolved SymbolIds.
-/// Index variables are only in scope inside the body, so any resolved reference
-/// to the index SymbolId must be within the body.
-fn detect_each_index_usage(data: &mut AnalysisData) {
-    let syms: Vec<_> = data
-        .each_blocks
-        .index_syms
-        .iter()
-        .map(|(id, sym)| (id, *sym))
-        .collect();
-    for (block_id, idx_sym) in syms {
-        let body_uses = data
-            .expressions
-            .values()
-            .chain(data.attr_expressions.values())
-            .any(|info| info.ref_symbols.contains(&idx_sym));
-        if body_uses {
-            data.each_blocks.body_uses_index.insert(block_id);
-        }
-
-        if let Some(key_info) = data.each_blocks.key_infos.get(block_id) {
-            if key_info.ref_symbols.contains(&idx_sym)
-            {
-                data.each_blocks.key_uses_index.insert(block_id);
-            }
-        }
-    }
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.

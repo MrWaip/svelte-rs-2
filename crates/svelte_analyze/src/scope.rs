@@ -45,6 +45,10 @@ pub struct ComponentScoping {
     /// Pre-computed set of dynamic rune symbols (populated by `precompute_dynamic_cache`).
     /// When `Some`, `is_dynamic_by_id` uses O(1) lookup instead of recursive walk.
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
+    /// SymbolId of the rest variable from `let { ...props } = $props()`
+    rest_prop_sym: Option<SymbolId>,
+    /// Prop names explicitly destructured before the rest element (excluded from rewriting)
+    rest_prop_excluded: FxHashSet<String>,
 }
 
 impl ComponentScoping {
@@ -75,6 +79,8 @@ impl ComponentScoping {
             template_scope_set: FxHashSet::default(),
             const_alias_tags: FxHashMap::default(),
             dynamic_sym_cache: None,
+            rest_prop_sym: None,
+            rest_prop_excluded: FxHashSet::default(),
         }
     }
 
@@ -303,7 +309,20 @@ impl ComponentScoping {
         self.each_non_reactive_syms.insert(sym_id);
     }
 
+    pub fn mark_rest_prop(&mut self, sym_id: SymbolId, excluded: FxHashSet<String>) {
+        self.rest_prop_sym = Some(sym_id);
+        self.rest_prop_excluded = excluded;
+    }
+
     // -- SymbolId-keyed classification: read --
+
+    pub fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
+        self.rest_prop_sym == Some(sym_id)
+    }
+
+    pub fn is_rest_prop_excluded(&self, name: &str) -> bool {
+        self.rest_prop_excluded.contains(name)
+    }
 
     pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
         self.prop_source_syms.contains(&sym_id)
