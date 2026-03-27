@@ -191,6 +191,16 @@ Additional rules:
 - Repeating `match` patterns on an enum → extract into a method on that enum.
 - Comments answer "why", never describe what the line does.
 
+### Quality checklist — apply to every change
+
+Before considering work complete, verify each point:
+
+1. **Systematic, no compromises** — if a proper fix requires changes in another layer or refactoring existing code, do it. No `// TODO`, `// HACK`, or "good enough for now" workarounds. Refactoring is always allowed when it leads to the correct solution.
+2. **OXC Visit / Template Visit** — all JS AST traversal uses OXC visitor infrastructure (`Visit`, `VisitMut`, `Traverse`). All template traversal uses `TemplateVisitor`. No manual recursive matching on `Expression::*` or template node variants. Use the most specific `visit_*` method available (e.g., `visit_call_expression`, `visit_identifier_reference`, `visit_binding_identifier`) instead of broad `visit_expression` with manual dispatch inside.
+3. **SymbolId / ReferenceId for identifiers** — no string-based identifier lookups (`FxHashSet<String>`, name comparisons). Use `SymbolId` from `ComponentScoping`, `ReferenceId` from expression analysis.
+4. **Full JS syntax coverage** — new code must handle all JS expression/statement variants, not just common ones. This is why (2) matters — visitors guarantee coverage.
+5. **No implicit dependencies or contracts** — data flows through explicit types and function signatures. No "codegen assumes analyze ran pass X first" without a type-level guarantee (e.g., `AnalysisData` field existence).
+
 ### Phase boundaries: fat analyze, dumb codegen
 
 Each compiler phase has a strict responsibility. When adding new features, place logic in the correct phase:

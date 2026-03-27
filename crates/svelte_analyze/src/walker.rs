@@ -279,6 +279,8 @@ pub(crate) trait TemplateVisitor {
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {}
     fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {}
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {}
+    fn leave_concatenation_attribute(&mut self, attr: &ConcatenationAttribute, ctx: &mut VisitContext<'_>) {}
+    fn leave_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {}
 }
 
 // ---------------------------------------------------------------------------
@@ -342,13 +344,12 @@ fn dispatch_opt_stmt(
 
 fn dispatch_concat_exprs(
     visitors: &mut [&mut dyn TemplateVisitor],
-    id: NodeId,
     parts: &[ConcatPart],
     ctx: &mut VisitContext<'_>,
 ) {
     for part in parts {
-        if let ConcatPart::Dynamic(span) = part {
-            dispatch_expr(visitors, id, *span, ctx);
+        if let ConcatPart::Dynamic { id, span } = part {
+            dispatch_expr(visitors, *id, *span, ctx);
         }
     }
 }
@@ -407,7 +408,9 @@ pub(crate) fn walk_template(
                 ctx.scope = body_scope;
                 dispatch_stmt(visitors, block.id, block.context_span, ctx);
                 dispatch_opt_stmt(visitors, block.id, block.index_span, ctx);
-                dispatch_opt_expr(visitors, block.id, block.key_span, ctx);
+                if let (Some(key_id), Some(key_span)) = (block.key_id, block.key_span) {
+                    dispatch_expr(visitors, key_id, key_span, ctx);
+                }
                 walk_template(&block.body, ctx, visitors);
                 ctx.scope = saved;
                 if let Some(fb) = &block.fallback {
@@ -562,7 +565,8 @@ fn walk_attributes(
             Attribute::ConcatenationAttribute(a) => {
                 for v in visitors.iter_mut() { v.visit_concatenation_attribute(a, ctx); }
                 ctx.push(ParentRef { id: a.id, kind: ParentKind::ConcatenationAttribute });
-                dispatch_concat_exprs(visitors, a.id, &a.parts, ctx);
+                dispatch_concat_exprs(visitors, &a.parts, ctx);
+                for v in visitors.iter_mut() { v.leave_concatenation_attribute(a, ctx); }
                 ctx.pop();
             }
             Attribute::SpreadAttribute(a) => {
@@ -591,10 +595,11 @@ fn walk_attributes(
                         dispatch_expr(visitors, a.id, *span, ctx);
                     }
                     StyleDirectiveValue::Concatenation(parts) => {
-                        dispatch_concat_exprs(visitors, a.id, parts, ctx);
+                        dispatch_concat_exprs(visitors, parts, ctx);
                     }
                     StyleDirectiveValue::Shorthand | StyleDirectiveValue::String(_) => {}
                 }
+                for v in visitors.iter_mut() { v.leave_style_directive(a, ctx); }
                 ctx.pop();
             }
             Attribute::BindDirective(a) => {

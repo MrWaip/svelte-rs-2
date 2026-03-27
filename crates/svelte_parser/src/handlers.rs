@@ -173,6 +173,7 @@ impl<'a> Parser<'a> {
             (last_children, None)
         };
 
+        let key_id = eb.key_span.map(|_| self.ids.next());
         let node = Node::EachBlock(EachBlock {
             id: self.ids.next(),
             span: merged_span,
@@ -180,6 +181,7 @@ impl<'a> Parser<'a> {
             context_span: eb.context_span,
             index_span: eb.index_span,
             key_span: eb.key_span,
+            key_id,
             body: Fragment::new(body_children),
             fallback,
         });
@@ -428,6 +430,7 @@ impl<'a> Parser<'a> {
                     (last_children, None)
                 };
 
+                let key_id = eb.key_span.map(|_| self.ids.next());
                 let node = Node::EachBlock(EachBlock {
                     id: self.ids.next(),
                     span: merged_span,
@@ -435,6 +438,7 @@ impl<'a> Parser<'a> {
                     context_span: eb.context_span,
                     index_span: eb.index_span,
                     key_span: eb.key_span,
+                    key_id,
                     body: Fragment::new(body_children),
                     fallback,
                 });
