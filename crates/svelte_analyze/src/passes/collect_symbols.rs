@@ -1,51 +1,30 @@
 use oxc_ast::ast::{Expression, IdentifierReference};
 use oxc_ast_visit::Visit;
-use oxc_semantic::{
-    NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeId,
-};
 use smallvec::SmallVec;
-use svelte_ast::{BindDirective, Component, NodeId, RenderTag};
+use svelte_ast::{Attribute, EachBlock, NodeId, RenderTag, StyleDirectiveValue};
+use svelte_span::Span;
 
+use crate::passes::js_analyze;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, ExpressionInfo, ExpressionKind};
 use crate::walker::{TemplateVisitor, VisitContext};
 
 /// Create a CollectSymbolsVisitor for use after TemplateSemanticVisitor.
 /// Consumes `ScopingBuilt` marker to enforce ordering.
 pub(crate) fn make_visitor(
-    component: &Component,
     _scoping: crate::types::markers::ScopingBuilt,
-) -> CollectSymbolsVisitor<'_> {
-    CollectSymbolsVisitor { component }
+) -> CollectSymbolsVisitor {
+    CollectSymbolsVisitor {
+        pending_render_tag: None,
+        pending_shorthand: None,
+        pending_clsx: false,
+    }
 }
 
-pub(crate) struct CollectSymbolsVisitor<'a> {
-    component: &'a Component,
-}
-
-/// Collect resolved SymbolIds from OXC references set by TemplateSemanticVisitor.
-/// Walks the parsed expression AST, reads reference_id → symbol_id from each
-/// IdentifierReference, and stores deduplicated SymbolIds on ExpressionInfo.
-fn collect_ref_symbols(expr: &Expression<'_>, scoping: &ComponentScoping) -> SmallVec<[SymbolId; 2]> {
-    struct Collector<'s> {
-        scoping: &'s ComponentScoping,
-        symbols: SmallVec<[SymbolId; 2]>,
-    }
-    impl<'a> Visit<'a> for Collector<'_> {
-        fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-            if let Some(ref_id) = ident.reference_id.get() {
-                let reference = self.scoping.get_reference(ref_id);
-                if let Some(sym_id) = reference.symbol_id() {
-                    if !self.symbols.contains(&sym_id) {
-                        self.symbols.push(sym_id);
-                    }
-                }
-            }
-        }
-    }
-    let mut collector = Collector { scoping, symbols: SmallVec::new() };
-    collector.visit_expression(expr);
-    collector.symbols
+pub(crate) struct CollectSymbolsVisitor {
+    pending_render_tag: Option<NodeId>,
+    pending_shorthand: Option<(NodeId, String)>,
+    pending_clsx: bool,
 }
 
 /// Resolve script-level store subscriptions from OXC unresolved references.
@@ -59,6 +38,241 @@ pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
         try_mark_store(name, &mut data.scoping);
     }
 }
+
+// ---------------------------------------------------------------------------
+// TemplateVisitor impl
+// ---------------------------------------------------------------------------
+
+impl TemplateVisitor for CollectSymbolsVisitor {
+    fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+        if let Some(key_id) = block.key_id {
+            ctx.data.each_blocks.key_node_ids.insert(block.id, key_id);
+        }
+    }
+
+    fn visit_expression(
+        &mut self,
+        node_id: NodeId,
+        span: Span,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        store_expr_offset(node_id, span, ctx);
+    }
+
+    fn visit_js_expression(
+        &mut self,
+        node_id: NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        let info = build_expression_info(expr, &mut ctx.data.scoping);
+        detect_each_index_usage(node_id, &info.ref_symbols, ctx.data);
+        store_expression_info(node_id, info, ctx);
+        classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
+        classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
+        classify_render_tag(node_id, expr, &mut self.pending_render_tag, ctx.data);
+    }
+
+    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_>) {
+        self.pending_render_tag = Some(tag.id);
+        resolve_render_tag_callee(tag, ctx);
+    }
+
+    fn visit_const_tag(
+        &mut self,
+        tag: &svelte_ast::ConstTag,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
+    }
+
+    fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_>) {
+        set_pending_flags(attr, &mut self.pending_shorthand, &mut self.pending_clsx);
+    }
+
+    fn leave_concatenation_attribute(
+        &mut self,
+        attr: &svelte_ast::ConcatenationAttribute,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        merge_concat_expression_info(&attr.parts, attr.id, ctx);
+    }
+
+    fn leave_style_directive(
+        &mut self,
+        dir: &svelte_ast::StyleDirective,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        if let StyleDirectiveValue::Concatenation(parts) = &dir.value {
+            merge_concat_expression_info(parts, dir.id, ctx);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extracted steps — each is a named function for flat visit_js_expression
+// ---------------------------------------------------------------------------
+
+/// Build a complete ExpressionInfo: analyze flags + collect resolved symbols in one pass.
+fn build_expression_info(
+    expr: &Expression<'_>,
+    scoping: &mut ComponentScoping,
+) -> ExpressionInfo {
+    let mut info = js_analyze::analyze_expression(expr);
+    info.ref_symbols = collect_ref_symbols_and_stores(expr, scoping);
+    info
+}
+
+/// Single OXC walk: collect resolved SymbolIds + detect $store subscriptions.
+fn collect_ref_symbols_and_stores(
+    expr: &Expression<'_>,
+    scoping: &mut ComponentScoping,
+) -> SmallVec<[SymbolId; 2]> {
+    struct Collector<'s> {
+        scoping: &'s mut ComponentScoping,
+        symbols: SmallVec<[SymbolId; 2]>,
+    }
+    impl<'a> Visit<'a> for Collector<'_> {
+        fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+            if let Some(ref_id) = ident.reference_id.get() {
+                if let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() {
+                    if !self.symbols.contains(&sym_id) {
+                        self.symbols.push(sym_id);
+                    }
+                }
+            }
+            try_mark_store(ident.name.as_str(), self.scoping);
+        }
+    }
+    let mut c = Collector { scoping, symbols: SmallVec::new() };
+    c.visit_expression(expr);
+    c.symbols
+}
+
+fn detect_each_index_usage(
+    node_id: NodeId,
+    symbols: &SmallVec<[SymbolId; 2]>,
+    data: &mut AnalysisData,
+) {
+    for &sym in symbols {
+        if let Some(&block_id) = data.each_blocks.index_sym_to_block.get(&sym) {
+            let is_key = data.each_blocks.key_node_ids
+                .get(block_id)
+                .is_some_and(|&kid| kid == node_id);
+            if is_key {
+                data.each_blocks.key_uses_index.insert(block_id);
+            } else {
+                data.each_blocks.body_uses_index.insert(block_id);
+            }
+        }
+    }
+}
+
+fn store_expression_info(
+    node_id: NodeId,
+    info: ExpressionInfo,
+    ctx: &mut VisitContext<'_>,
+) {
+    if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
+        ctx.data.attr_expressions.insert(node_id, info);
+    } else {
+        ctx.data.expressions.insert(node_id, info);
+    }
+}
+
+fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
+    if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
+        ctx.data.attr_expr_offsets.insert(node_id, span.start);
+    } else {
+        ctx.data.node_expr_offsets.insert(node_id, span.start);
+    }
+}
+
+fn classify_shorthand(
+    _node_id: NodeId,
+    expr: &Expression<'_>,
+    pending: &mut Option<(NodeId, String)>,
+    data: &mut AnalysisData,
+) {
+    if let Some((attr_id, name)) = pending.take() {
+        if let Expression::Identifier(ident) = expr {
+            if ident.name.as_str() == name {
+                data.element_flags.expression_shorthand.insert(attr_id);
+            }
+        }
+    }
+}
+
+fn classify_clsx(
+    node_id: NodeId,
+    expr: &Expression<'_>,
+    pending: &mut bool,
+    data: &mut AnalysisData,
+) {
+    if !*pending { return; }
+    *pending = false;
+    if !matches!(
+        expr,
+        Expression::StringLiteral(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::BinaryExpression(_)
+    ) {
+        data.element_flags.needs_clsx.insert(node_id);
+    }
+}
+
+fn classify_render_tag(
+    node_id: NodeId,
+    expr: &Expression<'_>,
+    pending: &mut Option<NodeId>,
+    data: &mut AnalysisData,
+) {
+    if pending.take() == Some(node_id) {
+        js_analyze::classify_render_tag_args(expr, data, node_id);
+    }
+}
+
+fn set_pending_flags(
+    attr: &Attribute,
+    pending_shorthand: &mut Option<(NodeId, String)>,
+    pending_clsx: &mut bool,
+) {
+    match attr {
+        Attribute::ExpressionAttribute(ea) => {
+            *pending_shorthand = Some((ea.id, ea.name.clone()));
+            if ea.name == "class" {
+                *pending_clsx = true;
+            }
+        }
+        Attribute::ClassDirective(cd) => {
+            if cd.expression_span.is_some() {
+                *pending_shorthand = Some((cd.id, cd.name.clone()));
+            }
+        }
+        Attribute::StyleDirective(sd) => {
+            if matches!(sd.value, StyleDirectiveValue::Expression(_)) {
+                *pending_shorthand = Some((sd.id, sd.name.clone()));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_>) {
+    if let Some(parsed) = ctx.parsed() {
+        if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.expression_span.start) {
+            if let Expression::Identifier(ident) = &call.callee {
+                if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
+                    ctx.data.render_tag_callee_sym.insert(tag.id, sym_id);
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /// If `name` is `$X`, mark `X` as a store subscription.
 fn try_mark_store(name: &str, scoping: &mut ComponentScoping) {
@@ -75,93 +289,46 @@ fn try_mark_store(name: &str, scoping: &mut ComponentScoping) {
     }
 }
 
-impl TemplateVisitor for CollectSymbolsVisitor<'_> {
-    fn visit_js_expression(
-        &mut self,
-        node_id: NodeId,
-        expr: &Expression<'_>,
-        ctx: &mut VisitContext<'_>,
-    ) {
-        let symbols = collect_ref_symbols(expr, &ctx.data.scoping);
-        // Store detection from expression identifiers
-        struct StoreDetector<'s> {
-            scoping: &'s mut ComponentScoping,
-        }
-        impl<'a> Visit<'a> for StoreDetector<'_> {
-            fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-                try_mark_store(ident.name.as_str(), self.scoping);
-            }
-        }
-        let mut detector = StoreDetector { scoping: &mut ctx.data.scoping };
-        detector.visit_expression(expr);
-
-        if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
-            if let Some(info) = ctx.data.attr_expressions.get_mut(node_id) {
-                info.ref_symbols = symbols;
-            }
-        } else if let Some(info) = ctx.data.expressions.get_mut(node_id) {
-            // Guard: each block dispatches iterable + key with same node_id;
-            // keep the iterable's ref_symbols (dispatched first).
-            if info.ref_symbols.is_empty() {
-                info.ref_symbols = symbols;
-            }
-        }
-    }
-
-    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
-        self.resolve_bind(dir, ctx.scope, ctx.data);
-    }
-
-    fn leave_each_block(&mut self, block: &svelte_ast::EachBlock, ctx: &mut VisitContext<'_>) {
-        // Key ref_symbols must be populated separately — key dispatch shares block.id
-        // with iterable, so visit_js_expression skips it (is_empty guard).
-        if let Some(key_span) = block.key_span {
-            if let Some(parsed) = ctx.parsed() {
-                if let Some(key_expr) = parsed.exprs.get(&key_span.start) {
-                    let symbols = collect_ref_symbols(key_expr, &ctx.data.scoping);
-                    if let Some(key_info) = ctx.data.each_blocks.key_infos.get_mut(block.id) {
-                        key_info.ref_symbols = symbols;
+/// Merge ExpressionInfo from individual concat part entries into a single entry
+/// for the parent attribute/directive.
+fn merge_concat_expression_info(
+    parts: &[svelte_ast::ConcatPart],
+    parent_id: NodeId,
+    ctx: &mut VisitContext<'_>,
+) {
+    let mut merged = ExpressionInfo {
+        kind: ExpressionKind::Other,
+        ref_symbols: SmallVec::new(),
+        has_store_ref: false,
+        has_side_effects: false,
+        has_call: false,
+        has_state_rune: false,
+        has_store_member_mutation: false,
+        needs_context: false,
+        is_dynamic: false,
+        has_state: false,
+    };
+    for part in parts {
+        if let svelte_ast::ConcatPart::Dynamic { id, .. } = part {
+            if let Some(info) = ctx.data.attr_expressions.get(*id) {
+                merged.has_call |= info.has_call;
+                merged.has_store_ref |= info.has_store_ref;
+                merged.has_side_effects |= info.has_side_effects;
+                merged.has_state_rune |= info.has_state_rune;
+                merged.has_store_member_mutation |= info.has_store_member_mutation;
+                merged.needs_context |= info.needs_context;
+                for sym in &info.ref_symbols {
+                    if !merged.ref_symbols.contains(sym) {
+                        merged.ref_symbols.push(*sym);
                     }
                 }
             }
         }
     }
-
-    fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_>) {
-        // Resolve callee SymbolId directly from reference_id (set by TemplateSemanticVisitor)
-        if let Some(parsed) = ctx.parsed() {
-            if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.expression_span.start) {
-                if let Expression::Identifier(ident) = &call.callee {
-                    if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
-                        ctx.data.render_tag_callee_sym.insert(tag.id, sym_id);
-                    }
-                }
-            }
-        }
-    }
+    ctx.data.attr_expressions.insert(parent_id, merged);
 }
 
-/// Resolve an IdentifierReference to its SymbolId via the reference_id set by SemanticCollector.
 fn resolve_identifier_symbol(ident: &IdentifierReference, scoping: &ComponentScoping) -> Option<SymbolId> {
     let ref_id = ident.reference_id.get()?;
     scoping.get_reference(ref_id).symbol_id()
-}
-
-impl CollectSymbolsVisitor<'_> {
-    fn resolve_bind(&self, dir: &BindDirective, scope: ScopeId, data: &mut AnalysisData) {
-        let name = if dir.shorthand {
-            dir.name.as_str()
-        } else if let Some(span) = dir.expression_span {
-            self.component.source_text(span).trim()
-        } else {
-            return;
-        };
-        // bind: is always a write reference — create OXC reference for mutation tracking
-        if let Some(sym_id) = data.scoping.find_binding(scope, name) {
-            let mut reference = OxcReference::new(OxcNodeId::DUMMY, scope, OxcReferenceFlags::Write);
-            reference.set_symbol_id(sym_id);
-            let ref_id = data.scoping.create_reference(reference);
-            data.scoping.add_resolved_reference(sym_id, ref_id);
-        }
-    }
 }

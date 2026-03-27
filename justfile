@@ -37,6 +37,10 @@ compare-benchmark file='tasks/benchmark/benches/compiler/big_v6.svelte':
     cd tasks/benchmark && npm install --silent
     node tasks/benchmark/compare.mjs {{file}}
 
+# Dump OXC AST as JSON for a JS expression
+dump-ast expr:
+    cargo run -p svelte_parser --example dump_ast -- '{{expr}}'
+
 # Build WASM and serve the playground
 playground:
     wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler

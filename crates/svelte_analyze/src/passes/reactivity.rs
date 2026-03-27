@@ -36,6 +36,8 @@ impl TemplateVisitor for ReactivityVisitor {
         let parent_kind = ctx.parent().map(|p| p.kind);
 
         if parent_kind.is_some_and(|k| k.is_attr()) {
+            // For concat parts, use the parent attribute's id for dynamic_attrs marking
+            let attr_id = ctx.parent().map_or(node_id, |p| p.id);
             let in_component = ctx.ancestors()
                 .nth(1) // grandparent (skip immediate attr parent)
                 .is_some_and(|gp| matches!(gp.kind, ParentKind::ComponentNode | ParentKind::SvelteBoundary));
@@ -45,7 +47,7 @@ impl TemplateVisitor for ReactivityVisitor {
             });
 
             if is_dynamic {
-                ctx.data.element_flags.dynamic_attrs.insert(node_id);
+                ctx.data.element_flags.dynamic_attrs.insert(attr_id);
                 if !in_component {
                     if let Some(el_id) = ctx.nearest_element() {
                         ctx.data.element_flags.needs_ref.insert(el_id);

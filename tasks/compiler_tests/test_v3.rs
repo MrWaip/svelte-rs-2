@@ -366,18 +366,8 @@ fn effect_tracking() {
 }
 
 #[rstest]
-fn effect_pending_basic() {
-    assert_compiler("effect_pending_basic");
-}
-
-#[rstest]
-fn effect_pending_if() {
-    assert_compiler("effect_pending_if");
-}
-
-#[rstest]
-fn effect_pending_var() {
-    assert_compiler("effect_pending_var");
+fn effect_pending() {
+    assert_compiler("effect_pending");
 }
 
 #[rstest]
@@ -631,23 +621,8 @@ fn component_bind_this() {
 }
 
 #[rstest]
-fn component_bind_this_plain() {
-    assert_compiler("component_bind_this_plain");
-}
-
-#[rstest]
-fn component_bind_this_props() {
-    assert_compiler("component_bind_this_props");
-}
-
-#[rstest]
-fn component_bind_this_member() {
-    assert_compiler("component_bind_this_member");
-}
-
-#[rstest]
-fn component_bind_this_each() {
-    assert_compiler("component_bind_this_each");
+fn component_bind_this_variants() {
+    assert_compiler("component_bind_this_variants");
 }
 
 #[rstest]
@@ -777,13 +752,8 @@ fn attach_in_each() {
 // ---------------------------------------------------------------------------
 
 #[rstest]
-fn state_destructure_object() {
-    assert_compiler("state_destructure_object");
-}
-
-#[rstest]
-fn state_destructure_array() {
-    assert_compiler("state_destructure_array");
+fn state_destructure() {
+    assert_compiler("state_destructure");
 }
 
 #[rstest]
@@ -794,21 +764,6 @@ fn state_raw_destructure_object() {
 #[rstest]
 fn state_raw_destructure_array() {
     assert_compiler("state_raw_destructure_array");
-}
-
-#[rstest]
-fn state_destructure_defaults() {
-    assert_compiler("state_destructure_defaults");
-}
-
-#[rstest]
-fn state_destructure_rest() {
-    assert_compiler("state_destructure_rest");
-}
-
-#[rstest]
-fn state_destructure_nested() {
-    assert_compiler("state_destructure_nested");
 }
 
 // ---------------------------------------------------------------------------
@@ -892,39 +847,14 @@ fn svelte_head_reactive() {
 }
 
 #[rstest]
-fn svelte_head_multiple() {
-    assert_compiler("svelte_head_multiple");
-}
-
-#[rstest]
-fn svelte_head_empty() {
-    assert_compiler("svelte_head_empty");
-}
-
-#[rstest]
 fn svelte_head_with_content() {
     assert_compiler("svelte_head_with_content");
 }
 
 // <title> in <svelte:head> tests
 #[rstest]
-fn title_static() {
-    assert_compiler("title_static");
-}
-
-#[rstest]
-fn title_dynamic() {
-    assert_compiler("title_dynamic");
-}
-
-#[rstest]
-fn title_mixed() {
-    assert_compiler("title_mixed");
-}
-
-#[rstest]
-fn title_empty() {
-    assert_compiler("title_empty");
+fn title_variants() {
+    assert_compiler("title_variants");
 }
 
 // svelte:window tests
@@ -964,48 +894,18 @@ fn svelte_window_reactive() {
 }
 
 #[rstest]
-fn svelte_document_event_legacy() {
-    assert_compiler("svelte_document_event_legacy");
+fn svelte_document_bindings() {
+    assert_compiler("svelte_document_bindings");
 }
 
 #[rstest]
-fn svelte_document_event_attr() {
-    assert_compiler("svelte_document_event_attr");
-}
-
-#[rstest]
-fn svelte_document_event_modifiers() {
-    assert_compiler("svelte_document_event_modifiers");
-}
-
-#[rstest]
-fn svelte_document_multiple_events() {
-    assert_compiler("svelte_document_multiple_events");
+fn svelte_document_events() {
+    assert_compiler("svelte_document_events");
 }
 
 #[rstest]
 fn svelte_document_bubble() {
     assert_compiler("svelte_document_bubble");
-}
-
-#[rstest]
-fn svelte_document_bind_active_element() {
-    assert_compiler("svelte_document_bind_active_element");
-}
-
-#[rstest]
-fn svelte_document_bind_fullscreen() {
-    assert_compiler("svelte_document_bind_fullscreen");
-}
-
-#[rstest]
-fn svelte_document_bind_visibility() {
-    assert_compiler("svelte_document_bind_visibility");
-}
-
-#[rstest]
-fn svelte_document_bind_pointer_lock() {
-    assert_compiler("svelte_document_bind_pointer_lock");
 }
 
 #[rstest]
@@ -1321,11 +1221,6 @@ fn inspect_basic() {
 }
 
 #[rstest]
-fn inspect_multi_args() {
-    assert_compiler("inspect_multi_args");
-}
-
-#[rstest]
 fn inspect_with_callback() {
     assert_compiler("inspect_with_callback");
 }
@@ -1345,43 +1240,13 @@ fn inspect_trace_basic() {
 }
 
 #[rstest]
-fn inspect_trace_label() {
-    assert_compiler("inspect_trace_label");
-}
-
-#[rstest]
-fn inspect_trace_async() {
-    assert_compiler("inspect_trace_async");
+fn inspect_trace_contexts() {
+    assert_compiler("inspect_trace_contexts");
 }
 
 #[rstest]
 fn inspect_trace_prod_strip() {
     assert_compiler("inspect_trace_prod_strip");
-}
-
-#[rstest]
-fn inspect_trace_arrow() {
-    assert_compiler("inspect_trace_arrow");
-}
-
-#[rstest]
-fn inspect_trace_filename() {
-    assert_compiler("inspect_trace_filename");
-}
-
-#[rstest]
-fn inspect_trace_callback() {
-    assert_compiler("inspect_trace_callback");
-}
-
-#[rstest]
-fn inspect_trace_property() {
-    assert_compiler("inspect_trace_property");
-}
-
-#[rstest]
-fn inspect_trace_template_handler() {
-    assert_compiler("inspect_trace_template_handler");
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,13 +1273,8 @@ fn debug_basic() {
 }
 
 #[rstest]
-fn debug_empty() {
-    assert_compiler("debug_empty");
-}
-
-#[rstest]
-fn debug_single() {
-    assert_compiler("debug_single");
+fn debug_in_blocks() {
+    assert_compiler("debug_in_blocks");
 }
 
 // ---------------------------------------------------------------------------
@@ -1515,15 +1375,6 @@ fn const_tag_dev() {
     assert_compiler("const_tag_dev");
 }
 
-#[rstest]
-fn debug_in_if() {
-    assert_compiler("debug_in_if");
-}
-
-#[rstest]
-fn debug_in_each() {
-    assert_compiler("debug_in_each");
-}
 
 #[rstest]
 fn rune_compound_template() {
@@ -1660,18 +1511,8 @@ fn script_jsdoc_comment() {
 }
 
 #[rstest]
-fn svelte_head_title_with_meta() {
-    assert_compiler("svelte_head_title_with_meta");
-}
-
-#[rstest]
-fn svelte_head_title_mixed_siblings() {
-    assert_compiler("svelte_head_title_mixed_siblings");
-}
-
-#[rstest]
-fn svelte_head_static_title_with_meta() {
-    assert_compiler("svelte_head_static_title_with_meta");
+fn svelte_head_title_meta() {
+    assert_compiler("svelte_head_title_meta");
 }
 
 #[rstest]
@@ -1697,11 +1538,6 @@ fn svelte_element_static_class_attr() {
 #[rstest]
 fn root_with_special_elements() {
     assert_compiler("root_with_special_elements");
-}
-
-#[rstest]
-fn debug_inside_element() {
-    assert_compiler("debug_inside_element");
 }
 
 #[rstest]
@@ -1769,13 +1605,11 @@ fn component_snippet_only() {
 // ---------------------------------------------------------------------------
 
 #[rstest]
-#[ignore = "TODO: comment preservation in script transform"]
 fn ts_type_import_comment() {
     assert_compiler("ts_type_import_comment");
 }
 
 #[rstest]
-#[ignore = "TODO: rest props $$props rewrite"]
 fn rest_props_member_access() {
     assert_compiler("rest_props_member_access");
 }
@@ -1795,7 +1629,6 @@ fn component_bind_prop_forward() {
 // ---------------------------------------------------------------------------
 
 #[rstest]
-#[ignore = "TODO: needs_context for nested functions"]
 fn needs_context_nested_fn() {
     assert_compiler("needs_context_nested_fn");
 }
