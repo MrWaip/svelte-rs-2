@@ -151,13 +151,15 @@ Rules:
 If new syntax is needed (identified in Step 3):
 1. Add types to `crates/svelte_ast/src/lib.rs`
 2. Add parsing to `crates/svelte_parser/src/lib.rs`
-3. Add parser tests following `/test-pattern`
+3. Add parser unit tests following `/test-pattern` — cover each new AST node, attribute variant, directive syntax
 
 ### Step 7: Analysis & Codegen
 
 If new metadata is needed (identified in Step 3):
 1. Add or extend a pass in `crates/svelte_analyze/src/`
-2. Add analyze tests following `/test-pattern`
+2. Add analyze unit tests following `/test-pattern` — cover each analysis decision (rune classification, mutations, dynamic nodes, bind groups, expression kinds, etc.)
+
+**Unit tests are mandatory for every new analysis pass or parser change.** They provide fast feedback and catch regressions independently from compiler integration tests. Use `assert_rune_has_mutation`, `assert_expression_kind`, `assert_dynamic_nodes`, and similar helpers. Add new helpers when testing new analysis/parser features.
 
 Implement codegen in the corresponding `svelte_codegen_client` module (see navigation table in CLAUDE.md).
 
