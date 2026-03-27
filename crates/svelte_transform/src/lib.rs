@@ -70,7 +70,8 @@ fn walk_fragment<'a>(
     parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
-    for node in &fragment.nodes {
+    for &id in &fragment.nodes {
+        let node = component.store.get(id);
         walk_node(ctx, node, component, parsed, scope);
     }
 }

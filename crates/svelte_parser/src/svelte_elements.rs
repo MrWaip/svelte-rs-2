@@ -1,6 +1,7 @@
 use svelte_ast::{
-    Attribute, Component, CssMode, CustomElementConfig, Element, Fragment, Namespace, Node,
-    SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow,
+    AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Fragment, Namespace,
+    Node, NodeId, SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions,
+    SvelteWindow,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -17,23 +18,22 @@ impl<'a> Parser<'a> {
             .fragment
             .nodes
             .iter()
-            .position(|n| n.as_element().is_some_and(|el| el.name == "svelte:options"));
+            .position(|&id| component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:options"));
 
         let Some(idx) = options_idx else {
             return;
         };
 
-        let node = component.fragment.nodes.remove(idx);
-        let Node::Element(el) = node else {
-            unreachable!();
-        };
+        let node_id = component.fragment.nodes.remove(idx);
+        let node = component.store.get(node_id);
+        let el = node.as_element().unwrap();
 
         // Check for duplicate <svelte:options>
         let has_another = component
             .fragment
             .nodes
             .iter()
-            .any(|n| n.as_element().is_some_and(|e| e.name == "svelte:options"));
+            .any(|&id| component.store.get(id).as_element().is_some_and(|e| e.name == "svelte:options"));
         if has_another {
             self.recover(Diagnostic::svelte_options_duplicate(el.span));
         }
@@ -43,7 +43,7 @@ impl<'a> Parser<'a> {
             self.recover(Diagnostic::svelte_options_no_children(el.span));
         }
 
-        component.options = Some(self.read_svelte_options(&el));
+        component.options = Some(self.read_svelte_options(el));
     }
 
     fn read_svelte_options(&mut self, el: &Element) -> SvelteOptions {
@@ -231,15 +231,17 @@ impl<'a> Parser<'a> {
 
     /// Convert `<svelte:head>` Element nodes in the root fragment to SvelteHead nodes.
     pub(crate) fn convert_svelte_head(component: &mut Component) {
-        for node in &mut component.fragment.nodes {
-            if let Node::Element(el) = node {
+        let ids: Vec<NodeId> = component.fragment.nodes.clone();
+        for id in ids {
+            let node = component.store.get(id);
+            if let Some(el) = node.as_element() {
                 if el.name == "svelte:head" {
                     let head = SvelteHead {
                         id: el.id,
                         span: el.span,
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                        fragment: Fragment::new(el.fragment.nodes.clone()),
                     };
-                    *node = Node::SvelteHead(head);
+                    component.store.replace(id, Node::SvelteHead(head));
                 }
             }
         }
@@ -247,16 +249,18 @@ impl<'a> Parser<'a> {
 
     /// Convert `<svelte:window>` Element nodes in the root fragment to SvelteWindow nodes.
     pub(crate) fn convert_svelte_window(component: &mut Component) {
-        for node in &mut component.fragment.nodes {
-            if let Node::Element(el) = node {
+        let ids: Vec<NodeId> = component.fragment.nodes.clone();
+        for id in ids {
+            let node = component.store.get(id);
+            if let Some(el) = node.as_element() {
                 if el.name == "svelte:window" {
                     let window = SvelteWindow {
                         id: el.id,
                         span: el.span,
-                        attributes: std::mem::take(&mut el.attributes),
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                        attributes: el.attributes.clone(),
+                        fragment: Fragment::new(el.fragment.nodes.clone()),
                     };
-                    *node = Node::SvelteWindow(window);
+                    component.store.replace(id, Node::SvelteWindow(window));
                 }
             }
         }
@@ -264,16 +268,18 @@ impl<'a> Parser<'a> {
 
     /// Convert `<svelte:document>` Element nodes in the root fragment to SvelteDocument nodes.
     pub(crate) fn convert_svelte_document(component: &mut Component) {
-        for node in &mut component.fragment.nodes {
-            if let Node::Element(el) = node {
+        let ids: Vec<NodeId> = component.fragment.nodes.clone();
+        for id in ids {
+            let node = component.store.get(id);
+            if let Some(el) = node.as_element() {
                 if el.name == "svelte:document" {
                     let doc = SvelteDocument {
                         id: el.id,
                         span: el.span,
-                        attributes: std::mem::take(&mut el.attributes),
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                        attributes: el.attributes.clone(),
+                        fragment: Fragment::new(el.fragment.nodes.clone()),
                     };
-                    *node = Node::SvelteDocument(doc);
+                    component.store.replace(id, Node::SvelteDocument(doc));
                 }
             }
         }
@@ -281,16 +287,18 @@ impl<'a> Parser<'a> {
 
     /// Convert `<svelte:body>` Element nodes in the root fragment to SvelteBody nodes.
     pub(crate) fn convert_svelte_body(component: &mut Component) {
-        for node in &mut component.fragment.nodes {
-            if let Node::Element(el) = node {
+        let ids: Vec<NodeId> = component.fragment.nodes.clone();
+        for id in ids {
+            let node = component.store.get(id);
+            if let Some(el) = node.as_element() {
                 if el.name == "svelte:body" {
                     let body = SvelteBody {
                         id: el.id,
                         span: el.span,
-                        attributes: std::mem::take(&mut el.attributes),
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                        attributes: el.attributes.clone(),
+                        fragment: Fragment::new(el.fragment.nodes.clone()),
                     };
-                    *node = Node::SvelteBody(body);
+                    component.store.replace(id, Node::SvelteBody(body));
                 }
             }
         }
@@ -302,82 +310,98 @@ impl<'a> Parser<'a> {
 
     /// Convert `<svelte:element this={expr}>` Element nodes to SvelteElement nodes.
     /// Unlike svelte:head, these can appear anywhere in the tree, so we walk recursively.
-    pub(crate) fn convert_svelte_element(fragment: &mut Fragment) {
-        for node in &mut fragment.nodes {
+    pub(crate) fn convert_svelte_element(store: &mut AstStore, fragment: &Fragment) {
+        let ids: Vec<NodeId> = fragment.nodes.clone();
+        for id in ids {
+            let node = store.get(id);
             match node {
                 Node::Element(el) if el.name == "svelte:element" => {
-                    let (tag_span, static_tag) = Self::extract_this_attribute(&mut el.attributes);
-                    let mut svelte_el = svelte_ast::SvelteElement {
-                        id: el.id,
-                        span: el.span,
+                    let mut attrs = el.attributes.clone();
+                    let child_ids = el.fragment.nodes.clone();
+                    let span = el.span;
+                    let orig_id = el.id;
+                    let (tag_span, static_tag) = Self::extract_this_attribute(&mut attrs);
+                    let child_fragment = Fragment::new(child_ids);
+                    Self::convert_svelte_element(store, &child_fragment);
+                    let svelte_el = svelte_ast::SvelteElement {
+                        id: orig_id,
+                        span,
                         tag_span,
                         static_tag,
-                        attributes: std::mem::take(&mut el.attributes),
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                        attributes: attrs,
+                        fragment: child_fragment,
                     };
-                    Self::convert_svelte_element(&mut svelte_el.fragment);
-                    *node = Node::SvelteElement(svelte_el);
+                    store.replace(id, Node::SvelteElement(svelte_el));
                 }
-                Node::Element(el) => Self::convert_svelte_element(&mut el.fragment),
-                Node::ComponentNode(cn) => Self::convert_svelte_element(&mut cn.fragment),
-                Node::IfBlock(block) => {
-                    Self::convert_svelte_element(&mut block.consequent);
-                    if let Some(alt) = &mut block.alternate {
-                        Self::convert_svelte_element(alt);
+                _ => {
+                    // Collect child fragments to recurse into
+                    let child_fragments = collect_child_fragment_ids(node);
+                    for child_frag in child_fragments {
+                        Self::convert_svelte_element(store, &child_frag);
                     }
                 }
-                Node::EachBlock(block) => {
-                    Self::convert_svelte_element(&mut block.body);
-                    if let Some(fallback) = &mut block.fallback {
-                        Self::convert_svelte_element(fallback);
-                    }
-                }
-                Node::SnippetBlock(block) => Self::convert_svelte_element(&mut block.body),
-                Node::KeyBlock(block) => Self::convert_svelte_element(&mut block.fragment),
-                Node::SvelteHead(head) => Self::convert_svelte_element(&mut head.fragment),
-                Node::SvelteElement(el) => Self::convert_svelte_element(&mut el.fragment),
-                Node::SvelteBoundary(b) => Self::convert_svelte_element(&mut b.fragment),
-                _ => {}
             }
         }
     }
 
     /// Convert `<svelte:boundary>` Element nodes to SvelteBoundary nodes.
     /// Recursive — boundary can appear anywhere in the template.
-    pub(crate) fn convert_svelte_boundary(fragment: &mut Fragment) {
-        for node in &mut fragment.nodes {
+    pub(crate) fn convert_svelte_boundary(store: &mut AstStore, fragment: &Fragment) {
+        let ids: Vec<NodeId> = fragment.nodes.clone();
+        for id in ids {
+            let node = store.get(id);
             match node {
                 Node::Element(el) if el.name == "svelte:boundary" => {
-                    let mut boundary = SvelteBoundary {
-                        id: el.id,
-                        span: el.span,
-                        attributes: std::mem::take(&mut el.attributes),
-                        fragment: std::mem::replace(&mut el.fragment, Fragment::empty()),
+                    let attrs = el.attributes.clone();
+                    let child_ids = el.fragment.nodes.clone();
+                    let span = el.span;
+                    let orig_id = el.id;
+                    let child_fragment = Fragment::new(child_ids);
+                    Self::convert_svelte_boundary(store, &child_fragment);
+                    let boundary = SvelteBoundary {
+                        id: orig_id,
+                        span,
+                        attributes: attrs,
+                        fragment: child_fragment,
                     };
-                    Self::convert_svelte_boundary(&mut boundary.fragment);
-                    *node = Node::SvelteBoundary(boundary);
+                    store.replace(id, Node::SvelteBoundary(boundary));
                 }
-                Node::Element(el) => Self::convert_svelte_boundary(&mut el.fragment),
-                Node::ComponentNode(cn) => Self::convert_svelte_boundary(&mut cn.fragment),
-                Node::IfBlock(block) => {
-                    Self::convert_svelte_boundary(&mut block.consequent);
-                    if let Some(alt) = &mut block.alternate {
-                        Self::convert_svelte_boundary(alt);
+                _ => {
+                    let child_fragments = collect_child_fragment_ids(node);
+                    for child_frag in child_fragments {
+                        Self::convert_svelte_boundary(store, &child_frag);
                     }
                 }
-                Node::EachBlock(block) => {
-                    Self::convert_svelte_boundary(&mut block.body);
-                    if let Some(fallback) = &mut block.fallback {
-                        Self::convert_svelte_boundary(fallback);
-                    }
-                }
-                Node::SnippetBlock(block) => Self::convert_svelte_boundary(&mut block.body),
-                Node::KeyBlock(block) => Self::convert_svelte_boundary(&mut block.fragment),
-                Node::SvelteHead(head) => Self::convert_svelte_boundary(&mut head.fragment),
-                Node::SvelteElement(el) => Self::convert_svelte_boundary(&mut el.fragment),
-                Node::SvelteBoundary(b) => Self::convert_svelte_boundary(&mut b.fragment),
-                _ => {}
             }
         }
+    }
+}
+
+/// Collect child fragments from a node for recursive conversion.
+/// Returns owned Fragment copies (cheap — just Vec<NodeId>).
+fn collect_child_fragment_ids(node: &Node) -> Vec<Fragment> {
+    match node {
+        Node::Element(el) => vec![Fragment::new(el.fragment.nodes.clone())],
+        Node::ComponentNode(cn) => vec![Fragment::new(cn.fragment.nodes.clone())],
+        Node::IfBlock(block) => {
+            let mut frags = vec![Fragment::new(block.consequent.nodes.clone())];
+            if let Some(alt) = &block.alternate {
+                frags.push(Fragment::new(alt.nodes.clone()));
+            }
+            frags
+        }
+        Node::EachBlock(block) => {
+            let mut frags = vec![Fragment::new(block.body.nodes.clone())];
+            if let Some(fb) = &block.fallback {
+                frags.push(Fragment::new(fb.nodes.clone()));
+            }
+            frags
+        }
+        Node::SnippetBlock(block) => vec![Fragment::new(block.body.nodes.clone())],
+        Node::KeyBlock(block) => vec![Fragment::new(block.fragment.nodes.clone())],
+        Node::SvelteHead(head) => vec![Fragment::new(head.fragment.nodes.clone())],
+        Node::SvelteElement(el) => vec![Fragment::new(el.fragment.nodes.clone())],
+        Node::SvelteBoundary(b) => vec![Fragment::new(b.fragment.nodes.clone())],
+        _ => vec![],
     }
 }

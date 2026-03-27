@@ -55,8 +55,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
         // Index SymbolId is populated in leave_each_block (after dispatch_stmt creates bindings)
 
-        if block.body.nodes.iter().any(|node| {
-            if let Node::Element(el) = node {
+        if block.body.nodes.iter().any(|&nid| {
+            if let Node::Element(el) = ctx.store.get(nid) {
                 el.attributes.iter().any(|a| matches!(a, Attribute::AnimateDirective(_)))
             } else {
                 false

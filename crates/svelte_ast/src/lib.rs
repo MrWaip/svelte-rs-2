@@ -19,25 +19,29 @@ pub struct NodeId(pub u32);
 
 pub struct Component {
     pub fragment: Fragment,
+    pub store: AstStore,
     pub script: Option<Script>,
     pub css: Option<RawBlock>,
     pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
     pub source: String,
-    /// Total number of NodeId values allocated during parsing.
-    pub node_count: u32,
 }
 
 impl Component {
-    pub fn new(source: String, fragment: Fragment, script: Option<Script>, css: Option<RawBlock>, node_count: u32) -> Self {
+    pub fn new(source: String, fragment: Fragment, store: AstStore, script: Option<Script>, css: Option<RawBlock>) -> Self {
         Self {
             fragment,
+            store,
             script,
             css,
             options: None,
             source,
-            node_count,
         }
+    }
+
+    /// Total number of NodeId slots allocated during parsing (nodes + attrs + misc).
+    pub fn node_count(&self) -> u32 {
+        self.store.len()
     }
 
     /// Get source text for a span.
@@ -51,11 +55,11 @@ impl Component {
 // ---------------------------------------------------------------------------
 
 pub struct Fragment {
-    pub nodes: Vec<Node>,
+    pub nodes: Vec<NodeId>,
 }
 
 impl Fragment {
-    pub fn new(nodes: Vec<Node>) -> Self {
+    pub fn new(nodes: Vec<NodeId>) -> Self {
         Self { nodes }
     }
 
@@ -67,8 +71,8 @@ impl Fragment {
         self.nodes.is_empty()
     }
 
-    pub fn push(&mut self, node: Node) {
-        self.nodes.push(node);
+    pub fn push(&mut self, id: NodeId) {
+        self.nodes.push(id);
     }
 }
 
@@ -91,6 +95,11 @@ macro_rules! impl_node_enum {
 
             pub fn span(&self) -> Span {
                 match self { $( Node::$Variant(n) => n.span, )+ }
+            }
+
+            /// Set the NodeId on the inner type (used by AstStore::push).
+            fn set_id(&mut self, id: NodeId) {
+                match self { $( Node::$Variant(n) => n.id = id, )+ }
             }
 
             $(
@@ -782,31 +791,103 @@ pub enum CustomElementConfig {
 }
 
 // ---------------------------------------------------------------------------
-// NodeId allocator (used during parsing)
+// AstStore — flat arena for all template nodes
 // ---------------------------------------------------------------------------
 
-pub struct NodeIdAllocator {
-    next: u32,
+/// Flat arena storing all template nodes. NodeId is an index into this store.
+/// Slots for non-node ids (attributes, key_id, script) contain `None`.
+pub struct AstStore {
+    nodes: Vec<Option<Node>>,
 }
 
-impl NodeIdAllocator {
+impl AstStore {
     pub fn new() -> Self {
-        Self { next: 0 }
+        Self { nodes: Vec::new() }
     }
 
-    pub fn next(&mut self) -> NodeId {
-        let id = NodeId(self.next);
-        self.next += 1;
+    /// Push a template node into the store. Sets the node's id to match its index.
+    pub fn push(&mut self, mut node: Node) -> NodeId {
+        let id = NodeId(self.nodes.len() as u32);
+        node.set_id(id);
+        self.nodes.push(Some(node));
         id
     }
 
-    pub fn current(&self) -> u32 {
-        self.next
+    /// Reserve a slot for a non-node id (attributes, key expressions, script, etc.).
+    pub fn reserve(&mut self) -> NodeId {
+        let id = NodeId(self.nodes.len() as u32);
+        self.nodes.push(None);
+        id
+    }
+
+    /// Get a node by id. Panics if the slot is empty (non-node id).
+    pub fn get(&self, id: NodeId) -> &Node {
+        self.nodes[id.0 as usize].as_ref()
+            .unwrap_or_else(|| panic!("no node at {:?}", id))
+    }
+
+    /// Get a mutable node by id. Panics if the slot is empty.
+    pub fn get_mut(&mut self, id: NodeId) -> &mut Node {
+        self.nodes[id.0 as usize].as_mut()
+            .unwrap_or_else(|| panic!("no node at {:?}", id))
+    }
+
+    /// Replace a node in-place (used by svelte:element/boundary conversion).
+    pub fn replace(&mut self, id: NodeId, mut node: Node) {
+        node.set_id(id);
+        self.nodes[id.0 as usize] = Some(node);
+    }
+
+    /// Total number of allocated slots (nodes + reserved).
+    pub fn len(&self) -> u32 {
+        self.nodes.len() as u32
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
     }
 }
 
-impl Default for NodeIdAllocator {
+impl Default for AstStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Typed accessor macro for AstStore — generates methods like `element(id) -> &Element`.
+macro_rules! impl_store_accessors {
+    ( $( $method:ident -> $Type:ident / $as_method:ident ),+ $(,)? ) => {
+        impl AstStore {
+            $(
+                pub fn $method(&self, id: NodeId) -> &$Type {
+                    self.get(id).$as_method()
+                        .unwrap_or_else(|| panic!("{:?} is not a {}", id, stringify!($Type)))
+                }
+            )+
+        }
+    };
+}
+
+impl_store_accessors! {
+    text -> Text / as_text,
+    element -> Element / as_element,
+    component_node -> ComponentNode / as_component_node,
+    comment -> Comment / as_comment,
+    expression_tag -> ExpressionTag / as_expression_tag,
+    if_block -> IfBlock / as_if_block,
+    each_block -> EachBlock / as_each_block,
+    snippet_block -> SnippetBlock / as_snippet_block,
+    render_tag -> RenderTag / as_render_tag,
+    html_tag -> HtmlTag / as_html_tag,
+    const_tag -> ConstTag / as_const_tag,
+    debug_tag -> DebugTag / as_debug_tag,
+    key_block -> KeyBlock / as_key_block,
+    svelte_head -> SvelteHead / as_svelte_head,
+    svelte_element -> SvelteElement / as_svelte_element,
+    svelte_window -> SvelteWindow / as_svelte_window,
+    svelte_document -> SvelteDocument / as_svelte_document,
+    svelte_body -> SvelteBody / as_svelte_body,
+    svelte_boundary -> SvelteBoundary / as_svelte_boundary,
+    await_block -> AwaitBlock / as_await_block,
+    error_node -> ErrorNode / as_error,
 }

@@ -199,8 +199,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
     // Bubble events on special elements (on:event with no expression) reference $$props
-    let has_bubble_events = component.fragment.nodes.iter().any(|n| {
-        let attrs = match n {
+    let has_bubble_events = component.fragment.nodes.iter().any(|&id| {
+        let node = component.store.get(id);
+        let attrs = match node {
             Node::SvelteWindow(w) => Some(&w.attributes),
             Node::SvelteDocument(d) => Some(&d.attributes),
             _ => None,
