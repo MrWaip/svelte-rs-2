@@ -41,23 +41,33 @@ trait impls, and gives false positives on string/comment matches.
 
 ## Testing
 
-All tests in `crates/svelte_parser` must follow the span-based pattern described in `/test-pattern`.
+### Unit test pattern
+
+Every unit test follows the same structure: **parse → assert via helpers**. No manual field access, no `.unwrap()` chains in test bodies.
+
+```rust
+#[test]
+fn test_name() {
+    let actual = parse_or_analyze("input");
+    assert_foo(&actual, "expected");
+    assert_bar(&actual, expected_value);
+}
+```
 
 Rules:
-- Use `assert_node`, `assert_script`, `assert_if_block` helpers (defined in the test module)
-- Prefer `assert_<node_type>` helpers for repeated structural checks. One-off field access or `if let` is acceptable when the check is unique to a single test.
-- Add new `assert_<node_type>` helpers when new node types need testing
+- Each crate has a `parse_*` or `analyze_*` entry function that returns the data under test
+- All assertions go through `assert_*` helpers defined in the test module
+- Prefer `assert_<thing>` helpers for repeated checks. One-off field access is acceptable only when the check is truly unique to a single test.
+- Add new `assert_*` helpers when new features need testing — don't inline field access
 - Exception: `assert!(result.is_err())` for error tests needs no helper
 
 When writing or modifying any test in `svelte_parser`, apply `/test-pattern` automatically.
 
-### svelte_analyze tests
+### Where tests live
 
-Tests live in `crates/svelte_analyze/src/tests.rs`. Each test parses a `.svelte` snippet via `parse_with_js()`, runs `analyze()`, and asserts on `AnalysisData` fields. Follow `/test-pattern` for helpers and structure.
-
-### svelte_codegen_client tests
-
-Compiler tests live in `tasks/compiler_tests/cases2/`. Each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual).
+- **Parser** — `crates/svelte_parser` tests, span-based pattern per `/test-pattern`
+- **Analyze** — `crates/svelte_analyze/src/tests.rs`, entry: `analyze_source()` → `(Component, AnalysisData)`
+- **Compiler integration** — `tasks/compiler_tests/cases2/`, each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual)
 
 ## Just commands
 

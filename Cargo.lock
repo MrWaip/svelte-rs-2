@@ -53,6 +53,9 @@ name = "bitflags"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bpaf"
@@ -146,6 +149,7 @@ dependencies = [
  "itoa",
  "rustversion",
  "ryu",
+ "serde",
  "static_assertions",
 ]
 
@@ -487,7 +491,9 @@ dependencies = [
  "allocator-api2",
  "hashbrown",
  "oxc_data_structures",
+ "oxc_estree",
  "rustc-hash",
+ "serde",
 ]
 
 [[package]]
@@ -590,6 +596,11 @@ name = "oxc_estree"
 version = "0.117.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a47515ead44bc8beec1ae1514f10ecca63cde043da167c0395dc914f098ea5d2"
+dependencies = [
+ "dragonbox_ecma",
+ "itoa",
+ "oxc_data_structures",
+]
 
 [[package]]
 name = "oxc_index"
@@ -687,6 +698,7 @@ dependencies = [
  "oxc_ast_macros",
  "oxc_estree",
  "oxc_str",
+ "serde",
 ]
 
 [[package]]
@@ -699,6 +711,7 @@ dependencies = [
  "hashbrown",
  "oxc_allocator",
  "oxc_estree",
+ "serde",
 ]
 
 [[package]]
@@ -717,6 +730,7 @@ dependencies = [
  "oxc_index",
  "oxc_span",
  "phf",
+ "serde",
  "unicode-id-start",
 ]
 
@@ -1132,6 +1146,7 @@ dependencies = [
  "compact_str",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_estree",
  "oxc_parser",
  "oxc_semantic",
  "oxc_span",

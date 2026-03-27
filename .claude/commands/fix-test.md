@@ -40,12 +40,7 @@ Apply the minimal fix in the appropriate layer. Do NOT fix multiple test cases a
 
 ## Step 3.5: Unit tests
 
-If the fix touches parser or analyze logic, add a unit test covering the specific behavior:
-
-- **Parser fix** → unit test in `svelte_parser` following `/test-pattern` (assert AST node structure, attributes, spans)
-- **Analyze fix** → unit test in `svelte_analyze/src/tests.rs` following `/test-pattern` (assert rune classification, mutations, dynamic nodes, expression kinds, bind groups, etc.)
-
-Use existing helpers (`assert_rune_has_mutation`, `assert_expression_kind`, `assert_dynamic_nodes`, etc.) or add new ones for new analysis/parser features. Unit tests provide fast feedback and catch regressions independently from compiler integration tests.
+If the fix touches parser or analyze logic, add a unit test covering the specific behavior following the **Unit test pattern** in CLAUDE.md. Use existing `assert_*` helpers or add new ones — no manual field access in test bodies.
 
 ## Step 4: Quality check
 

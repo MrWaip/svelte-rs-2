@@ -1,4 +1,5 @@
 use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
+use crate::types::script::RuneKind;
 
 use super::*;
 
@@ -257,6 +258,91 @@ fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usiz
     );
 }
 
+fn assert_rune_kind(data: &AnalysisData, name: &str, expected: RuneKind) {
+    let root = data.scoping.root_scope_id();
+    let sym_id = data
+        .scoping
+        .find_binding(root, name)
+        .unwrap_or_else(|| panic!("no symbol '{name}'"));
+    let actual = data
+        .scoping
+        .rune_kind(sym_id)
+        .unwrap_or_else(|| panic!("'{name}' is not a rune"));
+    assert_eq!(actual, expected, "expected '{name}' to be {expected:?}");
+}
+
+fn assert_rune_is_mutated(data: &AnalysisData, name: &str) {
+    let root = data.scoping.root_scope_id();
+    let sym_id = data
+        .scoping
+        .find_binding(root, name)
+        .unwrap_or_else(|| panic!("no symbol '{name}'"));
+    assert!(
+        data.scoping.is_mutated(sym_id),
+        "expected rune '{name}' to be mutated"
+    );
+}
+
+fn assert_rune_not_mutated(data: &AnalysisData, name: &str) {
+    let root = data.scoping.root_scope_id();
+    let sym_id = data
+        .scoping
+        .find_binding(root, name)
+        .unwrap_or_else(|| panic!("no symbol '{name}'"));
+    assert!(
+        !data.scoping.is_mutated(sym_id),
+        "expected rune '{name}' to NOT be mutated"
+    );
+}
+
+fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    let info = data
+        .expression(id)
+        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
+    assert!(
+        info.has_call,
+        "expected ExpressionTag '{expr_text}' to have a call"
+    );
+}
+
+fn assert_expr_tag_no_call(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    let info = data
+        .expression(id)
+        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
+    assert!(
+        !info.has_call,
+        "expected ExpressionTag '{expr_text}' to NOT have a call"
+    );
+}
+
+fn assert_expr_tag_has_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    let info = data
+        .expression(id)
+        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
+    assert!(
+        info.has_store_ref,
+        "expected ExpressionTag '{expr_text}' to have a store reference"
+    );
+}
+
+fn assert_expr_tag_no_store_ref(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    let info = data
+        .expression(id)
+        .unwrap_or_else(|| panic!("no ExpressionInfo for '{expr_text}'"));
+    assert!(
+        !info.has_store_ref,
+        "expected ExpressionTag '{expr_text}' to NOT have a store reference"
+    );
+}
+
 // -----------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------
@@ -445,6 +531,109 @@ fn each_block_index_is_dynamic() {
         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
     );
     assert_dynamic_tag(&data, &c, "i");
+}
+
+// ---------------------------------------------------------------------------
+// Rune kind tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rune_kind_state() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0);</script>"#);
+    assert_rune_kind(&data, "count", RuneKind::State);
+}
+
+#[test]
+fn rune_kind_state_raw() {
+    let (_c, data) = analyze_source(r#"<script>let data = $state.raw({});</script>"#);
+    assert_rune_kind(&data, "data", RuneKind::StateRaw);
+}
+
+#[test]
+fn rune_kind_derived() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0); let doubled = $derived(count * 2);</script>"#);
+    assert_rune_kind(&data, "count", RuneKind::State);
+    assert_rune_kind(&data, "doubled", RuneKind::Derived);
+}
+
+#[test]
+fn rune_kind_derived_by() {
+    let (_c, data) = analyze_source(r#"<script>let val = $derived.by(() => 42);</script>"#);
+    assert_rune_kind(&data, "val", RuneKind::DerivedBy);
+}
+
+#[test]
+fn rune_kind_state_eager() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state.eager(0);</script>"#);
+    assert_rune_kind(&data, "count", RuneKind::StateEager);
+}
+
+// ---------------------------------------------------------------------------
+// Rune mutation tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rune_mutated_by_assignment() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0); count = 1;</script>"#);
+    assert_rune_is_mutated(&data, "count");
+}
+
+#[test]
+fn rune_mutated_by_update() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>"#);
+    assert_rune_is_mutated(&data, "count");
+}
+
+#[test]
+fn rune_mutated_by_compound_assignment() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0); count += 1;</script>"#);
+    assert_rune_is_mutated(&data, "count");
+}
+
+#[test]
+fn rune_not_mutated_when_only_read() {
+    let (_c, data) = analyze_source(r#"<script>let count = $state(0);</script>{count}"#);
+    assert_rune_not_mutated(&data, "count");
+}
+
+#[test]
+fn derived_is_never_mutated() {
+    let (_c, data) = analyze_source(
+        r#"<script>let count = $state(0); let doubled = $derived(count * 2);</script>{doubled}"#,
+    );
+    assert_rune_not_mutated(&data, "doubled");
+}
+
+// ---------------------------------------------------------------------------
+// Template expression has_call tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn expr_tag_with_function_call() {
+    let (c, data) = analyze_source(r#"<script>function fmt(x) { return x; }</script>{fmt(1)}"#);
+    assert_expr_tag_has_call(&data, &c, "fmt(1)");
+}
+
+#[test]
+fn expr_tag_without_call() {
+    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
+    assert_expr_tag_no_call(&data, &c, "count");
+}
+
+// ---------------------------------------------------------------------------
+// Store reference detection tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn store_ref_detected_in_template() {
+    let (c, data) = analyze_source(r#"<script>import { count } from './store';</script>{$count}"#);
+    assert_expr_tag_has_store_ref(&data, &c, "$count");
+}
+
+#[test]
+fn no_store_ref_for_regular_var() {
+    let (c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
+    assert_expr_tag_no_store_ref(&data, &c, "count");
 }
 
 // ---------------------------------------------------------------------------
