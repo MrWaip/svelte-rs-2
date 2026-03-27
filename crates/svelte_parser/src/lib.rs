@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Parser<'a> {
         Parser {
             source,
-            store: AstStore::with_capacity(source.len() / 20),
+            store: AstStore::with_capacity(source.len() / 10),
             diagnostics: Vec::new(),
         }
     }

@@ -795,9 +795,9 @@ pub enum CustomElementConfig {
 // ---------------------------------------------------------------------------
 
 /// Flat arena storing all template nodes. NodeId is an index into this store.
-/// Slots for non-node ids (attributes, key_id, script) contain `None`.
+/// Reserved slots (for attributes, key_id, script) hold placeholder Error nodes.
 pub struct AstStore {
-    nodes: Vec<Option<Node>>,
+    nodes: Vec<Node>,
 }
 
 impl AstStore {
@@ -814,41 +814,40 @@ impl AstStore {
     pub fn push(&mut self, mut node: Node) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
         node.set_id(id);
-        self.nodes.push(Some(node));
+        self.nodes.push(node);
         id
     }
 
     /// Reserve a slot for a non-node id (attributes, key expressions, script, etc.).
+    /// Fills with a placeholder — must never be accessed via `get()`.
     pub fn reserve(&mut self) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
-        self.nodes.push(None);
+        self.nodes.push(Node::Error(ErrorNode { id, span: Span::new(0, 0) }));
         id
     }
 
-    /// Get a node by id. Panics if the slot is empty (non-node id).
+    /// Get a node by id.
     pub fn get(&self, id: NodeId) -> &Node {
-        self.nodes[id.0 as usize].as_ref()
-            .unwrap_or_else(|| panic!("no node at {:?}", id))
+        &self.nodes[id.0 as usize]
     }
 
-    /// Get a mutable node by id. Panics if the slot is empty.
+    /// Get a mutable node by id.
     pub fn get_mut(&mut self, id: NodeId) -> &mut Node {
-        self.nodes[id.0 as usize].as_mut()
-            .unwrap_or_else(|| panic!("no node at {:?}", id))
+        &mut self.nodes[id.0 as usize]
     }
 
-    /// Take a node out of the store, leaving the slot empty.
-    /// Panics if the slot is already empty.
+    /// Take a node out of the store, leaving a placeholder in its slot.
     pub fn take(&mut self, id: NodeId) -> Node {
-        self.nodes[id.0 as usize]
-            .take()
-            .unwrap_or_else(|| panic!("no node at {:?}", id))
+        std::mem::replace(
+            &mut self.nodes[id.0 as usize],
+            Node::Error(ErrorNode { id, span: Span::new(0, 0) }),
+        )
     }
 
     /// Replace a node in-place (used by svelte:element/boundary conversion).
     pub fn replace(&mut self, id: NodeId, mut node: Node) {
         node.set_id(id);
-        self.nodes[id.0 as usize] = Some(node);
+        self.nodes[id.0 as usize] = node;
     }
 
     /// Total number of allocated slots (nodes + reserved).
