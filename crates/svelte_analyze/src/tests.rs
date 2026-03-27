@@ -54,6 +54,11 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
                     return Some(id);
                 }
             }
+            Node::SvelteElement(el) => {
+                if let Some(id) = find_expr_tag(&el.fragment, component, target) {
+                    return Some(id);
+                }
+            }
             _ => {}
         }
     }
@@ -391,6 +396,14 @@ fn rune_detection() {
 fn dynamic_text_content() {
     let (_c, data) = analyze_source(r#"<script>let count = $state(0); count++;</script>{count}"#);
     assert_root_content_type(&data, ContentStrategy::DynamicText);
+}
+
+#[test]
+fn dynamic_expr_inside_svelte_element() {
+    let (c, data) = analyze_source(
+        r#"<script>let { name } = $props();</script><svelte:element this="div">{name}</svelte:element>"#,
+    );
+    assert_dynamic_tag(&data, &c, "name");
 }
 
 #[test]
