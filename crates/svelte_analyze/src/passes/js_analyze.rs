@@ -109,34 +109,22 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
 ///
 /// ConstTag names are handled separately — they come from `JsParseResult.const_tag_names`
 /// (extracted during OXC statement parsing to support TS type annotations).
-pub(crate) fn prepare_template_bindings(
-    parsed: &ParserResult<'_>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    let root = data.scoping.root_scope_id();
-    let mut visitor = BindingPreparer { parsed };
-    let mut ctx = crate::walker::VisitContext::new(root, data);
-    crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
-}
+pub(crate) struct BindingPreparer;
 
-struct BindingPreparer<'a, 'b> {
-    parsed: &'b ParserResult<'a>,
-}
-
-impl crate::walker::TemplateVisitor for BindingPreparer<'_, '_> {
+impl crate::walker::TemplateVisitor for BindingPreparer {
     fn visit_await_block(
         &mut self,
         block: &svelte_ast::AwaitBlock,
         ctx: &mut crate::walker::VisitContext<'_>,
     ) {
+        let Some(parsed) = ctx.parsed() else { return };
         if let Some(val_span) = block.value_span {
-            if let Some(info) = extract_await_binding_info(self.parsed, val_span.start) {
+            if let Some(info) = extract_await_binding_info(parsed, val_span.start) {
                 ctx.data.await_bindings.values.insert(block.id, info);
             }
         }
         if let Some(err_span) = block.error_span {
-            if let Some(info) = extract_await_binding_info(self.parsed, err_span.start) {
+            if let Some(info) = extract_await_binding_info(parsed, err_span.start) {
                 ctx.data.await_bindings.errors.insert(block.id, info);
             }
         }
@@ -173,37 +161,22 @@ fn extract_await_binding_info(
 /// Extract ExpressionInfo for all parsed template and attribute expressions.
 /// Also classifies: expression shorthand, needs_clsx, snippet_param_names,
 /// render_tag_args, CE config.
-pub(crate) fn extract_all_expressions(
-    parsed: &ParserResult<'_>,
-    component: &Component,
-    data: &mut AnalysisData,
-) {
-    let root = data.scoping.root_scope_id();
-    let mut visitor = ExpressionExtractor {
-        pending_render_tag: None,
-        pending_shorthand: None,
-        pending_clsx: false,
-    };
-    let mut ctx = crate::walker::VisitContext::with_parsed(root, data, parsed);
-    crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
+// ExpressionExtractor and BindingPreparer are used as composite visitors in lib.rs
 
-    // Extract CE config (not template-related)
-    if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
-        .options
-        .as_ref()
-        .and_then(|o| o.custom_element.as_ref())
-    {
-        if let Some(expr) = parsed.exprs.get(&span.start) {
-            let config = crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
-            data.ce_config = Some(config);
-        }
-    }
-}
-
-struct ExpressionExtractor {
+pub(crate) struct ExpressionExtractor {
     pending_render_tag: Option<NodeId>,
     pending_shorthand: Option<(NodeId, String)>,
     pending_clsx: bool,
+}
+
+impl ExpressionExtractor {
+    pub(crate) fn new() -> Self {
+        Self {
+            pending_render_tag: None,
+            pending_shorthand: None,
+            pending_clsx: false,
+        }
+    }
 }
 
 impl crate::walker::TemplateVisitor for ExpressionExtractor {

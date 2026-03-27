@@ -46,9 +46,6 @@ pub fn analyze_with_options<'a>(
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
     passes::js_analyze::classify_render_tags(&mut parsed, component, &mut data);
 
-    // Extract AwaitBlock binding metadata from parsed expressions
-    passes::js_analyze::prepare_template_bindings(&parsed, component, &mut data);
-
     // Extract script info from pre-parsed Program AST
     let script_info = parsed.program.as_ref().and_then(|program| {
         let span = parsed.script_content_span?;
@@ -70,8 +67,25 @@ pub fn analyze_with_options<'a>(
         passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
     }
 
-    // Extract expression info + classify shorthand/clsx/snippets/render_tag_args/CE config
-    passes::js_analyze::extract_all_expressions(&parsed, component, &mut data);
+    // Await binding metadata + expression info — composite walker (one tree walk)
+    {
+        let root = data.scoping.root_scope_id();
+        let mut v1 = passes::js_analyze::BindingPreparer;
+        let mut v2 = passes::js_analyze::ExpressionExtractor::new();
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1, &mut v2]);
+    }
+    // CE config (not template-related, extracted separately)
+    if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
+        .options
+        .as_ref()
+        .and_then(|o| o.custom_element.as_ref())
+    {
+        if let Some(expr) = parsed.exprs.get(&span.start) {
+            let config = utils::ce_config::extract_ce_config_from_expr(expr, span.start);
+            data.ce_config = Some(config);
+        }
+    }
 
     passes::template_scoping::create_template_scopes(component, &mut data.scoping, &parsed);
     // TODO: build_scoping pass removed — reimplement template bindings, side tables
