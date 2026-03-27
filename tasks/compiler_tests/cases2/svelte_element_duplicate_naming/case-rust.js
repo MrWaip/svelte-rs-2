@@ -12,7 +12,7 @@ export default function App($$anchor, $$props) {
 		$.append($$anchor, text);
 	});
 	var node_1 = $.sibling(node, 2);
-	$.element(node_1, tag, false, ($$element, $$anchor) => {
+	$.element(node_1, tag, false, ($$element_1, $$anchor) => {
 		$.set_class($$element_1, 0, "second");
 		var text_1 = $.text();
 		text_1.nodeValue = "Second: hello";

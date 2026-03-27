@@ -111,7 +111,7 @@ pub(crate) fn gen_svelte_element<'a>(
 
     if !inner.is_empty() {
         let callback = ctx.b.arrow_block_expr(
-            ctx.b.params(["$$element", "$$anchor"]),
+            ctx.b.params([el_name.as_str(), "$$anchor"]),
             inner,
         );
         args.push(Arg::Expr(callback));
