@@ -157,11 +157,13 @@ fn walk_node<'a>(
                 parse_span(alloc, component, key_span, typescript, result, diags);
             }
 
-            // Parse context pattern (simple identifier or destructured)
-            let ctx_text = component.source_text(block.context_span);
-            let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
-            if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
-                result.stmts.insert(block.context_span.start, stmt);
+            // Parse context pattern (simple identifier or destructured) — absent for `{#each items}`
+            if let Some(ctx_span) = block.context_span {
+                let ctx_text = component.source_text(ctx_span);
+                let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
+                if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
+                    result.stmts.insert(ctx_span.start, stmt);
+                }
             }
 
             // Parse index variable
