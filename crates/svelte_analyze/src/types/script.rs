@@ -45,6 +45,10 @@ pub struct DeclarationInfo {
     pub is_rune: Option<RuneKind>,
     /// For $derived/$derived.by: names referenced in the init expression.
     pub rune_init_refs: Vec<CompactString>,
+    /// Pre-extracted literal value from init expression (for known_values).
+    /// For runes: literal value of first argument (e.g. `$state(42)` → `"42"`).
+    /// For non-runes: literal value of init (e.g. `const x = "hello"` → `"hello"`).
+    pub init_literal: Option<CompactString>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -209,8 +209,7 @@ impl<'a> Parser<'a> {
         let node = Node::SnippetBlock(SnippetBlock {
             id: self.ids.next(),
             span: merged_span,
-            name: sb.name,
-            params_span: sb.params_span,
+            expression_span: sb.expression_span,
             body: Fragment::new(body_children),
         });
 
@@ -450,8 +449,7 @@ impl<'a> Parser<'a> {
                 let node = Node::SnippetBlock(SnippetBlock {
                     id: self.ids.next(),
                     span: merged_span,
-                    name: sb.name,
-                    params_span: sb.params_span,
+                    expression_span: sb.expression_span,
                     body: Fragment::new(body_children),
                 });
 

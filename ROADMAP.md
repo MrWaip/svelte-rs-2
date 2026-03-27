@@ -559,4 +559,31 @@ Theme: deprecated syntax superseded by Svelte 5 features. Only needed for migrat
 
 ---
 
+## Architecture
+
+### Arena-based AST with NodeStore trait
+
+Replace tree-owned `Fragment { nodes: Vec<Node> }` with arena storage: all nodes live in a flat `Vec<Node>` on `Component`, fragments hold `Vec<NodeId>`. Access through `NodeStore` trait:
+
+```rust
+trait NodeStore {
+    fn get(&self, id: NodeId) -> &Node;
+    fn children(&self, id: NodeId) -> &[NodeId];
+}
+```
+
+**Benefits:**
+- O(1) node lookup by NodeId — any pass can get `&Node` from a side-table NodeId
+- Cache-friendly sequential layout
+- Simpler lifetime management (`&arena[id]` lives as long as `Component`)
+- Walker, visitors, codegen work through `NodeStore` — migration is trait impl swap
+
+**Unlocks:**
+- `element_flags.rs`: attribute visitors get parent element name/attrs without state machines
+- Validate pass: check cross-node relationships without tree traversal
+- Post-resolve passes: work with NodeId from side tables and access full AST node
+- Eliminates need for `element_name` field on VisitContext
+
+**Scope:** parser + svelte_ast + all consumers (analyze, codegen, transform). Separate milestone.
+
 ## Deferred

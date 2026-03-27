@@ -2,7 +2,7 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget,
-        BindingIdentifier, CallExpression, ChainElement, ComputedMemberExpression,
+        BindingIdentifier, CallExpression, ChainElement, ComputedMemberExpression, MemberExpression,
         ExportDefaultDeclarationKind,
         Expression, FormalParameters, Function, FunctionType, IdentifierReference,
         ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
@@ -775,43 +775,28 @@ impl<'a> Builder<'a> {
 
     /// Convert all member accesses in an expression to optional chaining.
     /// `obj.ref` → `obj?.ref`, `a.b.c` → `a?.b?.c`, `refs[i]` → `refs?.[i]`
-    pub fn make_optional_chain(&self, expr: Expression<'a>) -> Expression<'a> {
-        match expr {
-            Expression::StaticMemberExpression(mut sme) => {
-                sme.optional = true;
-                let object = std::mem::replace(&mut sme.object, self.null_expr());
-                sme.object = self.make_inner_optional(object);
-                Expression::ChainExpression(self.alloc(
-                    self.ast.chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
-                ))
+    pub fn make_optional_chain(&self, mut expr: Expression<'a>) -> Expression<'a> {
+        // Set optional=true on all member expressions in the chain
+        {
+            let mut current = &mut expr;
+            while let Some(member) = current.as_member_expression_mut() {
+                match member {
+                    MemberExpression::StaticMemberExpression(sme) => sme.optional = true,
+                    MemberExpression::ComputedMemberExpression(cme) => cme.optional = true,
+                    MemberExpression::PrivateFieldExpression(pfe) => pfe.optional = true,
+                }
+                current = member.object_mut();
             }
-            Expression::ComputedMemberExpression(mut cme) => {
-                cme.optional = true;
-                let object = std::mem::replace(&mut cme.object, self.null_expr());
-                cme.object = self.make_inner_optional(object);
-                Expression::ChainExpression(self.alloc(
-                    self.ast.chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
-                ))
-            }
-            other => other,
         }
-    }
 
-    /// Recursively set `optional = true` on inner member expressions (not wrapped in ChainExpression).
-    fn make_inner_optional(&self, expr: Expression<'a>) -> Expression<'a> {
+        // Wrap outermost member expression in ChainExpression
         match expr {
-            Expression::StaticMemberExpression(mut sme) => {
-                sme.optional = true;
-                let object = std::mem::replace(&mut sme.object, self.null_expr());
-                sme.object = self.make_inner_optional(object);
-                Expression::StaticMemberExpression(sme)
-            }
-            Expression::ComputedMemberExpression(mut cme) => {
-                cme.optional = true;
-                let object = std::mem::replace(&mut cme.object, self.null_expr());
-                cme.object = self.make_inner_optional(object);
-                Expression::ComputedMemberExpression(cme)
-            }
+            Expression::StaticMemberExpression(sme) => Expression::ChainExpression(self.alloc(
+                self.ast.chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
+            )),
+            Expression::ComputedMemberExpression(cme) => Expression::ChainExpression(self.alloc(
+                self.ast.chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
+            )),
             other => other,
         }
     }

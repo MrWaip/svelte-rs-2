@@ -197,8 +197,8 @@ pub struct StyleTag {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct StartSnippetTag {
-    pub name_span: Span,
-    pub params_span: Option<Span>,
+    /// Span covering `name(params)` or just `name`.
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -213,7 +213,7 @@ pub struct HtmlTagToken {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConstTagToken {
-    pub declaration_span: Span,
+    pub expression_span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]

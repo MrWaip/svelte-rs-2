@@ -2,7 +2,10 @@ use super::*;
 
 fn parse(source: &str) -> Component {
     let (component, diagnostics) = Parser::new(source).parse();
-    assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
     component
 }
 
@@ -104,7 +107,10 @@ fn nested_if_in_element() {
 #[test]
 fn unclosed_element_returns_diagnostic() {
     let (component, diagnostics) = Parser::new("<div>").parse();
-    assert!(!diagnostics.is_empty(), "expected diagnostics for unclosed element");
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostics for unclosed element"
+    );
     // AST should still contain the auto-closed element
     assert_eq!(component.fragment.nodes.len(), 1);
     assert!(component.fragment.nodes[0].is_element());
@@ -139,11 +145,15 @@ fn script_context_module_context_attribute() {
     assert_eq!(script.context, ScriptContext::Module);
 }
 
-fn assert_snippet_block(c: &Component, index: usize, expected_name: &str, expected_params: Option<&str>) {
+fn assert_snippet_block(
+    c: &Component,
+    index: usize,
+    expected_name: &str,
+    expected_expression: &str,
+) {
     if let Node::SnippetBlock(ref sb) = c.fragment.nodes[index] {
-        assert_eq!(sb.name, expected_name);
-        let actual_params = sb.params_span.map(|s| c.source_text(s));
-        assert_eq!(actual_params, expected_params);
+        assert_eq!(sb.name(&c.source), expected_name);
+        assert_eq!(c.source_text(sb.expression_span), expected_expression);
     } else {
         panic!("expected SnippetBlock at index {index}");
     }
@@ -160,20 +170,24 @@ fn assert_render_tag(c: &Component, index: usize, expected_expr: &str) {
 #[test]
 fn snippet_block_basic() {
     let c = parse("{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}");
-    assert_node(&c, 0, "{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}");
-    assert_snippet_block(&c, 0, "greeting", Some("name"));
+    assert_node(
+        &c,
+        0,
+        "{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}",
+    );
+    assert_snippet_block(&c, 0, "greeting", "greeting(name)");
 }
 
 #[test]
 fn snippet_block_no_params() {
     let c = parse("{#snippet footer()}<p>footer</p>{/snippet}");
-    assert_snippet_block(&c, 0, "footer", None);
+    assert_snippet_block(&c, 0, "footer", "footer()");
 }
 
 #[test]
 fn snippet_block_multiple_params() {
     let c = parse("{#snippet card(title, body)}<div>{title} {body}</div>{/snippet}");
-    assert_snippet_block(&c, 0, "card", Some("title, body"));
+    assert_snippet_block(&c, 0, "card", "card(title, body)");
 }
 
 #[test]
@@ -197,7 +211,7 @@ fn render_tag_multiple_args() {
 #[test]
 fn snippet_and_render_together() {
     let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
-    assert_snippet_block(&c, 0, "greet", Some("name"));
+    assert_snippet_block(&c, 0, "greet", "greet(name)");
     assert_render_tag(&c, 1, "greet(x)");
 }
 
@@ -225,9 +239,9 @@ fn html_tag_complex_expression() {
 
 // --- ConstTag tests ---
 
-fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_decl: &str) {
+fn assert_const_tag(c: &Component, fragment: &Fragment, index: usize, expected_expr: &str) {
     if let Node::ConstTag(ref ct) = fragment.nodes[index] {
-        assert_eq!(c.source_text(ct.declaration_span), expected_decl);
+        assert_eq!(c.source_text(ct.expression_span), expected_expr);
     } else {
         panic!("expected ConstTag at index {index}");
     }
@@ -313,7 +327,10 @@ fn style_tag_with_script() {
 #[test]
 fn duplicate_style_tag_returns_diagnostic() {
     let (_, diagnostics) = Parser::new("<style>a{}</style><style>b{}</style>").parse();
-    assert!(!diagnostics.is_empty(), "expected diagnostic for duplicate style");
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostic for duplicate style"
+    );
 }
 
 // --- Each block key tests (Bug #3) ---
@@ -345,7 +362,11 @@ fn each_block_with_index_and_key() {
 #[test]
 fn deeply_nested_blocks() {
     let c = parse("{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}");
-    assert_node(&c, 0, "{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}");
+    assert_node(
+        &c,
+        0,
+        "{#if a}<div>{#each items as item}{#if b}inner{/if}{/each}</div>{/if}",
+    );
 }
 
 // --- Directive tests at parser level ---
@@ -356,7 +377,10 @@ fn class_directive_on_element() {
     assert_node(&c, 0, "<div class:active={isActive}>text</div>");
     if let Node::Element(ref el) = c.fragment.nodes[0] {
         assert_eq!(el.attributes.len(), 1);
-        assert!(matches!(el.attributes[0], svelte_ast::Attribute::ClassDirective(_)));
+        assert!(matches!(
+            el.attributes[0],
+            svelte_ast::Attribute::ClassDirective(_)
+        ));
     } else {
         panic!("expected Element");
     }
@@ -368,7 +392,10 @@ fn bind_directive_on_element() {
     assert_node(&c, 0, "<input bind:value={name}/>");
     if let Node::Element(ref el) = c.fragment.nodes[0] {
         assert_eq!(el.attributes.len(), 1);
-        assert!(matches!(el.attributes[0], svelte_ast::Attribute::BindDirective(_)));
+        assert!(matches!(
+            el.attributes[0],
+            svelte_ast::Attribute::BindDirective(_)
+        ));
     } else {
         panic!("expected Element");
     }
@@ -379,8 +406,10 @@ fn spread_attribute_on_element() {
     let c = parse("<div {...props}>text</div>");
     if let Node::Element(ref el) = c.fragment.nodes[0] {
         assert_eq!(el.attributes.len(), 1);
-        assert!(matches!(el.attributes[0], svelte_ast::Attribute::SpreadAttribute(_)));
-
+        assert!(matches!(
+            el.attributes[0],
+            svelte_ast::Attribute::SpreadAttribute(_)
+        ));
     } else {
         panic!("expected Element");
     }
@@ -421,7 +450,11 @@ fn recovery_unclosed_if_block() {
 #[test]
 fn recovery_multiple_errors() {
     let (c, diags) = parse_with_diagnostics("<div><span>");
-    assert!(diags.len() >= 2, "expected multiple diagnostics, got {}", diags.len());
+    assert!(
+        diags.len() >= 2,
+        "expected multiple diagnostics, got {}",
+        diags.len()
+    );
     // Both unclosed elements should be auto-closed
     assert_eq!(c.fragment.nodes.len(), 1);
 }
@@ -453,7 +486,7 @@ fn recovery_close_tag_no_matching_open() {
 #[test]
 fn recovery_duplicate_script_continues() {
     let (c, diags) = parse_with_diagnostics(
-        "<script>let a = 1;</script><script>let b = 2;</script><div>ok</div>"
+        "<script>let a = 1;</script><script>let b = 2;</script><div>ok</div>",
     );
     assert!(!diags.is_empty());
     // First script is kept, second is skipped, div is parsed
@@ -472,7 +505,10 @@ fn recovery_unclosed_each_block() {
 fn assert_element(c: &Component, index: usize, name: &str, self_closing: bool) {
     if let Node::Element(ref el) = c.fragment.nodes[index] {
         assert_eq!(el.name, name, "expected element name '{name}'");
-        assert_eq!(el.self_closing, self_closing, "expected self_closing={self_closing} for <{name}>");
+        assert_eq!(
+            el.self_closing, self_closing,
+            "expected self_closing={self_closing} for <{name}>"
+        );
     } else {
         panic!("expected Element at index {index}");
     }
@@ -512,7 +548,9 @@ fn void_element_img() {
 fn void_element_closing_tag_error() {
     let (_, diags) = parse_with_diagnostics("</input>");
     assert!(!diags.is_empty());
-    assert!(diags.iter().any(|d| d.kind == svelte_diagnostics::DiagnosticKind::VoidElementInvalidContent));
+    assert!(diags
+        .iter()
+        .any(|d| d.kind == svelte_diagnostics::DiagnosticKind::VoidElementInvalidContent));
 }
 
 #[test]
@@ -533,7 +571,11 @@ fn assert_options_runes(c: &Component, expected: bool) {
 
 fn assert_options_namespace(c: &Component, expected: svelte_ast::Namespace) {
     let opts = c.options.as_ref().expect("expected svelte:options");
-    assert_eq!(opts.namespace, Some(expected), "expected namespace={expected:?}");
+    assert_eq!(
+        opts.namespace,
+        Some(expected),
+        "expected namespace={expected:?}"
+    );
 }
 
 fn assert_options_css(c: &Component, expected: svelte_ast::CssMode) {
@@ -554,7 +596,10 @@ fn assert_options_custom_element_tag(c: &Component, expected_tag: &str) {
 fn assert_options_custom_element_expression(c: &Component) {
     let opts = c.options.as_ref().expect("expected svelte:options");
     assert!(
-        matches!(&opts.custom_element, Some(svelte_ast::CustomElementConfig::Expression(_))),
+        matches!(
+            &opts.custom_element,
+            Some(svelte_ast::CustomElementConfig::Expression(_))
+        ),
         "expected CustomElementConfig::Expression"
     );
 }
@@ -567,7 +612,10 @@ fn assert_no_options(c: &Component) {
 fn svelte_options_runes_true() {
     let c = parse("<svelte:options runes={true} />");
     assert_options_runes(&c, true);
-    assert!(c.fragment.is_empty(), "svelte:options should be removed from fragment");
+    assert!(
+        c.fragment.is_empty(),
+        "svelte:options should be removed from fragment"
+    );
 }
 
 #[test]
@@ -652,7 +700,10 @@ fn svelte_options_with_content() {
 fn svelte_options_removed_from_fragment() {
     let c = parse("<svelte:options runes={true} />");
     assert!(c.options.is_some());
-    assert!(c.fragment.is_empty(), "svelte:options must be removed from fragment");
+    assert!(
+        c.fragment.is_empty(),
+        "svelte:options must be removed from fragment"
+    );
 }
 
 #[test]
@@ -689,7 +740,8 @@ fn svelte_options_invalid_css_diagnostic() {
 
 #[test]
 fn svelte_options_no_children_diagnostic() {
-    let (_, diags) = parse_with_diagnostics("<svelte:options runes={true}><p>child</p></svelte:options>");
+    let (_, diags) =
+        parse_with_diagnostics("<svelte:options runes={true}><p>child</p></svelte:options>");
     assert!(!diags.is_empty());
     assert!(diags.iter().any(|d| matches!(
         &d.kind,
@@ -736,7 +788,9 @@ fn svelte_options_deprecated_tag_diagnostic() {
         svelte_diagnostics::DiagnosticKind::SvelteOptionsDeprecatedTag
     )));
     // Should be a warning, not an error
-    assert!(diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Warning));
+    assert!(diags
+        .iter()
+        .any(|d| d.severity == svelte_diagnostics::Severity::Warning));
 }
 
 #[test]
@@ -744,7 +798,10 @@ fn svelte_options_invalid_tag_not_stored() {
     let (c, diags) = parse_with_diagnostics(r#"<svelte:options customElement="NoHyphen" />"#);
     assert!(!diags.is_empty());
     let opts = c.options.as_ref().expect("expected svelte:options");
-    assert!(opts.custom_element.is_none(), "invalid tag should not be stored");
+    assert!(
+        opts.custom_element.is_none(),
+        "invalid tag should not be stored"
+    );
 }
 
 #[test]
@@ -786,13 +843,19 @@ fn debug_tag_multiple() {
 #[test]
 fn debug_tag_member_expression_error() {
     let (_, diagnostics) = Parser::new("{@debug x.y}").parse();
-    assert!(!diagnostics.is_empty(), "expected diagnostic for member expression in debug tag");
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostic for member expression in debug tag"
+    );
 }
 
 #[test]
 fn debug_tag_call_expression_error() {
     let (_, diagnostics) = Parser::new("{@debug fn()}").parse();
-    assert!(!diagnostics.is_empty(), "expected diagnostic for call expression in debug tag");
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostic for call expression in debug tag"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -801,42 +864,16 @@ fn debug_tag_call_expression_error() {
 
 mod js_parse_tests {
     use oxc_allocator::Allocator;
-    use compact_str::CompactString;
-
-    fn compact(s: &str) -> CompactString { CompactString::from(s) }
 
     #[test]
     fn parse_script_basic() {
         let alloc = Allocator::default();
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program =
+            crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
         // Script parses without error; detailed ScriptInfo extraction tested in svelte_analyze
         assert!(!program.body.is_empty());
-    }
-
-    #[test]
-    fn parse_const_declaration_simple() {
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("doubled = item * 2");
-        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        assert_eq!(names, vec![compact("doubled")]);
-    }
-
-    #[test]
-    fn parse_const_declaration_destructuring() {
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("{a, b} = obj");
-        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        assert_eq!(names, vec![compact("a"), compact("b")]);
-    }
-
-    #[test]
-    fn parse_const_declaration_multiple_equals() {
-        let alloc = Allocator::default();
-        let source = alloc.alloc_str("a = b === c");
-        let (names, _expr) = crate::parse_js::parse_const_declaration_with_alloc(&alloc, source, 10, false).unwrap();
-        assert_eq!(names, vec![compact("a")]);
     }
 
     #[test]
@@ -844,7 +881,8 @@ mod js_parse_tests {
         let alloc = Allocator::default();
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
-        let program = crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
+        let program =
+            crate::parse_js::parse_script_with_alloc(&alloc, arena_source, 0, false).unwrap();
         assert!(!program.body.is_empty());
     }
 }

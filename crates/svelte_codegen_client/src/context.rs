@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::Statement;
-use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParsedExprs};
+use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParserResult};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_analyze::ExpressionInfo;
 use svelte_transform::TransformData;
@@ -70,7 +70,7 @@ pub struct Ctx<'a> {
     /// Data produced by the transform phase (e.g. tmp names for destructured const tags).
     pub transform_data: TransformData,
     /// Pre-parsed and pre-transformed expression ASTs (mutable for ownership transfer via remove).
-    pub parsed: &'a mut ParsedExprs<'a>,
+    pub parsed: &'a mut ParserResult<'a>,
     /// Shared unique identifier generator.
     ident_gen: &'a mut IdentGen,
     /// Template declarations from nested fragments, hoisted to module scope.
@@ -111,7 +111,7 @@ impl<'a> Ctx<'a> {
         allocator: &'a oxc_allocator::Allocator,
         component: &'a Component,
         analysis: &'a AnalysisData,
-        parsed: &'a mut ParsedExprs<'a>,
+        parsed: &'a mut ParserResult<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
         name: &str,
@@ -194,18 +194,14 @@ impl<'a> Ctx<'a> {
     pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
         self.analysis.bind_semantics.each_context(id)
     }
-    pub fn each_context_name(&self, id: NodeId) -> String {
-        self.analysis.each_blocks.context_name(id)
-            .unwrap_or_else(|| panic!("missing context_name for each block {id:?}"))
-            .to_string()
-    }
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
-        self.analysis.each_blocks.index_name(id).map(|s| s.to_string())
+        self.analysis.each_blocks.index_sym(id)
+            .map(|sym| self.analysis.scoping.symbol_name(sym).to_string())
     }
-    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.analysis.await_bindings.value(id)
     }
-    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_parser::AwaitBindingInfo> {
+    pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.analysis.await_bindings.error(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
@@ -270,7 +266,7 @@ impl<'a> Ctx<'a> {
     pub fn each_key_is_item(&self, id: NodeId) -> bool { self.analysis.each_blocks.key_is_item(id) }
     pub fn each_has_animate(&self, id: NodeId) -> bool { self.analysis.each_blocks.has_animate(id) }
 
-    // -- Expression offset lookups (for offset-keyed ParsedExprs) --
+    // -- Expression offset lookups (for offset-keyed ParserResult) --
 
     pub fn node_expr_offset(&self, node_id: NodeId) -> u32 {
         self.analysis.node_expr_offset(node_id)

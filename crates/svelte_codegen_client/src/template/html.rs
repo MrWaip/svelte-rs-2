@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use svelte_analyze::{LoweredTextPart, ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
@@ -36,7 +36,15 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
                 html.push_str(&el_html);
                 import_node |= el_import;
             }
-            FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_) | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_) | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_) | FragmentItem::AwaitBlock(_) => html.push_str("<!>"),
+            FragmentItem::ComponentNode(_)
+            | FragmentItem::IfBlock(_)
+            | FragmentItem::EachBlock(_)
+            | FragmentItem::RenderTag(_)
+            | FragmentItem::HtmlTag(_)
+            | FragmentItem::KeyBlock(_)
+            | FragmentItem::SvelteElement(_)
+            | FragmentItem::SvelteBoundary(_)
+            | FragmentItem::AwaitBlock(_) => html.push_str("<!>"),
         }
     }
     (html, import_node)
@@ -114,7 +122,9 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         | ContentStrategy::SingleBlock(FragmentItem::HtmlTag(_)) => {
             // Controlled block: element itself is the anchor, no <!> needed
         }
-        ContentStrategy::SingleElement(_) | ContentStrategy::SingleBlock(_) | ContentStrategy::Mixed { .. } => {
+        ContentStrategy::SingleElement(_)
+        | ContentStrategy::SingleBlock(_)
+        | ContentStrategy::Mixed { .. } => {
             let (child_html, child_import) = fragment_html(ctx, child_key);
             html.push_str(&child_html);
             import_node |= child_import;

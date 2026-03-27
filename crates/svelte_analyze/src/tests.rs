@@ -3,7 +3,10 @@ use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId}
 use super::*;
 
 fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
-    let actual = data.fragments.content_types.get(&key)
+    let actual = data
+        .fragments
+        .content_types
+        .get(&key)
         .unwrap_or_else(|| panic!("no content strategy for {:?}", key));
     let actual_variant = match actual {
         ContentStrategy::Empty => "Empty",
@@ -13,7 +16,11 @@ fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, varian
         ContentStrategy::DynamicText => "DynamicText",
         ContentStrategy::Mixed { .. } => "Mixed",
     };
-    assert_eq!(actual_variant, variant, "expected {:?} to be {}", key, variant);
+    assert_eq!(
+        actual_variant, variant,
+        "expected {:?} to be {}",
+        key, variant
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -119,7 +126,10 @@ fn find_each_block<'a>(
 fn analyze_source(source: &str) -> (Component, AnalysisData) {
     let alloc = oxc_allocator::Allocator::default();
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
-    assert!(parse_diags.is_empty(), "unexpected parse diagnostics: {parse_diags:?}");
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
     let (data, _parsed, diags) = analyze(&component, js_result);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)
@@ -272,12 +282,20 @@ fn single_element() {
 #[test]
 fn mixed_content() {
     let (_c, data) = analyze_source("<div></div><span></span>");
-    assert_root_content_type(&data, ContentStrategy::Mixed { has_elements: true, has_blocks: false, has_text: false });
+    assert_root_content_type(
+        &data,
+        ContentStrategy::Mixed {
+            has_elements: true,
+            has_blocks: false,
+            has_text: false,
+        },
+    );
 }
 
 #[test]
 fn rune_detection() {
-    let (c, data) = analyze_source(r#"<script>let count = $state(0); count = 1;</script><p>{count}</p>"#);
+    let (c, data) =
+        analyze_source(r#"<script>let count = $state(0); count = 1;</script><p>{count}</p>"#);
     assert_symbol(&data, "count");
     assert_is_rune(&data, "count");
     assert_dynamic_tag(&data, &c, "count");
@@ -305,8 +323,9 @@ fn lowered_fragment_groups_text_and_expr() {
 
 #[test]
 fn if_block_test_is_dynamic() {
-    let (c, data) =
-        analyze_source(r#"<script>let show = $state(true); show = false;</script>{#if show}<p>hi</p>{/if}"#);
+    let (c, data) = analyze_source(
+        r#"<script>let show = $state(true); show = false;</script>{#if show}<p>hi</p>{/if}"#,
+    );
     assert_symbol(&data, "show");
     assert_is_rune(&data, "show");
     assert_dynamic_if_block(&data, &c, "show");
@@ -329,7 +348,14 @@ fn multiple_lowered_groups() {
     assert_lowered_item_count(&data, FragmentKey::Root, 3);
     assert_item_is_text_concat(&data, FragmentKey::Root, 0);
     assert_item_is_text_concat(&data, FragmentKey::Root, 2);
-    assert_root_content_type(&data, ContentStrategy::Mixed { has_elements: true, has_blocks: false, has_text: true });
+    assert_root_content_type(
+        &data,
+        ContentStrategy::Mixed {
+            has_elements: true,
+            has_blocks: false,
+            has_text: true,
+        },
+    );
 }
 
 #[test]
@@ -403,7 +429,10 @@ fn each_block_shadowing_does_not_mutate_rune() {
     );
     assert_is_rune(&data, "count");
     let root = data.scoping.root_scope_id();
-    let count_sym = data.scoping.find_binding(root, "count").expect("symbol 'count' not found");
+    let count_sym = data
+        .scoping
+        .find_binding(root, "count")
+        .expect("symbol 'count' not found");
     assert!(
         !data.scoping.is_mutated(count_sym),
         "rune 'count' should NOT be mutated — the assignment targets the each-block variable"
@@ -423,61 +452,62 @@ fn each_block_index_is_dynamic() {
 // ---------------------------------------------------------------------------
 
 mod expression_info_tests {
+    use crate::types::data::{ExpressionInfo, ExpressionKind};
+    use crate::passes::js_analyze::analyze_expression;
+    use compact_str::CompactString;
     use oxc_allocator::Allocator;
     use oxc_parser::Parser as OxcParser;
     use oxc_span::SourceType;
-    use compact_str::CompactString;
     use svelte_diagnostics::Diagnostic;
     use svelte_span::Span;
-    use crate::data::{ExpressionInfo, ExpressionKind, ReferenceFlags};
-    use crate::js_analyze::extract_expression_info;
 
-    fn compact(s: &str) -> CompactString { CompactString::from(s) }
+    fn compact(s: &str) -> CompactString {
+        CompactString::from(s)
+    }
 
-    fn analyze_expression(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic> {
+    fn parse_and_analyze(source: &str, offset: u32) -> Result<ExpressionInfo, Diagnostic> {
         let allocator = Allocator::default();
         let parser = OxcParser::new(&allocator, source, SourceType::default());
-        let expr = parser
-            .parse_expression()
-            .map_err(|_| Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32)))?;
-        let info = extract_expression_info(&expr, offset);
+        let expr = parser.parse_expression().map_err(|_| {
+            Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+        })?;
+        let info = analyze_expression(&expr);
         Ok(info)
     }
 
     #[test]
     fn analyze_simple_identifier() {
-        let info = analyze_expression("count", 0).unwrap();
+        let info = parse_and_analyze("count", 0).unwrap();
         assert_eq!(info.kind, ExpressionKind::Identifier(compact("count")));
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
+        // ref_symbols populated later by resolve_references (not during analyze_expression)
+        assert!(!info.has_store_ref);
     }
 
     #[test]
     fn analyze_binary_expression() {
-        let info = analyze_expression("count + 1", 0).unwrap();
-        assert_eq!(info.references.len(), 1);
-        assert_eq!(info.references[0].name, "count");
+        let info = parse_and_analyze("count + 1", 0).unwrap();
+        assert!(!info.has_store_ref);
+        assert!(!info.has_call);
     }
 
     #[test]
     fn analyze_call_expression() {
-        let info = analyze_expression("foo(a, b)", 0).unwrap();
+        let info = parse_and_analyze("foo(a, b)", 0).unwrap();
         assert!(matches!(info.kind, ExpressionKind::CallExpression { .. }));
-        assert_eq!(info.references.len(), 3);
+        assert!(info.has_call);
         assert!(info.has_side_effects);
     }
 
     #[test]
     fn analyze_assignment() {
-        let info = analyze_expression("count = 10", 0).unwrap();
+        let info = parse_and_analyze("count = 10", 0).unwrap();
         assert_eq!(info.kind, ExpressionKind::Assignment);
-        assert!(info.references.iter().any(|r| r.name == "count" && matches!(r.flags, ReferenceFlags::Write)));
+        assert!(info.has_side_effects);
     }
 
     #[test]
-    fn analyze_with_offset() {
-        let info = analyze_expression("x", 100).unwrap();
-        assert_eq!(info.references[0].span.start, 100);
-        assert_eq!(info.references[0].span.end, 101);
+    fn analyze_store_ref() {
+        let info = parse_and_analyze("$count + 1", 0).unwrap();
+        assert!(info.has_store_ref);
     }
 }
