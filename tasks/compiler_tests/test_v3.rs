@@ -1653,3 +1653,13 @@ fn derived_local_signal_get() {
     assert_compiler("derived_local_signal_get");
 }
 
+#[rstest]
+fn svelte_element_duplicate_naming() {
+    assert_compiler("svelte_element_duplicate_naming");
+}
+
+#[rstest]
+fn fragment_ident_numbering() {
+    assert_compiler("fragment_ident_numbering");
+}
+
