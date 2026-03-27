@@ -73,9 +73,13 @@ impl<'a> Parser<'a> {
                         .source_text(self.source)
                         .starts_with("...")
                     {
+                        // Skip the "..." prefix so expression_span covers only the spread expression
                         attributes.push(Attribute::SpreadAttribute(SpreadAttribute {
                             id: self.ids.next(),
-                            expression_span: expr_tag.expression_span,
+                            expression_span: svelte_span::Span::new(
+                                expr_tag.expression_span.start + 3,
+                                expr_tag.expression_span.end,
+                            ),
                         }));
                     } else {
                         attributes.push(Attribute::Shorthand(Shorthand {

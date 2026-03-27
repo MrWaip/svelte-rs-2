@@ -1228,10 +1228,10 @@ impl<'a> Scanner<'a> {
             }
             "const" => {
                 self.skip_whitespace();
-                let declaration_span = self.collect_js_expression()?;
+                let expression_span = self.collect_js_expression()?;
 
                 self.add_token(TokenType::ConstTag(token::ConstTagToken {
-                    declaration_span,
+                    expression_span,
                 }));
 
                 Ok(())
@@ -1289,7 +1289,7 @@ impl<'a> Scanner<'a> {
     fn start_snippet_tag(&mut self) -> Result<(), Diagnostic> {
         self.skip_whitespace();
 
-        let name_start = self.current;
+        let expr_start = self.current;
         let name = self.identifier();
 
         if name.is_empty() {
@@ -1299,11 +1299,9 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        let name_span = self.span(name_start, self.current);
-
-        let params_span = if self.peek() == Some('(') {
+        // Consume optional params: `(a, b)`
+        if self.peek() == Some('(') {
             self.advance(); // consume '('
-            let params_start = self.current;
             let mut depth: u32 = 1;
 
             while !self.is_at_end() && depth > 0 {
@@ -1317,27 +1315,14 @@ impl<'a> Scanner<'a> {
 
             if depth != 0 {
                 return Err(Diagnostic::unexpected_end_of_file(Span::new(
-                    params_start as u32,
+                    expr_start as u32,
                     self.current as u32,
                 )));
             }
+        }
 
-            let params_end = self.prev; // position of ')'
-            let raw = self.slice_source(params_start, params_end);
-            let value = raw.trim();
-            let trim_start = raw.len() - raw.trim_start().len();
-            let trim_end = raw.len() - raw.trim_end().len();
-            let span_start = params_start + trim_start;
-            let span_end = params_end - trim_end;
-
-            if value.is_empty() {
-                None
-            } else {
-                Some(Span::new(span_start as u32, span_end as u32))
-            }
-        } else {
-            None
-        };
+        // expression_span covers `name(params)` or just `name`
+        let expression_span = self.span(expr_start, self.current);
 
         self.skip_whitespace();
 
@@ -1349,8 +1334,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.add_token(TokenType::StartSnippetTag(token::StartSnippetTag {
-            name_span,
-            params_span,
+            expression_span,
         }));
 
         Ok(())
@@ -2148,8 +2132,7 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
         if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
-            assert_eq!(st.name_span.source_text(source), "foo");
-            assert_eq!(st.params_span.as_ref().unwrap().source_text(source), "a, b");
+            assert_eq!(st.expression_span.source_text(source), "foo(a, b)");
         }
         assert!(tokens[1].token_type == TokenType::Text);
         assert!(tokens[2].token_type == TokenType::EndSnippetTag);
@@ -2184,7 +2167,7 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
         assert!(matches!(tokens[0].token_type, TokenType::ConstTag(_)));
         if let TokenType::ConstTag(ref ct) = tokens[0].token_type {
-            assert_eq!(ct.declaration_span.source_text(source), "doubled = item * 2");
+            assert_eq!(ct.expression_span.source_text(source), "doubled = item * 2");
         }
     }
 

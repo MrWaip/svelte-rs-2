@@ -1,6 +1,6 @@
 //! EachBlock code generation.
 
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{BindingPattern, Expression, Statement};
 
 use svelte_analyze::FragmentKey;
 use svelte_ast::NodeId;
@@ -34,7 +34,16 @@ pub(crate) fn gen_each_block<'a>(
     let has_index = block.index_span.is_some();
     let has_fallback = block.fallback.is_some();
     let is_destructured = ctx.each_is_destructured(block_id);
-    let context_name = ctx.each_context_name(block_id);
+    let context_name = ctx.parsed.stmts.get(&block.context_span.start)
+        .and_then(|stmt| match stmt {
+            Statement::VariableDeclaration(decl) => decl.declarations.first(),
+            _ => None,
+        })
+        .and_then(|d| match &d.id {
+            BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "$$item".to_string());
 
     let key_is_item = ctx.each_key_is_item(block_id);
 
@@ -52,7 +61,7 @@ pub(crate) fn gen_each_block<'a>(
     // EACH_ITEM_REACTIVE: collection references external state
     // In runes mode: skip when key_is_item (item identity is the key)
     let expr_has_refs = ctx.expression(block_id)
-        .is_some_and(|info| !info.references.is_empty());
+        .is_some_and(|info| !info.ref_symbols.is_empty());
     if expr_has_refs && !key_is_item {
         flags |= EACH_ITEM_REACTIVE;
     }
@@ -160,69 +169,96 @@ pub(crate) fn gen_each_block<'a>(
 /// Object `{ a, b }` → `let a = () => $.get($$item).a;` (thunks)
 /// Object `{ a = 5 }` → `let a = $.derived_safe_equal(() => $.fallback($.get($$item).a, 5));`
 /// Array `[a, b]` → intermediate `$.derived(() => $.to_array($.get($$item), N))` + per-element thunks
+///
+/// Shallow-destructures the pre-parsed `var PATTERN = x;` Statement from `ctx.parsed.stmts`.
 fn gen_destructuring_declarations<'a>(
     ctx: &mut Ctx<'a>,
     block_id: NodeId,
     item_reactive: bool,
 ) -> Vec<Statement<'a>> {
+    use oxc_ast::ast::{BindingPattern, PropertyKey};
+
     let block = ctx.each_block(block_id);
-    let binding = ctx.parsed.each_contexts.remove(&block.context_span.start)
-        .expect("destructured each block must have pre-parsed context");
+    let stmt = ctx.parsed.stmts.remove(&block.context_span.start)
+        .expect("destructured each block must have pre-parsed context stmt");
+    let Statement::VariableDeclaration(mut var_decl) = stmt else {
+        unreachable!("each context stmt must be VariableDeclaration")
+    };
+    let declarator = var_decl.declarations.remove(0);
 
     let mut decls = Vec::new();
 
-    if binding.is_array {
-        let count = binding.bindings.len();
-        let array_name = ctx.gen_ident("$$array");
+    match declarator.id {
+        BindingPattern::ArrayPattern(arr) => {
+            let elements: Vec<_> = arr.unbox().elements.into_iter().flatten().collect();
+            let count = elements.len();
+            let array_name = ctx.gen_ident("$$array");
 
-        let item_access = if item_reactive {
-            ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
-        } else {
-            ctx.b.rid_expr("$$item")
-        };
-
-        let to_array = ctx.b.call_expr("$.to_array", [
-            Arg::Expr(item_access),
-            Arg::Num(count as f64),
-        ]);
-
-        let thunk = ctx.b.thunk(to_array);
-        let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-        decls.push(ctx.b.var_stmt(&array_name, derived));
-
-        for (i, entry) in binding.bindings.into_iter().enumerate() {
-            let get_array = ctx.b.call_expr("$.get", [Arg::Ident(&array_name)]);
-            let index_expr = ctx.b.num_expr(i as f64);
-            let access = ctx.b.computed_member_expr(get_array, index_expr);
-            let thunk = ctx.b.thunk(access);
-            decls.push(ctx.b.let_init_stmt(&entry.name, thunk));
-        }
-    } else {
-        for entry in binding.bindings {
             let item_access = if item_reactive {
                 ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
             } else {
                 ctx.b.rid_expr("$$item")
             };
+            let to_array = ctx.b.call_expr("$.to_array", [Arg::Expr(item_access), Arg::Num(count as f64)]);
+            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(ctx.b.thunk(to_array))]);
+            decls.push(ctx.b.var_stmt(&array_name, derived));
 
-            // Use property key for member access (falls back to name for shorthand)
-            let prop_name = entry.key_name.as_ref().unwrap_or(&entry.name);
-            let member = ctx.b.static_member_expr(item_access, prop_name);
-
-            if let Some(default_expr) = entry.default_expr {
-                let fallback = ctx.b.call_expr("$.fallback", [
-                    Arg::Expr(member),
-                    Arg::Expr(default_expr),
-                ]);
-
-                let thunk = ctx.b.thunk(fallback);
-                let derived = ctx.b.call_expr("$.derived_safe_equal", [Arg::Expr(thunk)]);
-                decls.push(ctx.b.let_init_stmt(&entry.name, derived));
-            } else {
-                let thunk = ctx.b.thunk(member);
-                decls.push(ctx.b.let_init_stmt(&entry.name, thunk));
+            for (i, elem) in elements.into_iter().enumerate() {
+                let name = match &elem {
+                    BindingPattern::BindingIdentifier(id) => id.name.as_str().to_string(),
+                    BindingPattern::AssignmentPattern(assign) => {
+                        if let BindingPattern::BindingIdentifier(id) = &assign.left {
+                            id.name.as_str().to_string()
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => continue,
+                };
+                let get_array = ctx.b.call_expr("$.get", [Arg::Ident(&array_name)]);
+                let access = ctx.b.computed_member_expr(get_array, ctx.b.num_expr(i as f64));
+                let thunk = ctx.b.thunk(access);
+                decls.push(ctx.b.let_init_stmt(&name, thunk));
             }
         }
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in obj.unbox().properties {
+                let key_name = match &prop.key {
+                    PropertyKey::StaticIdentifier(id) => Some(id.name.as_str().to_string()),
+                    _ => None,
+                };
+                match prop.value {
+                    BindingPattern::BindingIdentifier(id) => {
+                        let name = id.name.as_str().to_string();
+                        let prop_key = key_name.as_deref().unwrap_or(&name);
+                        let item_access = if item_reactive {
+                            ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
+                        } else {
+                            ctx.b.rid_expr("$$item")
+                        };
+                        let member = ctx.b.static_member_expr(item_access, prop_key);
+                        decls.push(ctx.b.let_init_stmt(&name, ctx.b.thunk(member)));
+                    }
+                    BindingPattern::AssignmentPattern(assign) => {
+                        let assign = assign.unbox();
+                        let BindingPattern::BindingIdentifier(id) = assign.left else { continue };
+                        let name = id.name.as_str().to_string();
+                        let prop_key = key_name.as_deref().unwrap_or(&name);
+                        let item_access = if item_reactive {
+                            ctx.b.call_expr("$.get", [Arg::Ident("$$item")])
+                        } else {
+                            ctx.b.rid_expr("$$item")
+                        };
+                        let member = ctx.b.static_member_expr(item_access, prop_key);
+                        let fallback = ctx.b.call_expr("$.fallback", [Arg::Expr(member), Arg::Expr(assign.right)]);
+                        let derived = ctx.b.call_expr("$.derived_safe_equal", [Arg::Expr(ctx.b.thunk(fallback))]);
+                        decls.push(ctx.b.let_init_stmt(&name, derived));
+                    }
+                    _ => continue,
+                }
+            }
+        }
+        _ => unreachable!("each context pattern must be object or array"),
     }
 
     decls

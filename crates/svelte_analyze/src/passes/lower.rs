@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use svelte_ast::{Component, Fragment, Node};
 use svelte_span::Span;
 
-use crate::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
+use crate::types::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
     lower_fragment(&component.fragment, FragmentKey::Root, component, data);
