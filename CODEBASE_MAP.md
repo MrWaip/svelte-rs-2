@@ -129,8 +129,13 @@ struct ScriptInfo { declarations, props_declaration, exports, has_effects, has_c
 struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune: Option<RuneKind>, rune_init_refs }
 enum DeclarationKind { Let, Const, Var, Function }
 enum RuneKind { State, StateRaw, Derived, DerivedBy, Effect, EffectTracking, Props, Bindable, StateEager, EffectPending, Inspect, Host, PropsId }
-struct ParserResult<'a> { program, exprs, stmts, script_content_span, typescript }
-// stmts keyed by span.start: ConstTag→VariableDeclaration, SnippetBlock→FunctionDeclaration, EachBlock→VariableDeclaration
+struct ParserResult<'a> {
+    program: Option<Program<'a>>,          // script block OXC AST
+    exprs: FxHashMap<u32, Expression<'a>>, // template expressions, keyed by span.start offset
+    stmts: FxHashMap<u32, Statement<'a>>,  // template statements (ConstTag, SnippetBlock, EachBlock context), keyed by span.start
+    script_content_span: Option<Span>,
+    typescript: bool,
+}
 ```
 
 Внутри: `scanner/mod.rs` + `scanner/token.rs`, `parse_js.rs`.
@@ -142,40 +147,44 @@ struct ParserResult<'a> { program, exprs, stmts, script_content_span, typescript
 
 ```rust
 // Публичный API
-fn analyze<'a>(component: &Component, js_result: JsParseResult<'a>) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
-fn analyze_with_options<'a>(component, js_result, custom_element: bool) -> (AnalysisData, ParsedExprs<'a>, Vec<Diagnostic>)
+fn analyze<'a>(component: &Component, parsed: ParserResult<'a>) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
+fn analyze_with_options<'a>(component, parsed, custom_element: bool) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
 fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>)
 
-// Re-exports из data.rs:
+// Re-exports
 pub use data::{
-    AnalysisData, AwaitBindingData, ClassDirectiveInfo, ComponentPropInfo, ComponentPropKind,
-    EventHandlerMode, ExpressionInfo, ExpressionKind, LoweredTextPart, ConstTagData, ContentStrategy,
-    DebugTagData, ElementFlags, FragmentData, FragmentItem, FragmentKey, LoweredFragment, ParsedExprs,
-    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
+    AnalysisData, AwaitBindingData, AwaitBindingInfo, ClassDirectiveInfo, ComponentBindMode,
+    ComponentPropInfo, ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData,
+    DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo, ExpressionKind,
+    FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
+    ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
-pub use ident_gen::IdentGen;
+pub use IdentGen;
 pub use scope::ComponentScoping;
 
-// Expression analysis types (defined in data.rs, created in js_analyze.rs)
-struct ExpressionInfo { kind: ExpressionKind, references: Vec<Reference>, has_side_effects, has_call, has_state_rune, has_store_member_mutation }
+// Expression analysis types (defined in data.rs, created in js_analyze.rs/collect_symbols.rs)
+struct ExpressionInfo { kind, ref_symbols: SmallVec<[SymbolId; 4]>, has_side_effects, has_call, has_state_rune, has_store_member_mutation, needs_context, is_dynamic }
 enum ExpressionKind { Identifier(CompactString), Literal, CallExpression { callee }, MemberExpression, ArrowFunction, Assignment, Other }
-struct Reference { name, span, flags: ReferenceFlags, symbol_id: Option<SymbolId> }  // pub(crate) fields
-enum ReferenceFlags { Read, Write, ReadWrite }
 ```
 
-**12 passes** (порядок важен, composite walk is 5 visitors):
-1. `ingest_js_result` + `js_analyze` — принимает `JsParseResult` от parser, анализирует OXC AST'ы → `expressions`, `attr_expressions`, `script`, scoping init
-2. `build_scoping` — строит единое дерево скоупов (script + template) → `ComponentScoping`
-3. `register_arrow_scopes` — регистрирует arrow-функции в scope tree
-4. `resolve_references` — резолвит template-ссылки к SymbolId, регистрирует мутации
-5. `store_subscriptions` — определяет `$store` подписки → `store_subscriptions`
-6. `known_values` — const-декларации с литеральным init → `known_values`
-7. `props` — анализ `$props()` деструктуризации → `props`
-8. `lower` — trim whitespace, группирует Text+ExprTag → `fragments.lowered`
-9. **composite walk** — `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` + `bind_semantics` (5 visitor'ов за один обход)
-10. `classify_and_mark_dynamic` — классификация фрагментов → `fragments.content_types`, `fragments.has_dynamic_children`
-11. `needs_var` — элементы, которым нужна DOM-переменная → `element_flags.needs_var`, `element_flags.needs_ref`
-12. `validate` — семантические проверки
+**Analysis pipeline** (порядок важен, см. `lib.rs`):
+
+1. `classify_render_tags` — unwrap ChainExpression в render tags
+2. `extract_script_info` + `js_analyze::analyze_script` — script metadata, OXC SemanticBuilder → Scoping (populates `reference_id`/`symbol_id` on script AST), `NeedsContextVisitor` (OXC Visit, walks full AST incl. nested functions, resolves via `reference_id → SymbolId`) для `needs_context`
+3. `mark_runes` — rune classification (root + nested scopes)
+4. `template_scoping` — создаёт scopes для template constructs (each, snippet, if, await, key, head, boundary, svelte:element). Для snippet — pre-sets `ArrowFunctionExpression.scope_id` чтобы `SemanticCollector` reused scope
+5. **Walk: `template_semantic` + `template_side_tables`** — два template visitor'а за один обход:
+   - `template_semantic` (`SemanticCollector`, OXC Visit): mini-SemanticBuilder для template JS. Создаёт scopes (arrow, function, block, for, catch), регистрирует bindings (`set_symbol_id`), создаёт OXC References с proper flags (Read/Write/ReadWrite), резолвит через `find_binding → set_reference_id`. После этого pass'а **все** `IdentifierReference` в template expressions имеют resolved `reference_id → symbol_id`.
+   - `template_side_tables`: each/snippet/const metadata, element flags
+6. `collect_symbols` — собирает `ref_symbols` из OXC references, store detection, index usage
+7. `classify_expression_needs_context` — per-expression needs_context via `ref_symbols`
+8. `post_resolve` — props analysis (`mark_prop_source`, `mark_rest_prop`), known values, store needs_context aggregation
+9. `classify_expression_dynamicity` — dynamicity classification
+10. `lower` — whitespace trim, Text+ExprTag merge → `LoweredFragment`
+11. **Walk 1: `reactivity`** — dynamic_nodes, dynamic_attrs, needs_ref
+12. **Walk 2: `element_flags` + `hoistable` + `bind_semantics` + `content_types`** — 4 visitors за один обход, зависят от Walk 1
+13. `classify_non_element_fragments` — Root, IfConsequent, EachBody classification
+14. `validate` — семантические проверки
 
 **Scope system** (`scope.rs`):
 ```rust
@@ -187,6 +196,8 @@ struct ComponentScoping { /* oxc-based, lifetime-free */ }
 // is_rune(sym_id) / rune_kind(sym_id) / rune_info_by_name(name) -> Option<(RuneKind, mutated)>
 // is_mutated(sym_id) -> bool
 // mark_each_block_var(sym_id) / is_each_block_var(sym_id) -> bool
+// mark_rest_prop(sym_id, excluded: FxHashSet<String>) / is_rest_prop(sym_id) -> bool
+// is_rest_prop_excluded(name) -> bool  — prop name destructured before rest
 // node_scope(NodeId) -> Option<ScopeId>
 ```
 

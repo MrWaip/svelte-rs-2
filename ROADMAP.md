@@ -17,18 +17,17 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 - [x] Script/Style blocks, TypeScript support
 - [x] Void (self-closing) HTML elements — `VOID_ELEMENTS`, auto `self_closing`, closing tag validation
 
-### Analyze (12 passes, composite visitor)
-- [x] `js_analyze` — expression analysis from pre-parsed OXC ASTs (JS parsing done in `svelte_parser`)
-- [x] `build_scoping` — unified scope tree (script + template)
-- [x] `register_arrow_scopes` — arrow function scope registration
-- [x] `resolve_references` — template refs → SymbolId, mutation tracking
-- [x] `store_subscriptions` — `$store` subscription detection
-- [x] `known_values` — static const evaluation
-- [x] `props` — `$props()` destructuring ($bindable, defaults, rest)
+### Analyze (multi-pass pipeline, composite template visitors)
+- [x] `js_analyze` — script analysis: `NeedsContextVisitor` (OXC Visit), expression metadata extraction
+- [x] `mark_runes` — rune classification (root + nested scopes)
+- [x] `template_scoping` — template scope creation (each, snippet, if, await, key, boundary)
+- [x] `template_semantic` — mini-SemanticBuilder for template: scopes, bindings, `reference_id → symbol_id`
+- [x] `template_side_tables` — each/snippet/const metadata, element flags
+- [x] `collect_symbols` — `ref_symbols` from OXC references, store detection, index usage
+- [x] `post_resolve` — props analysis, rest prop tracking, known values, store needs_context
 - [x] `lower` — whitespace trim, adjacent text+expr merge
-- [x] `reactivity` + `elseif` + `element_flags` + `hoistable_snippets` + `bind_semantics` — composite walk (5 visitors)
-- [x] `classify_and_mark_dynamic` — fragment classification (single-element, text-only, etc.)
-- [x] `needs_var` — elements needing JS variables
+- [x] Walk 1: `reactivity` — dynamic nodes/attrs classification
+- [x] Walk 2: `element_flags` + `hoistable` + `bind_semantics` + `content_types` — 4 visitors, single walk
 - [x] `validate` — semantic checks
 
 ### Script codegen
