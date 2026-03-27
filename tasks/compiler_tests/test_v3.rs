@@ -1819,3 +1819,13 @@ fn derived_in_nested_function() {
 fn derived_local_signal_get() {
     assert_compiler("derived_local_signal_get");
 }
+
+#[rstest]
+fn each_block_no_item() {
+    assert_compiler("each_block_no_item");
+}
+
+#[rstest]
+fn each_block_no_item_multi() {
+    assert_compiler("each_block_no_item_multi");
+}
