@@ -11,7 +11,7 @@ export default function App($$anchor, $$props) {
 		var p = root_1();
 		var text = $.child(p);
 		$.reset(p);
-		$.template_effect(() => $.set_text(text, `${$.get(key) ?? ""}=${$.get(val) ?? ""}`));
+		$.template_effect(() => $.set_text(text, `${key() ?? ""}=${val() ?? ""}`));
 		$.append($$anchor, p);
 	});
 	$.append($$anchor, fragment);

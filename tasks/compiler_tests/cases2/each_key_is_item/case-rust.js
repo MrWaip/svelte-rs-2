@@ -4,7 +4,7 @@ export default function App($$anchor, $$props) {
 	let items = $.prop($$props, "items", 19, () => []);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
-	$.each(node, 16, () => items(), (item) => item, ($$anchor, item) => {
+	$.each(node, 16, items, (item) => item, ($$anchor, item) => {
 		var p = root_1();
 		var text = $.child(p, true);
 		$.reset(p);

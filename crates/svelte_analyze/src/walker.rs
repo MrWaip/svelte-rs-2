@@ -412,7 +412,9 @@ pub(crate) fn walk_template(
                 ctx.push(ParentRef { id: block.id, kind: ParentKind::EachBlock });
                 let saved = ctx.scope;
                 ctx.scope = body_scope;
-                dispatch_stmt(visitors, block.id, block.context_span, ctx);
+                if let Some(ctx_span) = block.context_span {
+                    dispatch_stmt(visitors, block.id, ctx_span, ctx);
+                }
                 dispatch_opt_stmt(visitors, block.id, block.index_span, ctx);
                 if let (Some(key_id), Some(key_span)) = (block.key_id, block.key_span) {
                     dispatch_expr(visitors, key_id, key_span, ctx);

@@ -95,7 +95,7 @@ struct IfBlockEntry {
 struct EachBlockEntry {
     span: Span,
     expression_span: Span,
-    context_span: Span,
+    context_span: Option<Span>,
     index_span: Option<Span>,
     key_span: Option<Span>,
     /// Body children, set when `{:else}` switches to fallback collection.

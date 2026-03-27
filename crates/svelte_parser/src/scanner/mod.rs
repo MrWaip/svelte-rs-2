@@ -1341,51 +1341,72 @@ impl<'a> Scanner<'a> {
     }
 
     fn start_each_tag(&mut self) -> Result<(), Diagnostic> {
-        let mut collection_span = None;
-        let mut item_span = None;
-
         self.skip_whitespace();
 
         let start_collection_pos = self.current;
-        #[allow(unused_assignments)]
-        let mut end_collection_pos = start_collection_pos;
+        let mut end_collection_pos;
+        let mut depth: u32 = 0;
+        let mut collection_span: Option<Span> = None;
+        let mut item_span: Option<Span> = None;
 
+        // Scan the collection expression, tracking nesting depth.
+        // Stop on `}` at depth 0 (no `as` binding) or on `as` keyword at depth 0.
         while !self.is_at_end() {
-            let peeked = self.peek();
-
-            if !peeked.is_some_and(|c| c.is_ascii_whitespace()) {
-                self.advance();
-                continue;
+            let ch = self.peek().unwrap();
+            match ch {
+                '\'' | '"' | '`' => {
+                    self.advance();
+                    self.skip_js_string(ch)?;
+                }
+                '(' | '[' | '{' => {
+                    depth += 1;
+                    self.advance();
+                }
+                ')' | ']' => {
+                    if depth > 0 { depth -= 1; }
+                    self.advance();
+                }
+                '}' if depth > 0 => {
+                    depth -= 1;
+                    self.advance();
+                }
+                '}' => {
+                    // End of tag without `as` binding — trim trailing whitespace
+                    let raw = self.slice_source(start_collection_pos, self.current);
+                    let trimmed_end = start_collection_pos + raw.trim_end().len();
+                    collection_span = Some(self.span(start_collection_pos, trimmed_end));
+                    self.advance(); // consume `}`
+                    break;
+                }
+                c if c.is_ascii_whitespace() && depth == 0 => {
+                    end_collection_pos = self.current;
+                    self.skip_whitespace();
+                    let keyword = self.identifier();
+                    if keyword == "as" {
+                        collection_span = Some(self.span(start_collection_pos, end_collection_pos));
+                        self.skip_whitespace();
+                        item_span = Some(self.collect_each_context()?);
+                        break;
+                    }
+                    // else: keep scanning (identifier was part of the expression)
+                }
+                _ => {
+                    self.advance();
+                }
             }
-
-            end_collection_pos = self.current;
-
-            self.skip_whitespace();
-
-            let as_keyword = self.identifier();
-
-            if as_keyword != "as" {
-                continue;
-            }
-
-            collection_span = Some(self.span(start_collection_pos, end_collection_pos));
-
-            self.skip_whitespace();
-
-            item_span = Some(self.collect_each_context()?);
-
-            break;
         }
 
         let Some(collection_span) = collection_span else {
             return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
         };
 
-        let Some(context_span) = item_span else {
-            return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
+        // last_char is only meaningful when item_span was parsed (collect_each_context sets self.prev)
+        let last_char = if item_span.is_some() {
+            self.slice_source(self.prev, self.prev + 1)
+        } else {
+            // No binding: `}` was already consumed by the loop above
+            ""
         };
-
-        let last_char = self.slice_source(self.prev, self.prev + 1);
 
         // Parse optional index: `, i`
         let mut index_span = None;
@@ -1423,7 +1444,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::StartEachTag(StartEachTag {
             collection_span,
-            context_span,
+            context_span: item_span,
             index_span,
             key_span,
         }));
@@ -1843,7 +1864,7 @@ mod tests {
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.source_text(source), expected_item);
+        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
         assert!(tag.index_span.is_none(), "expected no index");
     }
 
@@ -1860,7 +1881,7 @@ mod tests {
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.source_text(source), expected_item);
+        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
         let index = tag.index_span.as_ref().expect("expected index");
         assert_eq!(index.source_text(source), expected_index);
     }
@@ -1973,7 +1994,7 @@ mod tests {
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.source_text(source), expected_item);
+        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
         let key = tag.key_span.as_ref().expect("expected key");
         assert_eq!(key.source_text(source), expected_key);
     }
@@ -1998,7 +2019,7 @@ mod tests {
             _ => panic!("Expected StartEachTag"),
         };
         assert_eq!(tag.collection_span.source_text(source), "items");
-        assert_eq!(tag.context_span.source_text(source), "item");
+        assert_eq!(tag.context_span.as_ref().unwrap().source_text(source), "item");
         assert_eq!(tag.index_span.as_ref().unwrap().source_text(source), "i");
         assert_eq!(tag.key_span.as_ref().unwrap().source_text(source), "item.id");
     }

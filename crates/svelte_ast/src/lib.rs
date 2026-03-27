@@ -251,8 +251,8 @@ pub struct EachBlock {
     pub span: Span,
     /// Span of the collection expression.
     pub expression_span: Span,
-    /// Span of the iteration variable (e.g., `item` or `{ value, flag }`).
-    pub context_span: Span,
+    /// Span of the iteration variable (e.g., `item` or `{ value, flag }`). None for `{#each items}` without `as`.
+    pub context_span: Option<Span>,
     /// Span of the index variable, if any.
     pub index_span: Option<Span>,
     /// Span of the key expression, if any.
