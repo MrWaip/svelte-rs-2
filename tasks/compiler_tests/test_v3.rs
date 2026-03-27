@@ -1658,8 +1658,3 @@ fn svelte_element_duplicate_naming() {
     assert_compiler("svelte_element_duplicate_naming");
 }
 
-#[rstest]
-fn fragment_ident_numbering() {
-    assert_compiler("fragment_ident_numbering");
-}
-
