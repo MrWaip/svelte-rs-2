@@ -17,53 +17,62 @@
 
 ## Data Flow Per Pass
 
-What each pass reads and writes:
+What each pass reads and writes (see `svelte_analyze/src/lib.rs` for canonical order):
 
 ```
-ingest_js_result   reads: JsParseResult (from svelte_parser::parse_with_js)
-                   writes: data.const_tags.names, data.await_bindings, data.ce_config,
-                           data.snippets.params, data.element_flags (shorthand, clsx),
-                           data.render_tag_* (structural parse data → side tables)
+classify_render_tags  reads: parsed.exprs, component
+                      writes: data.render_tag_*
 
-js_analyze         reads: ParsedExprs (OXC ASTs), data.script
-                   writes: data.expressions, data.attr_expressions, data.scoping (init),
-                           data.each_blocks (index usage), data.render_tag_arg_has_call
+extract_script_info   reads: parsed.program
+                      writes: ScriptInfo (declarations, props_declaration, exports)
 
-build_scoping      reads: component, data.script
-                   writes: data.scoping (ComponentScoping with unified scope tree)
+analyze_script        reads: parsed, data.script (ScriptInfo)
+                      writes: data.expressions, data.attr_expressions, data.needs_context,
+                              data.exports, data.has_class_state_fields, data.proxy_state_inits
+                      returns: OXC Scoping → ComponentScoping
 
-register_arrow_scopes reads: component, ParsedExprs
-                   writes: data.scoping (arrow function scopes)
+mark_runes            reads: data.script, parsed.program
+                      writes: data.scoping (rune kinds, derived deps)
 
-resolve_references reads: component, data.scoping
-                   writes: data.scoping (mutations marked)
+template_scoping      reads: component, parsed (stmts for snippet arrow scope pre-set)
+                      writes: data.scoping (fragment scopes: each, snippet, if, await, key, head,
+                              boundary, svelte:element. Pre-sets ArrowFunctionExpression.scope_id
+                              for snippets so SemanticCollector reuses the scope)
 
-store_subscriptions reads: data.scoping, data.script
-                   writes: data.store_subscriptions
+template_semantic     reads: component, parsed (expressions/statements), data.scoping
+  (SemanticCollector,   writes: OXC AST nodes mutated in-place: BindingIdentifier.symbol_id,
+   OXC Visit)                  IdentifierReference.reference_id. data.scoping gets bindings,
+                               resolved references (Read/Write/ReadWrite flags), JS scopes
+                               (arrow, function, block, for, catch). After this pass ALL template
+                               expression identifiers have valid reference_id → symbol_id.
+  + template_side_tables  writes: data.each_blocks, data.snippets, data.const_tags, data.element_flags
 
-known_values       reads: data.script
-                   writes: data.known_values
+collect_symbols       reads: data.scoping (OXC references), data.expressions
+                      writes: ExpressionInfo.ref_symbols, store detection, index usage
 
-props              reads: data.script, data.scoping
-                   writes: data.props
+classify_needs_context reads: data.expressions, data.scoping (import_syms, prop syms)
+                      writes: ExpressionInfo.needs_context, data.needs_context (aggregated)
 
-lower              reads: component, data.scoping
-                   writes: data.fragments.lowered
+post_resolve          reads: data.script, data.scoping
+                      writes: data.props (PropsAnalysis), data.scoping (prop_source, rest_prop),
+                              data.known_values, data.needs_context (store aggregation)
 
-composite walk     reads: data.fragments.lowered, data.scoping, data.expressions
-                   writes: data.dynamic_nodes, data.alt_is_elseif,
-                           data.element_flags (has_spread, has_class/style_directives, dynamic_attrs),
-                           data.snippets.hoistable,
-                           data.bind_semantics (mutable_rune_targets, prop_source_nodes, bind_each_context)
+classify_dynamicity   reads: data.expressions, data.scoping (dynamic cache)
+                      writes: ExpressionInfo.is_dynamic
 
-classify           reads: data.fragments.lowered, data.dynamic_nodes
-                   writes: data.fragments.content_types, data.fragments.has_dynamic_children
+lower                 reads: component, data.scoping
+                      writes: data.fragments.lowered
 
-needs_var          reads: data.fragments.content_types, data.element_flags
-                   writes: data.element_flags.needs_var, data.element_flags.needs_ref
+Walk 1: reactivity    reads: data.fragments.lowered, data.scoping, data.expressions
+                      writes: data.dynamic_nodes, data.element_flags.dynamic_attrs
 
-validate           reads: data.* (read-only)
-                   writes: diags
+Walk 2: element_flags reads: data.fragments.lowered, data.dynamic_nodes, data.element_flags
+  + hoistable         writes: data.element_flags (spread, class/style directives, needs_var, needs_ref),
+  + bind_semantics        data.snippets.hoistable, data.bind_semantics,
+  + content_types         data.fragments.content_types, data.fragments.has_dynamic_children
+
+validate              reads: data.* (read-only)
+                      writes: diags
 
 ── after analyze ──
 
@@ -234,3 +243,20 @@ Input variants and their codegen output:
 Context name resolution (codegen, `each_block.rs`):
 - Parser wraps context as `let PATTERN = x;` → stored in `parsed.stmts[context_span.start]`
 - Codegen checks `declarator.id`: `BindingIdentifier` → use name, otherwise → `"$$item"`
+
+---
+
+## #11 Rest prop member access: `props.label` → `$$props.label`
+
+When `$props()` uses rest destructuring (`let { id, ...props } = $props()`), member access on the rest variable is rewritten to access `$$props` directly: `props.label` → `$$props.label`. This avoids going through the `$.rest_props()` proxy.
+
+- Only `StaticMemberExpression` — computed access (`props["label"]`) is not rewritten (matches reference)
+- Properties explicitly destructured before rest are excluded (e.g. `props.id` stays as-is when `id` is destructured)
+- Applies in both script (OXC Traverse, resolved via `reference_id → symbol_id`) and template (OXC VisitMut, resolved via `reference_id` set by `TemplateSemanticVisitor`)
+- Triggers `needs_context = true` → `$.push`/`$.pop` injection (rest prop bindings are "unsafe" in `is_safe_identifier` terms)
+
+## #12 TS type-only import removal: orphaned comment reattachment
+
+When TypeScript type-only imports (`import type { ... }`) are stripped during script transformation, comments between the removed import and adjacent statements become orphaned — their `Comment::attached_to` no longer matches any statement's `span.start`. OXC codegen groups comments by `attached_to` so orphaned comments silently disappear.
+
+Fix: `reattach_orphaned_comments()` runs after TS stripping, finds comments whose `attached_to` doesn't match any remaining statement, and reassigns them to the next statement by span position.
