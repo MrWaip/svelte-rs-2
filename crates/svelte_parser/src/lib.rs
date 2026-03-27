@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Parser<'a> {
         Parser {
             source,
-            store: AstStore::new(),
+            store: AstStore::with_capacity(source.len() / 10),
             diagnostics: Vec::new(),
         }
     }
@@ -452,10 +452,10 @@ impl<'a> Parser<'a> {
         Self::convert_svelte_body(&mut component);
 
         // Convert <svelte:element> elements to SvelteElement nodes
-        Self::convert_svelte_element(&mut component.store, &component.fragment);
+        Self::convert_svelte_element(&mut component.store, &component.fragment.nodes);
 
         // Convert <svelte:boundary> elements to SvelteBoundary nodes
-        Self::convert_svelte_boundary(&mut component.store, &component.fragment);
+        Self::convert_svelte_boundary(&mut component.store, &component.fragment.nodes);
 
         (component, self.diagnostics)
     }
