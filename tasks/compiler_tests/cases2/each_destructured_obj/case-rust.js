@@ -10,7 +10,7 @@ export default function App($$anchor, $$props) {
 		var p = root_1();
 		var text = $.child(p);
 		$.reset(p);
-		$.template_effect(() => $.set_text(text, `${name() ?? ""}: ${value() ?? ""}`));
+		$.template_effect(() => $.set_text(text, `${$.get(name) ?? ""}: ${$.get(value) ?? ""}`));
 		$.append($$anchor, p);
 	});
 	$.append($$anchor, fragment);
