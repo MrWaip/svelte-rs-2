@@ -10,7 +10,7 @@ export default function App($$anchor, $$props) {
 	]);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
-	$.each(node, 27, items, (item) => item.id, ($$anchor, item, idx) => {
+	$.each(node, 27, () => items(), (item) => item.id, ($$anchor, item, idx) => {
 		var p = root_1();
 		$.attribute_effect(p, () => ({
 			...rest,
