@@ -1652,3 +1652,4 @@ fn derived_in_nested_function() {
 fn derived_local_signal_get() {
     assert_compiler("derived_local_signal_get");
 }
+

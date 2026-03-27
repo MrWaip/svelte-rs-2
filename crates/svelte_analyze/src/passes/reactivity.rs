@@ -58,8 +58,11 @@ impl TemplateVisitor for ReactivityVisitor {
                 }
             }
             // else: SvelteWindow/Document/Body attrs — not processed (matches original)
-        } else if !matches!(parent_kind, Some(ParentKind::SvelteElement)) {
-            // SvelteElement tag expression is not classified as dynamic_node (matches original)
+        } else if !(matches!(parent_kind, Some(ParentKind::SvelteElement))
+            && ctx.parent().is_some_and(|p| p.id == node_id))
+        {
+            // SvelteElement tag expression (where node_id == parent el.id) is not
+            // classified as dynamic_node. Child expressions have their own id.
             if ctx.data.expressions.get(node_id).is_some_and(|info| info.is_dynamic) {
                 ctx.data.dynamic_nodes.insert(node_id);
             }

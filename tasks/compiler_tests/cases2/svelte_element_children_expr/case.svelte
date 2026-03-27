@@ -1,6 +1,5 @@
 <script>
-	let tag = $state("p");
-	let name = $state("world");
+	let { tag = "p", name } = $props();
 </script>
 
 <svelte:element this={tag}>Hello {name}!</svelte:element>
