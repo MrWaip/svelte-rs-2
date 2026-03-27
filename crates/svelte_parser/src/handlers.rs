@@ -1,5 +1,6 @@
 use svelte_ast::{
-    AwaitBlock, ComponentNode, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, SnippetBlock,
+    AwaitBlock, ComponentNode, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId,
+    SnippetBlock,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -15,18 +16,18 @@ impl<'a> Parser<'a> {
         tag: &token::EndTag,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let tag_name = tag.name_span.source_text(self.source);
 
         // Void elements cannot have closing tags
         if scanner::is_void(tag_name) {
             self.recover(Diagnostic::void_element_invalid_content(span));
-            let node = Node::Error(svelte_ast::ErrorNode {
-                id: self.ids.next(),
+            let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
+                id: NodeId(0),
                 span,
-            });
-            push_child(children_stack, node);
+            }));
+            push_child(children_stack, id);
             return;
         }
 
@@ -39,11 +40,11 @@ impl<'a> Parser<'a> {
             None => {
                 // No matching open tag — emit error node
                 self.recover(Diagnostic::no_element_to_close(span));
-                let node = Node::Error(svelte_ast::ErrorNode {
-                    id: self.ids.next(),
+                let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
+                    id: NodeId(0),
                     span,
-                });
-                push_child(children_stack, node);
+                }));
+                push_child(children_stack, id);
             }
             Some(idx) => {
                 // Auto-close any intervening entries
@@ -64,7 +65,7 @@ impl<'a> Parser<'a> {
 
                 let node = if is_component_name(&el.name) {
                     Node::ComponentNode(ComponentNode {
-                        id: self.ids.next(),
+                        id: NodeId(0),
                         span: merged_span,
                         name: el.name,
                         self_closing: false,
@@ -73,7 +74,7 @@ impl<'a> Parser<'a> {
                     })
                 } else {
                     Node::Element(Element {
-                        id: self.ids.next(),
+                        id: NodeId(0),
                         span: merged_span,
                         name: el.name,
                         self_closing: false,
@@ -82,7 +83,8 @@ impl<'a> Parser<'a> {
                     })
                 };
 
-                push_child(children_stack, node);
+                let id = self.push_node(node);
+                push_child(children_stack, id);
             }
         }
     }
@@ -92,7 +94,7 @@ impl<'a> Parser<'a> {
         else_tag: &token::ElseTag,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let consequent_children = pop_children(children_stack);
 
@@ -150,7 +152,7 @@ impl<'a> Parser<'a> {
         &mut self,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let entry = entry_stack.pop();
 
@@ -173,9 +175,9 @@ impl<'a> Parser<'a> {
             (last_children, None)
         };
 
-        let key_id = eb.key_span.map(|_| self.ids.next());
-        let node = Node::EachBlock(EachBlock {
-            id: self.ids.next(),
+        let key_id = eb.key_span.map(|_| self.reserve_id());
+        let id = self.push_node(Node::EachBlock(EachBlock {
+            id: NodeId(0),
             span: merged_span,
             expression_span: eb.expression_span,
             context_span: eb.context_span,
@@ -184,16 +186,16 @@ impl<'a> Parser<'a> {
             key_id,
             body: Fragment::new(body_children),
             fallback,
-        });
+        }));
 
-        push_child(children_stack, node);
+        push_child(children_stack, id);
     }
 
     pub(crate) fn handle_end_snippet_tag(
         &mut self,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let entry = entry_stack.pop();
 
@@ -208,21 +210,21 @@ impl<'a> Parser<'a> {
         let body_children = pop_children(children_stack);
         let merged_span = sb.span_start.merge(&span);
 
-        let node = Node::SnippetBlock(SnippetBlock {
-            id: self.ids.next(),
+        let id = self.push_node(Node::SnippetBlock(SnippetBlock {
+            id: NodeId(0),
             span: merged_span,
             expression_span: sb.expression_span,
             body: Fragment::new(body_children),
-        });
+        }));
 
-        push_child(children_stack, node);
+        push_child(children_stack, id);
     }
 
     pub(crate) fn handle_end_key_tag(
         &mut self,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let entry = entry_stack.pop();
 
@@ -237,21 +239,21 @@ impl<'a> Parser<'a> {
         let body_children = pop_children(children_stack);
         let merged_span = kb.span.merge(&span);
 
-        let node = Node::KeyBlock(KeyBlock {
-            id: self.ids.next(),
+        let id = self.push_node(Node::KeyBlock(KeyBlock {
+            id: NodeId(0),
             span: merged_span,
             expression_span: kb.expression_span,
             fragment: Fragment::new(body_children),
-        });
+        }));
 
-        push_child(children_stack, node);
+        push_child(children_stack, id);
     }
 
     pub(crate) fn handle_await_clause_tag(
         &mut self,
         clause_tag: &scanner::token::AwaitClauseTag,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let entry = entry_stack.last_mut();
 
@@ -296,7 +298,7 @@ impl<'a> Parser<'a> {
         &mut self,
         span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let entry = entry_stack.pop();
 
@@ -325,8 +327,8 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let node = Node::AwaitBlock(AwaitBlock {
-            id: self.ids.next(),
+        let id = self.push_node(Node::AwaitBlock(AwaitBlock {
+            id: NodeId(0),
             span: merged_span,
             expression_span: ab.expression_span,
             value_span: ab.value_span,
@@ -334,16 +336,16 @@ impl<'a> Parser<'a> {
             pending,
             then,
             catch,
-        });
+        }));
 
-        push_child(children_stack, node);
+        push_child(children_stack, id);
     }
 
     /// Auto-close all remaining open entries at EOF.
     pub(crate) fn auto_close_entries(
         &mut self,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         while let Some(entry) = entry_stack.pop() {
             self.auto_close_entry(entry, children_stack);
@@ -354,7 +356,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn auto_close_entry(
         &mut self,
         entry: StackEntry,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         let eof_pos = self.source.len() as u32;
         let eof_span = Span::new(eof_pos, eof_pos);
@@ -367,7 +369,7 @@ impl<'a> Parser<'a> {
 
                 let node = if is_component_name(&el.name) {
                     Node::ComponentNode(ComponentNode {
-                        id: self.ids.next(),
+                        id: NodeId(0),
                         span: merged_span,
                         name: el.name,
                         self_closing: false,
@@ -376,7 +378,7 @@ impl<'a> Parser<'a> {
                     })
                 } else {
                     Node::Element(Element {
-                        id: self.ids.next(),
+                        id: NodeId(0),
                         span: merged_span,
                         name: el.name,
                         self_closing: false,
@@ -385,7 +387,8 @@ impl<'a> Parser<'a> {
                     })
                 };
 
-                push_child(children_stack, node);
+                let id = self.push_node(node);
+                push_child(children_stack, id);
             }
             StackEntry::IfBlock(ib) => {
                 self.recover(Diagnostic::unclosed_node(ib.span));
@@ -399,23 +402,20 @@ impl<'a> Parser<'a> {
 
                 let merged_span = ib.span.merge(&eof_span);
 
-                let node = Node::IfBlock(IfBlock {
-                    id: self.ids.next(),
+                let id = self.push_node(Node::IfBlock(IfBlock {
+                    id: NodeId(0),
                     span: merged_span,
                     test_span: ib.test_span,
                     elseif: ib.elseif,
                     consequent: Fragment::new(consequent),
                     alternate,
-                });
+                }));
 
                 if ib.elseif {
-                    push_child(children_stack, node);
+                    push_child(children_stack, id);
                     // Continue unwinding parent if-blocks
-                    if children_stack.len() > 1 {
-                        // Parent if-block will be auto-closed in the next iteration
-                    }
                 } else {
-                    push_child(children_stack, node);
+                    push_child(children_stack, id);
                 }
             }
             StackEntry::EachBlock(eb) => {
@@ -430,9 +430,9 @@ impl<'a> Parser<'a> {
                     (last_children, None)
                 };
 
-                let key_id = eb.key_span.map(|_| self.ids.next());
-                let node = Node::EachBlock(EachBlock {
-                    id: self.ids.next(),
+                let key_id = eb.key_span.map(|_| self.reserve_id());
+                let id = self.push_node(Node::EachBlock(EachBlock {
+                    id: NodeId(0),
                     span: merged_span,
                     expression_span: eb.expression_span,
                     context_span: eb.context_span,
@@ -441,37 +441,37 @@ impl<'a> Parser<'a> {
                     key_id,
                     body: Fragment::new(body_children),
                     fallback,
-                });
+                }));
 
-                push_child(children_stack, node);
+                push_child(children_stack, id);
             }
             StackEntry::SnippetBlock(sb) => {
                 self.recover(Diagnostic::unclosed_node(sb.span_start));
                 let body_children = pop_children(children_stack);
                 let merged_span = sb.span_start.merge(&eof_span);
 
-                let node = Node::SnippetBlock(SnippetBlock {
-                    id: self.ids.next(),
+                let id = self.push_node(Node::SnippetBlock(SnippetBlock {
+                    id: NodeId(0),
                     span: merged_span,
                     expression_span: sb.expression_span,
                     body: Fragment::new(body_children),
-                });
+                }));
 
-                push_child(children_stack, node);
+                push_child(children_stack, id);
             }
             StackEntry::KeyBlock(kb) => {
                 self.recover(Diagnostic::unclosed_node(kb.span));
                 let body_children = pop_children(children_stack);
                 let merged_span = kb.span.merge(&eof_span);
 
-                let node = Node::KeyBlock(KeyBlock {
-                    id: self.ids.next(),
+                let id = self.push_node(Node::KeyBlock(KeyBlock {
+                    id: NodeId(0),
                     span: merged_span,
                     expression_span: kb.expression_span,
                     fragment: Fragment::new(body_children),
-                });
+                }));
 
-                push_child(children_stack, node);
+                push_child(children_stack, id);
             }
             StackEntry::AwaitBlock(ab) => {
                 self.recover(Diagnostic::unclosed_node(ab.span));
@@ -492,8 +492,8 @@ impl<'a> Parser<'a> {
                     ),
                 };
 
-                let node = Node::AwaitBlock(AwaitBlock {
-                    id: self.ids.next(),
+                let id = self.push_node(Node::AwaitBlock(AwaitBlock {
+                    id: NodeId(0),
                     span: merged_span,
                     expression_span: ab.expression_span,
                     value_span: ab.value_span,
@@ -501,9 +501,9 @@ impl<'a> Parser<'a> {
                     pending,
                     then,
                     catch,
-                });
+                }));
 
-                push_child(children_stack, node);
+                push_child(children_stack, id);
             }
         }
     }
@@ -513,7 +513,7 @@ impl<'a> Parser<'a> {
         &mut self,
         end_span: Span,
         entry_stack: &mut Vec<StackEntry>,
-        children_stack: &mut Vec<Vec<Node>>,
+        children_stack: &mut Vec<Vec<NodeId>>,
     ) {
         // Process from innermost to outermost if-block
         loop {
@@ -540,18 +540,18 @@ impl<'a> Parser<'a> {
 
             let merged_span = ib.span.merge(&end_span);
 
-            let node = Node::IfBlock(IfBlock {
-                id: self.ids.next(),
+            let id = self.push_node(Node::IfBlock(IfBlock {
+                id: NodeId(0),
                 span: merged_span,
                 test_span: ib.test_span,
                 elseif: ib.elseif,
                 consequent: Fragment::new(consequent),
                 alternate,
-            });
+            }));
 
             if ib.elseif {
                 // This is an else-if: it becomes the alternate of the parent if-block.
-                push_child(children_stack, node);
+                push_child(children_stack, id);
 
                 // Check if parent entry is also an IfBlock — if so, continue the loop.
                 if entry_stack
@@ -564,7 +564,7 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 // This is the outermost {#if}
-                push_child(children_stack, node);
+                push_child(children_stack, id);
                 break;
             }
         }

@@ -1,12 +1,12 @@
 use scanner::{
-    token::{ExpressionTag, Token, TokenType},
+    token::TokenType,
     Scanner,
 };
 use svelte_span::Span;
 
 use svelte_ast::{
-    Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element, Fragment, HtmlTag,
-    Node, NodeIdAllocator, RawBlock, RenderTag, Script, ScriptContext, ScriptLanguage, Text,
+    AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element, Fragment,
+    HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext, ScriptLanguage, Text,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -87,7 +87,7 @@ struct IfBlockEntry {
     elseif: bool,
     /// Children collected for the consequent branch.
     /// Once we see {:else}, these are moved out and we start collecting alternate.
-    consequent: Option<Vec<Node>>,
+    consequent: Option<Vec<NodeId>>,
     /// Whether we are currently collecting alternate children.
     in_alternate: bool,
 }
@@ -99,7 +99,7 @@ struct EachBlockEntry {
     index_span: Option<Span>,
     key_span: Option<Span>,
     /// Body children, set when `{:else}` switches to fallback collection.
-    body_children: Option<Vec<Node>>,
+    body_children: Option<Vec<NodeId>>,
     in_fallback: bool,
 }
 
@@ -123,30 +123,30 @@ struct AwaitBlockEntry {
     /// Which phase we are currently collecting children for.
     phase: AwaitPhase,
     /// Pending children (collected before {:then}).
-    pending_children: Option<Vec<Node>>,
+    pending_children: Option<Vec<NodeId>>,
     /// Then children (collected between {:then} and {:catch}).
-    then_children: Option<Vec<Node>>,
+    then_children: Option<Vec<NodeId>>,
 }
 
 // ---------------------------------------------------------------------------
 // Stack helpers — safe wrappers around children_stack operations
 // ---------------------------------------------------------------------------
 
-/// Push a node onto the current children list.
+/// Push a node id onto the current children list.
 /// Debug-asserts the stack is non-empty; gracefully no-ops in release.
-fn push_child(children_stack: &mut Vec<Vec<Node>>, node: Node) {
+fn push_child(children_stack: &mut Vec<Vec<NodeId>>, id: NodeId) {
     debug_assert!(
         !children_stack.is_empty(),
         "children_stack empty when pushing child"
     );
     if let Some(children) = children_stack.last_mut() {
-        children.push(node);
+        children.push(id);
     }
 }
 
 /// Pop the current children list.
 /// Debug-asserts the stack is non-empty; returns empty vec in release.
-fn pop_children(children_stack: &mut Vec<Vec<Node>>) -> Vec<Node> {
+fn pop_children(children_stack: &mut Vec<Vec<NodeId>>) -> Vec<NodeId> {
     debug_assert!(
         !children_stack.is_empty(),
         "children_stack empty when popping"
@@ -160,7 +160,7 @@ fn pop_children(children_stack: &mut Vec<Vec<Node>>) -> Vec<Node> {
 
 pub struct Parser<'a> {
     source: &'a str,
-    ids: NodeIdAllocator,
+    store: AstStore,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Parser<'a> {
         Parser {
             source,
-            ids: NodeIdAllocator::new(),
+            store: AstStore::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -177,14 +177,22 @@ impl<'a> Parser<'a> {
         self.diagnostics.push(diagnostic);
     }
 
+    /// Push a node into the store and return its NodeId.
+    fn push_node(&mut self, node: Node) -> NodeId {
+        self.store.push(node)
+    }
+
+    /// Reserve a NodeId slot for a non-node id (attributes, key expressions, etc.).
+    fn reserve_id(&mut self) -> NodeId {
+        self.store.reserve()
+    }
+
     pub fn parse(mut self) -> (Component, Vec<Diagnostic>) {
         let mut scanner = Scanner::new(self.source);
         let (tokens, scan_diagnostics) = scanner.scan_tokens();
         self.diagnostics.extend(scan_diagnostics);
 
-        // children_stack[i] = children being collected for the i-th nesting level.
-        // children_stack[0] = root level.
-        let mut children_stack: Vec<Vec<Node>> = vec![vec![]];
+        let mut children_stack: Vec<Vec<NodeId>> = vec![vec![]];
         let mut entry_stack: Vec<StackEntry> = vec![];
         let mut script_data: Option<ScriptData> = None;
         let mut css_data: Option<CssData> = None;
@@ -192,16 +200,26 @@ impl<'a> Parser<'a> {
         for token in tokens {
             match token.token_type {
                 TokenType::Text => {
-                    let node = self.make_text(&token);
-                    push_child(&mut children_stack, node);
+                    let id = self.push_node(Node::Text(Text {
+                        id: NodeId(0), // set by store.push
+                        span: token.span,
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::Comment => {
-                    let node = self.make_comment(&token);
-                    push_child(&mut children_stack, node);
+                    let id = self.push_node(Node::Comment(Comment {
+                        id: NodeId(0),
+                        span: token.span,
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::Interpolation(interpolation) => {
-                    let node = self.make_expression_tag(&interpolation);
-                    push_child(&mut children_stack, node);
+                    let id = self.push_node(Node::ExpressionTag(svelte_ast::ExpressionTag {
+                        id: NodeId(0),
+                        span: interpolation.span,
+                        expression_span: interpolation.expression_span,
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::StartTag(tag) => {
                     let name = tag.name_span.source_text(self.source);
@@ -210,7 +228,7 @@ impl<'a> Parser<'a> {
                         let name = name.to_string();
                         let node = if is_component_name(&name) {
                             Node::ComponentNode(ComponentNode {
-                                id: self.ids.next(),
+                                id: NodeId(0),
                                 span: token.span,
                                 name,
                                 self_closing: true,
@@ -219,7 +237,7 @@ impl<'a> Parser<'a> {
                             })
                         } else {
                             Node::Element(Element {
-                                id: self.ids.next(),
+                                id: NodeId(0),
                                 span: token.span,
                                 name,
                                 self_closing: true,
@@ -227,7 +245,8 @@ impl<'a> Parser<'a> {
                                 fragment: Fragment::empty(),
                             })
                         };
-                        push_child(&mut children_stack, node);
+                        let id = self.push_node(node);
+                        push_child(&mut children_stack, id);
                     } else {
                         entry_stack.push(StackEntry::Element(ElementEntry {
                             name: name.to_string(),
@@ -248,7 +267,7 @@ impl<'a> Parser<'a> {
                         consequent: None,
                         in_alternate: false,
                     }));
-                    children_stack.push(vec![]); // consequent children
+                    children_stack.push(vec![]);
                 }
                 TokenType::ElseTag(else_tag) => {
                     self.handle_else_tag(
@@ -271,7 +290,7 @@ impl<'a> Parser<'a> {
                         body_children: None,
                         in_fallback: false,
                     }));
-                    children_stack.push(vec![]); // body children
+                    children_stack.push(vec![]);
                 }
                 TokenType::EndEachTag => {
                     self.handle_end_each_tag(token.span, &mut entry_stack, &mut children_stack);
@@ -325,36 +344,36 @@ impl<'a> Parser<'a> {
                     self.handle_end_await_tag(token.span, &mut entry_stack, &mut children_stack);
                 }
                 TokenType::RenderTag(render_tag) => {
-                    let node = Node::RenderTag(RenderTag {
-                        id: self.ids.next(),
+                    let id = self.push_node(Node::RenderTag(RenderTag {
+                        id: NodeId(0),
                         span: token.span,
                         expression_span: render_tag.expression_span,
-                    });
-                    push_child(&mut children_stack, node);
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::HtmlTag(html_tag) => {
-                    let node = Node::HtmlTag(HtmlTag {
-                        id: self.ids.next(),
+                    let id = self.push_node(Node::HtmlTag(HtmlTag {
+                        id: NodeId(0),
                         span: token.span,
                         expression_span: html_tag.expression_span,
-                    });
-                    push_child(&mut children_stack, node);
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::ConstTag(ct) => {
-                    let node = Node::ConstTag(ConstTag {
-                        id: self.ids.next(),
+                    let id = self.push_node(Node::ConstTag(ConstTag {
+                        id: NodeId(0),
                         span: token.span,
                         expression_span: ct.expression_span,
-                    });
-                    push_child(&mut children_stack, node);
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::DebugTag(dt) => {
-                    let node = Node::DebugTag(DebugTag {
-                        id: self.ids.next(),
+                    let id = self.push_node(Node::DebugTag(DebugTag {
+                        id: NodeId(0),
                         span: token.span,
                         identifiers: dt.identifiers,
-                    });
-                    push_child(&mut children_stack, node);
+                    }));
+                    push_child(&mut children_stack, id);
                 }
                 TokenType::ScriptTag(script_tag) => {
                     if script_data.is_some() {
@@ -402,7 +421,7 @@ impl<'a> Parser<'a> {
         let roots = pop_children(&mut children_stack);
 
         let script = script_data.map(|sd| Script {
-            id: self.ids.next(),
+            id: self.reserve_id(),
             span: sd.span,
             content_span: sd.content_span,
             context: sd.context,
@@ -414,9 +433,9 @@ impl<'a> Parser<'a> {
             content_span: cd.content_span,
         });
 
-        let node_count = self.ids.current();
+        let store = std::mem::take(&mut self.store);
         let mut component =
-            Component::new(self.source.to_string(), Fragment::new(roots), script, css, node_count);
+            Component::new(self.source.to_string(), Fragment::new(roots), store, script, css);
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 
@@ -433,34 +452,12 @@ impl<'a> Parser<'a> {
         Self::convert_svelte_body(&mut component);
 
         // Convert <svelte:element> elements to SvelteElement nodes
-        Self::convert_svelte_element(&mut component.fragment);
+        Self::convert_svelte_element(&mut component.store, &component.fragment);
 
         // Convert <svelte:boundary> elements to SvelteBoundary nodes
-        Self::convert_svelte_boundary(&mut component.fragment);
+        Self::convert_svelte_boundary(&mut component.store, &component.fragment);
 
         (component, self.diagnostics)
-    }
-
-    fn make_text(&mut self, token: &Token) -> Node {
-        Node::Text(Text {
-            id: self.ids.next(),
-            span: token.span,
-        })
-    }
-
-    fn make_comment(&mut self, token: &Token) -> Node {
-        Node::Comment(Comment {
-            id: self.ids.next(),
-            span: token.span,
-        })
-    }
-
-    fn make_expression_tag(&mut self, interpolation: &ExpressionTag) -> Node {
-        Node::ExpressionTag(svelte_ast::ExpressionTag {
-            id: self.ids.next(),
-            span: interpolation.span,
-            expression_span: interpolation.expression_span,
-        })
     }
 }
 

@@ -29,8 +29,9 @@ fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, varian
 // -----------------------------------------------------------------------
 
 fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Option<NodeId> {
-    for node in &fragment.nodes {
-        match node {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
             Node::ExpressionTag(t) if component.source_text(t.expression_span) == target => {
                 return Some(t.id);
             }
@@ -65,27 +66,28 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
     None
 }
 
-fn find_element<'a>(fragment: &'a Fragment, tag_name: &str) -> Option<&'a Element> {
-    for node in &fragment.nodes {
-        match node {
+fn find_element<'a>(fragment: &'a Fragment, component: &'a Component, tag_name: &str) -> Option<&'a Element> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
             Node::Element(el) if el.name == tag_name => return Some(el),
             Node::Element(el) => {
-                if let Some(found) = find_element(&el.fragment, tag_name) {
+                if let Some(found) = find_element(&el.fragment, component, tag_name) {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_element(&b.consequent, tag_name) {
+                if let Some(found) = find_element(&b.consequent, component, tag_name) {
                     return Some(found);
                 }
                 if let Some(alt) = &b.alternate {
-                    if let Some(found) = find_element(alt, tag_name) {
+                    if let Some(found) = find_element(alt, component, tag_name) {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_element(&b.body, tag_name) {
+                if let Some(found) = find_element(&b.body, component, tag_name) {
                     return Some(found);
                 }
             }
@@ -97,11 +99,12 @@ fn find_element<'a>(fragment: &'a Fragment, tag_name: &str) -> Option<&'a Elemen
 
 fn find_if_block<'a>(
     fragment: &'a Fragment,
-    component: &Component,
+    component: &'a Component,
     test_text: &str,
 ) -> Option<&'a IfBlock> {
-    for node in &fragment.nodes {
-        if let Node::IfBlock(b) = node {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        if let Node::IfBlock(b) = store.get(id) {
             if component.source_text(b.test_span) == test_text {
                 return Some(b);
             }
@@ -112,11 +115,12 @@ fn find_if_block<'a>(
 
 fn find_each_block<'a>(
     fragment: &'a Fragment,
-    component: &Component,
+    component: &'a Component,
     expr_text: &str,
 ) -> Option<&'a EachBlock> {
-    for node in &fragment.nodes {
-        if let Node::EachBlock(b) = node {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        if let Node::EachBlock(b) = store.get(id) {
             if component.source_text(b.expression_span) == expr_text {
                 return Some(b);
             }
@@ -212,7 +216,7 @@ fn assert_element_content_type(
     tag_name: &str,
     expected: ContentStrategy,
 ) {
-    let el = find_element(&component.fragment, tag_name)
+    let el = find_element(&component.fragment, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     let actual = data
         .fragments

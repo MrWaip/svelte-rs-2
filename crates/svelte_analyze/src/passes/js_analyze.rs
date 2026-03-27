@@ -69,7 +69,7 @@ pub(crate) fn classify_render_tags(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = RenderTagClassifier { parsed };
-    let mut ctx = crate::walker::VisitContext::new(root, data);
+    let mut ctx = crate::walker::VisitContext::new(root, data, &component.store);
     crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 }
 

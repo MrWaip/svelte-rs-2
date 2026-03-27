@@ -40,7 +40,7 @@ pub fn analyze_with_options<'a>(
 ) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
-    let mut data = AnalysisData::new_empty(component.node_count);
+    let mut data = AnalysisData::new_empty(component.node_count());
     data.custom_element = custom_element;
 
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
@@ -71,7 +71,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::js_analyze::BindingPreparer;
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
         walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
     }
     // CE config (not template-related, extracted separately)
@@ -97,7 +97,7 @@ pub fn analyze_with_options<'a>(
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::template_semantic::TemplateSemanticVisitor;
         let mut v2 = passes::template_side_tables::TemplateSideTablesVisitor { component };
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -111,7 +111,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v2 = passes::collect_symbols::make_visitor(scoping_built);
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -145,7 +145,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::reactivity::ReactivityVisitor::new();
-        let mut ctx = walker::VisitContext::new(root, &mut data);
+        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -172,8 +172,8 @@ pub fn analyze_with_options<'a>(
             .fragment
             .nodes
             .iter()
-            .filter_map(|n| {
-                if let svelte_ast::Node::SnippetBlock(b) = n {
+            .filter_map(|&id| {
+                if let svelte_ast::Node::SnippetBlock(b) = component.store.get(id) {
                     Some(b.id)
                 } else {
                     None
@@ -186,7 +186,7 @@ pub fn analyze_with_options<'a>(
         let mut v5 = passes::content_types::ContentAndVarVisitor {
             source: &component.source,
         };
-        let mut ctx = walker::VisitContext::new(root, &mut data);
+        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
