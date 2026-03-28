@@ -1,3 +1,8 @@
+---
+description: Compile a Svelte component through our pipeline, analyze failures, and add missing test coverage. Use when the user asks to "diagnose", "check component", or wants to find what's broken for a specific component.
+argument-hint: "[component-source-or-path]"
+---
+
 # Diagnose Svelte component: $ARGUMENTS
 
 Takes a Svelte component source, compiles it through our pipeline, analyzes failures, and adds missing test coverage.

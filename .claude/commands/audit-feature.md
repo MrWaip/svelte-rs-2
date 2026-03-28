@@ -1,3 +1,9 @@
+---
+description: Gap analysis for an existing feature vs reference Svelte compiler. Use when the user asks "what's missing in our X implementation", "audit feature", or "check feature completeness".
+argument-hint: "[feature-name]"
+allowed-tools: Bash, Read, Grep, Glob, Write, Edit, Agent
+---
+
 # Audit feature: $ARGUMENTS
 
 Gap analysis for an existing feature: compare our implementation against the reference Svelte compiler and produce a spec file with what's missing.

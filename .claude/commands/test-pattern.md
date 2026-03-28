@@ -1,3 +1,9 @@
+---
+description: Testing conventions for svelte_parser and svelte_analyze crates. Loaded automatically when writing or modifying tests in these crates.
+user-invocable: false
+paths: "crates/svelte_parser/tests/**,crates/svelte_analyze/src/tests.rs"
+---
+
 # Test Pattern для svelte_parser и svelte_analyze
 
 Тесты используют span-based сравнение: каждый узел AST имеет `span()`, `Component::source_text(span)` возвращает оригинальный срез. Тест сравнивает исходный текст с ожидаемой строкой — не NodeId, не структурные поля.

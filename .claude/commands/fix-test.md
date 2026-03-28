@@ -1,3 +1,8 @@
+---
+description: Fix a single failing compiler test case. Use when the user asks to "fix test", "make test pass", or provides a failing test name.
+argument-hint: "[test-case-name]"
+---
+
 # Fix failing test: $ARGUMENTS
 
 Fix a single compiler test case. The test name is provided as argument.
