@@ -45,7 +45,7 @@ pub(crate) fn gen_html_tag<'a>(
         let html_stmt = ctx.b.call_stmt("$.html", html_args);
 
         let async_thunk = if has_await { Some(ctx.b.async_thunk(expression)) } else { None };
-        stmts.push(ctx.emit_async_block(id, anchor_expr, has_await, async_thunk, "$$html", vec![html_stmt]));
+        stmts.push(ctx.gen_async_block(id, anchor_expr, has_await, async_thunk, "$$html", vec![html_stmt]));
     } else {
         let thunk = super::expression::build_node_thunk(ctx, id);
 

@@ -172,7 +172,7 @@ impl<'a> Ctx<'a> {
 
     /// Build `$.async(anchor, blockers, async_values, callback)` statement.
     /// Common pattern used by if/each/key/html blocks when expression is async.
-    pub fn emit_async_block(
+    pub fn gen_async_block(
         &mut self,
         id: NodeId,
         anchor: oxc_ast::ast::Expression<'a>,

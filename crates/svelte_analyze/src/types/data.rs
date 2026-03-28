@@ -416,6 +416,8 @@ pub struct SnippetData {
     pub(crate) hoistable: NodeBitSet,
     /// Key: ComponentNode NodeId → snippet NodeIds declared in its fragment
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
+    /// Pre-computed param names from the parsed `const name = (a, b) => {}` arrow.
+    pub(crate) params: NodeTable<Vec<String>>,
 }
 
 impl SnippetData {
@@ -423,6 +425,7 @@ impl SnippetData {
         Self {
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
+            params: NodeTable::new(node_count),
         }
     }
 
@@ -433,6 +436,9 @@ impl SnippetData {
         self.component_snippets
             .get(id)
             .map_or(&[], |v| v.as_slice())
+    }
+    pub fn params(&self, id: NodeId) -> &[String] {
+        self.params.get(id).map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -510,6 +516,8 @@ pub struct EachBlockData {
     pub(crate) key_is_item: NodeBitSet,
     /// Body contains an element with an `animate:` directive.
     pub(crate) has_animate: NodeBitSet,
+    /// Context variable name: simple identifier name or `"$$item"` for destructured.
+    pub(crate) context_names: NodeTable<String>,
 }
 
 impl EachBlockData {
@@ -523,6 +531,7 @@ impl EachBlockData {
             body_uses_index: NodeBitSet::new(node_count),
             key_is_item: NodeBitSet::new(node_count),
             has_animate: NodeBitSet::new(node_count),
+            context_names: NodeTable::new(node_count),
         }
     }
 
@@ -551,6 +560,9 @@ impl EachBlockData {
     }
     pub fn has_animate(&self, id: NodeId) -> bool {
         self.has_animate.contains(&id)
+    }
+    pub fn context_name(&self, id: NodeId) -> &str {
+        self.context_names.get(id).map_or("$$item", |s| s.as_str())
     }
 }
 

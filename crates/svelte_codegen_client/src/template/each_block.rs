@@ -46,12 +46,7 @@ pub(crate) fn gen_each_block<'a>(
         var_decl.declarations.remove(0).id
     });
 
-    let context_name = context_pattern.as_ref()
-        .and_then(|p| match p {
-            BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
-            _ => None,
-        })
-        .unwrap_or_else(|| "$$item".to_string());
+    let context_name = ctx.analysis.each_blocks.context_name(block_id).to_string();
 
     let key_is_item = ctx.each_key_is_item(block_id);
 
@@ -196,7 +191,7 @@ pub(crate) fn gen_each_block<'a>(
         let each_stmt = super::add_svelte_meta(ctx, each_call, span_start, "each");
 
         let async_thunk = if has_await { async_collection_thunk } else { None };
-        body.push(ctx.emit_async_block(block_id, anchor, has_await, async_thunk, "$$collection", vec![each_stmt]));
+        body.push(ctx.gen_async_block(block_id, anchor, has_await, async_thunk, "$$collection", vec![each_stmt]));
     } else {
         let mut each_args: Vec<Arg<'a, '_>> = vec![
             Arg::Expr(anchor),
