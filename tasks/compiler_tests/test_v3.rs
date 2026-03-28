@@ -800,6 +800,31 @@ fn state_class_multiple() {
     assert_compiler("state_class_multiple");
 }
 
+#[rstest]
+fn state_constructor_private_read() {
+    assert_compiler("state_constructor_private_read");
+}
+
+#[rstest]
+fn state_class_raw_field() {
+    assert_compiler("state_class_raw_field");
+}
+
+#[rstest]
+fn state_no_init() {
+    assert_compiler("state_no_init");
+}
+
+#[rstest]
+fn state_snapshot_in_template() {
+    assert_compiler("state_snapshot_in_template");
+}
+
+#[rstest]
+fn state_class_constructor_proxy() {
+    assert_compiler("state_class_constructor_proxy");
+}
+
 // ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
