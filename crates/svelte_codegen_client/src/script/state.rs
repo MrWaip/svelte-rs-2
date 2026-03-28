@@ -597,9 +597,20 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             if let Expression::ThisExpression(_) = &member.object {
                                 let name = member.property.name.to_string();
                                 if let Some(field_info) = ctor_fields.get(name.as_str()) {
-                                    // Rewrite: this.name = $state(arg) → this.#backing = $.state(arg)
+                                    // Rewrite: this.name = $state(arg) → this.#backing = $.state($.proxy(arg)) or $.state(arg)
                                     if let Expression::CallExpression(call) = &mut assign.right {
                                         call.callee = self.b.rid_expr("$.state");
+                                        // Wrap proxyable args (arrays/objects) in $.proxy()
+                                        let needs_proxy = call.arguments.first()
+                                            .and_then(|a| a.as_expression())
+                                            .is_some_and(|e| svelte_transform::rune_refs::should_proxy(e));
+                                        if needs_proxy {
+                                            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                            std::mem::swap(&mut call.arguments[0], &mut dummy);
+                                            let inner = dummy.into_expression();
+                                            let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
+                                            call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
+                                        }
                                     }
                                     // Change left side to this.#backing
                                     let new_left = self.b.this_private_member(&field_info.private_name);
