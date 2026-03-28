@@ -6,11 +6,11 @@ mod validate;
 pub(crate) mod walker;
 
 pub use types::data::{
-    AnalysisData, AwaitBindingData, AwaitBindingInfo, ClassDirectiveInfo, ComponentBindMode,
-    ComponentPropInfo, ComponentPropKind, ConstTagData, ContentStrategy, DebugTagData,
-    DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo, ExpressionKind, FragmentData,
-    FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis,
-    PropsAnalysis, RenderTagCalleeMode, SnippetData,
+    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
+    ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo,
+    ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
+    ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
 };
 pub use utils::IdentGen;
 pub use scope::ComponentScoping;
@@ -120,6 +120,9 @@ pub fn analyze_with_options<'a>(
     }
     passes::collect_symbols::resolve_script_stores(&mut data);
 
+    // Instance body blocker analysis (experimental.async)
+    passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
+
     // needs_context requires ref_symbols — must run after collect_symbols
     passes::js_analyze::classify_expression_needs_context(&mut data);
     if !data.needs_context {
@@ -135,6 +138,16 @@ pub fn analyze_with_options<'a>(
     resolve_render_tag_dynamic(&mut data);
     data.scoping.precompute_dynamic_cache();
     passes::js_analyze::classify_expression_dynamicity(&mut data);
+
+    // Mark expressions referencing blocked symbols as dynamic (after classify_expression_dynamicity)
+    if data.blocker_data.has_async {
+        for info in data.expressions.values_mut() {
+            if !info.is_dynamic && info.ref_symbols.iter().any(|sym| data.blocker_data.symbol_blockers.contains_key(sym)) {
+                info.is_dynamic = true;
+            }
+        }
+    }
+
     passes::lower::lower(component, &mut data);
     // by_fragment populated by lower — now we can mark const_alias
     mark_const_tag_bindings(&mut data);

@@ -49,6 +49,8 @@ pub struct Ctx<'a> {
     pub filename: &'a str,
     /// Whether any $inspect.trace() was found in template expressions (triggers tracing import).
     pub has_tracing: bool,
+    /// Whether `experimental.async` is enabled.
+    pub experimental_async: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -63,6 +65,7 @@ impl<'a> Ctx<'a> {
         dev: bool,
         source: &'a str,
         filename: &str,
+        experimental_async: bool,
     ) -> Self {
         let name = allocator.alloc_str(name);
         let filename = allocator.alloc_str(filename);
@@ -86,6 +89,7 @@ impl<'a> Ctx<'a> {
             source,
             filename,
             has_tracing: false,
+            experimental_async,
         }
     }
 
@@ -145,6 +149,57 @@ impl<'a> Ctx<'a> {
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
+
+    /// Check if expression for node has `has_await`.
+    pub fn expr_has_await(&self, id: NodeId) -> bool {
+        self.expression(id).is_some_and(|info| info.has_await)
+    }
+
+    /// Check if expression has blockers (references bindings with blocker metadata).
+    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
+        self.analysis.expr_has_blockers(id)
+    }
+
+
+    /// Build `[$$promises[i], ...]` blockers array from expression's blocker indices.
+    pub fn build_blockers_array(&mut self, id: NodeId) -> oxc_ast::ast::Expression<'a> {
+        let indices = self.analysis.expression_blockers(id);
+        if indices.is_empty() {
+            return self.b.empty_array_expr();
+        }
+        self.b.promises_array(&indices)
+    }
+
+    /// Build `$.async(anchor, blockers, async_values, callback)` statement.
+    /// Common pattern used by if/each/key/html blocks when expression is async.
+    pub fn emit_async_block(
+        &mut self,
+        id: NodeId,
+        anchor: oxc_ast::ast::Expression<'a>,
+        has_await: bool,
+        async_thunk: Option<oxc_ast::ast::Expression<'a>>,
+        param_name: &str,
+        inner_stmts: Vec<Statement<'a>>,
+    ) -> Statement<'a> {
+        let blockers = self.build_blockers_array(id);
+        let async_values = if has_await {
+            crate::builder::Arg::Expr(self.b.array_expr([async_thunk.unwrap()]))
+        } else {
+            crate::builder::Arg::Expr(self.b.void_zero_expr())
+        };
+        let callback_params = if has_await {
+            self.b.params(["node", param_name])
+        } else {
+            self.b.params(["node"])
+        };
+        let callback = self.b.arrow_block_expr(callback_params, inner_stmts);
+        self.b.call_stmt("$.async", [
+            crate::builder::Arg::Expr(anchor),
+            crate::builder::Arg::Expr(blockers),
+            async_values,
+            crate::builder::Arg::Expr(callback),
+        ])
+    }
 
     // -- Fragment shortcuts --
 

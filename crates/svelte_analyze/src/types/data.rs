@@ -51,6 +51,8 @@ pub struct ExpressionInfo {
     pub has_store_ref: bool,
     pub has_side_effects: bool,
     pub has_call: bool,
+    /// Expression contains an `await` keyword (requires `experimental.async`).
+    pub has_await: bool,
     /// Set when the expression contains `$effect.pending()` — forces the expression to be dynamic.
     pub has_state_rune: bool,
     /// Set when the expression contains a deep mutation on a `$`-prefixed identifier
@@ -356,6 +358,9 @@ pub struct FragmentData {
     pub(crate) lowered: FxHashMap<FragmentKey, LoweredFragment>,
     pub(crate) content_types: FxHashMap<FragmentKey, ContentStrategy>,
     pub(crate) has_dynamic_children: FxHashSet<FragmentKey>,
+    /// Pre-computed blocker indices per fragment (experimental.async).
+    /// Aggregated from all text expression parts in the fragment.
+    pub(crate) fragment_blockers: FxHashMap<FragmentKey, SmallVec<[u32; 2]>>,
 }
 
 impl FragmentData {
@@ -364,6 +369,7 @@ impl FragmentData {
             lowered: FxHashMap::default(),
             content_types: FxHashMap::default(),
             has_dynamic_children: FxHashSet::default(),
+            fragment_blockers: FxHashMap::default(),
         }
     }
 
@@ -378,6 +384,7 @@ impl FragmentData {
                 estimated_fragments / 4,
                 Default::default(),
             ),
+            fragment_blockers: FxHashMap::default(),
         }
     }
 
@@ -394,6 +401,11 @@ impl FragmentData {
 
     pub fn lowered(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
         self.lowered.get(key)
+    }
+
+    /// Pre-computed blocker indices for a fragment's text expressions.
+    pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
+        self.fragment_blockers.get(key).map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -592,6 +604,8 @@ pub struct BindSemanticsData {
     pub(crate) parent_each_blocks: NodeTable<Vec<NodeId>>,
     /// Each blocks that need a generated `$$index` parameter for group binding.
     pub(crate) contains_group_binding: NodeBitSet,
+    /// Pre-computed blocker indices for bind directive targets (experimental.async).
+    pub(crate) bind_blockers: NodeTable<SmallVec<[u32; 2]>>,
 }
 
 impl BindSemanticsData {
@@ -604,6 +618,7 @@ impl BindSemanticsData {
             bind_group_value_attr: NodeTable::new(node_count),
             parent_each_blocks: NodeTable::new(node_count),
             contains_group_binding: NodeBitSet::new(node_count),
+            bind_blockers: NodeTable::new(node_count),
         }
     }
 
@@ -633,6 +648,11 @@ impl BindSemanticsData {
 
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
         self.contains_group_binding.contains(&id)
+    }
+
+    /// Pre-computed blocker indices for a bind directive target.
+    pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
+        self.bind_blockers.get(id).map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -713,6 +733,77 @@ pub struct AnalysisData {
     /// True when script contains deep mutations on `$`-prefixed identifiers
     /// (e.g., `$store.field = val`). Triggers `$.push/$.pop` for `$.store_mutate`.
     pub(crate) has_store_member_mutations: bool,
+    /// Blocker tracking for `experimental.async`: which script bindings depend on async operations.
+    pub(crate) blocker_data: BlockerData,
+}
+
+// ---------------------------------------------------------------------------
+// Blocker tracking (experimental.async)
+// ---------------------------------------------------------------------------
+
+/// Per-symbol blocker info for instance body async splitting.
+/// A blocker index N means the binding is written by the N-th async thunk,
+/// so template reads must wait for `$$promises[N]`.
+#[derive(Debug, Default)]
+pub struct BlockerData {
+    /// SymbolId → blocker index (the index into the $$promises array).
+    pub(crate) symbol_blockers: FxHashMap<SymbolId, u32>,
+    /// Number of async thunks in the instance body.
+    pub(crate) async_thunk_count: u32,
+    /// Whether the instance body has any async statements.
+    pub(crate) has_async: bool,
+    /// Index of the first non-import statement with top-level await.
+    /// Indices count only non-import statements (1:1 with `ScriptOutput.body`).
+    pub(crate) first_await_index: Option<usize>,
+    /// Per-statement metadata for statements at/after `first_await_index`.
+    /// Indexed as `stmt_metas[i - first_await_index]` where `i` is the
+    /// non-import statement index.
+    pub(crate) stmt_metas: Vec<AsyncStmtMeta>,
+}
+
+/// Pre-computed metadata for one non-import statement in the async split region.
+/// Produced by `calculate_instance_blockers`, consumed by codegen's `split_async_instance_body`.
+#[derive(Debug, Clone)]
+pub struct AsyncStmtMeta {
+    /// Statement has top-level await (not inside nested functions).
+    pub(crate) has_await: bool,
+    /// Binding names that need hoisting for this statement.
+    /// For variables: all declarator bindings except function-valued inits.
+    /// For classes: the class name.
+    pub(crate) hoist_names: Vec<String>,
+}
+
+impl AsyncStmtMeta {
+    pub fn has_await(&self) -> bool {
+        self.has_await
+    }
+    pub fn hoist_names(&self) -> &[String] {
+        &self.hoist_names
+    }
+}
+
+impl BlockerData {
+    /// Whether the instance body has any async statements.
+    pub fn has_async(&self) -> bool {
+        self.has_async
+    }
+
+    /// Get blocker index for a symbol, if any.
+    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
+        self.symbol_blockers.get(&sym).copied()
+    }
+
+    /// Index of the first non-import statement with top-level await.
+    pub fn first_await_index(&self) -> Option<usize> {
+        self.first_await_index
+    }
+
+    /// Get metadata for a non-import statement at the given index.
+    /// Only valid for indices `>= first_await_index`.
+    pub fn stmt_meta(&self, stmt_index: usize) -> Option<&AsyncStmtMeta> {
+        let first = self.first_await_index?;
+        self.stmt_metas.get(stmt_index - first)
+    }
 }
 
 impl AnalysisData {
@@ -752,11 +843,15 @@ impl AnalysisData {
             ce_config: None,
             proxy_state_inits: FxHashMap::default(),
             has_store_member_mutations: false,
+            blocker_data: BlockerData::default(),
         }
     }
 }
 
 impl AnalysisData {
+    pub fn blocker_data(&self) -> &BlockerData {
+        &self.blocker_data
+    }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.dynamic_nodes.contains(&id)
     }
@@ -810,11 +905,41 @@ impl AnalysisData {
         })
     }
 
-    /// Expression has a function call AND references to resolved bindings — needs `$.derived` wrapping.
+    /// Expression has a function call or await AND references to resolved bindings — needs `$.derived` wrapping.
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
         self.expressions
             .get(id)
-            .is_some_and(|e| e.has_call && !e.ref_symbols.is_empty())
+            .is_some_and(|e| (e.has_call || e.has_await) && !e.ref_symbols.is_empty())
+    }
+
+    /// Check if an expression has blockers (references bindings with blocker metadata).
+    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
+        if !self.blocker_data.has_async {
+            return false;
+        }
+        self.expressions.get(id).is_some_and(|info| {
+            info.ref_symbols.iter().any(|sym| self.blocker_data.symbol_blockers.contains_key(sym))
+        })
+    }
+
+    /// Collect unique blocker indices referenced by an expression's dependencies.
+    /// Returns sorted, deduplicated blocker indices.
+    pub fn expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
+        let mut result = SmallVec::new();
+        if !self.blocker_data.has_async {
+            return result;
+        }
+        if let Some(info) = self.expressions.get(id) {
+            for sym in &info.ref_symbols {
+                if let Some(&idx) = self.blocker_data.symbol_blockers.get(sym) {
+                    if !result.contains(&idx) {
+                        result.push(idx);
+                    }
+                }
+            }
+        }
+        result.sort_unstable();
+        result
     }
 
     /// Known compile-time value for a name at root scope (looks up SymbolId internally).
