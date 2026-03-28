@@ -1,8 +1,9 @@
 ---
 name: benchmark
-description: Run wall-clock Rust vs JS benchmark comparison
-user_invocable: true
-argument: (optional) benchmark file name, defaults to latest
+description: Run wall-clock Rust vs JS compiler benchmark. Use when the user asks to "run benchmark", "compare performance", or "check speedup".
+user-invocable: true
+argument-hint: "[benchmark-file]"
+allowed-tools: Bash, Read, Grep
 ---
 
 # Benchmark: Rust vs JS comparison

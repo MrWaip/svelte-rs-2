@@ -1,9 +1,22 @@
+---
+description: Port a Svelte compiler feature from the reference JS compiler to our Rust implementation. Use when the user asks to "port", "implement", or "add support for" a Svelte feature.
+argument-hint: "[feature-description]"
+---
+
 # Port Svelte feature: $ARGUMENTS
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
 The command argument is a feature description (e.g. `$derived`, `{@html}`, `style:prop`).
 Before starting, read `ROADMAP.md`, find the matching item, and use the listed files and reference links.
+
+## Session continuation
+
+Check if `specs/<feature>.md` exists for this feature. If yes:
+1. Read it first
+2. Check the **Current state** section — what's done, what's next
+3. Skip to the appropriate step in EXECUTE PHASE
+4. Do NOT re-run the PLAN PHASE unless the spec file says the plan needs revision
 
 ## Approach
 
@@ -105,7 +118,9 @@ Produce a concrete plan:
 
 If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
 
-**Quality verification in plan:** for each proposed change, verify it satisfies the **Quality checklist** in CLAUDE.md. If a change would violate any of the 5 points, redesign it before presenting the plan.
+**Quality verification in plan:** for each proposed change, verify it satisfies the **Pre-commit self-check** in CLAUDE.md. If a change would violate any point, redesign it before presenting the plan.
+
+**Write the plan to `specs/<feature-name>.md`** using the spec file format (see CLAUDE.md). Include: Source, Reference files, Use cases (from Step 2), Tasks by layer, Current state.
 
 **Present the plan and wait for approval before proceeding.**
 
@@ -170,7 +185,7 @@ Key differences from Svelte:
 
 ### Step 8: Verify & Finalize
 
-**Quality gate:** verify all new and modified code against the **Quality checklist** in CLAUDE.md. All 5 points must hold before proceeding to test verification.
+**Quality gate:** verify all new and modified code against the **Pre-commit self-check** in CLAUDE.md. All points must hold before proceeding to test verification.
 
 **Verify each test case individually:**
 ```
@@ -189,6 +204,7 @@ If a test fails after 3 attempts, stop and report what you tried. Do NOT fix oth
 **If implementation failed and cannot be completed:** run `git stash` to save partial work, report what was done and what remains. Do not leave a broken state on the branch.
 
 **Update tracking:**
+- Update `specs/<feature>.md`: mark completed tasks, update Current state section
 - Move completed feature to **Done ✅** in `ROADMAP.md`
 - Add any newly discovered deferred items to **Deferred** section
 

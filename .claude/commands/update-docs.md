@@ -1,7 +1,8 @@
 ---
 name: update-docs
-description: Update project documentation based on recent changes
-user_invocable: true
+description: Synchronize ROADMAP.md, CODEBASE_MAP.md, and GOTCHAS.md with recent code changes. Use when the user asks to "update docs", "sync documentation", or after completing a feature port.
+user-invocable: true
+allowed-tools: Bash, Read, Grep, Glob, Edit
 ---
 
 # Update project documentation
