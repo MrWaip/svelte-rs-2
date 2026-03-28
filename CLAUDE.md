@@ -42,6 +42,7 @@ Match the JS output exactly. Design internals for Rust: direct recursion over si
 **Exception** — `svelte_analyze` uses a single-pass composite visitor (`walker.rs`). Codegen uses direct recursion.
 
 To port a new feature: `/port-svelte <feature>`. To audit existing feature completeness: `/audit-feature <feature>`.
+To fix existing code problems (bugs, workarounds, missing tests): `/fix-debt <description>`.
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
 When discovering deferred items, add them to the **Deferred** section of `ROADMAP.md`.
