@@ -48,32 +48,15 @@ These steps are read-only. Complete them in plan mode before writing any code.
 
 ### Step 1: Parallel research
 
-When launching Explore agents, exclude generated files from searches: `case-svelte.js`, `case-rust.js`.
+Launch 3 agents simultaneously:
 
-Launch 3 Explore agents simultaneously:
+1. **@reference-tracer** — trace the feature through all 3 phases of the reference compiler. Focus: runtime calls, arguments, conditions, edge cases.
+2. **@codebase-analyzer** — find what's already implemented in our Rust compiler for this feature: AST types, analysis passes, codegen, tests.
+3. **Explore agent** — search `reference/compiler/tests/` for snapshot inputs/outputs, and cross-cutting references to this feature.
 
-1. **Agent 1 — Reference compiler**
-   - Trace the feature through all 3 phases of the reference compiler:
-     - `reference/compiler/phases/1-parse/` — syntax variants, how the feature is parsed
-     - `reference/compiler/types/template.d.ts` — AST node shape, optional fields, union variants
-     - `reference/compiler/phases/2-analyze/visitors/` — metadata, flags, special conditions
-     - `reference/compiler/phases/3-transform/client/visitors/` — codegen branches, edge case handling
-   - Focus on: `if`/`switch` branches (each = distinct use case), runtime `$.helper()` calls, diagnostics
-   - When reading reference codegen, extract ONLY: what runtime functions are called, with what arguments, in what order. Ignore the visitor dispatch structure.
+After all agents complete, synthesize findings. Read key files agents identified for planning details.
 
-2. **Agent 2 — Our codebase**
-   - `crates/svelte_ast/src/lib.rs` — what AST types we already have
-   - `crates/svelte_analyze/src/` — what analysis passes we already have
-   - `crates/svelte_codegen_client/src/` — what's already implemented
-   - `tasks/compiler_tests/cases2/` — which test cases already cover this feature
-
-3. **Agent 3 — Test examples**
-   - `reference/compiler/tests/` — snapshot inputs and expected outputs for this feature
-   - Search for the feature name (and aliases) across all reference files to catch cross-cutting concerns
-
-After all agents complete, synthesize findings from agent results. Agents return summaries, not full file contents — you may need to read key files yourself for planning details.
-
-**Controlled follow-up reads:** only files that agents identified as critical for the implementation plan but whose exact content (type signatures, function signatures, match arms) you need to see. List the files and why before reading. Do not re-read files that agents already summarized adequately. Do not launch additional agents (Plan, Explore, or otherwise).
+**Controlled follow-up reads:** only files agents flagged as critical but whose exact content you need. List files and why before reading. Do not launch additional agents.
 
 Output: what the feature requires end-to-end, what's already done, what's missing.
 
@@ -125,44 +108,7 @@ Produce a concrete plan:
 
 If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
 
-**Write the plan to `specs/<feature-name>.md`** using this template:
-
-```markdown
-# <Feature name>
-
-## Source
-<ROADMAP item reference or user request>
-
-## Reference
-- Svelte reference:
-  - <list of reference compiler files consulted>
-- Our code:
-  - <list of our crate files involved>
-
-## Use cases
-
-### <Category>
-1. [ ] <use case description> (test: <test_name>)
-2. [x] <already handled use case> (covered, test: <existing_test>)
-
-### Deferred
-- <use cases deferred to ROADMAP>
-
-## Tasks
-
-### AST / Parser
-- [ ] <concrete change>
-
-### Analysis
-- [ ] <concrete change>
-
-### Codegen
-- [ ] <concrete change>
-
-## Current state
-<What's done, what's next, any blockers>
-Last updated: <date>
-```
+Write the plan to `specs/<feature-name>.md` following the `spec-template` skill. Current state section goes FIRST.
 
 **Present the plan and wait for approval before proceeding.**
 
@@ -188,11 +134,6 @@ git branch --show-current
 
 Verify with `git branch --show-current`. If still on master, stop and fix before proceeding. Never commit directly to master.
 
-**Load OXC API references** — read all three files:
-- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
-
 ### Step 5: Test cases
 
 Create one test case per selected use case from Step 2:
@@ -202,6 +143,8 @@ Create one test case per selected use case from Step 2:
 After creating ALL case files, run `just generate` ONCE to generate all `case-svelte.js` files. If it fails, stop and report. Do not attempt to fix the generator.
 
 After generation, read each `case-svelte.js` and verify the output matches expectations from Step 1 research (correct runtime calls, correct structure). If the output looks wrong, fix `case.svelte` now — before implementing anything. If the reference compiler output itself looks incorrect (bug in reference), note it and ask how to proceed.
+
+After creating and running tests, update `specs/<feature>.md` Current state with progress.
 
 Rules:
 - **NEVER edit `case-svelte.js` or `case-rust.js`** — these are generated
@@ -229,6 +172,8 @@ Key differences from Svelte:
 - Direct recursive functions, not AST walker (zimmerframe)
 - `AnalysisData` side tables, not mutated AST metadata
 - Store `Span`, re-parse in codegen via `svelte_types` — not stored expressions
+
+Update `specs/<feature>.md` Current state with progress so far.
 
 ### Step 8: Verify & Finalize
 
@@ -258,3 +203,24 @@ If a test fails after 3 attempts, stop and report what you tried. Do NOT fix oth
 2. Increment the version: rename the existing `big_vN.svelte` default in `justfile`, `tasks/benchmark/compare.mjs`, and `tasks/generate_benchmark/src/main.rs` to `big_v(N+1)`
 3. Delete the old `big_vN.svelte` file from `tasks/benchmark/benches/compiler/`
 4. Generate: `just generate-benchmark`
+
+**Summary:**
+```
+## Done
+
+### Changes
+- [file:line] — what changed and why
+
+### Decisions
+- [decision and rationale]
+
+### Tests
+- [test_name] — pass/fail
+
+### Next steps
+- [what remains, if anything]
+
+### Next
+→ `/qa` to verify quality guidelines
+→ `/sync-docs` to update ROADMAP/CODEBASE_MAP
+```

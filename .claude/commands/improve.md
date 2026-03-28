@@ -18,6 +18,8 @@ Classify the problem:
 - **Missing tests** — code exists but has no unit tests
 - **Architecture** — structural issue (wrong abstraction, scattered ownership, implicit coupling)
 
+Check `specs/*.md` for a spec covering this area. If found, update its Use cases / Current state after the fix.
+
 ## Step 2: Assess scope
 
 Before writing any code, answer:
@@ -39,11 +41,6 @@ If the problem area lacks unit tests:
 This ensures the fix doesn't break unrelated behavior.
 
 ## Step 4: Fix
-
-**Load OXC API references** — read all three files:
-- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
 
 Apply the fix in the correct layer.
 
@@ -79,6 +76,9 @@ If any test fails that wasn't failing before — the fix introduced a regression
 - Added: [new tests]
 - Modified: [changed tests]
 - All passing: yes/no
+
+### Next
+→ `/qa` to verify no new boundary violations
 ```
 
 ## Rules

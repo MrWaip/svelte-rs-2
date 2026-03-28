@@ -35,12 +35,15 @@ trait GetSpan { fn span(&self) -> Span; }
 
 ```rust
 struct Diagnostic { kind: DiagnosticKind, span: Span, severity: Severity }
-// Diagnostic::error(kind, span) / ::invalid_expression(span) / etc.
+// Diagnostic::error(kind, span) / ::warning(kind, span)
 // Diagnostic::as_err<T>(self) -> Result<T, Diagnostic>
 struct LineIndex  // byte offset → (line, col)
 ```
 
-DiagnosticKind варианты: `UnexpectedEndOfFile | InvalidTagName | UnterminatedStartTag | InvalidAttributeName | UnexpectedToken | UnexpectedKeyword | NoElementToClose | UnclosedNode | InvalidExpression | NoIfBlockToClose | NoIfBlockForElse | OnlyOneTopLevelScript | UnknownDirective | NoEachBlockToClose`
+DiagnosticKind: ~274 variants — 28 parser errors, ~165 semantic errors (from reference `errors.js`), 81 warnings (from reference `warnings.js`). Each variant has `code()`, `message()`, `severity()`, `svelte_doc_url()`. Parameterized via enum fields.
+
+`crates/svelte_diagnostics/src/codes.rs` — `legacy_replacement()`, `fuzzymatch()`, `is_valid_warning_code()`
+`crates/svelte_diagnostics/src/extract_svelte_ignore.rs` — `extract_svelte_ignore(offset, text, runes) -> ExtractResult { codes, warnings }`
 
 ---
 
@@ -148,7 +151,8 @@ struct ParserResult<'a> {
 ```rust
 // Публичный API
 fn analyze<'a>(component: &Component, parsed: ParserResult<'a>) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
-fn analyze_with_options<'a>(component, parsed, custom_element: bool) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
+fn analyze_with_options<'a>(component, parsed, options: &AnalyzeOptions) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>)
+// AnalyzeOptions { custom_element, runes, dev, warning_filter: Option<Box<dyn Fn>> }
 fn analyze_module(source: &str, is_ts: bool, dev: bool) -> (AnalysisData, Vec<Diagnostic>)
 
 // Re-exports
@@ -315,6 +319,7 @@ struct AnalysisData {
     each_blocks: EachBlockData,
     await_bindings: AwaitBindingData,
     bind_semantics: BindSemanticsData,
+    ignore_data: IgnoreData,  // svelte-ignore suppression (interned per-node snapshots)
 }
 
 // AnalysisData методы:

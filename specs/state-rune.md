@@ -1,5 +1,14 @@
 # $state rune
 
+## Current state
+- **Working**: 31/37 use cases fully covered with passing tests
+- **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
+- **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
+- **Missing**: 4 use cases (validation errors #33-36), dev-mode features (#31-32), deep_read_state (#41), snapshot is_ignored (#42)
+- **Out of scope**: SSR (server-side codegen not started, will be separate phase)
+- **Next**: Validation diagnostics (#33-36), then dev-mode features (#31-32).
+- Last updated: 2026-03-29
+
 ## Source
 Audit of existing implementation
 
@@ -79,12 +88,6 @@ Audit of existing implementation
 35. [ ] Placement validation: only in variable decl, class prop, constructor (missing — no diagnostic)
 36. [ ] Argument count validation: 0-1 args for `$state`/`$state.raw` (missing — no diagnostic)
 
-### Server-side transform
-37. [ ] `$state(value)` → `value` on server (missing — no server codegen)
-38. [ ] `$state.raw(value)` → `value` on server (missing — no server codegen)
-39. [ ] `$state.snapshot(value)` → `$.snapshot(value)` on server (missing — no server codegen)
-40. [ ] Server class body: no getter/setter generation (missing — no server codegen)
-
 ### Advanced / edge cases
 41. [ ] `$.deep_read_state()` for bindable props in reactive statements (missing)
 42. [ ] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (missing)
@@ -103,11 +106,6 @@ Audit of existing implementation
 6. [ ] `$.deep_read_state()` for bindable props in reactive statements
 7. [ ] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
 
-### server codegen (deferred — no server codegen crate yet)
-8. [ ] Server-side `$state`/`$state.raw` → unwrap to plain value
-9. [ ] Server-side class body handling
-10. [ ] Server-side `$state.snapshot` → `$.snapshot()`
-
 ### tests
 11. [ ] Add test: `$state` dev mode tag_proxy
 12. [ ] Add test: destructured $state dev labels
@@ -125,9 +123,3 @@ Audit of existing implementation
 ### BUG-3: ~~Constructor `$state([])` missing `$.proxy()` wrapping~~ FIXED
 - **Test**: `state_class_constructor_proxy` — PASSING
 
-## Current state
-- **Working**: 31/43 use cases fully covered with passing tests
-- **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
-- **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
-- **Missing**: 10 use cases (validation errors, server codegen, deep_read_state, tag_proxy, snapshot is_ignored)
-- **Next**: Validation diagnostics (#33-36), then dev-mode features (#31-32).

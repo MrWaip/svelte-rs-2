@@ -88,6 +88,9 @@ For each identified issue, add a **focused** test case to existing tests:
 
 Each new test case should test **one** feature or edge case. Do not create a single large test that exercises everything.
 
+For each test that FAILS:
+- Add `#[ignore = "missing: <description> (<layer>)"]` or `#[ignore = "bug: <description> (<layer>)"]` attribute
+
 Name test cases descriptively: `each_block_nested`, `bind_value_input`, `derived_rune_chain`, etc.
 
 ## Step 6: Cleanup
@@ -116,6 +119,11 @@ Output a final summary:
 
 ### Suggested next steps
 - [what to fix first and why]
+
+### Next
+→ `/fix-test <name>` for quick-fix and moderate issues
+→ `/port` for infrastructure gaps
+→ `/improve` for architectural issues
 ```
 
 ## Rules
