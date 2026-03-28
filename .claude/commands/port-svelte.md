@@ -96,24 +96,32 @@ Deferred to ROADMAP (M cases): ...
 
 Add deferred cases to **Deferred** section at the bottom of `ROADMAP.md` under `### <feature name> (Tier N)`.
 
-### Step 3: Implementation plan
+### Step 3: Write spec file
 
-Produce a concrete plan:
-- Files to create (test cases) and files to modify (AST, parser, analyze, codegen)
-- Specific changes per layer: new types, new functions, modified match arms
-- Order: AST types → parser → analysis → codegen
+Based on research from Steps 1-2, create the spec file using the `/spec` format.
 
-If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
+Write `specs/<feature-slug>.md` with:
+- **Expected output** — JS examples from reference compiler research
+- **Tasks** — atomic, one layer each, ordered: test → parser/ast → analyze → transform → codegen → verify
+- **Edge cases** — from reference research
 
-**Quality verification in plan:** for each proposed change, verify it satisfies the **Quality checklist** in CLAUDE.md. If a change would violate any of the 5 points, redesign it before presenting the plan.
+For each task, include:
+- Layer (parser/analyze/codegen/etc.)
+- Files to modify
+- Done condition
+- Specific changes: new types, new functions, modified match arms
 
-**Present the plan and wait for approval before proceeding.**
+**Quality verification:** for each proposed task, verify it satisfies the **Quality checklist** in CLAUDE.md. If a task would violate any of the 5 points, redesign it before presenting.
+
+If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval.
+
+**Present the spec and wait for approval before proceeding.**
 
 ---
 
-## EXECUTE PHASE (steps 4–8)
+## EXECUTE PHASE (steps 4–9)
 
-Start here after plan approval. Steps are sequential — run tests before moving to the next step.
+Start here after spec approval. Execute tasks from the spec file **one at a time, in order**.
 
 ### Step 4: Branch
 
@@ -131,53 +139,49 @@ git branch --show-current
 
 Verify with `git branch --show-current`. If still on master, stop and fix before proceeding. Never commit directly to master.
 
-### Step 5: Test cases
+### Step 5: Execute tasks from spec
 
-Create one test case per selected use case from Step 2:
-1. `tasks/compiler_tests/cases2/<feature>_<variant>/case.svelte` — minimal component for that use case
-2. Add test in `tasks/compiler_tests/test_v3.rs`: `#[rstest] fn <test_name>() { assert_compiler("<test_name>"); }`
+Work through spec tasks **sequentially**. For each task:
 
-After creating ALL case files, run `just generate` ONCE to generate all `case-svelte.js` files. If it fails, stop and report. Do not attempt to fix the generator.
+1. **Read the task** from `specs/<feature>.md`
+2. **Implement** — only the files listed for that task, only in the layer specified
+3. **Test** — run the relevant tests for that layer:
+   - parser task → parser unit tests
+   - analyze task → analyze unit tests
+   - codegen task → `just test-case <name>`
+4. **Mark done** — check the box in the spec file
+5. **Commit** — one commit per task, message references the spec task number
 
-After generation, read each `case-svelte.js` and verify the output matches expectations from Step 1 research (correct runtime calls, correct structure). If the output looks wrong, fix `case.svelte` now — before implementing anything. If the reference compiler output itself looks incorrect (bug in reference), note it and ask how to proceed.
+Task-specific rules:
 
-Rules:
-- **NEVER edit `case-svelte.js` or `case-rust.js`** — these are generated
-- One thing per case, minimal component
-- Snake_case names: `<feature>_<variant>` (e.g. `html_tag_basic`, `html_tag_in_if`)
+**Test tasks** (usually first):
+- Create `tasks/compiler_tests/cases2/<feature>_<variant>/case.svelte`
+- Add test in `test_v3.rs`: `#[rstest] fn <test_name>() { assert_compiler("<test_name>"); }`
+- Run `just generate` ONCE to generate all `case-svelte.js` files
+- Read each `case-svelte.js` and verify correctness
+- **NEVER edit `case-svelte.js` or `case-rust.js`** — generated files
 
-### Step 6: Parser & AST
+**Parser/AST tasks:**
+- Add parser unit tests following the **Unit test pattern** in CLAUDE.md
 
-If new syntax is needed (identified in Step 3):
-1. Add types to `crates/svelte_ast/src/lib.rs`
-2. Add parsing to `crates/svelte_parser/src/lib.rs`
-3. Add parser unit tests following the **Unit test pattern** in CLAUDE.md
+**Analyze tasks:**
+- Add analyze unit tests following the **Unit test pattern** in CLAUDE.md
+- **Unit tests are mandatory for every new analysis pass or parser change**
 
-### Step 7: Analysis & Codegen
-
-If new metadata is needed (identified in Step 3):
-1. Add or extend a pass in `crates/svelte_analyze/src/`
-2. Add analyze unit tests following the **Unit test pattern** in CLAUDE.md
-
-**Unit tests are mandatory for every new analysis pass or parser change.** Use existing `assert_*` helpers or add new ones — no manual field access in test bodies.
-
-Implement codegen in the corresponding `svelte_codegen_client` module (see navigation table in CLAUDE.md).
-
-Key differences from Svelte:
-- Direct recursive functions, not AST walker (zimmerframe)
+**Codegen tasks:**
+- Direct recursive functions, not AST walker
 - `AnalysisData` side tables, not mutated AST metadata
-- Store `Span`, re-parse in codegen via `svelte_types` — not stored expressions
 
-### Step 8: Verify & Finalize
+### Step 6: Verify & Finalize
 
-**Quality gate:** verify all new and modified code against the **Quality checklist** in CLAUDE.md. All 5 points must hold before proceeding to test verification.
+After all spec tasks are done:
+
+**Quality gate:** verify all new and modified code against the **Quality checklist** in CLAUDE.md. All 5 points must hold.
 
 **Verify each test case individually:**
 ```
 just test-case <test_name>
 ```
-
-**Cross-check against Step 2 checklist:** confirm every selected use case has a passing test. If any are missing, add them now.
 
 **Run full suite:**
 ```
@@ -186,9 +190,10 @@ just test-compiler
 
 If a test fails after 3 attempts, stop and report what you tried. Do NOT fix other tests in the same run.
 
-**If implementation failed and cannot be completed:** run `git stash` to save partial work, report what was done and what remains. Do not leave a broken state on the branch.
+**If implementation failed and cannot be completed:** run `git stash` to save partial work, update spec progress section with what was done and what remains. Do not leave a broken state on the branch.
 
 **Update tracking:**
+- Mark spec status as `done`
 - Move completed feature to **Done ✅** in `ROADMAP.md`
 - Add any newly discovered deferred items to **Deferred** section
 

@@ -99,6 +99,43 @@ Benchmark file is versioned (`big_vN.svelte`). When porting a feature that adds 
 
 If stuck after 3 attempts on the same issue, stop and report what you've tried. Do not loop indefinitely.
 
+## Spec-driven workflow
+
+**Every ROADMAP item must have a spec file before implementation begins.**
+
+### The rule
+
+Before writing any code for a ROADMAP feature or multi-layer change:
+1. Check if `specs/<feature>.md` exists
+2. If not — run `/spec <feature>` to create it
+3. Implement tasks from the spec **one at a time, in order**
+4. After each task: mark it done in the spec, commit, update progress section
+
+### Why
+
+Each task in a spec is scoped to **one layer** (parser, analyze, codegen). This prevents the #1 failure mode: implementing across all layers at once, taking shortcuts, and producing code that needs refactoring.
+
+### When to skip
+
+- Single-file bug fixes with obvious scope (e.g., wrong argument order in codegen)
+- Test-only changes
+- Documentation updates
+
+When in doubt, create a spec. The 5 minutes spent planning saves hours of refactoring.
+
+### Progress persistence
+
+The `Progress` section in each spec file is the handoff between sessions. At the end of a session or when pausing work:
+- Update which tasks are done
+- Note any blockers or decisions made
+- State what the next session should start with
+
+Next session reads the spec first and continues from where it left off.
+
+### Spec file location
+
+`specs/<feature-slug>.md` — use kebab-case, match the ROADMAP item name.
+
 ## Porting from Svelte compiler
 
 Reference Svelte compiler source is in `reference/compiler/`. Use it to understand **what** output to produce, not **how** to implement it.

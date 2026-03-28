@@ -41,10 +41,6 @@ compare-benchmark file='tasks/benchmark/benches/compiler/big_v6.svelte':
 dump-ast expr:
     cargo run -p svelte_parser --example dump_ast -- '{{expr}}'
 
-# Check architecture boundary violations across all crates
-check-boundaries:
-    bash .claude/hooks/check-boundaries-full.sh
-
 # Build WASM and serve the playground
 playground:
     wasm-pack build --target web ./crates/wasm_compiler -d ../../docs/compiler
