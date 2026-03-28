@@ -184,6 +184,8 @@ pub enum ComponentPropKind {
     },
     /// `{...spread}` — spread attribute on component
     Spread { attr_id: NodeId },
+    /// `{@attach fn}` — attachment on component, generates `$.attachment()` computed property
+    Attach { attr_id: NodeId },
 }
 
 /// Getter/setter pattern for component bind directives.
@@ -930,6 +932,26 @@ impl AnalysisData {
             return result;
         }
         if let Some(info) = self.expressions.get(id) {
+            for sym in &info.ref_symbols {
+                if let Some(&idx) = self.blocker_data.symbol_blockers.get(sym) {
+                    if !result.contains(&idx) {
+                        result.push(idx);
+                    }
+                }
+            }
+        }
+        result.sort_unstable();
+        result
+    }
+
+    /// Collect unique blocker indices referenced by an attribute expression's dependencies.
+    /// Same as `expression_blockers()` but reads from `attr_expressions` (directives, not template).
+    pub fn attr_expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
+        let mut result = SmallVec::new();
+        if !self.blocker_data.has_async {
+            return result;
+        }
+        if let Some(info) = self.attr_expressions.get(id) {
             for sym in &info.ref_symbols {
                 if let Some(&idx) = self.blocker_data.symbol_blockers.get(sym) {
                     if !result.contains(&idx) {

@@ -115,6 +115,18 @@ pub(crate) fn gen_component<'a>(
             ComponentPropKind::BindThis { bind_id } => {
                 bind_this_info = Some(bind_id);
             }
+            ComponentPropKind::Attach { attr_id } => {
+                let key_expr = ctx.b.call_expr("$.attachment", []);
+                let expr = get_attr_expr(ctx, attr_id);
+                if is_dynamic {
+                    // Lazy evaluation so the runtime can track reactive dependencies
+                    let call = ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);
+                    let wrapper = ctx.b.arrow_expr(ctx.b.params(["$$node"]), [ctx.b.expr_stmt(call)]);
+                    items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, wrapper)));
+                } else {
+                    items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, expr)));
+                }
+            }
             ComponentPropKind::Spread { attr_id } => {
                 let expr = get_attr_expr(ctx, attr_id);
                 let spread_expr = if is_dynamic {

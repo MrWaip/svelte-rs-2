@@ -175,10 +175,10 @@ Theme: all features gated behind `experimental.async`. Requires analysis infrast
 - [x] `$.run_after_blockers()` wrapping for async bind expressions
 
 ### Actions, attachments & transitions
-- [ ] `use:action` with `await` expression — `run_after_blockers`
-- [ ] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
-- [ ] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
-- [ ] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
+- [x] `use:action` with `await` expression — `run_after_blockers`
+- [x] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
+- [x] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
+- [x] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
 
 ### Special elements
 - [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
@@ -212,7 +212,7 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [x] `bind:group` — index array from `parent_each_blocks` when expression references each-block vars ✅
 
 ### 2d — Actions & attachments
-- [ ] `{@attach}` on component nodes — generates `$.attachment()` property in props
+- [x] `{@attach}` on component nodes — generates `$.attachment()` property in props
 
 ### 2e — Special elements
 - [x] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
