@@ -1669,16 +1669,6 @@ fn each_block_no_item_multi() {
 }
 
 #[rstest]
-fn each_keyed_array_destructure() {
-    assert_compiler("each_keyed_array_destructure");
-}
-
-#[rstest]
-fn each_keyed_obj_destructure() {
-    assert_compiler("each_keyed_obj_destructure");
-}
-
-#[rstest]
-fn each_keyed_array_destructure_index() {
-    assert_compiler("each_keyed_array_destructure_index");
+fn each_keyed_destructure() {
+    assert_compiler("each_keyed_destructure");
 }
