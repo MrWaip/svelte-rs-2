@@ -1,5 +1,6 @@
 //! EachBlock code generation.
 
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 
 use svelte_analyze::FragmentKey;
@@ -110,12 +111,29 @@ pub(crate) fn gen_each_block<'a>(
         let key_expr = key_span.and_then(|ks| ctx.parsed.exprs.remove(&ks.start));
         if let Some(key_expr) = key_expr {
             let key_body = ctx.b.expr_stmt(key_expr);
+            // When destructured, use the actual pattern ([a,b,c] or {a,b,c}) as the key param
+            let context_param = if is_destructured {
+                let block = ctx.each_block(block_id);
+                let ctx_start = block.context_span.expect("destructured each must have context_span").start;
+                let stmt = ctx.parsed.stmts.get(&ctx_start)
+                    .expect("destructured each must have pre-parsed context stmt");
+                let Statement::VariableDeclaration(decl) = stmt else {
+                    unreachable!("each context stmt must be VariableDeclaration");
+                };
+                let pattern = decl.declarations.first()
+                    .expect("each context decl must have declarator")
+                    .id.clone_in(ctx.b.ast.allocator);
+                ctx.b.formal_parameter_from_pattern(pattern)
+            } else {
+                ctx.b.formal_parameter_from_str(&context_name)
+            };
             if ctx.each_key_uses_index(block_id) {
                 let idx_name = user_index_name.as_ref()
                     .expect("key_uses_index implies index exists");
-                ctx.b.arrow_expr(ctx.b.params([&context_name, idx_name]), [key_body])
+                let idx_param = ctx.b.formal_parameter_from_str(idx_name);
+                ctx.b.arrow_expr(ctx.b.formal_parameters([context_param, idx_param]), [key_body])
             } else {
-                ctx.b.arrow_expr(ctx.b.params([&context_name]), [key_body])
+                ctx.b.arrow_expr(ctx.b.formal_parameters([context_param]), [key_body])
             }
         } else {
             ctx.b.rid_expr("$.index")
