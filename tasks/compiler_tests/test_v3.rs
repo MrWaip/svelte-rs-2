@@ -1658,3 +1658,12 @@ fn svelte_element_duplicate_naming() {
     assert_compiler("svelte_element_duplicate_naming");
 }
 
+#[rstest]
+fn each_block_no_item() {
+    assert_compiler("each_block_no_item");
+}
+
+#[rstest]
+fn each_block_no_item_multi() {
+    assert_compiler("each_block_no_item_multi");
+}

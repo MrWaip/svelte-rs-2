@@ -51,7 +51,7 @@ pub struct EndTag {
 #[derive(Debug, PartialEq, Eq)]
 pub struct StartEachTag {
     pub collection_span: Span,
-    pub context_span: Span,
+    pub context_span: Option<Span>,
     pub index_span: Option<Span>,
     pub key_span: Option<Span>,
 }

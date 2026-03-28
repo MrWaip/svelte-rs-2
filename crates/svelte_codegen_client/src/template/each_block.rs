@@ -34,7 +34,8 @@ pub(crate) fn gen_each_block<'a>(
     let has_index = block.index_span.is_some();
     let has_fallback = block.fallback.is_some();
     let is_destructured = ctx.each_is_destructured(block_id);
-    let context_name = ctx.parsed.stmts.get(&block.context_span.start)
+    let context_name = block.context_span
+        .and_then(|cs| ctx.parsed.stmts.get(&cs.start))
         .and_then(|stmt| match stmt {
             Statement::VariableDeclaration(decl) => decl.declarations.first(),
             _ => None,
@@ -179,7 +180,8 @@ fn gen_destructuring_declarations<'a>(
     use oxc_ast::ast::{BindingPattern, PropertyKey};
 
     let block = ctx.each_block(block_id);
-    let stmt = ctx.parsed.stmts.remove(&block.context_span.start)
+    let ctx_start = block.context_span.expect("destructured each block must have context_span").start;
+    let stmt = ctx.parsed.stmts.remove(&ctx_start)
         .expect("destructured each block must have pre-parsed context stmt");
     let Statement::VariableDeclaration(mut var_decl) = stmt else {
         unreachable!("each context stmt must be VariableDeclaration")
