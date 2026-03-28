@@ -34,38 +34,24 @@ pub(crate) fn gen_each_block<'a>(
     let has_key = block.key_span.is_some();
     let has_index = block.index_span.is_some();
     let has_fallback = block.fallback.is_some();
-    let is_destructured = ctx.each_is_destructured(block_id);
 
-    // Extract the context binding pattern once — consumed by key function and destructuring.
-    // Non-destructured: simple identifier like `item`; destructured: `[a, b]` or `{ a, b }`.
-    let context_pattern = if is_destructured {
-        let ctx_start = block.context_span
-            .expect("destructured each block must have context_span").start;
-        let stmt = ctx.parsed.stmts.remove(&ctx_start)
-            .expect("destructured each block must have pre-parsed context stmt");
+    // Extract the context binding pattern once when `as ...` is present.
+    // Consumed by key function (clone for arrow param) and destructuring (ownership transfer).
+    let context_pattern = block.context_span.map(|cs| {
+        let stmt = ctx.parsed.stmts.remove(&cs.start)
+            .expect("each block with context must have pre-parsed context stmt");
         let Statement::VariableDeclaration(mut var_decl) = stmt else {
             unreachable!("each context stmt must be VariableDeclaration");
         };
-        Some(var_decl.declarations.remove(0).id)
-    } else {
-        None
-    };
+        var_decl.declarations.remove(0).id
+    });
 
-    let context_name = match &context_pattern {
-        Some(BindingPattern::BindingIdentifier(ident)) => ident.name.to_string(),
-        Some(_) => "$$item".to_string(),
-        None => block.context_span
-            .and_then(|cs| ctx.parsed.stmts.get(&cs.start))
-            .and_then(|stmt| match stmt {
-                Statement::VariableDeclaration(decl) => decl.declarations.first(),
-                _ => None,
-            })
-            .and_then(|d| match &d.id {
-                BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
-                _ => None,
-            })
-            .unwrap_or_else(|| "$$item".to_string()),
-    };
+    let context_name = context_pattern.as_ref()
+        .and_then(|p| match p {
+            BindingPattern::BindingIdentifier(ident) => Some(ident.name.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "$$item".to_string());
 
     let key_is_item = ctx.each_key_is_item(block_id);
 
@@ -153,10 +139,11 @@ pub(crate) fn gen_each_block<'a>(
 
     // Destructuring declarations prepended to body
     let item_reactive = flags & EACH_ITEM_REACTIVE != 0;
-    let destructured_decls = if let Some(pattern) = context_pattern {
-        gen_destructuring_declarations(ctx, pattern, item_reactive)
-    } else {
-        Vec::new()
+    let destructured_decls = match context_pattern {
+        Some(pattern @ (BindingPattern::ArrayPattern(_) | BindingPattern::ObjectPattern(_))) => {
+            gen_destructuring_declarations(ctx, pattern, item_reactive)
+        }
+        _ => Vec::new(),
     };
 
     let mut frag_body = gen_fragment(ctx, body_key);
