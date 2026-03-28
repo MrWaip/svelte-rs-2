@@ -78,8 +78,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             // Destructured context: name is always "$$item"
             ctx.data.each_blocks.context_names.insert(block.id, "$$item".to_string());
 
-            // Mark non-default destructured bindings as getters via OXC Visit.
-            // SemanticCollector already set symbol_id on BindingIdentifiers.
+            // Default bindings use $.derived_safe_equal (signals), non-default use getters.
             if let Some(parsed) = ctx.parsed() {
                 if let Some(stmt) = block.context_span.and_then(|cs| parsed.stmts.get(&cs.start)) {
                     let mut marker = DestructuredGetterMarker {
@@ -175,10 +174,11 @@ fn extract_snippet_param_names(stmt: &Statement<'_>) -> Vec<String> {
     let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
         return Vec::new();
     };
-    arrow.params.items.iter()
-        .filter_map(|p| p.pattern.get_binding_identifier())
-        .map(|id| id.name.to_string())
-        .collect()
+    let mut names = Vec::new();
+    for param in &arrow.params.items {
+        collect_binding_names(&param.pattern, &mut names);
+    }
+    names
 }
 
 /// OXC Visit that marks arrow function param bindings as snippet params.
