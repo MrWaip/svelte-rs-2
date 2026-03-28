@@ -659,6 +659,63 @@ impl BindSemanticsData {
 }
 
 // ---------------------------------------------------------------------------
+// IgnoreData — svelte-ignore suppression tracking
+// ---------------------------------------------------------------------------
+
+/// Per-node ignore snapshots for `<!-- svelte-ignore -->` comment suppression.
+/// Snapshots are interned: most nodes share the same (empty) set.
+#[derive(Debug, Default)]
+pub struct IgnoreData {
+    /// NodeId → snapshot index into `snapshots`.
+    node_snapshot: FxHashMap<NodeId, u32>,
+    /// Interned ignore sets. Index 0 is always the empty set.
+    snapshots: Vec<FxHashSet<String>>,
+    /// Dedup map: sorted codes → snapshot index.
+    intern: FxHashMap<Vec<String>, u32>,
+}
+
+impl IgnoreData {
+    pub fn new() -> Self {
+        let empty_set = FxHashSet::default();
+        let mut intern = FxHashMap::default();
+        intern.insert(Vec::new(), 0);
+        Self {
+            node_snapshot: FxHashMap::default(),
+            snapshots: vec![empty_set],
+            intern,
+        }
+    }
+
+    /// Check if a warning code is ignored for the given node.
+    pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
+        self.node_snapshot
+            .get(&node_id)
+            .and_then(|&idx| self.snapshots.get(idx as usize))
+            .is_some_and(|set| set.contains(code))
+    }
+
+    /// Intern a set of ignored codes and return the snapshot index.
+    pub(crate) fn intern_snapshot(&mut self, codes: &FxHashSet<String>) -> u32 {
+        let mut sorted: Vec<String> = codes.iter().cloned().collect();
+        sorted.sort();
+        if let Some(&idx) = self.intern.get(&sorted) {
+            return idx;
+        }
+        let idx = self.snapshots.len() as u32;
+        self.snapshots.push(codes.clone());
+        self.intern.insert(sorted, idx);
+        idx
+    }
+
+    /// Record the ignore snapshot for a node.
+    pub(crate) fn set_snapshot(&mut self, node_id: NodeId, idx: u32) {
+        if idx != 0 {
+            self.node_snapshot.insert(node_id, idx);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
 
@@ -737,6 +794,8 @@ pub struct AnalysisData {
     pub(crate) has_store_member_mutations: bool,
     /// Blocker tracking for `experimental.async`: which script bindings depend on async operations.
     pub(crate) blocker_data: BlockerData,
+    /// svelte-ignore suppression data (per-node ignore snapshots).
+    pub ignore_data: IgnoreData,
 }
 
 // ---------------------------------------------------------------------------
@@ -846,6 +905,7 @@ impl AnalysisData {
             proxy_state_inits: FxHashMap::default(),
             has_store_member_mutations: false,
             blocker_data: BlockerData::default(),
+            ignore_data: IgnoreData::new(),
         }
     }
 }
