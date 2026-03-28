@@ -852,6 +852,39 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     }
 
     fn exit_expression(&mut self, node: &mut Expression<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
+        // Private state field assignment: this.#field = val → $.set(this.#field, val)
+        // Compound: this.#field += val → $.set(this.#field, $.get(this.#field) + val)
+        // Must be in exit so newly created nodes are not re-visited by the read handler below.
+        if let Expression::AssignmentExpression(assign) = node {
+            if let oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left {
+                if matches!(&pfe.object, Expression::ThisExpression(_)) {
+                    let field_name = pfe.field.name.as_str();
+                    if let Some(_is_state) = self.private_state_field_is_state(field_name) {
+                        let left_expr = self.b.this_private_member(field_name);
+                        let right = self.b.move_expr(&mut assign.right);
+                        let operator = assign.operator;
+
+                        let value = if operator.is_assign() {
+                            right
+                        } else {
+                            let get_expr = self.b.this_private_member(field_name);
+                            let left_read = self.b.call_expr("$.get", [Arg::Expr(get_expr)]);
+                            if let Some(bin_op) = operator.to_binary_operator() {
+                                self.b.ast.expression_binary(oxc_span::SPAN, left_read, bin_op, right)
+                            } else if let Some(log_op) = operator.to_logical_operator() {
+                                self.b.ast.expression_logical(oxc_span::SPAN, left_read, log_op, right)
+                            } else {
+                                unreachable!("all compound assignment operators are either binary or logical")
+                            }
+                        };
+
+                        *node = self.b.call_expr("$.set", [Arg::Expr(left_expr), Arg::Expr(value)]);
+                        return;
+                    }
+                }
+            }
+        }
+
         // Private state field read: this.#field → $.get(this.#field)
         // Done in exit to avoid infinite re-entry (enter would re-visit the created node).
         if let Expression::PrivateFieldExpression(pfe) = node {

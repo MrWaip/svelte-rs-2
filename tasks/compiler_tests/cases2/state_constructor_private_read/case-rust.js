@@ -5,7 +5,7 @@ export default function App($$anchor, $$props) {
 	class Timer {
 		#elapsed = $.state(0);
 		tick() {
-			this.#elapsed += 1;
+			$.set(this.#elapsed, $.get(this.#elapsed) + 1);
 		}
 		get display() {
 			return $.get(this.#elapsed);
