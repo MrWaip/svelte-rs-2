@@ -40,7 +40,8 @@ fn get_declarator<'a>(ctx: &VisitContext<'a>, offset: u32) -> Option<&'a Variabl
 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
-        let is_destructured = get_declarator(ctx, block.context_span.start)
+        let is_destructured = block.context_span
+            .and_then(|cs| get_declarator(ctx, cs.start))
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         if is_destructured {
@@ -77,7 +78,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             // Mark non-default destructured bindings as getters via OXC Visit.
             // SemanticCollector already set symbol_id on BindingIdentifiers.
             if let Some(parsed) = ctx.parsed() {
-                if let Some(stmt) = parsed.stmts.get(&block.context_span.start) {
+                if let Some(stmt) = block.context_span.and_then(|cs| parsed.stmts.get(&cs.start)) {
                     let mut marker = DestructuredGetterMarker {
                         scoping: &mut ctx.data.scoping,
                         in_default: false,
@@ -86,7 +87,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         } else {
-            let ctx_name = get_declarator(ctx, block.context_span.start)
+            let ctx_name = block.context_span
+                .and_then(|cs| get_declarator(ctx, cs.start))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
 
