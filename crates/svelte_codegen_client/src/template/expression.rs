@@ -163,8 +163,21 @@ pub(crate) fn emit_text_update<'a>(
     let expr = build_concat(ctx, item);
 
     if is_dyn {
+        // Collect blockers from pre-computed expression data
+        let blockers: Vec<u32> = if let FragmentItem::TextConcat { parts, .. } = item {
+            let mut b = Vec::new();
+            for part in parts {
+                if let LoweredTextPart::Expr(id) = part {
+                    for idx in ctx.analysis.expression_blockers(*id) {
+                        if !b.contains(&idx) { b.push(idx); }
+                    }
+                }
+            }
+            b.sort_unstable();
+            b
+        } else { Vec::new() };
         let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
-        emit_template_effect(ctx, vec![set], body);
+        emit_template_effect_with_blockers(ctx, vec![set], blockers, body);
     } else {
         body.push(ctx.b.assign_stmt(
             AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
@@ -184,6 +197,33 @@ pub(crate) fn emit_template_effect<'a>(
     let eff = ctx.b.arrow(ctx.b.no_params(), update);
     body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
 }
+
+/// Emit `$.template_effect(callback, sync_values?, async_values?, blockers?)`.
+pub(crate) fn emit_template_effect_with_blockers<'a>(
+    ctx: &mut Ctx<'a>,
+    update: Vec<Statement<'a>>,
+    blockers: Vec<u32>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    if update.is_empty() {
+        return;
+    }
+    let eff = ctx.b.arrow(ctx.b.no_params(), update);
+    if blockers.is_empty() {
+        body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
+    } else {
+        // $.template_effect(callback, void 0, void 0, [$$promises[i], ...])
+        let blockers_arr = ctx.b.promises_array(&blockers);
+        body.push(ctx.b.call_stmt("$.template_effect", [
+            Arg::Arrow(eff),
+            Arg::Expr(ctx.b.void_zero_expr()),
+            Arg::Expr(ctx.b.void_zero_expr()),
+            Arg::Expr(blockers_arr),
+        ]));
+    }
+}
+
+
 
 /// Emit `$.next()` or `$.next(N)` for trailing static siblings after the last named var.
 pub(crate) fn emit_trailing_next<'a>(

@@ -33,6 +33,11 @@ fn assert_compiler(case: &str) {
         if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
             opts.filename = filename.to_string();
         }
+        if let Some(exp) = config.get("experimental") {
+            if let Some(async_val) = exp.get("async").and_then(|v| v.as_bool()) {
+                opts.experimental.async_ = async_val;
+            }
+        }
     }
     let result = compile(&input, &opts);
     let js = result
@@ -1375,7 +1380,6 @@ fn const_tag_dev() {
     assert_compiler("const_tag_dev");
 }
 
-
 #[rstest]
 fn rune_compound_template() {
     assert_compiler("rune_compound_template");
@@ -1666,6 +1670,47 @@ fn each_block_no_item() {
 #[rstest]
 fn each_block_no_item_multi() {
     assert_compiler("each_block_no_item_multi");
+}
+
+
+#[rstest]
+fn async_if_basic() {
+    assert_compiler("async_if_basic");
+}
+
+#[rstest]
+fn async_each_basic() {
+    assert_compiler("async_each_basic");
+}
+
+#[rstest]
+fn async_html_basic() {
+    assert_compiler("async_html_basic");
+}
+
+#[rstest]
+fn async_key_basic() {
+    assert_compiler("async_key_basic");
+}
+
+#[rstest]
+fn async_await_has_await() {
+    assert_compiler("async_await_has_await");
+}
+
+#[rstest]
+fn async_flag_import() {
+    assert_compiler("async_flag_import");
+}
+
+#[rstest]
+fn async_blockers_basic() {
+    assert_compiler("async_blockers_basic");
+}
+
+#[rstest]
+fn async_bind_basic() {
+    assert_compiler("async_bind_basic");
 }
 
 #[rstest]

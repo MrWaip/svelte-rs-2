@@ -302,6 +302,7 @@ fn merge_concat_expression_info(
         has_store_ref: false,
         has_side_effects: false,
         has_call: false,
+        has_await: false,
         has_state_rune: false,
         has_store_member_mutation: false,
         needs_context: false,
@@ -312,6 +313,7 @@ fn merge_concat_expression_info(
         if let svelte_ast::ConcatPart::Dynamic { id, .. } = part {
             if let Some(info) = ctx.data.attr_expressions.get(*id) {
                 merged.has_call |= info.has_call;
+                merged.has_await |= info.has_await;
                 merged.has_store_ref |= info.has_store_ref;
                 merged.has_side_effects |= info.has_side_effects;
                 merged.has_state_rune |= info.has_state_rune;

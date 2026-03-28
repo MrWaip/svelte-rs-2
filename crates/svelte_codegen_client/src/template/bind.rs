@@ -198,6 +198,9 @@ pub(crate) fn gen_bind_directive<'a>(
         return None;
     };
 
+    // Pre-computed blocker indices from analyze
+    let bind_blockers = ctx.analysis.bind_semantics.bind_blockers(bind.id).to_vec();
+
     let stmt = match bind.name.as_str() {
         // --- Input/Form ---
         "value" if tag_name == "select" => {
@@ -520,11 +523,31 @@ pub(crate) fn gen_bind_directive<'a>(
     };
 
     // Wrap in $.effect() when element has use: directive (deferral)
+    let mut stmt = stmt;
     if has_use_directive && bind.name != "this" {
         let effect_body = ctx.b.arrow_expr(ctx.b.no_params(), [stmt]);
-        let effect_stmt = ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
-        return Some(BindPlacement::Init(effect_stmt));
+        stmt = ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
+
+        if !bind_blockers.is_empty() {
+            stmt = wrap_run_after_blockers(ctx, stmt, &bind_blockers);
+        }
+        return Some(BindPlacement::Init(stmt));
+    }
+
+    // Wrap in $.run_after_blockers if bind target has blockers
+    if !bind_blockers.is_empty() {
+        stmt = wrap_run_after_blockers(ctx, stmt, &bind_blockers);
     }
 
     Some(BindPlacement::AfterUpdate(stmt))
+}
+
+/// Wrap a statement in `$.run_after_blockers(blockers, () => { stmt })`.
+fn wrap_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
+    let blockers_arr = ctx.b.promises_array(blockers);
+    let thunk = ctx.b.thunk_block(vec![stmt]);
+    ctx.b.call_stmt("$.run_after_blockers", [
+        Arg::Expr(blockers_arr),
+        Arg::Expr(thunk),
+    ])
 }

@@ -1,3 +1,13 @@
+/// Experimental compiler options (gated features).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(default)]
+pub struct ExperimentalOptions {
+    /// Allow `await` in deriveds, template expressions, and top-level of components.
+    /// @since Svelte 5.36
+    #[serde(rename = "async")]
+    pub async_: bool,
+}
+
 /// Compile options for Svelte component files.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -23,6 +33,7 @@ pub struct CompileOptions {
     pub immutable: bool,
     /// LEGACY(svelte4): component API version (4 or 5). Default: 5.
     pub compatibility_component_api: u8,
+    pub experimental: ExperimentalOptions,
 }
 
 impl Default for CompileOptions {
@@ -44,6 +55,7 @@ impl Default for CompileOptions {
             accessors: false,
             immutable: false,
             compatibility_component_api: 5,
+            experimental: ExperimentalOptions::default(),
         }
     }
 }

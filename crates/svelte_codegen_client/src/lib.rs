@@ -17,8 +17,8 @@ use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParserResult<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source, filename);
+pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParserResult<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str, experimental_async: bool) -> String {
+    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source, filename, experimental_async);
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
@@ -113,7 +113,14 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // Instance-level snippet declarations (generated during root template for correct numbering)
     fn_body.extend(instance_snippets);
 
-    fn_body.extend(script_body);
+    // Instance body splitting for experimental.async:
+    // Statements after first `await` become async thunks in $.run([...])
+    if ctx.experimental_async && ctx.analysis.blocker_data().has_async() {
+        let split_body = split_async_instance_body(&ctx.b, script_body, ctx.analysis.blocker_data());
+        fn_body.extend(split_body);
+    } else {
+        fn_body.extend(script_body);
+    }
 
     // var $$exports = { ... }
     if has_exports || has_ce_props {
@@ -230,6 +237,9 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     ));
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
+    if ctx.experimental_async {
+        program_body.push(b.bare_import("svelte/internal/flags/async"));
+    }
     if has_tracing || ctx.has_tracing {
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
@@ -257,6 +267,136 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     let program = ctx.b.program(program_body, script_comments, script_source_text, script_span_end);
 
     Codegen::default().build(&program).code
+}
+
+/// Split instance body into sync prefix + `var $$promises = $.run([thunks])`.
+/// Statements before the first `await` are kept as-is.
+/// Statements after (inclusive) become thunks in the `$.run()` call.
+///
+/// Uses pre-computed `BlockerData` metadata from analyze to determine
+/// `has_await` and `hoist_names` per statement — no AST re-walking.
+fn split_async_instance_body<'a>(
+    b: &Builder<'a>,
+    body: Vec<Statement<'a>>,
+    blocker_data: &svelte_analyze::BlockerData,
+) -> Vec<Statement<'a>> {
+    let first_await_idx = match blocker_data.first_await_index() {
+        Some(idx) => idx,
+        None => return body,
+    };
+
+    let mut result = Vec::new();
+    let mut hoisted_names: Vec<&str> = Vec::new();
+    let mut thunks: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
+
+    for (i, stmt) in body.into_iter().enumerate() {
+        if i < first_await_idx {
+            result.push(stmt);
+            continue;
+        }
+
+        let meta = blocker_data.stmt_meta(i).expect("stmt_meta out of range");
+        let has_await = meta.has_await();
+
+        // Collect pre-computed hoist names
+        for name in meta.hoist_names() {
+            hoisted_names.push(b.alloc_str(name));
+        }
+
+        // Unwrap ExportNamedDeclaration to process inner declaration
+        let stmt = match stmt {
+            Statement::ExportNamedDeclaration(export) => {
+                if let Some(decl) = export.unbox().declaration {
+                    Statement::from(decl)
+                } else {
+                    continue;
+                }
+            }
+            other => other,
+        };
+
+        match stmt {
+            Statement::VariableDeclaration(var_decl) => {
+                let var_decl = var_decl.unbox();
+                for declarator in var_decl.declarations {
+                    // Function-valued init: keep in sync section
+                    if matches!(
+                        &declarator.init,
+                        Some(oxc_ast::ast::Expression::ArrowFunctionExpression(_)
+                            | oxc_ast::ast::Expression::FunctionExpression(_))
+                    ) {
+                        result.push(b.var_init_stmt(declarator));
+                        continue;
+                    }
+
+                    // Simple identifiers → expression-body thunk: () => x = val
+                    // Complex patterns → block-body thunk preserving var statement
+                    if let Some(assign_target) = try_binding_to_assignment(&declarator.id, b) {
+                        let init = declarator.init.unwrap_or_else(|| b.void_zero_expr());
+                        let assign = b.ast.expression_assignment(
+                            oxc_span::SPAN,
+                            oxc_ast::ast::AssignmentOperator::Assign,
+                            assign_target,
+                            init,
+                        );
+                        if has_await {
+                            thunks.push(b.async_arrow_expr_body(assign));
+                        } else {
+                            thunks.push(b.thunk(assign));
+                        }
+                    } else {
+                        let var_stmt = b.var_init_stmt(declarator);
+                        if has_await {
+                            thunks.push(b.async_thunk_block(vec![var_stmt]));
+                        } else {
+                            thunks.push(b.thunk_block(vec![var_stmt]));
+                        }
+                    }
+                }
+            }
+            Statement::FunctionDeclaration(_) => {
+                result.push(stmt);
+            }
+            _ => {
+                if has_await {
+                    thunks.push(b.async_thunk_block(vec![stmt]));
+                } else {
+                    thunks.push(b.thunk_block(vec![stmt]));
+                }
+            }
+        }
+    }
+
+    // Emit hoisted `var data, y;`
+    if !hoisted_names.is_empty() {
+        result.push(b.var_multi_stmt(&hoisted_names));
+    }
+
+    // Emit `var $$promises = $.run([thunks])`
+    if !thunks.is_empty() {
+        let thunk_array = b.array_expr(thunks);
+        let run_call = b.call_expr("$.run", [Arg::Expr(thunk_array)]);
+        result.push(b.var_stmt("$$promises", run_call));
+    }
+
+    result
+}
+
+/// Try to convert a BindingPattern to an AssignmentTarget for expression-body thunks.
+/// Returns `Some(target)` for simple identifiers, `None` for complex patterns
+/// (destructuring is emitted as block-body thunks preserving the original var statement).
+fn try_binding_to_assignment<'a>(
+    pat: &oxc_ast::ast::BindingPattern<'a>,
+    b: &Builder<'a>,
+) -> Option<oxc_ast::ast::AssignmentTarget<'a>> {
+    use oxc_ast::ast::{AssignmentTarget, BindingPattern};
+    match pat {
+        BindingPattern::BindingIdentifier(id) => {
+            let ident = b.ast.identifier_reference(oxc_span::SPAN, id.name.as_str());
+            Some(AssignmentTarget::AssignmentTargetIdentifier(b.alloc(ident)))
+        }
+        _ => None,
+    }
 }
 
 /// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
