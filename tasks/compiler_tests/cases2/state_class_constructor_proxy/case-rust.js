@@ -18,7 +18,7 @@ export default function App($$anchor, $$props) {
 			$.set(this.#name, value, true);
 		}
 		constructor() {
-			this.#items = $.state([]);
+			this.#items = $.state($.proxy([]));
 			this.#name = $.state("");
 		}
 		add() {
