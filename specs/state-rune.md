@@ -115,11 +115,9 @@ Audit of existing implementation
 
 ## Discovered bugs (from new tests)
 
-### BUG-1: Private class field method `this.#field += 1` not rewritten to `$.set()`
-- **Test**: `state_constructor_private_read`
-- **Expected**: `$.set(this.#elapsed, $.get(this.#elapsed) + 1)`
-- **Got**: `this.#elapsed += 1` (raw compound assignment, not reactive)
-- **Layer**: codegen — class method body compound assignment to private state field
+### BUG-1: ~~Private class field method `this.#field += 1` not rewritten to `$.set()`~~ FIXED
+- **Test**: `state_constructor_private_read` — PASSING
+- **Fix**: added private state field assignment handling in `exit_expression()` (`traverse.rs`)
 
 ### BUG-2: `$state.snapshot()` not rewritten in template expressions
 - **Test**: `state_snapshot_in_template`
