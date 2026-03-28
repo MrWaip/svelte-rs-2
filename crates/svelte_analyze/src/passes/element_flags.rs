@@ -135,6 +135,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         mode,
                     }
                 }
+                Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },
                 _ => continue,
             };
             let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());

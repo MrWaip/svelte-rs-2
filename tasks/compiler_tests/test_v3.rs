@@ -1739,6 +1739,36 @@ fn async_bind_basic() {
 }
 
 #[rstest]
+fn action_blockers() {
+    assert_compiler("action_blockers");
+}
+
+#[rstest]
+fn attach_blockers() {
+    assert_compiler("attach_blockers");
+}
+
+#[rstest]
+fn transition_blockers() {
+    assert_compiler("transition_blockers");
+}
+
+#[rstest]
+fn animate_blockers() {
+    assert_compiler("animate_blockers");
+}
+
+#[rstest]
+fn attach_on_component() {
+    assert_compiler("attach_on_component");
+}
+
+#[rstest]
+fn attach_on_component_dynamic() {
+    assert_compiler("attach_on_component_dynamic");
+}
+
+#[rstest]
 fn each_keyed_destructure() {
     assert_compiler("each_keyed_destructure");
 }

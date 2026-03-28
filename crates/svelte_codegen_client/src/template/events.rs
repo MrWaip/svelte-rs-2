@@ -66,7 +66,14 @@ pub(crate) fn gen_use_directive<'a>(
         args.push(Arg::Expr(thunk));
     }
 
-    init.push(ctx.b.call_stmt("$.action", args));
+    let mut stmt = ctx.b.call_stmt("$.action", args);
+
+    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    if !blockers.is_empty() {
+        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+    }
+
+    init.push(stmt);
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +90,14 @@ pub(crate) fn gen_attach_tag<'a>(
 ) {
     let expr = get_attr_expr(ctx, attr_id);
     let thunk = ctx.b.thunk(expr);
-    init.push(ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]));
+    let mut stmt = ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]);
+
+    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    if !blockers.is_empty() {
+        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+    }
+
+    init.push(stmt);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +136,14 @@ pub(crate) fn gen_transition_directive<'a>(
         args.push(Arg::Expr(thunk));
     }
 
-    after_update.push(ctx.b.call_stmt("$.transition", args));
+    let mut stmt = ctx.b.call_stmt("$.transition", args);
+
+    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    if !blockers.is_empty() {
+        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+    }
+
+    after_update.push(stmt);
 }
 
 /// Generate `$.animation(el, () => animateFn, () => params)`.
@@ -150,7 +171,28 @@ pub(crate) fn gen_animate_directive<'a>(
         args.push(Arg::Expr(ctx.b.null_expr()));
     }
 
-    after_update.push(ctx.b.call_stmt("$.animation", args));
+    let mut stmt = ctx.b.call_stmt("$.animation", args);
+
+    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    if !blockers.is_empty() {
+        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+    }
+
+    after_update.push(stmt);
+}
+
+// ---------------------------------------------------------------------------
+// Shared: run_after_blockers wrapping
+// ---------------------------------------------------------------------------
+
+/// Wrap a statement in `$.run_after_blockers(blockers, () => { stmt })`.
+fn wrap_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
+    let blockers_arr = ctx.b.promises_array(blockers);
+    let thunk = ctx.b.thunk_block(vec![stmt]);
+    ctx.b.call_stmt("$.run_after_blockers", [
+        Arg::Expr(blockers_arr),
+        Arg::Expr(thunk),
+    ])
 }
 
 // LEGACY(svelte4): on:directive codegen
