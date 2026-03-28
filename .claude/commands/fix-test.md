@@ -1,3 +1,8 @@
+---
+description: Fix a single failing compiler test case. Use when the user asks to "fix test", "make test pass", or provides a failing test name.
+argument-hint: "[test-case-name]"
+---
+
 # Fix failing test: $ARGUMENTS
 
 Fix a single compiler test case. The test name is provided as argument.
@@ -44,7 +49,7 @@ If the fix touches parser or analyze logic, add a unit test covering the specifi
 
 ## Step 4: Quality check
 
-Review the fix against the **Quality checklist** in CLAUDE.md. Verify all 5 points apply to the changed code.
+Review the fix against the **Pre-commit self-check** in CLAUDE.md. Verify all points apply to the changed code.
 
 ## Step 5: Verify
 

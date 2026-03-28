@@ -1,8 +1,9 @@
 ---
 name: explain-test-case
-description: Explain what a compiler test case does and diagnose failures
-user_invocable: true
-argument: test case name (e.g. derived_basic)
+description: Explain what a compiler test case does and diagnose failures. Use when the user asks "what does this test do", "explain test", or "why is this test failing".
+user-invocable: true
+argument-hint: "[test-case-name]"
+allowed-tools: Bash, Read, Grep, Glob
 ---
 
 # Explain test case: $ARGUMENTS
