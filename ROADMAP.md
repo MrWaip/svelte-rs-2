@@ -598,3 +598,9 @@ trait NodeStore {
 - `for await` reactivity loss tracking (dev mode)
 - Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
 - Function blocker analysis: deferred max-blocker tracking for function declarations
+
+### Move `should_proxy` classification to analyze
+- `should_proxy()` is called from codegen in 6+ sites to classify whether an expression needs `$.proxy()` wrapping
+- This is classification logic that belongs in `svelte_analyze` per architecture boundaries (Rule 3)
+- Should precompute `needs_proxy` flag in `AnalysisData` (per binding/field) so codegen just consumes it
+- Affected files: `state.rs`, `traverse.rs`, `props.rs` in codegen; `rune_refs.rs` in transform; `lib.rs` in transform

@@ -1,7 +1,6 @@
 ---
 name: oxc-analyze-api
-description: OXC Visit/VisitMut and Scoping API reference. Auto-loaded when working on analyzer code.
-user-invocable: false
+description: MUST consult before writing or modifying any OXC Visit/VisitMut visitor or scoping code in svelte_analyze. Contains the exact method signatures for all visit_* methods, scoping API (get_binding, symbol_name, symbol_flags), and SemanticBuilder API. Use this skill whenever implementing a new analysis visitor, adding scope/symbol resolution logic, working with reference detection, or unsure which visit_* method to use for a specific AST node type. Using wrong method signatures causes silent bugs.
 paths:
   - "crates/svelte_analyze/**/*.rs"
 ---

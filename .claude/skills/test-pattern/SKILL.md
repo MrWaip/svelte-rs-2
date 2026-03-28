@@ -1,7 +1,9 @@
 ---
-description: Testing conventions for svelte_parser and svelte_analyze crates. Loaded automatically when writing or modifying tests in these crates.
-user-invocable: false
-paths: "crates/svelte_parser/tests/**,crates/svelte_analyze/src/tests.rs"
+name: test-pattern
+description: MUST consult before writing or modifying any test in svelte_parser or svelte_analyze crates. Contains required helper functions (assert_node, assert_symbol, assert_is_rune, etc.), span-based comparison patterns, and rules that all tests must follow. Use this skill whenever adding a new test, adding a new assert helper for a new node type, or reviewing test code. Tests that don't follow these patterns will be rejected.
+paths:
+  - "crates/svelte_parser/tests/**"
+  - "crates/svelte_analyze/src/tests.rs"
 ---
 
 # Test Pattern для svelte_parser и svelte_analyze
