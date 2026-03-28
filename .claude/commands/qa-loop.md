@@ -20,6 +20,11 @@ Determine the diff to review based on `$ARGUMENTS`:
 
 Read every changed file in full to understand the context around each change.
 
+**Load OXC API references** — read all three files:
+- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+
 ## Step 2: Check each rule
 
 For EACH changed file, check ALL of the following. Report every violation found — do not stop at the first one.
@@ -38,7 +43,7 @@ For EACH changed file, check ALL of the following. Report every violation found 
 
 ### Visitor usage
 
-7. **OXC Visit for JS AST traversal** — any new JS AST traversal uses OXC Visit, not manual match. Uses the most specific `visit_*` method available. Exceptions: shallow destructure, `builder.rs`.
+7. **OXC Visit/Traverse for JS AST traversal** — any new JS AST traversal uses OXC Visit/Traverse, not manual match. Consult the OXC API skill references for the correct visitor method. Exceptions: shallow destructure, `builder.rs`.
 
 ### Naming conventions
 

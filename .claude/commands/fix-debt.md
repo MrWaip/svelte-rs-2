@@ -40,7 +40,12 @@ This ensures the fix doesn't break unrelated behavior.
 
 ## Step 4: Fix
 
-Apply the fix in the correct layer. Follow Pre-commit self-check from CLAUDE.md.
+**Load OXC API references** — read all three files:
+- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+
+Apply the fix in the correct layer.
 
 For boundary violations (code in wrong layer):
 1. Add the correct implementation in the right layer
