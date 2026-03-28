@@ -158,17 +158,21 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 Theme: all features gated behind `experimental.async`. Requires analysis infrastructure (`ExpressionInfo.has_await`, `has_blockers()`, blocker tracking).
 
 ### Infrastructure
-- [ ] `ExpressionInfo.has_await` — detect `await` in expression metadata
-- [ ] `has_blockers()` — analysis infrastructure for dependency tracking
+- [x] `ExpressionInfo.has_await` — detect `await` in expression metadata
+- [x] `has_blockers()` — analysis infrastructure for dependency tracking
+- [x] `CompileOptions.experimental.async` option + `import "svelte/internal/flags/async"`
+- [x] Instance body splitting: sync/async segments + `var $$promises = $.run([thunks])`
+- [x] Blocker tracking: `SymbolId → BlockerIndex`, expression blocker resolution
 - [ ] Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
 
 ### Template blocks
-- [ ] `{#await}` — `has_blockers` / `$.async()` wrapping for experimental async mode
-- [ ] `$.async()` wrapping for if/each/html/key blocks with `has_await` expressions
+- [x] `$.async()` wrapping for if/each/html/key blocks with `has_await` expressions
+- [x] `{#await}` — async thunk for expression with `has_await`
+- [x] Block wrapping with non-empty blockers (has_blockers but no has_await)
 - [ ] `{await expr}` experimental template syntax (Svelte 5.36+)
 
 ### Bind directives
-- [ ] `$.run_after_blockers()` wrapping for async bind expressions
+- [x] `$.run_after_blockers()` wrapping for async bind expressions
 
 ### Actions, attachments & transitions
 - [ ] `use:action` with `await` expression — `run_after_blockers`
@@ -586,3 +590,11 @@ trait NodeStore {
 **Scope:** parser + svelte_ast + all consumers (analyze, codegen, transform). Separate milestone.
 
 ## Deferred
+
+### experimental.async (Tier 1.1)
+- `{await expr}` experimental template syntax (Svelte 5.36+ — requires parser change)
+- `use:action` / `{@attach}` / `transition:` / `animate:` with `$.run_after_blockers()`
+- `<svelte:boundary>` async const tag scoping changes
+- `for await` reactivity loss tracking (dev mode)
+- Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
+- Function blocker analysis: deferred max-blocker tracking for function declarations

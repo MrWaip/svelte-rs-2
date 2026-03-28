@@ -716,4 +716,252 @@ mod expression_info_tests {
         let info = parse_and_analyze("$count + 1", 0).unwrap();
         assert!(info.has_store_ref);
     }
+
+}
+
+// -----------------------------------------------------------------------
+// Blocker tracking (experimental.async) — assert helpers
+// -----------------------------------------------------------------------
+
+fn assert_has_async(data: &AnalysisData) {
+    assert!(
+        data.blocker_data().has_async(),
+        "expected blocker_data.has_async to be true"
+    );
+}
+
+fn assert_no_async(data: &AnalysisData) {
+    assert!(
+        !data.blocker_data().has_async(),
+        "expected blocker_data.has_async to be false"
+    );
+}
+
+fn assert_first_await_index(data: &AnalysisData, expected: usize) {
+    assert_eq!(
+        data.blocker_data().first_await_index(),
+        Some(expected),
+        "first_await_index mismatch"
+    );
+}
+
+fn assert_symbol_blocker(data: &AnalysisData, name: &str, expected_index: u32) {
+    let root = data.scoping.root_scope_id();
+    let sym = data
+        .scoping
+        .find_binding(root, name)
+        .unwrap_or_else(|| panic!("no symbol '{name}'"));
+    let actual = data
+        .blocker_data()
+        .symbol_blocker(sym)
+        .unwrap_or_else(|| panic!("symbol '{name}' has no blocker"));
+    assert_eq!(actual, expected_index, "blocker index for '{name}'");
+}
+
+fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
+    let root = data.scoping.root_scope_id();
+    let sym = data
+        .scoping
+        .find_binding(root, name)
+        .unwrap_or_else(|| panic!("no symbol '{name}'"));
+    assert!(
+        data.blocker_data().symbol_blocker(sym).is_none(),
+        "expected symbol '{name}' to have no blocker"
+    );
+}
+
+fn assert_stmt_meta_count(data: &AnalysisData, expected: usize) {
+    assert_eq!(
+        data.blocker_data.stmt_metas.len(),
+        expected,
+        "stmt_metas count mismatch"
+    );
+}
+
+fn assert_stmt_meta_has_await(data: &AnalysisData, stmt_index: usize, expected: bool) {
+    let meta = data
+        .blocker_data()
+        .stmt_meta(stmt_index)
+        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
+    assert_eq!(
+        meta.has_await(),
+        expected,
+        "stmt_meta[{stmt_index}].has_await"
+    );
+}
+
+fn assert_stmt_meta_hoist_names(data: &AnalysisData, stmt_index: usize, expected: &[&str]) {
+    let meta = data
+        .blocker_data()
+        .stmt_meta(stmt_index)
+        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
+    let actual: Vec<&str> = meta.hoist_names().iter().map(|s| s.as_str()).collect();
+    assert_eq!(
+        actual, expected,
+        "stmt_meta[{stmt_index}].hoist_names"
+    );
+}
+
+fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    assert!(
+        data.expr_has_blockers(id),
+        "expected ExpressionTag '{expr_text}' to have blockers"
+    );
+}
+
+fn assert_expr_tag_no_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
+    let id = find_expr_tag(&component.fragment, component, expr_text)
+        .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
+    assert!(
+        !data.expr_has_blockers(id),
+        "expected ExpressionTag '{expr_text}' to have no blockers"
+    );
+}
+
+// -----------------------------------------------------------------------
+// Blocker tracking tests
+// -----------------------------------------------------------------------
+
+#[test]
+fn blocker_no_await_no_async() {
+    let (_c, data) = analyze_source(r#"<script>let x = 1;</script><p>{x}</p>"#);
+    assert_no_async(&data);
+}
+
+#[test]
+fn blocker_single_await() {
+    let (_c, data) = analyze_source(
+        r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    assert_first_await_index(&data, 0);
+    assert_symbol_blocker(&data, "data", 0);
+}
+
+#[test]
+fn blocker_sync_before_await() {
+    let (c, data) = analyze_source(
+        r#"<script>
+let x = 1;
+let data = await fetch('/api');
+</script>
+<p>{x}</p><p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    // x is statement 0 (sync), data is statement 1 (first await)
+    assert_first_await_index(&data, 1);
+    assert_no_symbol_blocker(&data, "x");
+    assert_symbol_blocker(&data, "data", 0);
+    assert_expr_tag_no_blockers(&data, &c, "x");
+    assert_expr_tag_has_blockers(&data, &c, "data");
+}
+
+#[test]
+fn blocker_multiple_await_statements() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+let a = await fetch('/a');
+let b = await fetch('/b');
+</script>
+<p>{a}{b}</p>"#,
+    );
+    assert_has_async(&data);
+    assert_first_await_index(&data, 0);
+    assert_symbol_blocker(&data, "a", 0);
+    assert_symbol_blocker(&data, "b", 1);
+}
+
+#[test]
+fn blocker_function_decl_no_blocker() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+let data = await fetch('/api');
+function helper() { return data; }
+</script>
+<p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    assert_symbol_blocker(&data, "data", 0);
+    // Function declarations get no blocker — stmt_meta for function has empty hoist_names
+    assert_stmt_meta_count(&data, 2); // data decl + function decl
+}
+
+#[test]
+fn blocker_function_valued_init_stays_sync() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+let data = await fetch('/api');
+let fn1 = () => data;
+</script>
+<p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    assert_symbol_blocker(&data, "data", 0);
+    // fn1 has arrow function init — no blocker assigned
+    assert_no_symbol_blocker(&data, "fn1");
+}
+
+#[test]
+fn blocker_stmt_meta_hoist_names() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+let data = await fetch('/api');
+let y = data.length;
+</script>
+<p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    assert_first_await_index(&data, 0);
+    // stmt 0: `let data = await fetch(...)` — has_await=true, hoist_names=["data"]
+    assert_stmt_meta_has_await(&data, 0, true);
+    assert_stmt_meta_hoist_names(&data, 0, &["data"]);
+    // stmt 1: `let y = data.length` — has_await=false, hoist_names=["y"]
+    assert_stmt_meta_has_await(&data, 1, false);
+    assert_stmt_meta_hoist_names(&data, 1, &["y"]);
+}
+
+#[test]
+fn blocker_expressions_marked_dynamic() {
+    let (c, data) = analyze_source(
+        r#"<script>
+let x = 1;
+let data = await fetch('/api');
+</script>
+<p>{data}</p>"#,
+    );
+    // Expressions referencing blocked symbols are marked dynamic
+    assert_dynamic_tag(&data, &c, "data");
+}
+
+#[test]
+fn blocker_needs_memoization_with_await() {
+    let (c, data) = analyze_source(
+        r#"<script>
+let data = await fetch('/api');
+</script>
+{#if await check(data)}yes{/if}"#,
+    );
+    let block = find_if_block(&c.fragment, &c, "await check(data)")
+        .unwrap_or_else(|| panic!("no IfBlock"));
+    assert!(
+        data.needs_expr_memoization(block.id),
+        "expression with await + ref_symbols should need memoization"
+    );
+}
+
+#[test]
+fn blocker_import_skipped_in_indexing() {
+    let (_c, data) = analyze_source(
+        r#"<script>
+import { foo } from './foo';
+let data = await fetch('/api');
+</script>
+<p>{data}</p>"#,
+    );
+    assert_has_async(&data);
+    // Import is skipped — data is still non-import statement index 0
+    assert_first_await_index(&data, 0);
+    assert_symbol_blocker(&data, "data", 0);
 }

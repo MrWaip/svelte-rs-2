@@ -608,15 +608,16 @@ fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 struct ExpressionAnalyzer {
     kind: ExpressionKind,
     has_call: bool,
+    has_await: bool,
     has_state_rune: bool,
     has_store_member_mutation: bool,
     has_store_ref: bool,
     has_side_effects: bool,
     /// Expression nesting depth. 0 = root expression (used for classification).
     depth: u32,
-    /// Depth inside function boundaries. When >0, `has_call` and `has_state_rune`
-    /// are not updated (matching Svelte semantics: function bodies are opaque
-    /// for call/rune detection).
+    /// Depth inside function boundaries. When >0, `has_call`, `has_await`, and
+    /// `has_state_rune` are not updated (matching Svelte semantics: function
+    /// bodies are opaque for call/rune/await detection).
     fn_depth: u32,
     /// Tracks write context for has_store_member_mutation detection.
     in_write_position: bool,
@@ -719,6 +720,13 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
         walk_call_expression(self, call);
     }
 
+    fn visit_await_expression(&mut self, expr: &oxc_ast::ast::AwaitExpression<'a>) {
+        if self.fn_depth == 0 {
+            self.has_await = true;
+        }
+        oxc_ast_visit::walk::walk_await_expression(self, expr);
+    }
+
     fn visit_arrow_function_expression(
         &mut self,
         arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
@@ -740,6 +748,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
     let mut analyzer = ExpressionAnalyzer {
         kind: ExpressionKind::Other,
         has_call: false,
+        has_await: false,
         has_state_rune: false,
         has_store_member_mutation: false,
         has_store_ref: false,
@@ -755,6 +764,7 @@ pub(crate) fn analyze_expression(expr: &Expression<'_>) -> ExpressionInfo {
         has_store_ref: analyzer.has_store_ref,
         has_side_effects: analyzer.has_side_effects,
         has_call: analyzer.has_call,
+        has_await: analyzer.has_await,
         has_state_rune: analyzer.has_state_rune,
         has_store_member_mutation: analyzer.has_store_member_mutation,
         needs_context: false,
@@ -799,6 +809,207 @@ fn expression_has_call(expr: &Expression<'_>) -> bool {
     };
     check.visit_expression(expr);
     check.found
+}
+
+// ---------------------------------------------------------------------------
+// Instance body blocker analysis (experimental.async)
+// ---------------------------------------------------------------------------
+
+/// Check if a statement contains `await` at the top level (not inside nested functions).
+fn has_await_in_statement(stmt: &oxc_ast::ast::Statement<'_>) -> bool {
+    struct AwaitCheck {
+        found: bool,
+        fn_depth: u32,
+    }
+    impl<'a> Visit<'a> for AwaitCheck {
+        fn visit_await_expression(&mut self, _expr: &oxc_ast::ast::AwaitExpression<'a>) {
+            if self.fn_depth == 0 {
+                self.found = true;
+            }
+        }
+        fn visit_arrow_function_expression(
+            &mut self,
+            arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+        ) {
+            self.fn_depth += 1;
+            walk_arrow_function_expression(self, arrow);
+            self.fn_depth -= 1;
+        }
+        fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: ScopeFlags) {
+            self.fn_depth += 1;
+            walk_function(self, func, flags);
+            self.fn_depth -= 1;
+        }
+    }
+    let mut check = AwaitCheck {
+        found: false,
+        fn_depth: 0,
+    };
+    check.visit_statement(stmt);
+    check.found
+}
+
+/// Analyze instance body for async splitting: identify which bindings
+/// are written by async statements and assign blocker indices.
+///
+/// Populates `data.blocker_data` with SymbolId → blocker index mappings.
+/// Called from the main analysis pipeline after `collect_symbols`.
+pub(crate) fn calculate_instance_blockers(
+    parsed: &crate::types::data::ParserResult<'_>,
+    data: &mut crate::types::data::AnalysisData,
+) {
+    let program = match parsed.program.as_ref() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let mut awaited = false;
+    let mut async_index: u32 = 0;
+    let root = data.scoping.root_scope_id();
+    // Non-import statement counter (1:1 with ScriptOutput.body in codegen)
+    let mut non_import_idx: usize = 0;
+
+    for stmt in &program.body {
+        // Skip imports (not counted)
+        if matches!(stmt, oxc_ast::ast::Statement::ImportDeclaration(_)) {
+            continue;
+        }
+
+        // Unwrap export declarations
+        let stmt_ref = if let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt {
+            if export.declaration.is_some() {
+                stmt // process the export statement itself (has_await looks inside)
+            } else {
+                non_import_idx += 1;
+                continue;
+            }
+        } else {
+            stmt
+        };
+
+        let has_await = has_await_in_statement(stmt_ref);
+        awaited |= has_await;
+
+        // Track first_await_index
+        if awaited && data.blocker_data.first_await_index.is_none() {
+            data.blocker_data.first_await_index = Some(non_import_idx);
+        }
+
+        // Function declarations are always sync (no blocker assignment, but still build metadata)
+        let is_function = matches!(stmt_ref, oxc_ast::ast::Statement::FunctionDeclaration(_))
+            || matches!(stmt_ref, oxc_ast::ast::Statement::ExportNamedDeclaration(export)
+                if matches!(&export.declaration, Some(oxc_ast::ast::Declaration::FunctionDeclaration(_))));
+
+        if is_function {
+            if awaited {
+                data.blocker_data.stmt_metas.push(crate::types::data::AsyncStmtMeta {
+                    has_await: false,
+                    hoist_names: Vec::new(),
+                });
+            }
+            non_import_idx += 1;
+            continue;
+        }
+
+        // Before first await: everything is sync
+        if !awaited {
+            non_import_idx += 1;
+            continue;
+        }
+
+        // --- From here: statement is at/after first await, build metadata ---
+
+        // Collect hoist_names for this statement
+        let mut hoist_names = Vec::new();
+
+        // Get the variable declaration (from statement or export)
+        let var_decl = match stmt_ref {
+            oxc_ast::ast::Statement::VariableDeclaration(v) => Some(&**v),
+            oxc_ast::ast::Statement::ExportNamedDeclaration(export) => {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(v)) = &export.declaration {
+                    Some(&**v)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(var_decl) = var_decl {
+            for declarator in &var_decl.declarations {
+                // Function-valued initializers are sync — no hoisting, no blocker
+                if matches!(
+                    &declarator.init,
+                    Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                ) {
+                    continue;
+                }
+
+                let names = collect_binding_names(&declarator.id);
+                for name in &names {
+                    if let Some(sym) = data.scoping.find_binding(root, name) {
+                        data.blocker_data.symbol_blockers.insert(sym, async_index);
+                    }
+                }
+                hoist_names.extend(names);
+
+                async_index += 1;
+            }
+        } else {
+            // Non-variable: class declarations, expression statements, etc.
+            if let oxc_ast::ast::Statement::ClassDeclaration(class) = stmt_ref {
+                if let Some(ref id) = class.id {
+                    let name = id.name.to_string();
+                    if let Some(sym) = data.scoping.find_binding(root, &name) {
+                        data.blocker_data.symbol_blockers.insert(sym, async_index);
+                    }
+                    hoist_names.push(name);
+                }
+            }
+            async_index += 1;
+        }
+
+        data.blocker_data.stmt_metas.push(crate::types::data::AsyncStmtMeta {
+            has_await,
+            hoist_names,
+        });
+
+        non_import_idx += 1;
+    }
+
+    data.blocker_data.async_thunk_count = async_index;
+    data.blocker_data.has_async = async_index > 0;
+}
+
+/// Collect all binding names from a pattern (for blocker tracking).
+fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Vec<String> {
+    use oxc_ast::ast::BindingPattern;
+    let mut names = Vec::new();
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => {
+            names.push(id.name.to_string());
+        }
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                names.extend(collect_binding_names(&prop.value));
+            }
+            if let Some(ref rest) = obj.rest {
+                names.extend(collect_binding_names(&rest.argument));
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for elem in arr.elements.iter().flatten() {
+                names.extend(collect_binding_names(elem));
+            }
+            if let Some(ref rest) = arr.rest {
+                names.extend(collect_binding_names(&rest.argument));
+            }
+        }
+        BindingPattern::AssignmentPattern(assign) => {
+            names.extend(collect_binding_names(&assign.left));
+        }
+    }
+    names
 }
 
 /// Check if the root of a member expression chain is a $-prefixed identifier.
