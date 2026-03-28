@@ -1,3 +1,10 @@
+---
+name: phase-boundaries
+description: Detailed phase boundary rules, red/green flags for codegen, OXC visitor rules, and additional architectural constraints. Loaded automatically when working on codegen, transforms, or analyze passes.
+user-invocable: false
+paths: "crates/svelte_codegen_client/**/*.rs,crates/svelte_analyze/**/*.rs,crates/svelte_transform/**/*.rs"
+---
+
 # Phase Boundaries: Fat Analyze, Dumb Codegen
 
 Each compiler phase has a strict responsibility.

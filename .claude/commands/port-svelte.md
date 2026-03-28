@@ -1,3 +1,8 @@
+---
+description: Port a Svelte compiler feature from the reference JS compiler to our Rust implementation. Use when the user asks to "port", "implement", or "add support for" a Svelte feature.
+argument-hint: "[feature-description]"
+---
+
 # Port Svelte feature: $ARGUMENTS
 
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.

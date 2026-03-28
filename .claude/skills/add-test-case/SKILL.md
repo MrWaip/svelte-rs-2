@@ -1,8 +1,9 @@
 ---
 name: add-test-case
-description: Create a new compiler test case (test-first workflow)
-user_invocable: true
-argument: test case name (e.g. each_block_nested)
+description: Create a new compiler test case for test-first development. Use when the user asks to "add a test", "create test case", or wants to test a specific Svelte feature before implementing it.
+user-invocable: true
+argument-hint: "[test-case-name]"
+allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 
 # Add compiler test case: $ARGUMENTS
