@@ -119,21 +119,15 @@ Audit of existing implementation
 - **Test**: `state_constructor_private_read` — PASSING
 - **Fix**: added private state field assignment handling in `exit_expression()` (`traverse.rs`)
 
-### BUG-2: `$state.snapshot()` not rewritten in template expressions
-- **Test**: `state_snapshot_in_template`
-- **Expected**: `$.snapshot(items)` in template expression
-- **Got**: `$state.snapshot(items)` — raw rune call passed through verbatim
-- **Layer**: codegen — template expression rune call rewriting
+### BUG-2: ~~`$state.snapshot()` not rewritten in template expressions~~ FIXED
+- **Test**: `state_snapshot_in_template` — PASSING
 
-### BUG-3: Constructor `$state([])` missing `$.proxy()` wrapping
-- **Test**: `state_class_constructor_proxy`
-- **Expected**: `$.state($.proxy([]))`
-- **Got**: `$.state([])` — proxy wrapping skipped for array literal in constructor
-- **Layer**: codegen — constructor state init proxy decision
+### BUG-3: ~~Constructor `$state([])` missing `$.proxy()` wrapping~~ FIXED
+- **Test**: `state_class_constructor_proxy` — PASSING
 
 ## Current state
-- **Working**: 29/43 use cases fully covered with passing tests (+ 2 new passing)
-- **Bugs found**: 3 codegen bugs discovered by new tests
+- **Working**: 31/43 use cases fully covered with passing tests
+- **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
 - **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
-- **Missing**: 12 use cases (validation errors, server codegen, deep_read_state, tag_proxy, snapshot is_ignored)
-- **Next**: Fix BUG-1 (private field compound assignment) — most impactful, breaks reactivity for common class patterns. Then BUG-3 (constructor proxy), BUG-2 (template snapshot). After bugs, validation diagnostics (#33-36).
+- **Missing**: 10 use cases (validation errors, server codegen, deep_read_state, tag_proxy, snapshot is_ignored)
+- **Next**: Validation diagnostics (#33-36), then dev-mode features (#31-32).
