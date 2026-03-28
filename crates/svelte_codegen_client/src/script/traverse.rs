@@ -859,7 +859,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             if let oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left {
                 if matches!(&pfe.object, Expression::ThisExpression(_)) {
                     let field_name = pfe.field.name.as_str();
-                    if let Some(_is_state) = self.private_state_field_is_state(field_name) {
+                    if self.is_private_state_field(field_name) {
                         let left_expr = self.b.this_private_member(field_name);
                         let right = self.b.move_expr(&mut assign.right);
                         let operator = assign.operator;
@@ -1142,6 +1142,23 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     );
                     return;
                 }
+            }
+        }
+
+        // Private state field update: this.#field++ → $.update(this.#field)
+        if let oxc_ast::ast::SimpleAssignmentTarget::PrivateFieldExpression(pfe) = &upd.argument {
+            if matches!(&pfe.object, Expression::ThisExpression(_))
+                && self.is_private_state_field(pfe.field.name.as_str())
+            {
+                let field_name = pfe.field.name.as_str();
+                let fn_name = if upd.prefix { "$.update_pre" } else { "$.update" };
+                let field_expr = self.b.this_private_member(field_name);
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(field_expr)];
+                if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
+                    args.push(Arg::Num(-1.0));
+                }
+                *node = self.b.call_expr(fn_name, args);
+                return;
             }
         }
 

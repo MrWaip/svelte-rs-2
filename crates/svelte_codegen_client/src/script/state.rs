@@ -623,12 +623,4 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             info.fields.iter().any(|f| f.public_name.is_none() && f.private_name == name)
         })
     }
-
-    /// Returns `Some(is_state)` for a private state field: true = `$state`, false = `$state.raw`.
-    pub(super) fn private_state_field_is_state(&self, name: &str) -> Option<bool> {
-        self.class_state_stack.last().and_then(|info| {
-            info.fields.iter().find(|f| f.public_name.is_none() && f.private_name == name)
-                .map(|f| f.is_state)
-        })
-    }
 }
