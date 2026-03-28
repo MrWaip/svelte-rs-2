@@ -2,7 +2,7 @@ import * as $ from "svelte/internal/client";
 var root_1 = $.from_html(`<p> </p>`);
 var root_2 = $.from_html(`<p> </p>`);
 var root_3 = $.from_html(`<p> </p>`);
-var root = $.from_html(`<!> <!> <!>`, 1);
+var root = $.from_html(`<!> <!> <!> <!> <!>`, 1);
 export default function App($$anchor, $$props) {
 	let items = $.prop($$props, "items", 19, () => []);
 	var fragment = root();
@@ -37,6 +37,19 @@ export default function App($$anchor, $$props) {
 		$.reset(p_2);
 		$.template_effect(() => $.set_text(text_2, `${$.get(idx) ?? ""}: ${name() ?? ""}`));
 		$.append($$anchor, p_2);
+	});
+	var node_3 = $.sibling(node_2, 2);
+	$.each(node_3, 19, items, ([a, b, c]) => b.key, ($$anchor, $$item) => {
+		var $$array_2 = $.derived(() => $.to_array($.get($$item), 3));
+		let a = () => $.get($$array_2)[0];
+		let b = () => $.get($$array_2)[1];
+		let c = () => $.get($$array_2)[2];
+	});
+	var node_4 = $.sibling(node_3, 2);
+	$.each(node_4, 19, items, ({ a, b, c }) => b.key, ($$anchor, $$item) => {
+		let a = () => $.get($$item).a;
+		let b = () => $.get($$item).b;
+		let c = () => $.get($$item).c;
 	});
 	$.append($$anchor, fragment);
 }

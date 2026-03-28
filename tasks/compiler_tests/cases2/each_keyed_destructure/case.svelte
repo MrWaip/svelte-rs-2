@@ -13,3 +13,9 @@
 {#each items as [id, name], idx (id)}
 	<p>{idx}: {name}</p>
 {/each}
+
+{#each items as [a, b, c], idx (b.key)}
+{/each}
+
+{#each items as { a, b, c }, idx (b.key)}
+{/each}
