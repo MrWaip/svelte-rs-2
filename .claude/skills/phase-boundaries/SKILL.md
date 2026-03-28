@@ -1,8 +1,10 @@
 ---
 name: phase-boundaries
-description: Detailed phase boundary rules, red/green flags for codegen, OXC visitor rules, and additional architectural constraints. Loaded automatically when working on codegen, transforms, or analyze passes.
-user-invocable: false
-paths: "crates/svelte_codegen_client/**/*.rs,crates/svelte_analyze/**/*.rs,crates/svelte_transform/**/*.rs"
+description: MUST consult before adding or modifying code in svelte_codegen_client, svelte_analyze, or svelte_transform crates. Contains strict rules about what logic belongs in which compiler phase, red flags to avoid in codegen, OXC visitor requirements, and AnalysisData access patterns. Use this skill whenever deciding where to put new logic (parser vs analyze vs codegen), when adding a new field or accessor to AnalysisData, when writing any OXC expression traversal, or when reviewing code for boundary violations. Putting code in the wrong phase is the most common and costly mistake in this codebase.
+paths:
+  - "crates/svelte_codegen_client/**/*.rs"
+  - "crates/svelte_analyze/**/*.rs"
+  - "crates/svelte_transform/**/*.rs"
 ---
 
 # Phase Boundaries: Fat Analyze, Dumb Codegen

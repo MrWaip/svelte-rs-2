@@ -1,7 +1,6 @@
 ---
 name: oxc-codegen-api
-description: OXC Traverse API reference and codegen constraints. Auto-loaded when working on codegen/transform code.
-user-invocable: false
+description: MUST consult before writing or modifying any OXC Traverse visitor in svelte_codegen_client or svelte_transform. Contains the exact enter_*/exit_* method signatures for all traversable AST node types, plus codegen boundary rules (no semantic analysis in codegen). Use this skill whenever implementing a new transform pass, adding a codegen visitor, or unsure which enter_*/exit_* method handles a specific AST node type. Using wrong method signatures causes silent bugs.
 paths:
   - "crates/svelte_codegen_client/**/*.rs"
   - "crates/svelte_transform/**/*.rs"

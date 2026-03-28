@@ -1,8 +1,8 @@
 ---
 name: svelte-reference-map
-description: Mapping between Svelte reference compiler and our Rust crates. Loaded automatically when working on compiler crates to quickly find corresponding reference files.
-user-invocable: false
-paths: "crates/**/*.rs"
+description: MUST consult when looking for the reference Svelte JS compiler source that corresponds to a Rust crate file, or vice versa. Contains file-level and concept-level mapping between reference/compiler/ and our Rust crates. Use this skill whenever porting a feature from the reference compiler, comparing our output against reference output, or trying to find where a specific Svelte concept (state.init, context.visit, metadata, builders) is implemented in either codebase.
+paths:
+  - "crates/**/*.rs"
 ---
 
 # Svelte Reference Map
