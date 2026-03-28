@@ -6,7 +6,7 @@ mod validate;
 pub(crate) mod walker;
 
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
+    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData, IgnoreData,
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
     ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo,
     ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
@@ -23,28 +23,50 @@ pub use utils::{
 };
 
 use svelte_ast::Component;
-use svelte_diagnostics::Diagnostic;
-/// Run all analysis passes over a parsed component.
+use svelte_diagnostics::{Diagnostic, Severity};
+
+/// Options controlling analysis behavior.
+pub struct AnalyzeOptions {
+    pub custom_element: bool,
+    pub runes: bool,
+    pub dev: bool,
+    pub warning_filter: Option<Box<dyn Fn(&Diagnostic) -> bool>>,
+}
+
+impl Default for AnalyzeOptions {
+    fn default() -> Self {
+        Self {
+            custom_element: false,
+            runes: true,
+            dev: false,
+            warning_filter: None,
+        }
+    }
+}
+
+/// Run all analysis passes over a parsed component (default options).
 pub fn analyze<'a>(
     component: &Component,
     parsed: ParserResult<'a>,
 ) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
-    analyze_with_options(component, parsed, false)
+    analyze_with_options(component, parsed, &AnalyzeOptions::default())
 }
 
 /// Analyze with compile options that affect analysis behavior.
 pub fn analyze_with_options<'a>(
     component: &Component,
     mut parsed: ParserResult<'a>,
-    custom_element: bool,
+    options: &AnalyzeOptions,
 ) -> (AnalysisData, ParserResult<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
+    let runes = options.runes;
+    let source = &component.source;
 
     let mut data = AnalysisData::new_empty(component.node_count());
-    data.custom_element = custom_element;
+    data.custom_element = options.custom_element;
 
     // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
-    passes::js_analyze::classify_render_tags(&mut parsed, component, &mut data);
+    passes::js_analyze::classify_render_tags(&mut parsed, component, &mut data, source, runes);
 
     // Extract script info from pre-parsed Program AST
     let script_info = parsed.program.as_ref().and_then(|program| {
@@ -71,7 +93,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::js_analyze::BindingPreparer;
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
         walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
     }
     // CE config (not template-related, extracted separately)
@@ -97,7 +119,7 @@ pub fn analyze_with_options<'a>(
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::template_semantic::TemplateSemanticVisitor;
         let mut v2 = passes::template_side_tables::TemplateSideTablesVisitor { component };
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -111,7 +133,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v2 = passes::collect_symbols::make_visitor(scoping_built);
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed);
+        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -158,7 +180,7 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::reactivity::ReactivityVisitor::new();
-        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store);
+        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store, source, runes);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -199,7 +221,7 @@ pub fn analyze_with_options<'a>(
         let mut v5 = passes::content_types::ContentAndVarVisitor {
             source: &component.source,
         };
-        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store);
+        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store, source, runes);
         walker::walk_template(
             &component.fragment,
             &mut ctx,
@@ -212,6 +234,11 @@ pub fn analyze_with_options<'a>(
     // Element fragments already classified by ContentAndVarVisitor::leave_element
     passes::content_types::classify_remaining_fragments(&mut data, &component.source);
     validate::validate(component, &data, &mut diags);
+
+    // Apply warning filter if provided
+    if let Some(ref filter) = options.warning_filter {
+        diags.retain(|d| d.severity != Severity::Warning || filter(d));
+    }
 
     (data, parsed, diags)
 }
