@@ -28,8 +28,16 @@ pub(crate) fn gen_await_block<'a>(
     let has_catch = block.catch.is_some();
     let span_start = block.span.start;
 
+    let has_await = ctx.expr_has_await(block_id);
+
     // Expression thunk: () => promise (visit expression first for correct scope order)
-    let expression = build_node_thunk(ctx, block_id);
+    // When has_await: async thunk (async () => await expr → optimized)
+    let expression = if has_await {
+        let expr = super::expression::get_node_expr(ctx, block_id);
+        ctx.b.async_thunk(expr)
+    } else {
+        build_node_thunk(ctx, block_id)
+    };
 
     // Then callback (generated before pending to match reference compiler ordering)
     let then_fn = if has_then {

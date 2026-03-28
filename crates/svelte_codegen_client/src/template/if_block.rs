@@ -24,6 +24,9 @@ pub(crate) fn gen_if_block<'a>(
     block_id: NodeId,
     anchor: Expression<'a>,
 ) -> Vec<Statement<'a>> {
+    let has_await = ctx.expr_has_await(block_id);
+    let needs_async = has_await || ctx.expr_has_blockers(block_id);
+
     // 1. Collect all branches by walking the elseif chain
     let mut branches: Vec<Branch> = Vec::new();
     let mut final_alternate: Option<FragmentKey> = None;
@@ -55,10 +58,12 @@ pub(crate) fn gen_if_block<'a>(
         }
     }
 
+    // Build the expression for the root condition (needed before stmts consume it)
+    let expression = if needs_async { Some(get_node_expr(ctx, block_id)) } else { None };
+
     let mut stmts = Vec::new();
 
     // 2. Generate all arrow functions at the same scope level.
-    // Naming order: body (gen_fragment) BEFORE name (gen_ident) for each branch.
     let mut branch_names: Vec<String> = Vec::new();
 
     for branch in branches.iter() {
@@ -79,43 +84,45 @@ pub(crate) fn gen_if_block<'a>(
         None
     };
 
-    // 2b. Pre-compute has_call memoization for each branch condition.
-    // When a condition has a function call AND reactive references, wrap in $.derived.
+    // 2b. Pre-compute memoization for each branch condition.
     let mut derived_names: Vec<Option<String>> = Vec::new();
-    for branch in branches.iter() {
-        let needs_memo = ctx.analysis.needs_expr_memoization(branch.block_id);
-        if needs_memo {
-            let expr = get_node_expr(ctx, branch.block_id);
-            let thunk = ctx.b.thunk(expr);
-            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-            let name = ctx.gen_ident("d");
-            stmts.push(ctx.b.var_stmt(&name, derived));
-            derived_names.push(Some(name));
-        } else {
+    for (i, branch) in branches.iter().enumerate() {
+        if i == 0 && has_await {
+            // Root async condition: resolved via $.get($$condition) inside $.async callback
             derived_names.push(None);
+        } else {
+            let needs_memo = ctx.analysis.needs_expr_memoization(branch.block_id);
+            if needs_memo {
+                let expr = get_node_expr(ctx, branch.block_id);
+                let thunk = ctx.b.thunk(expr);
+                let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+                let name = ctx.gen_ident("d");
+                stmts.push(ctx.b.var_stmt(&name, derived));
+                derived_names.push(Some(name));
+            } else {
+                derived_names.push(None);
+            }
         }
     }
 
     // 3. Build the if/else-if/else chain (bottom-up)
     let num_branches = branches.len();
 
-    // Start from the final else (if any)
     let mut else_clause: Option<Statement<'a>> = alt_name
         .as_ref()
         .map(|an| ctx.b.call_stmt("$$render", [Arg::Ident(an), Arg::Num(-1.0)]));
 
-    // Build from last branch to first
     for i in (0..num_branches).rev() {
-        let test = if let Some(ref derived_name) = derived_names[i] {
+        let test = if i == 0 && has_await {
+            ctx.b.call_expr("$.get", [Arg::Ident("$$condition")])
+        } else if let Some(ref derived_name) = derived_names[i] {
             ctx.b.call_expr("$.get", [Arg::Ident(derived_name)])
         } else {
             get_node_expr(ctx, branches[i].block_id)
         };
         let render_args: Vec<Arg<'a, '_>> = if i == 0 {
-            // First branch: no second argument
             vec![Arg::Ident(&branch_names[i])]
         } else {
-            // Middle branches: pass index
             vec![Arg::Ident(&branch_names[i]), Arg::Num(i as f64)]
         };
         let then_stmt = ctx.b.call_stmt("$$render", render_args);
@@ -126,11 +133,22 @@ pub(crate) fn gen_if_block<'a>(
     let render_body_stmt = else_clause.unwrap();
     let render_fn = ctx.b.arrow(ctx.b.params(["$$render"]), [render_body_stmt]);
 
-    // 4. Single $.if() call, wrapped with add_svelte_meta in dev mode
+    // 4. $.if() call + optional $.async() wrapping
     let span_start = ctx.if_block(block_id).span.start;
-    let args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor), Arg::Arrow(render_fn)];
-    let if_call = ctx.b.call_expr("$.if", args);
-    stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
 
-    stmts
+    if needs_async {
+        // Inside $.async callback: use "node" param as anchor
+        let if_anchor = ctx.b.rid_expr("node");
+        let if_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(if_anchor), Arg::Arrow(render_fn)];
+        let if_call = ctx.b.call_expr("$.if", if_args);
+        stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
+
+        let async_thunk = if has_await { Some(ctx.b.async_thunk(expression.unwrap())) } else { None };
+        vec![ctx.emit_async_block(block_id, anchor, has_await, async_thunk, "$$condition", stmts)]
+    } else {
+        let if_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor), Arg::Arrow(render_fn)];
+        let if_call = ctx.b.call_expr("$.if", if_args);
+        stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
+        stmts
+    }
 }

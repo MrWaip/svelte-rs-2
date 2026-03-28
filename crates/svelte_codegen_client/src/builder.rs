@@ -251,6 +251,32 @@ impl<'a> Builder<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Const)
     }
 
+    /// `var a, b, c;` — multi-name uninitialized var declaration.
+    pub fn var_multi_stmt(&self, names: &[&str]) -> Statement<'a> {
+        let decls: Vec<_> = names.iter().map(|name| {
+            let pattern = self.ast.binding_pattern_binding_identifier(SPAN, self.ast.atom(*name));
+            self.ast.variable_declarator(SPAN, VariableDeclarationKind::Var, pattern, NONE, None, false)
+        }).collect();
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Var,
+            self.ast.vec_from_iter(decls),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
+    /// Reconstruct a single-declarator `var` statement from a VariableDeclarator.
+    pub fn var_init_stmt(&self, declarator: oxc_ast::ast::VariableDeclarator<'a>) -> Statement<'a> {
+        let declaration = self.ast.variable_declaration(
+            SPAN,
+            VariableDeclarationKind::Var,
+            self.ast.vec_from_iter([declarator]),
+            false,
+        );
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     /// `let a = init_a, b = init_b, ...;` — multi-declarator let statement.
     pub fn let_multi_stmt(&self, declarators: Vec<(&str, Expression<'a>)>) -> Statement<'a> {
         let decls: Vec<_> = declarators.into_iter().map(|(name, init)| {
@@ -584,6 +610,45 @@ impl<'a> Builder<'a> {
         self.arrow_block_expr(self.no_params(), stmts)
     }
 
+    /// `async () => await expr` — async thunk for experimental.async.
+    /// Optimizes: if `expr` is `await fn()`, strip the await and apply normal thunk
+    /// optimization (`() => fn()` → `fn`). Otherwise produce `async () => await expr`.
+    pub fn async_thunk(&self, expr: Expression<'a>) -> Expression<'a> {
+        // Svelte reference unthunk: `async () => await x()` → strip await → `() => x()` → `x`
+        if let Expression::AwaitExpression(await_node) = expr {
+            let inner = await_node.unbox().argument;
+            return self.thunk(inner);
+        }
+        // Fallback: wrap in async arrow
+        let await_expr = self.await_expr(expr);
+        let body = self.ast.function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter([self.expr_stmt(await_expr)]),
+        );
+        Expression::ArrowFunctionExpression(self.alloc(
+            self.ast.arrow_function_expression(SPAN, true, true, NONE, self.no_params(), NONE, body),
+        ))
+    }
+
+    /// `await expr`
+    pub fn await_expr(&self, expr: Expression<'a>) -> Expression<'a> {
+        self.ast.expression_await(SPAN, expr)
+    }
+
+
+    /// `async () => expr` — async arrow with expression body.
+    pub fn async_arrow_expr_body(&self, expr: Expression<'a>) -> Expression<'a> {
+        let body = self.ast.function_body(
+            SPAN,
+            self.ast.vec(),
+            self.ast.vec_from_iter([self.expr_stmt(expr)]),
+        );
+        Expression::ArrowFunctionExpression(self.alloc(
+            self.ast.arrow_function_expression(SPAN, true, true, NONE, self.no_params(), NONE, body),
+        ))
+    }
+
     /// `async () => { ...stmts }` — zero-arg async arrow wrapping a block body.
     pub fn async_thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
         let body = self.ast.function_body(
@@ -593,11 +658,6 @@ impl<'a> Builder<'a> {
         );
         let arrow = self.ast.arrow_function_expression(SPAN, false, true, NONE, self.no_params(), NONE, body);
         Expression::ArrowFunctionExpression(self.alloc(arrow))
-    }
-
-    /// `await expr`
-    pub fn await_expr(&self, expr: Expression<'a>) -> Expression<'a> {
-        self.ast.expression_await(SPAN, expr)
     }
 
     /// `left ?? right` — nullish coalescing.
@@ -793,6 +853,15 @@ impl<'a> Builder<'a> {
         Expression::ArrayExpression(self.alloc(
             self.ast.array_expression(SPAN, self.ast.vec_from_iter(elements))
         ))
+    }
+
+    /// `[$$promises[i], $$promises[j], ...]` — blocker promises array from indices.
+    pub fn promises_array(&self, indices: &[u32]) -> Expression<'a> {
+        let elements: Vec<Expression<'a>> = indices
+            .iter()
+            .map(|&idx| self.computed_member_expr(self.rid_expr("$$promises"), self.num_expr(idx as f64)))
+            .collect();
+        self.array_expr(elements)
     }
 
     /// Convert all member accesses in an expression to optional chaining.

@@ -332,6 +332,10 @@ fn emit_single_element<'a>(
     let el_name_str = ctx.element(el_id).name.clone();
     let el_name = ctx.gen_ident(&el_name_str);
 
+    // Pre-computed blocker indices for this element's fragment
+    let el_key = svelte_analyze::FragmentKey::Element(el_id);
+    let el_blockers = ctx.analysis.fragments.fragment_blockers(&el_key).to_vec();
+
     if is_root {
         // Root: template BEFORE children (top-down)
         hoisted.push(tpl_stmt);
@@ -341,7 +345,7 @@ fn emit_single_element<'a>(
         let mut after_update = Vec::with_capacity(4);
         process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
         body.extend(init);
-        emit_template_effect(ctx, update, body);
+        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, body);
         body.extend(after_update);
     } else {
         // Non-root: template AFTER children (bottom-up)
@@ -352,7 +356,7 @@ fn emit_single_element<'a>(
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
-        emit_template_effect(ctx, update, body);
+        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, body);
         body.extend(after_update);
     }
 
@@ -398,7 +402,11 @@ fn emit_single_block<'a>(
     match item {
         FragmentItem::IfBlock(id) => {
             let stmts = gen_if_block(ctx, *id, ctx.b.rid_expr(&node));
-            body.push(ctx.b.block_stmt(stmts));
+            if stmts.len() == 1 {
+                body.extend(stmts);
+            } else {
+                body.push(ctx.b.block_stmt(stmts));
+            }
         }
         FragmentItem::EachBlock(id) => {
             gen_each_block(ctx, *id, ctx.b.rid_expr(&node), false, body);

@@ -51,6 +51,29 @@ fn lower_fragment(
     }
 
     let items = build_items(fragment, component, inside_head, store);
+
+    // Pre-compute fragment blocker indices (experimental.async)
+    if data.blocker_data.has_async {
+        let mut blockers = smallvec::SmallVec::<[u32; 2]>::new();
+        for item in &items {
+            if let FragmentItem::TextConcat { parts, .. } = item {
+                for part in parts {
+                    if let LoweredTextPart::Expr(id) = part {
+                        for idx in data.expression_blockers(*id) {
+                            if !blockers.contains(&idx) {
+                                blockers.push(idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !blockers.is_empty() {
+            blockers.sort_unstable();
+            data.fragments.fragment_blockers.insert(key, blockers);
+        }
+    }
+
     data.fragments.lowered.insert(key, LoweredFragment { items });
 
     for &id in &fragment.nodes {

@@ -99,9 +99,23 @@ pub(crate) fn gen_each_block<'a>(
         None
     };
 
+    let has_await = ctx.expr_has_await(block_id);
+    let needs_async = has_await || ctx.expr_has_blockers(block_id);
+
+    // Build async thunk from expression BEFORE it gets consumed by the normal path
+    let async_collection_thunk = if has_await {
+        let expr = get_node_expr(ctx, block_id);
+        Some(ctx.b.async_thunk(expr))
+    } else {
+        None
+    };
+
     // Pre-computed by analysis — no string-based symbol re-resolution.
     let is_prop_source = ctx.is_prop_source_node(block_id);
-    let collection_fn = if is_prop_source {
+    let collection_fn = if needs_async {
+        // Inside $.async callback: () => $.get($$collection)
+        ctx.b.thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$collection")]))
+    } else if is_prop_source {
         // Prop getter is already a function — pass directly without thunk
         let expr_source = ctx.component.source_text(expr_span).trim();
         ctx.b.rid_expr(expr_source)
@@ -161,24 +175,47 @@ pub(crate) fn gen_each_block<'a>(
         ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
     };
 
-    let mut each_args: Vec<Arg<'a, '_>> = vec![
-        Arg::Expr(anchor),
-        Arg::Num(flags as f64),
-        Arg::Expr(collection_fn),
-        Arg::Expr(key_fn),
-        Arg::Expr(frag_fn),
-    ];
+    if needs_async {
+        // Inside $.async callback: use "node" as anchor
+        let mut each_args: Vec<Arg<'a, '_>> = vec![
+            Arg::Ident("node"),
+            Arg::Num(flags as f64),
+            Arg::Expr(collection_fn),
+            Arg::Expr(key_fn),
+            Arg::Expr(frag_fn),
+        ];
 
-    // Fallback: 6th arg — `($$anchor) => { ...fallback_body }`
-    if has_fallback {
-        let fallback_key = FragmentKey::EachFallback(block_id);
-        let fallback_body = gen_fragment(ctx, fallback_key);
-        let fallback_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
-        each_args.push(Arg::Expr(fallback_fn));
+        if has_fallback {
+            let fallback_key = FragmentKey::EachFallback(block_id);
+            let fallback_body = gen_fragment(ctx, fallback_key);
+            let fallback_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
+            each_args.push(Arg::Expr(fallback_fn));
+        }
+
+        let each_call = ctx.b.call_expr("$.each", each_args);
+        let each_stmt = super::add_svelte_meta(ctx, each_call, span_start, "each");
+
+        let async_thunk = if has_await { async_collection_thunk } else { None };
+        body.push(ctx.emit_async_block(block_id, anchor, has_await, async_thunk, "$$collection", vec![each_stmt]));
+    } else {
+        let mut each_args: Vec<Arg<'a, '_>> = vec![
+            Arg::Expr(anchor),
+            Arg::Num(flags as f64),
+            Arg::Expr(collection_fn),
+            Arg::Expr(key_fn),
+            Arg::Expr(frag_fn),
+        ];
+
+        if has_fallback {
+            let fallback_key = FragmentKey::EachFallback(block_id);
+            let fallback_body = gen_fragment(ctx, fallback_key);
+            let fallback_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
+            each_args.push(Arg::Expr(fallback_fn));
+        }
+
+        let each_call = ctx.b.call_expr("$.each", each_args);
+        body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
     }
-
-    let each_call = ctx.b.call_expr("$.each", each_args);
-    body.push(super::add_svelte_meta(ctx, each_call, span_start, "each"));
 }
 
 /// Generate destructuring declarations for `{#each items as { name, value }}` patterns.
