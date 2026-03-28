@@ -75,6 +75,9 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         let is_destructured = ctx.data.each_blocks.is_destructured.contains(&block.id);
 
         if is_destructured {
+            // Destructured context: name is always "$$item"
+            ctx.data.each_blocks.context_names.insert(block.id, "$$item".to_string());
+
             // Mark non-default destructured bindings as getters via OXC Visit.
             // SemanticCollector already set symbol_id on BindingIdentifiers.
             if let Some(parsed) = ctx.parsed() {
@@ -93,6 +96,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .map(|ident| ident.name.as_str());
 
             if let Some(ctx_name) = ctx_name {
+                ctx.data.each_blocks.context_names.insert(block.id, ctx_name.to_string());
+
                 if let Some(ctx_sym) = ctx.data.scoping.find_binding(child_scope, ctx_name) {
                     ctx.data.scoping.mark_each_block_var(ctx_sym);
 
@@ -133,11 +138,17 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
         }
-        // Mark snippet params — dispatch_stmt already ran, so symbol_ids are set
+        // Mark snippet params and collect param names
         if let Some(parsed) = ctx.parsed() {
             if let Some(stmt) = parsed.stmts.get(&block.expression_span.start) {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
                 marker.visit_statement(stmt);
+
+                // Extract param names from parsed arrow for codegen
+                let param_names = extract_snippet_param_names(stmt);
+                if !param_names.is_empty() {
+                    ctx.data.snippets.params.insert(block.id, param_names);
+                }
             }
         }
     }
@@ -155,6 +166,19 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             }
         }
     }
+}
+
+/// Extract param names from `const name = (a, b) => {}` parsed statement.
+fn extract_snippet_param_names(stmt: &Statement<'_>) -> Vec<String> {
+    let Statement::VariableDeclaration(decl) = stmt else { return Vec::new() };
+    let Some(declarator) = decl.declarations.first() else { return Vec::new() };
+    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+        return Vec::new();
+    };
+    arrow.params.items.iter()
+        .filter_map(|p| p.pattern.get_binding_identifier())
+        .map(|id| id.name.to_string())
+        .collect()
 }
 
 /// OXC Visit that marks arrow function param bindings as snippet params.
