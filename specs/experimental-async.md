@@ -1,5 +1,13 @@
 # experimental.async
 
+## Current state
+
+- **Working (18/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await (6), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1)
+- **Not working (16/34)**: `<svelte:element>` async, `{@const}` async, `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
+- **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
+- **Next**: `<svelte:element>` async (#12) — simplest, follows exact same pattern as if/each/html/key
+- Last updated: 2026-03-29
+
 ## Source
 
 Audit of existing implementation (2026-03-28)
@@ -110,10 +118,7 @@ Audit of existing implementation (2026-03-28)
 ### Tracing
 37. [ ] `$.trace` with async function bodies — `b.thunk(body, is_async)` + `b.await(call)` (missing)
 
-### Server-side
-38. [ ] SSR `$.await()` — server-side await block rendering (out of scope — SSR codegen not started)
-
-## Tasks (по слоям)
+## Tasks
 
 ### Missing: `<svelte:element>` async (#12)
 1. [ ] codegen: `svelte_element.rs` — add `$.async()` wrapping when `has_await || has_blockers`
@@ -145,11 +150,6 @@ Audit of existing implementation (2026-03-28)
 ### Missing: Tracing (#35)
 1. [ ] codegen: `$.trace` with async body handling
 
-## Current state
-
-- **Working (18/35 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await (6), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1)
-- **Not working (20/38)**: `<svelte:element>` async, `{@const}` async, `$derived` async, Memoizer async, `{@render}`/`<slot>`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing, SSR
-- **Next**: `<svelte:element>` async (#12) — simplest, follows exact same pattern as if/each/html/key
 
 ## Test cases
 

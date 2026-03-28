@@ -7,180 +7,52 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 
 ---
 
-## Done ✅
+<details>
+<summary>Done ✅ (AST & Parser, Analyze, Script codegen, Template codegen, Event handling, Bind directives, Directives, Special elements, Module compilation, Optimizations, WASM, Custom Elements, Tier 1 Core Gaps, Tier 1.1 Async infrastructure)</summary>
 
-### AST & Parser
-- [x] `Text`, `Element`, `ComponentNode`, `Comment`
-- [x] `ExpressionTag` — `{expr}`
-- [x] `IfBlock`, `EachBlock`, `SnippetBlock`, `RenderTag`
-- [x] Attributes: string, expression, boolean, concatenation, shorthand/spread, `class:`, `bind:`
-- [x] Script/Style blocks, TypeScript support
-- [x] Void (self-closing) HTML elements — `VOID_ELEMENTS`, auto `self_closing`, closing tag validation
+### AST & Parser (6 items)
+`Text`, `Element`, `ComponentNode`, `Comment`, `ExpressionTag`, `IfBlock`, `EachBlock`, `SnippetBlock`, `RenderTag`, Attributes, Script/Style blocks, Void elements
 
-### Analyze (multi-pass pipeline, composite template visitors)
-- [x] `js_analyze` — script analysis: `NeedsContextVisitor` (OXC Visit), expression metadata extraction
-- [x] `mark_runes` — rune classification (root + nested scopes)
-- [x] `template_scoping` — template scope creation (each, snippet, if, await, key, boundary)
-- [x] `template_semantic` — mini-SemanticBuilder for template: scopes, bindings, `reference_id → symbol_id`
-- [x] `template_side_tables` — each/snippet/const metadata, element flags
-- [x] `collect_symbols` — `ref_symbols` from OXC references, store detection, index usage
-- [x] `post_resolve` — props analysis, rest prop tracking, known values, store needs_context
-- [x] `lower` — whitespace trim, adjacent text+expr merge
-- [x] Walk 1: `reactivity` — dynamic nodes/attrs classification
-- [x] Walk 2: `element_flags` + `hoistable` + `bind_semantics` + `content_types` — 4 visitors, single walk
-- [x] `validate` — semantic checks
+### Analyze (11 passes)
+`js_analyze`, `mark_runes`, `template_scoping`, `template_semantic`, `template_side_tables`, `collect_symbols`, `post_resolve`, `lower`, `reactivity`, `element_flags`+`hoistable`+`bind_semantics`+`content_types`, `validate`
 
-### Script codegen
-- [x] `$state` rune (read, assign, update, `$.proxy()`)
-- [x] `$state.raw(val)` → `$.state(val)` (no proxy)
-- [x] `$state` / `$state.raw` destructuring — object, array, defaults, rest, nested patterns
-- [x] `$state` / `$state.raw` class fields — public, private, constructor, multiple fields
-- [x] `$state.snapshot(val)` → `$.snapshot(val)`
-- [x] `$derived` / `$derived.by` — `$.derived(() => expr)` / `$.derived(fn)`
-- [x] `$props` rune (destructure, defaults, `$bindable`, rest, mutated)
-- [x] `$effect(fn)` → `$.user_effect(fn)`, `$effect.pre(fn)` → `$.user_pre_effect(fn)`
-- [x] `$effect.tracking()` → `$.effect_tracking()`
-- [x] `$effect.root(fn)` → `$.effect_root(fn)`
-- [x] `$store` auto-subscription → `$.store_get` / `$.store_set`
-- [x] Import hoisting, exports (`$$.exports`)
-- [x] `$inspect(vals)` → `$.inspect(...)` (dev-mode only)
-- [x] `$inspect.trace()` — dev-only trace
-- [x] `$props.id()` → `$.props_id()` (v5.20+)
-- [x] `$host()` → `$$props.$$host` (custom element host reference)
-- [x] `customElements.define()` — basic custom element wrapping (simple tag form)
+### Script codegen (17 items)
+All runes (`$state`, `$state.raw`, `$derived`, `$props`, `$effect`, `$inspect`, `$props.id`, `$host`), destructuring, class fields, `$store`, imports/exports, custom elements
 
-### Template codegen
-- [x] Element (with all attribute types), Component (props + children-as-snippet)
-- [x] IfBlock, EachBlock, SnippetBlock, RenderTag
-- [x] Text node, ExpressionTag
-- [x] `{@html expr}` — raw HTML insertion
-- [x] `{#key expr}` — keyed re-render block
-- [x] `{@const x = expr}` — block-scoped constant (incl. destructuring)
-- [x] `style:prop` directive (shorthand, expression, string, concat, `|important`)
-- [x] `class` object/array syntax (Svelte 5)
-- [x] `{#await promise}` — async blocks (full form, short then/catch, no bindings, destructured, pending only)
-- [x] `{@debug vars}` — dev-mode debugger (all contexts: root, if, each)
+### Template codegen (11 items)
+Element, Component, IfBlock, EachBlock, SnippetBlock, RenderTag, Text, ExpressionTag, `{@html}`, `{#key}`, `{@const}`, `style:prop`, `class` object/array, `{#await}`, `{@debug}`
 
-### Event handling
-- [x] Svelte 5 event attributes — `onclick={handler}` → `$.delegated()` for delegatable events
-- [x] Event delegation — `$.delegate([...events])` at component level
-- [x] Non-delegatable events — `onscroll={h}` → `$.event("scroll", el, h)`
-- [x] Capture suffix — `onclickcapture={h}` → `$.event("click", el, h, true)`
-- [x] Passive auto-detection — `ontouchstart={h}` → auto `passive: true` for touch events
-- [x] Handler wrapping — imported identifiers and member expressions wrapped in `function(...$$args) { h?.apply(this, $$args) }`
-- [x] `has_call` memoization — `onclick={getHandler()}` → `$.derived(getHandler)` + `$.get(event_handler)`
-- [x] Component prop memoization — `has_call` and non-simple+dynamic expressions wrapped in `$.derived`/`$.get`
-- [x] Render tag arg memoization — `{@render fn(getArg())}` → `$.derived`/`$.get`
-- [x] Render tag dynamic callee — `{@render show(args)}` where `show` is prop/state → `$.snippet(node, () => show, ...)`
-- [x] Render tag optional chaining — `{@render fn?.()}` → `fn?.(anchor)` or `$.snippet(node, () => fn ?? $.noop, ...)`
-- [x] `on:event` — legacy event directive (Svelte 4)
+### Event handling (12 items)
+Svelte 5 events, delegation, capture, passive, handler wrapping, `has_call` memoization, component prop memoization, render tag memoization, `on:event` legacy
 
-### Bind directives
-- [x] `bind:value` (input, textarea, select), `bind:checked`, `bind:group`, `bind:files`
-- [x] `bind:indeterminate`, `bind:open` (generic `$.bind_property`)
-- [x] `bind:innerHTML`, `bind:innerText`, `bind:textContent` (contenteditable)
-- [x] `bind:clientWidth/Height`, `bind:offsetWidth/Height` (element size)
-- [x] `bind:contentRect`, `bind:contentBoxSize`, `bind:borderBoxSize`, `bind:devicePixelContentBoxSize` (resize observer)
-- [x] `bind:currentTime`, `bind:paused`, `bind:volume`, `bind:muted`, `bind:playbackRate` (media R/W)
-- [x] `bind:buffered`, `bind:seekable`, `bind:seeking`, `bind:ended`, `bind:readyState`, `bind:played` (media RO)
-- [x] `bind:duration`, `bind:videoWidth`, `bind:videoHeight`, `bind:naturalWidth`, `bind:naturalHeight` (event-based RO)
-- [x] `bind:this` (element reference), `bind:focused`
+### Bind directives (14 items)
+`bind:value/checked/group/files`, `bind:innerHTML/innerText/textContent`, `bind:clientWidth/Height/offsetWidth/Height`, resize observer bindings, media bindings, `bind:this`, `bind:focused`
 
-### Directives
-- [x] `use:action={params}` — action directive
-- [x] `transition:` / `in:` / `out:` — transitions (local/global, params)
-- [x] `animate:name={params}` — FLIP animations
-- [x] `{@attach fn}` — element attachment (Svelte 5.29+)
+### Directives (4 items)
+`use:action`, `transition:/in:/out:`, `animate:`, `{@attach}`
 
-### Special elements
-- [x] `<svelte:options>` — compiler options tag (parser + validation)
-- [x] `<svelte:head>` — document head insertion
-- [x] `<svelte:window>` — window events, bindings (`scrollX/Y`, `innerWidth/Height`, `outerWidth/Height`, `online`, `devicePixelRatio`)
-- [x] `<svelte:document>` — document events, bindings (`activeElement`, `fullscreenElement`, `pointerLockElement`, `visibilityState`)
-- [x] `<svelte:body>` — body events, actions (`use:action`)
-- [x] `<svelte:element this={tag}>` — dynamic element (`$.element()`)
-- [x] `<svelte:boundary>` — error boundary (Svelte 5.3+, `$.boundary()`)
-- [x] `<title>` in `<svelte:head>` — `$.document.title` with effect wrapping
-- [x] Component `bind:this` — `$.bind_this(component, setter, getter)`
+### Special elements (9 items)
+`<svelte:options/head/window/document/body/element/boundary>`, `<title>` in head, component `bind:this`
 
-### Module compilation
-- [x] `compile_module()` entry point + `analyze_module()` + WASM export
+### Module compilation, Optimizations, WASM, Custom Elements
+All completed.
 
-### Optimizations
-- [x] Whitespace trimming
-- [x] Merge adjacent text/interpolation
-- [x] First-node-is-text optimization
-- [x] Single-element optimization
-- [x] Text-and-interpolation-only optimization
-- [x] Non-reactive attribute optimization
-- [x] Unmutated rune optimization — skip `$.state()` wrapper for `$state` that's never assigned
+### Tier 1 — Core Gaps ✅
+1a `ModuleCompileOptions`, 1b Template expression transforms (`svelte_transform`) — all completed.
 
-### WASM
-- [x] Compiler compiled to WASM for browser use
+### Tier 1.1 — Experimental Async (completed items)
+Infrastructure (5/6), block wrapping (3/4), bind directives, actions/attachments/transitions — all completed.
 
-### Custom Elements (Tier 9)
-- [x] `customElement` compile option — forces all props to prop sources with getter/setter exports
-- [x] `$.create_custom_element()` — full argument generation (props metadata, slots, accessors, shadow config, extend)
-- [x] Props metadata — auto-populated from `$props()` destructuring, explicit config with `attribute`, `reflect`, `type`
-- [x] Shadow DOM config — `"open"` (default) and `"none"` (omit shadow root)
-- [x] `extend` option — class inheritance for custom element
-- [x] Object form parsing — `customElement={{ tag, shadow, props, extend }}` expression span re-parsed in codegen
-- [x] Tag-less registration — no `customElements.define()`, just `$.create_custom_element()` call
-- [x] Accessors — exported names populate accessors array
+</details>
 
 ---
 
----
+## Tier 1.1 — Experimental Async (remaining)
 
-## Tier 1 — Core Gaps
+Spec: `specs/experimental-async.md`
 
-### 1a — `ModuleCompileOptions` ✅
-- [x] `ModuleCompileOptions` — subset of `CompileOptions`: `dev`, `generate`, `filename`, `rootDir`. No `name`, `css`, `customElement`, `namespace`
-- [x] `compile_module` wires options through pipeline: `dev` → analyze/codegen, `generate: false` → analysis-only, `filename` → TypeScript detection
-
-### 1b — Template expression transforms (`svelte_transform`) ✅
-
-- [x] `$store = val` in template — `$.store_set(store, val)`
-- [x] `$store += val` in template — `$.store_set(store, $store() + val)`
-- [x] `$store++` / `$store--` in template — `$.update_store()` / `$.update_pre_store()`
-- [x] `$store.field = val` in template — `$.store_mutate()`
-- [x] `$store.count++` in template — `$.store_mutate()` (deep update)
-- [x] Rune compound assignment in template — `state_var += val` → `$.set(name, $.get(name) + val)`
-- [x] Rune logical compound — `state_var &&= other` → `$.set(name, $.get(name) && other, true)`
-- [x] `$store` deep mutation in script — `$.store_mutate(store, mutation, $.untrack(store))`
-- [x] `$.push/$.pop` for components with deep store mutations (`needs_context` detection)
-- [x] `collect_references` fix: walk member chains in UpdateExpression/AssignmentExpression targets
-
----
-
-## Tier 1.1 — Experimental Async (`experimental.async`)
-
-Theme: all features gated behind `experimental.async`. Requires analysis infrastructure (`ExpressionInfo.has_await`, `has_blockers()`, blocker tracking).
-
-### Infrastructure
-- [x] `ExpressionInfo.has_await` — detect `await` in expression metadata
-- [x] `has_blockers()` — analysis infrastructure for dependency tracking
-- [x] `CompileOptions.experimental.async` option + `import "svelte/internal/flags/async"`
-- [x] Instance body splitting: sync/async segments + `var $$promises = $.run([thunks])`
-- [x] Blocker tracking: `SymbolId → BlockerIndex`, expression blocker resolution
 - [ ] Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
-
-### Template blocks
-- [x] `$.async()` wrapping for if/each/html/key blocks with `has_await` expressions
-- [x] `{#await}` — async thunk for expression with `has_await`
-- [x] Block wrapping with non-empty blockers (has_blockers but no has_await)
 - [ ] `{await expr}` experimental template syntax (Svelte 5.36+)
-
-### Bind directives
-- [x] `$.run_after_blockers()` wrapping for async bind expressions
-
-### Actions, attachments & transitions
-- [x] `use:action` with `await` expression — `run_after_blockers`
-- [x] `{@attach}` with async/blockers — `$.run_after_blockers()` wrapping
-- [x] `transition:` async/blockers — `$.run_after_blockers()` wrapping for transitions with async expressions
-- [x] `animate:` async/blockers — `$.run_after_blockers()` wrapping for animations with async expressions
-
-### Special elements
 - [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
 
 ---
@@ -193,39 +65,13 @@ Edge cases and missing features discovered during porting. Grouped by feature ar
 - [ ] Custom element `$.push`/`$.pop` lifecycle for `$host()` mutations
 
 ### 2b — Template tags
-- [x] `{@html}` — `is_controlled` optimization (single child → innerHTML)
-- [x] `{@html}` — `is_svg` / `is_mathml` namespace flags
-- [x] `{@const}` — dev mode `$.tag()` wrapping + eager `$.get()` for init errors
-- [x] `{@debug}` — works in if/each contexts with proper `$.get()` wrapping for each-block vars
-- [x] `{#await}` — array destructuring in then/catch bindings (e.g., `{:then [a, b]}`)
-- [x] `$.add_svelte_meta()` — dev-mode block wrapping for if/each/await/key blocks
 - [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression
 - [ ] `{#snippet}` — parameter destructuring: array/object patterns with defaults → per-field `$.derived()` wrappers
 
-### 2c — Bind directives
-- [x] `bind:property={get, set}` — function bindings (Svelte 5) ✅
-- [x] `bind:group` — value attribute `__value` pattern for elements with `bind:group` ✅
-- [x] `bind:group` — value attribute dependency: wrap getter to include value expression ✅
-- [x] Bind directive deferral with `use:` — wrap non-`bind:this` directives in `$.effect()` when parent has `UseDirective` ✅
-- [x] `contenteditable` detection — `bound_contenteditable` flag affecting text update behavior in fragment codegen ✅
-- [x] `$state(array/object)` — wrap inner value in `$.proxy()` for mutated $state signals ✅
-- [x] `bind:group` — index array from `parent_each_blocks` when expression references each-block vars ✅
-
-### 2d — Actions & attachments
-- [x] `{@attach}` on component nodes — generates `$.attachment()` property in props
-
 ### 2e — Special elements
-- [x] `<svelte:options>` — `namespace` affecting codegen: `$.from_svg()` / `$.from_mathml()` instead of `$.from_html()`
-- [x] `<svelte:element>` inside `{#if}` block
-- [x] `<svelte:element>` with `class:` directives
-- [x] `<svelte:element>` with `style:` directives
-- [x] `<svelte:head>` — `filename` parameter for correct hash (already correct)
-- [x] `<svelte:boundary>` — `@const` duplication into hoisted snippets
-- [x] `<svelte:boundary>` — import reactivity: imported identifiers in boundary attrs generate getters
 - [ ] `<svelte:boundary>` — dev mode: snippet wrapping with `$.wrap_snippet`
 - [ ] `<svelte:boundary>` — handler wrapping for snippet params as event handlers
 - [ ] `<svelte:element>` — dynamic `xmlns` attribute for runtime namespace switching
-- [x] `bind:this` — SequenceExpression custom getter/setter
 
 ### 2f — CSS
 - [ ] Component CSS custom properties on `<Component>` — `$.css_props()` wrapper element injection
@@ -260,7 +106,6 @@ Ref: `RegularElement.js` lines 583–725, `shared/element.js`
 
 ### 2k — Form element special handling
 - [ ] `$.remove_textarea_child(el)` — called for `<textarea>` with spread, `bind:value`, or dynamic value
-- [x] `__value` property — hidden internal property for `<input type="checkbox">` with `bind:group` ✅ (option/select not yet)
 - [ ] `$.init_select(el)` — initialize select element for value tracking
 - [ ] `$.select_option(el, value)` — sync select option when value changes dynamically
 - [ ] `customizable_select` — rich HTML content in `<select>`/`<option>`/`<optgroup>` → `$.customizable_select()` wrapper
@@ -273,20 +118,8 @@ Ref: `RegularElement.js` lines 166–202, 470–725
 Ref: `RegularElement.js` lines 280–284
 
 ### 2m — EachBlock edge cases
-- [x] Fallback (`{:else}`) codegen — 6th argument to `$.each()`: `($$anchor) => fallback_fragment`
-- [x] `EACH_INDEX_REACTIVE` flag (value 2) — set when keyed block has index variable; index becomes signal, read via `$.get(i)`
-- [x] Key function index parameter — include index in key arrow `(item, i) => key_expr` when key expression references the index variable
-- [x] Destructuring context — `{#each items as { x, y }}` → per-field `$.derived_safe_equal()` wrappers inside render function
-- [x] Destructuring array context — `{#each items as [a, b]}` → `$.to_array` + `$.derived` intermediate + per-element thunks
-- [x] Destructuring with defaults — `{#each items as { x = 5 }}` → `$.derived_safe_equal(() => $.fallback(...))`
-- [x] `key_is_item` optimization — when key expression equals context identifier, skip `EACH_ITEM_REACTIVE` and `$.get()` wrapping
-- [x] `body_uses_index` optimization — index param only emitted in render fn when body actually uses it
 - [ ] Collection ID (scope shadowing) — when context variable shadows outer scope binding, store array in `$$array` and pass as extra render_fn arg
 - [ ] Store invalidation — `$.invalidate_store($$stores, 'name')` when collection expression uses `$store` subscription
-- [x] Flag refinement: `EACH_ITEM_REACTIVE` — runes mode: skip when `key_is_item` (no store deps)
-- [x] Flag refinement: `EACH_ITEM_IMMUTABLE` — always set in runes mode (store detection deferred to legacy mode)
-- [x] `bind:group` + keyed each: existing tests pass (5 bind_group+each tests)
-- [x] Nested each blocks: `bind:group` expression propagates through multiple levels (existing tests pass)
 
 Ref: `EachBlock.js` lines 45–110 (flags), 139–288 (context/index), 293–354 (key/fallback/async)
 
@@ -373,19 +206,20 @@ Ref: `3-transform/client/visitors/shared/element.js` lines 93–95
 
 Theme: developer experience — errors, warnings, and diagnostic infrastructure.
 
-### 5a — Infrastructure setup
+### 5a — Infrastructure setup ✅
 
-Текущее состояние: `svelte_diagnostics` имеет ~25 error-вариантов в `DiagnosticKind`, severity только Error, нет warnings. `validate()` в `svelte_analyze` — пустая заглушка.
+Spec: `specs/diagnostics-infrastructure.md`
 
-- [ ] Extend `DiagnosticKind` with warning variants (~39 кодов в reference: `warnings.js`)
-- [ ] Parameterized messages — поддержка `%placeholder%` подстановки в сообщениях
-- [ ] `<!-- svelte-ignore -->` parsing — извлечение кодов из HTML-комментариев (runes: comma-separated, legacy: space-separated)
-- [ ] Legacy code migration map (e.g., `empty-block` → `block_empty`)
-- [ ] Ignore stack + ignore map — `push_ignore(codes)` / `pop_ignore()` / `is_ignored(node, code)` threading через analysis walk
-- [ ] Warning filter — поддержка `warningFilter` из `CompileOptions`
-- [ ] Unused selector warnings — `css-warn.js` pattern (зависит от Tier 4d)
-
-Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js` (ignore stack), `reference/compiler/utils/extract_svelte_ignore.js`
+- [x] `DiagnosticKind` — 81 warning variants + ~165 semantic error variants (all from reference `warnings.js` + `errors.js`)
+- [x] Parameterized messages via enum fields + `format!()` in `message()`
+- [x] `<!-- svelte-ignore -->` parsing (runes: comma-separated strict, legacy: space-separated lenient)
+- [x] Legacy code migration map (9 mappings) + fuzzy-match suggestions
+- [x] `IgnoreData` side table in `AnalysisData` with interned snapshots
+- [x] Ignore stack in walker `VisitContext` — push/pop around nodes, preceding comment scan
+- [x] `ctx.warn(node_id, kind, span)` API respecting ignore map
+- [x] `AnalyzeOptions { custom_element, runes, dev, warning_filter }`
+- [x] Warning filter applied after validate in `analyze_with_options()`
+- [ ] Unused selector warnings — `css-warn.js` pattern (зависит от Tier 3)
 
 ### 5b — Runes & script
 
@@ -463,10 +297,6 @@ Ref: `reference/compiler/warnings.js` (~39 codes), `reference/compiler/state.js`
 
 Theme: compiler options, source maps, dev mode support.
 
-### `CompileOptions` structure ✅
-
-`CompileOptions` and `ModuleCompileOptions` types defined in `svelte_compiler::options`. Piped through pipeline; `component_name()` derives name from `filename`. Behavioral changes (dev mode, css injection, etc.) are deferred.
-
 ### 6a — `discloseVersion` option
 - [ ] `import {} from 'svelte/internal/disclose-version'` when `discloseVersion: true`
 
@@ -494,14 +324,6 @@ Single visitor: BinaryExpression
 - [ ] `$.apply()` wrapping: `$.apply(thunk, this, args, ComponentName, [line, col])` for location tracking
 
 Ref: `reference/compiler/phases/3-transform/client/visitors/shared/events.js`
-
-### 6f — Dev: `$.add_svelte_meta()` block wrapping
-- [x] IfBlock — `$.add_svelte_meta(() => $.if(...), 'if', ComponentName, line, col)`
-- [x] EachBlock — same pattern
-- [x] AwaitBlock — same pattern
-- [x] KeyBlock — same pattern
-
-Implemented in Tier 2b. Ref: `reference/compiler/phases/3-transform/client/visitors/shared/utils.js`
 
 ### 6g — Dev: ownership validation
 - [ ] `$.create_ownership_validator($$props)` setup in component body
@@ -592,12 +414,15 @@ trait NodeStore {
 ## Deferred
 
 ### experimental.async (Tier 1.1)
-- `{await expr}` experimental template syntax (Svelte 5.36+ — requires parser change)
-- `use:action` / `{@attach}` / `transition:` / `animate:` with `$.run_after_blockers()`
-- `<svelte:boundary>` async const tag scoping changes
-- `for await` reactivity loss tracking (dev mode)
-- Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
 - Function blocker analysis: deferred max-blocker tracking for function declarations
+- `for await` reactivity loss tracking (dev mode)
+
+### Early bail on parser errors
+- `compile()` currently runs analyze + codegen even when parser returned fatal errors
+- Reference compiler throws on first error and never reaches analyze
+- Should skip analyze/codegen if `diagnostics` contains `Severity::Error` after parsing
+- Avoids panics on broken AST and gives cleaner error reporting
+- Affects: `crates/svelte_compiler/src/lib.rs`
 
 ### Move `should_proxy` classification to analyze
 - `should_proxy()` is called from codegen in 6+ sites to classify whether an expression needs `$.proxy()` wrapping

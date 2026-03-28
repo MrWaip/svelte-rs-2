@@ -19,6 +19,8 @@ These steps are read-only. Complete them before writing any code.
 
 ### Step 1: Understand the failure
 
+If `/explain-test` was already run for this test in the current session, use its findings — skip Step 1 and Step 2, go directly to Step 3 (Research).
+
 Run the test to see the diff:
 ```
 just test-case-verbose $ARGUMENTS
@@ -43,17 +45,10 @@ Use the navigation table in CLAUDE.md to find the exact file. For detailed type 
 
 ### Step 3: Research
 
-Launch 2 Explore agents in parallel:
+Launch 2 agents in parallel:
 
-1. **Agent 1 — Reference compiler**: trace how Svelte handles this specific case:
-   - `reference/compiler/phases/3-transform/client/visitors/` — which visitor(s) produce the expected output, what conditions/branches apply
-   - `reference/compiler/phases/2-analyze/visitors/` — what analysis data the transform reads
-   - Focus on the specific code path that produces the diff from Step 1, not the entire feature
-
-2. **Agent 2 — Our codebase**: find the corresponding code in our compiler:
-   - Which codegen function handles this node type
-   - What analysis data is available (AnalysisData fields, expression info)
-   - What's missing or different compared to what Agent 1 found
+1. **@reference-tracer** — trace how Svelte handles this specific case. Focus on the specific code path that produces the diff from Step 1, not the entire feature.
+2. **@codebase-analyzer** — find the corresponding code in our compiler: which codegen function handles this node type, what analysis data is available, what's missing.
 
 After agents complete, identify the gap: what the reference does that we don't.
 
@@ -75,11 +70,6 @@ Produce a plan with ALL of these sections:
 Start here after plan approval.
 
 ### Step 5: Fix
-
-**Load OXC API references** — read all three files:
-- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
 
 Implement the planned fix. Do NOT fix multiple test cases at once — focus only on `$ARGUMENTS`.
 
@@ -108,3 +98,6 @@ If the test still fails after 3 fix attempts, stop and report what you've tried.
 ### Step 8: Update spec
 
 If this test is tracked in a spec file (`specs/*.md`), mark it as fixed and update the **Current state** section.
+
+### Next
+→ `/qa` (recommended if fix touched analyze or codegen)
