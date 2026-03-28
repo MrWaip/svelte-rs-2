@@ -597,10 +597,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             if let Expression::ThisExpression(_) = &member.object {
                                 let name = member.property.name.to_string();
                                 if let Some(field_info) = ctor_fields.get(name.as_str()) {
-                                    // Rewrite: this.name = $state(arg) → this.#backing = $.state($.proxy(arg)) or $.state(arg)
+                                    // Mutable values (arrays, objects) need proxy wrapping for reactivity tracking
                                     if let Expression::CallExpression(call) = &mut assign.right {
                                         call.callee = self.b.rid_expr("$.state");
-                                        // Wrap proxyable args (arrays/objects) in $.proxy()
                                         let needs_proxy = call.arguments.first()
                                             .and_then(|a| a.as_expression())
                                             .is_some_and(|e| svelte_transform::rune_refs::should_proxy(e));
