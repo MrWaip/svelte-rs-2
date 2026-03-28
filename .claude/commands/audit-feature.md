@@ -8,6 +8,14 @@ allowed-tools: Bash, Read, Grep, Glob, Write, Edit, Agent
 
 Gap analysis for an existing feature: compare our implementation against the reference Svelte compiler and produce a spec file with what's missing.
 
+## Session continuation
+
+Run `Glob("specs/*.md")` and scan the results for a file matching this feature (names may differ from the argument — e.g. argument `$state` → file `state-rune.md`). If a matching spec exists:
+1. Read the spec file
+2. Check the **Current state** section — what's done, what's next
+3. Skip to the appropriate step (likely Step 4 or Step 5)
+4. Do NOT re-run Steps 1–3 unless the spec says the audit needs revision
+
 ## Step 1: Research reference compiler
 
 Launch 2 Explore agents:
@@ -27,6 +35,10 @@ Launch 2 Explore agents:
 - `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
 - `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
 - `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+
+After all agents complete, synthesize findings from agent results. Agents return summaries, not full file contents — you may need to read key files yourself for details.
+
+**Controlled follow-up reads:** only files that agents identified as critical but whose exact content (type signatures, match arms, codegen branches) you need to see. List the files and why before reading. Do not re-read files that agents already summarized adequately. Do not launch additional agents.
 
 ## Step 2: Gap analysis
 

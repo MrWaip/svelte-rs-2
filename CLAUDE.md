@@ -9,9 +9,9 @@ Use LSP first (go-to-definition, references, hover, symbols). grep/ripgrep only 
 
 ## Spec files
 
-Before implementing any ROADMAP item or complex feature, check if `specs/<feature>.md` exists.
+Before implementing any ROADMAP item or complex feature, run `Glob("specs/*.md")` and check if a matching spec exists (names may differ from feature name).
 If yes — read it first and continue from where the last session stopped.
-If no — create it during planning (see `/port-svelte` step 3 or `/audit-feature`).
+If no — create it during planning (see `/port-svelte` step 3 for the template, or `/audit-feature`).
 
 ## Architecture boundaries — STRICT ENFORCEMENT
 

@@ -1759,6 +1759,31 @@ fn animate_blockers() {
 }
 
 #[rstest]
+fn async_svelte_element() {
+    assert_compiler("async_svelte_element");
+}
+
+#[rstest]
+fn async_const_tag() {
+    assert_compiler("async_const_tag");
+}
+
+#[rstest]
+fn async_derived_basic() {
+    assert_compiler("async_derived_basic");
+}
+
+#[rstest]
+fn async_render_tag() {
+    assert_compiler("async_render_tag");
+}
+
+#[rstest]
+fn async_boundary_const() {
+    assert_compiler("async_boundary_const");
+}
+
+#[rstest]
 fn attach_on_component() {
     assert_compiler("attach_on_component");
 }
