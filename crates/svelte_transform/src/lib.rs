@@ -464,6 +464,19 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                             }
                             return;
                         }
+                        ("$state", "snapshot") => {
+                            // Walk arguments for nested rune refs
+                            for arg in call.arguments.iter_mut() {
+                                if let Some(expr) = arg.as_expression_mut() {
+                                    self.visit_expression(expr);
+                                }
+                            }
+                            // Replace callee: $state.snapshot → $.snapshot
+                            let Expression::CallExpression(call) = it else { unreachable!() };
+                            let ast = oxc_ast::AstBuilder::new(self.ctx.alloc);
+                            call.callee = rune_refs::make_dollar_member(&ast, "snapshot");
+                            return;
+                        }
                         ("$effect", "pending") => {
                             *it = rune_refs::make_eager_pending(self.ctx.alloc);
                             return;

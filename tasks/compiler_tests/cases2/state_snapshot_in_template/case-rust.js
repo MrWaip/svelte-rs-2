@@ -9,6 +9,6 @@ export default function App($$anchor) {
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);
-	$.template_effect(($0) => $.set_text(text, $0), [() => JSON.stringify($state.snapshot(items))]);
+	$.template_effect(($0) => $.set_text(text, $0), [() => JSON.stringify($.snapshot(items))]);
 	$.append($$anchor, p);
 }

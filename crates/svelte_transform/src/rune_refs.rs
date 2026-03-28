@@ -287,8 +287,8 @@ pub fn replace_expr_root_in_simple_target<'a>(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Build `$.method` static member expression.
-fn make_dollar_member<'a>(ast: &AstBuilder<'a>, method: &str) -> Expression<'a> {
+/// Build `$.method` static member expression (public for use in ExprTransformer).
+pub(crate) fn make_dollar_member<'a>(ast: &AstBuilder<'a>, method: &str) -> Expression<'a> {
     let object = ast.expression_identifier(SPAN, ast.atom("$"));
     let property = ast.identifier_name(SPAN, ast.atom(method));
     Expression::StaticMemberExpression(ast.alloc(
