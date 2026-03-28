@@ -75,7 +75,7 @@ For each identified issue, add a **focused** test case to existing tests:
 
 - **Parser issues** → add test in `crates/svelte_parser/tests/` following `/test-pattern`
 - **Analysis issues** → add test in `crates/svelte_analyze/tests/` following `/test-pattern`
-- **Codegen issues** → create a new compiler test case in `tasks/compiler_tests/cases2/<descriptive_name>/`:
+- **Codegen issues** → first check if an existing test case covers the same feature area AND its `case.svelte` is < 30 lines. If yes, extend that test. If no, create a new compiler test case in `tasks/compiler_tests/cases2/<descriptive_name>/`:
   - `case.svelte` — minimal component isolating the single feature
   - Run `just generate` to generate `case-svelte.js` for all cases
   - Add `#[rstest]` test function in `tasks/compiler_tests/test_v3.rs`
