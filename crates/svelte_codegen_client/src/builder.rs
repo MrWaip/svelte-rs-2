@@ -489,6 +489,28 @@ impl<'a> Builder<'a> {
         )
     }
 
+    /// Build `FormalParameters` from pre-built `FormalParameter` items.
+    pub fn formal_parameters(&self, items: impl IntoIterator<Item = ast::FormalParameter<'a>>) -> FormalParameters<'a> {
+        self.ast.formal_parameters(
+            SPAN,
+            ast::FormalParameterKind::FormalParameter,
+            self.ast.vec_from_iter(items),
+            NONE,
+        )
+    }
+
+    /// Build a single `FormalParameter` from a `BindingPattern`.
+    pub fn formal_parameter_from_pattern(&self, pattern: ast::BindingPattern<'a>) -> ast::FormalParameter<'a> {
+        self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, NONE, NONE, false, None, false, false)
+    }
+
+    /// Build a single `FormalParameter` from a string identifier.
+    pub fn formal_parameter_from_str(&self, name: &str) -> ast::FormalParameter<'a> {
+        let atom = self.ast.atom(name);
+        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
+        self.ast.formal_parameter(SPAN, self.ast.vec(), pattern, NONE, NONE, false, None, false, false)
+    }
+
     pub fn arrow(
         &self,
         params: FormalParameters<'a>,

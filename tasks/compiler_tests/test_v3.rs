@@ -1667,3 +1667,8 @@ fn each_block_no_item() {
 fn each_block_no_item_multi() {
     assert_compiler("each_block_no_item_multi");
 }
+
+#[rstest]
+fn each_keyed_destructure() {
+    assert_compiler("each_keyed_destructure");
+}
