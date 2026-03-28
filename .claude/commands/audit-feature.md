@@ -23,6 +23,11 @@ Launch 2 Explore agents:
    - Existing test cases in `tasks/compiler_tests/cases2/`
    - Run each existing test: `just test-case <name>` -- which pass, which fail?
 
+**Load OXC API references** — read all three files:
+- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+
 ## Step 2: Gap analysis
 
 For each use case from the reference compiler, classify:

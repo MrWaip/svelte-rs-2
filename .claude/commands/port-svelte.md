@@ -118,8 +118,6 @@ Produce a concrete plan:
 
 If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
 
-**Quality verification in plan:** for each proposed change, verify it satisfies the **Pre-commit self-check** in CLAUDE.md. If a change would violate any point, redesign it before presenting the plan.
-
 **Write the plan to `specs/<feature-name>.md`** using the spec file format (see CLAUDE.md). Include: Source, Reference files, Use cases (from Step 2), Tasks by layer, Current state.
 
 **Present the plan and wait for approval before proceeding.**
@@ -145,6 +143,11 @@ git branch --show-current
   ```
 
 Verify with `git branch --show-current`. If still on master, stop and fix before proceeding. Never commit directly to master.
+
+**Load OXC API references** — read all three files:
+- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
 
 ### Step 5: Test cases
 
@@ -184,8 +187,6 @@ Key differences from Svelte:
 - Store `Span`, re-parse in codegen via `svelte_types` — not stored expressions
 
 ### Step 8: Verify & Finalize
-
-**Quality gate:** verify all new and modified code against the **Pre-commit self-check** in CLAUDE.md. All points must hold before proceeding to test verification.
 
 **Verify each test case individually:**
 ```

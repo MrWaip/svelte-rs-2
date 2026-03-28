@@ -1,0 +1,27 @@
+# OXC SemanticBuilder — key methods (curated extract)
+# Source: https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/crates/oxc_semantic/src/builder.rs
+# Updated: 2026-03-28
+#
+# This is NOT the full API — only the most useful methods for understanding
+# reference resolution, write detection, and symbol/scope management.
+# For the complete API, fetch the source URL above.
+
+## Builder construction & finalization
+pub fn new() -> Self
+pub fn build(mut self, program: &'a Program<'a>) -> SemanticBuilderReturn<'a>
+pub fn with_check_syntax_error(mut self, yes: bool) -> Self       // enables syntax checks incl. write context validation
+pub fn with_cfg(mut self, cfg: bool) -> Self                       // enables control flow graph construction
+pub fn with_stats(mut self, stats: Stats) -> Self                  // pre-calculated AST stats for memory optimization
+pub fn with_excess_capacity(mut self, excess_capacity: f64) -> Self
+
+## Symbol & Binding
+pub fn declare_symbol(&mut self, span: Span, name: Ident<'a>, includes: SymbolFlags, excludes: SymbolFlags) -> SymbolId
+    // declares symbol in current scope with specified flags
+pub fn declare_symbol_on_scope(&mut self, span: Span, name: Ident<'a>, scope_id: ScopeId, includes: SymbolFlags, excludes: SymbolFlags) -> SymbolId
+    // declares symbol in specified scope, detecting redeclarations
+pub fn check_redeclaration(&self, scope_id: ScopeId, span: Span, name: Ident<'_>, excludes: SymbolFlags, report_error: bool) -> Option<SymbolId>
+    // checks if symbol already declared; optionally reports error
+
+## Reference Resolution
+pub fn declare_reference(&mut self, name: Ident<'a>, reference: Reference) -> ReferenceId
+    // creates unresolved reference in current scope for later resolution

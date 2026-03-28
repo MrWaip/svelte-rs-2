@@ -65,17 +65,21 @@ Produce a plan with ALL of these sections:
 2. **Root cause**: what's missing or wrong — missing code path, wrong condition, wrong layer
 3. **Changes**: specific functions/match arms to add or modify, with the rationale
 4. **Unit tests**: what unit tests to add if the fix touches parser or analyze (test name, what it verifies). Write "N/A — codegen-only change" if not applicable.
-5. **Quality check**: verify EACH point of **Pre-commit self-check** from CLAUDE.md against the planned changes. List every point with pass/fail and brief justification — do not skip any.
 
 **Present the plan and wait for approval before proceeding.**
 
 ---
 
-## EXECUTE PHASE (steps 5–9)
+## EXECUTE PHASE (steps 5–8)
 
 Start here after plan approval.
 
 ### Step 5: Fix
+
+**Load OXC API references** — read all three files:
+- `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
+- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
 
 Implement the planned fix. Do NOT fix multiple test cases at once — focus only on `$ARGUMENTS`.
 
@@ -85,11 +89,7 @@ Implement the planned fix. Do NOT fix multiple test cases at once — focus only
 
 If the fix touches parser or analyze logic, add a unit test covering the specific behavior following the **Unit test pattern** in CLAUDE.md. Use existing `assert_*` helpers or add new ones — no manual field access in test bodies.
 
-### Step 7: Quality gate
-
-Verify all new and modified code against the **Pre-commit self-check** in CLAUDE.md. All points must hold before proceeding to test verification.
-
-### Step 8: Verify
+### Step 7: Verify
 
 Run the single test:
 ```
@@ -105,6 +105,6 @@ If the fix breaks other tests, stop and report — do NOT fix other tests in the
 
 If the test still fails after 3 fix attempts, stop and report what you've tried.
 
-### Step 9: Update spec
+### Step 8: Update spec
 
 If this test is tracked in a spec file (`specs/*.md`), mark it as fixed and update the **Current state** section.

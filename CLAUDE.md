@@ -71,7 +71,7 @@ For legacy Svelte 4 features, see the `legacy-conventions` skill.
 Before every commit, verify:
 1. **Correct layer** — is this code in the right crate? (parser/analyze/codegen)
 2. **No new boundary violations** — no re-parsing in codegen, no string lookups, no repeated traversal
-3. **Visitor usage** — any new JS AST traversal uses OXC Visit, not manual match. Use the most specific `visit_*` method available (e.g., `visit_call_expression`, not `visit_expression` with manual dispatch). Exceptions: shallow destructure, `builder.rs`.
+3. **Visitor usage** — any new JS AST traversal uses OXC Visit/Traverse, not manual match. Consult the OXC API skill references for the correct visitor method. Exceptions: shallow destructure, `builder.rs`.
 4. **SymbolId** — no new string-based identifier comparisons
 5. **Edge cases** — does the change handle all JS syntax variants, not just the tested one?
 6. **No implicit dependencies** — data flows through explicit types and function signatures
