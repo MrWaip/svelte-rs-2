@@ -22,7 +22,14 @@
       "Bash(diff *)"
     ]
   },
-  "hooks": {},
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "bash .claude/hooks/check-boundaries.sh"
+      }
+    ]
+  },
   "ignorePatterns": [
     "docs/compiler",
     "target",
