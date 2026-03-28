@@ -2,6 +2,51 @@
 
 ---
 
+## Just commands
+
+All common operations are in the `justfile`. Use `just` instead of raw cargo commands:
+
+| Command | What it does |
+|---|---|
+| `just generate` | Generate `case-svelte.js` for all compiler test cases (runs node + oxc) |
+| `just test-compiler` | Run all compiler integration tests |
+| `just test-case <name>` | Run a single compiler test case |
+| `just test-case-verbose <name>` | Run a single compiler test case with output |
+| `just test-all` | Run all tests across all crates |
+| `just test-parser` | Run parser tests |
+| `just test-analyzer` | Run analyzer tests |
+| `just generate-benchmark [name] [chunks]` | Generate benchmark `.svelte` file (default: `big_v5`, 50 chunks) |
+| `just compare-benchmark [file]` | Wall-clock comparison: Rust vs Svelte JS compiler |
+
+## Benchmarks
+
+Two complementary systems:
+
+- **CodSpeed (CI, automatic)** — runs on every push, tracks CPU instruction count via Valgrind. Deterministic, no noise. Alerts on regressions. Only measures Rust.
+- **`just compare-benchmark` (local, manual)** — wall-clock Rust vs JS comparison. Run after major changes or for reporting.
+
+Benchmark file is versioned (`big_vN.svelte`). When porting a feature that adds new syntax, `/port-svelte` Step 8 bumps the version.
+
+## Testing
+
+### Unit test pattern
+
+Every unit test follows the same structure: **parse -> assert via helpers**. No manual field access, no `.unwrap()` chains in test bodies.
+
+Rules:
+- Each crate has a `parse_*` or `analyze_*` entry function that returns the data under test
+- All assertions go through `assert_*` helpers defined in the test module
+- Add new `assert_*` helpers when new features need testing -- don't inline field access
+- When writing or modifying any test in `svelte_parser`, apply `/test-pattern` automatically
+
+### Where tests live
+
+- **Parser** -- `crates/svelte_parser` tests, span-based pattern per `/test-pattern`
+- **Analyze** -- `crates/svelte_analyze/src/tests.rs`, entry: `analyze_source()` -> `(Component, AnalysisData)`
+- **Compiler integration** -- `tasks/compiler_tests/cases2/`, each case has `case.svelte` (input), `case-svelte.js` (expected), `case-rust.js` (actual)
+
+---
+
 ## Glossary
 
 | Term | Meaning |
