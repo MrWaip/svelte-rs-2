@@ -45,26 +45,34 @@ grep -rn 'TODO' crates/ --include='*.rs' | head -20
 
 ## Step 5: Report
 
+Build a single prioritized list of **runnable commands**. Each line = one command the user can copy-paste.
+
+Priority order (top to bottom):
+1. Quick-fix ignored tests → `/fix-test <name>`
+2. Active specs (not complete) → `/port specs/<name>.md`
+3. First unchecked ROADMAP item → `/audit <feature>` or `/port specs/<name>.md`
+4. Tech debt TODOs → `/improve <description>`
+
+For each item, format as:
+
 ```
-## Project Status
-
-### Active specs
-- [spec] — [status] — next: `/port specs/<name>.md`
-
-### Ignored tests (N total)
-- quick fix (M): `test1`, `test2` → `/fix-test <name>`
-- moderate (K): `test3` → `/fix-test <name>`
-- infrastructure (L): `test4` → `/port specs/<name>.md`
-
-### ROADMAP next
-- [tier] [item] → `/audit <feature>` or `/port`
-
-### Known debt (N items)
-- [item] → `/improve <description>`
-
-### Suggested next action
-→ [one concrete command based on: active spec > quick-fix test > ROADMAP next > debt]
+/command argument — one-line description (effort hint if available)
 ```
+
+Output the report:
+
+```
+## What to do next
+
+1. `/fix-test <test-name>` — <bug description>
+2. `/fix-test <test-name>` — <bug description>
+3. `/port specs/<spec>.md` — <N remaining use cases, what's next>
+4. `/audit <feature>` — <what and how many items>
+5. `/improve <file-or-description>` — <what to fix>
+...
+```
+
+Cap at 7 items. No sub-sections, no grouping headers — just a numbered list.
 
 ## Rules
 
