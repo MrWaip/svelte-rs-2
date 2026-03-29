@@ -529,21 +529,21 @@ pub(crate) fn gen_bind_directive<'a>(
         stmt = ctx.b.call_stmt("$.effect", [Arg::Expr(effect_body)]);
 
         if !bind_blockers.is_empty() {
-            stmt = wrap_run_after_blockers(ctx, stmt, &bind_blockers);
+            stmt = gen_run_after_blockers(ctx, stmt, &bind_blockers);
         }
         return Some(BindPlacement::Init(stmt));
     }
 
     // Wrap in $.run_after_blockers if bind target has blockers
     if !bind_blockers.is_empty() {
-        stmt = wrap_run_after_blockers(ctx, stmt, &bind_blockers);
+        stmt = gen_run_after_blockers(ctx, stmt, &bind_blockers);
     }
 
     Some(BindPlacement::AfterUpdate(stmt))
 }
 
 /// Wrap a statement in `$.run_after_blockers(blockers, () => { stmt })`.
-fn wrap_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
+fn gen_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
     let blockers_arr = ctx.b.promises_array(blockers);
     let thunk = ctx.b.thunk_block(vec![stmt]);
     ctx.b.call_stmt("$.run_after_blockers", [

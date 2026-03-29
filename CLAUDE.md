@@ -9,9 +9,50 @@ Use LSP first (go-to-definition, references, hover, symbols). grep/ripgrep only 
 
 ## Spec files
 
-Before implementing any ROADMAP item or complex feature, run `Glob("specs/*.md")` and check if a matching spec exists (names may differ from feature name).
-If yes — read it first and continue from where the last session stopped.
-If no — create it during planning (see `/port-svelte` step 3 for the template, or `/audit-feature`).
+Спека — рабочий документ фичи. Создаётся при первом контакте с задачей, живёт до завершения реализации. Читается сверху вниз: статус → scope → детали.
+
+### Когда создавать
+- Задача затрагивает 2+ слоя (parser + analyze + codegen)
+- Или задача не помещается в одну сессию
+- Мелкие фиксы (один файл, одна сессия) — спека не нужна
+
+### Нейминг
+Имя файла = имя фичи в kebab-case: `state-rune.md`, `each-block.md`, `diagnostics-infrastructure.md`.
+Для ROADMAP tier items: `<tier-id>-<short-name>.md` (e.g. `5a-diagnostics-infrastructure.md`).
+Если фича в ROADMAP не имеет tier — просто `<feature-name>.md`.
+
+### Структура
+
+Порядок секций фиксирован. Самое важное — наверху.
+
+| Секция | Назначение | Обязательность |
+|--------|-----------|----------------|
+| Current state | **Первое что видит человек.** Что сделано, что следующее, блокеры. Дата обновления. | Обязательно |
+| Source | Привязка к ROADMAP item или запросу | Обязательно |
+| Use cases | Scope: что реализуем `[ ]`, что есть `[x]`, что откладываем (Deferred) | Обязательно |
+| Reference | Файлы reference compiler + наши файлы — чтобы следующая сессия не искала заново | Обязательно |
+| Tasks | Implementation plan по слоям, с конкретными файлами и функциями | Обязательно |
+| Implementation order | Порядок выполнения Tasks (зависимости между слоями) | Опционально |
+| Discovered bugs | Баги найденные во время работы (с пометкой FIXED/OPEN) | По факту |
+| Test cases | Список тестов: существующие + планируемые | Опционально |
+
+### Scope правила
+- **Только client-side.** SSR use cases НЕ включать — SSR будет отдельным этапом после завершения client.
+- Use case с пометкой `[ ]` = в scope текущей работы
+- Use case с пометкой `[x]` = реализован и покрыт тестом
+- Use case с пометкой `[~]` = частично (описать что работает, что нет)
+- Секция "Deferred" внутри Use cases = отложено в ROADMAP, не в scope
+
+### Жизненный цикл
+1. Создаётся: `/port` step 3 или `/audit` step 3 (шаблон: `spec-template` skill)
+2. Обновляется: после каждой сессии — секция Current state (наверху!)
+3. Завершается: когда все Use cases `[x]` → фича в ROADMAP Done
+4. Не удаляется — остаётся как reference
+
+### Правила
+- Перед реализацией: `Glob("specs/*.md")` — проверить есть ли спека
+- Если есть — читать Current state (первая секция) и продолжить
+- Если нет — создать во время планирования
 
 ## Architecture boundaries — STRICT ENFORCEMENT
 
@@ -41,8 +82,8 @@ Match the JS output exactly. Design internals for Rust: direct recursion over si
 
 **Exception** — `svelte_analyze` uses a single-pass composite visitor (`walker.rs`). Codegen uses direct recursion.
 
-To port a new feature: `/port-svelte <feature>`. To audit existing feature completeness: `/audit-feature <feature>`.
-To fix existing code problems (bugs, workarounds, missing tests): `/fix-debt <description>`.
+To port a new feature: `/port <feature>`. To audit existing feature completeness: `/audit <feature>`.
+To fix existing code problems (bugs, workarounds, missing tests): `/improve <description>`.
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
 When discovering deferred items, add them to the **Deferred** section of `ROADMAP.md`.

@@ -416,6 +416,8 @@ pub struct SnippetData {
     pub(crate) hoistable: NodeBitSet,
     /// Key: ComponentNode NodeId → snippet NodeIds declared in its fragment
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
+    /// Pre-computed param names from the parsed `const name = (a, b) => {}` arrow.
+    pub(crate) params: NodeTable<Vec<String>>,
 }
 
 impl SnippetData {
@@ -423,6 +425,7 @@ impl SnippetData {
         Self {
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
+            params: NodeTable::new(node_count),
         }
     }
 
@@ -433,6 +436,9 @@ impl SnippetData {
         self.component_snippets
             .get(id)
             .map_or(&[], |v| v.as_slice())
+    }
+    pub fn params(&self, id: NodeId) -> &[String] {
+        self.params.get(id).map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -510,6 +516,8 @@ pub struct EachBlockData {
     pub(crate) key_is_item: NodeBitSet,
     /// Body contains an element with an `animate:` directive.
     pub(crate) has_animate: NodeBitSet,
+    /// Context variable name: simple identifier name or `"$$item"` for destructured.
+    pub(crate) context_names: NodeTable<String>,
 }
 
 impl EachBlockData {
@@ -523,6 +531,7 @@ impl EachBlockData {
             body_uses_index: NodeBitSet::new(node_count),
             key_is_item: NodeBitSet::new(node_count),
             has_animate: NodeBitSet::new(node_count),
+            context_names: NodeTable::new(node_count),
         }
     }
 
@@ -551,6 +560,9 @@ impl EachBlockData {
     }
     pub fn has_animate(&self, id: NodeId) -> bool {
         self.has_animate.contains(&id)
+    }
+    pub fn context_name(&self, id: NodeId) -> &str {
+        self.context_names.get(id).map_or("$$item", |s| s.as_str())
     }
 }
 
@@ -659,6 +671,63 @@ impl BindSemanticsData {
 }
 
 // ---------------------------------------------------------------------------
+// IgnoreData — svelte-ignore suppression tracking
+// ---------------------------------------------------------------------------
+
+/// Per-node ignore snapshots for `<!-- svelte-ignore -->` comment suppression.
+/// Snapshots are interned: most nodes share the same (empty) set.
+#[derive(Debug, Default)]
+pub struct IgnoreData {
+    /// NodeId → snapshot index into `snapshots`.
+    node_snapshot: FxHashMap<NodeId, u32>,
+    /// Interned ignore sets. Index 0 is always the empty set.
+    snapshots: Vec<FxHashSet<String>>,
+    /// Dedup map: sorted codes → snapshot index.
+    intern: FxHashMap<Vec<String>, u32>,
+}
+
+impl IgnoreData {
+    pub fn new() -> Self {
+        let empty_set = FxHashSet::default();
+        let mut intern = FxHashMap::default();
+        intern.insert(Vec::new(), 0);
+        Self {
+            node_snapshot: FxHashMap::default(),
+            snapshots: vec![empty_set],
+            intern,
+        }
+    }
+
+    /// Check if a warning code is ignored for the given node.
+    pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
+        self.node_snapshot
+            .get(&node_id)
+            .and_then(|&idx| self.snapshots.get(idx as usize))
+            .is_some_and(|set| set.contains(code))
+    }
+
+    /// Intern a set of ignored codes and return the snapshot index.
+    pub(crate) fn intern_snapshot(&mut self, codes: &FxHashSet<String>) -> u32 {
+        let mut sorted: Vec<String> = codes.iter().cloned().collect();
+        sorted.sort();
+        if let Some(&idx) = self.intern.get(&sorted) {
+            return idx;
+        }
+        let idx = self.snapshots.len() as u32;
+        self.snapshots.push(codes.clone());
+        self.intern.insert(sorted, idx);
+        idx
+    }
+
+    /// Record the ignore snapshot for a node.
+    pub(crate) fn set_snapshot(&mut self, node_id: NodeId, idx: u32) {
+        if idx != 0 {
+            self.node_snapshot.insert(node_id, idx);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // AnalysisData — side tables populated by all passes
 // ---------------------------------------------------------------------------
 
@@ -737,6 +806,8 @@ pub struct AnalysisData {
     pub(crate) has_store_member_mutations: bool,
     /// Blocker tracking for `experimental.async`: which script bindings depend on async operations.
     pub(crate) blocker_data: BlockerData,
+    /// svelte-ignore suppression data (per-node ignore snapshots).
+    pub ignore_data: IgnoreData,
 }
 
 // ---------------------------------------------------------------------------
@@ -846,6 +917,7 @@ impl AnalysisData {
             proxy_state_inits: FxHashMap::default(),
             has_store_member_mutations: false,
             blocker_data: BlockerData::default(),
+            ignore_data: IgnoreData::new(),
         }
     }
 }

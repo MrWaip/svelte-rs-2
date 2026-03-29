@@ -1,5 +1,5 @@
 ---
-name: benchmark
+name: bench
 description: Run wall-clock Rust vs JS compiler benchmark. Use when the user asks to "run benchmark", "compare performance", or "check speedup".
 user-invocable: true
 argument-hint: "[benchmark-file]"

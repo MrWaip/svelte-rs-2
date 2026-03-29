@@ -1,5 +1,5 @@
 ---
-name: add-test-case
+name: add-test
 description: Create a new compiler test case for test-first development. Use when the user asks to "add a test", "create test case", or wants to test a specific Svelte feature before implementing it.
 user-invocable: true
 argument-hint: "[test-case-name]"

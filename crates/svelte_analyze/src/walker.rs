@@ -1,5 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::ScopeId;
+use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
     ConcatPart, ConcatenationAttribute, ComponentNode, ConstTag, DebugTag, EachBlock, Element,
@@ -8,6 +9,7 @@ use svelte_ast::{
     StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
     TransitionDirective, UseDirective,
 };
+use svelte_diagnostics::{extract_svelte_ignore, Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{AnalysisData, FragmentKey, ParserResult};
@@ -151,10 +153,26 @@ pub(crate) struct VisitContext<'a> {
     parents: Vec<ParentRef>,
     /// Tag name of the nearest enclosing Element (managed by walker).
     element_name: Option<String>,
+    /// Source text for reading comment content.
+    source: &'a str,
+    /// Whether runes mode is active (affects svelte-ignore parsing).
+    runes: bool,
+    /// Current cumulative set of ignored warning codes.
+    ignore_current: FxHashSet<String>,
+    /// Stack of previous ignore sets (for push/pop).
+    ignore_stack: Vec<FxHashSet<String>>,
+    /// Accumulated warnings from svelte-ignore parsing and ctx.warn() calls.
+    warnings: Vec<Diagnostic>,
 }
 
 impl<'a> VisitContext<'a> {
-    pub fn new(scope: ScopeId, data: &'a mut AnalysisData, store: &'a svelte_ast::AstStore) -> Self {
+    pub fn new(
+        scope: ScopeId,
+        data: &'a mut AnalysisData,
+        store: &'a svelte_ast::AstStore,
+        source: &'a str,
+        runes: bool,
+    ) -> Self {
         Self {
             scope,
             data,
@@ -162,6 +180,11 @@ impl<'a> VisitContext<'a> {
             store,
             parents: Vec::new(),
             element_name: None,
+            source,
+            runes,
+            ignore_current: FxHashSet::default(),
+            ignore_stack: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -170,6 +193,8 @@ impl<'a> VisitContext<'a> {
         data: &'a mut AnalysisData,
         store: &'a svelte_ast::AstStore,
         parsed: &'a ParserResult<'a>,
+        source: &'a str,
+        runes: bool,
     ) -> Self {
         Self {
             scope,
@@ -178,6 +203,11 @@ impl<'a> VisitContext<'a> {
             store,
             parents: Vec::new(),
             element_name: None,
+            source,
+            runes,
+            ignore_current: FxHashSet::default(),
+            ignore_stack: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -209,6 +239,45 @@ impl<'a> VisitContext<'a> {
         self.ancestors()
             .find(|p| p.kind.is_element())
             .map(|p| p.id)
+    }
+
+    /// Push a new set of ignore codes onto the stack.
+    /// The new level is cumulative: inherits all parent codes.
+    pub fn push_ignore(&mut self, codes: Vec<String>) {
+        let prev = std::mem::take(&mut self.ignore_current);
+        let mut next = prev.clone();
+        next.extend(codes);
+        self.ignore_stack.push(prev);
+        self.ignore_current = next;
+    }
+
+    /// Pop the most recent ignore level, restoring the parent set.
+    pub fn pop_ignore(&mut self) {
+        if let Some(prev) = self.ignore_stack.pop() {
+            self.ignore_current = prev;
+        }
+    }
+
+    /// Record the current ignore snapshot for a node in IgnoreData.
+    pub fn record_ignore_for_node(&mut self, node_id: NodeId) {
+        if !self.ignore_current.is_empty() {
+            let idx = self.data.ignore_data.intern_snapshot(&self.ignore_current);
+            self.data.ignore_data.set_snapshot(node_id, idx);
+        }
+    }
+
+    /// Emit a warning, respecting the ignore map for the given node.
+    pub fn warn(&mut self, node_id: NodeId, kind: DiagnosticKind, span: Span) {
+        let code = kind.code();
+        if self.data.ignore_data.is_ignored(node_id, code) {
+            return;
+        }
+        self.warnings.push(Diagnostic::warning(kind, span));
+    }
+
+    /// Drain accumulated warnings.
+    pub fn take_warnings(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.warnings)
     }
 
     fn push(&mut self, r: ParentRef) {
@@ -372,8 +441,20 @@ pub(crate) fn walk_template(
     ctx: &mut VisitContext<'_>,
     visitors: &mut [&mut dyn TemplateVisitor],
 ) {
-    for &id in &fragment.nodes {
+    for (idx, &id) in fragment.nodes.iter().enumerate() {
         let node = ctx.store.get(id);
+
+        // Comments immediately before a node suppress warnings on that node
+        let ignore_codes = scan_preceding_ignores(idx, fragment, ctx);
+        let has_ignores = !ignore_codes.is_empty();
+        if has_ignores {
+            ctx.push_ignore(ignore_codes);
+        }
+
+
+        let node_id = node_id_of(node);
+        ctx.record_ignore_for_node(node_id);
+
         match node {
             Node::ExpressionTag(tag) => {
                 for v in visitors.iter_mut() { v.visit_expression_tag(tag, ctx); }
@@ -552,7 +633,86 @@ pub(crate) fn walk_template(
             }
             Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
         }
+
+        if has_ignores {
+            ctx.pop_ignore();
+        }
     }
+}
+
+/// Extract the NodeId from any Node variant.
+fn node_id_of(node: &Node) -> NodeId {
+    match node {
+        Node::ExpressionTag(n) => n.id,
+        Node::Element(n) => n.id,
+        Node::IfBlock(n) => n.id,
+        Node::EachBlock(n) => n.id,
+        Node::SnippetBlock(n) => n.id,
+        Node::ComponentNode(n) => n.id,
+        Node::RenderTag(n) => n.id,
+        Node::HtmlTag(n) => n.id,
+        Node::ConstTag(n) => n.id,
+        Node::DebugTag(n) => n.id,
+        Node::KeyBlock(n) => n.id,
+        Node::SvelteHead(n) => n.id,
+        Node::SvelteElement(n) => n.id,
+        Node::SvelteWindow(n) => n.id,
+        Node::SvelteDocument(n) => n.id,
+        Node::SvelteBody(n) => n.id,
+        Node::SvelteBoundary(n) => n.id,
+        Node::AwaitBlock(n) => n.id,
+        Node::Text(n) => n.id,
+        Node::Comment(n) => n.id,
+        Node::Error(n) => n.id,
+    }
+}
+
+/// Scan backward from `idx` in `fragment.nodes` to find preceding
+/// `<!-- svelte-ignore ... -->` comments, collecting their codes.
+/// Skips Text nodes (whitespace). Stops at any other node type.
+fn scan_preceding_ignores(
+    idx: usize,
+    fragment: &Fragment,
+    ctx: &mut VisitContext<'_>,
+) -> Vec<String> {
+    let mut codes = Vec::new();
+    if idx == 0 {
+        return codes;
+    }
+
+    // Walk backward
+    let mut i = idx;
+    while i > 0 {
+        i -= 1;
+        let prev_node = ctx.store.get(fragment.nodes[i]);
+        match prev_node {
+            Node::Comment(comment) => {
+                // Comment span includes <!-- and -->
+                let span = comment.span;
+                let start = span.start as usize;
+                let end = span.end as usize;
+                // Inner text: strip "<!--" (4) and "-->" (3)
+                if end - start > 7 {
+                    let inner = &ctx.source[start + 4..end - 3];
+                    let inner_offset = span.start + 4;
+                    let result = extract_svelte_ignore::extract_svelte_ignore(
+                        inner_offset, inner, ctx.runes,
+                    );
+                    if !result.codes.is_empty() {
+                        codes.extend(result.codes);
+                    }
+                    ctx.warnings.extend(result.warnings);
+                }
+            }
+            Node::Text(_) => {
+                // Skip whitespace text between comments and nodes
+                continue;
+            }
+            _ => break,
+        }
+    }
+
+    codes
 }
 
 /// Walk attributes, dispatching per-variant visit and expression/statement hooks to all visitors.
