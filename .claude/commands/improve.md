@@ -3,7 +3,7 @@ description: Fix existing codebase problems — bugs, workarounds, ad hoc soluti
 argument-hint: "[description-or-file-path]"
 ---
 
-# Fix debt: $ARGUMENTS
+# Improve: $ARGUMENTS
 
 Fix an existing codebase problem: bug, workaround, ad hoc solution, architectural issue, or missing test coverage.
 
