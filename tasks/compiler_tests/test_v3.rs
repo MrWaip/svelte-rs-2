@@ -1802,3 +1802,20 @@ fn attach_on_component_dynamic() {
 fn each_keyed_destructure() {
     assert_compiler("each_keyed_destructure");
 }
+
+#[rstest]
+#[ignore = "bug: spurious $.next() in non-root mixed fragment starting with text (codegen)"]
+fn await_then_text_before_element() {
+    assert_compiler("await_then_text_before_element");
+}
+
+#[rstest]
+#[ignore = "bug: thunk not optimized — () => fetch() should be fetch (codegen)"]
+fn await_thunk_optimization() {
+    assert_compiler("await_thunk_optimization");
+}
+
+#[rstest]
+fn await_each_nested() {
+    assert_compiler("await_each_nested");
+}
