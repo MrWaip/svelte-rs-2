@@ -36,7 +36,7 @@ pub(crate) fn gen_key_block<'a>(
         let key_stmt = super::add_svelte_meta(ctx, key_call, span_start, "key");
 
         let async_thunk = if has_await { Some(ctx.b.async_thunk(expression)) } else { None };
-        stmts.push(ctx.emit_async_block(id, anchor, has_await, async_thunk, "$$key", vec![key_stmt]));
+        stmts.push(ctx.gen_async_block(id, anchor, has_await, async_thunk, "$$key", vec![key_stmt]));
     } else {
         let key_thunk = super::expression::build_node_thunk(ctx, id);
 
