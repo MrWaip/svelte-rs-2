@@ -1842,3 +1842,15 @@ fn if_else_chain_with_const() {
 fn event_mixed_delegation() {
     assert_compiler("event_mixed_delegation");
 }
+
+#[rstest]
+#[ignore = "missing: $props() with plain identifier not transformed (analyze)"]
+fn props_identifier_basic() {
+    assert_compiler("props_identifier_basic");
+}
+
+#[rstest]
+#[ignore = "missing: $props() identifier in await expression not transformed (analyze)"]
+fn props_identifier_await_expression() {
+    assert_compiler("props_identifier_await_expression");
+}
