@@ -3,9 +3,9 @@
 Detailed crate API and type reference: `CODEBASE_MAP.md` (read when you need type signatures or module structure).
 Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` (read when adding a new feature or debugging unexpected output).
 
-## Tool Priority: LSP FIRST
+## Tool Priority: LSP FIRST FOR RUST CODE
 
-**When navigating code, ALWAYS use LSP before grep, glob, bash, or Read-and-scan.** LSP is faster, more accurate, and cheaper on tokens. Only fall back to grep/glob for non-code text search or regex patterns. This is a hard rule, not a suggestion.
+**When navigating rust code, ALWAYS use LSP before grep, glob, bash, or Read-and-scan.** LSP is faster, more accurate, and cheaper on tokens. Only fall back to grep/glob for non-code text search or regex patterns. This is a hard rule, not a suggestion.
 
 
 ## Spec files
