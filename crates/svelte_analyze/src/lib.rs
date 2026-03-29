@@ -95,6 +95,7 @@ pub fn analyze_with_options<'a>(
         let mut v1 = passes::js_analyze::BindingPreparer;
         let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
         walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
+        diags.extend(ctx.take_warnings());
     }
     // CE config (not template-related, extracted separately)
     if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
@@ -125,6 +126,7 @@ pub fn analyze_with_options<'a>(
             &mut ctx,
             &mut [&mut v1, &mut v2],
         );
+        diags.extend(ctx.take_warnings());
     }
     data.scoping.build_template_scope_set();
 
@@ -139,6 +141,7 @@ pub fn analyze_with_options<'a>(
             &mut ctx,
             &mut [&mut v2],
         );
+        diags.extend(ctx.take_warnings());
     }
     passes::collect_symbols::resolve_script_stores(&mut data);
 
@@ -186,6 +189,7 @@ pub fn analyze_with_options<'a>(
             &mut ctx,
             &mut [&mut v1],
         );
+        diags.extend(ctx.take_warnings());
     }
 
     // Walk 2: Element flags + hoistable snippets + bind semantics +
@@ -227,6 +231,7 @@ pub fn analyze_with_options<'a>(
             &mut ctx,
             &mut [&mut v2, &mut v3, &mut v4, &mut v5],
         );
+        diags.extend(ctx.take_warnings());
         v3.finish(&mut data);
     }
 

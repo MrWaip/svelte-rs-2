@@ -143,7 +143,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
                 marker.visit_statement(stmt);
 
-                // Collect param names for codegen via OXC visitor
+                // SnippetParamMarker mutates scoping, so names must be collected in a separate pass
                 let mut collector = SnippetParamNameCollector { names: Vec::new() };
                 collector.visit_statement(stmt);
                 if !collector.names.is_empty() {
