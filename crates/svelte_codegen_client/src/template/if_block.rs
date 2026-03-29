@@ -144,7 +144,7 @@ pub(crate) fn gen_if_block<'a>(
         stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
 
         let async_thunk = if has_await { Some(ctx.b.async_thunk(expression.unwrap())) } else { None };
-        vec![ctx.emit_async_block(block_id, anchor, has_await, async_thunk, "$$condition", stmts)]
+        vec![ctx.gen_async_block(block_id, anchor, has_await, async_thunk, "$$condition", stmts)]
     } else {
         let if_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor), Arg::Arrow(render_fn)];
         let if_call = ctx.b.call_expr("$.if", if_args);
