@@ -1852,3 +1852,20 @@ fn props_identifier_basic() {
 fn props_identifier_await_expression() {
     assert_compiler("props_identifier_await_expression");
 }
+
+#[rstest]
+#[ignore = "bug: call expressions on local vars not classified as dynamic (analysis)"]
+fn call_expr_local_method_dynamic() {
+    assert_compiler("call_expr_local_method_dynamic");
+}
+
+#[rstest]
+#[ignore = "bug: nested call expressions on local vars not classified as dynamic (analysis)"]
+fn call_expr_nested_fn_dynamic() {
+    assert_compiler("call_expr_nested_fn_dynamic");
+}
+
+#[rstest]
+fn effect_cleanup_return() {
+    assert_compiler("effect_cleanup_return");
+}
