@@ -58,9 +58,23 @@ FIX PLAN is a strict contract. For each item:
 1. Apply the fix
 2. Mark the item as DONE
 
-After all items are DONE, stop. Do NOT re-review in this same run — the user will run `/qa` again for a fresh review.
+After all items are DONE, do NOT re-review in this same run — the user will run `/qa` again for a fresh review.
 
 Only fix reported violations — do not add improvements or refactoring beyond what was reported.
+
+## Step 5: Test coverage recommendation
+
+After fixing violations, check if any fix changed logic (not just style/naming). If so, output a recommendation block:
+
+```
+TEST COVERAGE:
+The following fixes changed logic and may benefit from unit tests:
+- [file:line] — [brief description of what changed]
+
+Run: /add-test <component-or-description>
+```
+
+Skip this step if all fixes were purely stylistic (naming, ordering, comments).
 
 ## Rules
 

@@ -238,7 +238,7 @@ pub fn analyze_with_options<'a>(
     // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
     // Element fragments already classified by ContentAndVarVisitor::leave_element
     passes::content_types::classify_remaining_fragments(&mut data, &component.source);
-    validate::validate(component, &data, &mut diags);
+    validate::validate(&parsed, &mut diags);
 
     // Apply warning filter if provided
     if let Some(ref filter) = options.warning_filter {
