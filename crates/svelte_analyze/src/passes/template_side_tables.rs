@@ -143,10 +143,11 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
                 marker.visit_statement(stmt);
 
-                // Extract param names from parsed arrow for codegen
-                let param_names = extract_snippet_param_names(stmt);
-                if !param_names.is_empty() {
-                    ctx.data.snippets.params.insert(block.id, param_names);
+                // Collect param names for codegen via OXC visitor
+                let mut collector = SnippetParamNameCollector { names: Vec::new() };
+                collector.visit_statement(stmt);
+                if !collector.names.is_empty() {
+                    ctx.data.snippets.params.insert(block.id, collector.names);
                 }
             }
         }
@@ -167,18 +168,28 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 }
 
-/// Extract param names from `const name = (a, b) => {}` parsed statement.
-fn extract_snippet_param_names(stmt: &Statement<'_>) -> Vec<String> {
-    let Statement::VariableDeclaration(decl) = stmt else { return Vec::new() };
-    let Some(declarator) = decl.declarations.first() else { return Vec::new() };
-    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
-        return Vec::new();
-    };
-    let mut names = Vec::new();
-    for param in &arrow.params.items {
-        collect_binding_names(&param.pattern, &mut names);
+/// OXC Visit that collects param names from `const name = (a, b) => {}`.
+/// Mirrors `SnippetParamMarker` descent but collects names instead of marking symbols.
+struct SnippetParamNameCollector {
+    names: Vec<String>,
+}
+
+impl<'a> Visit<'a> for SnippetParamNameCollector {
+    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
+        self.names.push(ident.name.to_string());
     }
-    names
+
+    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
+        // Skip decl.id — snippet name is not a param
+        if let Some(init) = &decl.init {
+            self.visit_expression(init);
+        }
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        // Only visit params — skip body to avoid collecting inner bindings
+        self.visit_formal_parameters(&arrow.params);
+    }
 }
 
 /// OXC Visit that marks arrow function param bindings as snippet params.
