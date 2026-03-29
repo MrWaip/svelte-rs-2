@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_LSP_TOOL": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(cargo doc*)",
@@ -22,7 +25,6 @@
       "Bash(diff *)"
     ]
   },
-  "hooks": {},
   "ignorePatterns": [
     "docs/compiler",
     "target",

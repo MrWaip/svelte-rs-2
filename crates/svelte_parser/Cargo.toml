@@ -3,6 +3,9 @@ name = "svelte_parser"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+doctest = false
+
 [dependencies]
 svelte_span = { path = "../svelte_span" }
 svelte_ast = { path = "../svelte_ast" }
