@@ -826,6 +826,17 @@ fn state_class_constructor_proxy() {
 }
 
 #[rstest]
+#[ignore = "missing: $derived class field transform (transform)"]
+fn derived_class_field() {
+    assert_compiler("derived_class_field");
+}
+
+#[rstest]
+#[ignore = "bug: constructor assigns to private field instead of public setter (transform)"]
+fn state_class_field_constructor_assign() {
+    assert_compiler("state_class_field_constructor_assign");
+}
+
 #[ignore = "missing: SVG whitespace trimming removes inter-element spaces (analyze)"]
 fn svg_inner_whitespace_trimming() {
     assert_compiler("svg_inner_whitespace_trimming");
