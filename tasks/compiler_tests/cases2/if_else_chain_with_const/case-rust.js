@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<h1> </h1>`);
+var root_1 = $.from_html(`<h1></h1>`);
 var root_2 = $.from_html(`<h2></h2>`);
-var root_3 = $.from_html(`<h3> </h3>`);
+var root_3 = $.from_html(`<h3></h3>`);
 var root_4 = $.from_html(`<p></p>`);
 export default function App($$anchor) {
 	let count = 0;
@@ -12,9 +12,7 @@ export default function App($$anchor) {
 		var consequent = ($$anchor) => {
 			const label = $.derived(() => name + "!");
 			var h1 = root_1();
-			var text = $.child(h1, true);
-			$.reset(h1);
-			$.template_effect(() => $.set_text(text, $.get(label)));
+			h1.textContent = $.get(label);
 			$.append($$anchor, h1);
 		};
 		var consequent_1 = ($$anchor) => {
@@ -25,9 +23,7 @@ export default function App($$anchor) {
 		var consequent_2 = ($$anchor) => {
 			const small = $.derived(() => count * 2);
 			var h3 = root_3();
-			var text_1 = $.child(h3);
-			$.reset(h3);
-			$.template_effect(() => $.set_text(text_1, `Small doubled: ${$.get(small) ?? ""}`));
+			h3.textContent = `Small doubled: ${$.get(small) ?? ""}`;
 			$.append($$anchor, h3);
 		};
 		var alternate = ($$anchor) => {
