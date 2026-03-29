@@ -161,6 +161,12 @@ pub fn analyze_with_options<'a>(
     passes::post_resolve::run_post_resolve_passes(&mut data);
     resolve_render_tag_prop_sources(&mut data, &parsed);
     resolve_render_tag_dynamic(&mut data);
+
+    // Collect const_tags.by_fragment early (before lower) so we can mark @const
+    // bindings as Derived runes with deps before precompute_dynamic_cache.
+    passes::lower::collect_const_tag_fragments(component, &mut data);
+    mark_const_tag_bindings(&mut data);
+
     data.scoping.precompute_dynamic_cache();
     passes::js_analyze::classify_expression_dynamicity(&mut data);
 
@@ -174,8 +180,6 @@ pub fn analyze_with_options<'a>(
     }
 
     passes::lower::lower(component, &mut data);
-    // by_fragment populated by lower — now we can mark const_alias
-    mark_const_tag_bindings(&mut data);
 
     // Walk 1: Reactivity — produces dynamic_nodes, dynamic_attrs, needs_ref.
     // Must complete before Walk 2 because ElementFlagsVisitor and
@@ -275,8 +279,9 @@ pub fn analyze_module(
     (data, diags)
 }
 
-/// Mark const tag bindings with RuneKind::Derived and const_alias after
-/// JsMetadataVisitor has created the actual SymbolIds.
+/// Mark const tag bindings with RuneKind::Derived and const_alias.
+/// Also populates `derived_deps` from the @const expression's `ref_symbols`
+/// so that `is_dynamic_by_id` can determine dynamicity by following deps.
 /// Scope is derived from const_tags.by_fragment + fragment_scopes.
 fn mark_const_tag_bindings(data: &mut AnalysisData) {
     use types::script::RuneKind;
@@ -290,9 +295,14 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
         for tag_id in tag_ids {
             let Some(names) = data.const_tags.names(tag_id).cloned() else { continue };
             let is_destructured = names.len() > 1;
+            // Get deps from the @const expression's ref_symbols
+            let deps: Vec<_> = data.expressions.get(tag_id)
+                .map(|info| info.ref_symbols.to_vec())
+                .unwrap_or_default();
             for name in &names {
                 if let Some(sym_id) = data.scoping.find_binding(scope, name) {
                     data.scoping.mark_rune(sym_id, RuneKind::Derived);
+                    data.scoping.set_derived_deps(sym_id, deps.clone());
                     if is_destructured {
                         data.scoping.mark_const_alias(sym_id, tag_id);
                     }

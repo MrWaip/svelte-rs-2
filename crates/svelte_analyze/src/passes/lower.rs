@@ -9,6 +9,83 @@ pub fn lower(component: &Component, data: &mut AnalysisData) {
     lower_fragment(&component.fragment, FragmentKey::Root, component, data, &component.store);
 }
 
+/// Collect const_tags.by_fragment before lower runs. Needed so that
+/// mark_const_tag_bindings can run before precompute_dynamic_cache.
+pub fn collect_const_tag_fragments(component: &Component, data: &mut AnalysisData) {
+    collect_const_tags_in(
+        &component.fragment,
+        FragmentKey::Root,
+        data,
+        &component.store,
+    );
+}
+
+fn collect_const_tags_in(
+    fragment: &Fragment,
+    key: FragmentKey,
+    data: &mut AnalysisData,
+    store: &AstStore,
+) {
+    let mut const_ids: Option<Vec<svelte_ast::NodeId>> = None;
+    for &id in &fragment.nodes {
+        if let Some(ct) = store.get(id).as_const_tag() {
+            const_ids.get_or_insert_with(Vec::new).push(ct.id);
+        }
+    }
+    if let Some(ids) = const_ids {
+        data.const_tags.by_fragment.insert(key, ids);
+    }
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::Element(el) => {
+                collect_const_tags_in(&el.fragment, FragmentKey::Element(el.id), data, store);
+            }
+            Node::ComponentNode(cn) => {
+                collect_const_tags_in(&cn.fragment, FragmentKey::ComponentNode(cn.id), data, store);
+            }
+            Node::IfBlock(block) => {
+                collect_const_tags_in(&block.consequent, FragmentKey::IfConsequent(block.id), data, store);
+                if let Some(alt) = &block.alternate {
+                    collect_const_tags_in(alt, FragmentKey::IfAlternate(block.id), data, store);
+                }
+            }
+            Node::EachBlock(block) => {
+                collect_const_tags_in(&block.body, FragmentKey::EachBody(block.id), data, store);
+                if let Some(fb) = &block.fallback {
+                    collect_const_tags_in(fb, FragmentKey::EachFallback(block.id), data, store);
+                }
+            }
+            Node::SnippetBlock(block) => {
+                collect_const_tags_in(&block.body, FragmentKey::SnippetBody(block.id), data, store);
+            }
+            Node::KeyBlock(block) => {
+                collect_const_tags_in(&block.fragment, FragmentKey::KeyBlockBody(block.id), data, store);
+            }
+            Node::SvelteHead(head) => {
+                collect_const_tags_in(&head.fragment, FragmentKey::SvelteHeadBody(head.id), data, store);
+            }
+            Node::SvelteElement(el) => {
+                collect_const_tags_in(&el.fragment, FragmentKey::SvelteElementBody(el.id), data, store);
+            }
+            Node::SvelteBoundary(b) => {
+                collect_const_tags_in(&b.fragment, FragmentKey::SvelteBoundaryBody(b.id), data, store);
+            }
+            Node::AwaitBlock(block) => {
+                if let Some(ref p) = block.pending {
+                    collect_const_tags_in(p, FragmentKey::AwaitPending(block.id), data, store);
+                }
+                if let Some(ref t) = block.then {
+                    collect_const_tags_in(t, FragmentKey::AwaitThen(block.id), data, store);
+                }
+                if let Some(ref c) = block.catch {
+                    collect_const_tags_in(c, FragmentKey::AwaitCatch(block.id), data, store);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn lower_fragment(
     fragment: &Fragment,
     key: FragmentKey,
@@ -18,17 +95,15 @@ fn lower_fragment(
 ) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
-    // Collect special node IDs in a single pass instead of 2-3 separate iterations
+    // Collect debug_tag and title IDs (const_tags.by_fragment already
+    // populated by collect_const_tag_fragments which runs earlier).
     {
-        let mut const_ids: Option<Vec<svelte_ast::NodeId>> = None;
         let mut debug_ids: Option<Vec<svelte_ast::NodeId>> = None;
         let mut title_ids: Option<Vec<svelte_ast::NodeId>> = None;
 
         for &id in &fragment.nodes {
             let node = store.get(id);
-            if let Some(ct) = node.as_const_tag() {
-                const_ids.get_or_insert_with(Vec::new).push(ct.id);
-            } else if let Some(dt) = node.as_debug_tag() {
+            if let Some(dt) = node.as_debug_tag() {
                 debug_ids.get_or_insert_with(Vec::new).push(dt.id);
             } else if inside_head {
                 if let Some(el) = node.as_element() {
@@ -39,9 +114,6 @@ fn lower_fragment(
             }
         }
 
-        if let Some(ids) = const_ids {
-            data.const_tags.by_fragment.insert(key, ids);
-        }
         if let Some(ids) = debug_ids {
             data.debug_tags.by_fragment.insert(key, ids);
         }
