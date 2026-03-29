@@ -159,6 +159,23 @@ pub fn analyze_with_options<'a>(
     }
 
     passes::post_resolve::run_post_resolve_passes(&mut data);
+
+    // Rest prop references in template expressions need context ($.push/$.pop).
+    // Must run after post_resolve which marks rest_prop symbols.
+    if !data.needs_context {
+        data.needs_context = data
+            .expressions
+            .values()
+            .chain(data.attr_expressions.values())
+            .any(|info| {
+                matches!(
+                    info.kind,
+                    crate::types::data::ExpressionKind::MemberExpression
+                        | crate::types::data::ExpressionKind::CallExpression { .. }
+                ) && info.ref_symbols.iter().any(|&sym| data.scoping.is_rest_prop(sym))
+            });
+    }
+
     resolve_render_tag_prop_sources(&mut data, &parsed);
     resolve_render_tag_dynamic(&mut data);
 
