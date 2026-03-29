@@ -1836,7 +1836,6 @@ fn bind_multiple_on_element() {
 }
 
 #[rstest]
-#[ignore = "bug: @const sole child should use textContent optimization instead of set_text (codegen)"]
 fn if_else_chain_with_const() {
     assert_compiler("if_else_chain_with_const");
 }
