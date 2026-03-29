@@ -101,7 +101,6 @@ pub(crate) fn gen_svelte_element<'a>(
     if needs_async {
         let expression = if !static_tag { Some(get_node_expr(ctx, id)) } else { None };
 
-        // Inside $.async callback: tag resolves via $.get($$tag)
         let tag_expr = if let Some(ref value) = tag_value {
             ctx.b.str_expr(value)
         } else if has_await {
@@ -126,7 +125,9 @@ pub(crate) fn gen_svelte_element<'a>(
         let element_stmt = ctx.b.call_stmt("$.element", element_args);
 
         let async_thunk = if has_await {
-            Some(ctx.b.async_thunk(expression.unwrap()))
+            Some(ctx.b.async_thunk(expression.unwrap_or_else(|| {
+                panic!("static tag cannot contain await expression")
+            })))
         } else {
             None
         };
