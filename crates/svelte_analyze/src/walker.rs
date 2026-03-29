@@ -444,14 +444,14 @@ pub(crate) fn walk_template(
     for (idx, &id) in fragment.nodes.iter().enumerate() {
         let node = ctx.store.get(id);
 
-        // Scan preceding Comment siblings for svelte-ignore directives
+        // Comments immediately before a node suppress warnings on that node
         let ignore_codes = scan_preceding_ignores(idx, fragment, ctx);
         let has_ignores = !ignore_codes.is_empty();
         if has_ignores {
             ctx.push_ignore(ignore_codes);
         }
 
-        // Record ignore snapshot for this node
+
         let node_id = node_id_of(node);
         ctx.record_ignore_for_node(node_id);
 
