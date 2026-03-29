@@ -1819,3 +1819,29 @@ fn await_thunk_optimization() {
 fn await_each_nested() {
     assert_compiler("await_each_nested");
 }
+
+#[rstest]
+fn fragment_counter_with_nested_if() {
+    assert_compiler("fragment_counter_with_nested_if");
+}
+
+#[rstest]
+fn bind_group_radio_basic() {
+    assert_compiler("bind_group_radio_basic");
+}
+
+#[rstest]
+fn bind_multiple_on_element() {
+    assert_compiler("bind_multiple_on_element");
+}
+
+#[rstest]
+#[ignore = "bug: @const sole child should use textContent optimization instead of set_text (codegen)"]
+fn if_else_chain_with_const() {
+    assert_compiler("if_else_chain_with_const");
+}
+
+#[rstest]
+fn event_mixed_delegation() {
+    assert_compiler("event_mixed_delegation");
+}
