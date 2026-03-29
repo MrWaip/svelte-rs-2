@@ -2,10 +2,10 @@
 
 ## Current state
 
-- **Working (18/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await (6), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1)
-- **Not working (16/34)**: `<svelte:element>` async, `{@const}` async, `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
+- **Working (19/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1)
+- **Not working (15/34)**: `{@const}` async, `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Next**: `<svelte:element>` async (#12) — simplest, follows exact same pattern as if/each/html/key
+- **Next**: `{@const}` async (#18, #19) — `$.run()` accumulation with blocker propagation
 - Last updated: 2026-03-29
 
 ## Source
@@ -67,7 +67,7 @@ Audit of existing implementation (2026-03-28)
 9. [x] `{#key}` — `$.async()` wrapping with has_await (covered, test: async_key_basic)
 10. [x] `{#await}` — async thunk + `$.async()` for blockers (covered, test: async_await_has_await)
 11. [x] Block wrapping with non-empty blockers (has_blockers but no has_await) (covered, test: async_blockers_basic)
-12. [ ] `<svelte:element>` — `$.async()` wrapping for dynamic tag with has_await/has_blockers (missing)
+12. [x] `<svelte:element>` — `$.async()` wrapping for dynamic tag with has_await/has_blockers (covered, test: async_svelte_element)
 
 ### Directive blocker wrapping (`$.run_after_blockers()`)
 13. [x] `bind:` — (covered, test: async_bind_basic)
@@ -120,8 +120,8 @@ Audit of existing implementation (2026-03-28)
 
 ## Tasks
 
-### Missing: `<svelte:element>` async (#12)
-1. [ ] codegen: `svelte_element.rs` — add `$.async()` wrapping when `has_await || has_blockers`
+### Done: `<svelte:element>` async (#12)
+1. [x] codegen: `svelte_element.rs` — add `$.async()` wrapping when `has_await || has_blockers`
 
 ### Missing: `{@const}` async (#18, #19)
 1. [ ] analyze: track `async_consts` state per fragment — accumulate `$.run()` thunks
@@ -162,7 +162,7 @@ Audit of existing implementation (2026-03-28)
 - `await_reactive`, `await_short_catch`, `await_short_then`, `await_then_catch`
 
 ### New (to be added)
-- `async_svelte_element` — `<svelte:element>` with await in tag expression
+- `async_svelte_element` — `<svelte:element>` with await in tag expression ✅
 - `async_const_tag` — `{@const}` with async expression and blocker propagation
 - `async_derived_basic` — `$derived` containing `await`
 - `async_render_tag` — `{@render}` with async memoized args

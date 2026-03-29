@@ -7,9 +7,11 @@ export default function App($$anchor) {
 	}
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
-	$.element(node, () => await getTag(), false, ($$element, $$anchor) => {
-		var p = root_1();
-		$.append($$anchor, p);
+	$.async(node, [], [getTag], (node, $$tag) => {
+		$.element(node, () => $.get($$tag), false, ($$element, $$anchor) => {
+			var p = root_1();
+			$.append($$anchor, p);
+		});
 	});
 	$.append($$anchor, fragment);
 }
