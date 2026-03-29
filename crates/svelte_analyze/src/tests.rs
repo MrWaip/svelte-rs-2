@@ -965,3 +965,185 @@ let data = await fetch('/api');
     assert_first_await_index(&data, 0);
     assert_symbol_blocker(&data, "data", 0);
 }
+
+// ---------------------------------------------------------------------------
+// Validation diagnostics
+// ---------------------------------------------------------------------------
+
+fn analyze_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (_data, _parsed, diags) = analyze(&component, js_result);
+    diags
+}
+
+fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
+    assert!(
+        diags.iter().any(|d| d.kind.code() == code),
+        "expected error '{code}', got: {diags:?}"
+    );
+}
+
+fn assert_no_errors(diags: &[svelte_diagnostics::Diagnostic]) {
+    let errors: Vec<_> = diags.iter()
+        .filter(|d| d.severity == svelte_diagnostics::Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+#[test]
+fn validate_state_frozen_renamed() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state.frozen(1);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_renamed");
+}
+
+#[test]
+fn validate_state_is_removed() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state.is(a, b);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_removed");
+}
+
+#[test]
+fn validate_state_invalid_placement_bare_expr() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$state(1);
+</script>"#,
+    );
+    assert_has_error(&diags, "state_invalid_placement");
+}
+
+#[test]
+fn validate_state_invalid_placement_fn_arg() {
+    let diags = analyze_with_diags(
+        r#"<script>
+console.log($state(1));
+</script>"#,
+    );
+    assert_has_error(&diags, "state_invalid_placement");
+}
+
+#[test]
+fn validate_state_too_many_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state(1, 2);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_state_raw_too_many_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state.raw(1, 2);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_derived_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $derived();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_derived_by_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $derived.by(fn1, fn2);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_state_valid_positions() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state(0);
+let y = $state.raw('hello');
+
+class Foo {
+    count = $state(0);
+    constructor() {
+        this.name = $state('');
+    }
+}
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_state_constructor_private_field() {
+    let diags = analyze_with_diags(
+        r#"<script>
+class Foo {
+    #name;
+    constructor() {
+        this.#name = $state('');
+    }
+}
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_state_eager_no_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state.eager();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_state_eager_too_many_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let x = $state.eager(a, b);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_state_nested_class_in_constructor() {
+    // Nested class constructor must not reset the outer constructor's flag
+    let diags = analyze_with_diags(
+        r#"<script>
+class Outer {
+    constructor() {
+        const Inner = class {
+            constructor() {
+                this.a = $state(0);
+            }
+        };
+        this.b = $state(1);
+    }
+}
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}

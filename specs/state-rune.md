@@ -1,12 +1,13 @@
 # $state rune
 
 ## Current state
-- **Working**: 31/37 use cases fully covered with passing tests
+- **Working**: 35/37 use cases fully covered with passing tests
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
 - **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
-- **Missing**: 4 use cases (validation errors #33-36), dev-mode features (#31-32), deep_read_state (#41), snapshot is_ignored (#42)
+- **Missing**: dev-mode features (#31-32), deep_read_state (#41), snapshot is_ignored (#42)
+- **Validation**: #33-36 all implemented — `$state.frozen` renamed, `$state.is` removed, placement, arg count
 - **Out of scope**: SSR (server-side codegen not started, will be separate phase)
-- **Next**: Validation diagnostics (#33-36), then dev-mode features (#31-32).
+- **Next**: Dev-mode features (#31-32), then advanced (#41-42).
 - Last updated: 2026-03-29
 
 ## Source
@@ -83,10 +84,10 @@ Audit of existing implementation
 32. [~] `$.tag` label for destructured state — reference uses `[$state iterable]`/`[$state object]` labels (unknown — needs test)
 
 ### Validation errors (analyze phase)
-33. [ ] `$state.frozen` → error: renamed to `$state.raw` (missing — no diagnostic)
-34. [ ] `$state.is` → error: rune removed (missing — no diagnostic)
-35. [ ] Placement validation: only in variable decl, class prop, constructor (missing — no diagnostic)
-36. [ ] Argument count validation: 0-1 args for `$state`/`$state.raw` (missing — no diagnostic)
+33. [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
+34. [x] `$state.is` → error: rune removed (validate/runes.rs)
+35. [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)
+36. [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
 
 ### Advanced / edge cases
 41. [ ] `$.deep_read_state()` for bindable props in reactive statements (missing)
@@ -96,10 +97,10 @@ Audit of existing implementation
 ## Tasks (по слоям)
 
 ### analyze
-1. [ ] Add diagnostic: `$state.frozen` → suggest `$state.raw`
-2. [ ] Add diagnostic: `$state.is` → rune removed
-3. [ ] Add placement validation for `$state`/`$state.raw` (variable decl, class prop, constructor only)
-4. [ ] Add argument count validation (0-1 for `$state`/`$state.raw`)
+1. [x] Add diagnostic: `$state.frozen` → suggest `$state.raw`
+2. [x] Add diagnostic: `$state.is` → rune removed
+3. [x] Add placement validation for `$state`/`$state.raw` (variable decl, class prop, constructor only)
+4. [x] Add argument count validation (0-1 for `$state`/`$state.raw`)
 
 ### codegen
 5. [ ] `$.tag_proxy()` in dev mode when proxying a prop initializer

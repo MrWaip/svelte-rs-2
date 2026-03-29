@@ -80,4 +80,22 @@ impl RuneKind {
     pub fn is_derived(&self) -> bool {
         matches!(self, RuneKind::Derived | RuneKind::DerivedBy)
     }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            RuneKind::State => "$state",
+            RuneKind::StateRaw => "$state.raw",
+            RuneKind::StateEager => "$state.eager",
+            RuneKind::Derived => "$derived",
+            RuneKind::DerivedBy => "$derived.by",
+            RuneKind::Effect => "$effect",
+            RuneKind::EffectTracking => "$effect.tracking",
+            RuneKind::EffectPending => "$effect.pending",
+            RuneKind::Props => "$props",
+            RuneKind::PropsId => "$props.id",
+            RuneKind::Bindable => "$bindable",
+            RuneKind::Inspect => "$inspect",
+            RuneKind::Host => "$host",
+        }
+    }
 }
