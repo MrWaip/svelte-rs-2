@@ -88,11 +88,10 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         // mark_const_tag_bindings can read ref_symbols for derived_deps.
         if let Some(init_expr) = ctx.parsed()
             .and_then(|p| p.stmts.get(&tag.expression_span.start))
-            .and_then(|stmt| match stmt {
-                oxc_ast::ast::Statement::VariableDeclaration(decl) => {
-                    decl.declarations.first().and_then(|d| d.init.as_ref())
-                }
-                _ => None,
+            .and_then(|stmt| if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
+                decl.declarations.first().and_then(|d| d.init.as_ref())
+            } else {
+                None
             })
         {
             let info = build_expression_info(init_expr, &mut ctx.data.scoping);
