@@ -3,6 +3,9 @@ name = "svelte_analyze"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+doctest = false
+
 [dependencies]
 svelte_ast = { path = "../svelte_ast" }
 svelte_parser = { path = "../svelte_parser" }

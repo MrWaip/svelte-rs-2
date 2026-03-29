@@ -479,7 +479,6 @@ impl<'a> Visit<'a> for NeedsContextVisitor<'a> {
 /// MemberExpression/CallExpression on imports/props → needs_context.
 /// Mirrors reference: MemberExpression.js + CallExpression.js + is_safe_identifier.
 pub(crate) fn classify_expression_needs_context(data: &mut AnalysisData) {
-    let root = data.scoping.root_scope_id();
     for info in data
         .expressions
         .values_mut()
@@ -570,33 +569,6 @@ fn has_state_component_attr(
     info.ref_symbols.iter().any(|&sym_id| {
         scoping.symbol_scope_id(sym_id) != root || scoping.is_rune(sym_id)
     })
-}
-
-/// Unwrap a rune call to get its first argument expression.
-/// E.g., `$derived(expr)` → `expr`, `$state(expr)` → `expr`.
-/// Non-rune expressions pass through unchanged.
-fn unwrap_rune_arg<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
-    if let Expression::CallExpression(call) = expr {
-        let is_rune = match &call.callee {
-            Expression::Identifier(id) => crate::utils::script_info::is_rune_name(&id.name),
-            Expression::StaticMemberExpression(m) => {
-                if let Expression::Identifier(obj) = &m.object {
-                    crate::utils::script_info::is_rune_name(&obj.name)
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-        if is_rune {
-            if let Some(arg) = call.arguments.first() {
-                if let Some(e) = arg.as_expression() {
-                    return e;
-                }
-            }
-        }
-    }
-    expr
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,9 @@ name = "compiler_tests"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+doctest = false
+
 [[test]]
 name = "compiler_tests_v3"
 path = "test_v3.rs"

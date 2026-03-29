@@ -9,7 +9,7 @@ use svelte_ast::{
     StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
     TransitionDirective, UseDirective,
 };
-use svelte_diagnostics::{extract_svelte_ignore, Diagnostic, DiagnosticKind};
+use svelte_diagnostics::{extract_svelte_ignore, Diagnostic};
 use svelte_span::Span;
 
 use crate::types::data::{AnalysisData, FragmentKey, ParserResult};
@@ -264,15 +264,6 @@ impl<'a> VisitContext<'a> {
             let idx = self.data.ignore_data.intern_snapshot(&self.ignore_current);
             self.data.ignore_data.set_snapshot(node_id, idx);
         }
-    }
-
-    /// Emit a warning, respecting the ignore map for the given node.
-    pub fn warn(&mut self, node_id: NodeId, kind: DiagnosticKind, span: Span) {
-        let code = kind.code();
-        if self.data.ignore_data.is_ignored(node_id, code) {
-            return;
-        }
-        self.warnings.push(Diagnostic::warning(kind, span));
     }
 
     /// Drain accumulated warnings.
