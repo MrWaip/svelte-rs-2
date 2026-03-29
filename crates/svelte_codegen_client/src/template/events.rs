@@ -70,7 +70,7 @@ pub(crate) fn gen_use_directive<'a>(
 
     let blockers = ctx.analysis.attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
-        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
 
     init.push(stmt);
@@ -94,7 +94,7 @@ pub(crate) fn gen_attach_tag<'a>(
 
     let blockers = ctx.analysis.attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
-        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
 
     init.push(stmt);
@@ -140,7 +140,7 @@ pub(crate) fn gen_transition_directive<'a>(
 
     let blockers = ctx.analysis.attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
-        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
 
     after_update.push(stmt);
@@ -175,7 +175,7 @@ pub(crate) fn gen_animate_directive<'a>(
 
     let blockers = ctx.analysis.attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
-        stmt = wrap_run_after_blockers(ctx, stmt, &blockers);
+        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
 
     after_update.push(stmt);
@@ -186,7 +186,7 @@ pub(crate) fn gen_animate_directive<'a>(
 // ---------------------------------------------------------------------------
 
 /// Wrap a statement in `$.run_after_blockers(blockers, () => { stmt })`.
-fn wrap_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
+fn gen_run_after_blockers<'a>(ctx: &mut Ctx<'a>, stmt: Statement<'a>, blockers: &[u32]) -> Statement<'a> {
     let blockers_arr = ctx.b.promises_array(blockers);
     let thunk = ctx.b.thunk_block(vec![stmt]);
     ctx.b.call_stmt("$.run_after_blockers", [

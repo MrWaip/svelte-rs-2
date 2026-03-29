@@ -75,8 +75,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         let is_destructured = ctx.data.each_blocks.is_destructured.contains(&block.id);
 
         if is_destructured {
-            // Mark non-default destructured bindings as getters via OXC Visit.
-            // SemanticCollector already set symbol_id on BindingIdentifiers.
+            // Destructured context: name is always "$$item"
+            ctx.data.each_blocks.context_names.insert(block.id, "$$item".to_string());
+
+            // Default bindings use $.derived_safe_equal (signals), non-default use getters.
             if let Some(parsed) = ctx.parsed() {
                 if let Some(stmt) = block.context_span.and_then(|cs| parsed.stmts.get(&cs.start)) {
                     let mut marker = DestructuredGetterMarker {
@@ -93,6 +95,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .map(|ident| ident.name.as_str());
 
             if let Some(ctx_name) = ctx_name {
+                ctx.data.each_blocks.context_names.insert(block.id, ctx_name.to_string());
+
                 if let Some(ctx_sym) = ctx.data.scoping.find_binding(child_scope, ctx_name) {
                     ctx.data.scoping.mark_each_block_var(ctx_sym);
 
@@ -133,11 +137,18 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
         }
-        // Mark snippet params — dispatch_stmt already ran, so symbol_ids are set
+        // Mark snippet params and collect param names
         if let Some(parsed) = ctx.parsed() {
             if let Some(stmt) = parsed.stmts.get(&block.expression_span.start) {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
                 marker.visit_statement(stmt);
+
+                // SnippetParamMarker mutates scoping, so names must be collected in a separate pass
+                let mut collector = SnippetParamNameCollector { names: Vec::new() };
+                collector.visit_statement(stmt);
+                if !collector.names.is_empty() {
+                    ctx.data.snippets.params.insert(block.id, collector.names);
+                }
             }
         }
     }
@@ -154,6 +165,30 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         }
+    }
+}
+
+/// OXC Visit that collects param names from `const name = (a, b) => {}`.
+/// Mirrors `SnippetParamMarker` descent but collects names instead of marking symbols.
+struct SnippetParamNameCollector {
+    names: Vec<String>,
+}
+
+impl<'a> Visit<'a> for SnippetParamNameCollector {
+    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
+        self.names.push(ident.name.to_string());
+    }
+
+    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
+        // Skip decl.id — snippet name is not a param
+        if let Some(init) = &decl.init {
+            self.visit_expression(init);
+        }
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        // Only visit params — skip body to avoid collecting inner bindings
+        self.visit_formal_parameters(&arrow.params);
     }
 }
 

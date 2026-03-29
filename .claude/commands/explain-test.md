@@ -1,5 +1,5 @@
 ---
-name: explain-test-case
+name: explain-test
 description: Explain what a compiler test case does and diagnose failures. Use when the user asks "what does this test do", "explain test", or "why is this test failing".
 user-invocable: true
 argument-hint: "[test-case-name]"
