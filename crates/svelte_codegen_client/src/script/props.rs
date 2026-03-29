@@ -123,7 +123,6 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             return vec![];
         }
 
-        // `const props = $props()` preserves `const`; destructured `let { ... } = $props()` uses `let`
         if props_gen.is_identifier_pattern {
             let (name, init) = declarators.remove(0);
             vec![self.b.const_stmt(name, init)]
