@@ -1185,6 +1185,8 @@ impl LoweredTextPart {
 pub struct PropsAnalysis {
     pub props: Vec<PropAnalysis>,
     pub has_bindable: bool,
+    /// `const props = $props()` — identifier pattern, generates `const` instead of `let`
+    pub is_identifier_pattern: bool,
 }
 
 pub struct PropAnalysis {

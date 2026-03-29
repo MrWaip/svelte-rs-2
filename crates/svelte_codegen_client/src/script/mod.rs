@@ -312,11 +312,13 @@ pub(super) enum PropKind {
 
 pub(super) struct PropsGenInfo {
     pub(super) props: Vec<PropGenItem>,
+    pub(super) is_identifier_pattern: bool,
 }
 
 impl PropsGenInfo {
     pub(super) fn from_analysis(pa: &PropsAnalysis) -> Self {
         PropsGenInfo {
+            is_identifier_pattern: pa.is_identifier_pattern,
             props: pa.props.iter().map(|p| PropGenItem {
                 local_name: p.local_name.clone(),
                 prop_name: p.prop_name.clone(),
