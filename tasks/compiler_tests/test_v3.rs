@@ -1800,7 +1800,6 @@ fn animate_blockers() {
 }
 
 #[rstest]
-#[ignore = "experimental async — not yet implemented"]
 fn async_svelte_element() {
     assert_compiler("async_svelte_element");
 }
