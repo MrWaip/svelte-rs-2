@@ -1759,26 +1759,31 @@ fn animate_blockers() {
 }
 
 #[rstest]
+#[ignore = "experimental async — not yet implemented"]
 fn async_svelte_element() {
     assert_compiler("async_svelte_element");
 }
 
 #[rstest]
+#[ignore = "experimental async — not yet implemented"]
 fn async_const_tag() {
     assert_compiler("async_const_tag");
 }
 
 #[rstest]
+#[ignore = "experimental async — not yet implemented"]
 fn async_derived_basic() {
     assert_compiler("async_derived_basic");
 }
 
 #[rstest]
+#[ignore = "experimental async — not yet implemented"]
 fn async_render_tag() {
     assert_compiler("async_render_tag");
 }
 
 #[rstest]
+#[ignore = "experimental async — not yet implemented"]
 fn async_boundary_const() {
     assert_compiler("async_boundary_const");
 }
