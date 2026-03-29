@@ -52,8 +52,7 @@ pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, span_start: u32) -> Ex
 /// Build `() => expr` from a pre-transformed expression (by NodeId).
 pub(crate) fn build_node_thunk<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
     let expr = get_node_expr(ctx, node_id);
-    let params = ctx.b.no_params();
-    ctx.b.arrow_expr(params, [ctx.b.expr_stmt(expr)])
+    ctx.b.thunk(expr)
 }
 
 // ---------------------------------------------------------------------------

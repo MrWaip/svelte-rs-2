@@ -450,7 +450,7 @@ fn emit_mixed<'a>(
     let items: Vec<_> = ctx.lowered_fragment(&key).items.clone();
 
     let starts_text = matches!(items.first(), Some(FragmentItem::TextConcat { .. }));
-    if starts_text {
+    if key.needs_text_first_next() && starts_text {
         body.push(ctx.b.call_stmt("$.next", []));
     }
 

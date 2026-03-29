@@ -117,6 +117,21 @@ impl FragmentKey {
         matches!(self, Self::EachBody(_))
     }
 
+    /// Whether a text-first fragment needs `$.next()` to skip the anchor comment.
+    /// Matches the reference compiler's `is_text_first` parent whitelist:
+    /// Fragment, EachBlock, SnippetBlock, Component, SvelteBoundary, SvelteComponent, SvelteSelf.
+    pub fn needs_text_first_next(&self) -> bool {
+        matches!(
+            self,
+            Self::Root
+                | Self::EachBody(_)
+                | Self::EachFallback(_)
+                | Self::SnippetBody(_)
+                | Self::ComponentNode(_)
+                | Self::SvelteBoundaryBody(_)
+        )
+    }
+
     pub fn node_id(&self) -> Option<NodeId> {
         match self {
             Self::Root => None,
