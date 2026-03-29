@@ -825,6 +825,36 @@ fn state_class_constructor_proxy() {
     assert_compiler("state_class_constructor_proxy");
 }
 
+#[rstest]
+#[ignore = "missing: SVG whitespace trimming removes inter-element spaces (analyze)"]
+fn svg_inner_whitespace_trimming() {
+    assert_compiler("svg_inner_whitespace_trimming");
+}
+
+#[rstest]
+#[ignore = "missing: inner SVG templates use $.from_svg instead of $.from_html (codegen)"]
+fn svg_inner_template_from_svg() {
+    assert_compiler("svg_inner_template_from_svg");
+}
+
+#[rstest]
+#[ignore = "missing: template_effect extracts call expressions into dependency arrays (codegen)"]
+fn template_effect_call_deps() {
+    assert_compiler("template_effect_call_deps");
+}
+
+#[rstest]
+#[ignore = "missing: SVG text element whitespace preserved with from_svg (codegen)"]
+fn svg_text_preserves_whitespace() {
+    assert_compiler("svg_text_preserves_whitespace");
+}
+
+#[rstest]
+#[ignore = "missing: template_effect extracts complex map+call into dependency arrays (codegen)"]
+fn template_effect_multiple_call_deps() {
+    assert_compiler("template_effect_multiple_call_deps");
+}
+
 // ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
