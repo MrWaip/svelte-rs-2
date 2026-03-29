@@ -837,6 +837,35 @@ fn state_class_field_constructor_assign() {
     assert_compiler("state_class_field_constructor_assign");
 }
 
+#[ignore = "missing: SVG whitespace trimming removes inter-element spaces (analyze)"]
+fn svg_inner_whitespace_trimming() {
+    assert_compiler("svg_inner_whitespace_trimming");
+}
+
+#[rstest]
+#[ignore = "missing: inner SVG templates use $.from_svg instead of $.from_html (codegen)"]
+fn svg_inner_template_from_svg() {
+    assert_compiler("svg_inner_template_from_svg");
+}
+
+#[rstest]
+#[ignore = "missing: template_effect extracts call expressions into dependency arrays (codegen)"]
+fn template_effect_call_deps() {
+    assert_compiler("template_effect_call_deps");
+}
+
+#[rstest]
+#[ignore = "missing: SVG text element whitespace preserved with from_svg (codegen)"]
+fn svg_text_preserves_whitespace() {
+    assert_compiler("svg_text_preserves_whitespace");
+}
+
+#[rstest]
+#[ignore = "missing: template_effect extracts complex map+call into dependency arrays (codegen)"]
+fn template_effect_multiple_call_deps() {
+    assert_compiler("template_effect_multiple_call_deps");
+}
+
 // ---------------------------------------------------------------------------
 // Module compilation tests
 // ---------------------------------------------------------------------------
@@ -1863,4 +1892,21 @@ fn props_identifier_basic() {
 #[rstest]
 fn props_identifier_await_expression() {
     assert_compiler("props_identifier_await_expression");
+}
+
+#[rstest]
+#[ignore = "bug: call expressions on local vars not classified as dynamic (analysis)"]
+fn call_expr_local_method_dynamic() {
+    assert_compiler("call_expr_local_method_dynamic");
+}
+
+#[rstest]
+#[ignore = "bug: nested call expressions on local vars not classified as dynamic (analysis)"]
+fn call_expr_nested_fn_dynamic() {
+    assert_compiler("call_expr_nested_fn_dynamic");
+}
+
+#[rstest]
+fn effect_cleanup_return() {
+    assert_compiler("effect_cleanup_return");
 }
