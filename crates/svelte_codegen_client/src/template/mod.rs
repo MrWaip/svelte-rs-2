@@ -295,6 +295,11 @@ fn emit_dynamic_text<'a>(
 ) {
     // Clone needed: emit_text_update borrows ctx mutably
     let item = ctx.lowered_fragment(&key).items[0].clone();
+    // Reference compiler allocates a "fragment" ident before checking use_space_template,
+    // then discards it. We must match to keep counters in sync.
+    if !is_root {
+        ctx.gen_ident("fragment");
+    }
     let name = ctx.gen_ident("text");
     if is_root {
         body.push(ctx.b.call_stmt("$.next", []));

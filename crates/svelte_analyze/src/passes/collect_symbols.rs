@@ -84,6 +84,19 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         ctx: &mut VisitContext<'_>,
     ) {
         ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
+        // Build ExpressionInfo for the @const init expression so that
+        // mark_const_tag_bindings can read ref_symbols for derived_deps.
+        if let Some(init_expr) = ctx.parsed()
+            .and_then(|p| p.stmts.get(&tag.expression_span.start))
+            .and_then(|stmt| if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
+                decl.declarations.first().and_then(|d| d.init.as_ref())
+            } else {
+                None
+            })
+        {
+            let info = build_expression_info(init_expr, &mut ctx.data.scoping);
+            ctx.data.expressions.insert(tag.id, info);
+        }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_>) {
