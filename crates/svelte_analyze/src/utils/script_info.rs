@@ -273,6 +273,22 @@ fn collect_var_declarations(
                         (None, None, vec![], None)
                     };
 
+                // `const props = $props()` — treat as a single rest prop
+                if is_rune == Some(RuneKind::Props) {
+                    *props_declaration = Some(PropsDeclaration {
+                        props: vec![PropInfo {
+                            local_name: name.clone(),
+                            prop_name: name.clone(),
+                            default_span: None,
+                            default_text: None,
+                            is_bindable: false,
+                            is_rest: true,
+                            is_simple_default: true,
+                        }],
+                        is_identifier_pattern: true,
+                    });
+                }
+
                 declarations.push(DeclarationInfo {
                     name,
                     span: decl_span,
@@ -353,7 +369,7 @@ fn collect_var_declarations(
                         }
                     }
 
-                    *props_declaration = Some(PropsDeclaration { props });
+                    *props_declaration = Some(PropsDeclaration { props, is_identifier_pattern: false });
                 } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
                     let mut names = Vec::new();
                     collect_binding_names(&declarator.id, &mut names);

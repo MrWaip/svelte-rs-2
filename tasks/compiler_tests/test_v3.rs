@@ -1842,3 +1842,13 @@ fn if_else_chain_with_const() {
 fn event_mixed_delegation() {
     assert_compiler("event_mixed_delegation");
 }
+
+#[rstest]
+fn props_identifier_basic() {
+    assert_compiler("props_identifier_basic");
+}
+
+#[rstest]
+fn props_identifier_await_expression() {
+    assert_compiler("props_identifier_await_expression");
+}

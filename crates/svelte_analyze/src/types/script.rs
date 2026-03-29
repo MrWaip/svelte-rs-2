@@ -18,6 +18,8 @@ pub struct PropInfo {
 #[derive(Debug, Clone)]
 pub struct PropsDeclaration {
     pub props: Vec<PropInfo>,
+    /// `const props = $props()` — identifier pattern, not destructured
+    pub is_identifier_pattern: bool,
 }
 
 #[derive(Debug, Clone)]
