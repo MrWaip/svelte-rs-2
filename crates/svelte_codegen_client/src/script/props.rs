@@ -10,12 +10,15 @@ use super::{
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
     pub(super) fn is_props_declaration(decl: &oxc_ast::ast::VariableDeclaration<'a>) -> bool {
         decl.declarations.iter().any(|d| {
-            if let oxc_ast::ast::BindingPattern::ObjectPattern(_) = &d.id {
-                if let Some(init) = &d.init {
-                    if let Expression::CallExpression(call) = init {
-                        if let Expression::Identifier(ident) = &call.callee {
-                            return ident.name.as_str() == "$props";
-                        }
+            let is_props_pattern = matches!(
+                &d.id,
+                oxc_ast::ast::BindingPattern::ObjectPattern(_)
+                    | oxc_ast::ast::BindingPattern::BindingIdentifier(_)
+            );
+            if is_props_pattern {
+                if let Some(Expression::CallExpression(call)) = &d.init {
+                    if let Expression::Identifier(ident) = &call.callee {
+                        return ident.name.as_str() == "$props";
                     }
                 }
             }
@@ -120,6 +123,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             return vec![];
         }
 
-        vec![self.b.let_multi_stmt(declarators)]
+        if props_gen.is_identifier_pattern {
+            let (name, init) = declarators.remove(0);
+            vec![self.b.const_stmt(name, init)]
+        } else {
+            vec![self.b.let_multi_stmt(declarators)]
+        }
     }
 }

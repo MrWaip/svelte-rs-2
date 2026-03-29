@@ -104,7 +104,7 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
 
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
-    data.props = Some(PropsAnalysis { props, has_bindable });
+    data.props = Some(PropsAnalysis { props, has_bindable, is_identifier_pattern: decl.is_identifier_pattern });
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
