@@ -1,43 +1,67 @@
 ---
 name: fix-test
-description: Single failing compiler test fix workflow. Trigger when one named test case must be diagnosed/fixed. Do not trigger for multi-test audits or broad feature completeness reviews.
+description: Diagnose and fix a single failing compiler test case. Use when the user names one test, asks to make one compiler case pass, or wants a focused single-test bugfix. Do not trigger for multi-test audits, feature-gap reviews, or broad component diagnosis.
 ---
 
-# /fix-test workflow (Codex)
+# Fix Single Test
 
-## 1) Reproduce
+## 1) Reproduce and read the failure
+
 Run:
+
 ```bash
 .codex/scripts/fix-test.sh <test-name>
 ```
-Or:
-```bash
-just test-case-verbose <test-name>
-```
 
-## 2) Diff-driven diagnosis
-Read:
-- `tasks/compiler_tests/cases2/<test>/case.svelte`
-- `tasks/compiler_tests/cases2/<test>/case-svelte.js` (expected)
-- `tasks/compiler_tests/cases2/<test>/case-rust.js` (actual)
+Then read:
 
-Classify mismatch origin: parser, analyze, transform, or codegen.
+- `tasks/compiler_tests/cases2/<test-name>/case.svelte`
+- `tasks/compiler_tests/cases2/<test-name>/case-svelte.js`
+- `tasks/compiler_tests/cases2/<test-name>/case-rust.js`
 
-## 3) Implement minimal fix in the right layer
-- Prefer existing helpers/accessors.
-- Add/adjust tests only for the changed behavior.
-- Never hand-edit `case-svelte.js` or `case-rust.js`.
+List the concrete mismatches between expected and actual output before editing code.
 
-## 4) Verify
+## 2) Diagnose the layer
+
+Check the likely failure site in order:
+
+1. parser / AST shape
+2. analyze / side tables / classifications
+3. transform
+4. client codegen
+
+Use `CLAUDE.md`, `CODEBASE_MAP.md`, and `phase-boundaries` to keep the fix in the correct crate.
+
+## 3) Research before editing
+
+If needed, inspect the corresponding reference compiler path in `reference/compiler/` and compare it with the matching Rust module. Focus on what behavior is missing, not on copying JS implementation patterns.
+
+Use `svelte-reference-map` when you need the file mapping.
+
+## 4) Implement the minimal correct fix
+
+- keep the change scoped to the named test unless investigation proves a shared root cause
+- prefer existing accessors and enums over ad hoc conditions
+- add or update unit tests if parser or analyze behavior changed
+- never hand-edit `case-svelte.js` or `case-rust.js`
+
+## 5) Verify narrowly, then slightly wider
+
 Run:
+
 ```bash
 just test-case <test-name>
 ```
-Then run additional narrowly related tests.
 
-## 5) Report
+Then run additional narrowly related verification, usually the closest crate tests or `just test-compiler` if codegen behavior changed broadly.
+
+If the same approach failed three times, stop looping and report the blocker clearly.
+
+## 6) Report
+
 Provide:
-- root cause summary
-- files changed
-- commands run + outcomes
+
+- root cause
+- changed layer and files
+- commands run and outcomes
 - any remaining follow-up work

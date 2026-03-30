@@ -1814,8 +1814,38 @@ fn async_derived_basic() {
 }
 
 #[rstest]
+fn async_derived_destructured() {
+    assert_compiler("async_derived_destructured");
+}
+
+#[rstest]
+fn inline_await_basic() {
+    assert_compiler("inline_await_basic");
+}
+
+#[rstest]
+fn inline_await_text_concat() {
+    assert_compiler("inline_await_text_concat");
+}
+
+#[rstest]
+fn inline_await_attr() {
+    assert_compiler("inline_await_attr");
+}
+
+#[test]
+fn async_pickled_await_template() {
+    assert_compiler("async_pickled_await_template");
+}
+
+#[rstest]
 fn async_render_tag() {
     assert_compiler("async_render_tag");
+}
+
+#[rstest]
+fn async_render_tag_complex_args() {
+    assert_compiler("async_render_tag_complex_args");
 }
 
 #[rstest]

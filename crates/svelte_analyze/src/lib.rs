@@ -147,6 +147,7 @@ pub fn analyze_with_options<'a>(
 
     // Instance body blocker analysis (experimental.async)
     passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
+    passes::js_analyze::classify_pickled_awaits(&parsed, &mut data);
 
     // needs_context requires ref_symbols — must run after collect_symbols
     passes::js_analyze::classify_expression_needs_context(&mut data);

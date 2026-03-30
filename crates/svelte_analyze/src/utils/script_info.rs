@@ -370,9 +370,14 @@ fn collect_var_declarations(
                     }
 
                     *props_declaration = Some(PropsDeclaration { props, is_identifier_pattern: false });
-                } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw)) {
+                } else if matches!(rune, Some(RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy)) {
                     let mut names = Vec::new();
                     collect_binding_names(&declarator.id, &mut names);
+                    let rune_init_refs = if matches!(rune, Some(RuneKind::Derived | RuneKind::DerivedBy)) {
+                        declarator.init.as_ref().map(collect_derived_refs).unwrap_or_default()
+                    } else {
+                        vec![]
+                    };
                     for name in names {
                         let decl_span = Span::new(
                             declarator.span.start + offset,
@@ -383,8 +388,8 @@ fn collect_var_declarations(
                             span: decl_span,
                             kind,
                             init_span: None,
-                            is_rune: Some(RuneKind::StateRaw),
-                            rune_init_refs: vec![],
+                            is_rune: rune,
+                            rune_init_refs: rune_init_refs.clone(),
                             init_literal: None,
                         });
                     }
@@ -393,9 +398,14 @@ fn collect_var_declarations(
             oxc_ast::ast::BindingPattern::ArrayPattern(_) => {
                 let rune = declarator.init.as_ref().and_then(|init| detect_rune(init));
                 if let Some(rune_kind) = rune {
-                    if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
+                    if matches!(rune_kind, RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy) {
                         let mut names = Vec::new();
                         collect_binding_names(&declarator.id, &mut names);
+                        let rune_init_refs = if matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy) {
+                            declarator.init.as_ref().map(collect_derived_refs).unwrap_or_default()
+                        } else {
+                            vec![]
+                        };
                         for name in names {
                             let decl_span = Span::new(
                                 declarator.span.start + offset,
@@ -406,8 +416,8 @@ fn collect_var_declarations(
                                 span: decl_span,
                                 kind,
                                 init_span: None,
-                                is_rune: Some(RuneKind::StateRaw),
-                                rune_init_refs: vec![],
+                                is_rune: Some(rune_kind),
+                                rune_init_refs: rune_init_refs.clone(),
                                 init_literal: None,
                             });
                         }

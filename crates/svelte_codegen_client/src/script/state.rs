@@ -11,6 +11,44 @@ use crate::builder::Arg;
 use super::{ClassStateField, ClassStateInfo, ScriptTransformer};
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
+    /// Rewrite destructured async `$derived(await expr)` into a single block statement
+    /// so async instance splitting keeps the original blocker metadata indexing.
+    pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        let mut i = 0;
+        while i < stmts.len() {
+            let should_expand = if let Statement::VariableDeclaration(decl) = &stmts[i] {
+                decl.declarations.len() == 1
+                    && !matches!(&decl.declarations[0].id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && decl.declarations[0].init.as_ref().is_some_and(|init| {
+                        matches!(Self::detect_class_field_rune_kind(init), Some(RuneKind::Derived))
+                            && matches!(
+                                init,
+                                Expression::CallExpression(call)
+                                    if call.arguments.first()
+                                        .and_then(|arg| arg.as_expression())
+                                        .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
+                            )
+                    })
+            } else {
+                false
+            };
+
+            if !should_expand {
+                i += 1;
+                continue;
+            }
+
+            let stmt = stmts.remove(i);
+            let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
+            let mut declarator = decl.declarations.remove(0);
+            let init = declarator.init.take().unwrap();
+            let replacement = self.gen_async_derived_destructuring(&declarator.id, init);
+            stmts.insert(i, replacement);
+            self.ident_counter += 1;
+            i += 1;
+        }
+    }
+
     /// Expand destructured `$state`/`$state.raw` declarations into expanded form.
     /// Called from `exit_statements` after other transformations.
     pub(super) fn expand_state_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
@@ -266,7 +304,116 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     value
                 }
             }
+            RuneKind::Derived | RuneKind::DerivedBy => {
+                let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
+                self.b.call_expr("$.derived", [Arg::Expr(thunk)])
+            }
             _ => value,
+        }
+    }
+
+    fn gen_async_derived_destructuring(
+        &mut self,
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        init: Expression<'a>,
+    ) -> Statement<'a> {
+        let Expression::CallExpression(mut call) = init else {
+            unreachable!("async derived destructuring should be a call");
+        };
+        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+        std::mem::swap(&mut call.arguments[0], &mut dummy);
+        let awaited = dummy.into_expression();
+        let Expression::AwaitExpression(await_expr) = awaited else {
+            unreachable!("async derived destructuring should contain await");
+        };
+
+        let source_expr = await_expr.unbox().argument;
+        let tmp_name = self.gen_unique_name("$$d");
+        let tmp_name_str = self.b.alloc_str(&tmp_name);
+        let thunk = self.b.thunk(source_expr);
+        let async_derived = self.b.call_expr("$.async_derived", [Arg::Expr(thunk)]);
+        let tmp_stmt = self.b.var_stmt(tmp_name_str, self.b.await_expr(async_derived));
+
+        let access_root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);
+        let mut block_stmts = vec![tmp_stmt];
+        self.gen_derived_destructure_assignments(pattern, access_root, &mut block_stmts);
+        self.b.block_stmt(block_stmts)
+    }
+
+    fn gen_derived_destructure_assignments(
+        &mut self,
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        accessor: Expression<'a>,
+        stmts: &mut Vec<Statement<'a>>,
+    ) {
+        match pattern {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+                stmts.push(self.b.assign_stmt(crate::builder::AssignLeft::Ident(id.name.to_string()), value));
+            }
+            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
+                let mut key_names: Vec<String> = Vec::new();
+                for prop in &obj.properties {
+                    if let Some(name) = Self::property_key_name(&prop.key) {
+                        key_names.push(name);
+                    }
+                }
+
+                for prop in &obj.properties {
+                    let member = self.build_object_member_access(accessor.clone_in(self.b.ast.allocator), &prop.key, prop.computed);
+                    self.gen_derived_destructure_assignments(&prop.value, member, stmts);
+                }
+
+                if let Some(rest) = &obj.rest {
+                    let keys_array = self.b.array_expr(key_names.iter().map(|k| self.b.str_expr(k)));
+                    let exclude_expr = self.b.call_expr("$.exclude_from_object", [
+                        Arg::Expr(accessor),
+                        Arg::Expr(keys_array),
+                    ]);
+                    self.gen_derived_destructure_assignments(&rest.argument, exclude_expr, stmts);
+                }
+            }
+            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
+                let array_name = self.gen_unique_name("$$array");
+                let array_name_str = self.b.alloc_str(&array_name);
+
+                let len_arg = if arr.rest.is_some() {
+                    vec![Arg::Expr(accessor)]
+                } else {
+                    vec![Arg::Expr(accessor), Arg::Num(arr.elements.len() as f64)]
+                };
+                let to_array_call = self.b.call_expr("$.to_array", len_arg);
+                let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
+                stmts.push(self.b.var_stmt(array_name_str, self.b.call_expr("$.derived", [Arg::Expr(thunk)])));
+
+                for (idx, elem) in arr.elements.iter().enumerate() {
+                    let Some(elem) = elem else { continue };
+                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
+                    let elem_access = self.b.computed_member_expr(get_array, self.b.num_expr(idx as f64));
+                    self.gen_derived_destructure_assignments(elem, elem_access, stmts);
+                }
+
+                if let Some(rest) = &arr.rest {
+                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
+                    let slice = self.b.static_member_expr(get_array, "slice");
+                    let slice_call = self.b.ast.expression_call(
+                        oxc_span::SPAN,
+                        slice,
+                        NONE,
+                        self.b.ast.vec_from_array([oxc_ast::ast::Argument::from(self.b.num_expr(arr.elements.len() as f64))]),
+                        false,
+                    );
+                    self.gen_derived_destructure_assignments(&rest.argument, slice_call, stmts);
+                }
+            }
+            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                let default_expr = assign.right.clone_in(self.b.ast.allocator);
+                let fallback = self.b.call_expr("$.fallback", [
+                    Arg::Expr(accessor),
+                    Arg::Expr(default_expr),
+                ]);
+                self.gen_derived_destructure_assignments(&assign.left, fallback, stmts);
+            }
         }
     }
 

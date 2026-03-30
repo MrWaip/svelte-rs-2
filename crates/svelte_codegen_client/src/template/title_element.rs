@@ -12,7 +12,7 @@ use svelte_ast::NodeId;
 use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
-use super::expression::parts_are_dynamic;
+use super::expression::{emit_effect_call, parts_are_dynamic, MemoValueRef, TemplateMemoState};
 
 enum TitleValuePart<'a> {
     Str(String),
@@ -23,110 +23,39 @@ enum TitleValuePart<'a> {
 
 #[derive(Default)]
 struct TitleMemoizer<'a> {
-    sync_values: Vec<Expression<'a>>,
-    async_values: Vec<Expression<'a>>,
-    blockers: Vec<u32>,
-    extra_blockers: Vec<Expression<'a>>,
+    deps: TemplateMemoState<'a>,
 }
 
 impl<'a> TitleMemoizer<'a> {
-    fn push_blockers(&mut self, ctx: &mut Ctx<'a>, id: NodeId) {
-        for idx in ctx.analysis.expression_blockers(id) {
-            if !self.blockers.contains(&idx) {
-                self.blockers.push(idx);
-            }
-        }
-        self.extra_blockers.extend(ctx.const_tag_blocker_exprs(id));
-    }
-
     fn add_expr(&mut self, ctx: &mut Ctx<'a>, id: NodeId) -> TitleValuePart<'a> {
-        self.push_blockers(ctx, id);
+        self.deps.push_node_deps(ctx, id);
 
         if let Some(value) = try_resolve_known(ctx, id) {
             return TitleValuePart::Str(value);
         }
 
         let expr = super::expression::get_node_expr(ctx, id);
-        if ctx.analysis.needs_expr_memoization(id) {
-            if ctx.expr_has_await(id) {
-                let index = self.async_values.len();
-                self.async_values.push(expr);
-                TitleValuePart::AsyncMemo(index)
-            } else {
-                let index = self.sync_values.len();
-                self.sync_values.push(expr);
-                TitleValuePart::SyncMemo(index)
-            }
-        } else {
-            TitleValuePart::Expr(expr)
+        let info = ctx.expression(id).expect("title expression metadata should exist");
+        match self.deps.add_memoized_expr(ctx, info, ctx.b.clone_expr(&expr)) {
+            Some(MemoValueRef::Sync(index)) => TitleValuePart::SyncMemo(index),
+            Some(MemoValueRef::Async(index)) => TitleValuePart::AsyncMemo(index),
+            None => TitleValuePart::Expr(expr),
         }
     }
 
     fn has_deps(&self) -> bool {
-        !self.sync_values.is_empty()
-            || !self.async_values.is_empty()
-            || !self.blockers.is_empty()
-            || !self.extra_blockers.is_empty()
+        self.deps.has_deps()
     }
-
-    fn has_sync_values(&self) -> bool {
-        !self.sync_values.is_empty()
-    }
-
-    fn has_async_values(&self) -> bool {
-        !self.async_values.is_empty()
-    }
-
-    fn has_blockers(&self) -> bool {
-        !self.blockers.is_empty() || !self.extra_blockers.is_empty()
-    }
-
-    fn sync_values_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
-        if self.sync_values.is_empty() {
-            ctx.b.void_zero_expr()
-        } else {
-            ctx.b.array_expr(self.sync_values.drain(..).map(|expr| ctx.b.thunk(expr)))
-        }
-    }
-
-    fn async_values_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
-        if self.async_values.is_empty() {
-            ctx.b.void_zero_expr()
-        } else {
-            ctx.b.array_expr(self.async_values.drain(..).map(|expr| ctx.b.async_thunk(expr)))
-        }
-    }
-
-    fn blockers_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
-        let mut all_blockers: Vec<Expression<'a>> = self.blockers.iter()
-            .map(|&idx| {
-                ctx.b.computed_member_expr(
-                    ctx.b.rid_expr("$$promises"),
-                    ctx.b.num_expr(idx as f64),
-                )
-            })
-            .collect();
-        all_blockers.extend(self.extra_blockers.drain(..));
-        if all_blockers.is_empty() {
-            ctx.b.void_zero_expr()
-        } else {
-            ctx.b.array_expr(all_blockers)
-        }
-    }
-
     fn param_names(&self) -> Vec<String> {
-        let total = self.sync_values.len() + self.async_values.len();
-        (0..total).map(|i| format!("${i}")).collect()
+        self.deps.param_names()
     }
 
     fn part_expr(&self, ctx: &Ctx<'a>, part: TitleValuePart<'a>) -> Expression<'a> {
         match part {
             TitleValuePart::Str(value) => ctx.b.str_expr(&value),
             TitleValuePart::Expr(expr) => expr,
-            TitleValuePart::SyncMemo(index) => ctx.b.rid_expr(&format!("${index}")),
-            TitleValuePart::AsyncMemo(index) => {
-                ctx.b.rid_expr(&format!("${}", self.sync_values.len() + index))
-            }
+            TitleValuePart::SyncMemo(index) => self.deps.sync_param_expr(ctx, index),
+            TitleValuePart::AsyncMemo(index) => self.deps.async_param_expr(ctx, index),
         }
     }
 }
@@ -200,20 +129,7 @@ pub(crate) fn gen_title_element<'a>(
             )
         };
         if memoizer.has_deps() {
-            let has_sync_values = memoizer.has_sync_values();
-            let has_async_values = memoizer.has_async_values();
-            let has_blockers = memoizer.has_blockers();
-            let mut args = vec![Arg::Expr(arrow)];
-            if has_sync_values || has_async_values || has_blockers {
-                args.push(Arg::Expr(memoizer.sync_values_expr(ctx)));
-            }
-            if has_async_values || has_blockers {
-                args.push(Arg::Expr(memoizer.async_values_expr(ctx)));
-            }
-            if has_blockers {
-                args.push(Arg::Expr(memoizer.blockers_expr(ctx)));
-            }
-            stmts.push(ctx.b.call_stmt("$.deferred_template_effect", args));
+            emit_effect_call(ctx, "$.deferred_template_effect", arrow, &mut memoizer.deps, stmts);
         } else {
             stmts.push(ctx.b.call_stmt("$.deferred_template_effect", [Arg::Expr(arrow)]));
         }

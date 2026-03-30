@@ -208,8 +208,8 @@ pub(crate) fn process_element<'a>(
             };
             init.push(ctx.b.var_stmt(&text_name, child_call));
 
-            let expr = build_concat(ctx, &items[0]);
             if ctx.bound_contenteditable {
+                let expr = build_concat(ctx, &items[0]);
                 // bound_contenteditable: nodeValue= in init instead of $.set_text() in update
                 init.push(ctx.b.assign_stmt(
                     crate::builder::AssignLeft::StaticMember(
@@ -222,10 +222,16 @@ pub(crate) fn process_element<'a>(
                 init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
                 // Check if the expression needs call memoization (has_call + reactive refs)
                 let has_call = text_content_needs_memo(&items[0], ctx);
-                if has_call {
-                    // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
-                    emit_memoized_text_effect(ctx, &text_name, expr, init);
+                let has_async_value = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
+                    parts.iter().any(|part| matches!(part, svelte_analyze::LoweredTextPart::Expr(id) if ctx.expr_has_await(*id)))
                 } else {
+                    false
+                };
+                if has_call || has_async_value {
+                    // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
+                    emit_memoized_text_effect(ctx, &items[0], &text_name, init);
+                } else {
+                    let expr = build_concat(ctx, &items[0]);
                     if let FragmentItem::TextConcat { parts, .. } = &items[0] {
                         for part in parts {
                             if let svelte_analyze::LoweredTextPart::Expr(id) = part {
