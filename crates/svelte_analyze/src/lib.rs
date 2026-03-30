@@ -185,6 +185,13 @@ pub fn analyze_with_options<'a>(
     mark_const_tag_bindings(&mut data);
 
     data.scoping.precompute_dynamic_cache();
+
+    // Blocked symbols are reactive (their values change when the promise resolves).
+    // Mark them as dynamic so derived symbols that depend on them propagate dynamicity.
+    if data.blocker_data.has_async {
+        data.scoping.mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
+    }
+
     passes::js_analyze::classify_expression_dynamicity(&mut data);
 
     // Mark expressions referencing blocked symbols as dynamic (after classify_expression_dynamicity)
