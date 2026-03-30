@@ -11,97 +11,134 @@ use crate::builder::Arg;
 use super::{ClassStateField, ClassStateInfo, ScriptTransformer};
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
-    /// Rewrite destructured async `$derived(await expr)` into a single block statement
-    /// so async instance splitting keeps the original blocker metadata indexing.
-    pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+    fn rewrite_destructured_rune_decls(
+        &mut self,
+        stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
+        mut predicate: impl FnMut(
+            &oxc_ast::ast::VariableDeclarator<'a>,
+            Option<RuneKind>,
+        ) -> bool,
+        mut rewrite: impl FnMut(
+            &mut Self,
+            oxc_ast::ast::VariableDeclarationKind,
+            oxc_ast::ast::VariableDeclarator<'a>,
+            RuneKind,
+        ) -> Statement<'a>,
+    ) {
         let mut i = 0;
         while i < stmts.len() {
-            let should_expand = if let Statement::VariableDeclaration(decl) = &stmts[i] {
-                decl.declarations.len() == 1
-                    && !matches!(&decl.declarations[0].id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
-                    && decl.declarations[0].init.as_ref().is_some_and(|init| {
-                        matches!(Self::detect_class_field_rune_kind(init), Some(RuneKind::Derived))
-                            && matches!(
-                                init,
-                                Expression::CallExpression(call)
-                                    if call.arguments.first()
-                                        .and_then(|arg| arg.as_expression())
-                                        .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
-                            )
-                    })
-            } else {
-                false
+            let Some((should_rewrite, rune_kind)) = (match &stmts[i] {
+                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => {
+                    let declarator = &decl.declarations[0];
+                    let rune_kind = self.rune_kind_for_declarator(declarator);
+                    Some((predicate(declarator, rune_kind), rune_kind))
+                }
+                _ => None,
+            }) else {
+                i += 1;
+                continue;
             };
 
-            if !should_expand {
+            if !should_rewrite {
                 i += 1;
                 continue;
             }
 
             let stmt = stmts.remove(i);
             let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
-            let mut declarator = decl.declarations.remove(0);
-            let init = declarator.init.take().unwrap();
-            let replacement = self.gen_async_derived_destructuring(&declarator.id, init);
+            let decl_kind = decl.kind;
+            let declarator = decl.declarations.remove(0);
+            let replacement = rewrite(self, decl_kind, declarator, rune_kind.unwrap());
             stmts.insert(i, replacement);
             self.ident_counter += 1;
             i += 1;
         }
     }
 
+    fn rune_kind_for_declarator(
+        &self,
+        declarator: &oxc_ast::ast::VariableDeclarator<'a>,
+    ) -> Option<RuneKind> {
+        Self::first_binding_identifier(&declarator.id)
+            .and_then(|id| self.rune_for_binding(id))
+            .map(|(kind, _)| kind)
+            .or_else(|| declarator.init.as_ref().and_then(Self::detect_class_field_rune_kind))
+    }
+
+    fn first_binding_identifier<'p>(
+        pattern: &'p oxc_ast::ast::BindingPattern<'a>,
+    ) -> Option<&'p oxc_ast::ast::BindingIdentifier<'a>> {
+        match pattern {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => Some(id),
+            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => obj
+                .properties
+                .iter()
+                .find_map(|prop| Self::first_binding_identifier(&prop.value))
+                .or_else(|| obj.rest.as_ref().and_then(|rest| Self::first_binding_identifier(&rest.argument))),
+            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => arr
+                .elements
+                .iter()
+                .flatten()
+                .find_map(Self::first_binding_identifier)
+                .or_else(|| arr.rest.as_ref().and_then(|rest| Self::first_binding_identifier(&rest.argument))),
+            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                Self::first_binding_identifier(&assign.left)
+            }
+        }
+    }
+
+    /// Rewrite destructured async `$derived(await expr)` into a single block statement
+    /// so async instance splitting keeps the original blocker metadata indexing.
+    pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        self.rewrite_destructured_rune_decls(
+            stmts,
+            |declarator, rune_kind| {
+                !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && matches!(rune_kind, Some(RuneKind::Derived))
+                    && declarator.init.as_ref().is_some_and(|init| {
+                        matches!(
+                            init,
+                            Expression::CallExpression(call)
+                                if call.arguments.first()
+                                    .and_then(|arg| arg.as_expression())
+                                    .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
+                        )
+                    })
+            },
+            |this, _decl_kind, mut declarator, _| {
+                let init = declarator.init.take().unwrap();
+                this.gen_async_derived_destructuring(&declarator.id, init)
+            },
+        );
+    }
+
     /// Expand destructured `$state`/`$state.raw` declarations into expanded form.
     /// Called from `exit_statements` after other transformations.
     pub(super) fn expand_state_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
-        let mut i = 0;
-        while i < stmts.len() {
-            let should_expand = if let Statement::VariableDeclaration(decl) = &stmts[i] {
-                decl.declarations.len() == 1
-                    && !matches!(&decl.declarations[0].id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
-                    && decl.declarations[0].init.as_ref().is_some_and(|init| {
-                        matches!(Self::detect_class_field_rune_kind(init), Some(RuneKind::State | RuneKind::StateRaw))
-                    })
-            } else {
-                false
-            };
-
-            if !should_expand {
-                i += 1;
-                continue;
-            }
-
-            // Take ownership of the statement
-            let stmt = stmts.remove(i);
-            let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
-            let mut declarator = decl.declarations.remove(0);
-            let init = declarator.init.take().unwrap();
-            let rune_kind = Self::detect_class_field_rune_kind(&init).unwrap();
-
-            // Extract the rune call argument
-            let value = if let Expression::CallExpression(mut call) = init {
-                if call.arguments.is_empty() {
-                    self.b.ast.expression_object(oxc_span::SPAN, self.b.ast.vec())
+        self.rewrite_destructured_rune_decls(
+            stmts,
+            |declarator, rune_kind| {
+                !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && matches!(rune_kind, Some(RuneKind::State | RuneKind::StateRaw))
+                    && declarator.init.is_some()
+            },
+            |this, decl_kind, mut declarator, rune_kind| {
+                let init = declarator.init.take().unwrap();
+                let value = if let Expression::CallExpression(mut call) = init {
+                    if call.arguments.is_empty() {
+                        this.b.ast.expression_object(oxc_span::SPAN, this.b.ast.vec())
+                    } else {
+                        let mut dummy = oxc_ast::ast::Argument::from(this.b.cheap_expr());
+                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        dummy.into_expression()
+                    }
                 } else {
-                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                    std::mem::swap(&mut call.arguments[0], &mut dummy);
-                    dummy.into_expression()
-                }
-            } else {
-                unreachable!()
-            };
+                    unreachable!()
+                };
 
-            // Generate the expanded declaration
-            let replacement = self.gen_state_destructuring(
-                &declarator.id,
-                value,
-                rune_kind,
-                decl.kind,
-            );
-
-            // Insert replacement statement
-            stmts.insert(i, replacement);
-            self.ident_counter += 1;
-            i += 1;
-        }
+                this.gen_state_destructuring(&declarator.id, value, rune_kind, decl_kind)
+            },
+        );
     }
 
     /// Detect if an expression is a class-field rune call:

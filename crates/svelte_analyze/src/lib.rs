@@ -340,7 +340,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
 /// Resolve render tag argument prop sources via reference_id from parsed expressions.
 fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     use oxc_ast::ast::Expression;
-    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().collect();
+    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
     for tag_id in tag_ids {
         let offset = match data.node_expr_offsets.get(tag_id) {
             Some(&o) => o,
@@ -373,7 +373,7 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
     use crate::types::data::RenderTagCalleeMode;
 
-    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().collect();
+    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
 
     for node_id in all_ids {
         let is_dynamic = match data.render_tag_callee_sym.get(node_id) {

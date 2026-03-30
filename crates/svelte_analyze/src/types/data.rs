@@ -785,8 +785,6 @@ pub struct AnalysisData {
     pub title_elements: TitleElementData,
     /// Each-block context/index names.
     pub each_blocks: EachBlockData,
-    /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
-    pub render_tag_arg_has_call: NodeTable<Vec<bool>>,
     /// Full expression metadata for render tag arguments.
     pub render_tag_arg_infos: NodeTable<Vec<ExpressionInfo>>,
     /// Per-argument prop-source SymbolId for render tags.
@@ -921,7 +919,6 @@ impl AnalysisData {
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             each_blocks: EachBlockData::new(node_count),
-            render_tag_arg_has_call: NodeTable::new(node_count),
             render_tag_arg_infos: NodeTable::new(node_count),
             render_tag_prop_sources: NodeTable::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
@@ -981,9 +978,6 @@ impl AnalysisData {
             .get(attr_id)
             .and_then(|info| info.ref_symbols.first())
             .is_some_and(|&sym| self.import_syms.contains(&sym))
-    }
-    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> {
-        self.render_tag_arg_has_call.get(id).map(|v| v.as_slice())
     }
     pub fn render_tag_arg_infos(&self, id: NodeId) -> Option<&[ExpressionInfo]> {
         self.render_tag_arg_infos.get(id).map(|v| v.as_slice())

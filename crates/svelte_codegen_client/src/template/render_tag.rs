@@ -41,11 +41,6 @@ pub(crate) fn gen_render_tag<'a>(
 
     let mode = ctx.analysis.render_tag_callee_mode(id);
 
-    // Pre-computed per-argument has_call flags
-    let arg_has_call = ctx.analysis.render_tag_arg_has_call(id)
-        .map(|v| v.to_vec())
-        .unwrap_or_default();
-
     // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
     let tag = ctx.render_tag(id);
     let offset = tag.expression_span.start;
@@ -88,7 +83,6 @@ pub(crate) fn gen_render_tag<'a>(
             continue;
         }
 
-        let has_call = arg_has_call.get(i).copied().unwrap_or(false);
         let arg_info = arg_infos.get(i);
 
         if let Some(info) = arg_info {
@@ -106,7 +100,7 @@ pub(crate) fn gen_render_tag<'a>(
             deps.push_expr_info(ctx, info);
         }
 
-        if has_call {
+        if arg_info.is_some_and(|info| info.has_call) {
             let mut memo_name = String::with_capacity(4);
             memo_name.push('$');
             memo_name.push_str(&memo_counter.to_string());

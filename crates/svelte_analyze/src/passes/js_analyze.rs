@@ -174,8 +174,6 @@ pub(crate) fn classify_render_tag_args(
             .iter()
             .map(|arg| crate::passes::collect_symbols::build_expression_info(arg.to_expression(), &mut data.scoping))
             .collect();
-        let flags: Vec<bool> = infos.iter().map(|info| info.has_call).collect();
-        data.render_tag_arg_has_call.insert(tag_id, flags);
         data.render_tag_arg_infos.insert(tag_id, infos);
 
         // Arg prop sources resolved later via reference_id in resolve_render_tag_prop_sources
@@ -519,22 +517,23 @@ pub(crate) fn classify_expression_dynamicity(data: &mut AnalysisData) {
 }
 
 pub(crate) fn classify_pickled_awaits(parsed: &ParserResult<'_>, data: &mut AnalysisData) {
-    for (node_id, _) in data.expressions.iter() {
-        let Some(&offset) = data.node_expr_offsets.get(node_id) else {
-            continue;
-        };
-        let Some(expr) = parsed.exprs.get(&offset) else {
-            continue;
-        };
-        let mut collector = PickledAwaitCollector::new();
-        collector.visit_expression(expr);
-        data.pickled_await_offsets.extend(collector.offsets);
-    }
+    let expr_offsets: Vec<u32> = data.expressions.iter()
+        .filter_map(|(node_id, _)| data.node_expr_offsets.get(node_id).copied())
+        .collect();
+    let attr_offsets: Vec<u32> = data.attr_expressions.iter()
+        .filter_map(|(node_id, _)| data.attr_expr_offsets.get(node_id).copied())
+        .collect();
 
-    for (attr_id, _) in data.attr_expressions.iter() {
-        let Some(&offset) = data.attr_expr_offsets.get(attr_id) else {
-            continue;
-        };
+    collect_pickled_await_offsets(parsed, data, expr_offsets.into_iter());
+    collect_pickled_await_offsets(parsed, data, attr_offsets.into_iter());
+}
+
+fn collect_pickled_await_offsets(
+    parsed: &ParserResult<'_>,
+    data: &mut AnalysisData,
+    offsets: impl Iterator<Item = u32>,
+) {
+    for offset in offsets {
         let Some(expr) = parsed.exprs.get(&offset) else {
             continue;
         };
