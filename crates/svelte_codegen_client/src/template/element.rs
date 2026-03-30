@@ -30,6 +30,7 @@ use super::traverse::traverse_items;
 /// - Directives ($.attach, $.action, $.bind_*) → element_state → after children
 ///
 /// Merge order: simple attrs → children init → directive init → updates → after_update
+/// Returns const-tag blocker expressions collected during child processing.
 pub(crate) fn process_element<'a>(
     ctx: &mut Ctx<'a>,
     el_id: NodeId,
@@ -213,6 +214,14 @@ pub(crate) fn process_element<'a>(
                     // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
                     emit_memoized_text_effect(ctx, &text_name, expr, init);
                 } else {
+                    if let FragmentItem::TextConcat { parts, .. } = &items[0] {
+                        for part in parts {
+                            if let svelte_analyze::LoweredTextPart::Expr(id) = part {
+                                let exprs = ctx.const_tag_blocker_exprs(*id);
+                                ctx.pending_const_blockers.extend(exprs);
+                            }
+                        }
+                    }
                     update.push(
                         ctx.b
                             .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
@@ -275,6 +284,7 @@ pub(crate) fn process_element<'a>(
     // --- Merge directive statements after children (matching Svelte's element_state merge) ---
     init.extend(directive_init);
     after_update.extend(directive_after_update);
+
 }
 
 /// Check if a fragment item needs a DOM variable.

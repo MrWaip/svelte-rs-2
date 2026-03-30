@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
+use oxc_semantic::SymbolId;
 use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParserResult};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_analyze::ExpressionInfo;
@@ -51,6 +52,15 @@ pub struct Ctx<'a> {
     pub has_tracing: bool,
     /// Whether `experimental.async` is enabled.
     pub experimental_async: bool,
+
+    /// Const-tag blocker propagation (experimental.async).
+    /// Maps SymbolId of a const-tag binding → (promises_var_name, thunk_index).
+    /// Populated by `emit_const_tags` when `$.run()` mode is used.
+    /// Consumed by template effect emission to add `promises[M]` blockers.
+    pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
+    /// Accumulated const-tag blocker expressions from child traversal.
+    /// Collected during text expression codegen, consumed by `emit_template_effect_with_blockers`.
+    pub(crate) pending_const_blockers: Vec<Expression<'a>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -90,6 +100,8 @@ impl<'a> Ctx<'a> {
             filename,
             has_tracing: false,
             experimental_async,
+            const_tag_blockers: FxHashMap::default(),
+            pending_const_blockers: Vec::new(),
         }
     }
 
@@ -160,6 +172,25 @@ impl<'a> Ctx<'a> {
         self.analysis.expr_has_blockers(id)
     }
 
+
+    /// Build `promises_var[index]` expressions for const-tag symbols referenced by a node's expression.
+    /// Returns one expression per referenced const-tag binding that has a blocker.
+    pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {
+        if self.const_tag_blockers.is_empty() {
+            return Vec::new();
+        }
+        let Some(info) = self.expression(id) else { return Vec::new() };
+        let ref_symbols = info.ref_symbols.clone();
+        let mut result = Vec::new();
+        for sym in &ref_symbols {
+            if let Some((promises_name, idx)) = self.const_tag_blockers.get(sym) {
+                let obj = self.b.rid_expr(promises_name);
+                let prop = self.b.num_expr(*idx as f64);
+                result.push(self.b.computed_member_expr(obj, prop));
+            }
+        }
+        result
+    }
 
     /// Build `[$$promises[i], ...]` blockers array from expression's blocker indices.
     pub fn build_blockers_array(&mut self, id: NodeId) -> oxc_ast::ast::Expression<'a> {
