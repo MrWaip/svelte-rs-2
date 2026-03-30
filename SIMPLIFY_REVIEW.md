@@ -1,245 +1,225 @@
 # SIMPLIFY_REVIEW
 
-## Audit coverage (to avoid superficial review)
+Единый документ по упрощению архитектуры `analyze → transform → codegen`, отсортированный по долгосрочному эффекту.
 
-Reviewed all source files under:
+## Audit coverage
+
+Покрытие ревью:
 - `crates/svelte_analyze/src` (31 files)
 - `crates/svelte_transform/src` (3 files)
 - `crates/svelte_codegen_client/src` (33 files)
 
-Total: **67 files**, ~**21,225 LOC**.
-
-Additionally inspected complexity hotspots by size and role:
-- `svelte_analyze`: `lib.rs`, `types/data.rs`, `passes/js_analyze.rs`, `walker.rs`, `scope.rs`
-- `svelte_transform`: `lib.rs` (main walker)
-- `svelte_codegen_client`: `context.rs`, `template/*`, `script/traverse.rs`, `builder.rs`
+Итого: **67 файлов**, ~**21,225 LOC**.
 
 ---
 
-## Prioritized refactor roadmap (highest long-term leverage first)
+## Prioritized simplifications (sorted by effect)
 
-### 1) Typed pass graph for `svelte_analyze` orchestration
+### 1) Typed pass graph for `svelte_analyze` (maximum effect)
 
-**Why #1:** the biggest systemic risk is hidden pass dependencies.
+**Problem**
+- Порядок пассов и их зависимости зашиты вручную в orchestration-функции.
+- Инварианты между пассами выражены комментариями, а не контрактами.
 
-**Evidence observed**
-- `analyze_with_options` manually encodes pass order and invariants.
-- multiple independent `walk_template(...)` phases in one function.
-- comments carry dependency rules instead of types/contracts.
-
-**Proposal**
-- Introduce pass descriptors with explicit `requires` / `produces`.
-- Keep current runtime order, but derive it from declared dependencies.
-- Enforce ordering correctness in one place (scheduler) rather than in comments.
-
-**Expected benefit**
-- fewer regressions during feature ports.
-- easier onboarding (dependency graph beats large imperative function).
+**Change**
+- Ввести декларативные pass-descriptor’ы: `requires` / `produces`.
+- Собирать порядок выполнения из dependency graph.
 
 **Primary targets**
 - `crates/svelte_analyze/src/lib.rs`
 - `crates/svelte_analyze/src/passes/mod.rs`
 
+**Expected effect**
+- Самое сильное снижение регрессий и стоимости портирования новых фич.
+
 ---
 
-### 2) Split codegen `Ctx` into `Query` + `State`
+### 2) Split codegen `Ctx` into immutable `CodegenQuery` + mutable `CodegenState`
 
-**Why #2:** current context is a high-coupling center (read/write/lookup/emission all mixed).
+**Problem**
+- `Ctx` одновременно: AST/analysis query facade + mutable emission state + async/event plumbing.
+- Высокая связность и тяжёлый cognitive load.
 
-**Evidence observed**
-- `context.rs` combines:
-  - AST accessors,
-  - analysis forwarders,
-  - generation mutable state,
-  - async blocker plumbing,
-  - event delegation dedup.
-- many thin forwarding methods mirror internal layout of `AnalysisData`.
-
-**Proposal**
-- `CodegenQuery<'a>`: immutable semantic/AST queries.
-- `CodegenState<'a>`: mutable emission state only.
-- `Ctx` as transitional wrapper for incremental migration.
-
-**Expected benefit**
-- lower cognitive load per module.
-- easier isolated tests for query logic and for emission logic.
-- less accidental cross-feature coupling.
+**Change**
+- `CodegenQuery<'a>`: только read-only semantic questions.
+- `CodegenState<'a>`: только mutable generation state.
+- Переходно оставить thin `Ctx`-wrapper.
 
 **Primary targets**
 - `crates/svelte_codegen_client/src/context.rs`
 - `crates/svelte_codegen_client/src/template/*.rs`
 
----
-
-### 3) Unified template scope resolver in transform
-
-**Why #3:** repeated fallback policy is a correctness trap when scope rules evolve.
-
-**Evidence observed**
-- repeated `fragment_scope(...).unwrap_or(scope)` / `node_scope(...).unwrap_or(scope)` across node kinds.
-- await branches use multiple scope sources with similar fallback semantics.
-
-**Proposal**
-- Add `TemplateScopeResolver` with explicit APIs:
-  - `scope_for_if_consequent(...)`
-  - `scope_for_if_alternate(...)`
-  - `scope_for_each_body(...)`
-  - `scope_for_await_then/catch/pending(...)`
-- keep fallback logic centralized.
-
-**Expected benefit**
-- fewer scope regressions, easier audits.
-
-**Primary targets**
-- `crates/svelte_transform/src/lib.rs`
+**Expected effect**
+- Значительное упрощение codegen-модулей и более дешёвые future-refactor’ы.
 
 ---
 
-### 4) Replace offset plumbing with typed expression keys
+### 3) Stabilize analyze→codegen contract via `CodegenView`
 
-**Why #4:** positional contracts (`span.start`) leak parser internals into downstream phases.
+**Problem**
+- Codegen использует смешанный стиль API: часть через прокси, часть через прямой `ctx.analysis.*`.
+- Внутренняя раскладка `AnalysisData` протекает в downstream.
 
-**Evidence observed**
-- widespread map access by offsets for expr/stmts.
-- helper methods exist to bridge node-id to offset, indicating impedance mismatch.
-
-**Proposal**
-- parser assigns stable typed keys (`ExprKey`, `StmtKey`).
-- analyze stores mapping `NodeId/AttrId -> ExprKey`.
-- transform/codegen consume typed keys only (no raw offsets).
-
-**Expected benefit**
-- cleaner inter-phase API, fewer brittle lookups.
+**Change**
+- В analyze добавить единый контракт `CodegenView` для downstream-запросов.
+- Считать nested tables implementation detail analyze.
 
 **Primary targets**
-- `svelte_parser::types` (`ParserResult`)
 - `crates/svelte_analyze/src/types/data.rs`
 - `crates/svelte_codegen_client/src/context.rs`
-- `crates/svelte_transform/src/lib.rs`
+
+**Expected effect**
+- Сильное снижение coupling между фазами и churn при изменении data-модели.
 
 ---
 
-### 5) Normalize async codegen policy into one reusable abstraction
+### 4) Consolidate render-tag data into single `RenderTagPlan`
 
-**Why #5:** async wrapping pattern is repeated across multiple template modules.
+**Problem**
+- Render-tag знания распылены по нескольким side tables (`mode`, `arg_infos`, `prop_sources`).
+- Codegen должен синхронизировать их на лету.
 
-**Evidence observed**
-- repeated pattern: `has_await`, `needs_async`, build thunk, emit block, wrap via async helper.
-- appears in `if_block`, `each_block`, `key_block`, `html_tag`, `svelte_element`, `render_tag` paths.
-
-**Proposal**
-- add `AsyncEmissionPlan` (enum/struct) prepared once per node.
-- expose one method that returns either plain call args or async wrapper statement.
-
-**Expected benefit**
-- fewer drift bugs between block generators.
-- easier to change async semantics globally.
+**Change**
+- Один `NodeTable<RenderTagPlan>` со всем необходимым для эмиссии.
 
 **Primary targets**
-- `crates/svelte_codegen_client/src/template/*.rs`
-- `crates/svelte_codegen_client/src/context.rs`
+- analyze render-tag passes
+- `crates/svelte_codegen_client/src/template/render_tag.rs`
+
+**Expected effect**
+- Устранение класса ошибок рассинхронизации таблиц.
 
 ---
 
-### 6) Pass-bundle API for multi-visitor analyze walks
+### 5) Replace offset plumbing with typed expression handles
 
-**Why #6:** visitors are grouped implicitly today; this should be explicit and typed.
+**Problem**
+- `node_expr_offsets/attr_expr_offsets` + `span.start` leaking в transform/codegen.
+- Это технический долг API-границы parser↔analyze↔codegen.
 
-**Evidence observed**
-- walk setup manually assembles `v1/v2/...` per phase.
-- dependencies between bundles currently documented in comments.
+**Change**
+- Typed handles (`ExprHandle`, `StmtHandle`) вместо raw offsets в downstream.
 
-**Proposal**
-- create bundle structs: `SemanticBundle`, `ReactivityBundle`, `ElementBundle`.
-- bundle constructor validates required prerequisites.
+**Primary targets**
+- parser types / `ParserResult`
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_transform/src/lib.rs`
+- `crates/svelte_codegen_client/src/context.rs`
 
-**Expected benefit**
-- clearer ownership of each walk.
-- smaller `lib.rs` orchestration surface.
+**Expected effect**
+- Существенно более понятный и менее хрупкий inter-phase API.
+
+---
+
+### 6) Unified expression-dependencies API (`ExprDeps`) for Node/Attr
+
+**Problem**
+- Дублирование API для blockers/memo/await между node-expression и attr-expression путями.
+
+**Change**
+- Ввести единый query по `ExprSite` (`Node`/`Attr`) с нормализованным `ExprDeps`.
+
+**Primary targets**
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/template/{if_block,each_block,events,attributes,expression}.rs`
+
+**Expected effect**
+- Меньше duplicated logic в template codegen и проще глобально менять async/memo policy.
+
+---
+
+### 7) Move runtime prelude decisions to analyze (`RuntimePlan`)
+
+**Problem**
+- Codegen recompute’ит aggregate-флаги (`needs_push`, exports/bindable/stores/ce-props).
+- Это cross-phase recombination, которую лучше предвычислять в analyze.
+
+**Change**
+- Добавить `RuntimePlan` в analyze и потреблять в codegen как готовое решение.
+
+**Primary targets**
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/lib.rs`
+
+**Expected effect**
+- Упрощение entry codegen path + единый источник истины для runtime wiring.
+
+---
+
+### 8) Centralize scope fallback policy in transform (`TemplateScopeResolver`)
+
+**Problem**
+- Повторяющиеся `unwrap_or(scope)` для child-scope резолва по многим node-kind’ам.
+
+**Change**
+- Одна сущность `TemplateScopeResolver` с явными методами по типам child-секции.
+
+**Primary targets**
+- `crates/svelte_transform/src/lib.rs`
+
+**Expected effect**
+- Снижение вероятности subtle scope bugs и проще поддержка новых node-kind’ов.
+
+---
+
+### 9) Pass-bundle API for analyze multi-visitor walks
+
+**Problem**
+- В одном месте вручную собираются наборы visitor’ов, зависимости не типизированы.
+
+**Change**
+- Именованные bundles (`SemanticBundle`, `ReactivityBundle`, `ElementBundle`) + constructor checks.
 
 **Primary targets**
 - `crates/svelte_analyze/src/lib.rs`
 - `crates/svelte_analyze/src/walker.rs`
 
----
-
-### 7) Expand enum-first decision modeling beyond current islands
-
-**Why #7:** project already proved this pattern works (`RenderTagCalleeMode`, `EventHandlerMode`).
-
-**Evidence observed**
-- several domains still encode decisions via bool combinations (dynamic/state/await/blocker style flags).
-
-**Proposal**
-- define domain enums for multi-flag decisions where invalid combinations exist.
-- keep booleans only for truly independent orthogonal facts.
-
-**Expected benefit**
-- fewer impossible states.
-- better `match`-driven readability and compiler assistance.
-
-**Primary targets**
-- `crates/svelte_analyze/src/types/data.rs`
-- async + binding-related template emission modules
+**Expected effect**
+- Более прозрачная архитектура анализатора и локализация ответственности.
 
 ---
 
-### 8) Stabilize downstream-safe analysis query surface
+### 10) Normalize async emission policy into explicit `AsyncEmissionPlan`
 
-**Why #8:** downstream modules are coupled to inner `AnalysisData` layout.
+**Problem**
+- В template модулях повторяется похожая схема: `has_await`, `needs_async`, thunk, wrapper.
 
-**Evidence observed**
-- many forwarders in `Ctx` directly mirror inner tables.
-- changing a table shape risks broad churn in codegen.
-
-**Proposal**
-- define `analysis_queries` module/trait with semantic questions.
-- treat nested tables as analyze-internal implementation detail.
-
-**Expected benefit**
-- lower churn during data model refactors.
-- cleaner boundary between analyze and codegen.
+**Change**
+- Один унифицированный `AsyncEmissionPlan` и helper для эмиссии.
 
 **Primary targets**
-- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/template/*.rs`
 - `crates/svelte_codegen_client/src/context.rs`
 
+**Expected effect**
+- Меньше divergence между блоками (`if/each/key/html/render/svelte_element`).
+
 ---
 
-### 9) Introduce a shared template dispatch skeleton (without violating phase boundaries)
+### 11) Pre-resolve const-tag `SymbolId` in analyze
 
-**Why #9:** transform and codegen both manually route by node kind.
+**Problem**
+- Codegen делает повторные string-based scope lookups для const-tag names.
 
-**Evidence observed**
-- `match Node::...` traversal skeleton duplicated conceptually across crates.
-
-**Proposal**
-- share only dispatch skeleton + child traversal hooks.
-- keep semantics in each crate (no cross-phase leakage).
-
-**Expected benefit**
-- lower cost of adding new node kinds.
-- fewer missed branches during feature additions.
+**Change**
+- В `ConstTagData` хранить рядом с именами resolved `Vec<SymbolId>`.
 
 **Primary targets**
-- `crates/svelte_transform/src/lib.rs`
-- `crates/svelte_codegen_client/src/template/*`
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/template/const_tag.rs`
+
+**Expected effect**
+- Упрощение const-tag codegen и улучшение boundary hygiene.
 
 ---
 
-### 10) Decompose selected mega-files into concern-oriented modules
+### 12) Decompose selected mega-files by concern (lower but real effect)
 
-**Why #10:** high LOC concentration increases local complexity and slows reviews.
+**Problem**
+- Очень крупные файлы затрудняют review/navigation.
 
-**Evidence observed**
-- large files: `builder.rs`, `types/data.rs`, `script/traverse.rs`, `js_analyze.rs`, `template/expression.rs`.
-
-**Proposal**
-- split by concern (e.g., builder literals/calls/patterns; expression lowering vs memoization vs async helpers).
-- preserve public API while moving internal pieces.
-
-**Expected benefit**
-- faster navigation and more focused code reviews.
+**Change**
+- Разбить по функциональным срезам без изменения поведения.
 
 **Primary targets**
 - `crates/svelte_codegen_client/src/builder.rs`
@@ -247,17 +227,18 @@ Additionally inspected complexity hotspots by size and role:
 - `crates/svelte_codegen_client/src/script/traverse.rs`
 - `crates/svelte_analyze/src/passes/js_analyze.rs`
 
+**Expected effect**
+- Лучшая поддерживаемость и более быстрые ревью.
+
 ---
 
-## Suggested rollout order
+## Rollout order (pragmatic)
 
-1. Architecture safety rails first: #1 + #2.
-2. Contract cleanup: #3 + #4 + #8.
-3. Duplication reduction: #5 + #6 + #9.
-4. Readability scaling: #7 + #10.
+1. #1 + #2 + #3 (архитектурные safety rails)
+2. #4 + #5 + #6 + #7 (контракт и data-flow упрощение)
+3. #8 + #9 + #10 + #11 (локальная консолидация)
+4. #12 (структурная декомпозиция)
 
 ## Notes
-- Recommendations are intentionally long-term and refactor-friendly.
+- Документ intentionally ориентирован на long-term benefit.
 - No generated snapshots touched.
-
-See also focused follow-up: `DATA_CODEGEN_SIMPLIFY.md`.
