@@ -13,12 +13,28 @@ use crate::context::Ctx;
 ///
 /// Dynamic callees (non-normal bindings) use `$.snippet(anchor, getter, ...args)`.
 /// Optional chaining (`{@render fn?.()}`) uses `callee?.(anchor, ...)` or nullish coalescing.
+///
+/// `is_standalone` — true when the render tag is the sole child of a fragment
+/// (uses `$$anchor` directly, needs `$.next()` after async wrapping).
 pub(crate) fn gen_render_tag<'a>(
     ctx: &mut Ctx<'a>,
     id: NodeId,
     anchor_expr: Expression<'a>,
+    is_standalone: bool,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let has_await = ctx.expr_has_await(id);
+    let needs_async = has_await || ctx.expr_has_blockers(id);
+
+    // When async-wrapped, the inner render call uses the callback param as anchor;
+    // the outer anchor_expr is passed to $.async() separately.
+    let anchor_name = if is_standalone { "$$anchor" } else { "node" };
+    let (inner_anchor, outer_anchor) = if needs_async {
+        (ctx.b.rid_expr(anchor_name), Some(anchor_expr))
+    } else {
+        (anchor_expr, None)
+    };
+
     let tag = ctx.render_tag(id);
     let full_source = ctx.component.source_text(tag.expression_span);
 
@@ -91,7 +107,7 @@ pub(crate) fn gen_render_tag<'a>(
             // Dynamic callee: $.snippet(anchor, callee_getter, ...args)
             let callee_arg = build_dynamic_callee(ctx, callee_expr, mode.is_chain());
 
-            let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr), Arg::Expr(callee_arg)];
+            let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(inner_anchor), Arg::Expr(callee_arg)];
             snippet_args.extend(arg_thunks);
 
             ctx.b.call_stmt("$.snippet", snippet_args)
@@ -99,20 +115,35 @@ pub(crate) fn gen_render_tag<'a>(
         RenderTagCalleeMode::Chain => {
             // Non-dynamic optional: callee?.(anchor, ...args)
             let callee_expr = ctx.b.rid_expr(callee_text);
-            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(inner_anchor)];
             all_args.extend(arg_thunks);
             let call_expr = ctx.b.maybe_call_expr(callee_expr, all_args);
             ctx.b.expr_stmt(call_expr)
         }
         RenderTagCalleeMode::Direct => {
             // Non-dynamic regular: callee(anchor, ...args)
-            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor_expr)];
+            let mut all_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(inner_anchor)];
             all_args.extend(arg_thunks);
             ctx.b.call_stmt(callee_text, all_args)
         }
     };
 
-    if memo_stmts.is_empty() {
+    if needs_async {
+        let mut inner = memo_stmts;
+        inner.push(final_stmt);
+        let blockers = ctx.build_blockers_array(id);
+        let async_values = ctx.b.void_zero_expr();
+        let callback = ctx.b.arrow_block_expr(ctx.b.params([anchor_name]), inner);
+        stmts.push(ctx.b.call_stmt("$.async", [
+            Arg::Expr(outer_anchor.unwrap()),
+            Arg::Expr(blockers),
+            Arg::Expr(async_values),
+            Arg::Expr(callback),
+        ]));
+        if is_standalone {
+            stmts.push(ctx.b.call_stmt("$.next", std::iter::empty::<Arg>()));
+        }
+    } else if memo_stmts.is_empty() {
         stmts.push(final_stmt);
     } else {
         memo_stmts.push(final_stmt);

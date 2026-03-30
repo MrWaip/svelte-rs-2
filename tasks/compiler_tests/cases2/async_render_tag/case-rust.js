@@ -11,5 +11,8 @@ var root_1 = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	var data;
 	var $$promises = $.run([async () => data = await fetch("/api")]);
-	content($$anchor, () => data);
+	$.async($$anchor, [$$promises[0]], void 0, ($$anchor) => {
+		content($$anchor, () => data);
+	});
+	$.next();
 }

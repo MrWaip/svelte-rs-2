@@ -73,7 +73,30 @@ fn from_template_fn(ctx: &Ctx) -> &'static str {
         _ => "$.from_html",
     }
 }
-use expression::{emit_template_effect, emit_text_update, emit_trailing_next};
+
+/// Return the `$.from_*` function based on the element's tag name.
+/// An inline `<svg>` in an HTML component needs `$.from_svg`, not `$.from_html`.
+fn from_template_fn_for_element(ctx: &Ctx, el_name: &str) -> &'static str {
+    if svelte_ast::is_svg(el_name) {
+        "$.from_svg"
+    } else if svelte_ast::is_mathml(el_name) {
+        "$.from_mathml"
+    } else {
+        from_template_fn(ctx)
+    }
+}
+
+/// Infer the `$.from_*` function from the first element in a fragment's items.
+fn from_template_fn_for_items(ctx: &Ctx, items: &[FragmentItem]) -> &'static str {
+    for item in items {
+        if let FragmentItem::Element(el_id) = item {
+            let el = ctx.element(*el_id);
+            return from_template_fn_for_element(ctx, &el.name);
+        }
+    }
+    from_template_fn(ctx)
+}
+use expression::{emit_text_update, emit_trailing_next};
 use html::{element_html, fragment_html};
 use await_block::gen_await_block;
 use component::gen_component;
@@ -328,7 +351,7 @@ fn emit_single_element<'a>(
 ) {
     let el = ctx.element(el_id);
     let (html, import_node) = element_html(ctx, el);
-    let from_fn = from_template_fn(ctx);
+    let from_fn = from_template_fn_for_element(ctx, &el.name);
     let mut from_html = if import_node {
         ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
     } else {
@@ -354,22 +377,24 @@ fn emit_single_element<'a>(
         let mut init = Vec::with_capacity(8);
         let mut update = Vec::with_capacity(4);
         let mut after_update = Vec::with_capacity(4);
-        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
+        let mut memo_attrs = Vec::new();
+        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update, &mut memo_attrs);
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
-        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, local_blockers, body);
+        expression::emit_template_effect_with_memo(ctx, update, memo_attrs, el_blockers, local_blockers, body);
         body.extend(after_update);
     } else {
         // Non-root: template AFTER children (bottom-up)
         let mut init = Vec::with_capacity(8);
         let mut update = Vec::with_capacity(4);
         let mut after_update = Vec::with_capacity(4);
-        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
+        let mut memo_attrs = Vec::new();
+        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update, &mut memo_attrs);
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
-        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, local_blockers, body);
+        expression::emit_template_effect_with_memo(ctx, update, memo_attrs, el_blockers, local_blockers, body);
         body.extend(after_update);
     }
 
@@ -390,7 +415,7 @@ fn emit_single_block<'a>(
     match item {
         FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
             if !is_root { ctx.gen_ident("fragment"); }
-            gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
+            gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
         FragmentItem::ComponentNode(id) => {
@@ -440,7 +465,7 @@ fn emit_single_block<'a>(
             gen_await_block(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         FragmentItem::RenderTag(id) => {
-            gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), body);
+            gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
         _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }
@@ -469,7 +494,7 @@ fn emit_mixed<'a>(
 
     let (html, import_node) = fragment_html(ctx, key);
     let flags = if import_node { 3.0 } else { 1.0 };
-    let from_fn = from_template_fn(ctx);
+    let from_fn = from_template_fn_for_items(ctx, &items);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
         let mut from_html = ctx.b.call_expr(
             from_fn,
@@ -494,6 +519,7 @@ fn emit_mixed<'a>(
     let mut init = Vec::new();
     let mut update = Vec::new();
     let mut after_update = Vec::new();
+    let mut memo_attrs = Vec::new();
     let trailing = traverse_items(
         ctx,
         &items,
@@ -502,6 +528,7 @@ fn emit_mixed<'a>(
         &mut update,
         hoisted,
         &mut after_update,
+        &mut memo_attrs,
     );
 
     if !is_root {
@@ -511,7 +538,7 @@ fn emit_mixed<'a>(
 
     emit_trailing_next(ctx, trailing, &mut init);
     body.extend(init);
-    emit_template_effect(ctx, update, body);
+    expression::emit_template_effect_with_memo(ctx, update, memo_attrs, vec![], vec![], body);
     body.extend(after_update);
     body.push(ctx.b.call_stmt(
         "$.append",

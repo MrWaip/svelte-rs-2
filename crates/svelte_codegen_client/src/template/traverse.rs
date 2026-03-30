@@ -11,7 +11,7 @@ use super::await_block::gen_await_block;
 use super::component::gen_component;
 use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
-use super::expression::parts_are_dynamic;
+use super::expression::{parts_are_dynamic, MemoAttr};
 use super::if_block::gen_if_block;
 use super::html_tag::gen_html_tag;
 use super::key_block::gen_key_block;
@@ -28,6 +28,7 @@ pub(crate) fn traverse_items<'a>(
     update: &mut Vec<Statement<'a>>,
     hoisted: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
+    memo_attrs: &mut Vec<MemoAttr<'a>>,
 ) -> usize {
     let mut prev_expr: Option<Expression<'a>> = Some(first_child_expr);
     let mut prev_ident: Option<String> = None;
@@ -92,7 +93,7 @@ pub(crate) fn traverse_items<'a>(
                     let el_name = ctx.gen_ident(&el_name_str);
                     init.push(ctx.b.var_stmt(&el_name, node_expr));
                     sibling_offset = 1;
-                    process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update);
+                    process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update, memo_attrs);
                     prev_ident = Some(el_name);
                 }
 
@@ -116,7 +117,7 @@ pub(crate) fn traverse_items<'a>(
                             init.push(ctx.b.block_stmt(stmts));
                         }
                         FragmentItem::EachBlock(id) => gen_each_block(ctx, *id, anchor, false, init),
-                        FragmentItem::RenderTag(id) => gen_render_tag(ctx, *id, anchor, init),
+                        FragmentItem::RenderTag(id) => gen_render_tag(ctx, *id, anchor, false, init),
                         FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, false, init),
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
                         FragmentItem::SvelteElement(id) => super::svelte_element::gen_svelte_element(ctx, *id, anchor, init),

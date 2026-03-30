@@ -356,8 +356,8 @@ pub(super) struct ClassStateField {
     pub(super) public_name: Option<String>,
     /// Private backing name (e.g. "#count")
     pub(super) private_name: String,
-    /// Whether this is $state (true) or $state.raw (false) — controls the `true` arg in setter
-    pub(super) is_state: bool,
+    /// Which rune this field uses — drives init wrapping and setter args
+    pub(super) rune_kind: RuneKind,
 }
 
 pub(super) struct ClassStateInfo {

@@ -9,6 +9,51 @@ pub fn is_void(name: &str) -> bool {
     VOID_ELEMENTS.contains(&name)
 }
 
+/// Elements that belong to the SVG namespace.
+/// Matches the reference Svelte compiler's `SVG_ELEMENTS` list.
+const SVG_ELEMENTS: &[&str] = &[
+    "altGlyph", "altGlyphDef", "altGlyphItem", "animate", "animateColor",
+    "animateMotion", "animateTransform", "circle", "clipPath", "color-profile",
+    "cursor", "defs", "desc", "discard", "ellipse", "feBlend", "feColorMatrix",
+    "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting",
+    "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA",
+    "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge",
+    "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting",
+    "feSpotLight", "feTile", "feTurbulence", "filter", "font", "font-face",
+    "font-face-format", "font-face-name", "font-face-src", "font-face-uri",
+    "foreignObject", "g", "glyph", "glyphRef", "hatch", "hatchpath", "hkern",
+    "image", "line", "linearGradient", "marker", "mask", "mesh", "meshgradient",
+    "meshpatch", "meshrow", "metadata", "missing-glyph", "mpath", "path", "pattern",
+    "polygon", "polyline", "radialGradient", "rect", "set", "solidcolor", "stop",
+    "svg", "switch", "symbol", "text", "textPath", "tref", "tspan", "unknown",
+    "use", "view", "vkern",
+];
+
+pub fn is_svg(name: &str) -> bool {
+    SVG_ELEMENTS.contains(&name)
+}
+
+/// Elements that belong to the MathML namespace.
+const MATHML_ELEMENTS: &[&str] = &[
+    "annotation", "annotation-xml", "maction", "math", "merror", "mfrac", "mi",
+    "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mprescripts",
+    "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msubsup", "msup",
+    "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "semantics",
+];
+
+pub fn is_mathml(name: &str) -> bool {
+    MATHML_ELEMENTS.contains(&name)
+}
+
+/// HTML elements where inter-element whitespace should be removed entirely.
+const WHITESPACE_REMOVABLE_ELEMENTS: &[&str] = &[
+    "select", "tr", "table", "tbody", "thead", "tfoot", "colgroup", "datalist",
+];
+
+pub fn is_whitespace_removable_parent(name: &str) -> bool {
+    WHITESPACE_REMOVABLE_ELEMENTS.contains(&name)
+}
+
 /// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);

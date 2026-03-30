@@ -826,42 +826,36 @@ fn state_class_constructor_proxy() {
 }
 
 #[rstest]
-#[ignore = "missing: $derived class field transform (transform)"]
 fn derived_class_field() {
     assert_compiler("derived_class_field");
 }
 
 #[rstest]
-#[ignore = "bug: constructor assigns to private field instead of public setter (transform)"]
 fn state_class_field_constructor_assign() {
     assert_compiler("state_class_field_constructor_assign");
 }
 
-#[ignore = "missing: SVG whitespace trimming removes inter-element spaces (analyze)"]
+#[rstest]
 fn svg_inner_whitespace_trimming() {
     assert_compiler("svg_inner_whitespace_trimming");
 }
 
 #[rstest]
-#[ignore = "missing: inner SVG templates use $.from_svg instead of $.from_html (codegen)"]
 fn svg_inner_template_from_svg() {
     assert_compiler("svg_inner_template_from_svg");
 }
 
 #[rstest]
-#[ignore = "missing: template_effect extracts call expressions into dependency arrays (codegen)"]
 fn template_effect_call_deps() {
     assert_compiler("template_effect_call_deps");
 }
 
 #[rstest]
-#[ignore = "missing: SVG text element whitespace preserved with from_svg (codegen)"]
 fn svg_text_preserves_whitespace() {
     assert_compiler("svg_text_preserves_whitespace");
 }
 
 #[rstest]
-#[ignore = "missing: template_effect extracts complex map+call into dependency arrays (codegen)"]
 fn template_effect_multiple_call_deps() {
     assert_compiler("template_effect_multiple_call_deps");
 }
@@ -1810,13 +1804,11 @@ fn async_const_tag() {
 }
 
 #[rstest]
-#[ignore = "experimental async — not yet implemented"]
 fn async_derived_basic() {
     assert_compiler("async_derived_basic");
 }
 
 #[rstest]
-#[ignore = "experimental async — not yet implemented"]
 fn async_render_tag() {
     assert_compiler("async_render_tag");
 }
