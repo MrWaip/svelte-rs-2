@@ -242,3 +242,135 @@
 ## Notes
 - Документ intentionally ориентирован на long-term benefit.
 - No generated snapshots touched.
+
+---
+
+## Proven compiler practices from mature projects (and how to apply here)
+
+Ниже не «общие советы», а практики, которые десятилетиями обкатаны в production-компиляторах (Rust/LLVM/Swift/TypeScript и др.) и обычно дают максимальный выигрыш в maintainability.
+
+### A) Query-based architecture (incremental, memoized semantic queries)
+
+**Почему это работает в зрелых компиляторах**
+- Вместо «огромного пайплайна» система строится как граф запросов: каждый запрос имеет четкие входы/выходы и кэш.
+- Это снижает связанность между фазами и упрощает инкрементальность.
+
+**Как применить в svelte-rs**
+- Эволюционно поверх `AnalysisData` ввести query-surface (`CodegenView` + typed pass outputs).
+- На первом этапе кэш может быть тривиальным (in-memory на compile run), без сложной инкрементальности.
+
+**Где начать**
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_analyze/src/lib.rs`
+- `crates/svelte_codegen_client/src/context.rs`
+
+---
+
+### B) Data-oriented IR between stages (small explicit intermediate representations)
+
+**Почему это работает**
+- Успешные компиляторы редко гоняют «сырые AST + флаги» до финального backend.
+- Они вводят 1–2 небольших IR с инвариантами, чтобы downstream не переоткрывал семантику.
+
+**Как применить**
+- Ввести mini-IR для template emission plan (например, `RenderTagPlan`, `ExprDeps`, `RuntimePlan`).
+- Цель: codegen потребляет планы, а не вычисляет политику.
+
+**Где начать**
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/template/*.rs`
+
+---
+
+### C) Make invalid states unrepresentable (enum-first + typestate)
+
+**Почему это работает**
+- В образцовых компиляторах огромная доля багов убирается типами, а не тестами.
+- Enum/typestate отрезают невозможные комбинации на уровне компиляции.
+
+**Как применить**
+- Продолжить замену boolean-clusters на domain enums (`AsyncEmissionPlan`, unified deps/memo modes).
+- Для фаз — использовать маркеры готовности (по аналогии с уже существующими marker-типами).
+
+**Где начать**
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/template/*.rs`
+- `crates/svelte_analyze/src/types/markers.rs`
+
+---
+
+### D) Deterministic pipeline + golden tests as contract
+
+**Почему это работает**
+- Компиляторы высокого качества делают выход строго детерминированным.
+- Snapshot/golden tests становятся «юридическим контрактом» поведения.
+
+**Как применить**
+- Для каждой архитектурной миграции (query/plan/IR) делать behavior-preserving PR-цепочки.
+- Добавить thin regression suites для точек риска: async-blockers, render-tag mode, const-tag symbol resolution.
+
+**Где начать**
+- `tasks/compiler_tests/cases2/*`
+- `crates/svelte_codegen_client/src/template/*.rs`
+
+---
+
+### E) Diagnostics as first-class pipeline product
+
+**Почему это работает**
+- В зрелых системах диагностика проектируется как продукт архитектуры, не побочный эффект.
+- Это стабилизирует refactor’ы: ошибки/варнинги остаются согласованными между фазами.
+
+**Как применить**
+- Привязать diagnostics к query/plan слоям, чтобы источник решения был явным.
+- Убедиться, что suppress/ignore semantics не размазаны по нескольким местам.
+
+**Где начать**
+- `crates/svelte_analyze/src/walker.rs`
+- `crates/svelte_analyze/src/validate/*`
+- `crates/svelte_analyze/src/types/data.rs` (`ignore_data`)
+
+---
+
+### F) Explicit ownership boundaries (no semantic rediscovery downstream)
+
+**Почему это работает**
+- Лучшие компиляторы жестко держат ownership: semantic facts определяются upstream, downstream только применяет.
+
+**Как применить**
+- Зафиксировать правило: если codegen начинает «догадываться» о семантике, добавлять новый analysis-plan вместо локального workaround.
+- Формализовать это в review checklist (в PR template/qa workflow).
+
+**Где начать**
+- `CLAUDE.md` boundary rules
+- `crates/svelte_analyze/src/types/data.rs`
+- `crates/svelte_codegen_client/src/context.rs`
+
+---
+
+### G) Compiler engineering practice: many small safe steps
+
+**Почему это работает**
+- Большие «rewrite PR» почти всегда ухудшают качество и тормозят команду.
+- Зрелые проекты делают архитектурные миграции цепочкой маленьких PR с compatibility shims.
+
+**Как применить (конкретно для этого проекта)**
+1. Добавить query wrappers без изменения behavior.
+2. Перевести 1 узкий path (например, `render_tag`) на новый план.
+3. Удалить старые поля/ветки только после green snapshots.
+
+**Где начать**
+- `crates/svelte_codegen_client/src/template/render_tag.rs`
+- `crates/svelte_analyze/src/types/data.rs`
+
+---
+
+## Practical recommendation
+
+Если цель — «не повторить спагетти», наибольший ROI даст комбинация:
+1. **#1 Typed pass graph**,
+2. **#3 Stable CodegenView contract**,
+3. **#4 RenderTagPlan consolidation**,
+4. **#5 Typed handles вместо offsets**.
+
+Это вместе дает тот самый «compiler-grade backbone»: явные зависимости, строгий контракт между фазами и меньше неявной логики в backend.
