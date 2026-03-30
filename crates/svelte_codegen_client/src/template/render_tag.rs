@@ -8,6 +8,7 @@ use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
+use crate::template::expression::{MemoValueRef, TemplateMemoState};
 
 /// Generate a render tag call: `snippet(anchor, () => arg1, () => arg2, ...)`
 ///
@@ -40,11 +41,6 @@ pub(crate) fn gen_render_tag<'a>(
 
     let mode = ctx.analysis.render_tag_callee_mode(id);
 
-    // Pre-computed per-argument has_call flags
-    let arg_has_call = ctx.analysis.render_tag_arg_has_call(id)
-        .map(|v| v.to_vec())
-        .unwrap_or_default();
-
     // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
     let tag = ctx.render_tag(id);
     let offset = tag.expression_span.start;
@@ -67,10 +63,15 @@ pub(crate) fn gen_render_tag<'a>(
     let unboxed = call.unbox();
     let callee_expr = unboxed.callee;
 
+    let arg_infos = ctx.analysis.render_tag_arg_infos(id)
+        .map(|infos| infos.to_vec())
+        .unwrap_or_default();
+
     // Build argument thunks (shared between dynamic and non-dynamic paths)
     let mut arg_thunks: Vec<Arg<'a, '_>> = Vec::new();
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
+    let mut deps = TemplateMemoState::default();
 
     for (i, arg) in unboxed.arguments.into_iter().enumerate() {
         let arg_expr = arg.into_expression();
@@ -82,9 +83,24 @@ pub(crate) fn gen_render_tag<'a>(
             continue;
         }
 
-        let has_call = arg_has_call.get(i).copied().unwrap_or(false);
+        let arg_info = arg_infos.get(i);
 
-        if has_call {
+        if let Some(info) = arg_info {
+            if info.has_await && !info.ref_symbols.is_empty() {
+                if let Some(MemoValueRef::Async(index)) =
+                    deps.add_memoized_expr(ctx, info, ctx.b.clone_expr(&arg_expr))
+                {
+                    let async_param = deps.async_param_expr(ctx, index);
+                    let param_expr = ctx.b.call_expr("$.get", [Arg::Expr(async_param)]);
+                    let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(param_expr)]);
+                    arg_thunks.push(Arg::Expr(thunk));
+                    continue;
+                }
+            }
+            deps.push_expr_info(ctx, info);
+        }
+
+        if arg_info.is_some_and(|info| info.has_call) {
             let mut memo_name = String::with_capacity(4);
             memo_name.push('$');
             memo_name.push_str(&memo_counter.to_string());
@@ -131,13 +147,21 @@ pub(crate) fn gen_render_tag<'a>(
     if needs_async {
         let mut inner = memo_stmts;
         inner.push(final_stmt);
-        let blockers = ctx.build_blockers_array(id);
-        let async_values = ctx.b.void_zero_expr();
-        let callback = ctx.b.arrow_block_expr(ctx.b.params([anchor_name]), inner);
+        for idx in ctx.analysis.expression_blockers(id) {
+            deps.push_script_blocker(idx);
+        }
+        let callback_params = if deps.has_async_values() {
+            let mut names = vec![anchor_name.to_string()];
+            names.extend(deps.param_names());
+            ctx.b.params(names.iter().map(|s| s.as_str()))
+        } else {
+            ctx.b.params([anchor_name])
+        };
+        let callback = ctx.b.arrow_block_expr(callback_params, inner);
         stmts.push(ctx.b.call_stmt("$.async", [
             Arg::Expr(outer_anchor.unwrap()),
-            Arg::Expr(blockers),
-            Arg::Expr(async_values),
+            Arg::Expr(deps.blockers_expr(ctx)),
+            Arg::Expr(deps.async_values_expr(ctx)),
             Arg::Expr(callback),
         ]));
         if is_standalone {

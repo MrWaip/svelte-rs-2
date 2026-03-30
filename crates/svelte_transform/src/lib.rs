@@ -620,4 +620,3 @@ fn walk_expr_member_objects<'a>(
         current = member.object_mut();
     }
 }
-

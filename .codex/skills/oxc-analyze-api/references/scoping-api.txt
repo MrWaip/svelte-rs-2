@@ -1,0 +1,78 @@
+# OXC Scoping struct — CURATED EXTRACT for Svelte analyzer
+# Source: https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/crates/oxc_semantic/src/scoping.rs
+# Updated: 2026-03-28
+#
+# REMOVALS:
+# - delete_typescript_bindings (we strip TS separately)
+# - clone_in_with_semantic_ids_with_another_arena (internal utility)
+# - Rare *_mut methods (kept symbol_flags_mut, scope_flags_mut)
+# - set_* methods except set_symbol_name (most are builder-only)
+# - reserve, change_scope_parent_id (internal allocation/mutation)
+
+## Symbol methods
+pub fn symbols_len(&self) -> usize  // Total number of symbols
+pub fn symbols_is_empty(&self) -> bool  // Check if any symbols exist
+pub fn symbol_names(&self) -> impl Iterator<Item = &str> + '_  // All symbol names
+pub fn symbol_ids(&self) -> impl Iterator<Item = SymbolId> + '_  // All symbol IDs
+pub fn symbol_span(&self, symbol_id: SymbolId) -> Span  // Get declaration span
+pub fn symbol_name(&self, symbol_id: SymbolId) -> &str  // Get name by ID
+pub fn symbol_ident(&self, symbol_id: SymbolId) -> Ident<'_>  // Get full ident
+pub fn set_symbol_name(&mut self, symbol_id: SymbolId, name: Ident<'_>)  // Rename symbol
+pub fn symbol_flags(&self, symbol_id: SymbolId) -> SymbolFlags  // Check flags (const, mut, etc)
+pub fn symbol_flags_mut(&mut self, symbol_id: SymbolId) -> &mut SymbolFlags  // Mutate flags
+pub fn symbol_redeclarations(&self, symbol_id: SymbolId) -> &[Redeclaration]  // Get redeclarations
+pub fn union_symbol_flag(&mut self, symbol_id: SymbolId, includes: SymbolFlags)  // Add flags
+pub fn symbol_scope_id(&self, symbol_id: SymbolId) -> ScopeId  // Get defining scope
+pub fn symbol_declaration(&self, symbol_id: SymbolId) -> NodeId  // Get first declaration node
+pub fn symbol_declarations(&self, symbol_id: SymbolId) -> impl Iterator<Item = NodeId> + '_  // All declaration nodes
+pub fn create_symbol(&mut self, span: Span, name: Ident<'_>, flags: SymbolFlags, scope_id: ScopeId, node_id: NodeId) -> SymbolId  // Create new symbol
+pub fn add_symbol_redeclaration(&mut self, symbol_id: SymbolId, flags: SymbolFlags, declaration: NodeId, span: Span)  // Track redeclaration
+pub fn symbol_is_mutated(&self, symbol_id: SymbolId) -> bool  // Check mutation flag
+pub fn symbol_is_unused(&self, symbol_id: SymbolId) -> bool  // Check unused flag
+
+## Reference methods
+pub fn create_reference(&mut self, reference: Reference) -> ReferenceId  // Create reference
+pub fn get_reference(&self, reference_id: ReferenceId) -> &Reference  // Get reference data
+pub fn get_reference_name(&self, reference_id: ReferenceId) -> Option<&str>  // Get ref name
+pub fn has_binding(&self, reference_id: ReferenceId) -> bool  // Check if resolved
+pub fn get_resolved_reference_ids(&self, symbol_id: SymbolId) -> &[ReferenceId]  // All refs to symbol
+pub fn get_resolved_references(&self, symbol_id: SymbolId) -> impl DoubleEndedIterator<Item = &Reference> + '_  // Iterate resolved refs
+pub fn add_resolved_reference(&mut self, symbol_id: SymbolId, reference_id: ReferenceId)  // Link ref to symbol
+pub fn delete_reference(&mut self, reference_id: ReferenceId)  // Remove reference
+pub fn delete_resolved_reference(&mut self, symbol_id: SymbolId, reference_id: ReferenceId)  // Unlink ref from symbol
+
+## Scope methods
+pub fn scopes_len(&self) -> usize  // Total number of scopes
+pub fn scopes_is_empty(&self) -> bool  // Check if any scopes exist
+pub fn scope_ancestors(&self, scope_id: ScopeId) -> impl Iterator<Item = ScopeId> + '_  // Walk up to root
+pub fn scope_descendants_from_root(&self) -> impl Iterator<Item = ScopeId> + '_  // Walk all scopes
+pub const fn root_scope_id(&self) -> ScopeId  // Get global scope
+pub fn root_scope_flags(&self) -> ScopeFlags  // Get global scope flags
+pub fn root_unresolved_references(&self) -> &UnresolvedReferences<'_>  // Get unresolved refs
+pub fn root_unresolved_references_ids(&self) -> impl Iterator<Item = impl Iterator<Item = ReferenceId> + '_> + '_  // Iterate unresolved ref IDs
+pub fn delete_root_unresolved_reference(&mut self, name: Ident<'_>, reference_id: ReferenceId)  // Remove from unresolved
+pub fn add_root_unresolved_reference(&mut self, name: Ident<'_>, reference_id: ReferenceId)  // Add to unresolved
+pub fn scope_flags(&self, scope_id: ScopeId) -> ScopeFlags  // Get scope flags
+pub fn scope_flags_mut(&mut self, scope_id: ScopeId) -> &mut ScopeFlags  // Mutate scope flags
+pub fn get_new_scope_flags(&self, flags: ScopeFlags, parent_scope_id: ScopeId) -> ScopeFlags  // Compute inherited flags
+pub fn scope_parent_id(&self, scope_id: ScopeId) -> Option<ScopeId>  // Get parent scope
+pub fn set_scope_parent_id(&mut self, scope_id: ScopeId, parent_id: Option<ScopeId>)  // Set parent
+pub fn get_node_id(&self, scope_id: ScopeId) -> NodeId  // Get creating node
+
+## Binding methods
+pub fn get_root_binding(&self, name: Ident<'_>) -> Option<SymbolId>  // Lookup global symbol
+pub fn scope_has_binding(&self, scope_id: ScopeId, name: Ident<'_>) -> bool  // Check local binding
+pub fn get_binding(&self, scope_id: ScopeId, name: Ident<'_>) -> Option<SymbolId>  // Get local symbol
+pub fn find_binding(&self, mut scope_id: ScopeId, name: Ident<'_>) -> Option<SymbolId>  // Walk scope chain
+pub fn get_bindings(&self, scope_id: ScopeId) -> &Bindings<'_>  // Get all bindings in scope
+pub fn iter_bindings(&self) -> impl Iterator<Item = (ScopeId, &Bindings<'_>)> + '_  // Iterate all scopes
+pub fn iter_bindings_in(&self, scope_id: ScopeId) -> impl Iterator<Item = SymbolId> + '_  // Iterate scope bindings
+pub fn add_scope(&mut self, parent_id: Option<ScopeId>, node_id: NodeId, flags: ScopeFlags) -> ScopeId  // Create scope
+pub fn add_binding(&mut self, scope_id: ScopeId, name: Ident<'_>, symbol_id: SymbolId)  // Bind name to symbol
+pub fn remove_binding(&mut self, scope_id: ScopeId, name: Ident<'_>)  // Unbind name
+pub fn move_binding(&mut self, from: ScopeId, to: ScopeId, name: Ident<'_>)  // Move binding between scopes
+pub fn rename_binding(&mut self, scope_id: ScopeId, symbol_id: SymbolId, old_name: Ident<'_>, new_name: Ident<'_>)  // Rename in specific scope
+pub fn rename_symbol(&mut self, symbol_id: SymbolId, scope_id: ScopeId, new_name: Ident<'_>)  // Rename and update all refs
+
+## Utility
+pub fn no_side_effects(&self) -> &FxHashSet<SymbolId>  // Symbols with no side effects

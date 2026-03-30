@@ -1,0 +1,166 @@
+# OXC Visit trait — CURATED EXTRACT for Svelte analyzer
+# Source: https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/crates/oxc_ast_visit/src/generated/visit.rs
+# Updated: 2026-03-28
+#
+# This is a curated subset containing only methods useful for a Svelte compiler analyzer.
+#
+# REMOVED:
+# - All TypeScript (ts_*) methods — TS is stripped during preprocessing
+# - All JSX methods — Svelte doesn't use JSX
+# - All JSDoc methods — not applicable
+# - Collection visitors (visit_*s methods like visit_statements, visit_expressions) — just iterate
+# - visit_span — not needed for analysis
+#
+# Pattern: fn visit_<node>(&mut self, it: &<NodeType><'a>)
+# Read-only traversal. No ctx parameter.
+
+## Lifecycle hooks
+fn enter_node(&mut self, kind: AstKind<'a>)
+fn leave_node(&mut self, kind: AstKind<'a>)
+fn enter_scope(&mut self, flags: ScopeFlags, scope_id: &Cell<Option<ScopeId>>)
+fn leave_scope(&mut self)
+fn alloc<T>(&self, t: &T) -> &'a T
+
+## Program
+fn visit_program(&mut self, it: &Program<'a>)
+
+## Expressions
+fn visit_expression(&mut self, it: &Expression<'a>)
+fn visit_this_expression(&mut self, it: &ThisExpression)
+fn visit_array_expression(&mut self, it: &ArrayExpression<'a>)
+fn visit_array_expression_element(&mut self, it: &ArrayExpressionElement<'a>)
+fn visit_elision(&mut self, it: &Elision)
+fn visit_object_expression(&mut self, it: &ObjectExpression<'a>)
+fn visit_object_property_kind(&mut self, it: &ObjectPropertyKind<'a>)
+fn visit_object_property(&mut self, it: &ObjectProperty<'a>)
+fn visit_property_key(&mut self, it: &PropertyKey<'a>)
+fn visit_template_literal(&mut self, it: &TemplateLiteral<'a>)
+fn visit_tagged_template_expression(&mut self, it: &TaggedTemplateExpression<'a>)
+fn visit_template_element(&mut self, it: &TemplateElement<'a>)
+fn visit_member_expression(&mut self, it: &MemberExpression<'a>)
+fn visit_computed_member_expression(&mut self, it: &ComputedMemberExpression<'a>)
+fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>)
+fn visit_private_field_expression(&mut self, it: &PrivateFieldExpression<'a>)
+fn visit_call_expression(&mut self, it: &CallExpression<'a>)
+fn visit_new_expression(&mut self, it: &NewExpression<'a>)
+fn visit_meta_property(&mut self, it: &MetaProperty<'a>)
+fn visit_spread_element(&mut self, it: &SpreadElement<'a>)
+fn visit_argument(&mut self, it: &Argument<'a>)
+fn visit_update_expression(&mut self, it: &UpdateExpression<'a>)
+fn visit_unary_expression(&mut self, it: &UnaryExpression<'a>)
+fn visit_binary_expression(&mut self, it: &BinaryExpression<'a>)
+fn visit_private_in_expression(&mut self, it: &PrivateInExpression<'a>)
+fn visit_logical_expression(&mut self, it: &LogicalExpression<'a>)
+fn visit_conditional_expression(&mut self, it: &ConditionalExpression<'a>)
+fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>)
+fn visit_sequence_expression(&mut self, it: &SequenceExpression<'a>)
+fn visit_super(&mut self, it: &Super)
+fn visit_await_expression(&mut self, it: &AwaitExpression<'a>)
+fn visit_chain_expression(&mut self, it: &ChainExpression<'a>)
+fn visit_chain_element(&mut self, it: &ChainElement<'a>)
+fn visit_parenthesized_expression(&mut self, it: &ParenthesizedExpression<'a>)
+fn visit_import_expression(&mut self, it: &ImportExpression<'a>)
+fn visit_v8_intrinsic_expression(&mut self, it: &V8IntrinsicExpression<'a>)
+
+## Assignment targets
+fn visit_assignment_target(&mut self, it: &AssignmentTarget<'a>)
+fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>)
+fn visit_assignment_target_pattern(&mut self, it: &AssignmentTargetPattern<'a>)
+fn visit_array_assignment_target(&mut self, it: &ArrayAssignmentTarget<'a>)
+fn visit_object_assignment_target(&mut self, it: &ObjectAssignmentTarget<'a>)
+fn visit_assignment_target_rest(&mut self, it: &AssignmentTargetRest<'a>)
+fn visit_assignment_target_maybe_default(&mut self, it: &AssignmentTargetMaybeDefault<'a>)
+fn visit_assignment_target_with_default(&mut self, it: &AssignmentTargetWithDefault<'a>)
+fn visit_assignment_target_property(&mut self, it: &AssignmentTargetProperty<'a>)
+fn visit_assignment_target_property_identifier(&mut self, it: &AssignmentTargetPropertyIdentifier<'a>)
+fn visit_assignment_target_property_property(&mut self, it: &AssignmentTargetPropertyProperty<'a>)
+
+## Identifiers
+fn visit_identifier_name(&mut self, it: &IdentifierName<'a>)
+fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>)
+fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>)
+fn visit_label_identifier(&mut self, it: &LabelIdentifier<'a>)
+fn visit_private_identifier(&mut self, it: &PrivateIdentifier<'a>)
+
+## Statements
+fn visit_statement(&mut self, it: &Statement<'a>)
+fn visit_directive(&mut self, it: &Directive<'a>)
+fn visit_hashbang(&mut self, it: &Hashbang<'a>)
+fn visit_block_statement(&mut self, it: &BlockStatement<'a>)
+fn visit_empty_statement(&mut self, it: &EmptyStatement)
+fn visit_expression_statement(&mut self, it: &ExpressionStatement<'a>)
+fn visit_if_statement(&mut self, it: &IfStatement<'a>)
+fn visit_do_while_statement(&mut self, it: &DoWhileStatement<'a>)
+fn visit_while_statement(&mut self, it: &WhileStatement<'a>)
+fn visit_for_statement(&mut self, it: &ForStatement<'a>)
+fn visit_for_statement_init(&mut self, it: &ForStatementInit<'a>)
+fn visit_for_in_statement(&mut self, it: &ForInStatement<'a>)
+fn visit_for_statement_left(&mut self, it: &ForStatementLeft<'a>)
+fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>)
+fn visit_continue_statement(&mut self, it: &ContinueStatement<'a>)
+fn visit_break_statement(&mut self, it: &BreakStatement<'a>)
+fn visit_return_statement(&mut self, it: &ReturnStatement<'a>)
+fn visit_with_statement(&mut self, it: &WithStatement<'a>)
+fn visit_switch_statement(&mut self, it: &SwitchStatement<'a>)
+fn visit_switch_case(&mut self, it: &SwitchCase<'a>)
+fn visit_labeled_statement(&mut self, it: &LabeledStatement<'a>)
+fn visit_throw_statement(&mut self, it: &ThrowStatement<'a>)
+fn visit_try_statement(&mut self, it: &TryStatement<'a>)
+fn visit_catch_clause(&mut self, it: &CatchClause<'a>)
+fn visit_catch_parameter(&mut self, it: &CatchParameter<'a>)
+fn visit_debugger_statement(&mut self, it: &DebuggerStatement)
+
+## Declarations
+fn visit_declaration(&mut self, it: &Declaration<'a>)
+fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>)
+fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>)
+
+## Bindings / Patterns
+fn visit_binding_pattern(&mut self, it: &BindingPattern<'a>)
+fn visit_assignment_pattern(&mut self, it: &AssignmentPattern<'a>)
+fn visit_object_pattern(&mut self, it: &ObjectPattern<'a>)
+fn visit_binding_property(&mut self, it: &BindingProperty<'a>)
+fn visit_array_pattern(&mut self, it: &ArrayPattern<'a>)
+fn visit_binding_rest_element(&mut self, it: &BindingRestElement<'a>)
+
+## Functions / Classes
+fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags)
+fn visit_formal_parameters(&mut self, it: &FormalParameters<'a>)
+fn visit_formal_parameter(&mut self, it: &FormalParameter<'a>)
+fn visit_formal_parameter_rest(&mut self, it: &FormalParameterRest<'a>)
+fn visit_function_body(&mut self, it: &FunctionBody<'a>)
+fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>)
+fn visit_yield_expression(&mut self, it: &YieldExpression<'a>)
+fn visit_class(&mut self, it: &Class<'a>)
+fn visit_class_body(&mut self, it: &ClassBody<'a>)
+fn visit_class_element(&mut self, it: &ClassElement<'a>)
+fn visit_method_definition(&mut self, it: &MethodDefinition<'a>)
+fn visit_property_definition(&mut self, it: &PropertyDefinition<'a>)
+fn visit_static_block(&mut self, it: &StaticBlock<'a>)
+fn visit_accessor_property(&mut self, it: &AccessorProperty<'a>)
+fn visit_decorator(&mut self, it: &Decorator<'a>)
+
+## Modules
+fn visit_module_declaration(&mut self, it: &ModuleDeclaration<'a>)
+fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>)
+fn visit_import_declaration_specifier(&mut self, it: &ImportDeclarationSpecifier<'a>)
+fn visit_import_specifier(&mut self, it: &ImportSpecifier<'a>)
+fn visit_import_default_specifier(&mut self, it: &ImportDefaultSpecifier<'a>)
+fn visit_import_namespace_specifier(&mut self, it: &ImportNamespaceSpecifier<'a>)
+fn visit_with_clause(&mut self, it: &WithClause<'a>)
+fn visit_import_attribute(&mut self, it: &ImportAttribute<'a>)
+fn visit_import_attribute_key(&mut self, it: &ImportAttributeKey<'a>)
+fn visit_export_named_declaration(&mut self, it: &ExportNamedDeclaration<'a>)
+fn visit_export_default_declaration(&mut self, it: &ExportDefaultDeclaration<'a>)
+fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>)
+fn visit_export_specifier(&mut self, it: &ExportSpecifier<'a>)
+fn visit_export_default_declaration_kind(&mut self, it: &ExportDefaultDeclarationKind<'a>)
+fn visit_module_export_name(&mut self, it: &ModuleExportName<'a>)
+
+## Literals
+fn visit_boolean_literal(&mut self, it: &BooleanLiteral)
+fn visit_null_literal(&mut self, it: &NullLiteral)
+fn visit_numeric_literal(&mut self, it: &NumericLiteral<'a>)
+fn visit_string_literal(&mut self, it: &StringLiteral<'a>)
+fn visit_big_int_literal(&mut self, it: &BigIntLiteral<'a>)
+fn visit_reg_exp_literal(&mut self, it: &RegExpLiteral<'a>)
