@@ -259,3 +259,5 @@ Additionally inspected complexity hotspots by size and role:
 ## Notes
 - Recommendations are intentionally long-term and refactor-friendly.
 - No generated snapshots touched.
+
+See also focused follow-up: `DATA_CODEGEN_SIMPLIFY.md`.
