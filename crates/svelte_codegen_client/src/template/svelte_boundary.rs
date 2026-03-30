@@ -3,6 +3,8 @@
 //! Generates: `$.boundary(node, props, ($$anchor) => { ... })`
 
 use oxc_ast::ast::{Expression, Statement};
+use oxc_semantic::SymbolId;
+use rustc_hash::FxHashSet;
 
 use svelte_analyze::FragmentKey;
 use svelte_ast::{Attribute, NodeId};
@@ -110,12 +112,28 @@ pub(crate) fn gen_svelte_boundary<'a>(
     }
 
     // Clone const tag expressions BEFORE body generation consumes the originals.
-    // The reference compiler duplicates @const tags into each hoisted snippet.
+    // Only needed in async mode when const tags have async dependencies —
+    // the reference compiler duplicates @const tags into snippets only then.
     let const_tag_ids: Vec<NodeId> = ctx
         .const_tags_for_fragment(&FragmentKey::SvelteBoundaryBody(id))
         .cloned()
         .unwrap_or_default();
     let has_const_tags = !const_tag_ids.is_empty();
+
+    // Resolve const-tag binding SymbolIds for snippet reference checking
+    let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
+        let scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(id));
+        if let Some(scope_id) = scope {
+            const_tag_ids.iter()
+                .flat_map(|cid| ctx.const_tag_names(*cid).cloned().unwrap_or_default())
+                .filter_map(|name| ctx.analysis.scoping.find_binding(scope_id, &name))
+                .collect()
+        } else {
+            FxHashSet::default()
+        }
+    } else {
+        FxHashSet::default()
+    };
 
     // For each snippet, we need a fresh copy of the const tag expressions.
     // Clone N copies (one per snippet) before the body generation consumes originals.
@@ -150,7 +168,14 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // Snippets use cloned const tag expressions; the body uses originals.
     let mut hoisted_stmts: Vec<Statement<'a>> = Vec::new();
     for (i, (snippet_id, prop_name)) in hoisted_snippet_ids.iter().enumerate() {
-        let const_tag_stmts = if has_const_tags && i < cloned_exprs.len() {
+        // Only inject const tags into snippets that actually reference the const-tag bindings
+        let snippet_uses_const = if has_const_tags {
+            let key = FragmentKey::SnippetBody(*snippet_id);
+            ctx.analysis.fragment_references_any_symbol(&key, &const_binding_syms)
+        } else {
+            false
+        };
+        let const_tag_stmts = if snippet_uses_const && i < cloned_exprs.len() {
             build_const_tag_stmts_from_cloned(ctx, &mut cloned_exprs[i])
         } else {
             vec![]
@@ -169,7 +194,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
     // TODO(Tier 6c): dev mode — $.wrap_snippet for snippet wrapping
     // TODO(Tier 6c): dev mode — handler wrapping for snippet params as event handlers
 
-    // Generate body fragment (consumes const tag expressions via emit_const_tags)
+    // Generate body fragment (consumes const tag expressions via gen_const_tags)
     let body_stmts = gen_fragment(ctx, FragmentKey::SvelteBoundaryBody(id));
 
     let props_expr = ctx.b.object_expr(props);
@@ -188,3 +213,4 @@ pub(crate) fn gen_svelte_boundary<'a>(
         stmts.push(ctx.b.block_stmt(hoisted_stmts));
     }
 }
+

@@ -1805,7 +1805,6 @@ fn async_svelte_element() {
 }
 
 #[rstest]
-#[ignore = "experimental async — not yet implemented"]
 fn async_const_tag() {
     assert_compiler("async_const_tag");
 }
@@ -1823,9 +1822,13 @@ fn async_render_tag() {
 }
 
 #[rstest]
-#[ignore = "experimental async — not yet implemented"]
 fn async_boundary_const() {
     assert_compiler("async_boundary_const");
+}
+
+#[rstest]
+fn async_const_derived_chain() {
+    assert_compiler("async_const_derived_chain");
 }
 
 #[rstest]

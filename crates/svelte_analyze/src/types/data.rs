@@ -1057,6 +1057,84 @@ impl AnalysisData {
         let sym_id = self.scoping.find_binding(root, name)?;
         self.scoping.known_value_by_sym(sym_id)
     }
+
+    /// Check if any expression in a fragment (recursively for elements) references
+    /// any of the given symbols. Used to decide whether snippet bodies need
+    /// duplicated @const tags in boundary codegen.
+    pub fn fragment_references_any_symbol(&self, key: &FragmentKey, syms: &FxHashSet<SymbolId>) -> bool {
+        if syms.is_empty() { return false; }
+        let Some(fragment) = self.fragments.lowered(key) else { return false };
+        for item in &fragment.items {
+            match item {
+                FragmentItem::TextConcat { parts, .. } => {
+                    for part in parts {
+                        if let LoweredTextPart::Expr(id) = part {
+                            if self.expressions.get(*id).is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s))) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                FragmentItem::Element(el_id) => {
+                    if self.fragment_references_any_symbol(&FragmentKey::Element(*el_id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::IfBlock(id) => {
+                    if self.node_expr_references_syms(*id, syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::EachBlock(id) => {
+                    if self.node_expr_references_syms(*id, syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::EachBody(*id), syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) => {
+                    if self.node_expr_references_syms(*id, syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::KeyBlock(id) => {
+                    if self.node_expr_references_syms(*id, syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::SvelteElement(id) => {
+                    if self.node_expr_references_syms(*id, syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::SvelteElementBody(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::SvelteBoundary(id) => {
+                    if self.fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::ComponentNode(id) => {
+                    if self.fragment_references_any_symbol(&FragmentKey::ComponentNode(*id), syms) {
+                        return true;
+                    }
+                }
+                FragmentItem::AwaitBlock(id) => {
+                    if self.node_expr_references_syms(*id, syms) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if a node's expression references any of the given symbols.
+    fn node_expr_references_syms(&self, id: NodeId, syms: &FxHashSet<SymbolId>) -> bool {
+        self.expressions.get(id).is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s)))
+    }
 }
 
 // ---------------------------------------------------------------------------

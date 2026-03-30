@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::FragmentItem;
+use svelte_analyze::{FragmentItem, LoweredTextPart};
 
 use crate::builder::{Arg, AssignLeft};
 use crate::context::Ctx;
@@ -19,7 +19,7 @@ use super::render_tag::gen_render_tag;
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
 ///
-/// Returns the trailing `sibling_offset` (unprocessed static siblings after the last var).
+/// Returns `(trailing_sibling_offset, const_tag_blocker_exprs)`.
 pub(crate) fn traverse_items<'a>(
     ctx: &mut Ctx<'a>,
     items: &[FragmentItem],
@@ -60,6 +60,13 @@ pub(crate) fn traverse_items<'a>(
 
                     let is_dyn = parts_are_dynamic(parts, ctx);
                     if is_dyn && !ctx.bound_contenteditable {
+                        // Collect const-tag blockers into ctx for downstream template_effect
+                        for part in parts {
+                            if let LoweredTextPart::Expr(id) = part {
+                                let exprs = ctx.const_tag_blocker_exprs(*id);
+                                ctx.pending_const_blockers.extend(exprs);
+                            }
+                        }
                         let expr =
                             super::expression::build_concat_from_parts(ctx, parts);
                         update.push(ctx.b.call_stmt(

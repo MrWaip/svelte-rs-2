@@ -240,6 +240,30 @@ impl ComponentScoping {
         self.dynamic_sym_cache = Some(dynamic_set);
     }
 
+    /// Add blocked symbols to the dynamic cache and propagate to derived symbols.
+    /// Blocked symbols change when their async promise resolves, so they are reactive.
+    pub fn mark_blocked_symbols_dynamic(&mut self, symbol_blockers: &rustc_hash::FxHashMap<oxc_semantic::SymbolId, u32>) {
+        let Some(cache) = &mut self.dynamic_sym_cache else { return };
+        for &sym in symbol_blockers.keys() {
+            cache.insert(sym);
+        }
+        // Chains like a→b→c require iterating until stable — a single pass misses transitive deps.
+        let rune_ids: Vec<(SymbolId, Vec<SymbolId>)> = self.runes.iter()
+            .filter(|(_, rune)| rune.kind.is_derived())
+            .map(|(&sym, rune)| (sym, rune.derived_deps.clone()))
+            .collect();
+        loop {
+            let mut changed = false;
+            for (sym, deps) in &rune_ids {
+                if !cache.contains(sym) && deps.iter().any(|dep| cache.contains(dep)) {
+                    cache.insert(*sym);
+                    changed = true;
+                }
+            }
+            if !changed { break; }
+        }
+    }
+
     fn compute_dynamic_memoized(
         &self,
         sym_id: SymbolId,

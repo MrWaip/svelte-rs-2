@@ -93,7 +93,24 @@ For each test that FAILS:
 
 Name test cases descriptively: `each_block_nested`, `bind_value_input`, `derived_rune_chain`, etc.
 
-## Step 6: Cleanup
+## Step 6: Update specs
+
+Check if any existing specs cover features exercised by the new tests:
+
+```
+Glob("specs/*.md")
+```
+
+For each spec, read its **Use cases** section. If a new test maps to an existing use case:
+
+- Test **passes** → mark `[x]` and set `(covered, test: <test_name>)`
+- Test **ignored** → mark `[ ]` and set `(test: <test_name>, #[ignore], <effort>)` per `spec-template` format
+
+If the spec also has a legacy **Test cases** section, add the test name there too.
+
+Do NOT create new spec files. If no spec covers a tested feature, skip this step for that test.
+
+## Step 7: Cleanup
 
 1. Remove the temporary test directory: `rm -rf tasks/compiler_tests/cases2/_diagnose_tmp`
 2. Remove the `_diagnose_tmp` test function from `tasks/compiler_tests/test_v3.rs`
@@ -103,7 +120,7 @@ Name test cases descriptively: `each_block_nested`, `bind_value_input`, `derived
    ```
 4. New tests that expose known gaps are expected to fail — that's the point. Report which pass and which fail.
 
-## Step 7: Report
+## Step 8: Report
 
 Output a final summary:
 

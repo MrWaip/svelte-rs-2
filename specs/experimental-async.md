@@ -2,11 +2,11 @@
 
 ## Current state
 
-- **Working (19/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1)
-- **Not working (15/34)**: `{@const}` async, `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
+- **Working (22/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1), `{@const}` async with `$.run()` + blocker propagation (2), boundary const-tag scoping fix (1)
+- **Not working (12/34)**: `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Next**: `{@const}` async (#18, #19) — `$.run()` accumulation with blocker propagation
-- Last updated: 2026-03-29
+- **Next**: `$derived` async (#20) or `{@render}` async (#22)
+- Last updated: 2026-03-30
 
 ## Source
 
@@ -77,8 +77,8 @@ Audit of existing implementation (2026-03-28)
 17. [x] `animate:` — (covered, test: animate_blockers)
 
 ### `{@const}` async handling
-18. [ ] `{@const}` with async expression — `$.run()` accumulation with blockers and `has_await` (missing)
-19. [ ] `{@const}` blocker propagation — `binding.blocker = member(run.id, ...)` (missing)
+18. [x] `{@const}` with async expression — `$.run()` accumulation with blockers and `has_await` (test: async_const_tag)
+19. [x] `{@const}` blocker propagation — `promises[N]` in downstream template effects (test: async_const_tag)
 
 ### `$derived` async
 20. [ ] `$derived`/`$derived.by` with `await` → `$.async_derived()` call (missing — no `async_deriveds` tracking)
@@ -163,7 +163,8 @@ Audit of existing implementation (2026-03-28)
 
 ### New (to be added)
 - `async_svelte_element` — `<svelte:element>` with await in tag expression ✅
-- `async_const_tag` — `{@const}` with async expression and blocker propagation
+- `async_const_tag` — `{@const}` with async expression and blocker propagation ✅
+- `async_boundary_const` — `{@const}` in boundary, const not leaking into snippets ✅
 - `async_derived_basic` — `$derived` containing `await`
 - `async_render_tag` — `{@render}` with async memoized args
 - `async_boundary_const` — `<svelte:boundary>` with const tags in async mode
