@@ -19,6 +19,8 @@ pub(crate) fn gen_svelte_element<'a>(
     anchor: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let has_await = ctx.expr_has_await(id);
+    let needs_async = has_await || ctx.expr_has_blockers(id);
     let el = ctx.svelte_element(id);
     let static_tag = el.static_tag;
     let tag_value = if static_tag {
@@ -35,9 +37,6 @@ pub(crate) fn gen_svelte_element<'a>(
         fragment: svelte_ast::Fragment::empty(),
     };
     let has_attrs = !el_clone.attributes.is_empty();
-
-    let has_await = ctx.expr_has_await(id);
-    let needs_async = has_await || ctx.expr_has_blockers(id);
 
     // Detect SVG namespace from static xmlns attribute
     let is_svg_ns = el.attributes.iter().any(|attr| {
@@ -98,40 +97,35 @@ pub(crate) fn gen_svelte_element<'a>(
     inner.extend(inner_after_update);
     inner.extend(child_body);
 
+    let callback = (!inner.is_empty()).then(|| {
+        ctx.b.arrow_block_expr(
+            ctx.b.params([el_name.as_str(), "$$anchor"]),
+            inner,
+        )
+    });
+
     if needs_async {
-        let expression = if !static_tag { Some(get_node_expr(ctx, id)) } else { None };
+        let async_tag_thunk = has_await.then(|| {
+            let tag_expr = if let Some(ref value) = tag_value {
+                ctx.b.str_expr(value)
+            } else {
+                get_node_expr(ctx, id)
+            };
+            ctx.b.async_thunk(tag_expr)
+        });
 
-        let tag_expr = if let Some(ref value) = tag_value {
-            ctx.b.str_expr(value)
-        } else if has_await {
-            ctx.b.call_expr("$.get", [Arg::Ident("$$tag")])
-        } else {
-            get_node_expr(ctx, id)
-        };
-        let get_tag = ctx.b.thunk(tag_expr);
-
-        let mut element_args: Vec<Arg<'a, '_>> = vec![
+        let get_tag = ctx.b.thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$tag")]));
+        let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident("node"),
             Arg::Expr(get_tag),
             Arg::Expr(is_svg),
         ];
-        if !inner.is_empty() {
-            let callback = ctx.b.arrow_block_expr(
-                ctx.b.params([el_name.as_str(), "$$anchor"]),
-                inner,
-            );
-            element_args.push(Arg::Expr(callback));
+        if let Some(cb) = callback {
+            args.push(Arg::Expr(cb));
         }
-        let element_stmt = ctx.b.call_stmt("$.element", element_args);
 
-        let async_thunk = if has_await {
-            Some(ctx.b.async_thunk(expression.unwrap_or_else(|| {
-                panic!("static tag cannot contain await expression")
-            })))
-        } else {
-            None
-        };
-        stmts.push(ctx.gen_async_block(id, anchor, has_await, async_thunk, "$$tag", vec![element_stmt]));
+        let element_stmt = ctx.b.call_stmt("$.element", args);
+        stmts.push(ctx.gen_async_block(id, anchor, has_await, async_tag_thunk, "$$tag", vec![element_stmt]));
     } else {
         // Build tag thunk: () => tag_expression (or () => "literal" for static tags)
         let tag_expr = if let Some(ref value) = tag_value {
@@ -141,18 +135,15 @@ pub(crate) fn gen_svelte_element<'a>(
         };
         let get_tag = ctx.b.thunk(tag_expr);
 
-        let mut element_args: Vec<Arg<'a, '_>> = vec![
+        let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Expr(anchor),
             Arg::Expr(get_tag),
             Arg::Expr(is_svg),
         ];
-        if !inner.is_empty() {
-            let callback = ctx.b.arrow_block_expr(
-                ctx.b.params([el_name.as_str(), "$$anchor"]),
-                inner,
-            );
-            element_args.push(Arg::Expr(callback));
+        if let Some(cb) = callback {
+            args.push(Arg::Expr(cb));
         }
-        stmts.push(ctx.b.call_stmt("$.element", element_args));
+
+        stmts.push(ctx.b.call_stmt("$.element", args));
     }
 }

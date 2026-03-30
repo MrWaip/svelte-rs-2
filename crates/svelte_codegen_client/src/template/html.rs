@@ -6,6 +6,7 @@ use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
 use crate::context::Ctx;
+use super::expression::item_has_local_blockers;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 /// Returns `(html, needs_import_node)` — the flag is true when the fragment
@@ -113,6 +114,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         }
         ContentStrategy::DynamicText if !has_state => {
             // textContent shortcut — no placeholder
+            let items = &ctx.lowered_fragment(&child_key).items;
+            if item_has_local_blockers(&items[0], ctx) {
+                html.push(' ');
+            }
         }
         ContentStrategy::DynamicText => {
             // space placeholder for the text node

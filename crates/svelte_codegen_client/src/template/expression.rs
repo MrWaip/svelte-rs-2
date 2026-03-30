@@ -1,8 +1,9 @@
 //! Expression parsing, concatenation building, and emit helpers.
 
 use oxc_ast::ast::{Expression, Statement};
+use rustc_hash::FxHashSet;
 
-use svelte_analyze::{LoweredTextPart, FragmentItem};
+use svelte_analyze::{FragmentKey, LoweredTextPart, FragmentItem};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 use svelte_analyze::ExpressionKind;
@@ -265,6 +266,42 @@ pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     }
 }
 
+pub(crate) fn item_has_local_blockers(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
+    let FragmentItem::TextConcat { parts, .. } = item else {
+        return false;
+    };
+    parts.iter().any(|part| {
+        let LoweredTextPart::Expr(id) = part else { return false };
+        ctx.expression(*id).is_some_and(|info| {
+            info.ref_symbols
+                .iter()
+                .any(|sym| ctx.const_tag_symbol_blocker_expr(*sym).is_some())
+        })
+    })
+}
+
+pub(crate) fn fragment_local_blockers<'a>(ctx: &Ctx<'a>, key: &FragmentKey) -> Vec<Expression<'a>> {
+    let mut out = Vec::new();
+    let mut seen_syms = FxHashSet::default();
+    let items = &ctx.lowered_fragment(key).items;
+    for item in items {
+        let FragmentItem::TextConcat { parts, .. } = item else { continue };
+        for part in parts {
+            let LoweredTextPart::Expr(id) = part else { continue };
+            if let Some(info) = ctx.expression(*id) {
+                for sym in &info.ref_symbols {
+                    if seen_syms.insert(*sym) {
+                        if let Some(expr) = ctx.const_tag_symbol_blocker_expr(*sym) {
+                            out.push(expr);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Check if a text content expression needs call memoization.
 /// Requires `has_call` AND references to resolved bindings (not just rune names).
 pub(crate) fn text_content_needs_memo(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
@@ -289,7 +326,7 @@ pub(crate) fn emit_memoized_text_effect<'a>(
     body: &mut Vec<Statement<'a>>,
 ) {
     // Build the lazy getter: [() => expr]
-    let thunk = ctx.b.thunk(expr);
+    let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expr)]);
     let getter_array = ctx.b.array_expr([thunk]);
 
     // Build the callback: ($0) => $.set_text(text, $0)
