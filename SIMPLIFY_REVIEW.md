@@ -468,3 +468,132 @@
 4. **Group D** (локальная шлифовка)
 
 Эта последовательность дает максимальный эффект раньше и минимизирует стоимость миграции.
+
+---
+
+## Implementation playbook (how to execute this in real PRs)
+
+Ниже — практический план внедрения, чтобы roadmap не остался документом.
+
+### 0) Execution rules (before any refactor PR)
+
+1. **Behavior-preserving by default**: сначала контракты/структуры, потом удаление legacy-path.
+2. **One architectural intent per PR**: не смешивать, например, `RenderTagPlan` и `typed handles` в одном PR.
+3. **Golden-first safety**: любой шаг проходит через существующие snapshot/компиляторные тесты.
+4. **Compatibility window**: временно держать старый и новый путь параллельно, пока не мигрированы все call-sites.
+
+---
+
+### Phase 1 — Lay foundation (Group A, 2–3 weeks)
+
+**Goal**: стабилизировать границы и API между analyze/codegen.
+
+**PR-1: Introduce `CodegenView` facade (no behavior change)**
+- Добавить read-only facade поверх `AnalysisData`.
+- Перевести только несколько безопасных вызовов в `codegen/lib.rs` на facade.
+- Оставить старые поля/доступы нетронутыми.
+
+**PR-2: Typed pass descriptors in analyze**
+- Описать существующие пассы как descriptors (`requires/produces`).
+- Выполнять в прежнем порядке, но уже через таблицу зависимостей.
+
+**PR-3: Split `Ctx` internals (`Query` + `State`) with shim**
+- Ввести новые структуры, но оставить backward-compatible методы `Ctx`.
+- Мигрировать 1-2 template модуля как proof-of-safety.
+
+**Exit criteria**
+- Нет изменения snapshot output.
+- В codegen меньше прямых обращений к `ctx.analysis.*` в целевых модулях.
+
+---
+
+### Phase 2 — Normalize semantic plans (Group B, 2–4 weeks)
+
+**Goal**: убрать cross-phase recomputation.
+
+**PR-4: `RuntimePlan`**
+- Перенести `needs_push/has_exports/has_bindable/has_stores/has_ce_props` в analyze.
+- Codegen читает один готовый plan.
+
+**PR-5: `RenderTagPlan` consolidation**
+- Склеить `mode + arg infos + prop sources` в один план.
+- Перевести `template/render_tag.rs` полностью на него.
+
+**PR-6: unified `ExprDeps`**
+- Единый API для blockers/memo/await по Node/Attr.
+- Перевести `if/each/events/attributes/expression` постепенно.
+
+**PR-7: pre-resolved const-tag SymbolId**
+- Перенести scope lookup из codegen в analyze side tables.
+
+**Exit criteria**
+- Уменьшилось число повторных semantic checks в codegen.
+- Все мигрированные модули используют plan/query API, не field-level wiring.
+
+---
+
+### Phase 3 — Mechanical safety cleanup (Group C, 2–3 weeks)
+
+**Goal**: убрать хрупкие технические контракты.
+
+**PR-8: typed expression handles**
+- Ввести `ExprHandle/StmtHandle`.
+- Скрыть `span.start` как internal parser detail.
+
+**PR-9: `TemplateScopeResolver`**
+- Централизовать fallback policy для child scopes в transform.
+
+**PR-10: pass-bundle API**
+- Формализовать группы visitor’ов analyze.
+
+**Exit criteria**
+- Нет `unwrap_or(scope)`-копипасты в ключевых ветках transform.
+- Analyze orchestration читается через bundles/descriptors, а не через ad-hoc сборку.
+
+---
+
+### Phase 4 — Consolidation (Group D, ongoing)
+
+**Goal**: улучшить читабельность и стоимость поддержки.
+
+**PR-11: `AsyncEmissionPlan`**
+- Унифицировать async emission strategy в template codegen.
+
+**PR-12+: mega-file decomposition**
+- Разделять крупные файлы по функциональным срезам, без behavior change.
+
+**Exit criteria**
+- Повторяющиеся async-ветки сведены к единому паттерну.
+- Новые фичи добавляются в меньшее число мест.
+
+---
+
+## Tracking & governance
+
+### Weekly architecture check (30 min)
+
+- Какие PR закрыли пункты roadmap (по ID: #1..#12)?
+- Где остаются временные compatibility shims?
+- Какие прямые обращения `ctx.analysis.*` ещё не мигрированы?
+
+### Suggested KPIs
+
+1. Кол-во прямых `ctx.analysis.*` обращений в `template/*`.
+2. Кол-во мест, где codegen recompute’ит semantic policy.
+3. Кол-во fallback scope lookups в transform.
+4. Размер diff’ов на новые фичи (должен снижаться после Phases 1–3).
+
+### Stop conditions (to avoid rewrite trap)
+
+- Если PR затрагивает >2 групп одновременно — разбить.
+- Если шаг меняет behavior и архитектуру одновременно — разделить на 2 PR.
+- Если coverage падает/тесты нестабильны — заморозить migration, чинить базу.
+
+---
+
+## Fast-start recommendation (next 2 PRs)
+
+1. **Сделать PR-1 (`CodegenView` facade, no behavior change)**.
+2. **Сразу после — PR-4 (`RuntimePlan`)** как самый безопасный measurable win.
+
+Это даст быструю пользу и создаст правильный ритм миграции.
