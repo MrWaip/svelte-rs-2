@@ -187,17 +187,6 @@ pub(crate) fn emit_text_update<'a>(
     }
 }
 
-pub(crate) fn emit_template_effect<'a>(
-    ctx: &mut Ctx<'a>,
-    update: Vec<Statement<'a>>,
-    body: &mut Vec<Statement<'a>>,
-) {
-    if update.is_empty() {
-        return;
-    }
-    let eff = ctx.b.arrow(ctx.b.no_params(), update);
-    body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
-}
 
 /// Emit `$.template_effect(callback, sync_values?, async_values?, blockers?)`.
 /// `script_blockers`: indices into `$$promises` (script-level async).
@@ -341,6 +330,93 @@ pub(crate) fn emit_memoized_text_effect<'a>(
         "$.template_effect",
         [Arg::Expr(callback), Arg::Expr(getter_array)],
     ));
+}
+
+/// Attribute update that needs call memoization — expression extracted into dependency array.
+pub(crate) struct MemoAttr<'a> {
+    pub setter_fn: &'static str,
+    pub el_name: String,
+    pub attr_name: Option<String>,
+    pub expr: Expression<'a>,
+}
+
+/// Emit `$.template_effect` combining regular updates with memoized attribute expressions.
+///
+/// Memoized attrs get `$N` parameter placeholders; their expressions become getter thunks
+/// in the dependency array.
+pub(crate) fn emit_template_effect_with_memo<'a>(
+    ctx: &mut Ctx<'a>,
+    regular_updates: Vec<Statement<'a>>,
+    memo_attrs: Vec<MemoAttr<'a>>,
+    script_blockers: Vec<u32>,
+    extra_blockers: Vec<Expression<'a>>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    if memo_attrs.is_empty() {
+        emit_template_effect_with_blockers(ctx, regular_updates, script_blockers, extra_blockers, body);
+        return;
+    }
+
+    // Collect memo data: (param_name, setter_fn, el_name, attr_name, expr)
+    let memo_count = memo_attrs.len();
+    let mut param_names: Vec<String> = Vec::with_capacity(memo_count);
+    let mut memo_data: Vec<(&'static str, String, Option<String>, Expression<'a>)> =
+        Vec::with_capacity(memo_count);
+
+    for (i, memo) in memo_attrs.into_iter().enumerate() {
+        param_names.push(format!("${i}"));
+        memo_data.push((memo.setter_fn, memo.el_name, memo.attr_name, memo.expr));
+    }
+
+    // Build getter thunks and setter stmts (needs references to param_names)
+    let mut getters: Vec<Expression<'a>> = Vec::with_capacity(memo_count);
+    let mut callback_body = regular_updates;
+
+    for (i, (setter_fn, el_name, attr_name, expr)) in memo_data.into_iter().enumerate() {
+        // setter_fn(el_name, "attr_name"?, $N) — el_name and $N are identifiers
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(ctx.b.rid_expr(&el_name))];
+        if let Some(name) = attr_name {
+            args.push(Arg::Str(name));
+        }
+        args.push(Arg::Expr(ctx.b.rid_expr(&param_names[i])));
+        callback_body.push(ctx.b.call_stmt(setter_fn, args));
+
+        // Build getter thunk: () => expr
+        let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expr)]);
+        getters.push(thunk);
+    }
+
+    let params = ctx.b.params(param_names.iter().map(|s| s.as_str()));
+    let callback = ctx.b.arrow_expr(params, callback_body);
+    let getter_array = ctx.b.array_expr(getters);
+
+    if script_blockers.is_empty() && extra_blockers.is_empty() {
+        body.push(ctx.b.call_stmt(
+            "$.template_effect",
+            [Arg::Expr(callback), Arg::Expr(getter_array)],
+        ));
+    } else {
+        let mut all_blockers: Vec<Expression<'a>> = script_blockers
+            .iter()
+            .map(|&idx| {
+                ctx.b.computed_member_expr(
+                    ctx.b.rid_expr("$$promises"),
+                    ctx.b.num_expr(idx as f64),
+                )
+            })
+            .collect();
+        all_blockers.extend(extra_blockers);
+        let blockers_arr = ctx.b.array_expr(all_blockers);
+        body.push(ctx.b.call_stmt(
+            "$.template_effect",
+            [
+                Arg::Expr(callback),
+                Arg::Expr(getter_array),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Expr(blockers_arr),
+            ],
+        ));
+    }
 }
 
 pub(crate) fn parts_are_dynamic(parts: &[LoweredTextPart], ctx: &Ctx<'_>) -> bool {

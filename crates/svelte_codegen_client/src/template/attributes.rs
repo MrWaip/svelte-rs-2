@@ -12,7 +12,7 @@ use super::events::{
     build_event_handler_s5, dev_event_handler, gen_use_directive, gen_on_directive_legacy,
     gen_transition_directive, gen_animate_directive, gen_attach_tag,
 };
-use super::expression::{build_attr_concat, get_attr_expr};
+use super::expression::{build_attr_concat, get_attr_expr, MemoAttr};
 
 /// Build an object property for a directive expression.
 /// Handles the three-way branch: mutated rune -> `$.get(name)`, same-name -> shorthand, else -> key-value.
@@ -55,6 +55,7 @@ pub(crate) fn process_attr<'a>(
     update: &mut Vec<Statement<'a>>,
     directive_init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
+    memo_attrs: &mut Vec<MemoAttr<'a>>,
 ) {
     let attr_id = attr.id();
     let target = if is_dyn {
@@ -134,6 +135,24 @@ pub(crate) fn process_attr<'a>(
                 // bind:group + value attr: use __value cache pattern
                 emit_bind_group_value(ctx, el_name, attr_id, val, init, update);
                 return;
+            }
+            // Memoize dynamic attrs with has_call — extract into dependency array
+            let needs_memo = is_dyn
+                && ctx.analysis.attr_expression(attr_id).is_some_and(|e| e.has_call);
+            if needs_memo {
+                let (setter_fn, attr_name) = if a.name == "value" && tag_name == "input" {
+                    ("$.set_value", None)
+                } else if a.name == "style" {
+                    ("$.set_style", None)
+                } else {
+                    ("$.set_attribute", Some(a.name.clone()))
+                };
+                memo_attrs.push(MemoAttr {
+                    setter_fn,
+                    el_name: el_name.to_string(),
+                    attr_name,
+                    expr: val,
+                });
             } else if a.name == "value" && tag_name == "input" {
                 target.push(ctx.b.call_stmt(
                     "$.set_value",

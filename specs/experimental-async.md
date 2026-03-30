@@ -2,10 +2,10 @@
 
 ## Current state
 
-- **Working (22/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1), `{@const}` async with `$.run()` + blocker propagation (2), boundary const-tag scoping fix (1)
-- **Not working (12/34)**: `$derived` async, Memoizer async, `{@render}`/`<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
+- **Working (24/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1), `{@const}` async with `$.run()` + blocker propagation (2), boundary const-tag scoping fix (1), `$derived` async basic (1), `{@render}` async with blockers (1)
+- **Not working (10/34)**: Memoizer async, `<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Next**: `$derived` async (#20) or `{@render}` async (#22)
+- **Next**: Memoizer async or `<title>` async
 - Last updated: 2026-03-30
 
 ## Source

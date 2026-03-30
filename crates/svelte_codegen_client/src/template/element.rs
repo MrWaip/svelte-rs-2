@@ -18,7 +18,8 @@ use super::events::{
     gen_use_directive,
 };
 use super::expression::{
-    build_concat, emit_memoized_text_effect, emit_trailing_next, item_has_local_blockers, text_content_needs_memo,
+    build_concat, emit_memoized_text_effect, emit_trailing_next, item_has_local_blockers,
+    text_content_needs_memo, MemoAttr,
 };
 use super::html_tag::gen_html_tag;
 use super::traverse::traverse_items;
@@ -39,6 +40,7 @@ pub(crate) fn process_element<'a>(
     update: &mut Vec<Statement<'a>>,
     hoisted: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
+    memo_attrs: &mut Vec<MemoAttr<'a>>,
 ) {
     let child_key = FragmentKey::Element(el_id);
     let ct = ctx.content_type(&child_key);
@@ -147,6 +149,7 @@ pub(crate) fn process_element<'a>(
                 update,
                 &mut directive_init,
                 &mut directive_after_update,
+                memo_attrs,
             );
         }
     }
@@ -276,6 +279,7 @@ pub(crate) fn process_element<'a>(
                 &mut child_update,
                 hoisted,
                 after_update,
+                memo_attrs,
             );
 
             emit_trailing_next(ctx, trailing, &mut child_init);

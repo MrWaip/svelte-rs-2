@@ -4,7 +4,7 @@ var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let url = "/api";
 	var data;
-	var $$promises = $.run([async () => data = $.derived(() => await fetch(url))]);
+	var $$promises = $.run([async () => data = await $.async_derived(() => fetch(url))]);
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);

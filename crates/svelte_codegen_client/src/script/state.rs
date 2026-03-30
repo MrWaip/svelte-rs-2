@@ -20,7 +20,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 decl.declarations.len() == 1
                     && !matches!(&decl.declarations[0].id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
                     && decl.declarations[0].init.as_ref().is_some_and(|init| {
-                        Self::detect_state_rune_kind(init).is_some()
+                        matches!(Self::detect_class_field_rune_kind(init), Some(RuneKind::State | RuneKind::StateRaw))
                     })
             } else {
                 false
@@ -36,7 +36,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
             let mut declarator = decl.declarations.remove(0);
             let init = declarator.init.take().unwrap();
-            let rune_kind = Self::detect_state_rune_kind(&init).unwrap();
+            let rune_kind = Self::detect_class_field_rune_kind(&init).unwrap();
 
             // Extract the rune call argument
             let value = if let Expression::CallExpression(mut call) = init {
@@ -66,17 +66,22 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
     }
 
-    /// Detect if an expression is a `$state(...)` or `$state.raw(...)` call.
-    pub(super) fn detect_state_rune_kind(expr: &Expression<'_>) -> Option<RuneKind> {
+    /// Detect if an expression is a class-field rune call:
+    /// `$state(...)`, `$state.raw(...)`, `$derived(...)`, `$derived.by(...)`.
+    pub(super) fn detect_class_field_rune_kind(expr: &Expression<'_>) -> Option<RuneKind> {
         if let Expression::CallExpression(call) = expr {
             match &call.callee {
-                Expression::Identifier(id) if id.name.as_str() == "$state" => {
-                    return Some(RuneKind::State);
-                }
+                Expression::Identifier(id) => match id.name.as_str() {
+                    "$state" => return Some(RuneKind::State),
+                    "$derived" => return Some(RuneKind::Derived),
+                    _ => {}
+                },
                 Expression::StaticMemberExpression(member) => {
                     if let Expression::Identifier(obj) = &member.object {
-                        if obj.name.as_str() == "$state" && member.property.name.as_str() == "raw" {
-                            return Some(RuneKind::StateRaw);
+                        match (obj.name.as_str(), member.property.name.as_str()) {
+                            ("$state", "raw") => return Some(RuneKind::StateRaw),
+                            ("$derived", "by") => return Some(RuneKind::DerivedBy),
+                            _ => {}
                         }
                     }
                 }
@@ -348,27 +353,23 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             }
         }
 
-        // Scan PropertyDefinitions for $state/$state.raw
+        // Scan PropertyDefinitions for $state/$state.raw/$derived/$derived.by
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::PropertyDefinition(prop) = element {
                 let Some(value) = &prop.value else { continue };
-                let Some(rune_kind) = Self::detect_state_rune_kind(value) else { continue };
-                let is_state = rune_kind == RuneKind::State;
+                let Some(rune_kind) = Self::detect_class_field_rune_kind(value) else { continue };
 
                 match &prop.key {
                     oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => {
-                        // Private field: #name = $state(...) → just rewrite callee
                         fields.push(ClassStateField {
                             public_name: None,
                             private_name: id.name.to_string(),
-                            is_state,
+                            rune_kind,
                         });
                     }
                     oxc_ast::ast::PropertyKey::StaticIdentifier(id) if !prop.computed => {
-                        // Public field: name = $state(...) → private backing + getter/setter
                         let name = id.name.to_string();
                         let mut backing = format!("#{}", name);
-                        // Deconflict if private name already exists
                         while existing_private.contains(backing.trim_start_matches('#')) {
                             backing = format!("#_{}", backing.trim_start_matches('#'));
                         }
@@ -376,7 +377,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         fields.push(ClassStateField {
                             public_name: Some(name),
                             private_name: backing.trim_start_matches('#').to_string(),
-                            is_state,
+                            rune_kind,
                         });
                     }
                     _ => {}
@@ -395,9 +396,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                     if assign.operator == oxc_ast::ast::AssignmentOperator::Assign {
                                         if let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) = &assign.left {
                                             if let Expression::ThisExpression(_) = &member.object {
-                                                if let Some(rune_kind) = Self::detect_state_rune_kind(&assign.right) {
+                                                if let Some(rune_kind) = Self::detect_class_field_rune_kind(&assign.right) {
                                                     let name = member.property.name.to_string();
-                                                    let is_state = rune_kind == RuneKind::State;
                                                     let mut backing = format!("#{}", name);
                                                     while existing_private.contains(backing.trim_start_matches('#')) {
                                                         backing = format!("#_{}", backing.trim_start_matches('#'));
@@ -406,7 +406,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                                     fields.push(ClassStateField {
                                                         public_name: Some(name),
                                                         private_name: backing.trim_start_matches('#').to_string(),
-                                                        is_state,
+                                                        rune_kind,
                                                     });
                                                 }
                                             }
@@ -454,9 +454,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for element in old_elements {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
-                    // Check if it's a state field
-                    let is_state_prop = prop.value.as_ref().is_some_and(|v| Self::detect_state_rune_kind(v).is_some());
-                    if !is_state_prop {
+                    let is_rune_prop = prop.value.as_ref().is_some_and(|v| Self::detect_class_field_rune_kind(v).is_some());
+                    if !is_rune_prop {
                         new_body.push(ClassElement::PropertyDefinition(prop));
                         continue;
                     }
@@ -465,10 +464,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => {
                             let name = id.name.to_string();
                             if private_fields.contains(name.as_str()) {
-                                // Private field: just rewrite $state(arg) → $.state(arg)
-                                if let Some(Expression::CallExpression(call)) = &mut prop.value {
-                                    call.callee = self.b.rid_expr("$.state");
-                                }
+                                self.rewrite_private_field_callee(&mut prop);
                                 new_body.push(ClassElement::PropertyDefinition(prop));
                             } else {
                                 new_body.push(ClassElement::PropertyDefinition(prop));
@@ -478,54 +474,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             let name = id.name.to_string();
                             if let Some(field_info) = public_fields.get(name.as_str()) {
                                 handled_public.insert(name.clone());
-                                // Extract the rune argument
-                                let arg = if let Some(Expression::CallExpression(mut call)) = prop.value.take() {
-                                    if call.arguments.is_empty() {
-                                        None
-                                    } else {
-                                        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                                        std::mem::swap(&mut call.arguments[0], &mut dummy);
-                                        Some(dummy.into_expression())
-                                    }
-                                } else {
-                                    None
-                                };
-
-                                // Generate: #backing = $.state(arg)
-                                let state_call = if let Some(arg) = arg {
-                                    self.b.call_expr("$.state", [Arg::Expr(arg)])
-                                } else {
-                                    self.b.call_expr("$.state", std::iter::empty::<Arg<'a, '_>>())
-                                };
-                                new_body.push(self.b.class_private_field(
-                                    &field_info.private_name,
-                                    Some(state_call),
-                                ));
-
-                                // Generate getter: get name() { return $.get(this.#backing); }
-                                let get_call = self.b.call_expr("$.get", [Arg::Expr(
-                                    self.b.this_private_member(&field_info.private_name),
-                                )]);
-                                let return_stmt = self.b.return_stmt(get_call);
-                                new_body.push(self.b.class_getter(
-                                    self.b.public_key(&name),
-                                    vec![return_stmt],
-                                ));
-
-                                // Generate setter: set name(value) { $.set(this.#backing, value, true?); }
-                                let mut set_args: Vec<Arg<'a, '_>> = vec![
-                                    Arg::Expr(self.b.this_private_member(&field_info.private_name)),
-                                    Arg::Ident("value"),
-                                ];
-                                if field_info.is_state {
-                                    set_args.push(Arg::Bool(true));
-                                }
-                                let set_call = self.b.call_stmt("$.set", set_args);
-                                new_body.push(self.b.class_setter(
-                                    self.b.public_key(&name),
-                                    "value",
-                                    vec![set_call],
-                                ));
+                                self.emit_public_field_rewrite(&mut new_body, &mut prop, field_info, &name);
                             } else {
                                 new_body.push(ClassElement::PropertyDefinition(prop));
                             }
@@ -537,30 +486,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 }
                 ClassElement::MethodDefinition(mut method) => {
                     if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
-                        // Insert #backing; + getter + setter for constructor-originating state fields
                         let ctor_fields: Vec<&ClassStateField> = info.fields.iter()
                             .filter(|f| f.public_name.is_some() && !handled_public.contains(f.public_name.as_deref().unwrap()))
                             .collect();
                         for field_info in &ctor_fields {
                             let name = field_info.public_name.as_deref().unwrap();
-                            // #backing; (no init)
                             new_body.push(self.b.class_private_field(&field_info.private_name, None));
-                            // getter
-                            let get_call = self.b.call_expr("$.get", [Arg::Expr(
-                                self.b.this_private_member(&field_info.private_name),
-                            )]);
-                            let return_stmt = self.b.return_stmt(get_call);
-                            new_body.push(self.b.class_getter(self.b.public_key(name), vec![return_stmt]));
-                            // setter
-                            let mut set_args: Vec<Arg<'a, '_>> = vec![
-                                Arg::Expr(self.b.this_private_member(&field_info.private_name)),
-                                Arg::Ident("value"),
-                            ];
-                            if field_info.is_state {
-                                set_args.push(Arg::Bool(true));
-                            }
-                            let set_call = self.b.call_stmt("$.set", set_args);
-                            new_body.push(self.b.class_setter(self.b.public_key(name), "value", vec![set_call]));
+                            self.emit_getter_setter(&mut new_body, field_info, name);
                         }
                         self.rewrite_constructor(&mut method, info);
                     }
@@ -573,6 +505,112 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
 
         body.body = self.b.ast.vec_from_iter(new_body);
+    }
+
+    /// Rewrite a private field's callee in-place: `$state(arg)` → `$.state(arg)`,
+    /// `$derived(expr)` → `$.derived(() => expr)`, `$derived.by(fn)` → `$.derived(fn)`.
+    fn rewrite_private_field_callee(
+        &self,
+        prop: &mut oxc_ast::ast::PropertyDefinition<'a>,
+    ) {
+        let rune_kind = prop.value.as_ref().and_then(|v| Self::detect_class_field_rune_kind(v));
+        if let Some(Expression::CallExpression(call)) = &mut prop.value {
+            match rune_kind {
+                Some(RuneKind::State | RuneKind::StateRaw) => {
+                    call.callee = self.b.rid_expr("$.state");
+                }
+                Some(RuneKind::Derived) => {
+                    call.callee = self.b.rid_expr("$.derived");
+                    if !call.arguments.is_empty() {
+                        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        let thunked = self.b.thunk(dummy.into_expression());
+                        call.arguments[0] = oxc_ast::ast::Argument::from(thunked);
+                    }
+                }
+                Some(RuneKind::DerivedBy) => {
+                    call.callee = self.b.rid_expr("$.derived");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Generate `#backing = $.init(arg)` + getter + setter for a public field.
+    fn emit_public_field_rewrite(
+        &self,
+        new_body: &mut Vec<oxc_ast::ast::ClassElement<'a>>,
+        prop: &mut oxc_ast::ast::PropertyDefinition<'a>,
+        field_info: &ClassStateField,
+        name: &str,
+    ) {
+        // Extract the rune argument from the call expression
+        let arg = if let Some(Expression::CallExpression(mut call)) = prop.value.take() {
+            if call.arguments.is_empty() {
+                None
+            } else {
+                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                std::mem::swap(&mut call.arguments[0], &mut dummy);
+                Some(dummy.into_expression())
+            }
+        } else {
+            None
+        };
+
+        // Generate the init call based on rune kind
+        let init_call = match field_info.rune_kind {
+            RuneKind::Derived => {
+                // $derived(expr) → $.derived(() => expr)
+                let thunked = self.b.thunk(arg.unwrap_or_else(|| self.b.cheap_expr()));
+                self.b.call_expr("$.derived", [Arg::Expr(thunked)])
+            }
+            RuneKind::DerivedBy => {
+                // $derived.by(fn) → $.derived(fn)
+                if let Some(arg) = arg {
+                    self.b.call_expr("$.derived", [Arg::Expr(arg)])
+                } else {
+                    self.b.call_expr("$.derived", std::iter::empty::<Arg<'a, '_>>())
+                }
+            }
+            _ => {
+                // $state(arg) / $state.raw(arg) → $.state(arg)
+                if let Some(arg) = arg {
+                    self.b.call_expr("$.state", [Arg::Expr(arg)])
+                } else {
+                    self.b.call_expr("$.state", std::iter::empty::<Arg<'a, '_>>())
+                }
+            }
+        };
+
+        new_body.push(self.b.class_private_field(&field_info.private_name, Some(init_call)));
+        self.emit_getter_setter(new_body, field_info, name);
+    }
+
+    /// Emit getter and setter methods for a class state/derived field.
+    fn emit_getter_setter(
+        &self,
+        new_body: &mut Vec<oxc_ast::ast::ClassElement<'a>>,
+        field_info: &ClassStateField,
+        name: &str,
+    ) {
+        // getter: get name() { return $.get(this.#backing); }
+        let get_call = self.b.call_expr("$.get", [Arg::Expr(
+            self.b.this_private_member(&field_info.private_name),
+        )]);
+        let return_stmt = self.b.return_stmt(get_call);
+        new_body.push(self.b.class_getter(self.b.public_key(name), vec![return_stmt]));
+
+        // setter: set name(value) { $.set(this.#backing, value[, true]); }
+        let mut set_args: Vec<Arg<'a, '_>> = vec![
+            Arg::Expr(self.b.this_private_member(&field_info.private_name)),
+            Arg::Ident("value"),
+        ];
+        // Only $state gets the proxy flag (third arg `true`)
+        if field_info.rune_kind == RuneKind::State {
+            set_args.push(Arg::Bool(true));
+        }
+        let set_call = self.b.call_stmt("$.set", set_args);
+        new_body.push(self.b.class_setter(self.b.public_key(name), "value", vec![set_call]));
     }
 
     /// Rewrite constructor: replace `this.name = $state(...)` with `this.#backing = $.state(...)`.
@@ -597,26 +635,39 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             if let Expression::ThisExpression(_) = &member.object {
                                 let name = member.property.name.to_string();
                                 if let Some(field_info) = ctor_fields.get(name.as_str()) {
-                                    // Mutable values (arrays, objects) need proxy wrapping for reactivity tracking
                                     if let Expression::CallExpression(call) = &mut assign.right {
-                                        call.callee = self.b.rid_expr("$.state");
-                                        let needs_proxy = call.arguments.first()
-                                            .and_then(|a| a.as_expression())
-                                            .is_some_and(|e| svelte_transform::rune_refs::should_proxy(e));
-                                        if needs_proxy {
-                                            let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                                            std::mem::swap(&mut call.arguments[0], &mut dummy);
-                                            let inner = dummy.into_expression();
-                                            let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
-                                            call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
+                                        match field_info.rune_kind {
+                                            RuneKind::Derived => {
+                                                call.callee = self.b.rid_expr("$.derived");
+                                                if !call.arguments.is_empty() {
+                                                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                                    std::mem::swap(&mut call.arguments[0], &mut dummy);
+                                                    let thunked = self.b.thunk(dummy.into_expression());
+                                                    call.arguments[0] = oxc_ast::ast::Argument::from(thunked);
+                                                }
+                                            }
+                                            RuneKind::DerivedBy => {
+                                                call.callee = self.b.rid_expr("$.derived");
+                                            }
+                                            _ => {
+                                                call.callee = self.b.rid_expr("$.state");
+                                                let needs_proxy = call.arguments.first()
+                                                    .and_then(|a| a.as_expression())
+                                                    .is_some_and(|e| svelte_transform::rune_refs::should_proxy(e));
+                                                if needs_proxy {
+                                                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                                    std::mem::swap(&mut call.arguments[0], &mut dummy);
+                                                    let inner = dummy.into_expression();
+                                                    let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
+                                                    call.arguments[0] = oxc_ast::ast::Argument::from(proxied);
+                                                }
+                                            }
                                         }
-                                    }
-                                    // Change left side to this.#backing
-                                    let new_left = self.b.this_private_member(&field_info.private_name);
-                                    // We need to convert Expression to AssignmentTarget
-                                    // For private field: use PrivateFieldExpression
-                                    if let Expression::PrivateFieldExpression(pfe) = new_left {
-                                        assign.left = oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe);
+                                        // Rewrite LHS only for rune declarations — non-rune assignments use the public setter
+                                        let new_left = self.b.this_private_member(&field_info.private_name);
+                                        if let Expression::PrivateFieldExpression(pfe) = new_left {
+                                            assign.left = oxc_ast::ast::AssignmentTarget::PrivateFieldExpression(pfe);
+                                        }
                                     }
                                 }
                             }

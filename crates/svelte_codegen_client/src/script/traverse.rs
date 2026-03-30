@@ -49,8 +49,20 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             let mut dummy = oxc_ast::ast::Argument::from(b.cheap_expr());
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             let arg_expr = dummy.into_expression();
-                            let thunk = b.thunk(arg_expr);
-                            call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+
+                            // $derived(await expr) → await $.async_derived(() => expr)
+                            if let Expression::AwaitExpression(await_expr) = arg_expr {
+                                let inner = await_expr.unbox().argument;
+                                let thunk = b.thunk(inner);
+                                call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                                call.callee = b.rid_expr("$.async_derived");
+                                // Wrap the whole $.async_derived(...) call in await
+                                let call_expr = b.move_expr(declarator.init.as_mut().unwrap());
+                                declarator.init = Some(b.await_expr(call_expr));
+                            } else {
+                                let thunk = b.thunk(arg_expr);
+                                call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                            }
                         }
                     }
                 }
