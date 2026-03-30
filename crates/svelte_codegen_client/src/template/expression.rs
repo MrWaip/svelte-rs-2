@@ -280,7 +280,7 @@ pub(crate) fn item_has_local_blockers(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
     })
 }
 
-pub(crate) fn fragment_local_blockers<'a>(ctx: &Ctx<'a>, key: &FragmentKey) -> Vec<Expression<'a>> {
+pub(crate) fn build_fragment_local_blockers<'a>(ctx: &Ctx<'a>, key: &FragmentKey) -> Vec<Expression<'a>> {
     let mut out = Vec::new();
     let mut seen_syms = FxHashSet::default();
     let items = &ctx.lowered_fragment(key).items;

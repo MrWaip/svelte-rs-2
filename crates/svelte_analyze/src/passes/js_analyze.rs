@@ -525,6 +525,7 @@ fn is_dynamic_template(
         return true;
     }
 
+    // Local root-scope non-import function may read reactive state, making the call dynamic
     if matches!(info.kind, ExpressionKind::CallExpression { .. }) {
         return info.has_store_ref || info.ref_symbols.iter().any(|&sym_id| {
             scoping.is_dynamic_by_id(sym_id)

@@ -356,7 +356,7 @@ fn emit_single_element<'a>(
         let mut after_update = Vec::with_capacity(4);
         process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
         body.extend(init);
-        let local_blockers = expression::fragment_local_blockers(ctx, &el_key);
+        let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
         expression::emit_template_effect_with_blockers(ctx, update, el_blockers, local_blockers, body);
         body.extend(after_update);
     } else {
@@ -368,7 +368,7 @@ fn emit_single_element<'a>(
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
-        let local_blockers = expression::fragment_local_blockers(ctx, &el_key);
+        let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
         expression::emit_template_effect_with_blockers(ctx, update, el_blockers, local_blockers, body);
         body.extend(after_update);
     }
