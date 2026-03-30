@@ -2,10 +2,10 @@
 
 ## Current state
 
-- **Working (24/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1), `{@const}` async with `$.run()` + blocker propagation (2), boundary const-tag scoping fix (1), `$derived` async basic (1), `{@render}` async with blockers (1)
-- **Not working (10/34)**: Memoizer async, `<title>` async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
+- **Working (25/34 use cases)**: Infrastructure (5), block wrapping for if/each/html/key/await/svelte:element (7), directive blockers (5), template_effect blockers (1), block wrapping with blockers-only (1), `{@const}` async with `$.run()` + blocker propagation (2), boundary const-tag scoping fix (1), `$derived` async basic (1), `{@render}` async with blockers (1), `<title>` async with `async_values` (1)
+- **Not working (9/34)**: Memoizer async, `<svelte:boundary>` async, `{await expr}` syntax, pickled awaits (`$.save()`), dev mode, tracing
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Next**: Memoizer async or `<title>` async
+- **Next**: Memoizer async for broader shared coverage or `<svelte:boundary>` async
 - Last updated: 2026-03-30
 
 ## Source
@@ -94,7 +94,7 @@ Audit of existing implementation (2026-03-28)
 26. [ ] `<slot>` — `$.async()` wrapping with Memoizer blockers/async_values (missing — `<slot>` codegen not implemented)
 
 ### `<title>` async
-27. [ ] `<title>` — `$.deferred_template_effect()` with Memoizer async_values/blockers (missing)
+27. [x] `<title>` — `$.deferred_template_effect()` with Memoizer async_values/blockers (covered, test: async_title_basic)
 
 ### `<svelte:boundary>` async
 28. [ ] `<svelte:boundary>` — async-aware const tag + snippet handling (missing)
@@ -134,7 +134,7 @@ Audit of existing implementation (2026-03-28)
 ### Missing: Memoizer async (#22-24, #25-27)
 1. [ ] codegen: implement Memoizer-like pattern for async/sync separation
 2. [ ] codegen: `render_tag.rs` — `$.async()` with Memoizer blockers/async_values
-3. [ ] codegen: `title_element.rs` — `$.deferred_template_effect()` with async support
+3. [x] codegen: `title_element.rs` — `$.deferred_template_effect()` with async support
 
 ### Missing: `<svelte:boundary>` async (#28, #29)
 1. [ ] codegen: `svelte_boundary` — don't hoist const tags/snippets in async mode
@@ -166,5 +166,6 @@ Audit of existing implementation (2026-03-28)
 - `async_const_tag` — `{@const}` with async expression and blocker propagation ✅
 - `async_boundary_const` — `{@const}` in boundary, const not leaking into snippets ✅
 - `async_derived_basic` — `$derived` containing `await`
+- `async_title_basic` — `<title>` with awaited expression ✅
 - `async_render_tag` — `{@render}` with async memoized args
 - `async_boundary_const` — `<svelte:boundary>` with const tags in async mode

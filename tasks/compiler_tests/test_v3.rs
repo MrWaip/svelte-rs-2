@@ -922,6 +922,11 @@ fn title_variants() {
     assert_compiler("title_variants");
 }
 
+#[rstest]
+fn async_title_basic() {
+    assert_compiler("async_title_basic");
+}
+
 // svelte:window tests
 #[rstest]
 fn svelte_window_event_legacy() {
