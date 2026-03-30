@@ -3,6 +3,7 @@ use rustc_hash::FxHashSet;
 use oxc_allocator::CloneIn;
 use oxc_ast::NONE;
 use oxc_ast::ast::{Expression, Statement};
+use oxc_span::GetSpan;
 
 use svelte_analyze::RuneKind;
 
@@ -11,59 +12,143 @@ use crate::builder::Arg;
 use super::{ClassStateField, ClassStateInfo, ScriptTransformer};
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
-    /// Expand destructured `$state`/`$state.raw` declarations into expanded form.
-    /// Called from `exit_statements` after other transformations.
-    pub(super) fn expand_state_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+    fn rewrite_destructured_rune_decls(
+        &mut self,
+        stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
+        mut predicate: impl FnMut(
+            &oxc_ast::ast::VariableDeclarator<'a>,
+            Option<RuneKind>,
+        ) -> bool,
+        mut rewrite: impl FnMut(
+            &mut Self,
+            oxc_ast::ast::VariableDeclarationKind,
+            oxc_ast::ast::VariableDeclarator<'a>,
+            RuneKind,
+        ) -> Statement<'a>,
+    ) {
         let mut i = 0;
         while i < stmts.len() {
-            let should_expand = if let Statement::VariableDeclaration(decl) = &stmts[i] {
-                decl.declarations.len() == 1
-                    && !matches!(&decl.declarations[0].id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
-                    && decl.declarations[0].init.as_ref().is_some_and(|init| {
-                        matches!(Self::detect_class_field_rune_kind(init), Some(RuneKind::State | RuneKind::StateRaw))
-                    })
-            } else {
-                false
+            let Some((should_rewrite, rune_kind)) = (match &stmts[i] {
+                Statement::VariableDeclaration(decl) if decl.declarations.len() == 1 => {
+                    let declarator = &decl.declarations[0];
+                    let rune_kind = self.rune_kind_for_declarator(declarator);
+                    Some((predicate(declarator, rune_kind), rune_kind))
+                }
+                _ => None,
+            }) else {
+                i += 1;
+                continue;
             };
 
-            if !should_expand {
+            if !should_rewrite {
                 i += 1;
                 continue;
             }
 
-            // Take ownership of the statement
             let stmt = stmts.remove(i);
             let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
-            let mut declarator = decl.declarations.remove(0);
-            let init = declarator.init.take().unwrap();
-            let rune_kind = Self::detect_class_field_rune_kind(&init).unwrap();
-
-            // Extract the rune call argument
-            let value = if let Expression::CallExpression(mut call) = init {
-                if call.arguments.is_empty() {
-                    self.b.ast.expression_object(oxc_span::SPAN, self.b.ast.vec())
-                } else {
-                    let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
-                    std::mem::swap(&mut call.arguments[0], &mut dummy);
-                    dummy.into_expression()
-                }
-            } else {
-                unreachable!()
-            };
-
-            // Generate the expanded declaration
-            let replacement = self.gen_state_destructuring(
-                &declarator.id,
-                value,
-                rune_kind,
-                decl.kind,
-            );
-
-            // Insert replacement statement
+            let decl_kind = decl.kind;
+            let declarator = decl.declarations.remove(0);
+            let replacement = rewrite(self, decl_kind, declarator, rune_kind.unwrap());
             stmts.insert(i, replacement);
             self.ident_counter += 1;
             i += 1;
         }
+    }
+
+    fn rune_kind_for_declarator(
+        &self,
+        declarator: &oxc_ast::ast::VariableDeclarator<'a>,
+    ) -> Option<RuneKind> {
+        Self::first_binding_identifier(&declarator.id)
+            .and_then(|id| self.rune_for_binding(id))
+            .map(|(kind, _)| kind)
+            .or_else(|| declarator.init.as_ref().and_then(|init| self.rune_kind_from_expr(init)))
+    }
+
+    fn rune_kind_from_expr(&self, expr: &Expression<'_>) -> Option<RuneKind> {
+        if let Some(map) = self.script_rune_call_kinds {
+            if let Some(kind) = map.get(&expr.span().start).copied() {
+                return Some(kind);
+            }
+        }
+        Self::detect_class_field_rune_kind(expr)
+    }
+
+    fn first_binding_identifier<'p>(
+        pattern: &'p oxc_ast::ast::BindingPattern<'a>,
+    ) -> Option<&'p oxc_ast::ast::BindingIdentifier<'a>> {
+        match pattern {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => Some(id),
+            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => obj
+                .properties
+                .iter()
+                .find_map(|prop| Self::first_binding_identifier(&prop.value))
+                .or_else(|| obj.rest.as_ref().and_then(|rest| Self::first_binding_identifier(&rest.argument))),
+            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => arr
+                .elements
+                .iter()
+                .flatten()
+                .find_map(Self::first_binding_identifier)
+                .or_else(|| arr.rest.as_ref().and_then(|rest| Self::first_binding_identifier(&rest.argument))),
+            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                Self::first_binding_identifier(&assign.left)
+            }
+        }
+    }
+
+    /// Rewrite destructured async `$derived(await expr)` into a single block statement
+    /// so async instance splitting keeps the original blocker metadata indexing.
+    pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        self.rewrite_destructured_rune_decls(
+            stmts,
+            |declarator, rune_kind| {
+                !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && matches!(rune_kind, Some(RuneKind::Derived))
+                    && declarator.init.as_ref().is_some_and(|init| {
+                        matches!(
+                            init,
+                            Expression::CallExpression(call)
+                                if call.arguments.first()
+                                    .and_then(|arg| arg.as_expression())
+                                    .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
+                        )
+                    })
+            },
+            |this, _decl_kind, mut declarator, _| {
+                let init = declarator.init.take().unwrap();
+                this.gen_async_derived_destructuring(&declarator.id, init)
+            },
+        );
+    }
+
+    /// Expand destructured `$state`/`$state.raw` declarations into expanded form.
+    /// Called from `exit_statements` after other transformations.
+    pub(super) fn expand_state_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        self.rewrite_destructured_rune_decls(
+            stmts,
+            |declarator, rune_kind| {
+                !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && matches!(rune_kind, Some(RuneKind::State | RuneKind::StateRaw))
+                    && declarator.init.is_some()
+            },
+            |this, decl_kind, mut declarator, rune_kind| {
+                let init = declarator.init.take().unwrap();
+                let value = if let Expression::CallExpression(mut call) = init {
+                    if call.arguments.is_empty() {
+                        this.b.ast.expression_object(oxc_span::SPAN, this.b.ast.vec())
+                    } else {
+                        let mut dummy = oxc_ast::ast::Argument::from(this.b.cheap_expr());
+                        std::mem::swap(&mut call.arguments[0], &mut dummy);
+                        dummy.into_expression()
+                    }
+                } else {
+                    unreachable!()
+                };
+
+                this.gen_state_destructuring(&declarator.id, value, rune_kind, decl_kind)
+            },
+        );
     }
 
     /// Detect if an expression is a class-field rune call:
@@ -266,7 +351,116 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     value
                 }
             }
+            RuneKind::Derived | RuneKind::DerivedBy => {
+                let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
+                self.b.call_expr("$.derived", [Arg::Expr(thunk)])
+            }
             _ => value,
+        }
+    }
+
+    fn gen_async_derived_destructuring(
+        &mut self,
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        init: Expression<'a>,
+    ) -> Statement<'a> {
+        let Expression::CallExpression(mut call) = init else {
+            unreachable!("async derived destructuring should be a call");
+        };
+        let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
+        std::mem::swap(&mut call.arguments[0], &mut dummy);
+        let awaited = dummy.into_expression();
+        let Expression::AwaitExpression(await_expr) = awaited else {
+            unreachable!("async derived destructuring should contain await");
+        };
+
+        let source_expr = await_expr.unbox().argument;
+        let tmp_name = self.gen_unique_name("$$d");
+        let tmp_name_str = self.b.alloc_str(&tmp_name);
+        let thunk = self.b.thunk(source_expr);
+        let async_derived = self.b.call_expr("$.async_derived", [Arg::Expr(thunk)]);
+        let tmp_stmt = self.b.var_stmt(tmp_name_str, self.b.await_expr(async_derived));
+
+        let access_root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);
+        let mut block_stmts = vec![tmp_stmt];
+        self.gen_derived_destructure_assignments(pattern, access_root, &mut block_stmts);
+        self.b.block_stmt(block_stmts)
+    }
+
+    fn gen_derived_destructure_assignments(
+        &mut self,
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        accessor: Expression<'a>,
+        stmts: &mut Vec<Statement<'a>>,
+    ) {
+        match pattern {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+                stmts.push(self.b.assign_stmt(crate::builder::AssignLeft::Ident(id.name.to_string()), value));
+            }
+            oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
+                let mut key_names: Vec<String> = Vec::new();
+                for prop in &obj.properties {
+                    if let Some(name) = Self::property_key_name(&prop.key) {
+                        key_names.push(name);
+                    }
+                }
+
+                for prop in &obj.properties {
+                    let member = self.build_object_member_access(accessor.clone_in(self.b.ast.allocator), &prop.key, prop.computed);
+                    self.gen_derived_destructure_assignments(&prop.value, member, stmts);
+                }
+
+                if let Some(rest) = &obj.rest {
+                    let keys_array = self.b.array_expr(key_names.iter().map(|k| self.b.str_expr(k)));
+                    let exclude_expr = self.b.call_expr("$.exclude_from_object", [
+                        Arg::Expr(accessor),
+                        Arg::Expr(keys_array),
+                    ]);
+                    self.gen_derived_destructure_assignments(&rest.argument, exclude_expr, stmts);
+                }
+            }
+            oxc_ast::ast::BindingPattern::ArrayPattern(arr) => {
+                let array_name = self.gen_unique_name("$$array");
+                let array_name_str = self.b.alloc_str(&array_name);
+
+                let len_arg = if arr.rest.is_some() {
+                    vec![Arg::Expr(accessor)]
+                } else {
+                    vec![Arg::Expr(accessor), Arg::Num(arr.elements.len() as f64)]
+                };
+                let to_array_call = self.b.call_expr("$.to_array", len_arg);
+                let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
+                stmts.push(self.b.var_stmt(array_name_str, self.b.call_expr("$.derived", [Arg::Expr(thunk)])));
+
+                for (idx, elem) in arr.elements.iter().enumerate() {
+                    let Some(elem) = elem else { continue };
+                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
+                    let elem_access = self.b.computed_member_expr(get_array, self.b.num_expr(idx as f64));
+                    self.gen_derived_destructure_assignments(elem, elem_access, stmts);
+                }
+
+                if let Some(rest) = &arr.rest {
+                    let get_array = self.b.call_expr("$.get", [Arg::Ident(array_name_str)]);
+                    let slice = self.b.static_member_expr(get_array, "slice");
+                    let slice_call = self.b.ast.expression_call(
+                        oxc_span::SPAN,
+                        slice,
+                        NONE,
+                        self.b.ast.vec_from_array([oxc_ast::ast::Argument::from(self.b.num_expr(arr.elements.len() as f64))]),
+                        false,
+                    );
+                    self.gen_derived_destructure_assignments(&rest.argument, slice_call, stmts);
+                }
+            }
+            oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => {
+                let default_expr = assign.right.clone_in(self.b.ast.allocator);
+                let fallback = self.b.call_expr("$.fallback", [
+                    Arg::Expr(accessor),
+                    Arg::Expr(default_expr),
+                ]);
+                self.gen_derived_destructure_assignments(&assign.left, fallback, stmts);
+            }
         }
     }
 
@@ -357,7 +551,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::PropertyDefinition(prop) = element {
                 let Some(value) = &prop.value else { continue };
-                let Some(rune_kind) = Self::detect_class_field_rune_kind(value) else { continue };
+                let Some(rune_kind) = self.rune_kind_from_expr(value) else { continue };
 
                 match &prop.key {
                     oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => {
@@ -396,7 +590,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                     if assign.operator == oxc_ast::ast::AssignmentOperator::Assign {
                                         if let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) = &assign.left {
                                             if let Expression::ThisExpression(_) = &member.object {
-                                                if let Some(rune_kind) = Self::detect_class_field_rune_kind(&assign.right) {
+                                                if let Some(rune_kind) = self.rune_kind_from_expr(&assign.right) {
                                                     let name = member.property.name.to_string();
                                                     let mut backing = format!("#{}", name);
                                                     while existing_private.contains(backing.trim_start_matches('#')) {
@@ -454,7 +648,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for element in old_elements {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
-                    let is_rune_prop = prop.value.as_ref().is_some_and(|v| Self::detect_class_field_rune_kind(v).is_some());
+                    let is_rune_prop = prop.value.as_ref().is_some_and(|v| self.rune_kind_from_expr(v).is_some());
                     if !is_rune_prop {
                         new_body.push(ClassElement::PropertyDefinition(prop));
                         continue;
@@ -513,7 +707,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &self,
         prop: &mut oxc_ast::ast::PropertyDefinition<'a>,
     ) {
-        let rune_kind = prop.value.as_ref().and_then(|v| Self::detect_class_field_rune_kind(v));
+        let rune_kind = prop.value.as_ref().and_then(|v| self.rune_kind_from_expr(v));
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
             match rune_kind {
                 Some(RuneKind::State | RuneKind::StateRaw) => {

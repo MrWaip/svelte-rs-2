@@ -136,9 +136,9 @@ pub(crate) fn process_attr<'a>(
                 emit_bind_group_value(ctx, el_name, attr_id, val, init, update);
                 return;
             }
-            // Memoize dynamic attrs with has_call — extract into dependency array
+            // Memoize dynamic attrs with has_call/await — extract into dependency array
             let needs_memo = is_dyn
-                && ctx.analysis.attr_expression(attr_id).is_some_and(|e| e.has_call);
+                && ctx.analysis.attr_expression(attr_id).is_some_and(|e| e.has_call || e.has_await);
             if needs_memo {
                 let (setter_fn, attr_name) = if a.name == "value" && tag_name == "input" {
                     ("$.set_value", None)
@@ -148,6 +148,7 @@ pub(crate) fn process_attr<'a>(
                     ("$.set_attribute", Some(a.name.clone()))
                 };
                 memo_attrs.push(MemoAttr {
+                    attr_id,
                     setter_fn,
                     el_name: el_name.to_string(),
                     attr_name,

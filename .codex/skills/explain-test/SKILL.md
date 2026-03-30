@@ -1,14 +1,16 @@
 ---
 name: explain-test
-description: Read-only test explanation workflow. Trigger when user asks what a test does or why it fails. Do not trigger when user asks to implement a fix.
+description: Read-only workflow for explaining what a compiler test case covers and why it passes or fails. Use when the user asks what a test does, what feature it exercises, or why it is failing. Do not trigger when the user wants the fix implemented immediately.
 ---
 
-# /explain-test workflow (Codex)
+# Explain Test
 
-1. Validate test case exists in `tasks/compiler_tests/cases2/<name>/`.
-2. Read `case.svelte`, `case-svelte.js`, and `case-rust.js` (if present).
-3. Run `just test-case <name>` to confirm current status.
-4. Summarize exercised features and (if failing) mismatch classification by layer.
-5. Return likely code paths to inspect next and recommended follow-up command.
+1. Validate that `tasks/compiler_tests/cases2/<name>/` exists.
+2. Read `case.svelte`, `case-svelte.js`, and `case-rust.js` if present.
+3. Run `just test-case <name>` if current status is unknown.
+4. List the Svelte features exercised by the input.
+5. If failing, classify meaningful mismatches by parser, analyze, transform, or codegen.
+6. Show the likely code path in our compiler that handles those features.
+7. Recommend the next command, usually `fix-test <name>` or `port specs/<feature>.md`.
 
 Read-only by default: do not edit files in this workflow.

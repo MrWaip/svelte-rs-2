@@ -359,7 +359,12 @@ fn split_async_instance_body<'a>(
             }
             _ => {
                 if has_await {
-                    thunks.push(b.async_thunk_block(vec![stmt]));
+                    if let Statement::BlockStatement(block) = stmt {
+                        let block = block.unbox();
+                        thunks.push(b.async_thunk_block(block.body.into_iter().collect()));
+                    } else {
+                        thunks.push(b.async_thunk_block(vec![stmt]));
+                    }
                 } else {
                     thunks.push(b.thunk_block(vec![stmt]));
                 }

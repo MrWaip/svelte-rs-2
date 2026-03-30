@@ -147,6 +147,8 @@ pub fn analyze_with_options<'a>(
 
     // Instance body blocker analysis (experimental.async)
     passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
+    passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
+    passes::js_analyze::classify_pickled_awaits(&parsed, &mut data);
 
     // needs_context requires ref_symbols — must run after collect_symbols
     passes::js_analyze::classify_expression_needs_context(&mut data);
@@ -339,7 +341,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
 /// Resolve render tag argument prop sources via reference_id from parsed expressions.
 fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     use oxc_ast::ast::Expression;
-    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().collect();
+    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
     for tag_id in tag_ids {
         let offset = match data.node_expr_offsets.get(tag_id) {
             Some(&o) => o,
@@ -372,7 +374,7 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
     use crate::types::data::RenderTagCalleeMode;
 
-    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_has_call.keys().collect();
+    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
 
     for node_id in all_ids {
         let is_dynamic = match data.render_tag_callee_sym.get(node_id) {

@@ -127,7 +127,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
 // ---------------------------------------------------------------------------
 
 /// Build a complete ExpressionInfo: analyze flags + collect resolved symbols in one pass.
-fn build_expression_info(
+pub(crate) fn build_expression_info(
     expr: &Expression<'_>,
     scoping: &mut ComponentScoping,
 ) -> ExpressionInfo {

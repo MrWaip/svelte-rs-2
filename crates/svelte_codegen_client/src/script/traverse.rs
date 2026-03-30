@@ -417,6 +417,9 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             true
         });
 
+        // Expand destructured async $derived(await ...)
+        self.process_async_derived_destructuring(stmts);
+
         // Expand destructured $state/$state.raw declarations
         self.expand_state_destructuring(stmts);
 

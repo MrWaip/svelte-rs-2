@@ -785,8 +785,8 @@ pub struct AnalysisData {
     pub title_elements: TitleElementData,
     /// Each-block context/index names.
     pub each_blocks: EachBlockData,
-    /// Per-argument `has_call` flags for render tag expressions (keyed by RenderTag NodeId).
-    pub render_tag_arg_has_call: NodeTable<Vec<bool>>,
+    /// Full expression metadata for render tag arguments.
+    pub render_tag_arg_infos: NodeTable<Vec<ExpressionInfo>>,
     /// Per-argument prop-source SymbolId for render tags.
     /// Some(sym) = prop-source arg (pass getter directly), None = not a prop-source.
     pub render_tag_prop_sources: NodeTable<Vec<Option<SymbolId>>>,
@@ -821,6 +821,10 @@ pub struct AnalysisData {
     pub(crate) has_store_member_mutations: bool,
     /// Blocker tracking for `experimental.async`: which script bindings depend on async operations.
     pub(crate) blocker_data: BlockerData,
+    /// Script rune-call kinds keyed by expression span.start (e.g. $state/$derived calls).
+    pub(crate) script_rune_call_kinds: FxHashMap<u32, crate::types::script::RuneKind>,
+    /// Absolute source offsets of `await` expressions that require `$.save()`.
+    pub(crate) pickled_await_offsets: FxHashSet<u32>,
     /// svelte-ignore suppression data (per-node ignore snapshots).
     pub ignore_data: IgnoreData,
 }
@@ -917,7 +921,7 @@ impl AnalysisData {
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             each_blocks: EachBlockData::new(node_count),
-            render_tag_arg_has_call: NodeTable::new(node_count),
+            render_tag_arg_infos: NodeTable::new(node_count),
             render_tag_prop_sources: NodeTable::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
@@ -932,6 +936,8 @@ impl AnalysisData {
             proxy_state_inits: FxHashMap::default(),
             has_store_member_mutations: false,
             blocker_data: BlockerData::default(),
+            script_rune_call_kinds: FxHashMap::default(),
+            pickled_await_offsets: FxHashSet::default(),
             ignore_data: IgnoreData::new(),
         }
     }
@@ -940,6 +946,17 @@ impl AnalysisData {
 impl AnalysisData {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.blocker_data
+    }
+    pub fn script_rune_call_kinds(
+        &self,
+    ) -> &FxHashMap<u32, crate::types::script::RuneKind> {
+        &self.script_rune_call_kinds
+    }
+    pub fn script_rune_call_kind(&self, offset: u32) -> Option<crate::types::script::RuneKind> {
+        self.script_rune_call_kinds.get(&offset).copied()
+    }
+    pub fn is_pickled_await(&self, offset: u32) -> bool {
+        self.pickled_await_offsets.contains(&offset)
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.dynamic_nodes.contains(&id)
@@ -973,8 +990,8 @@ impl AnalysisData {
             .and_then(|info| info.ref_symbols.first())
             .is_some_and(|&sym| self.import_syms.contains(&sym))
     }
-    pub fn render_tag_arg_has_call(&self, id: NodeId) -> Option<&[bool]> {
-        self.render_tag_arg_has_call.get(id).map(|v| v.as_slice())
+    pub fn render_tag_arg_infos(&self, id: NodeId) -> Option<&[ExpressionInfo]> {
+        self.render_tag_arg_infos.get(id).map(|v| v.as_slice())
     }
     pub fn render_tag_prop_sources(&self, id: NodeId) -> Option<&[Option<SymbolId>]> {
         self.render_tag_prop_sources.get(id).map(|v| v.as_slice())
