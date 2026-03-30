@@ -821,6 +821,8 @@ pub struct AnalysisData {
     pub(crate) has_store_member_mutations: bool,
     /// Blocker tracking for `experimental.async`: which script bindings depend on async operations.
     pub(crate) blocker_data: BlockerData,
+    /// Script rune-call kinds keyed by expression span.start (e.g. $state/$derived calls).
+    pub(crate) script_rune_call_kinds: FxHashMap<u32, crate::types::script::RuneKind>,
     /// Absolute source offsets of `await` expressions that require `$.save()`.
     pub(crate) pickled_await_offsets: FxHashSet<u32>,
     /// svelte-ignore suppression data (per-node ignore snapshots).
@@ -934,6 +936,7 @@ impl AnalysisData {
             proxy_state_inits: FxHashMap::default(),
             has_store_member_mutations: false,
             blocker_data: BlockerData::default(),
+            script_rune_call_kinds: FxHashMap::default(),
             pickled_await_offsets: FxHashSet::default(),
             ignore_data: IgnoreData::new(),
         }
@@ -943,6 +946,14 @@ impl AnalysisData {
 impl AnalysisData {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.blocker_data
+    }
+    pub fn script_rune_call_kinds(
+        &self,
+    ) -> &FxHashMap<u32, crate::types::script::RuneKind> {
+        &self.script_rune_call_kinds
+    }
+    pub fn script_rune_call_kind(&self, offset: u32) -> Option<crate::types::script::RuneKind> {
+        self.script_rune_call_kinds.get(&offset).copied()
     }
     pub fn is_pickled_await(&self, offset: u32) -> bool {
         self.pickled_await_offsets.contains(&offset)

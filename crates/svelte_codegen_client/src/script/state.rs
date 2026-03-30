@@ -3,6 +3,7 @@ use rustc_hash::FxHashSet;
 use oxc_allocator::CloneIn;
 use oxc_ast::NONE;
 use oxc_ast::ast::{Expression, Statement};
+use oxc_span::GetSpan;
 
 use svelte_analyze::RuneKind;
 
@@ -62,7 +63,16 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         Self::first_binding_identifier(&declarator.id)
             .and_then(|id| self.rune_for_binding(id))
             .map(|(kind, _)| kind)
-            .or_else(|| declarator.init.as_ref().and_then(Self::detect_class_field_rune_kind))
+            .or_else(|| declarator.init.as_ref().and_then(|init| self.rune_kind_from_expr(init)))
+    }
+
+    fn rune_kind_from_expr(&self, expr: &Expression<'_>) -> Option<RuneKind> {
+        if let Some(map) = self.script_rune_call_kinds {
+            if let Some(kind) = map.get(&expr.span().start).copied() {
+                return Some(kind);
+            }
+        }
+        Self::detect_class_field_rune_kind(expr)
     }
 
     fn first_binding_identifier<'p>(
@@ -541,7 +551,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::PropertyDefinition(prop) = element {
                 let Some(value) = &prop.value else { continue };
-                let Some(rune_kind) = Self::detect_class_field_rune_kind(value) else { continue };
+                let Some(rune_kind) = self.rune_kind_from_expr(value) else { continue };
 
                 match &prop.key {
                     oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => {
@@ -580,7 +590,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                     if assign.operator == oxc_ast::ast::AssignmentOperator::Assign {
                                         if let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) = &assign.left {
                                             if let Expression::ThisExpression(_) = &member.object {
-                                                if let Some(rune_kind) = Self::detect_class_field_rune_kind(&assign.right) {
+                                                if let Some(rune_kind) = self.rune_kind_from_expr(&assign.right) {
                                                     let name = member.property.name.to_string();
                                                     let mut backing = format!("#{}", name);
                                                     while existing_private.contains(backing.trim_start_matches('#')) {
@@ -638,7 +648,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for element in old_elements {
             match element {
                 ClassElement::PropertyDefinition(mut prop) => {
-                    let is_rune_prop = prop.value.as_ref().is_some_and(|v| Self::detect_class_field_rune_kind(v).is_some());
+                    let is_rune_prop = prop.value.as_ref().is_some_and(|v| self.rune_kind_from_expr(v).is_some());
                     if !is_rune_prop {
                         new_body.push(ClassElement::PropertyDefinition(prop));
                         continue;
@@ -697,7 +707,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &self,
         prop: &mut oxc_ast::ast::PropertyDefinition<'a>,
     ) {
-        let rune_kind = prop.value.as_ref().and_then(|v| Self::detect_class_field_rune_kind(v));
+        let rune_kind = prop.value.as_ref().and_then(|v| self.rune_kind_from_expr(v));
         if let Some(Expression::CallExpression(call)) = &mut prop.value {
             match rune_kind {
                 Some(RuneKind::State | RuneKind::StateRaw) => {

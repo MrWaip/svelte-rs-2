@@ -2,7 +2,7 @@ mod props;
 mod state;
 mod traverse;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement};
@@ -74,6 +74,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             component_scoping,
             props,
             prop_defaults,
+            Some(ctx.analysis.script_rune_call_kinds()),
             dev,
             component_source,
             script_content_start,
@@ -96,6 +97,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         component_source,
         script_content_start,
         filename,
+        None,
     )
 }
 
@@ -118,6 +120,7 @@ pub fn transform_module_script<'a>(
         source,
         0,
         "(unknown)",
+        None,
     )
 }
 
@@ -133,6 +136,7 @@ fn transform_script_text<'a>(
     component_source: &str,
     script_content_start: u32,
     filename: &str,
+    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -176,6 +180,7 @@ fn transform_script_text<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
+        script_rune_call_kinds,
     };
 
     let empty_scoping = Scoping::default();
@@ -218,6 +223,7 @@ fn transform_program<'a>(
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     prop_default_exprs: Vec<Option<Expression<'a>>>,
+    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
     dev: bool,
     component_source: &str,
     script_content_start: u32,
@@ -252,6 +258,7 @@ fn transform_program<'a>(
         ident_counter: 0,
         class_state_stack: Vec::new(),
         prop_default_exprs,
+        script_rune_call_kinds,
     };
 
     let empty_scoping = Scoping::default();
@@ -399,6 +406,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) class_state_stack: Vec<ClassStateInfo>,
     /// Pre-parsed prop default expressions, indexed by prop position.
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
+    /// Analyzer-owned rune call kinds keyed by expression span.start.
+    pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {

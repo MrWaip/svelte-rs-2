@@ -543,6 +543,25 @@ fn collect_pickled_await_offsets(
     }
 }
 
+pub(crate) fn collect_script_rune_call_kinds(parsed: &ParserResult<'_>, data: &mut AnalysisData) {
+    let Some(program) = parsed.program.as_ref() else {
+        return;
+    };
+    struct Collector<'d> {
+        data: &'d mut AnalysisData,
+    }
+    impl<'a> Visit<'a> for Collector<'_> {
+        fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+            if let Some(kind) = crate::utils::script_info::detect_rune_from_call(call) {
+                self.data.script_rune_call_kinds.insert(call.span.start, kind);
+            }
+            walk_call_expression(self, call);
+        }
+    }
+    let mut collector = Collector { data };
+    collector.visit_program(program);
+}
+
 /// Template expression dynamicity: state runes, stores, dynamic bindings, class state fields.
 fn is_dynamic_template(
     info: &ExpressionInfo,
