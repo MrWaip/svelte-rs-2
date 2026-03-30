@@ -162,21 +162,22 @@ pub(crate) fn emit_text_update<'a>(
     let expr = build_concat(ctx, item);
 
     if is_dyn {
-        // Collect blockers from pre-computed expression data
-        let blockers: Vec<u32> = if let FragmentItem::TextConcat { parts, .. } = item {
-            let mut b = Vec::new();
+        // Collect script-level blockers and const-tag blockers
+        let mut blockers: Vec<u32> = Vec::new();
+        let mut extra_blockers: Vec<oxc_ast::ast::Expression<'a>> = Vec::new();
+        if let FragmentItem::TextConcat { parts, .. } = item {
             for part in parts {
                 if let LoweredTextPart::Expr(id) = part {
                     for idx in ctx.analysis.expression_blockers(*id) {
-                        if !b.contains(&idx) { b.push(idx); }
+                        if !blockers.contains(&idx) { blockers.push(idx); }
                     }
+                    extra_blockers.extend(ctx.const_tag_blocker_exprs(*id));
                 }
             }
-            b.sort_unstable();
-            b
-        } else { Vec::new() };
+            blockers.sort_unstable();
+        }
         let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
-        emit_template_effect_with_blockers(ctx, vec![set], blockers, body);
+        emit_template_effect_with_blockers(ctx, vec![set], blockers, extra_blockers, body);
     } else {
         body.push(ctx.b.assign_stmt(
             AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(node_name), "nodeValue")),
@@ -198,21 +199,31 @@ pub(crate) fn emit_template_effect<'a>(
 }
 
 /// Emit `$.template_effect(callback, sync_values?, async_values?, blockers?)`.
+/// `script_blockers`: indices into `$$promises` (script-level async).
+/// `extra_blockers`: pre-built expressions like `promises[M]` (const-tag blockers).
 pub(crate) fn emit_template_effect_with_blockers<'a>(
     ctx: &mut Ctx<'a>,
     update: Vec<Statement<'a>>,
-    blockers: Vec<u32>,
+    script_blockers: Vec<u32>,
+    extra_blockers: Vec<oxc_ast::ast::Expression<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
     if update.is_empty() {
         return;
     }
     let eff = ctx.b.arrow(ctx.b.no_params(), update);
-    if blockers.is_empty() {
+    if script_blockers.is_empty() && extra_blockers.is_empty() {
         body.push(ctx.b.call_stmt("$.template_effect", [Arg::Arrow(eff)]));
     } else {
-        // $.template_effect(callback, void 0, void 0, [$$promises[i], ...])
-        let blockers_arr = ctx.b.promises_array(&blockers);
+        // $.template_effect(callback, void 0, void 0, [$$promises[i]..., promises[M]...])
+        let mut all_blockers: Vec<oxc_ast::ast::Expression<'a>> = script_blockers.iter()
+            .map(|&idx| ctx.b.computed_member_expr(
+                ctx.b.rid_expr("$$promises"),
+                ctx.b.num_expr(idx as f64),
+            ))
+            .collect();
+        all_blockers.extend(extra_blockers);
+        let blockers_arr = ctx.b.array_expr(all_blockers);
         body.push(ctx.b.call_stmt("$.template_effect", [
             Arg::Arrow(eff),
             Arg::Expr(ctx.b.void_zero_expr()),

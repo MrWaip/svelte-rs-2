@@ -82,7 +82,7 @@ use each_block::gen_each_block;
 use html_tag::gen_html_tag;
 use key_block::gen_key_block;
 use render_tag::gen_render_tag;
-use const_tag::emit_const_tags;
+use const_tag::gen_const_tags;
 use debug_tag::emit_debug_tags;
 use title_element::emit_title_elements;
 use svelte_boundary::gen_svelte_boundary;
@@ -149,8 +149,11 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut hoisted = Vec::with_capacity(4);
     let mut body = Vec::with_capacity(8);
 
-    emit_const_tags(ctx, key, &mut body);
+    let async_const_run = gen_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
+    if let Some(run_stmt) = async_const_run {
+        body.push(run_stmt);
+    }
 
     // Template init first (Svelte reference unshifts var decl to init[0])
     let pre_len = body.len();
@@ -200,8 +203,11 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
 
     let mut body: Vec<Statement<'a>> = Vec::with_capacity(8);
 
-    emit_const_tags(ctx, key, &mut body);
+    let async_const_run = gen_const_tags(ctx, key, &mut body);
     emit_debug_tags(ctx, key, &mut body);
+    if let Some(run_stmt) = async_const_run {
+        body.push(run_stmt);
+    }
 
     let mut sub_hoisted = Vec::with_capacity(2);
     emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
@@ -350,7 +356,8 @@ fn emit_single_element<'a>(
         let mut after_update = Vec::with_capacity(4);
         process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update);
         body.extend(init);
-        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, body);
+        let extra_blockers = std::mem::take(&mut ctx.pending_const_blockers);
+        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, extra_blockers, body);
         body.extend(after_update);
     } else {
         // Non-root: template AFTER children (bottom-up)
@@ -361,7 +368,8 @@ fn emit_single_element<'a>(
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
-        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, body);
+        let extra_blockers = std::mem::take(&mut ctx.pending_const_blockers);
+        expression::emit_template_effect_with_blockers(ctx, update, el_blockers, extra_blockers, body);
         body.extend(after_update);
     }
 
