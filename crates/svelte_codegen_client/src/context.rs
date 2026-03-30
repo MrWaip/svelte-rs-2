@@ -52,7 +52,6 @@ pub struct Ctx<'a> {
     pub has_tracing: bool,
     /// Whether `experimental.async` is enabled.
     pub experimental_async: bool,
-
     /// Const-tag blocker propagation (experimental.async).
     /// Maps SymbolId of a const-tag binding → (promises_var_name, thunk_index).
     /// Populated by `emit_const_tags` when `$.run()` mode is used.
@@ -160,6 +159,13 @@ impl<'a> Ctx<'a> {
         self.analysis.attr_is_import(attr_id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
+    pub fn const_tag_symbol_blocker_expr(&self, sym: SymbolId) -> Option<Expression<'a>> {
+        let (name, idx) = self.const_tag_blockers.get(&sym)?;
+        Some(self.b.computed_member_expr(
+            self.b.rid_expr(name),
+            self.b.num_expr(*idx as f64),
+        ))
+    }
     pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
 
     /// Check if expression for node has `has_await`.
@@ -183,10 +189,8 @@ impl<'a> Ctx<'a> {
         let ref_symbols = info.ref_symbols.clone();
         let mut result = Vec::new();
         for sym in &ref_symbols {
-            if let Some((promises_name, idx)) = self.const_tag_blockers.get(sym) {
-                let obj = self.b.rid_expr(promises_name);
-                let prop = self.b.num_expr(*idx as f64);
-                result.push(self.b.computed_member_expr(obj, prop));
+            if let Some(expr) = self.const_tag_symbol_blocker_expr(*sym) {
+                result.push(expr);
             }
         }
         result

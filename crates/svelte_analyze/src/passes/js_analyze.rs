@@ -525,6 +525,13 @@ fn is_dynamic_template(
         return true;
     }
 
+    if matches!(info.kind, ExpressionKind::CallExpression { .. }) {
+        return info.has_store_ref || info.ref_symbols.iter().any(|&sym_id| {
+            scoping.is_dynamic_by_id(sym_id)
+                || (scoping.symbol_scope_id(sym_id) == root && !scoping.is_import(sym_id))
+        });
+    }
+
     // MemberExpressions: any resolved local binding → dynamic.
     if matches!(info.kind, ExpressionKind::MemberExpression) {
         return info.has_store_ref || !info.ref_symbols.is_empty();

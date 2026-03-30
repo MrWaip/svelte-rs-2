@@ -18,7 +18,7 @@ use super::events::{
     gen_use_directive,
 };
 use super::expression::{
-    build_concat, emit_memoized_text_effect, emit_trailing_next, text_content_needs_memo,
+    build_concat, emit_memoized_text_effect, emit_trailing_next, item_has_local_blockers, text_content_needs_memo,
 };
 use super::html_tag::gen_html_tag;
 use super::traverse::traverse_items;
@@ -174,13 +174,22 @@ pub(crate) fn process_element<'a>(
         ContentStrategy::DynamicText if !has_state => {
             // textContent shortcut
             let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
-            let expr = build_concat(ctx, &items[0]);
-            init.push(ctx.b.assign_stmt(
-                crate::builder::AssignLeft::StaticMember(
-                    ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
-                ),
-                expr,
-            ));
+            if !item_has_local_blockers(&items[0], ctx) {
+                let expr = build_concat(ctx, &items[0]);
+                init.push(ctx.b.assign_stmt(
+                    crate::builder::AssignLeft::StaticMember(
+                        ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
+                    ),
+                    expr,
+                ));
+            } else {
+                let text_name = ctx.gen_ident("text");
+                let child_call = ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
+                init.push(ctx.b.var_stmt(&text_name, child_call));
+                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                let expr = build_concat(ctx, &items[0]);
+                update.push(ctx.b.call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]));
+            }
         }
 
         ContentStrategy::DynamicText => {
