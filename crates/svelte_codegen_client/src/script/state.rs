@@ -367,7 +367,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async derived destructuring should be a call");
         };
-        // Capture span before extracting arguments for dev-mode location.
+        // Must read span before mem::swap removes the original argument.
         let init_span_start = call.span.start;
         let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
         std::mem::swap(&mut call.arguments[0], &mut dummy);
@@ -380,11 +380,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let tmp_name = self.gen_unique_name("$$d");
         let tmp_name_str = self.b.alloc_str(&tmp_name);
 
-        // Async thunk: `async () => await source_expr` — matches reference output.
         let await_inner = self.b.await_expr(source_expr);
         let thunk = self.b.async_thunk(await_inner);
 
-        // Build args: thunk + optional dev-mode label + location.
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(thunk)];
         if self.dev {
             let kind = match pattern {

@@ -17,7 +17,7 @@ pub(crate) struct DevContext<'a> {
 }
 
 impl DevContext<'_> {
-    /// Compute `"filename:line:col"` from a byte offset inside the script.
+    /// `script_offset` is relative to the script block start, not the full component source.
     fn locate(&self, script_offset: u32) -> String {
         let full_offset = self.script_content_start + script_offset;
         let (line, col) = compute_line_col(self.component_source, full_offset);
@@ -74,7 +74,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                 });
 
                             if is_async {
-                                // Capture init span before mutating call for location computation.
+                                // Must read span before the mem::swap below invalidates arg positions.
                                 let init_span_start = call.span.start;
 
                                 // Thunk form depends on whether arg is still AwaitExpression
@@ -93,22 +93,17 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                     b.async_arrow_expr_body(arg_expr)
                                 };
 
-                                // Build dev-mode extra args.
                                 let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
-                                if let Some(ctx) = dev_ctx {
-                                    if ctx.dev {
-                                        // 2nd arg: identifier name string
-                                        let name = match &declarator.id {
-                                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                                id.name.to_string()
-                                            }
-                                            _ => String::new(),
-                                        };
-                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&name)));
-                                        // 3rd arg: source location string
-                                        let loc = ctx.locate(init_span_start);
-                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
-                                    }
+                                if let Some(ctx) = dev_ctx.filter(|c| c.dev) {
+                                    let name = match &declarator.id {
+                                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                            id.name.to_string()
+                                        }
+                                        _ => String::new(),
+                                    };
+                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&name)));
+                                    let loc = ctx.locate(init_span_start);
+                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
                                 }
 
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
