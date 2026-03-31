@@ -94,7 +94,7 @@ pub(crate) fn process_attr<'a>(
                     .unwrap_or(raw_event_name).to_string();
 
                 let expr_offset = a.expression_span.start;
-                let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+                let has_call = ctx.analysis().attr_expression(attr_id).map_or(false, |e| e.has_call);
                 let val = get_attr_expr(ctx, attr_id);
                 let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
                 let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
@@ -138,7 +138,7 @@ pub(crate) fn process_attr<'a>(
             }
             // Memoize dynamic attrs with has_call/await — extract into dependency array
             let needs_memo = is_dyn
-                && ctx.analysis.attr_expression(attr_id).is_some_and(|e| e.has_call || e.has_await);
+                && ctx.analysis().attr_expression(attr_id).is_some_and(|e| e.has_call || e.has_await);
             if needs_memo {
                 let (setter_fn, attr_name) = if a.name == "value" && tag_name == "input" {
                     ("$.set_value", None)

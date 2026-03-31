@@ -91,7 +91,7 @@ pub(crate) fn gen_if_block<'a>(
             // Root async condition: resolved via $.get($$condition) inside $.async callback
             derived_names.push(None);
         } else {
-            let needs_memo = ctx.analysis.needs_expr_memoization(branch.block_id);
+            let needs_memo = ctx.analysis().needs_expr_memoization(branch.block_id);
             if needs_memo {
                 let expr = get_node_expr(ctx, branch.block_id);
                 let thunk = ctx.b.thunk(expr);

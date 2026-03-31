@@ -66,10 +66,10 @@ impl<'a> VisitMut<'a> for AwaitExprFinalizer<'_, 'a> {
 
         let ignored = self
             .ignore_node
-            .is_some_and(|id| self.ctx.analysis.ignore_data.is_ignored(id, "await_reactivity_loss"));
+            .is_some_and(|id| self.ctx.analysis().ignore_data.is_ignored(id, "await_reactivity_loss"));
 
         let arg = self.ctx.b.move_expr(&mut await_expr.argument);
-        if self.ctx.analysis.is_pickled_await(await_expr.span.start) {
+        if self.ctx.analysis().is_pickled_await(await_expr.span.start) {
             let save_call = self.ctx.b.call_expr("$.save", [Arg::Expr(arg)]);
             let awaited = self.ctx.b.await_expr(save_call);
             *expr = self
@@ -223,7 +223,7 @@ impl<'a> TemplateMemoState<'a> {
 
     pub(crate) fn push_expr_info(&mut self, ctx: &Ctx<'a>, info: &ExpressionInfo) {
         for sym in &info.ref_symbols {
-            if let Some(idx) = ctx.analysis.blocker_data().symbol_blocker(*sym) {
+            if let Some(idx) = ctx.analysis().blocker_data().symbol_blocker(*sym) {
                 self.push_script_blocker(idx);
             }
             if let Some(expr) = ctx.const_tag_symbol_blocker_expr(*sym) {
@@ -233,7 +233,7 @@ impl<'a> TemplateMemoState<'a> {
     }
 
     pub(crate) fn push_node_deps(&mut self, ctx: &mut Ctx<'a>, id: NodeId) {
-        for idx in ctx.analysis.expression_blockers(id) {
+        for idx in ctx.analysis().expression_blockers(id) {
             self.push_script_blocker(idx);
         }
         self.extra_blockers.extend(ctx.const_tag_blocker_exprs(id));
@@ -391,7 +391,7 @@ pub(crate) fn emit_text_update<'a>(
         if let FragmentItem::TextConcat { parts, .. } = item {
             for part in parts {
                 if let LoweredTextPart::Expr(id) = part {
-                    for idx in ctx.analysis.expression_blockers(*id) {
+                    for idx in ctx.analysis().expression_blockers(*id) {
                         if !blockers.contains(&idx) { blockers.push(idx); }
                     }
                     extra_blockers.extend(ctx.const_tag_blocker_exprs(*id));
@@ -506,7 +506,7 @@ pub(crate) fn text_content_needs_memo(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
     if let FragmentItem::TextConcat { parts, .. } = item {
         return parts.iter().any(|p| {
             if let LoweredTextPart::Expr(id) = p {
-                ctx.analysis.needs_expr_memoization(*id)
+                ctx.analysis().needs_expr_memoization(*id)
             } else {
                 false
             }
@@ -597,7 +597,7 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
         args.push(Arg::Expr(ctx.b.rid_expr(&param_names[i])));
         callback_body.push(ctx.b.call_stmt(setter_fn, args));
 
-        let info = ctx.analysis.attr_expression(attr_id)
+        let info = ctx.analysis().attr_expression(attr_id)
             .expect("memoized attribute should have expression metadata");
         deps.push_expr_info(ctx, info);
         if info.has_await {
@@ -635,7 +635,7 @@ fn build_concat_with_memo<'a>(
             }
 
             let expr = get_node_expr(ctx, nid);
-            if ctx.analysis.needs_expr_memoization(nid) {
+            if ctx.analysis().needs_expr_memoization(nid) {
                 if ctx.expr_has_await(nid) {
                     let index = deps.async_values.len();
                     deps.async_values.push(ctx.b.clone_expr(&expr));
@@ -673,7 +673,7 @@ fn build_concat_with_memo<'a>(
                 }
 
                 let expr = get_node_expr(ctx, *nid);
-                let expr = if ctx.analysis.needs_expr_memoization(*nid) {
+                let expr = if ctx.analysis().needs_expr_memoization(*nid) {
                     if ctx.expr_has_await(*nid) {
                         let index = deps.async_values.len();
                         deps.async_values.push(ctx.b.clone_expr(&expr));

@@ -21,7 +21,7 @@ pub(crate) fn gen_snippet_block<'a>(
     let block = ctx.snippet_block(id);
     let name = block.name(ctx.source).to_string();
 
-    let param_names: Vec<String> = ctx.analysis.snippets.params(id).to_vec();
+    let param_names: Vec<String> = ctx.analysis().snippets.params(id).to_vec();
 
     // Set snippet params so expression codegen wraps them as thunk calls.
     // Save and restore to handle nested snippets correctly.

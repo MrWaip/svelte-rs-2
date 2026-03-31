@@ -46,18 +46,18 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     // 3. Build function body (needs &mut ctx for snippets)
     // -----------------------------------------------------------------------
-    let is_custom_element = ctx.analysis.custom_element;
-    let has_exports = !ctx.analysis.exports.is_empty();
-    let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = !ctx.analysis.scoping.store_symbol_ids().is_empty();
-    let has_ce_props = is_custom_element && ctx.analysis.props.as_ref().is_some_and(|p| !p.props.is_empty());
-    let needs_push = has_bindable || has_exports || has_ce_props || ctx.analysis.needs_context || ctx.dev;
+    let is_custom_element = ctx.query.custom_element();
+    let has_exports = !ctx.query.exports().is_empty();
+    let has_bindable = ctx.query.props().is_some_and(|p| p.has_bindable);
+    let has_stores = !ctx.query.scoping().store_symbol_ids().is_empty();
+    let has_ce_props = is_custom_element && ctx.query.props().is_some_and(|p| !p.props.is_empty());
+    let needs_push = has_bindable || has_exports || has_ce_props || ctx.query.needs_context() || ctx.dev;
     let has_component_exports = has_exports || has_ce_props || ctx.dev;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
     // $props.id() → must be first statement for hydration correctness
-    if let Some(ref props_id_name) = ctx.analysis.props_id {
+    if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx.b.call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
@@ -84,8 +84,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     //   const [$$stores, $$cleanup] = $.setup_stores();
     if has_stores {
         // Sort store base names for deterministic output
-        let mut store_names: Vec<&str> = ctx.analysis.scoping.store_symbol_ids().iter()
-            .map(|&sym| ctx.analysis.scoping.symbol_name(sym))
+        let mut store_names: Vec<&str> = ctx.query.scoping().store_symbol_ids().iter()
+            .map(|&sym| ctx.query.scoping().symbol_name(sym))
             .collect();
         store_names.sort();
 
@@ -115,8 +115,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     // Instance body splitting for experimental.async:
     // Statements after first `await` become async thunks in $.run([...])
-    if ctx.experimental_async && ctx.analysis.blocker_data().has_async() {
-        let split_body = split_async_instance_body(&ctx.b, script_body, ctx.analysis.blocker_data());
+    if ctx.experimental_async && ctx.query.blocker_data().has_async() {
+        let split_body = split_async_instance_body(&ctx.b, script_body, ctx.query.blocker_data());
         fn_body.extend(split_body);
     } else {
         fn_body.extend(script_body);
@@ -127,7 +127,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
         // Regular exports (e.g., `export function reset()`)
-        for e in &ctx.analysis.exports {
+        for e in ctx.query.exports() {
             let name: &str = ctx.b.alloc_str(&e.name);
             if let Some(alias) = &e.alias {
                 let alias: &str = ctx.b.alloc_str(alias);
@@ -139,7 +139,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
         // Custom element prop getter/setters
         if has_ce_props {
-            if let Some(ref props_analysis) = ctx.analysis.props {
+            if let Some(props_analysis) = ctx.query.props() {
                 for prop in &props_analysis.props {
                     if prop.is_rest || prop.is_reserved {
                         continue;
@@ -218,7 +218,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         }))
     });
 
-    let fn_params = if ctx.analysis.props.is_some() || needs_push || has_bubble_events {
+    let fn_params = if ctx.query.props().is_some() || needs_push || has_bubble_events {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])

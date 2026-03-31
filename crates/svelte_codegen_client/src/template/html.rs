@@ -12,7 +12,7 @@ use super::expression::item_has_local_blockers;
 /// Returns `(html, needs_import_node)` — the flag is true when the fragment
 /// contains a `<video>` element (which requires `importNode` instead of `cloneNode`).
 pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
-    let Some(lf) = ctx.analysis.fragments.lowered(&key) else {
+    let Some(lf) = ctx.analysis().fragments.lowered(&key) else {
         return (String::new(), false);
     };
     let mut html = String::new();

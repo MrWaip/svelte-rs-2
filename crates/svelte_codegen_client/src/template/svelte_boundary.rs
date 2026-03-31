@@ -122,11 +122,11 @@ pub(crate) fn gen_svelte_boundary<'a>(
 
     // Resolve const-tag binding SymbolIds for snippet reference checking
     let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
-        let scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(id));
+        let scope = ctx.analysis().scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(id));
         if let Some(scope_id) = scope {
             const_tag_ids.iter()
                 .flat_map(|cid| ctx.const_tag_names(*cid).cloned().unwrap_or_default())
-                .filter_map(|name| ctx.analysis.scoping.find_binding(scope_id, &name))
+                .filter_map(|name| ctx.analysis().scoping.find_binding(scope_id, &name))
                 .collect()
         } else {
             FxHashSet::default()
@@ -171,7 +171,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
         // Only inject const tags into snippets that actually reference the const-tag bindings
         let snippet_uses_const = if has_const_tags {
             let key = FragmentKey::SnippetBody(*snippet_id);
-            ctx.analysis.fragment_references_any_symbol(&key, &const_binding_syms)
+            ctx.analysis().fragment_references_any_symbol(&key, &const_binding_syms)
         } else {
             false
         };

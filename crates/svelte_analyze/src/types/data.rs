@@ -5,8 +5,8 @@ use svelte_ast::{ConcatPart, NodeId, StyleDirective};
 use svelte_span::Span;
 
 use super::node_table::{NodeBitSet, NodeTable};
-use crate::scope::{ComponentScoping, SymbolId};
 use super::script::{ExportInfo, ScriptInfo};
+use crate::scope::{ComponentScoping, SymbolId};
 
 pub use svelte_parser::ParserResult;
 
@@ -17,7 +17,10 @@ pub use svelte_parser::ParserResult;
 #[derive(Debug, Clone)]
 pub enum AwaitBindingInfo {
     Simple(String),
-    Destructured { kind: DestructureKind, names: Vec<String> },
+    Destructured {
+        kind: DestructureKind,
+        names: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,13 +138,20 @@ impl FragmentKey {
     pub fn node_id(&self) -> Option<NodeId> {
         match self {
             Self::Root => None,
-            Self::Element(id) | Self::ComponentNode(id)
-            | Self::IfConsequent(id) | Self::IfAlternate(id)
-            | Self::EachBody(id) | Self::EachFallback(id)
-            | Self::SnippetBody(id) | Self::KeyBlockBody(id)
-            | Self::SvelteHeadBody(id) | Self::SvelteElementBody(id)
+            Self::Element(id)
+            | Self::ComponentNode(id)
+            | Self::IfConsequent(id)
+            | Self::IfAlternate(id)
+            | Self::EachBody(id)
+            | Self::EachFallback(id)
+            | Self::SnippetBody(id)
+            | Self::KeyBlockBody(id)
+            | Self::SvelteHeadBody(id)
+            | Self::SvelteElementBody(id)
             | Self::SvelteBoundaryBody(id)
-            | Self::AwaitPending(id) | Self::AwaitThen(id) | Self::AwaitCatch(id) => Some(*id),
+            | Self::AwaitPending(id)
+            | Self::AwaitThen(id)
+            | Self::AwaitCatch(id) => Some(*id),
         }
     }
 }
@@ -422,7 +432,9 @@ impl FragmentData {
 
     /// Pre-computed blocker indices for a fragment's text expressions.
     pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
-        self.fragment_blockers.get(key).map_or(&[], |v| v.as_slice())
+        self.fragment_blockers
+            .get(key)
+            .map_or(&[], |v| v.as_slice())
     }
 }
 
@@ -552,7 +564,9 @@ impl EachBlockData {
 
     /// Build reverse lookup from index_syms. Call after Walk 2 populates index_syms.
     pub(crate) fn build_index_lookup(&mut self) {
-        self.index_sym_to_block = self.index_syms.iter()
+        self.index_sym_to_block = self
+            .index_syms
+            .iter()
             .map(|(block_id, &sym)| (sym, block_id))
             .collect();
     }
@@ -829,6 +843,128 @@ pub struct AnalysisData {
     pub ignore_data: IgnoreData,
 }
 
+/// Read-only facade for codegen access to analysis queries.
+///
+/// This narrows the surface area that codegen can depend on and provides
+/// an explicit migration path away from raw `AnalysisData` field access.
+#[derive(Clone, Copy)]
+pub struct CodegenView<'a> {
+    data: &'a AnalysisData,
+}
+
+impl<'a> CodegenView<'a> {
+    pub fn new(data: &'a AnalysisData) -> Self {
+        Self { data }
+    }
+
+    /// Temporary migration path while template modules are moved to facade methods.
+    pub fn raw(&self) -> &'a AnalysisData {
+        self.data
+    }
+
+    pub fn custom_element(&self) -> bool {
+        self.data.custom_element
+    }
+    pub fn exports(&self) -> &[ExportInfo] {
+        &self.data.exports
+    }
+    pub fn props(&self) -> Option<&PropsAnalysis> {
+        self.data.props.as_ref()
+    }
+    pub fn needs_context(&self) -> bool {
+        self.data.needs_context
+    }
+    pub fn props_id(&self) -> Option<&str> {
+        self.data.props_id.as_deref()
+    }
+    pub fn scoping(&self) -> &ComponentScoping {
+        &self.data.scoping
+    }
+    pub fn blocker_data(&self) -> &BlockerData {
+        self.data.blocker_data()
+    }
+    pub fn expr_has_blockers(&self, id: NodeId) -> bool {
+        self.data.expr_has_blockers(id)
+    }
+    pub fn expression_blockers(&self, id: NodeId) -> SmallVec<[u32; 2]> {
+        self.data.expression_blockers(id)
+    }
+
+    pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
+        self.data.fragments.lowered(key)
+    }
+    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
+        self.data.fragments.content_type(key)
+    }
+    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
+        self.data.fragments.has_dynamic_children(key)
+    }
+
+    pub fn has_spread(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_spread(id)
+    }
+    pub fn has_class_directives(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_class_directives(id)
+    }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_class_attribute(id)
+    }
+    pub fn needs_clsx(&self, id: NodeId) -> bool {
+        self.data.element_flags.needs_clsx(id)
+    }
+    pub fn has_style_directives(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_style_directives(id)
+    }
+    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
+        self.data.element_flags.style_directives(id)
+    }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool {
+        self.data.element_flags.needs_input_defaults(id)
+    }
+    pub fn needs_var(&self, id: NodeId) -> bool {
+        self.data.element_flags.needs_var(id)
+    }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
+        self.data.element_flags.is_dynamic_attr(id)
+    }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> {
+        self.data.element_flags.static_class(id)
+    }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> {
+        self.data.element_flags.static_style(id)
+    }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
+        self.data.element_flags.is_bound_contenteditable(id)
+    }
+    pub fn has_use_directive(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_use_directive(id)
+    }
+    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_dynamic_class_directives(id)
+    }
+    pub fn class_needs_state(&self, id: NodeId) -> bool {
+        self.data.element_flags.class_needs_state(id)
+    }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
+        self.data.element_flags.class_attr_id(id)
+    }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
+        self.data.element_flags.class_directive_info(id)
+    }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
+        self.data.element_flags.is_expression_shorthand(id)
+    }
+    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
+        self.data.element_flags.component_props(id)
+    }
+    pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
+        self.data.snippets.component_snippets(id)
+    }
+    pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
+        self.data.element_flags.event_handler_mode(id)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Blocker tracking (experimental.async)
 // ---------------------------------------------------------------------------
@@ -947,9 +1083,7 @@ impl AnalysisData {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.blocker_data
     }
-    pub fn script_rune_call_kinds(
-        &self,
-    ) -> &FxHashMap<u32, crate::types::script::RuneKind> {
+    pub fn script_rune_call_kinds(&self) -> &FxHashMap<u32, crate::types::script::RuneKind> {
         &self.script_rune_call_kinds
     }
     pub fn script_rune_call_kind(&self, offset: u32) -> Option<crate::types::script::RuneKind> {
@@ -1024,7 +1158,9 @@ impl AnalysisData {
             return false;
         }
         self.expressions.get(id).is_some_and(|info| {
-            info.ref_symbols.iter().any(|sym| self.blocker_data.symbol_blockers.contains_key(sym))
+            info.ref_symbols
+                .iter()
+                .any(|sym| self.blocker_data.symbol_blockers.contains_key(sym))
         })
     }
 
@@ -1078,15 +1214,25 @@ impl AnalysisData {
     /// Check if any expression in a fragment (recursively for elements) references
     /// any of the given symbols. Used to decide whether snippet bodies need
     /// duplicated @const tags in boundary codegen.
-    pub fn fragment_references_any_symbol(&self, key: &FragmentKey, syms: &FxHashSet<SymbolId>) -> bool {
-        if syms.is_empty() { return false; }
-        let Some(fragment) = self.fragments.lowered(key) else { return false };
+    pub fn fragment_references_any_symbol(
+        &self,
+        key: &FragmentKey,
+        syms: &FxHashSet<SymbolId>,
+    ) -> bool {
+        if syms.is_empty() {
+            return false;
+        }
+        let Some(fragment) = self.fragments.lowered(key) else {
+            return false;
+        };
         for item in &fragment.items {
             match item {
                 FragmentItem::TextConcat { parts, .. } => {
                     for part in parts {
                         if let LoweredTextPart::Expr(id) = part {
-                            if self.expressions.get(*id).is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s))) {
+                            if self.expressions.get(*id).is_some_and(|info| {
+                                info.ref_symbols.iter().any(|s| syms.contains(s))
+                            }) {
                                 return true;
                             }
                         }
@@ -1099,15 +1245,19 @@ impl AnalysisData {
                 }
                 FragmentItem::IfBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms) {
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
+                        || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms)
+                    {
                         return true;
                     }
                 }
                 FragmentItem::EachBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
                         || self.fragment_references_any_symbol(&FragmentKey::EachBody(*id), syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms) {
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms)
+                    {
                         return true;
                     }
                 }
@@ -1118,18 +1268,26 @@ impl AnalysisData {
                 }
                 FragmentItem::KeyBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms) {
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms)
+                    {
                         return true;
                     }
                 }
                 FragmentItem::SvelteElement(id) => {
                     if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::SvelteElementBody(*id), syms) {
+                        || self.fragment_references_any_symbol(
+                            &FragmentKey::SvelteElementBody(*id),
+                            syms,
+                        )
+                    {
                         return true;
                     }
                 }
                 FragmentItem::SvelteBoundary(id) => {
-                    if self.fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms) {
+                    if self
+                        .fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms)
+                    {
                         return true;
                     }
                 }
@@ -1150,7 +1308,9 @@ impl AnalysisData {
 
     /// Check if a node's expression references any of the given symbols.
     fn node_expr_references_syms(&self, id: NodeId, syms: &FxHashSet<SymbolId>) -> bool {
-        self.expressions.get(id).is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s)))
+        self.expressions
+            .get(id)
+            .is_some_and(|info| info.ref_symbols.iter().any(|s| syms.contains(s)))
     }
 }
 

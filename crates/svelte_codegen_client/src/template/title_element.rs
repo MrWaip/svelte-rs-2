@@ -66,7 +66,7 @@ pub(crate) fn emit_title_elements<'a>(
     key: FragmentKey,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let Some(ids) = ctx.analysis.title_elements.by_fragment(&key).cloned() else {
+    let Some(ids) = ctx.analysis().title_elements.by_fragment(&key).cloned() else {
         return;
     };
     for id in ids {
