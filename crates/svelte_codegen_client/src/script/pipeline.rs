@@ -64,6 +64,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             component_source,
             script_content_start,
             filename,
+            ctx.state.experimental_async,
         );
     }
 
@@ -84,6 +85,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         script_content_start,
         filename,
         None,
+        ctx.state.experimental_async,
     )
 }
 
@@ -105,6 +107,7 @@ pub fn transform_module_script<'a>(
         0,
         "(unknown)",
         None,
+        false,
     )
 }
 
@@ -120,6 +123,7 @@ fn transform_script_text<'a>(
     script_content_start: u32,
     filename: &str,
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    experimental_async: bool,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -150,6 +154,7 @@ fn transform_script_text<'a>(
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
+        async_derived_pending: FxHashSet::default(),
         strip_exports,
         dev,
         is_ts,
@@ -163,13 +168,21 @@ fn transform_script_text<'a>(
         class_state_stack: Vec::new(),
         prop_default_exprs,
         script_rune_call_kinds,
+        experimental_async,
     };
 
     let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
+        let dev_ctx = super::traverse::DevContext {
+            dev,
+            component_source,
+            script_content_start,
+            filename,
+            async_derived_pending: transformer.async_derived_pending,
+        };
+        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
     }
 
     let has_tracing = transformer.has_tracing;
@@ -213,6 +226,7 @@ fn transform_program<'a>(
     component_source: &str,
     script_content_start: u32,
     filename: &str,
+    experimental_async: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
@@ -226,6 +240,7 @@ fn transform_program<'a>(
         scoping,
         props_gen,
         derived_pending: FxHashSet::default(),
+        async_derived_pending: FxHashSet::default(),
         strip_exports: true,
         dev,
         is_ts,
@@ -239,13 +254,21 @@ fn transform_program<'a>(
         class_state_stack: Vec::new(),
         prop_default_exprs,
         script_rune_call_kinds,
+        experimental_async,
     };
 
     let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
+        let dev_ctx = super::traverse::DevContext {
+            dev,
+            component_source,
+            script_content_start,
+            filename,
+            async_derived_pending: transformer.async_derived_pending,
+        };
+        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
     }
 
     let has_tracing = transformer.has_tracing;

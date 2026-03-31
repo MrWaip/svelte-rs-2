@@ -1819,6 +1819,16 @@ fn async_derived_destructured() {
 }
 
 #[rstest]
+fn async_derived_dev() {
+    assert_compiler("async_derived_dev");
+}
+
+#[rstest]
+fn async_for_await_dev() {
+    assert_compiler("async_for_await_dev");
+}
+
+#[rstest]
 fn inline_await_basic() {
     assert_compiler("inline_await_basic");
 }

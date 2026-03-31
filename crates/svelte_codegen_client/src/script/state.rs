@@ -9,7 +9,7 @@ use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
 
-use super::{ClassStateField, ClassStateInfo, ScriptTransformer};
+use super::{ClassStateField, ClassStateInfo, ScriptTransformer, compute_line_col, sanitize_location};
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
     fn rewrite_destructured_rune_decls(
@@ -367,6 +367,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async derived destructuring should be a call");
         };
+        // Must read span before mem::swap removes the original argument.
+        let init_span_start = call.span.start;
         let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
         std::mem::swap(&mut call.arguments[0], &mut dummy);
         let awaited = dummy.into_expression();
@@ -377,8 +379,25 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let source_expr = await_expr.unbox().argument;
         let tmp_name = self.gen_unique_name("$$d");
         let tmp_name_str = self.b.alloc_str(&tmp_name);
-        let thunk = self.b.thunk(source_expr);
-        let async_derived = self.b.call_expr("$.async_derived", [Arg::Expr(thunk)]);
+
+        let await_inner = self.b.await_expr(source_expr);
+        let thunk = self.b.async_thunk(await_inner);
+
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(thunk)];
+        if self.dev {
+            let kind = match pattern {
+                oxc_ast::ast::BindingPattern::ArrayPattern(_) => "iterable",
+                _ => "object",
+            };
+            let label = format!("[$derived {kind}]");
+            args.push(Arg::Expr(self.b.str_expr(&label)));
+            let full_offset = self.script_content_start + init_span_start;
+            let (line, col) = compute_line_col(self.component_source, full_offset);
+            let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
+            args.push(Arg::Expr(self.b.str_expr(&loc)));
+        }
+
+        let async_derived = self.b.call_expr("$.async_derived", args);
         let tmp_stmt = self.b.var_stmt(tmp_name_str, self.b.await_expr(async_derived));
 
         let access_root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);

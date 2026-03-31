@@ -2,13 +2,13 @@
 
 ## Current state
 
-- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions
-- **Partially working**: Dev-mode async support only has template/script `await` reactivity-loss wrapping; `{#await}` `$.apply()` and async-derived waterfall warnings are still missing
-- **Not working**: Remaining dev-mode parity, tracing audit
+- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling
+- **Partially working**: `await_waterfall` warning for async `$derived` still missing
+- **Not working**: —
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Deferred / out of current batch**: `<slot>` async
-- **Next**: Finish dev-mode parity (`{#await}` `$.apply()`, async-derived waterfall warnings) and then re-audit tracing parity
-- Last updated: 2026-03-30
+- **Deferred / out of current batch**: `<slot>` async, `await_waterfall` warning
+- **Next**: `await_waterfall` warning for async `$derived`
+- Last updated: 2026-03-31
 
 ## Source
 
@@ -114,12 +114,12 @@ Audit of existing implementation (2026-03-28)
 33. [x] `(await $.save(expr))()` — context preservation for awaits in reactive expressions (covered for template/attr expressions)
 
 ### Dev mode
-34. [ ] `{#await}` — dev-mode `$.apply()` wrapping for await expression (missing)
+34. N/A `{#await}` — reference `AwaitBlock.js` does not use `$.apply()`; no action needed
 35. [ ] `$derived` async — `await_waterfall` warning with location (missing)
-36. [~] `$.track_reactivity_loss()` — script + template await wrapping works; full dev parity still pending
+36. [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
 
 ### Tracing
-37. [ ] `$.trace` with async function bodies — `b.thunk(body, is_async)` + `b.await(call)` (missing)
+37. [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
 
 ## Tasks
 
@@ -146,12 +146,16 @@ Audit of existing implementation (2026-03-28)
 1. [x] parser: parse `{await expr}` template syntax
 2. [x] analyze + codegen: handle new syntax
 
-### Missing: Dev mode (#33, #34)
-1. [ ] codegen: `$.apply()` wrapping in dev mode for `{#await}`
-2. [ ] codegen: `await_waterfall` warning for async `$derived`
+### Done: Dev mode (#36)
+1. [x] codegen: `$.track_reactivity_loss()` in script + template `await` (dev mode)
+2. [x] codegen: `$.async_derived()` label+location args in dev mode
+3. [x] codegen: `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`
 
-### Missing: Tracing (#35)
-1. [ ] codegen: `$.trace` with async body handling
+### Done: Tracing (#37)
+1. [x] codegen: `$.trace` with async body — `async_thunk_block` + `await` in `inspect.rs`
+
+### Deferred: Dev-mode waterfall warning (#35)
+1. [ ] codegen: `await_waterfall` warning for async `$derived` (deferred to ROADMAP)
 
 
 ## Test cases
@@ -177,3 +181,5 @@ Audit of existing implementation (2026-03-28)
 - `inline_await_text_concat` — `{await expr}` inside text concat ✅
 - `inline_await_attr` — `{await expr}` in attribute position ✅
 - `async_pickled_await_template` — template pickled await via `$.save()` ✅
+- `async_derived_dev` — `$.async_derived()` with dev label+location args ✅
+- `async_for_await_dev` — `for await...of` dev wrapping with `$.for_await_track_reactivity_loss` ✅

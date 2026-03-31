@@ -10,7 +10,7 @@ use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::{FunctionInfo, ScriptTransformer};
 
-pub(super) use derived::{wrap_derived_thunks, wrap_lazy};
+pub(super) use derived::{wrap_derived_thunks, wrap_lazy, DevContext};
 
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn enter_class_body(
@@ -191,6 +191,18 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.strip_ts_variable_declarator_bits(node);
         self.capture_variable_arrow_name(node);
         self.rewrite_variable_rune_init(node);
+    }
+
+    fn enter_for_of_statement(
+        &mut self,
+        node: &mut oxc_ast::ast::ForOfStatement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if node.r#await && self.dev && self.experimental_async {
+            use crate::builder::Arg;
+            let right = self.b.move_expr(&mut node.right);
+            node.right = self.b.call_expr("$.for_await_track_reactivity_loss", [Arg::Expr(right)]);
+        }
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {

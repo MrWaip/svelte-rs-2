@@ -71,6 +71,9 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) scoping: Scoping,
     pub(super) props_gen: Option<PropsGenInfo>,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+    /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
+    /// Used by `wrap_derived_thunks` to determine async thunk form after dev transforms run.
+    pub(super) async_derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     pub(super) strip_exports: bool,
     pub(super) dev: bool,
     pub(super) is_ts: bool,
@@ -84,6 +87,7 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) class_state_stack: Vec<ClassStateInfo>,
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
+    pub(super) experimental_async: bool,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
