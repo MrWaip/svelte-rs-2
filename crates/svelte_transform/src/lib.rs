@@ -14,7 +14,7 @@ use oxc_ast_visit::walk_mut::{self, walk_arrow_function_expression, walk_express
 use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, FragmentKey, IdentGen, ParserResult};
+use svelte_analyze::{AnalysisData, ExprHandle, FragmentKey, IdentGen, ParserResult};
 use svelte_ast::{
     Attribute, Component, ConcatPart, Fragment, Node,
 };
@@ -44,6 +44,7 @@ pub fn transform_component<'a>(
     let mut ctx = TransformCtx {
         alloc,
         analysis,
+        scopes: TemplateScopeResolver::new(analysis),
         ident_gen,
         transform_data: TransformData::new(),
     };
@@ -55,8 +56,96 @@ pub fn transform_component<'a>(
 struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
     analysis: &'b AnalysisData,
+    scopes: TemplateScopeResolver<'b>,
     ident_gen: &'b mut IdentGen,
     transform_data: TransformData,
+}
+
+struct TemplateScopeResolver<'a> {
+    analysis: &'a AnalysisData,
+}
+
+impl<'a> TemplateScopeResolver<'a> {
+    fn new(analysis: &'a AnalysisData) -> Self {
+        Self { analysis }
+    }
+
+    fn if_consequent(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::IfConsequent(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn if_alternate(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::IfAlternate(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn each_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::EachBody(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn snippet_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::SnippetBody(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn key_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::KeyBlockBody(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn head_body(&self, head_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::SvelteHeadBody(head_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn svelte_element_body(&self, el_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::SvelteElementBody(el_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn boundary_body(&self, boundary_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::SvelteBoundaryBody(boundary_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn await_pending(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::AwaitPending(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn await_then(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::AwaitThen(block_id))
+            .unwrap_or(parent_scope)
+    }
+
+    fn await_catch(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
+        self.analysis
+            .scoping
+            .fragment_scope(&FragmentKey::AwaitCatch(block_id))
+            .unwrap_or(parent_scope)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +174,9 @@ fn walk_node<'a>(
 ) {
     match node {
         Node::ExpressionTag(tag) => {
-            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
+            if let Some(handle) = parsed.expr_handle(tag.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
         }
         Node::Element(el) => {
             transform_attrs(ctx, &el.attributes, parsed, scope);
@@ -96,19 +187,23 @@ fn walk_node<'a>(
             walk_fragment(ctx, &cn.fragment, component, parsed, scope);
         }
         Node::IfBlock(block) => {
-            transform_expr_at(ctx, block.test_span.start, parsed, scope);
-            let cons_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::IfConsequent(block.id)).unwrap_or(scope);
+            if let Some(handle) = parsed.expr_handle(block.test_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
+            let cons_scope = ctx.scopes.if_consequent(block.id, scope);
             walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
-                let alt_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::IfAlternate(block.id)).unwrap_or(scope);
+                let alt_scope = ctx.scopes.if_alternate(block.id, scope);
                 walk_fragment(ctx, alt, component, parsed, alt_scope);
             }
         }
         Node::EachBlock(block) => {
-            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
+            if let Some(handle) = parsed.expr_handle(block.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
 
             // Each block body uses child scope (context + index vars)
-            let body_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
+            let body_scope = ctx.scopes.each_body(block.id, scope);
             walk_fragment(ctx, &block.body, component, parsed, body_scope);
 
             // Fallback uses parent scope
@@ -117,19 +212,25 @@ fn walk_node<'a>(
             }
         }
         Node::SnippetBlock(block) => {
-            let snippet_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
+            let snippet_scope = ctx.scopes.snippet_body(block.id, scope);
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
-            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
+            if let Some(handle) = parsed.expr_handle(tag.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
         }
         Node::HtmlTag(tag) => {
-            transform_expr_at(ctx, tag.expression_span.start, parsed, scope);
+            if let Some(handle) = parsed.expr_handle(tag.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
         }
         Node::ConstTag(tag) => {
             // Init expression lives in stmts (not exprs) — transform it in-place.
-            let offset = tag.expression_span.start;
-            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed.stmts.get_mut(&offset) {
+            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
+                .stmt_handle(tag.expression_span.start)
+                .and_then(|handle| parsed.stmt_mut(handle))
+            {
                 if let Some(init) = decl.declarations.first_mut().and_then(|d| d.init.as_mut()) {
                     transform_expr(ctx, init, scope);
                 }
@@ -142,20 +243,24 @@ fn walk_node<'a>(
             }
         }
         Node::KeyBlock(block) => {
-            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
-            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::KeyBlockBody(block.id)).unwrap_or(scope);
+            if let Some(handle) = parsed.expr_handle(block.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
+            let child_scope = ctx.scopes.key_body(block.id, scope);
             walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
         }
         Node::SvelteHead(head) => {
-            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteHeadBody(head.id)).unwrap_or(scope);
+            let child_scope = ctx.scopes.head_body(head.id, scope);
             walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
         }
         Node::SvelteElement(el) => {
             if !el.static_tag {
-                transform_expr_at(ctx, el.tag_span.start, parsed, scope);
+                if let Some(handle) = parsed.expr_handle(el.tag_span.start) {
+                    transform_expr_at(ctx, handle, parsed, scope);
+                }
             }
             transform_attrs(ctx, &el.attributes, parsed, scope);
-            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteElementBody(el.id)).unwrap_or(scope);
+            let child_scope = ctx.scopes.svelte_element_body(el.id, scope);
             walk_fragment(ctx, &el.fragment, component, parsed, child_scope);
         }
         Node::SvelteWindow(w) => {
@@ -169,41 +274,45 @@ fn walk_node<'a>(
         }
         Node::SvelteBoundary(b) => {
             transform_attrs(ctx, &b.attributes, parsed, scope);
-            let child_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(b.id)).unwrap_or(scope);
+            let child_scope = ctx.scopes.boundary_body(b.id, scope);
             walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
-            transform_expr_at(ctx, block.expression_span.start, parsed, scope);
+            if let Some(handle) = parsed.expr_handle(block.expression_span.start) {
+                transform_expr_at(ctx, handle, parsed, scope);
+            }
             if let Some(ref p) = block.pending {
-                let pending_scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::AwaitPending(block.id)).unwrap_or(scope);
+                let pending_scope = ctx.scopes.await_pending(block.id, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
             }
             if let Some(ref t) = block.then {
-                let then_scope = ctx.analysis.scoping.node_scope(block.id).unwrap_or(scope);
+                let then_scope = ctx.scopes.await_then(block.id, scope);
                 walk_fragment(ctx, t, component, parsed, then_scope);
             }
             if let Some(ref c) = block.catch {
-                let catch_scope = ctx.analysis.scoping.await_catch_scope(block.id).unwrap_or(scope);
+                let catch_scope = ctx.scopes.await_catch(block.id, scope);
                 walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }
         Node::DebugTag(tag) => {
             for span in &tag.identifiers {
-                transform_expr_at(ctx, span.start, parsed, scope);
+                if let Some(handle) = parsed.expr_handle(span.start) {
+                    transform_expr_at(ctx, handle, parsed, scope);
+                }
             }
         }
         Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
     }
 }
 
-/// Transform a single expression stored by offset.
+/// Transform a single expression stored by handle.
 fn transform_expr_at<'a>(
     ctx: &mut TransformCtx<'a, '_>,
-    offset: u32,
+    handle: ExprHandle,
     parsed: &mut ParserResult<'a>,
     scope: ScopeId,
 ) {
-    if let Some(expr) = parsed.exprs.get_mut(&offset) {
+    if let Some(expr) = parsed.expr_mut(handle) {
         transform_expr(ctx, expr, scope);
     }
 }
@@ -217,15 +326,15 @@ fn transform_attrs<'a>(
 ) {
     for attr in attrs {
         // Transform the main attribute expression
-        let expr_offset = get_attr_expr_offset(attr);
-        if let Some(offset) = expr_offset {
-            transform_expr_at(ctx, offset, parsed, scope);
+        let expr_handle = get_attr_expr_handle(parsed, attr);
+        if let Some(handle) = expr_handle {
+            transform_expr_at(ctx, handle, parsed, scope);
         }
 
         // Transform directive name expressions (use:, transition:, animate:)
-        let name_offset = get_directive_name_offset(attr);
-        if let Some(offset) = name_offset {
-            transform_expr_at(ctx, offset, parsed, scope);
+        let name_handle = get_directive_name_handle(parsed, attr);
+        if let Some(handle) = name_handle {
+            transform_expr_at(ctx, handle, parsed, scope);
         }
 
         // Transform concat dynamic parts
@@ -240,16 +349,18 @@ fn transform_attrs<'a>(
         if let Some(parts) = concat_parts {
             for part in parts {
                 if let ConcatPart::Dynamic { span, .. } = part {
-                    transform_expr_at(ctx, span.start, parsed, scope);
+                    if let Some(handle) = parsed.expr_handle(span.start) {
+                        transform_expr_at(ctx, handle, parsed, scope);
+                    }
                 }
             }
         }
     }
 }
 
-/// Get the offset for an attribute's primary expression.
-fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
-    match attr {
+/// Get the handle for an attribute's primary expression.
+fn get_attr_expr_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<ExprHandle> {
+    let offset = match attr {
         Attribute::ExpressionAttribute(a) => Some(a.expression_span.start),
         Attribute::ClassDirective(a) => a.expression_span.map(|s| s.start),
         Attribute::StyleDirective(a) => match &a.value {
@@ -266,17 +377,19 @@ fn get_attr_expr_offset(attr: &Attribute) -> Option<u32> {
         Attribute::AttachTag(a) => Some(a.expression_span.start),
         Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
         | Attribute::ConcatenationAttribute(_) => None,
-    }
+    }?;
+    parsed.expr_handle(offset)
 }
 
-/// Get the offset for a directive's name expression (use:, transition:, animate:).
-fn get_directive_name_offset(attr: &Attribute) -> Option<u32> {
-    match attr {
+/// Get the handle for a directive's name expression (use:, transition:, animate:).
+fn get_directive_name_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<ExprHandle> {
+    let offset = match attr {
         Attribute::UseDirective(a) => Some(a.name.start),
         Attribute::TransitionDirective(a) => Some(a.name.start),
         Attribute::AnimateDirective(a) => Some(a.name.start),
         _ => None,
-    }
+    }?;
+    parsed.expr_handle(offset)
 }
 
 // ---------------------------------------------------------------------------

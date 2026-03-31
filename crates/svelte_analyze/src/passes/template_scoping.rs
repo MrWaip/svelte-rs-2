@@ -43,7 +43,9 @@ fn walk(fragment: &Fragment, scoping: &mut ComponentScoping, current_scope: Scop
                 let snippet_scope = scoping.add_child_scope(current_scope);
                 scoping.set_fragment_scope(FragmentKey::SnippetBody(block.id), snippet_scope);
                 // Pre-set arrow scope so SemanticCollector reuses it
-                if let Some(arrow) = parsed.stmts.get(&block.expression_span.start)
+                if let Some(arrow) = parsed
+                    .stmt_handle(block.expression_span.start)
+                    .and_then(|handle| parsed.stmt(handle))
                     .and_then(extract_arrow_from_const)
                 {
                     arrow.scope_id.set(Some(snippet_scope));

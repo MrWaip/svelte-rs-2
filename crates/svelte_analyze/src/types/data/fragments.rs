@@ -1,0 +1,218 @@
+use super::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FragmentKey {
+    Root,
+    Element(NodeId),
+    ComponentNode(NodeId),
+    IfConsequent(NodeId),
+    IfAlternate(NodeId),
+    EachBody(NodeId),
+    EachFallback(NodeId),
+    SnippetBody(NodeId),
+    KeyBlockBody(NodeId),
+    SvelteHeadBody(NodeId),
+    SvelteElementBody(NodeId),
+    SvelteBoundaryBody(NodeId),
+    AwaitPending(NodeId),
+    AwaitThen(NodeId),
+    AwaitCatch(NodeId),
+}
+
+impl FragmentKey {
+    pub fn is_each_body(&self) -> bool {
+        matches!(self, Self::EachBody(_))
+    }
+
+    pub fn needs_text_first_next(&self) -> bool {
+        matches!(
+            self,
+            Self::Root
+                | Self::EachBody(_)
+                | Self::EachFallback(_)
+                | Self::SnippetBody(_)
+                | Self::ComponentNode(_)
+                | Self::SvelteBoundaryBody(_)
+        )
+    }
+
+    pub fn node_id(&self) -> Option<NodeId> {
+        match self {
+            Self::Root => None,
+            Self::Element(id)
+            | Self::ComponentNode(id)
+            | Self::IfConsequent(id)
+            | Self::IfAlternate(id)
+            | Self::EachBody(id)
+            | Self::EachFallback(id)
+            | Self::SnippetBody(id)
+            | Self::KeyBlockBody(id)
+            | Self::SvelteHeadBody(id)
+            | Self::SvelteElementBody(id)
+            | Self::SvelteBoundaryBody(id)
+            | Self::AwaitPending(id)
+            | Self::AwaitThen(id)
+            | Self::AwaitCatch(id) => Some(*id),
+        }
+    }
+}
+
+pub struct FragmentData {
+    pub(crate) lowered: FxHashMap<FragmentKey, LoweredFragment>,
+    pub(crate) content_types: FxHashMap<FragmentKey, ContentStrategy>,
+    pub(crate) has_dynamic_children: FxHashSet<FragmentKey>,
+    pub(crate) fragment_blockers: FxHashMap<FragmentKey, SmallVec<[u32; 2]>>,
+}
+
+impl FragmentData {
+    pub fn new() -> Self {
+        Self {
+            lowered: FxHashMap::default(),
+            content_types: FxHashMap::default(),
+            has_dynamic_children: FxHashSet::default(),
+            fragment_blockers: FxHashMap::default(),
+        }
+    }
+
+    pub fn with_capacity(estimated_fragments: usize) -> Self {
+        Self {
+            lowered: FxHashMap::with_capacity_and_hasher(estimated_fragments, Default::default()),
+            content_types: FxHashMap::with_capacity_and_hasher(
+                estimated_fragments,
+                Default::default(),
+            ),
+            has_dynamic_children: FxHashSet::with_capacity_and_hasher(
+                estimated_fragments / 4,
+                Default::default(),
+            ),
+            fragment_blockers: FxHashMap::default(),
+        }
+    }
+
+    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
+        self.content_types
+            .get(key)
+            .cloned()
+            .unwrap_or(ContentStrategy::Empty)
+    }
+
+    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
+        self.has_dynamic_children.contains(key)
+    }
+
+    pub fn lowered(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
+        self.lowered.get(key)
+    }
+
+    pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
+        self.fragment_blockers
+            .get(key)
+            .map_or(&[], |v| v.as_slice())
+    }
+}
+
+pub struct LoweredFragment {
+    pub items: Vec<FragmentItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FragmentItem {
+    Element(NodeId),
+    ComponentNode(NodeId),
+    IfBlock(NodeId),
+    EachBlock(NodeId),
+    RenderTag(NodeId),
+    HtmlTag(NodeId),
+    KeyBlock(NodeId),
+    SvelteElement(NodeId),
+    SvelteBoundary(NodeId),
+    AwaitBlock(NodeId),
+    TextConcat {
+        parts: Vec<LoweredTextPart>,
+        has_expr: bool,
+    },
+}
+
+impl FragmentItem {
+    pub fn is_standalone_expr(&self) -> bool {
+        matches!(self, FragmentItem::TextConcat { parts, .. }
+            if parts.len() == 1 && matches!(parts[0], LoweredTextPart::Expr(_)))
+    }
+
+    pub fn node_id(&self) -> NodeId {
+        match self {
+            FragmentItem::Element(id)
+            | FragmentItem::ComponentNode(id)
+            | FragmentItem::IfBlock(id)
+            | FragmentItem::EachBlock(id)
+            | FragmentItem::RenderTag(id)
+            | FragmentItem::HtmlTag(id)
+            | FragmentItem::KeyBlock(id)
+            | FragmentItem::SvelteElement(id)
+            | FragmentItem::SvelteBoundary(id)
+            | FragmentItem::AwaitBlock(id) => *id,
+            FragmentItem::TextConcat { .. } => panic!("TextConcat has no single NodeId"),
+        }
+    }
+}
+
+impl LoweredFragment {
+    pub fn first_element_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::Element(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn first_if_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::IfBlock(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn first_each_block_id(&self) -> Option<NodeId> {
+        match self.items.first()? {
+            FragmentItem::EachBlock(id) => Some(*id),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoweredTextPart {
+    TextSpan(svelte_span::Span),
+    TextOwned(String),
+    Expr(NodeId),
+}
+
+impl LoweredTextPart {
+    pub fn text_value<'a>(&'a self, source: &'a str) -> Option<&'a str> {
+        match self {
+            LoweredTextPart::TextSpan(span) => Some(span.source_text(source)),
+            LoweredTextPart::TextOwned(s) => Some(s.as_str()),
+            LoweredTextPart::Expr(_) => None,
+        }
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(
+            self,
+            LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_)
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentStrategy {
+    Empty,
+    Static(String),
+    SingleElement(NodeId),
+    SingleBlock(FragmentItem),
+    DynamicText,
+    Mixed {
+        has_elements: bool,
+        has_blocks: bool,
+        has_text: bool,
+    },
+}

@@ -66,7 +66,7 @@ pub(crate) fn emit_title_elements<'a>(
     key: FragmentKey,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let Some(ids) = ctx.analysis.title_elements.by_fragment(&key).cloned() else {
+    let Some(ids) = ctx.title_elements_for_fragment(&key).cloned() else {
         return;
     };
     for id in ids {
@@ -150,7 +150,7 @@ fn build_title_value<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                push_title_text(&mut built_parts, part.text_value(&ctx.component.source).unwrap());
+                push_title_text(&mut built_parts, part.text_value(&ctx.query.component.source).unwrap());
             }
             LoweredTextPart::Expr(id) => {
                 let value_part = memoizer.add_expr(ctx, *id);

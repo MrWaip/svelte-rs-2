@@ -59,7 +59,7 @@ fn find_ce_extend_span(result: &ParserResult<'_>, offset: u32) -> Option<svelte_
     use oxc_ast::ast::{ObjectPropertyKind, PropertyKey};
     use oxc_span::GetSpan as _;
 
-    let expr = result.exprs.get(&offset)?;
+    let expr = result.expr(result.expr_handle(offset)?)?;
     let Expression::ObjectExpression(obj) = expr else { return None };
     for prop_kind in &obj.properties {
         let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
@@ -85,7 +85,9 @@ fn parse_span<'a>(
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
     match parse_expression_with_alloc(alloc, arena_source, span.start, typescript) {
-        Ok(expr) => { result.exprs.insert(span.start, expr); }
+        Ok(expr) => {
+            result.alloc_expr(span.start, expr);
+        }
         Err(diag) => diags.push(diag),
     }
 }
@@ -104,7 +106,7 @@ fn parse_binding_pattern<'a>(
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
     if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_source, typescript) {
-        result.stmts.insert(span.start, stmt);
+        result.alloc_stmt(span.start, stmt);
     }
 }
 
@@ -162,7 +164,7 @@ fn walk_node<'a>(
                 let ctx_text = component.source_text(ctx_span);
                 let arena_ctx: &'a str = alloc.alloc_str(ctx_text);
                 if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_ctx, typescript) {
-                    result.stmts.insert(ctx_span.start, stmt);
+                    result.alloc_stmt(ctx_span.start, stmt);
                 }
             }
 
@@ -171,7 +173,7 @@ fn walk_node<'a>(
                 let idx_text = component.source_text(idx_span);
                 let arena_idx: &'a str = alloc.alloc_str(idx_text);
                 if let Some(stmt) = parse_each_index_with_alloc(alloc, arena_idx) {
-                    result.stmts.insert(idx_span.start, stmt);
+                    result.alloc_stmt(idx_span.start, stmt);
                 }
             }
 
@@ -185,7 +187,7 @@ fn walk_node<'a>(
             let expr_text = component.source_text(block.expression_span);
             let arena_text: &'a str = alloc.alloc_str(expr_text);
             if let Some(stmt) = parse_snippet_decl_with_alloc(alloc, arena_text, typescript) {
-                result.stmts.insert(block.expression_span.start, stmt);
+                result.alloc_stmt(block.expression_span.start, stmt);
             }
             walk_fragment(alloc, &block.body, store, component, typescript, result, diags);
         }
@@ -224,7 +226,7 @@ fn walk_node<'a>(
             let arena_source: &'a str = alloc.alloc_str(source);
             match parse_const_declaration_with_alloc(alloc, arena_source, tag.expression_span.start, typescript) {
                 Ok(stmt) => {
-                    result.stmts.insert(tag.expression_span.start, stmt);
+                    result.alloc_stmt(tag.expression_span.start, stmt);
                 }
                 Err(diag) => diags.push(diag),
             }

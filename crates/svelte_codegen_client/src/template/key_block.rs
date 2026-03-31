@@ -8,6 +8,7 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
+use super::async_plan::AsyncEmissionPlan;
 use super::gen_fragment;
 
 /// Generate `$.key(anchor, () => expr, ($$anchor) => { ... })`.
@@ -17,8 +18,8 @@ pub(crate) fn gen_key_block<'a>(
     anchor: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let has_await = ctx.expr_has_await(id);
-    let needs_async = has_await || ctx.expr_has_blockers(id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, id);
+    let needs_async = async_plan.needs_async();
     let span_start = ctx.key_block(id).span.start;
 
     let body = gen_fragment(ctx, FragmentKey::KeyBlockBody(id));
@@ -35,8 +36,8 @@ pub(crate) fn gen_key_block<'a>(
         );
         let key_stmt = super::add_svelte_meta(ctx, key_call, span_start, "key");
 
-        let async_thunk = if has_await { Some(ctx.b.async_thunk(expression)) } else { None };
-        stmts.push(ctx.gen_async_block(id, anchor, has_await, async_thunk, "$$key", vec![key_stmt]));
+        let async_thunk = async_plan.async_thunk(ctx, expression);
+        stmts.push(async_plan.wrap_async_block(ctx, anchor, "$$key", async_thunk, vec![key_stmt]));
     } else {
         let key_thunk = super::expression::build_node_thunk(ctx, id);
 

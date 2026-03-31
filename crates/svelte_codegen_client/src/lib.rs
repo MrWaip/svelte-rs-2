@@ -40,52 +40,46 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // Layout: hoistable snippets → inner hoisted → root hoisted
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
     all_hoisted.extend(hoistable_snippets);
-    all_hoisted.extend(ctx.module_hoisted.drain(..));
+    all_hoisted.extend(ctx.state.module_hoisted.drain(..));
     all_hoisted.extend(hoisted);
 
     // -----------------------------------------------------------------------
     // 3. Build function body (needs &mut ctx for snippets)
     // -----------------------------------------------------------------------
-    let is_custom_element = ctx.analysis.custom_element;
-    let has_exports = !ctx.analysis.exports.is_empty();
-    let has_bindable = ctx.analysis.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = !ctx.analysis.scoping.store_symbol_ids().is_empty();
-    let has_ce_props = is_custom_element && ctx.analysis.props.as_ref().is_some_and(|p| !p.props.is_empty());
-    let needs_push = has_bindable || has_exports || has_ce_props || ctx.analysis.needs_context || ctx.dev;
-    let has_component_exports = has_exports || has_ce_props || ctx.dev;
+    let runtime = ctx.runtime_plan();
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
     // $props.id() → must be first statement for hydration correctness
-    if let Some(ref props_id_name) = ctx.analysis.props_id {
+    if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx.b.call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
-    if ctx.dev {
+    if ctx.state.dev {
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.check_target", [
             Arg::Expr(ctx.b.new_target_expr()),
         ])));
     }
-    if needs_push {
+    if runtime.needs_push {
         let mut push_args: Vec<Arg<'_, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(ctx.b.bool_expr(true))];
-        if ctx.dev {
-            push_args.push(Arg::Ident(ctx.name));
+        if ctx.state.dev {
+            push_args.push(Arg::Ident(ctx.state.name));
         }
         fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.push", push_args)));
     }
-    if ctx.needs_binding_group {
+    if ctx.state.needs_binding_group {
         fn_body.push(ctx.b.const_stmt("binding_group", ctx.b.empty_array_expr()));
     }
 
     // Store subscription setup:
     //   const $count = () => $.store_get(count, "$count", $$stores);
     //   const [$$stores, $$cleanup] = $.setup_stores();
-    if has_stores {
+    if runtime.has_stores {
         // Sort store base names for deterministic output
-        let mut store_names: Vec<&str> = ctx.analysis.scoping.store_symbol_ids().iter()
-            .map(|&sym| ctx.analysis.scoping.symbol_name(sym))
+        let mut store_names: Vec<&str> = ctx.query.scoping().store_symbol_ids().iter()
+            .map(|&sym| ctx.query.scoping().symbol_name(sym))
             .collect();
         store_names.sort();
 
@@ -115,19 +109,19 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     // Instance body splitting for experimental.async:
     // Statements after first `await` become async thunks in $.run([...])
-    if ctx.experimental_async && ctx.analysis.blocker_data().has_async() {
-        let split_body = split_async_instance_body(&ctx.b, script_body, ctx.analysis.blocker_data());
+    if ctx.state.experimental_async && ctx.query.blocker_data().has_async() {
+        let split_body = split_async_instance_body(&ctx.b, script_body, ctx.query.blocker_data());
         fn_body.extend(split_body);
     } else {
         fn_body.extend(script_body);
     }
 
     // var $$exports = { ... }
-    if has_exports || has_ce_props {
+    if runtime.has_exports || runtime.has_ce_props {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
         // Regular exports (e.g., `export function reset()`)
-        for e in &ctx.analysis.exports {
+        for e in ctx.query.exports() {
             let name: &str = ctx.b.alloc_str(&e.name);
             if let Some(alias) = &e.alias {
                 let alias: &str = ctx.b.alloc_str(alias);
@@ -138,8 +132,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         }
 
         // Custom element prop getter/setters
-        if has_ce_props {
-            if let Some(ref props_analysis) = ctx.analysis.props {
+        if runtime.has_ce_props {
+            if let Some(props_analysis) = ctx.query.props() {
                 for prop in &props_analysis.props {
                     if prop.is_rest || prop.is_reserved {
                         continue;
@@ -164,7 +158,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         }
 
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
-    } else if ctx.dev && needs_push {
+    } else if ctx.state.dev && runtime.needs_push {
         // var $$exports = { ...$.legacy_api() }
         let legacy_call = ctx.b.call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr([ObjProp::Spread(legacy_call)])));
@@ -172,8 +166,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
 
     fn_body.extend(template_body);
 
-    if needs_push {
-        if has_component_exports {
+    if runtime.needs_push {
+        if runtime.needs_pop_with_return {
             fn_body.push(ctx.b.return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])));
         } else {
             fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
@@ -181,7 +175,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     }
 
     // Store cleanup: $$cleanup() — runs after $.pop()
-    if has_stores {
+    if runtime.has_stores {
         fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
     }
 
@@ -189,8 +183,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // 4. Module-level delegate calls
     // -----------------------------------------------------------------------
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
-    if !ctx.delegated_events.is_empty() {
-        let events: Vec<Arg<'_, '_>> = ctx.delegated_events.iter()
+    if !ctx.state.delegated_events.is_empty() {
+        let events: Vec<Arg<'_, '_>> = ctx.state.delegated_events.iter()
             .map(|e| Arg::Str(e.clone()))
             .collect();
         delegate_stmts.push(ctx.b.call_stmt("$.delegate", [
@@ -218,7 +212,7 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         }))
     });
 
-    let fn_params = if ctx.analysis.props.is_some() || needs_push || has_bubble_events {
+    let fn_params = if runtime.needs_props_param || has_bubble_events {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
@@ -231,25 +225,25 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     } else {
         Span::default()
     };
-    let fn_decl = b.function_decl(b.bid(ctx.name), fn_body, fn_params, body_span);
+    let fn_decl = b.function_decl(b.bid(ctx.state.name), fn_body, fn_params, body_span);
     let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
         b.alloc(fn_decl),
     ));
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
-    if ctx.experimental_async {
+    if ctx.state.experimental_async {
         program_body.push(b.bare_import("svelte/internal/flags/async"));
     }
-    if has_tracing || ctx.has_tracing {
+    if has_tracing || ctx.state.has_tracing {
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
-    if ctx.dev {
+    if ctx.state.dev {
         // App[$.FILENAME] = "filename"
         let left = AssignLeft::ComputedMember(b.computed_member(
-            b.rid_expr(ctx.name),
+            b.rid_expr(ctx.state.name),
             b.static_member_expr(b.rid_expr("$"), "FILENAME"),
         ));
-        let right = b.str_expr(ctx.filename);
+        let right = b.str_expr(ctx.state.filename);
         program_body.push(b.assign_stmt(left, right));
     }
     program_body.push(import_svelte);

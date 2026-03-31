@@ -66,3 +66,7 @@ Supporting reference skills:
 - `oxc-codegen-api`
 - `legacy-conventions`
 - `dump-ast`
+
+## Comments
+Comments must answer "why is this done?" — never describe what the line does.
+Only add them where the intent isn't obvious from the code itself.

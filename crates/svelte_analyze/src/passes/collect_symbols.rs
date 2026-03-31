@@ -83,11 +83,17 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         tag: &svelte_ast::ConstTag,
         ctx: &mut VisitContext<'_>,
     ) {
-        ctx.data.node_expr_offsets.insert(tag.id, tag.expression_span.start);
+        if let Some(handle) = ctx.parsed().and_then(|p| p.expr_handle(tag.expression_span.start)) {
+            ctx.data.node_expr_handles.insert(tag.id, handle);
+        }
+        if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(tag.expression_span.start)) {
+            ctx.data.const_tag_stmt_handles.insert(tag.id, handle);
+        }
         // Build ExpressionInfo for the @const init expression so that
         // mark_const_tag_bindings can read ref_symbols for derived_deps.
         if let Some(init_expr) = ctx.parsed()
-            .and_then(|p| p.stmts.get(&tag.expression_span.start))
+            .and_then(|p| p.stmt_handle(tag.expression_span.start))
+            .and_then(|handle| ctx.parsed().and_then(|p| p.stmt(handle)))
             .and_then(|stmt| if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
                 decl.declarations.first().and_then(|d| d.init.as_ref())
             } else {
@@ -194,10 +200,13 @@ fn store_expression_info(
 }
 
 fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
+    let Some(handle) = ctx.parsed().and_then(|p| p.expr_handle(span.start)) else {
+        return;
+    };
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
-        ctx.data.attr_expr_offsets.insert(node_id, span.start);
+        ctx.data.attr_expr_handles.insert(node_id, handle);
     } else {
-        ctx.data.node_expr_offsets.insert(node_id, span.start);
+        ctx.data.node_expr_handles.insert(node_id, handle);
     }
 }
 
@@ -273,7 +282,10 @@ fn set_pending_flags(
 
 fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_>) {
     if let Some(parsed) = ctx.parsed() {
-        if let Some(Expression::CallExpression(call)) = parsed.exprs.get(&tag.expression_span.start) {
+        if let Some(Expression::CallExpression(call)) = parsed
+            .expr_handle(tag.expression_span.start)
+            .and_then(|handle| parsed.expr(handle))
+        {
             if let Expression::Identifier(ident) = &call.callee {
                 if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
                     ctx.data.render_tag_callee_sym.insert(tag.id, sym_id);

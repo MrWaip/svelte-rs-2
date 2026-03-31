@@ -14,12 +14,12 @@ pub fn gen_custom_element<'a>(
     ctx: &mut Ctx<'a>,
     ce_config: &CustomElementConfig,
 ) -> Vec<Statement<'a>> {
-    let b = &ctx.b;
+    let parsed_config = ctx.ce_config().cloned();
 
     // Determine tag and parsed options based on config variant
     let (simple_tag, parsed) = match ce_config {
         CustomElementConfig::Tag(tag) => (Some(tag.as_str()), None),
-        CustomElementConfig::Expression(_) => (None, ctx.analysis.ce_config.as_ref()),
+        CustomElementConfig::Expression(_) => (None, parsed_config.as_ref()),
     };
 
     // Resolve tag: simple form uses tag directly, object form uses parsed tag
@@ -33,27 +33,30 @@ pub fn gen_custom_element<'a>(
     let props_obj = build_props_metadata(ctx, parsed);
 
     // -- Arg 3: Slots array (always empty in Svelte 5 runes mode) --
-    let slots = b.array_from_args(std::iter::empty::<Arg<'_, '_>>());
+    let slots = ctx.b.array_from_args(std::iter::empty::<Arg<'_, '_>>());
 
     // -- Arg 4: Accessors array (from exports) --
-    let accessors = b.array_from_args(
-        ctx.analysis.exports.iter().map(|e| {
+    let accessors = ctx
+        .b
+        .array_from_args(ctx.query.exports().iter().map(|e| {
             let name = e.alias.as_deref().unwrap_or(e.name.as_str());
             Arg::StrRef(name)
-        })
-    );
+        }));
 
     // -- Arg 5: Shadow root config --
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
 
     // -- Arg 6: Extend (pre-parsed in analyze) --
-    let extend_arg: Option<Expression<'a>> = ctx.analysis.ce_config.as_ref()
+    let extend_arg: Option<Expression<'a>> = ctx
+        .ce_config()
         .and_then(|c| c.extend_span)
-        .and_then(|span| ctx.parsed.exprs.remove(&span.start));
+        .and_then(|span| ctx.state.parsed.expr_handle(span.start))
+        .and_then(|handle| ctx.state.parsed.take_expr(handle));
+    let b = &ctx.b;
 
     // Build $.create_custom_element() call
     let mut args: Vec<Arg<'a, '_>> = vec![
-        Arg::Ident(ctx.name),
+        Arg::Ident(ctx.state.name),
         Arg::Expr(props_obj),
         Arg::Expr(slots),
         Arg::Expr(accessors),
@@ -74,14 +77,9 @@ pub fn gen_custom_element<'a>(
     // Wrap in customElements.define() if tag is present
     let mut stmts = Vec::new();
     if let Some(tag_str) = resolved_tag {
-        let define_callee = b.static_member_expr(
-            b.rid_expr("customElements"),
-            "define",
-        );
-        let define_call = b.call_expr_callee(define_callee, [
-            Arg::StrRef(tag_str),
-            Arg::Expr(create_ce),
-        ]);
+        let define_callee = b.static_member_expr(b.rid_expr("customElements"), "define");
+        let define_call =
+            b.call_expr_callee(define_callee, [Arg::StrRef(tag_str), Arg::Expr(create_ce)]);
         stmts.push(b.expr_stmt(define_call));
     } else {
         stmts.push(b.expr_stmt(create_ce));
@@ -94,10 +92,7 @@ pub fn gen_custom_element<'a>(
 ///
 /// For each prop from CE config: build `{ attribute?, reflect?, type? }`.
 /// For remaining component props not in config: add `propName: {}`.
-fn build_props_metadata<'a>(
-    ctx: &Ctx<'a>,
-    parsed_opts: Option<&ParsedCeConfig>,
-) -> Expression<'a> {
+fn build_props_metadata<'a>(ctx: &Ctx<'a>, parsed_opts: Option<&ParsedCeConfig>) -> Expression<'a> {
     let b = &ctx.b;
     let mut obj_props: Vec<ObjProp<'a>> = Vec::new();
 
@@ -116,7 +111,7 @@ fn build_props_metadata<'a>(
     }
 
     // Second: emit remaining component props not already in CE config
-    if let Some(ref props_analysis) = ctx.analysis.props {
+    if let Some(props_analysis) = ctx.query.props() {
         for prop in &props_analysis.props {
             if prop.is_rest || prop.is_reserved {
                 continue;
@@ -138,7 +133,7 @@ fn build_props_metadata<'a>(
 
 /// Resolve the prop key: use prop_alias if the binding has one, otherwise use the name.
 fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
-    if let Some(ref props) = ctx.analysis.props {
+    if let Some(props) = ctx.query.props() {
         for prop in &props.props {
             if prop.local_name == name || prop.prop_name == name {
                 return prop.prop_name.clone();
@@ -149,10 +144,7 @@ fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
 }
 
 /// Build the value expression for a single prop definition: `{ attribute?, reflect?, type? }`.
-fn build_prop_def_expr<'a>(
-    b: &crate::builder::Builder<'a>,
-    def: &CePropConfig,
-) -> Expression<'a> {
+fn build_prop_def_expr<'a>(b: &crate::builder::Builder<'a>, def: &CePropConfig) -> Expression<'a> {
     let mut props: Vec<ObjProp<'a>> = Vec::new();
 
     if let Some(ref attr) = def.attribute {

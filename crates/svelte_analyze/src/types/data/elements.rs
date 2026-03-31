@@ -1,0 +1,164 @@
+use super::*;
+
+pub struct ClassDirectiveInfo {
+    pub id: NodeId,
+    pub name: String,
+    pub has_expression: bool,
+}
+
+#[derive(Clone)]
+pub struct ComponentPropInfo {
+    pub kind: ComponentPropKind,
+    pub is_dynamic: bool,
+}
+
+#[derive(Clone)]
+pub enum ComponentPropKind {
+    String { name: String, value_span: Span },
+    Boolean { name: String },
+    Expression {
+        name: String,
+        attr_id: NodeId,
+        shorthand: bool,
+        needs_memo: bool,
+    },
+    Concatenation {
+        name: String,
+        attr_id: NodeId,
+        parts: Vec<ConcatPart>,
+    },
+    Shorthand { attr_id: NodeId, name: String },
+    BindThis { bind_id: NodeId },
+    Bind {
+        name: String,
+        bind_id: NodeId,
+        mode: ComponentBindMode,
+    },
+    Spread { attr_id: NodeId },
+    Attach { attr_id: NodeId },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ComponentBindMode {
+    PropSource,
+    Rune,
+    Plain,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EventHandlerMode {
+    Delegated { passive: bool },
+    Direct { capture: bool, passive: bool },
+}
+
+pub struct ElementFlags {
+    pub(crate) has_spread: NodeBitSet,
+    pub(crate) class_attr_id: NodeTable<NodeId>,
+    pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
+    pub(crate) needs_clsx: NodeBitSet,
+    pub(crate) static_class: NodeTable<String>,
+    pub(crate) style_directives: NodeTable<Vec<StyleDirective>>,
+    pub(crate) static_style: NodeTable<String>,
+    pub(crate) needs_input_defaults: NodeBitSet,
+    pub(crate) needs_var: NodeBitSet,
+    pub(crate) needs_ref: NodeBitSet,
+    pub(crate) dynamic_attrs: NodeBitSet,
+    pub(crate) bound_contenteditable: NodeBitSet,
+    pub(crate) has_use_directive: NodeBitSet,
+    pub(crate) has_dynamic_class_directives: NodeBitSet,
+    pub(crate) expression_shorthand: NodeBitSet,
+    pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
+    pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
+}
+
+impl ElementFlags {
+    pub fn new(node_count: u32) -> Self {
+        Self {
+            has_spread: NodeBitSet::new(node_count),
+            class_attr_id: NodeTable::new(node_count),
+            class_directive_info: NodeTable::new(node_count),
+            needs_clsx: NodeBitSet::new(node_count),
+            static_class: NodeTable::new(node_count),
+            style_directives: NodeTable::new(node_count),
+            static_style: NodeTable::new(node_count),
+            needs_input_defaults: NodeBitSet::new(node_count),
+            needs_var: NodeBitSet::new(node_count),
+            needs_ref: NodeBitSet::new(node_count),
+            dynamic_attrs: NodeBitSet::new(node_count),
+            bound_contenteditable: NodeBitSet::new(node_count),
+            has_use_directive: NodeBitSet::new(node_count),
+            has_dynamic_class_directives: NodeBitSet::new(node_count),
+            expression_shorthand: NodeBitSet::new(node_count),
+            component_props: NodeTable::new(node_count),
+            event_handler_mode: NodeTable::new(node_count),
+        }
+    }
+
+    pub fn has_spread(&self, id: NodeId) -> bool {
+        self.has_spread.contains(&id)
+    }
+    pub fn has_class_directives(&self, id: NodeId) -> bool {
+        self.class_directive_info.contains_key(id)
+    }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool {
+        self.class_attr_id.contains_key(id)
+    }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
+        self.class_attr_id.get(id).copied()
+    }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
+        self.class_directive_info.get(id).map(|v| v.as_slice())
+    }
+    pub fn needs_clsx(&self, id: NodeId) -> bool {
+        self.needs_clsx.contains(&id)
+    }
+    pub fn has_style_directives(&self, id: NodeId) -> bool {
+        self.style_directives.contains_key(id)
+    }
+    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
+        self.style_directives.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool {
+        self.needs_input_defaults.contains(&id)
+    }
+    pub fn needs_var(&self, id: NodeId) -> bool {
+        self.needs_var.contains(&id)
+    }
+    pub fn needs_ref(&self, id: NodeId) -> bool {
+        self.needs_ref.contains(&id)
+    }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
+        self.dynamic_attrs.contains(&id)
+    }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> {
+        self.static_class.get(id).map(|s| s.as_str())
+    }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> {
+        self.static_style.get(id).map(|s| s.as_str())
+    }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
+        self.bound_contenteditable.contains(&id)
+    }
+    pub fn has_use_directive(&self, id: NodeId) -> bool {
+        self.has_use_directive.contains(&id)
+    }
+    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
+        self.has_dynamic_class_directives.contains(&id)
+    }
+    pub fn class_needs_state(&self, element_id: NodeId) -> bool {
+        let class_attr_dynamic = self
+            .class_attr_id
+            .get(element_id)
+            .is_some_and(|&attr_id| self.dynamic_attrs.contains(&attr_id));
+        class_attr_dynamic || self.has_dynamic_class_directives.contains(&element_id)
+    }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
+        self.expression_shorthand.contains(&id)
+    }
+    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
+        self.component_props.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
+        self.event_handler_mode.get(attr_id).copied()
+    }
+}

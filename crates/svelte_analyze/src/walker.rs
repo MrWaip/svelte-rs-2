@@ -362,7 +362,7 @@ fn dispatch_expr(
     // Copy parsed ref out so we can pass ctx mutably alongside expr
     let parsed = ctx.parsed;
     for v in visitors.iter_mut() { v.visit_expression(id, span, ctx); }
-    if let Some(expr) = parsed.and_then(|p| p.exprs.get(&span.start)) {
+    if let Some(expr) = parsed.and_then(|p| p.expr_handle(span.start)).and_then(|h| parsed.and_then(|p| p.expr(h))) {
         for v in visitors.iter_mut() { v.visit_js_expression(id, expr, ctx); }
     }
     for v in visitors.iter_mut() { v.leave_expression(id, span, ctx); }
@@ -389,7 +389,7 @@ fn dispatch_stmt(
 ) {
     let parsed = ctx.parsed;
     for v in visitors.iter_mut() { v.visit_statement(id, span, ctx); }
-    if let Some(stmt) = parsed.and_then(|p| p.stmts.get(&span.start)) {
+    if let Some(stmt) = parsed.and_then(|p| p.stmt_handle(span.start)).and_then(|h| parsed.and_then(|p| p.stmt(h))) {
         for v in visitors.iter_mut() { v.visit_js_statement(id, stmt, ctx); }
     }
     for v in visitors.iter_mut() { v.leave_statement(id, span, ctx); }

@@ -145,6 +145,18 @@ fn analyze_source(source: &str) -> (Component, AnalysisData) {
     (component, data)
 }
 
+fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Component, AnalysisData) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    (component, data)
+}
+
 fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
     let actual = data
         .fragments
@@ -964,6 +976,100 @@ let data = await fetch('/api');
     // Import is skipped — data is still non-import statement index 0
     assert_first_await_index(&data, 0);
     assert_symbol_blocker(&data, "data", 0);
+}
+
+#[test]
+fn runtime_plan_basic_component_is_minimal() {
+    let (_c, data) = analyze_source("<script>let count = 1;</script><p>{count}</p>");
+    let plan = data.runtime_plan;
+
+    assert!(!plan.needs_push);
+    assert!(!plan.has_component_exports);
+    assert!(!plan.has_exports);
+    assert!(!plan.has_bindable);
+    assert!(!plan.has_stores);
+    assert!(!plan.has_ce_props);
+    assert!(!plan.needs_props_param);
+    assert!(!plan.needs_pop_with_return);
+}
+
+#[test]
+fn runtime_plan_dev_custom_element_uses_exports_and_props() {
+    let source = r#"
+<svelte:options customElement={{ tag: 'x-foo' }} />
+<script>
+    let { answer = 42, extra } = $props();
+    export function reset() {}
+</script>
+<p>{answer}{extra}</p>
+"#;
+    let (_c, data) = analyze_source_with_options(
+        source,
+        AnalyzeOptions {
+            custom_element: true,
+            runes: true,
+            dev: true,
+            warning_filter: None,
+        },
+    );
+    let plan = data.runtime_plan;
+
+    assert!(plan.needs_push);
+    assert!(plan.has_component_exports);
+    assert!(plan.has_exports);
+    assert!(!plan.has_bindable);
+    assert!(plan.has_ce_props);
+    assert!(plan.needs_props_param);
+    assert!(plan.needs_pop_with_return);
+}
+
+#[test]
+fn runtime_plan_bindable_props_require_push_without_component_exports() {
+    let (_c, data) = analyze_source(
+        "<script>let { value = $bindable() } = $props();</script><p>{value}</p>",
+    );
+    let plan = data.runtime_plan;
+
+    assert!(plan.needs_push);
+    assert!(!plan.has_component_exports);
+    assert!(!plan.has_exports);
+    assert!(plan.has_bindable);
+    assert!(!plan.has_stores);
+    assert!(!plan.has_ce_props);
+    assert!(plan.needs_props_param);
+    assert!(!plan.needs_pop_with_return);
+}
+
+#[test]
+fn runtime_plan_store_subscriptions_do_not_force_push() {
+    let (_c, data) = analyze_source(
+        "<script>import { count } from './stores';</script><p>{$count}</p>",
+    );
+    let plan = data.runtime_plan;
+
+    assert!(!plan.needs_push);
+    assert!(!plan.has_component_exports);
+    assert!(!plan.has_exports);
+    assert!(!plan.has_bindable);
+    assert!(plan.has_stores);
+    assert!(!plan.has_ce_props);
+    assert!(!plan.needs_props_param);
+    assert!(!plan.needs_pop_with_return);
+}
+
+#[test]
+fn runtime_plan_needs_context_without_exports_skips_pop_return() {
+    let (_c, data) = analyze_source("<script>$effect(() => {});</script><p>ok</p>");
+    let plan = data.runtime_plan;
+
+    assert!(plan.needs_push);
+    assert!(!plan.has_component_exports);
+    assert!(!plan.has_exports);
+    assert!(!plan.has_bindable);
+    assert!(!plan.has_stores);
+    assert!(!plan.has_ce_props);
+    assert!(plan.needs_props_param);
+    assert!(!plan.needs_pop_with_return);
 }
 
 // ---------------------------------------------------------------------------

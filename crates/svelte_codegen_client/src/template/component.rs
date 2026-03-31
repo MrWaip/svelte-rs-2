@@ -37,7 +37,7 @@ pub(crate) fn gen_component<'a>(
     for (kind, is_dynamic) in prop_infos {
         match kind {
             ComponentPropKind::String { name, value_span } => {
-                let value_text = ctx.component.source_text(value_span);
+                let value_text = ctx.query.component.source_text(value_span);
                 let key = ctx.b.alloc_str(&name);
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, ctx.b.str_expr(value_text))));
             }
@@ -145,7 +145,7 @@ pub(crate) fn gen_component<'a>(
     let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
     let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
     for snippet_id in &snippet_ids {
-        let snippet_name = ctx.snippet_block(*snippet_id).name(ctx.source).to_string();
+        let snippet_name = ctx.snippet_block(*snippet_id).name(ctx.state.source).to_string();
         snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
         items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
@@ -220,7 +220,9 @@ fn build_bind_this_call<'a>(
     });
     if let Some(b) = bind_tmp {
         if let Some(span) = b.expression_span {
-            let _ = ctx.parsed.exprs.remove(&span.start);
+            if let Some(handle) = ctx.state.parsed.expr_handle(span.start) {
+                let _ = ctx.state.parsed.take_expr(handle);
+            }
         }
     }
 
@@ -233,7 +235,7 @@ fn build_bind_this_call<'a>(
     let var_name = if bind.shorthand {
         bind.name.clone()
     } else if let Some(span) = bind.expression_span {
-        ctx.component.source_text(span).to_string()
+        ctx.query.component.source_text(span).to_string()
     } else {
         // No expression — emit bare component call
         return value;

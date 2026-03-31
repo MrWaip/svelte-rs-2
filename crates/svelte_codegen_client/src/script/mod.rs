@@ -45,7 +45,7 @@ pub struct ScriptOutput<'a> {
 
 /// Parse and transform the script block.
 pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
-    if ctx.component.script.is_none() {
+    if ctx.query.component.script.is_none() {
         return ScriptOutput {
             imports: vec![], body: vec![], has_tracing: false,
             comments: vec![], source_text: "", program_span_end: 0,
@@ -53,15 +53,16 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     };
 
     let allocator = ctx.b.ast.allocator;
-    let component_scoping = &ctx.analysis.scoping;
-    let props = ctx.analysis.props.as_ref();
-    let component_source = &ctx.component.source;
-    let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
+    let component_source = &ctx.query.component.source;
+    let script_content_start = ctx.query.component.script.as_ref().unwrap().content_span.start;
 
-    let filename = ctx.filename;
+    let filename = ctx.state.filename;
 
     // Take pre-parsed Program from analysis (avoids double-parsing)
-    if let Some(program) = ctx.parsed.program.take() {
+    let program = ctx.state.parsed.program.take();
+    if let Some(program) = program {
+        let component_scoping = ctx.query.scoping();
+        let props = ctx.query.props();
         let b = Builder::new(allocator);
         let prop_defaults: Vec<Option<Expression<'a>>> = props
             .map(|pa| pa.props.iter().map(|p| {
@@ -74,7 +75,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             component_scoping,
             props,
             prop_defaults,
-            Some(ctx.analysis.script_rune_call_kinds()),
+            Some(ctx.script_rune_call_kinds()),
             dev,
             component_source,
             script_content_start,
@@ -83,9 +84,11 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     }
 
     // Fallback: no pre-parsed program (e.g. tests calling codegen without analysis)
-    let script = ctx.component.script.as_ref().unwrap();
+    let component_scoping = ctx.query.scoping();
+    let props = ctx.query.props();
+    let script = ctx.query.component.script.as_ref().unwrap();
     let is_ts = script.language == ScriptLanguage::TypeScript;
-    let script_text = ctx.component.source_text(script.content_span);
+    let script_text = ctx.query.component.source_text(script.content_span);
     transform_script_text(
         allocator,
         script_text,

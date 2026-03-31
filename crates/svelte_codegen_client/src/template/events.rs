@@ -2,6 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
+use svelte_analyze::ExprSite;
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -33,6 +34,10 @@ pub(crate) fn gen_use_directive<'a>(
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
+    let attr_blockers = ctx
+        .expr_deps(ExprSite::Attr(attr_id))
+        .map(|deps| deps.blockers.into_iter().collect::<Vec<_>>())
+        .unwrap_or_default();
     // Build handler params: ($$node) or ($$node, $$action_arg)
     let has_expr = ud.expression_span.is_some();
     let params = if has_expr {
@@ -41,7 +46,9 @@ pub(crate) fn gen_use_directive<'a>(
         ctx.b.params(["$$node"])
     };
 
-    let name_expr = ctx.parsed.exprs.remove(&ud.name.start).unwrap();
+    let name_expr = ctx.state.parsed.expr_handle(ud.name.start)
+        .and_then(|handle| ctx.state.parsed.take_expr(handle))
+        .unwrap();
 
     // Build optional call: name?.($$node) or name?.($$node, $$action_arg)
     let mut call_args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$node")];
@@ -68,9 +75,8 @@ pub(crate) fn gen_use_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.action", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
-    if !blockers.is_empty() {
-        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
+    if !attr_blockers.is_empty() {
+        stmt = gen_run_after_blockers(ctx, stmt, &attr_blockers);
     }
 
     init.push(stmt);
@@ -88,13 +94,16 @@ pub(crate) fn gen_attach_tag<'a>(
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
+    let attr_blockers = ctx
+        .expr_deps(ExprSite::Attr(attr_id))
+        .map(|deps| deps.blockers.into_iter().collect::<Vec<_>>())
+        .unwrap_or_default();
     let expr = get_attr_expr(ctx, attr_id);
     let thunk = ctx.b.thunk(expr);
     let mut stmt = ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
-    if !blockers.is_empty() {
-        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
+    if !attr_blockers.is_empty() {
+        stmt = gen_run_after_blockers(ctx, stmt, &attr_blockers);
     }
 
     init.push(stmt);
@@ -113,6 +122,10 @@ pub(crate) fn gen_transition_directive<'a>(
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
+    let attr_blockers = ctx
+        .expr_deps(ExprSite::Attr(attr_id))
+        .map(|deps| deps.blockers.into_iter().collect::<Vec<_>>())
+        .unwrap_or_default();
     // TRANSITION_IN = 1, TRANSITION_OUT = 2, TRANSITION_GLOBAL = 4
     let mut flags: u32 = if td.modifiers.iter().any(|m| m == "global") { 4 } else { 0 };
     match td.direction {
@@ -121,7 +134,9 @@ pub(crate) fn gen_transition_directive<'a>(
         svelte_ast::TransitionDirection::Out => flags |= 2,
     }
 
-    let name_expr = ctx.parsed.exprs.remove(&td.name.start).unwrap();
+    let name_expr = ctx.state.parsed.expr_handle(td.name.start)
+        .and_then(|handle| ctx.state.parsed.take_expr(handle))
+        .unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -138,9 +153,8 @@ pub(crate) fn gen_transition_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.transition", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
-    if !blockers.is_empty() {
-        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
+    if !attr_blockers.is_empty() {
+        stmt = gen_run_after_blockers(ctx, stmt, &attr_blockers);
     }
 
     after_update.push(stmt);
@@ -155,7 +169,13 @@ pub(crate) fn gen_animate_directive<'a>(
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
-    let name_expr = ctx.parsed.exprs.remove(&ad.name.start).unwrap();
+    let attr_blockers = ctx
+        .expr_deps(ExprSite::Attr(attr_id))
+        .map(|deps| deps.blockers.into_iter().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let name_expr = ctx.state.parsed.expr_handle(ad.name.start)
+        .and_then(|handle| ctx.state.parsed.take_expr(handle))
+        .unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -173,9 +193,8 @@ pub(crate) fn gen_animate_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.animation", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
-    if !blockers.is_empty() {
-        stmt = gen_run_after_blockers(ctx, stmt, &blockers);
+    if !attr_blockers.is_empty() {
+        stmt = gen_run_after_blockers(ctx, stmt, &attr_blockers);
     }
 
     after_update.push(stmt);
@@ -300,7 +319,7 @@ pub(crate) fn build_event_handler_s5<'a>(
 /// Reference: `events.js` `build_event()` lines 66-76.
 /// `expr_offset` is the byte offset of the expression in the component source.
 pub(crate) fn dev_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>, event_name: &str, expr_offset: u32) -> Expression<'a> {
-    if !ctx.dev {
+    if !ctx.state.dev {
         return handler;
     }
 
@@ -336,8 +355,8 @@ pub(crate) fn dev_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>, 
             std::mem::swap(&mut call.arguments[0], &mut dummy);
             dummy.into_expression()
         } else {
-            let (line, col) = crate::script::compute_line_col(ctx.source, expr_offset + arrow.span.start);
-            let sanitized = crate::script::sanitize_location(ctx.filename);
+            let (line, col) = crate::script::compute_line_col(ctx.state.source, expr_offset + arrow.span.start);
+            let sanitized = crate::script::sanitize_location(ctx.state.filename);
             let label = format!("trace ({sanitized}:{line}:{col})");
             ctx.b.str_expr(&label)
         };
@@ -359,7 +378,7 @@ pub(crate) fn dev_event_handler<'a>(ctx: &mut Ctx<'a>, handler: Expression<'a>, 
             trace_call
         };
         stmts = vec![ctx.b.return_stmt(return_expr)];
-        ctx.has_tracing = true;
+        ctx.state.has_tracing = true;
     }
 
     ctx.b.named_function_expr(
@@ -470,7 +489,7 @@ pub(crate) fn gen_event_attr_on<'a>(
         (raw_event_name.to_string(), false)
     };
 
-    let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
     let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
     let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);

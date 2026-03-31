@@ -8,6 +8,7 @@ use svelte_ast::NodeId;
 use crate::builder::Arg;
 use crate::context::Ctx;
 
+use super::async_plan::AsyncEmissionPlan;
 use super::attributes::{process_attrs_spread, process_svelte_element_class_directives, process_svelte_element_style_directives};
 use super::expression::get_node_expr;
 use super::gen_fragment;
@@ -19,12 +20,13 @@ pub(crate) fn gen_svelte_element<'a>(
     anchor: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let has_await = ctx.expr_has_await(id);
-    let needs_async = has_await || ctx.expr_has_blockers(id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, id);
+    let has_await = async_plan.has_await();
+    let needs_async = async_plan.needs_async();
     let el = ctx.svelte_element(id);
     let static_tag = el.static_tag;
     let tag_value = if static_tag {
-        Some(ctx.component.source_text(el.tag_span).to_string())
+        Some(ctx.query.component.source_text(el.tag_span).to_string())
     } else {
         None
     };
@@ -42,7 +44,7 @@ pub(crate) fn gen_svelte_element<'a>(
     let is_svg_ns = el.attributes.iter().any(|attr| {
         if let svelte_ast::Attribute::StringAttribute(sa) = attr {
             sa.name == "xmlns"
-                && ctx.component.source_text(sa.value_span) == "http://www.w3.org/2000/svg"
+                && ctx.query.component.source_text(sa.value_span) == "http://www.w3.org/2000/svg"
         } else {
             false
         }
@@ -59,7 +61,7 @@ pub(crate) fn gen_svelte_element<'a>(
     let sole_static_class = if el_clone.attributes.len() == 1 {
         if let svelte_ast::Attribute::StringAttribute(sa) = &el_clone.attributes[0] {
             if sa.name.eq_ignore_ascii_case("class") {
-                Some(ctx.component.source_text(sa.value_span).to_string())
+                Some(ctx.query.component.source_text(sa.value_span).to_string())
             } else {
                 None
             }
@@ -111,7 +113,7 @@ pub(crate) fn gen_svelte_element<'a>(
             } else {
                 get_node_expr(ctx, id)
             };
-            ctx.b.async_thunk(tag_expr)
+            async_plan.async_thunk(ctx, tag_expr).expect("async tag thunk missing for await plan")
         });
 
         let get_tag = ctx.b.thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$tag")]));
@@ -125,7 +127,7 @@ pub(crate) fn gen_svelte_element<'a>(
         }
 
         let element_stmt = ctx.b.call_stmt("$.element", args);
-        stmts.push(ctx.gen_async_block(id, anchor, has_await, async_tag_thunk, "$$tag", vec![element_stmt]));
+        stmts.push(async_plan.wrap_async_block(ctx, anchor, "$$tag", async_tag_thunk, vec![element_stmt]));
     } else {
         // Build tag thunk: () => tag_expression (or () => "literal" for static tags)
         let tag_expr = if let Some(ref value) = tag_value {
