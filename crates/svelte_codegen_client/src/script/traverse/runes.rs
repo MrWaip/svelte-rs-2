@@ -32,6 +32,14 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     if let oxc_ast::ast::BindingPattern::BindingIdentifier(bid) = &node.id {
                         if let Some(sym_id) = bid.symbol_id.get() {
                             self.derived_pending.insert(sym_id);
+                            // Track async derived BEFORE `rewrite_dev_await_tracking` can
+                            // transform the `await` inside to `$.track_reactivity_loss` form.
+                            let is_async_init = call.arguments.first()
+                                .and_then(|a| a.as_expression())
+                                .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::AwaitExpression(_)));
+                            if is_async_init {
+                                self.async_derived_pending.insert(sym_id);
+                            }
                         }
                     }
                     node.init = Some(oxc_ast::ast::Expression::CallExpression(call));

@@ -3,20 +3,43 @@ use rustc_hash::FxHashSet;
 use oxc_ast::ast::{Expression, Statement};
 
 use crate::builder::Builder;
+use crate::script::{compute_line_col, sanitize_location};
+
+/// Dev-mode context for adding label/location args to `$.async_derived`.
+pub(crate) struct DevContext<'a> {
+    pub(crate) dev: bool,
+    pub(crate) component_source: &'a str,
+    pub(crate) script_content_start: u32,
+    pub(crate) filename: &'a str,
+    /// Symbols whose `$derived` init was `$derived(await expr)` — tracked before
+    /// `rewrite_dev_await_tracking` can transform the `await` into a different form.
+    pub(crate) async_derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+}
+
+impl DevContext<'_> {
+    /// Compute `"filename:line:col"` from a byte offset inside the script.
+    fn locate(&self, script_offset: u32) -> String {
+        let full_offset = self.script_content_start + script_offset;
+        let (line, col) = compute_line_col(self.component_source, full_offset);
+        format!("{}:{}:{}", sanitize_location(self.filename), line, col)
+    }
+}
 
 /// Post-traverse: wrap `$.derived(expr)` → `$.derived(() => expr)` for $derived runes.
 pub(crate) fn wrap_derived_thunks<'a>(
     b: &Builder<'a>,
     program: &mut oxc_ast::ast::Program<'a>,
     pending: &FxHashSet<oxc_semantic::SymbolId>,
+    dev_ctx: Option<&DevContext<'_>>,
 ) {
-    wrap_derived_thunks_in_stmts(b, &mut program.body, pending);
+    wrap_derived_thunks_in_stmts(b, &mut program.body, pending, dev_ctx);
 }
 
 fn wrap_derived_thunks_in_stmts<'a>(
     b: &Builder<'a>,
     stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
     pending: &FxHashSet<oxc_semantic::SymbolId>,
+    dev_ctx: Option<&DevContext<'_>>,
 ) {
     for stmt in stmts.iter_mut() {
         match stmt {
@@ -39,10 +62,59 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             let arg_expr = dummy.into_expression();
 
-                            if let Expression::AwaitExpression(await_expr) = arg_expr {
-                                let inner = await_expr.unbox().argument;
-                                let thunk = b.thunk(inner);
+                            // Determine whether this is an async derived.
+                            // We rely on `async_derived_pending` because in dev mode the
+                            // `await` inside `$derived(await expr)` has already been
+                            // transformed to `(await $.track_reactivity_loss(expr))()` by
+                            // `rewrite_dev_await_tracking`, so we can't detect it by
+                            // checking for `AwaitExpression` alone.
+                            let is_async = matches!(arg_expr, Expression::AwaitExpression(_))
+                                || dev_ctx.as_ref().is_some_and(|ctx| {
+                                    ctx.async_derived_pending.contains(&sym_id)
+                                });
+
+                            if is_async {
+                                // Capture init span before mutating call for location computation.
+                                let init_span_start = call.span.start;
+
+                                // Thunk form depends on whether arg is still AwaitExpression
+                                // (non-dev mode) or already transformed (dev mode).
+                                let thunk = if let Expression::AwaitExpression(await_expr) = arg_expr {
+                                    // Non-dev: strip the await, create non-async thunk.
+                                    // `async () => await fetch(x)` → optimized to `() => fetch(x)`
+                                    // by the reference's `unthunk`. We match that behavior directly.
+                                    let inner = await_expr.unbox().argument;
+                                    b.thunk(inner)
+                                } else {
+                                    // Dev mode: arg was already transformed to
+                                    // `(await $.track_reactivity_loss(expr))()` by
+                                    // `rewrite_dev_await_tracking`. Use async_arrow_expr_body
+                                    // to avoid adding an extra `await`.
+                                    b.async_arrow_expr_body(arg_expr)
+                                };
+
+                                // Build dev-mode extra args.
+                                let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
+                                if let Some(ctx) = dev_ctx {
+                                    if ctx.dev {
+                                        // 2nd arg: identifier name string
+                                        let name = match &declarator.id {
+                                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                                id.name.to_string()
+                                            }
+                                            _ => String::new(),
+                                        };
+                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&name)));
+                                        // 3rd arg: source location string
+                                        let loc = ctx.locate(init_span_start);
+                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                    }
+                                }
+
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+                                for arg in extra_args {
+                                    call.arguments.push(arg);
+                                }
                                 call.callee = b.rid_expr("$.async_derived");
                                 let call_expr = b.move_expr(declarator.init.as_mut().unwrap());
                                 declarator.init = Some(b.await_expr(call_expr));
@@ -56,7 +128,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
             }
             Statement::FunctionDeclaration(func) => {
                 if let Some(body) = &mut func.body {
-                    wrap_derived_thunks_in_stmts(b, &mut body.statements, pending);
+                    wrap_derived_thunks_in_stmts(b, &mut body.statements, pending, dev_ctx);
                 }
             }
             Statement::ExportNamedDeclaration(export) => {
@@ -64,7 +136,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                     &mut export.declaration
                 {
                     if let Some(body) = &mut func.body {
-                        wrap_derived_thunks_in_stmts(b, &mut body.statements, pending);
+                        wrap_derived_thunks_in_stmts(b, &mut body.statements, pending, dev_ctx);
                     }
                 }
             }
