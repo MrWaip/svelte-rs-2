@@ -148,6 +148,12 @@ fn transform_script_text<'a>(
         None => Vec::new(),
     };
 
+    let waterfall_ignored_starts = if dev {
+        collect_waterfall_ignored_starts(&program)
+    } else {
+        FxHashSet::default()
+    };
+
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
@@ -169,6 +175,7 @@ fn transform_script_text<'a>(
         prop_default_exprs,
         script_rune_call_kinds,
         experimental_async,
+        waterfall_ignored_starts: waterfall_ignored_starts.clone(),
     };
 
     let empty_scoping = Scoping::default();
@@ -181,6 +188,7 @@ fn transform_script_text<'a>(
             script_content_start,
             filename,
             async_derived_pending: transformer.async_derived_pending,
+            waterfall_ignored_starts,
         };
         super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
     }
@@ -234,6 +242,12 @@ fn transform_program<'a>(
     let scoping = sem.semantic.into_scoping();
     let props_gen = props.map(PropsGenInfo::from_analysis);
 
+    let waterfall_ignored_starts = if dev {
+        collect_waterfall_ignored_starts(&program)
+    } else {
+        FxHashSet::default()
+    };
+
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
@@ -255,6 +269,7 @@ fn transform_program<'a>(
         prop_default_exprs,
         script_rune_call_kinds,
         experimental_async,
+        waterfall_ignored_starts: waterfall_ignored_starts.clone(),
     };
 
     let empty_scoping = Scoping::default();
@@ -267,6 +282,7 @@ fn transform_program<'a>(
             script_content_start,
             filename,
             async_derived_pending: transformer.async_derived_pending,
+            waterfall_ignored_starts,
         };
         super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
     }
@@ -298,6 +314,25 @@ fn transform_program<'a>(
         source_text,
         program_span_end,
     }
+}
+
+/// Scan JS comments for `// svelte-ignore await_waterfall` and return the
+/// `attached_to` positions of matching comments. These positions correspond
+/// to the start of the statement the comment precedes.
+fn collect_waterfall_ignored_starts(program: &Program<'_>) -> FxHashSet<u32> {
+    let mut starts = FxHashSet::default();
+    let src = program.source_text;
+    for comment in program.comments.iter() {
+        let s = comment.span.start as usize;
+        let e = comment.span.end as usize;
+        if e <= src.len() {
+            let text = &src[s..e];
+            if text.contains("svelte-ignore") && text.contains("await_waterfall") {
+                starts.insert(comment.attached_to);
+            }
+        }
+    }
+    starts
 }
 
 fn reattach_orphaned_comments(program: &mut Program<'_>) {
