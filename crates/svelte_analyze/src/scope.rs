@@ -95,20 +95,6 @@ impl ComponentScoping {
             .add_scope(Some(parent), OxcNodeId::DUMMY, ScopeFlags::empty())
     }
 
-    /// Compatibility shim: looks up EachBody, SnippetBody, or AwaitThen scope.
-    /// TODO: migrate callers in svelte_transform to use fragment_scope() directly.
-    pub fn node_scope(&self, node_id: NodeId) -> Option<ScopeId> {
-        self.fragment_scope(&FragmentKey::EachBody(node_id))
-            .or_else(|| self.fragment_scope(&FragmentKey::SnippetBody(node_id)))
-            .or_else(|| self.fragment_scope(&FragmentKey::AwaitThen(node_id)))
-    }
-
-    /// Compatibility shim: looks up AwaitCatch scope.
-    /// TODO: migrate callers in svelte_transform to use fragment_scope() directly.
-    pub fn await_catch_scope(&self, node_id: NodeId) -> Option<ScopeId> {
-        self.fragment_scope(&FragmentKey::AwaitCatch(node_id))
-    }
-
     // -- Symbol management --
 
     /// Declare a new binding in a scope. Creates symbol + adds binding.

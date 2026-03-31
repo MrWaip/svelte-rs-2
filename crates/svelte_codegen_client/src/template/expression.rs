@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_ast_visit::VisitMut;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::{ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart};
+use svelte_analyze::{ExprHandle, ExprSite, ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
 use svelte_analyze::ExpressionKind;
@@ -13,40 +13,36 @@ use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
 
 // ---------------------------------------------------------------------------
-// Pre-transformed expression lookup (offset-based)
+// Pre-transformed expression lookup (handle-based)
 // ---------------------------------------------------------------------------
 
-/// Get a pre-transformed expression by source offset.
+/// Get a pre-transformed expression by handle.
 /// Takes ownership via remove — each expression can only be consumed once.
-pub(crate) fn get_expr_at<'a>(ctx: &mut Ctx<'a>, offset: u32) -> Expression<'a> {
-    if let Some(expr) = ctx.parsed.exprs.remove(&offset) {
+pub(crate) fn take_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression<'a> {
+    if let Some(expr) = ctx.state.parsed.take_expr(handle) {
         expr
     } else {
-        debug_assert!(false, "missing pre-transformed expr at offset {}", offset);
+        debug_assert!(false, "missing pre-transformed expr at handle {:?}", handle);
         ctx.b.str_expr("")
     }
 }
 
 /// Get a pre-transformed expression from ParsedExprs by NodeId.
-/// Resolves the offset from the node's expression span, then removes the expression.
 pub(crate) fn get_node_expr<'a>(ctx: &mut Ctx<'a>, node_id: NodeId) -> Expression<'a> {
-    let offset = ctx.node_expr_offset(node_id);
-    let mut expr = get_expr_at(ctx, offset);
+    let mut expr = take_expr(ctx, ctx.node_expr_handle(node_id));
     finalize_await_exprs(ctx, Some(node_id), &mut expr);
     expr
 }
 
-/// Get a pre-transformed attribute expression by attribute's expression span offset.
 pub(crate) fn get_attr_expr<'a>(ctx: &mut Ctx<'a>, attr_id: NodeId) -> Expression<'a> {
-    let offset = ctx.attr_expr_offset(attr_id);
-    let mut expr = get_expr_at(ctx, offset);
+    let mut expr = take_expr(ctx, ctx.attr_expr_handle(attr_id));
     finalize_await_exprs(ctx, Some(attr_id), &mut expr);
     expr
 }
 
-/// Get a pre-transformed concat part expression by span offset.
-pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, span_start: u32) -> Expression<'a> {
-    let mut expr = get_expr_at(ctx, span_start);
+/// Get a pre-transformed concat part expression by parser-owned handle.
+pub(crate) fn get_concat_part_expr<'a>(ctx: &mut Ctx<'a>, handle: ExprHandle) -> Expression<'a> {
+    let mut expr = take_expr(ctx, handle);
     finalize_await_exprs(ctx, None, &mut expr);
     expr
 }
@@ -66,17 +62,17 @@ impl<'a> VisitMut<'a> for AwaitExprFinalizer<'_, 'a> {
 
         let ignored = self
             .ignore_node
-            .is_some_and(|id| self.ctx.analysis.ignore_data.is_ignored(id, "await_reactivity_loss"));
+            .is_some_and(|id| self.ctx.is_ignored(id, "await_reactivity_loss"));
 
         let arg = self.ctx.b.move_expr(&mut await_expr.argument);
-        if self.ctx.analysis.is_pickled_await(await_expr.span.start) {
+        if self.ctx.is_pickled_await(await_expr.span.start) {
             let save_call = self.ctx.b.call_expr("$.save", [Arg::Expr(arg)]);
             let awaited = self.ctx.b.await_expr(save_call);
             *expr = self
                 .ctx
                 .b
                 .call_expr_callee(awaited, std::iter::empty::<Arg<'a, '_>>());
-        } else if self.ctx.dev && !ignored {
+        } else if self.ctx.state.dev && !ignored {
             let track_call = self
                 .ctx
                 .b
@@ -149,7 +145,7 @@ pub(crate) fn build_concat_from_parts<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.component.source).unwrap();
+                let s = part.text_value(&ctx.query.component.source).unwrap();
                 // Merge with previous Str part if possible
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
@@ -193,7 +189,9 @@ pub(crate) fn build_attr_concat<'a>(
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
             AstConcatPart::Dynamic { span, .. } => {
-                let expr = get_concat_part_expr(ctx, span.start);
+                let expr = ctx.state.parsed.expr_handle(span.start)
+                    .map(|handle| get_concat_part_expr(ctx, handle))
+                    .unwrap_or_else(|| ctx.b.str_expr(""));
                 tpl_parts.push(TemplatePart::Expr(expr));
             }
         }
@@ -223,7 +221,7 @@ impl<'a> TemplateMemoState<'a> {
 
     pub(crate) fn push_expr_info(&mut self, ctx: &Ctx<'a>, info: &ExpressionInfo) {
         for sym in &info.ref_symbols {
-            if let Some(idx) = ctx.analysis.blocker_data().symbol_blocker(*sym) {
+            if let Some(idx) = ctx.symbol_blocker(*sym) {
                 self.push_script_blocker(idx);
             }
             if let Some(expr) = ctx.const_tag_symbol_blocker_expr(*sym) {
@@ -233,7 +231,11 @@ impl<'a> TemplateMemoState<'a> {
     }
 
     pub(crate) fn push_node_deps(&mut self, ctx: &mut Ctx<'a>, id: NodeId) {
-        for idx in ctx.analysis.expression_blockers(id) {
+        let blockers = ctx
+            .expr_deps(ExprSite::Node(id))
+            .map(|deps| deps.blockers)
+            .unwrap_or_default();
+        for idx in blockers {
             self.push_script_blocker(idx);
         }
         self.extra_blockers.extend(ctx.const_tag_blocker_exprs(id));
@@ -391,7 +393,10 @@ pub(crate) fn emit_text_update<'a>(
         if let FragmentItem::TextConcat { parts, .. } = item {
             for part in parts {
                 if let LoweredTextPart::Expr(id) = part {
-                    for idx in ctx.analysis.expression_blockers(*id) {
+                    let deps = ctx
+                        .expr_deps(ExprSite::Node(*id))
+                        .unwrap_or_else(|| panic!("missing expression deps for {:?}", id));
+                    for idx in deps.blockers {
                         if !blockers.contains(&idx) { blockers.push(idx); }
                     }
                     extra_blockers.extend(ctx.const_tag_blocker_exprs(*id));
@@ -506,7 +511,8 @@ pub(crate) fn text_content_needs_memo(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
     if let FragmentItem::TextConcat { parts, .. } = item {
         return parts.iter().any(|p| {
             if let LoweredTextPart::Expr(id) = p {
-                ctx.analysis.needs_expr_memoization(*id)
+                ctx.expr_deps(ExprSite::Node(*id))
+                    .is_some_and(|deps| deps.needs_memo)
             } else {
                 false
             }
@@ -597,10 +603,11 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
         args.push(Arg::Expr(ctx.b.rid_expr(&param_names[i])));
         callback_body.push(ctx.b.call_stmt(setter_fn, args));
 
-        let info = ctx.analysis.attr_expression(attr_id)
-            .expect("memoized attribute should have expression metadata");
-        deps.push_expr_info(ctx, info);
-        if info.has_await {
+        let attr_deps = ctx
+            .expr_deps(ExprSite::Attr(attr_id))
+            .unwrap_or_else(|| panic!("memoized attribute should have expression deps"));
+        deps.push_expr_info(ctx, attr_deps.info);
+        if attr_deps.has_await() {
             deps.async_values.push(expr);
         } else {
             deps.sync_values.push(expr);
@@ -635,8 +642,11 @@ fn build_concat_with_memo<'a>(
             }
 
             let expr = get_node_expr(ctx, nid);
-            if ctx.analysis.needs_expr_memoization(nid) {
-                if ctx.expr_has_await(nid) {
+            let node_deps = ctx
+                .expr_deps(ExprSite::Node(nid))
+                .unwrap_or_else(|| panic!("missing expression deps for {:?}", nid));
+            if node_deps.needs_memo {
+                if node_deps.has_await() {
                     let index = deps.async_values.len();
                     deps.async_values.push(ctx.b.clone_expr(&expr));
                     return deps.async_param_expr(ctx, index);
@@ -654,7 +664,7 @@ fn build_concat_with_memo<'a>(
     for part in parts {
         match part {
             LoweredTextPart::TextSpan(_) | LoweredTextPart::TextOwned(_) => {
-                let s = part.text_value(&ctx.component.source).unwrap();
+                let s = part.text_value(&ctx.query.component.source).unwrap();
                 if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
                     prev.push_str(s);
                 } else {
@@ -673,8 +683,11 @@ fn build_concat_with_memo<'a>(
                 }
 
                 let expr = get_node_expr(ctx, *nid);
-                let expr = if ctx.analysis.needs_expr_memoization(*nid) {
-                    if ctx.expr_has_await(*nid) {
+                let node_deps = ctx
+                    .expr_deps(ExprSite::Node(*nid))
+                    .unwrap_or_else(|| panic!("missing expression deps for {:?}", nid));
+                let expr = if node_deps.needs_memo {
+                    if node_deps.has_await() {
                         let index = deps.async_values.len();
                         deps.async_values.push(ctx.b.clone_expr(&expr));
                         deps.async_param_expr(ctx, index)

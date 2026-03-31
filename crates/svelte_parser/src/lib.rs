@@ -21,7 +21,9 @@ mod handlers;
 mod svelte_elements;
 
 // Re-export all shared types for convenience
-pub use types::*;
+pub use types::{
+    CePropConfig, CeShadowMode, ExprHandle, ParsedCeConfig, ParserResult, StmtHandle,
+};
 
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.

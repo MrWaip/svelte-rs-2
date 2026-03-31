@@ -5,18 +5,20 @@ pub(crate) mod utils;
 mod validate;
 pub(crate) mod walker;
 
-pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData, IgnoreData,
-    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
-    ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo,
-    ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
-    ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
-};
-pub use utils::IdentGen;
 pub use scope::ComponentScoping;
+pub use types::data::{
+    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
+    ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    ConstTagData, ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode,
+    ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentItem, FragmentKey,
+    IgnoreData,
+    LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis, PropsAnalysis,
+    RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData, StmtHandle,
+};
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
+pub use utils::IdentGen;
 pub use utils::{
     is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
     strip_capture_event,
@@ -24,6 +26,42 @@ pub use utils::{
 
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, Severity};
+
+fn run_template_bundle<'a, const N: usize>(
+    component: &Component,
+    data: &'a mut AnalysisData,
+    source: &'a str,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+    visitors: &mut [&mut dyn walker::TemplateVisitor; N],
+) {
+    let root = data.scoping.root_scope_id();
+    let mut ctx = walker::VisitContext::new(root, data, &component.store, source, runes);
+    walker::walk_template(&component.fragment, &mut ctx, visitors);
+    diags.extend(ctx.take_warnings());
+}
+
+fn run_parsed_template_bundle<'a, const N: usize>(
+    component: &Component,
+    data: &'a mut AnalysisData,
+    parsed: &'a ParserResult<'a>,
+    source: &'a str,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+    visitors: &mut [&mut dyn walker::TemplateVisitor; N],
+) {
+    let root = data.scoping.root_scope_id();
+    let mut ctx = walker::VisitContext::with_parsed(
+        root,
+        data,
+        &component.store,
+        parsed,
+        source,
+        runes,
+    );
+    walker::walk_template(&component.fragment, &mut ctx, visitors);
+    diags.extend(ctx.take_warnings());
+}
 
 /// Options controlling analysis behavior.
 pub struct AnalyzeOptions {
@@ -64,216 +102,224 @@ pub fn analyze_with_options<'a>(
 
     let mut data = AnalysisData::new_empty(component.node_count());
     data.custom_element = options.custom_element;
-
-    // Classify render tags: unwrap ChainExpression → CallExpression, extract callee name
-    passes::js_analyze::classify_render_tags(&mut parsed, component, &mut data, source, runes);
-
-    // Extract script info from pre-parsed Program AST
-    let script_info = parsed.program.as_ref().and_then(|program| {
-        let span = parsed.script_content_span?;
-        let source = component.source_text(span);
-        Some(utils::script_info::extract_script_info(
-            program, span.start, source,
-        ))
-    });
-
-    // JS analysis: enrich script info and extract OXC Scoping
-    let script_scoping =
-        script_info.and_then(|si| passes::js_analyze::analyze_script(&parsed, &mut data, si));
-    data.scoping = ComponentScoping::new(script_scoping);
-
-    // Mark runes declared at root scope (from ScriptInfo declarations)
-    passes::mark_runes::mark_script_runes(&mut data);
-    // Mark runes in nested function scopes ($derived/$state inside closures etc.)
-    if let Some(program) = &parsed.program {
-        passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
-    }
-
-    // Await binding metadata (independent of expression analysis)
-    {
-        let root = data.scoping.root_scope_id();
-        let mut v1 = passes::js_analyze::BindingPreparer;
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
-        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
-        diags.extend(ctx.take_warnings());
-    }
-    // CE config (not template-related, extracted separately)
-    if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
-        .options
-        .as_ref()
-        .and_then(|o| o.custom_element.as_ref())
-    {
-        if let Some(expr) = parsed.exprs.get(&span.start) {
-            let config = utils::ce_config::extract_ce_config_from_expr(expr, span.start);
-            data.ce_config = Some(config);
-        }
-    }
-
-    passes::template_scoping::create_template_scopes(component, &mut data.scoping, &parsed);
-    // TODO: build_scoping pass removed — reimplement template bindings, side tables
-    let scoping_built = crate::types::markers::ScopingBuilt::new();
-    data.import_syms = data.scoping.collect_import_syms();
-
-    // Mini-SemanticBuilder + side tables: scopes, bindings, OXC references,
-    // each/snippet/const marks and metadata — all in one walk.
-    {
-        let root = data.scoping.root_scope_id();
-        let mut v1 = passes::template_semantic::TemplateSemanticVisitor;
-        let mut v2 = passes::template_side_tables::TemplateSideTablesVisitor { component };
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v1, &mut v2],
-        );
-        diags.extend(ctx.take_warnings());
-    }
-    data.scoping.build_template_scope_set();
-
-    // Collect ref_symbols from OXC references + store detection + index usage detection
-    data.each_blocks.build_index_lookup();
-    {
-        let root = data.scoping.root_scope_id();
-        let mut v2 = passes::collect_symbols::make_visitor(scoping_built);
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v2],
-        );
-        diags.extend(ctx.take_warnings());
-    }
-    passes::collect_symbols::resolve_script_stores(&mut data);
-
-    // Instance body blocker analysis (experimental.async)
-    passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
-    passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
-    passes::js_analyze::classify_pickled_awaits(&parsed, &mut data);
-
-    // needs_context requires ref_symbols — must run after collect_symbols
-    passes::js_analyze::classify_expression_needs_context(&mut data);
-    if !data.needs_context {
-        data.needs_context = data
-            .expressions
-            .values()
-            .chain(data.attr_expressions.values())
-            .any(|info| info.needs_context);
-    }
-
-    passes::post_resolve::run_post_resolve_passes(&mut data);
-
-    // Rest prop references in template expressions need context ($.push/$.pop).
-    // Must run after post_resolve which marks rest_prop symbols.
-    if !data.needs_context {
-        data.needs_context = data
-            .expressions
-            .values()
-            .chain(data.attr_expressions.values())
-            .any(|info| {
-                matches!(
-                    info.kind,
-                    crate::types::data::ExpressionKind::MemberExpression
-                        | crate::types::data::ExpressionKind::CallExpression { .. }
-                ) && info.ref_symbols.iter().any(|&sym| data.scoping.is_rest_prop(sym))
-            });
-    }
-
-    resolve_render_tag_prop_sources(&mut data, &parsed);
-    resolve_render_tag_dynamic(&mut data);
-
-    // Collect const_tags.by_fragment early (before lower) so we can mark @const
-    // bindings as Derived runes with deps before precompute_dynamic_cache.
-    passes::lower::collect_const_tag_fragments(component, &mut data);
-    mark_const_tag_bindings(&mut data);
-
-    data.scoping.precompute_dynamic_cache();
-
-    // Blocked symbols are reactive (their values change when the promise resolves).
-    // Mark them as dynamic so derived symbols that depend on them propagate dynamicity.
-    if data.blocker_data.has_async {
-        data.scoping.mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
-    }
-
-    passes::js_analyze::classify_expression_dynamicity(&mut data);
-
-    // Mark expressions referencing blocked symbols as dynamic (after classify_expression_dynamicity)
-    if data.blocker_data.has_async {
-        for info in data.expressions.values_mut() {
-            if !info.is_dynamic && info.ref_symbols.iter().any(|sym| data.blocker_data.symbol_blockers.contains_key(sym)) {
-                info.is_dynamic = true;
+    let execution_order = passes::resolve_default_execution_order()
+        .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));
+    for key in execution_order {
+        match key {
+            passes::PassKey::ClassifyRenderTags => {
+                passes::js_analyze::classify_render_tags(
+                    &mut parsed,
+                    component,
+                    &mut data,
+                    source,
+                    runes,
+                );
+            }
+            passes::PassKey::AnalyzeScript => {
+                let script_info = parsed.program.as_ref().and_then(|program| {
+                    let span = parsed.script_content_span?;
+                    let source = component.source_text(span);
+                    Some(utils::script_info::extract_script_info(
+                        program, span.start, source,
+                    ))
+                });
+                let script_scoping = script_info
+                    .and_then(|si| passes::js_analyze::analyze_script(&parsed, &mut data, si));
+                data.scoping = ComponentScoping::new(script_scoping);
+            }
+            passes::PassKey::MarkRunes => {
+                passes::mark_runes::mark_script_runes(&mut data);
+                if let Some(program) = &parsed.program {
+                    passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
+                }
+            }
+            passes::PassKey::PrepareAwaitBindings => {
+                let mut bundle = passes::bundles::AwaitBindingBundle::new();
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    &mut data,
+                    &parsed,
+                    source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+            }
+            passes::PassKey::ExtractCeConfig => {
+                if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.custom_element.as_ref())
+                {
+                    if let Some(expr) = parsed
+                        .expr_handle(span.start)
+                        .and_then(|handle| parsed.expr(handle))
+                    {
+                        let config =
+                            utils::ce_config::extract_ce_config_from_expr(expr, span.start);
+                        data.ce_config = Some(config);
+                    }
+                }
+            }
+            passes::PassKey::TemplateScoping => {
+                passes::template_scoping::create_template_scopes(
+                    component,
+                    &mut data.scoping,
+                    &parsed,
+                );
+                data.import_syms = data.scoping.collect_import_syms();
+            }
+            passes::PassKey::TemplateSemanticAndSideTables => {
+                let mut bundle = passes::bundles::TemplateSemanticBundle::new(component);
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    &mut data,
+                    &parsed,
+                    source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+                data.scoping.build_template_scope_set();
+            }
+            passes::PassKey::CollectSymbols => {
+                data.each_blocks.build_index_lookup();
+                let mut bundle = passes::bundles::SymbolCollectionBundle::new(
+                    crate::types::markers::ScopingBuilt::new(),
+                );
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    &mut data,
+                    &parsed,
+                    source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+            }
+            passes::PassKey::ResolveScriptStores => {
+                passes::collect_symbols::resolve_script_stores(&mut data);
+            }
+            passes::PassKey::JsAnalyzePostTemplate => {
+                passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
+                passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
+                passes::js_analyze::classify_pickled_awaits(&parsed, &mut data);
+            }
+            passes::PassKey::ClassifyNeedsContext => {
+                passes::js_analyze::classify_expression_needs_context(&mut data);
+                if !data.needs_context {
+                    data.needs_context = data
+                        .expressions
+                        .values()
+                        .chain(data.attr_expressions.values())
+                        .any(|info| info.needs_context);
+                }
+            }
+            passes::PassKey::PostResolve => {
+                passes::post_resolve::run_post_resolve_passes(&mut data);
+                if !data.needs_context {
+                    data.needs_context = data
+                        .expressions
+                        .values()
+                        .chain(data.attr_expressions.values())
+                        .any(|info| {
+                            matches!(
+                                info.kind,
+                                crate::types::data::ExpressionKind::MemberExpression
+                                    | crate::types::data::ExpressionKind::CallExpression { .. }
+                            ) && info
+                                .ref_symbols
+                                .iter()
+                                .any(|&sym| data.scoping.is_rest_prop(sym))
+                        });
+                }
+            }
+            passes::PassKey::ResolveRenderTagMeta => {
+                resolve_render_tag_prop_sources(&mut data, &parsed);
+                resolve_render_tag_dynamic(&mut data);
+            }
+            passes::PassKey::CollectConstTagFragments => {
+                passes::lower::collect_const_tag_fragments(component, &mut data);
+            }
+            passes::PassKey::MarkConstTagBindings => {
+                mark_const_tag_bindings(&mut data);
+            }
+            passes::PassKey::PrecomputeDynamicCache => {
+                data.scoping.precompute_dynamic_cache();
+            }
+            passes::PassKey::MarkBlockedSymbolsDynamic => {
+                if data.blocker_data.has_async {
+                    data.scoping
+                        .mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
+                }
+            }
+            passes::PassKey::ClassifyExpressionDynamicity => {
+                passes::js_analyze::classify_expression_dynamicity(&mut data);
+            }
+            passes::PassKey::MarkBlockedExpressionsDynamic => {
+                if data.blocker_data.has_async {
+                    for info in data.expressions.values_mut() {
+                        if !info.is_dynamic
+                            && info
+                                .ref_symbols
+                                .iter()
+                                .any(|sym| data.blocker_data.symbol_blockers.contains_key(sym))
+                        {
+                            info.is_dynamic = true;
+                        }
+                    }
+                }
+            }
+            passes::PassKey::LowerTemplate => {
+                passes::lower::lower(component, &mut data);
+            }
+            passes::PassKey::ReactivityWalk => {
+                let mut bundle = passes::bundles::ReactivityBundle::new();
+                let mut visitors = bundle.visitors();
+                run_template_bundle(
+                    component,
+                    &mut data,
+                    source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+            }
+            passes::PassKey::TemplateClassificationWalk => {
+                let mut bundle = passes::bundles::TemplateClassificationBundle::new(
+                    component,
+                    &data,
+                    &component.source,
+                );
+                let mut visitors = bundle.visitors();
+                run_template_bundle(
+                    component,
+                    &mut data,
+                    source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+                bundle.finish(&mut data);
+            }
+            passes::PassKey::ClassifyRemainingFragments => {
+                passes::content_types::classify_remaining_fragments(&mut data, &component.source);
+            }
+            passes::PassKey::Validate => {
+                validate::validate(&parsed, &mut diags);
             }
         }
     }
-
-    passes::lower::lower(component, &mut data);
-
-    // Walk 1: Reactivity — produces dynamic_nodes, dynamic_attrs, needs_ref.
-    // Must complete before Walk 2 because ElementFlagsVisitor and
-    // ContentAndVarVisitor read these outputs.
-    {
-        let root = data.scoping.root_scope_id();
-        let mut v1 = passes::reactivity::ReactivityVisitor::new();
-        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v1],
-        );
-        diags.extend(ctx.take_warnings());
-    }
-
-    // Walk 2: Element flags + hoistable snippets + bind semantics +
-    // content classification + needs_var (bottom-up via leave_element).
-    // Depends on dynamic_attrs/dynamic_nodes/needs_ref from Walk 1.
-    {
-        let root = data.scoping.root_scope_id();
-        let script_syms: rustc_hash::FxHashSet<crate::scope::SymbolId> = data
-            .script
-            .as_ref()
-            .map(|s| {
-                s.declarations
-                    .iter()
-                    .filter_map(|d| data.scoping.find_binding(root, &d.name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let top_level_snippet_ids: rustc_hash::FxHashSet<svelte_ast::NodeId> = component
-            .fragment
-            .nodes
-            .iter()
-            .filter_map(|&id| {
-                if let svelte_ast::Node::SnippetBlock(b) = component.store.get(id) {
-                    Some(b.id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let mut v2 = passes::element_flags::ElementFlagsVisitor::new(&component.source);
-        let mut v3 = passes::hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
-        let mut v4 = passes::bind_semantics::BindSemanticsVisitor::new(&component.source);
-        let mut v5 = passes::content_types::ContentAndVarVisitor {
-            source: &component.source,
-        };
-        let mut ctx = walker::VisitContext::new(root, &mut data, &component.store, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v2, &mut v3, &mut v4, &mut v5],
-        );
-        diags.extend(ctx.take_warnings());
-        v3.finish(&mut data);
-    }
-
-    // Classify non-element fragments (Root, IfConsequent, EachBody, etc.)
-    // Element fragments already classified by ContentAndVarVisitor::leave_element
-    passes::content_types::classify_remaining_fragments(&mut data, &component.source);
-    validate::validate(&parsed, &mut diags);
 
     // Apply warning filter if provided
     if let Some(ref filter) = options.warning_filter {
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
     }
+
+    data.runtime_plan = build_runtime_plan(&data, options.dev);
 
     (data, parsed, diags)
 }
@@ -311,7 +357,10 @@ pub fn analyze_module(
 /// Scope is derived from const_tags.by_fragment + fragment_scopes.
 fn mark_const_tag_bindings(data: &mut AnalysisData) {
     use types::script::RuneKind;
-    let pairs: Vec<_> = data.const_tags.by_fragment.iter()
+    let pairs: Vec<_> = data
+        .const_tags
+        .by_fragment
+        .iter()
         .filter_map(|(frag_key, tag_ids)| {
             let scope = data.scoping.fragment_scope(frag_key)?;
             Some((scope, tag_ids.clone()))
@@ -319,20 +368,29 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
         .collect();
     for (scope, tag_ids) in pairs {
         for tag_id in tag_ids {
-            let Some(names) = data.const_tags.names(tag_id).cloned() else { continue };
+            let Some(names) = data.const_tags.names(tag_id).cloned() else {
+                continue;
+            };
             let is_destructured = names.len() > 1;
+            let mut syms = Vec::new();
             // Get deps from the @const expression's ref_symbols
-            let deps: Vec<_> = data.expressions.get(tag_id)
+            let deps: Vec<_> = data
+                .expressions
+                .get(tag_id)
                 .map(|info| info.ref_symbols.to_vec())
                 .unwrap_or_default();
             for name in &names {
                 if let Some(sym_id) = data.scoping.find_binding(scope, name) {
+                    syms.push(sym_id);
                     data.scoping.mark_rune(sym_id, RuneKind::Derived);
                     data.scoping.set_derived_deps(sym_id, deps.clone());
                     if is_destructured {
                         data.scoping.mark_const_alias(sym_id, tag_id);
                     }
                 }
+            }
+            if !syms.is_empty() {
+                data.const_tags.syms.insert(tag_id, syms);
             }
         }
     }
@@ -341,13 +399,13 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
 /// Resolve render tag argument prop sources via reference_id from parsed expressions.
 fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     use oxc_ast::ast::Expression;
-    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
+    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_plans.keys().collect();
     for tag_id in tag_ids {
-        let offset = match data.node_expr_offsets.get(tag_id) {
-            Some(&o) => o,
+        let handle = match data.node_expr_handles.get(tag_id) {
+            Some(&handle) => handle,
             None => continue,
         };
-        let resolved = match parsed.exprs.get(&offset) {
+        let resolved: Vec<Option<crate::scope::SymbolId>> = match parsed.expr(handle) {
             Some(Expression::CallExpression(call)) => call
                 .arguments
                 .iter()
@@ -365,7 +423,12 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
                 .collect(),
             _ => continue,
         };
-        data.render_tag_prop_sources.insert(tag_id, resolved);
+        let Some(plan) = data.render_tag_plans.get_mut(tag_id) else {
+            continue;
+        };
+        for (arg_plan, prop_source) in plan.arg_plans.iter_mut().zip(resolved) {
+            arg_plan.prop_source = prop_source;
+        }
     }
 }
 
@@ -374,7 +437,7 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
     use crate::types::data::RenderTagCalleeMode;
 
-    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_arg_infos.keys().collect();
+    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_plans.keys().collect();
 
     for node_id in all_ids {
         let is_dynamic = match data.render_tag_callee_sym.get(node_id) {
@@ -390,7 +453,30 @@ fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
             (false, true) => RenderTagCalleeMode::Chain,
             (false, false) => RenderTagCalleeMode::Direct,
         };
-        data.render_tag_callee_mode.insert(node_id, mode);
+        if let Some(plan) = data.render_tag_plans.get_mut(node_id) {
+            plan.callee_mode = mode;
+        }
+    }
+}
+
+fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
+    let has_exports = !data.exports.is_empty();
+    let has_bindable = data.props.as_ref().is_some_and(|p| p.has_bindable);
+    let has_stores = !data.scoping.store_symbol_ids().is_empty();
+    let has_ce_props = data.custom_element && data.props.as_ref().is_some_and(|p| !p.props.is_empty());
+    let needs_push = has_bindable || has_exports || has_ce_props || data.needs_context || dev;
+    let has_component_exports = has_exports || has_ce_props || dev;
+    let needs_props_param = data.props.is_some() || needs_push;
+
+    RuntimePlan {
+        needs_push,
+        has_component_exports,
+        has_exports,
+        has_bindable,
+        has_stores,
+        has_ce_props,
+        needs_props_param,
+        needs_pop_with_return: needs_push && has_component_exports,
     }
 }
 

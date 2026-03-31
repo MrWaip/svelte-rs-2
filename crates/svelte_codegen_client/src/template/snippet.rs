@@ -19,17 +19,17 @@ pub(crate) fn gen_snippet_block<'a>(
     prepend_stmts: Vec<Statement<'a>>,
 ) -> Statement<'a> {
     let block = ctx.snippet_block(id);
-    let name = block.name(ctx.source).to_string();
+    let name = block.name(ctx.state.source).to_string();
 
-    let param_names: Vec<String> = ctx.analysis.snippets.params(id).to_vec();
+    let param_names: Vec<String> = ctx.snippet_params(id).to_vec();
 
     // Set snippet params so expression codegen wraps them as thunk calls.
     // Save and restore to handle nested snippets correctly.
-    let saved_params = std::mem::replace(&mut ctx.snippet_param_names, param_names.clone());
+    let saved_params = std::mem::replace(&mut ctx.state.snippet_param_names, param_names.clone());
 
     let body_stmts = gen_fragment(ctx, FragmentKey::SnippetBody(id));
 
-    ctx.snippet_param_names = saved_params;
+    ctx.state.snippet_param_names = saved_params;
 
     let params = build_snippet_params(ctx, &param_names);
 

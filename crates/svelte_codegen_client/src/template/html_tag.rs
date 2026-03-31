@@ -6,6 +6,7 @@ use svelte_ast::{Namespace, NodeId};
 use crate::builder::Arg;
 use crate::context::Ctx;
 
+use super::async_plan::AsyncEmissionPlan;
 /// Generate `$.html(anchor, () => expr, is_controlled?, is_svg?, is_mathml?)`.
 pub(crate) fn gen_html_tag<'a>(
     ctx: &mut Ctx<'a>,
@@ -14,15 +15,15 @@ pub(crate) fn gen_html_tag<'a>(
     is_controlled: bool,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let has_await = ctx.expr_has_await(id);
-    let needs_async = has_await || ctx.expr_has_blockers(id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, id);
+    let needs_async = async_plan.needs_async();
 
     // Namespace flags only matter for non-controlled path (controlled inherits parent namespace)
     let is_svg = !is_controlled
-        && ctx.component.options.as_ref().and_then(|o| o.namespace.as_ref())
+        && ctx.query.component.options.as_ref().and_then(|o| o.namespace.as_ref())
             == Some(&Namespace::Svg);
     let is_mathml = !is_controlled
-        && ctx.component.options.as_ref().and_then(|o| o.namespace.as_ref())
+        && ctx.query.component.options.as_ref().and_then(|o| o.namespace.as_ref())
             == Some(&Namespace::Mathml);
 
     if needs_async {
@@ -44,8 +45,8 @@ pub(crate) fn gen_html_tag<'a>(
 
         let html_stmt = ctx.b.call_stmt("$.html", html_args);
 
-        let async_thunk = if has_await { Some(ctx.b.async_thunk(expression)) } else { None };
-        stmts.push(ctx.gen_async_block(id, anchor_expr, has_await, async_thunk, "$$html", vec![html_stmt]));
+        let async_thunk = async_plan.async_thunk(ctx, expression);
+        stmts.push(async_plan.wrap_async_block(ctx, anchor_expr, "$$html", async_thunk, vec![html_stmt]));
     } else {
         let thunk = super::expression::build_node_thunk(ctx, id);
 

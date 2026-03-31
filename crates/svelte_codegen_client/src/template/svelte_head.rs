@@ -20,7 +20,7 @@ pub(crate) fn gen_svelte_head<'a>(
     let body_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
 
     // hash(filename) — Svelte uses djb2 hash of the filename for scope isolation.
-    let hash_str = hash(ctx.filename);
+    let hash_str = hash(ctx.state.filename);
 
     stmts.push(ctx.b.call_stmt(
         "$.head",

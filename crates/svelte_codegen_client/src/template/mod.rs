@@ -1,6 +1,7 @@
 //! Template and DOM traversal code generation.
 
 pub(crate) mod attributes;
+pub(crate) mod async_plan;
 pub(crate) mod await_block;
 pub(crate) mod bind;
 
@@ -48,17 +49,17 @@ pub(crate) fn add_svelte_meta<'a>(
     span_start: u32,
     block_type: &str,
 ) -> Statement<'a> {
-    if !ctx.dev {
+    if !ctx.state.dev {
         return ctx.b.expr_stmt(expression);
     }
 
-    let (line, col) = compute_line_col(ctx.source, span_start);
+    let (line, col) = compute_line_col(ctx.state.source, span_start);
 
     let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
     ctx.b.call_stmt("$.add_svelte_meta", [
         Arg::Expr(thunk),
         Arg::StrRef(block_type),
-        Arg::Ident(ctx.name),
+        Arg::Ident(ctx.state.name),
         Arg::Num(line as f64),
         Arg::Num(col as f64),
     ])
@@ -67,7 +68,7 @@ pub(crate) fn add_svelte_meta<'a>(
 /// Return the appropriate `$.from_*` function for the component's namespace.
 fn from_template_fn(ctx: &Ctx) -> &'static str {
     use svelte_ast::Namespace;
-    match ctx.component.options.as_ref().and_then(|o| o.namespace.as_ref()) {
+    match ctx.query.component.options.as_ref().and_then(|o| o.namespace.as_ref()) {
         Some(Namespace::Svg) => "$.from_svg",
         Some(Namespace::Mathml) => "$.from_mathml",
         _ => "$.from_html",
@@ -134,8 +135,8 @@ pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Stat
     let mut svelte_body_ids = Vec::new();
     let mut instance_snippet_ids = Vec::new();
     let mut hoistable_snippet_ids = Vec::new();
-    for &id in &ctx.component.fragment.nodes {
-        let node = ctx.component.store.get(id);
+    for &id in &ctx.query.component.fragment.nodes {
+        let node = ctx.query.component.store.get(id);
         match node {
             svelte_ast::Node::SvelteHead(h) => svelte_head_ids.push(h.id),
             svelte_ast::Node::SvelteWindow(w) => svelte_window_ids.push(w.id),
@@ -234,7 +235,7 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
 
     let mut sub_hoisted = Vec::with_capacity(2);
     emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
-    ctx.module_hoisted.extend(sub_hoisted);
+    ctx.state.module_hoisted.extend(sub_hoisted);
 
     // Title elements emit after DOM init but before $.append()
     let has_append = matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. } | ContentStrategy::SingleBlock(_));
@@ -357,7 +358,7 @@ fn emit_single_element<'a>(
     } else {
         ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html))])
     };
-    if ctx.dev {
+    if ctx.state.dev {
         let locs = build_element_locations(ctx, el_id);
         from_html = wrap_add_locations(ctx, from_html, locs);
     }
@@ -368,7 +369,7 @@ fn emit_single_element<'a>(
 
     // Pre-computed blocker indices for this element's fragment
     let el_key = svelte_analyze::FragmentKey::Element(el_id);
-    let el_blockers = ctx.analysis.fragments.fragment_blockers(&el_key).to_vec();
+    let el_blockers = ctx.fragment_blockers(&el_key).to_vec();
 
     if is_root {
         // Root: template BEFORE children (top-down)
@@ -413,7 +414,13 @@ fn emit_single_block<'a>(
     // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
-        FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
+        FragmentItem::RenderTag(id)
+            if !ctx
+                .render_tag_plan(*id)
+                .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id))
+                .callee_mode
+                .is_dynamic() =>
+        {
             if !is_root { ctx.gen_ident("fragment"); }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;
@@ -500,7 +507,7 @@ fn emit_mixed<'a>(
             from_fn,
             [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(flags)],
         );
-        if ctx.dev {
+        if ctx.state.dev {
             let locs = build_fragment_element_locations(ctx, key);
             from_html = wrap_add_locations(ctx, from_html, locs);
         }
@@ -553,7 +560,7 @@ fn emit_mixed<'a>(
 /// Wrap a `$.from_html(...)` expression with `$.add_locations(expr, App[$.FILENAME], locs)`.
 fn wrap_add_locations<'a>(ctx: &mut Ctx<'a>, from_html: Expression<'a>, locs: Expression<'a>) -> Expression<'a> {
     let filename_member = ctx.b.computed_member_expr(
-        ctx.b.rid_expr(ctx.name),
+        ctx.b.rid_expr(ctx.state.name),
         ctx.b.static_member_expr(ctx.b.rid_expr("$"), "FILENAME"),
     );
     ctx.b.call_expr("$.add_locations", [
@@ -572,7 +579,7 @@ fn build_element_locations<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Expression<'
 
 /// Build `[line, col]` or `[line, col, [children...]]` for one element.
 fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &svelte_ast::Fragment) -> Expression<'a> {
-    let (line, col) = crate::script::compute_line_col(ctx.source, span_start);
+    let (line, col) = crate::script::compute_line_col(ctx.state.source, span_start);
     let mut inner: Vec<Arg<'a, '_>> = vec![Arg::Num(line as f64), Arg::Num(col as f64)];
 
     let child_locs = build_child_element_locs(ctx, fragment);
@@ -588,7 +595,7 @@ fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &s
 fn build_child_element_locs<'a>(ctx: &mut Ctx<'a>, fragment: &svelte_ast::Fragment) -> Vec<Expression<'a>> {
     let mut locs = Vec::new();
     for &id in &fragment.nodes {
-        let node = ctx.component.store.get(id);
+        let node = ctx.query.component.store.get(id);
         if let Node::Element(el) = node {
             locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
         }

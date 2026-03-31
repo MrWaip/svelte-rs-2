@@ -78,9 +78,9 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let boundary = ctx.svelte_boundary(id);
     let mut hoisted_snippet_ids: Vec<(NodeId, Option<&str>)> = Vec::new();
     for &nid in &boundary.fragment.nodes {
-        let node = ctx.component.store.get(nid);
+        let node = ctx.query.component.store.get(nid);
         if let svelte_ast::Node::SnippetBlock(block) = node {
-            let name = block.name(ctx.source);
+            let name = block.name(ctx.state.source);
             let prop_name = if name == "failed" || name == "pending" {
                 Some(name)
             } else {
@@ -122,15 +122,10 @@ pub(crate) fn gen_svelte_boundary<'a>(
 
     // Resolve const-tag binding SymbolIds for snippet reference checking
     let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
-        let scope = ctx.analysis.scoping.fragment_scope(&FragmentKey::SvelteBoundaryBody(id));
-        if let Some(scope_id) = scope {
-            const_tag_ids.iter()
-                .flat_map(|cid| ctx.const_tag_names(*cid).cloned().unwrap_or_default())
-                .filter_map(|name| ctx.analysis.scoping.find_binding(scope_id, &name))
-                .collect()
-        } else {
-            FxHashSet::default()
-        }
+        const_tag_ids
+            .iter()
+            .flat_map(|cid| ctx.const_tag_syms(*cid).map(|syms| syms.to_vec()).unwrap_or_default())
+            .collect()
     } else {
         FxHashSet::default()
     };
@@ -152,8 +147,10 @@ pub(crate) fn gen_svelte_boundary<'a>(
             for (cid, names) in &infos {
                 // Clone init expression from the pre-parsed Statement in stmts.
                 // Shallow destructure — known top-level shape, not removing yet.
-                let cid_offset = ctx.node_expr_offset(*cid);
-                if let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmts.get(&cid_offset) {
+                let stmt_handle = ctx.const_tag_stmt_handle(*cid);
+                if let Some(Statement::VariableDeclaration(decl)) = stmt_handle
+                    .and_then(|handle| ctx.state.parsed.stmt(handle))
+                {
                     if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref()) {
                         let cloned = ctx.b.clone_expr(init);
                         set.push((*cid, names.clone(), cloned));
@@ -171,7 +168,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
         // Only inject const tags into snippets that actually reference the const-tag bindings
         let snippet_uses_const = if has_const_tags {
             let key = FragmentKey::SnippetBody(*snippet_id);
-            ctx.analysis.fragment_references_any_symbol(&key, &const_binding_syms)
+            ctx.fragment_references_any_symbol(&key, &const_binding_syms)
         } else {
             false
         };
@@ -213,4 +210,3 @@ pub(crate) fn gen_svelte_boundary<'a>(
         stmts.push(ctx.b.block_stmt(hoisted_stmts));
     }
 }
-
