@@ -53,8 +53,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     };
 
     let allocator = ctx.b.ast.allocator;
-    let component_scoping = &ctx.analysis.scoping;
-    let props = ctx.analysis.props.as_ref();
+    let component_scoping = &ctx.analysis().scoping;
+    let props = ctx.analysis().props.as_ref();
     let component_source = &ctx.component.source;
     let script_content_start = ctx.component.script.as_ref().unwrap().content_span.start;
 
@@ -74,7 +74,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             component_scoping,
             props,
             prop_defaults,
-            Some(ctx.analysis.script_rune_call_kinds()),
+            Some(ctx.analysis().script_rune_call_kinds()),
             dev,
             component_source,
             script_content_start,

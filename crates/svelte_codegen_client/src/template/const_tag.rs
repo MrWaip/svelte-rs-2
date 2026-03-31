@@ -21,7 +21,7 @@ pub(crate) fn gen_const_tags<'a>(
 
     // Check if any const tag triggers async mode
     let needs_async = ctx.experimental_async && ids.iter().any(|&id| {
-        ctx.expr_has_await(id) || !ctx.analysis.expression_blockers(id).is_empty()
+        ctx.expr_has_await(id) || !ctx.analysis().expression_blockers(id).is_empty()
     });
 
     if needs_async {
@@ -77,12 +77,12 @@ fn gen_const_tags_async<'a>(
     let promises_name = ctx.gen_ident("promises");
     let mut thunks: Vec<Expression<'a>> = Vec::new();
 
-    let scope = ctx.analysis.scoping.fragment_scope(&key);
+    let scope = ctx.analysis().scoping.fragment_scope(&key);
 
     for &id in ids {
         let names = ctx.const_tag_names(id).cloned().unwrap_or_default();
         let has_await = ctx.expr_has_await(id);
-        let blockers = ctx.analysis.expression_blockers(id);
+        let blockers = ctx.analysis().expression_blockers(id);
         let init_expr = extract_const_init(ctx, id);
 
         if names.len() == 1 {
@@ -119,7 +119,7 @@ fn gen_const_tags_async<'a>(
 
             let thunk_idx = thunks.len() - 1;
             if let Some(scope_id) = scope {
-                if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope_id, &names[0]) {
+                if let Some(sym_id) = ctx.analysis().scoping.find_binding(scope_id, &names[0]) {
                     ctx.const_tag_blockers.insert(sym_id, (promises_name.clone(), thunk_idx));
                 }
             }
@@ -157,7 +157,7 @@ fn gen_const_tags_async<'a>(
             let thunk_idx = thunks.len() - 1;
             if let Some(scope_id) = scope {
                 for name in &names {
-                    if let Some(sym_id) = ctx.analysis.scoping.find_binding(scope_id, name) {
+                    if let Some(sym_id) = ctx.analysis().scoping.find_binding(scope_id, name) {
                         ctx.const_tag_blockers.insert(sym_id, (promises_name.clone(), thunk_idx));
                     }
                 }

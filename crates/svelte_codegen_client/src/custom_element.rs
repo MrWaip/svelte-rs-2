@@ -19,7 +19,7 @@ pub fn gen_custom_element<'a>(
     // Determine tag and parsed options based on config variant
     let (simple_tag, parsed) = match ce_config {
         CustomElementConfig::Tag(tag) => (Some(tag.as_str()), None),
-        CustomElementConfig::Expression(_) => (None, ctx.analysis.ce_config.as_ref()),
+        CustomElementConfig::Expression(_) => (None, ctx.analysis().ce_config.as_ref()),
     };
 
     // Resolve tag: simple form uses tag directly, object form uses parsed tag
@@ -37,7 +37,7 @@ pub fn gen_custom_element<'a>(
 
     // -- Arg 4: Accessors array (from exports) --
     let accessors = b.array_from_args(
-        ctx.analysis.exports.iter().map(|e| {
+        ctx.analysis().exports.iter().map(|e| {
             let name = e.alias.as_deref().unwrap_or(e.name.as_str());
             Arg::StrRef(name)
         })
@@ -47,7 +47,7 @@ pub fn gen_custom_element<'a>(
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
 
     // -- Arg 6: Extend (pre-parsed in analyze) --
-    let extend_arg: Option<Expression<'a>> = ctx.analysis.ce_config.as_ref()
+    let extend_arg: Option<Expression<'a>> = ctx.analysis().ce_config.as_ref()
         .and_then(|c| c.extend_span)
         .and_then(|span| ctx.parsed.exprs.remove(&span.start));
 
@@ -116,7 +116,7 @@ fn build_props_metadata<'a>(
     }
 
     // Second: emit remaining component props not already in CE config
-    if let Some(ref props_analysis) = ctx.analysis.props {
+    if let Some(ref props_analysis) = ctx.analysis().props {
         for prop in &props_analysis.props {
             if prop.is_rest || prop.is_reserved {
                 continue;
@@ -138,7 +138,7 @@ fn build_props_metadata<'a>(
 
 /// Resolve the prop key: use prop_alias if the binding has one, otherwise use the name.
 fn resolve_prop_key(ctx: &Ctx<'_>, name: &str) -> String {
-    if let Some(ref props) = ctx.analysis.props {
+    if let Some(ref props) = ctx.analysis().props {
         for prop in &props.props {
             if prop.local_name == name || prop.prop_name == name {
                 return prop.prop_name.clone();

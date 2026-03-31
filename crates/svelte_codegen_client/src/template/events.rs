@@ -68,7 +68,7 @@ pub(crate) fn gen_use_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.action", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    let blockers = ctx.analysis().attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
         stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
@@ -92,7 +92,7 @@ pub(crate) fn gen_attach_tag<'a>(
     let thunk = ctx.b.thunk(expr);
     let mut stmt = ctx.b.call_stmt("$.attach", [Arg::Ident(el_name), Arg::Expr(thunk)]);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    let blockers = ctx.analysis().attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
         stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
@@ -138,7 +138,7 @@ pub(crate) fn gen_transition_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.transition", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    let blockers = ctx.analysis().attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
         stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
@@ -173,7 +173,7 @@ pub(crate) fn gen_animate_directive<'a>(
 
     let mut stmt = ctx.b.call_stmt("$.animation", args);
 
-    let blockers = ctx.analysis.attr_expression_blockers(attr_id);
+    let blockers = ctx.analysis().attr_expression_blockers(attr_id);
     if !blockers.is_empty() {
         stmt = gen_run_after_blockers(ctx, stmt, &blockers);
     }
@@ -470,7 +470,7 @@ pub(crate) fn gen_event_attr_on<'a>(
         (raw_event_name.to_string(), false)
     };
 
-    let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
+    let has_call = ctx.analysis().attr_expression(attr_id).map_or(false, |e| e.has_call);
     let handler_expr = super::expression::get_attr_expr(ctx, attr_id);
     let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);

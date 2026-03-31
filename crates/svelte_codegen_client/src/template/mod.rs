@@ -368,7 +368,7 @@ fn emit_single_element<'a>(
 
     // Pre-computed blocker indices for this element's fragment
     let el_key = svelte_analyze::FragmentKey::Element(el_id);
-    let el_blockers = ctx.analysis.fragments.fragment_blockers(&el_key).to_vec();
+    let el_blockers = ctx.analysis().fragments.fragment_blockers(&el_key).to_vec();
 
     if is_root {
         // Root: template BEFORE children (top-down)
@@ -413,7 +413,7 @@ fn emit_single_block<'a>(
     // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
     // Non-root consumes a "fragment" ident for consistent numbering.
     match item {
-        FragmentItem::RenderTag(id) if !ctx.analysis.render_tag_callee_mode(*id).is_dynamic() => {
+        FragmentItem::RenderTag(id) if !ctx.analysis().render_tag_callee_mode(*id).is_dynamic() => {
             if !is_root { ctx.gen_ident("fragment"); }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;

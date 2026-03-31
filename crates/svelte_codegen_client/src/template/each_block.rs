@@ -46,7 +46,7 @@ pub(crate) fn gen_each_block<'a>(
         var_decl.declarations.remove(0).id
     });
 
-    let context_name = ctx.analysis.each_blocks.context_name(block_id).to_string();
+    let context_name = ctx.analysis().each_blocks.context_name(block_id).to_string();
 
     let key_is_item = ctx.each_key_is_item(block_id);
 

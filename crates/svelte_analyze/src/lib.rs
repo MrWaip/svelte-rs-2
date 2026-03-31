@@ -5,18 +5,19 @@ pub(crate) mod utils;
 mod validate;
 pub(crate) mod walker;
 
-pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData, IgnoreData,
-    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagData,
-    ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode, ExpressionInfo,
-    ExpressionKind, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
-    ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, SnippetData,
-};
-pub use utils::IdentGen;
 pub use scope::ComponentScoping;
+pub use types::data::{
+    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
+    ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    ConstTagData, ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode,
+    ExpressionInfo, ExpressionKind, FragmentData, FragmentItem, FragmentKey, IgnoreData,
+    LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis, PropsAnalysis,
+    RenderTagCalleeMode, SnippetData,
+};
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
+pub use utils::IdentGen;
 pub use utils::{
     is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
     strip_capture_event,
@@ -93,7 +94,14 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::js_analyze::BindingPreparer;
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
+        let mut ctx = walker::VisitContext::with_parsed(
+            root,
+            &mut data,
+            &component.store,
+            &parsed,
+            source,
+            runes,
+        );
         walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
         diags.extend(ctx.take_warnings());
     }
@@ -120,12 +128,15 @@ pub fn analyze_with_options<'a>(
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::template_semantic::TemplateSemanticVisitor;
         let mut v2 = passes::template_side_tables::TemplateSideTablesVisitor { component };
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v1, &mut v2],
+        let mut ctx = walker::VisitContext::with_parsed(
+            root,
+            &mut data,
+            &component.store,
+            &parsed,
+            source,
+            runes,
         );
+        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1, &mut v2]);
         diags.extend(ctx.take_warnings());
     }
     data.scoping.build_template_scope_set();
@@ -135,12 +146,15 @@ pub fn analyze_with_options<'a>(
     {
         let root = data.scoping.root_scope_id();
         let mut v2 = passes::collect_symbols::make_visitor(scoping_built);
-        let mut ctx = walker::VisitContext::with_parsed(root, &mut data, &component.store, &parsed, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v2],
+        let mut ctx = walker::VisitContext::with_parsed(
+            root,
+            &mut data,
+            &component.store,
+            &parsed,
+            source,
+            runes,
         );
+        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v2]);
         diags.extend(ctx.take_warnings());
     }
     passes::collect_symbols::resolve_script_stores(&mut data);
@@ -174,7 +188,10 @@ pub fn analyze_with_options<'a>(
                     info.kind,
                     crate::types::data::ExpressionKind::MemberExpression
                         | crate::types::data::ExpressionKind::CallExpression { .. }
-                ) && info.ref_symbols.iter().any(|&sym| data.scoping.is_rest_prop(sym))
+                ) && info
+                    .ref_symbols
+                    .iter()
+                    .any(|&sym| data.scoping.is_rest_prop(sym))
             });
     }
 
@@ -191,7 +208,8 @@ pub fn analyze_with_options<'a>(
     // Blocked symbols are reactive (their values change when the promise resolves).
     // Mark them as dynamic so derived symbols that depend on them propagate dynamicity.
     if data.blocker_data.has_async {
-        data.scoping.mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
+        data.scoping
+            .mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
     }
 
     passes::js_analyze::classify_expression_dynamicity(&mut data);
@@ -199,7 +217,12 @@ pub fn analyze_with_options<'a>(
     // Mark expressions referencing blocked symbols as dynamic (after classify_expression_dynamicity)
     if data.blocker_data.has_async {
         for info in data.expressions.values_mut() {
-            if !info.is_dynamic && info.ref_symbols.iter().any(|sym| data.blocker_data.symbol_blockers.contains_key(sym)) {
+            if !info.is_dynamic
+                && info
+                    .ref_symbols
+                    .iter()
+                    .any(|sym| data.blocker_data.symbol_blockers.contains_key(sym))
+            {
                 info.is_dynamic = true;
             }
         }
@@ -214,11 +237,7 @@ pub fn analyze_with_options<'a>(
         let root = data.scoping.root_scope_id();
         let mut v1 = passes::reactivity::ReactivityVisitor::new();
         let mut ctx = walker::VisitContext::new(root, &mut data, &component.store, source, runes);
-        walker::walk_template(
-            &component.fragment,
-            &mut ctx,
-            &mut [&mut v1],
-        );
+        walker::walk_template(&component.fragment, &mut ctx, &mut [&mut v1]);
         diags.extend(ctx.take_warnings());
     }
 
@@ -250,7 +269,8 @@ pub fn analyze_with_options<'a>(
             })
             .collect();
         let mut v2 = passes::element_flags::ElementFlagsVisitor::new(&component.source);
-        let mut v3 = passes::hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
+        let mut v3 =
+            passes::hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids);
         let mut v4 = passes::bind_semantics::BindSemanticsVisitor::new(&component.source);
         let mut v5 = passes::content_types::ContentAndVarVisitor {
             source: &component.source,
@@ -311,7 +331,10 @@ pub fn analyze_module(
 /// Scope is derived from const_tags.by_fragment + fragment_scopes.
 fn mark_const_tag_bindings(data: &mut AnalysisData) {
     use types::script::RuneKind;
-    let pairs: Vec<_> = data.const_tags.by_fragment.iter()
+    let pairs: Vec<_> = data
+        .const_tags
+        .by_fragment
+        .iter()
         .filter_map(|(frag_key, tag_ids)| {
             let scope = data.scoping.fragment_scope(frag_key)?;
             Some((scope, tag_ids.clone()))
@@ -319,10 +342,14 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
         .collect();
     for (scope, tag_ids) in pairs {
         for tag_id in tag_ids {
-            let Some(names) = data.const_tags.names(tag_id).cloned() else { continue };
+            let Some(names) = data.const_tags.names(tag_id).cloned() else {
+                continue;
+            };
             let is_destructured = names.len() > 1;
             // Get deps from the @const expression's ref_symbols
-            let deps: Vec<_> = data.expressions.get(tag_id)
+            let deps: Vec<_> = data
+                .expressions
+                .get(tag_id)
                 .map(|info| info.ref_symbols.to_vec())
                 .unwrap_or_default();
             for name in &names {

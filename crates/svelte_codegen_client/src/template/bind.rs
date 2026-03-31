@@ -199,7 +199,7 @@ pub(crate) fn gen_bind_directive<'a>(
     };
 
     // Pre-computed blocker indices from analyze
-    let bind_blockers = ctx.analysis.bind_semantics.bind_blockers(bind.id).to_vec();
+    let bind_blockers = ctx.analysis().bind_semantics.bind_blockers(bind.id).to_vec();
 
     let stmt = match bind.name.as_str() {
         // --- Input/Form ---

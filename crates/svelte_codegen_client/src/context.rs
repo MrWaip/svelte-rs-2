@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{AnalysisData, ClassDirectiveInfo, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParserResult};
+use svelte_analyze::{AnalysisData, ClassDirectiveInfo, CodegenView, ComponentPropInfo, ContentStrategy, EventHandlerMode, FragmentKey, IdentGen, LoweredFragment, ParserResult};
 use svelte_ast::{AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow};
 use svelte_analyze::ExpressionInfo;
 use svelte_transform::TransformData;
@@ -14,7 +14,7 @@ use crate::builder::Builder;
 pub struct Ctx<'a> {
     pub b: Builder<'a>,
     pub component: &'a Component,
-    pub analysis: &'a AnalysisData,
+    pub query: CodegenView<'a>,
     pub name: &'a str,
     /// Data produced by the transform phase (e.g. tmp names for destructured const tags).
     pub transform_data: TransformData,
@@ -82,7 +82,7 @@ impl<'a> Ctx<'a> {
         Self {
             b: Builder::new(allocator),
             component,
-            analysis,
+            query: CodegenView::new(analysis),
             name,
             transform_data,
             parsed,
@@ -121,8 +121,13 @@ impl<'a> Ctx<'a> {
     pub fn svelte_body(&self, id: NodeId) -> &'a SvelteBody { self.component.store.svelte_body(id) }
 
     pub fn lowered_fragment(&self, key: &FragmentKey) -> &LoweredFragment {
-        self.analysis.fragments.lowered(key)
+        self.query.lowered_fragment(key)
             .unwrap_or_else(|| panic!("lowered fragment {:?} not found", key))
+    }
+
+    /// Temporary migration path for still-unported call-sites.
+    pub fn analysis(&self) -> &'a AnalysisData {
+        self.query.raw()
     }
 
     // -- Identifiers --
@@ -134,31 +139,31 @@ impl<'a> Ctx<'a> {
 
     // -- Analysis shortcuts --
 
-    pub fn is_dynamic(&self, id: NodeId) -> bool { self.analysis.is_dynamic(id) }
-    pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.analysis.is_elseif_alt(id) }
+    pub fn is_dynamic(&self, id: NodeId) -> bool { self.analysis().is_dynamic(id) }
+    pub fn is_elseif_alt(&self, id: NodeId) -> bool { self.analysis().is_elseif_alt(id) }
     pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
-        self.analysis.bind_semantics.is_mutable_rune_target(id)
+        self.analysis().bind_semantics.is_mutable_rune_target(id)
     }
     pub fn is_prop_source_node(&self, id: NodeId) -> bool {
-        self.analysis.bind_semantics.is_prop_source(id)
+        self.analysis().bind_semantics.is_prop_source(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.analysis.bind_semantics.each_context(id)
+        self.analysis().bind_semantics.each_context(id)
     }
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
-        self.analysis.each_blocks.index_sym(id)
-            .map(|sym| self.analysis.scoping.symbol_name(sym).to_string())
+        self.analysis().each_blocks.index_sym(id)
+            .map(|sym| self.analysis().scoping.symbol_name(sym).to_string())
     }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.analysis.await_bindings.value(id)
+        self.analysis().await_bindings.value(id)
     }
     pub fn await_error_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
-        self.analysis.await_bindings.error(id)
+        self.analysis().await_bindings.error(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.analysis.attr_is_import(attr_id)
+        self.analysis().attr_is_import(attr_id)
     }
-    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis.expression(id) }
+    pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> { self.analysis().expression(id) }
     pub fn const_tag_symbol_blocker_expr(&self, sym: SymbolId) -> Option<Expression<'a>> {
         let (name, idx) = self.const_tag_blockers.get(&sym)?;
         Some(self.b.computed_member_expr(
@@ -166,7 +171,7 @@ impl<'a> Ctx<'a> {
             self.b.num_expr(*idx as f64),
         ))
     }
-    pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis.known_value(name) }
+    pub fn known_value(&self, name: &str) -> Option<&str> { self.analysis().known_value(name) }
 
     /// Check if expression for node has `has_await`.
     pub fn expr_has_await(&self, id: NodeId) -> bool {
@@ -175,7 +180,7 @@ impl<'a> Ctx<'a> {
 
     /// Check if expression has blockers (references bindings with blocker metadata).
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
-        self.analysis.expr_has_blockers(id)
+        self.query.expr_has_blockers(id)
     }
 
 
@@ -198,7 +203,7 @@ impl<'a> Ctx<'a> {
 
     /// Build `[$$promises[i], ...]` blockers array from expression's blocker indices.
     pub fn build_blockers_array(&mut self, id: NodeId) -> oxc_ast::ast::Expression<'a> {
-        let indices = self.analysis.expression_blockers(id);
+        let indices = self.query.expression_blockers(id);
         if indices.is_empty() {
             return self.b.empty_array_expr();
         }
@@ -238,67 +243,67 @@ impl<'a> Ctx<'a> {
 
     // -- Fragment shortcuts --
 
-    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy { self.analysis.fragments.content_type(key) }
-    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool { self.analysis.fragments.has_dynamic_children(key) }
+    pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy { self.query.content_type(key) }
+    pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool { self.query.has_dynamic_children(key) }
 
     // -- Element flag shortcuts --
 
-    pub fn has_spread(&self, id: NodeId) -> bool { self.analysis.element_flags.has_spread(id) }
-    pub fn has_class_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_directives(id) }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.analysis.element_flags.has_class_attribute(id) }
-    pub fn needs_clsx(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_clsx(id) }
-    pub fn has_style_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_style_directives(id) }
-    pub fn style_directives(&self, id: NodeId) -> &[svelte_ast::StyleDirective] { self.analysis.element_flags.style_directives(id) }
-    pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_input_defaults(id) }
-    pub fn needs_var(&self, id: NodeId) -> bool { self.analysis.element_flags.needs_var(id) }
-    pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.analysis.element_flags.is_dynamic_attr(id) }
-    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_class(id) }
-    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.analysis.element_flags.static_style(id) }
-    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.analysis.element_flags.is_bound_contenteditable(id) }
-    pub fn has_use_directive(&self, id: NodeId) -> bool { self.analysis.element_flags.has_use_directive(id) }
+    pub fn has_spread(&self, id: NodeId) -> bool { self.query.has_spread(id) }
+    pub fn has_class_directives(&self, id: NodeId) -> bool { self.query.has_class_directives(id) }
+    pub fn has_class_attribute(&self, id: NodeId) -> bool { self.query.has_class_attribute(id) }
+    pub fn needs_clsx(&self, id: NodeId) -> bool { self.query.needs_clsx(id) }
+    pub fn has_style_directives(&self, id: NodeId) -> bool { self.query.has_style_directives(id) }
+    pub fn style_directives(&self, id: NodeId) -> &[svelte_ast::StyleDirective] { self.query.style_directives(id) }
+    pub fn needs_input_defaults(&self, id: NodeId) -> bool { self.query.needs_input_defaults(id) }
+    pub fn needs_var(&self, id: NodeId) -> bool { self.query.needs_var(id) }
+    pub fn is_dynamic_attr(&self, id: NodeId) -> bool { self.query.is_dynamic_attr(id) }
+    pub fn static_class(&self, id: NodeId) -> Option<&str> { self.query.static_class(id) }
+    pub fn static_style(&self, id: NodeId) -> Option<&str> { self.query.static_style(id) }
+    pub fn is_bound_contenteditable(&self, id: NodeId) -> bool { self.query.is_bound_contenteditable(id) }
+    pub fn has_use_directive(&self, id: NodeId) -> bool { self.query.has_use_directive(id) }
     #[allow(dead_code)]
-    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.analysis.element_flags.has_dynamic_class_directives(id) }
-    pub fn class_needs_state(&self, id: NodeId) -> bool { self.analysis.element_flags.class_needs_state(id) }
-    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.analysis.element_flags.class_attr_id(id) }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.analysis.element_flags.class_directive_info(id) }
-    pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.analysis.element_flags.is_expression_shorthand(id) }
-    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] { self.analysis.element_flags.component_props(id) }
-    pub fn component_snippets(&self, id: NodeId) -> &[NodeId] { self.analysis.snippets.component_snippets(id) }
-    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> { self.analysis.element_flags.event_handler_mode(attr_id) }
-    pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis.bind_semantics.has_bind_group(id) }
-    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis.bind_semantics.bind_group_value_attr(id) }
-    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> { self.analysis.bind_semantics.parent_each_blocks(id) }
-    pub fn contains_group_binding(&self, id: NodeId) -> bool { self.analysis.bind_semantics.contains_group_binding(id) }
+    pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool { self.query.has_dynamic_class_directives(id) }
+    pub fn class_needs_state(&self, id: NodeId) -> bool { self.query.class_needs_state(id) }
+    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> { self.query.class_attr_id(id) }
+    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> { self.query.class_directive_info(id) }
+    pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.query.is_expression_shorthand(id) }
+    pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] { self.query.component_props(id) }
+    pub fn component_snippets(&self, id: NodeId) -> &[NodeId] { self.query.component_snippets(id) }
+    pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> { self.query.event_handler_mode(attr_id) }
+    pub fn has_bind_group(&self, id: NodeId) -> bool { self.analysis().bind_semantics.has_bind_group(id) }
+    pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.analysis().bind_semantics.bind_group_value_attr(id) }
+    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> { self.analysis().bind_semantics.parent_each_blocks(id) }
+    pub fn contains_group_binding(&self, id: NodeId) -> bool { self.analysis().bind_semantics.contains_group_binding(id) }
 
     // -- Snippet shortcuts --
 
-    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.analysis.snippets.is_hoistable(id) }
+    pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.analysis().snippets.is_hoistable(id) }
 
     // -- ConstTag shortcuts --
 
-    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis.const_tags.names(id) }
-    pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.const_tags.by_fragment(key) }
+    pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> { self.analysis().const_tags.names(id) }
+    pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis().const_tags.by_fragment(key) }
 
     // -- DebugTag shortcuts --
 
     pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag { self.component.store.debug_tag(id) }
-    pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis.debug_tags.by_fragment(key) }
+    pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> { self.analysis().debug_tags.by_fragment(key) }
 
     // -- EachBlock shortcuts --
 
-    pub fn each_key_uses_index(&self, id: NodeId) -> bool { self.analysis.each_blocks.key_uses_index(id) }
-    pub fn each_body_uses_index(&self, id: NodeId) -> bool { self.analysis.each_blocks.body_uses_index(id) }
-    pub fn each_key_is_item(&self, id: NodeId) -> bool { self.analysis.each_blocks.key_is_item(id) }
-    pub fn each_has_animate(&self, id: NodeId) -> bool { self.analysis.each_blocks.has_animate(id) }
+    pub fn each_key_uses_index(&self, id: NodeId) -> bool { self.analysis().each_blocks.key_uses_index(id) }
+    pub fn each_body_uses_index(&self, id: NodeId) -> bool { self.analysis().each_blocks.body_uses_index(id) }
+    pub fn each_key_is_item(&self, id: NodeId) -> bool { self.analysis().each_blocks.key_is_item(id) }
+    pub fn each_has_animate(&self, id: NodeId) -> bool { self.analysis().each_blocks.has_animate(id) }
 
     // -- Expression offset lookups (for offset-keyed ParserResult) --
 
     pub fn node_expr_offset(&self, node_id: NodeId) -> u32 {
-        self.analysis.node_expr_offset(node_id)
+        self.analysis().node_expr_offset(node_id)
     }
 
     pub fn attr_expr_offset(&self, attr_id: NodeId) -> u32 {
-        self.analysis.attr_expr_offset(attr_id)
+        self.analysis().attr_expr_offset(attr_id)
     }
 
     // -- Delegated events --
