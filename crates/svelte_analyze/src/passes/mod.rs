@@ -80,33 +80,6 @@ pub(crate) struct PassDescriptor {
     pub(crate) produces: &'static [DataToken],
 }
 
-pub(crate) const LEGACY_PASS_ORDER: &[PassKey] = &[
-    PassKey::ClassifyRenderTags,
-    PassKey::AnalyzeScript,
-    PassKey::MarkRunes,
-    PassKey::PrepareAwaitBindings,
-    PassKey::ExtractCeConfig,
-    PassKey::TemplateScoping,
-    PassKey::TemplateSemanticAndSideTables,
-    PassKey::CollectSymbols,
-    PassKey::ResolveScriptStores,
-    PassKey::JsAnalyzePostTemplate,
-    PassKey::ClassifyNeedsContext,
-    PassKey::PostResolve,
-    PassKey::ResolveRenderTagMeta,
-    PassKey::CollectConstTagFragments,
-    PassKey::MarkConstTagBindings,
-    PassKey::PrecomputeDynamicCache,
-    PassKey::MarkBlockedSymbolsDynamic,
-    PassKey::ClassifyExpressionDynamicity,
-    PassKey::MarkBlockedExpressionsDynamic,
-    PassKey::LowerTemplate,
-    PassKey::ReactivityWalk,
-    PassKey::TemplateClassificationWalk,
-    PassKey::ClassifyRemainingFragments,
-    PassKey::Validate,
-];
-
 pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     PassDescriptor {
         key: PassKey::ClassifyRenderTags,
@@ -249,15 +222,10 @@ pub(crate) enum PassPlanError {
         second: PassKey,
     },
     DependencyCycle,
-    LegacyOrderMismatch {
-        resolved: Vec<PassKey>,
-        legacy: Vec<PassKey>,
-    },
 }
 
 pub(crate) fn resolve_execution_order(
     descriptors: &[PassDescriptor],
-    legacy_order: &[PassKey],
 ) -> Result<Vec<PassKey>, PassPlanError> {
     let mut pass_by_key: FxHashMap<PassKey, PassDescriptor> = FxHashMap::default();
     for descriptor in descriptors {
@@ -302,11 +270,10 @@ pub(crate) fn resolve_execution_order(
         }
     }
 
-    let stable_rank: FxHashMap<PassKey, usize> = legacy_order
+    let stable_rank: FxHashMap<PassKey, usize> = descriptors
         .iter()
-        .copied()
         .enumerate()
-        .map(|(idx, key)| (key, idx))
+        .map(|(idx, descriptor)| (descriptor.key, idx))
         .collect();
     let mut queue: VecDeque<PassKey> = {
         let mut zeroes: Vec<PassKey> = indegree
@@ -338,17 +305,11 @@ pub(crate) fn resolve_execution_order(
     if order.len() != descriptors.len() {
         return Err(PassPlanError::DependencyCycle);
     }
-    if order != legacy_order {
-        return Err(PassPlanError::LegacyOrderMismatch {
-            resolved: order,
-            legacy: legacy_order.to_vec(),
-        });
-    }
     Ok(order)
 }
 
 pub(crate) fn resolve_default_execution_order() -> Result<Vec<PassKey>, PassPlanError> {
-    resolve_execution_order(PASS_DESCRIPTORS, LEGACY_PASS_ORDER)
+    resolve_execution_order(PASS_DESCRIPTORS)
 }
 
 #[cfg(test)]
@@ -369,9 +330,7 @@ mod tests {
                 produces: &[DataToken::ScriptInfo],
             },
         ];
-        let order =
-            resolve_execution_order(DESCRIPTORS, &[PassKey::AnalyzeScript, PassKey::MarkRunes])
-                .expect("must resolve");
+        let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
 
         assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::MarkRunes]);
     }
@@ -390,9 +349,7 @@ mod tests {
                 produces: &[DataToken::RuneMarks],
             },
         ];
-        let err =
-            resolve_execution_order(DESCRIPTORS, &[PassKey::AnalyzeScript, PassKey::MarkRunes])
-                .expect_err("must fail");
+        let err = resolve_execution_order(DESCRIPTORS).expect_err("must fail");
 
         assert_eq!(err, PassPlanError::DependencyCycle);
     }
@@ -404,8 +361,7 @@ mod tests {
             requires: &[DataToken::ScriptInfo],
             produces: &[DataToken::RuneMarks],
         }];
-        let err =
-            resolve_execution_order(DESCRIPTORS, &[PassKey::MarkRunes]).expect_err("must fail");
+        let err = resolve_execution_order(DESCRIPTORS).expect_err("must fail");
 
         assert_eq!(
             err,
@@ -417,11 +373,11 @@ mod tests {
     }
 
     #[test]
-    fn detects_legacy_order_mismatch() {
+    fn resolves_descriptor_order_when_dependencies_allow_multiple_orders() {
         const DESCRIPTORS: &[PassDescriptor] = &[
             PassDescriptor {
                 key: PassKey::AnalyzeScript,
-                requires: &[DataToken::RuneMarks],
+                requires: &[],
                 produces: &[DataToken::ScriptInfo],
             },
             PassDescriptor {
@@ -431,15 +387,7 @@ mod tests {
             },
         ];
 
-        let err = resolve_execution_order(DESCRIPTORS, &[PassKey::AnalyzeScript, PassKey::MarkRunes])
-            .expect_err("must reject mismatched legacy order");
-
-        assert_eq!(
-            err,
-            PassPlanError::LegacyOrderMismatch {
-                resolved: vec![PassKey::MarkRunes, PassKey::AnalyzeScript],
-                legacy: vec![PassKey::AnalyzeScript, PassKey::MarkRunes],
-            }
-        );
+        let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
+        assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::MarkRunes]);
     }
 }

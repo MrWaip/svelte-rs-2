@@ -528,7 +528,10 @@ fn each_block_shadowing() {
 
     // Find the each block's scope
     let each_block = find_each_block(&c.fragment, &c, "items").unwrap();
-    let each_scope = data.scoping.node_scope(each_block.id).unwrap();
+    let each_scope = data
+        .scoping
+        .fragment_scope(&FragmentKey::EachBody(each_block.id))
+        .unwrap();
     let each_sym = data.scoping.find_binding(each_scope, "item").unwrap();
     // The each-block's `item` is NOT a rune (it's a block variable)
     assert!(!data.scoping.is_rune(each_sym));
