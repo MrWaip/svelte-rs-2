@@ -27,7 +27,7 @@ pub(crate) fn gen_each_block<'a>(
     is_controlled: bool,
     body: &mut Vec<Statement<'a>>,
 ) {
-    let block = ctx.each_block(block_id);
+    let block = ctx.query.each_block(block_id);
     let body_key = FragmentKey::EachBody(block_id);
     let expr_span = block.expression_span;
     let span_start = block.span.start;
@@ -38,7 +38,11 @@ pub(crate) fn gen_each_block<'a>(
     // Extract the context binding pattern once when `as ...` is present.
     // Consumed by key function (clone for arrow param) and destructuring (ownership transfer).
     let context_pattern = block.context_span.map(|cs| {
-        let stmt = ctx.parsed.stmts.remove(&cs.start)
+        let stmt = ctx
+            .state
+            .parsed
+            .stmts
+            .remove(&cs.start)
             .expect("each block with context must have pre-parsed context stmt");
         let Statement::VariableDeclaration(mut var_decl) = stmt else {
             unreachable!("each context stmt must be VariableDeclaration");
@@ -46,7 +50,12 @@ pub(crate) fn gen_each_block<'a>(
         var_decl.declarations.remove(0).id
     });
 
-    let context_name = ctx.analysis().each_blocks.context_name(block_id).to_string();
+    let context_name = ctx
+        .query
+        .raw()
+        .each_blocks
+        .context_name(block_id)
+        .to_string();
 
     let key_is_item = ctx.each_key_is_item(block_id);
 
@@ -63,7 +72,9 @@ pub(crate) fn gen_each_block<'a>(
 
     // EACH_ITEM_REACTIVE: collection references external state
     // In runes mode: skip when key_is_item (item identity is the key)
-    let expr_has_refs = ctx.expression(block_id)
+    let expr_has_refs = ctx
+        .query
+        .expression(block_id)
         .is_some_and(|info| !info.ref_symbols.is_empty());
     if expr_has_refs && !key_is_item {
         flags |= EACH_ITEM_REACTIVE;
@@ -84,12 +95,13 @@ pub(crate) fn gen_each_block<'a>(
     let needs_group_index = ctx.contains_group_binding(block_id);
     let body_uses_index = ctx.each_body_uses_index(block_id);
     let render_index_name = if body_uses_index || needs_group_index {
-        user_index_name.clone()
-            .or_else(|| needs_group_index.then(|| {
+        user_index_name.clone().or_else(|| {
+            needs_group_index.then(|| {
                 let name = ctx.gen_ident("$$index");
-                ctx.group_index_names.insert(block_id, name.clone());
+                ctx.state.group_index_names.insert(block_id, name.clone());
                 name
-            }))
+            })
+        })
     } else {
         None
     };
@@ -109,10 +121,11 @@ pub(crate) fn gen_each_block<'a>(
     let is_prop_source = ctx.is_prop_source_node(block_id);
     let collection_fn = if needs_async {
         // Inside $.async callback: () => $.get($$collection)
-        ctx.b.thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$collection")]))
+        ctx.b
+            .thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$collection")]))
     } else if is_prop_source {
         // Prop getter is already a function — pass directly without thunk
-        let expr_source = ctx.component.source_text(expr_span).trim();
+        let expr_source = ctx.query.component.source_text(expr_span).trim();
         ctx.b.rid_expr(expr_source)
     } else {
         let collection = get_node_expr(ctx, block_id);
@@ -122,8 +135,8 @@ pub(crate) fn gen_each_block<'a>(
 
     // Key function: keyed each uses (pattern[, index]) => key_expr, unkeyed uses $.index
     let key_fn = {
-        let key_span = ctx.each_block(block_id).key_span;
-        let key_expr = key_span.and_then(|ks| ctx.parsed.exprs.remove(&ks.start));
+        let key_span = ctx.query.each_block(block_id).key_span;
+        let key_expr = key_span.and_then(|ks| ctx.state.parsed.exprs.remove(&ks.start));
         if let Some(key_expr) = key_expr {
             let key_body = ctx.b.expr_stmt(key_expr);
             let context_param = match &context_pattern {
@@ -134,12 +147,17 @@ pub(crate) fn gen_each_block<'a>(
                 None => ctx.b.formal_parameter_from_str(&context_name),
             };
             if ctx.each_key_uses_index(block_id) {
-                let idx_name = user_index_name.as_ref()
+                let idx_name = user_index_name
+                    .as_ref()
                     .expect("key_uses_index implies index exists");
                 let idx_param = ctx.b.formal_parameter_from_str(idx_name);
-                ctx.b.arrow_expr(ctx.b.formal_parameters([context_param, idx_param]), [key_body])
+                ctx.b.arrow_expr(
+                    ctx.b.formal_parameters([context_param, idx_param]),
+                    [key_body],
+                )
             } else {
-                ctx.b.arrow_expr(ctx.b.formal_parameters([context_param]), [key_body])
+                ctx.b
+                    .arrow_expr(ctx.b.formal_parameters([context_param]), [key_body])
             }
         } else {
             ctx.b.rid_expr("$.index")
@@ -165,9 +183,11 @@ pub(crate) fn gen_each_block<'a>(
     }
 
     let frag_fn = if let Some(ref idx) = render_index_name {
-        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
+        ctx.b
+            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
     } else {
-        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
+        ctx.b
+            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
     };
 
     if needs_async {
@@ -183,15 +203,28 @@ pub(crate) fn gen_each_block<'a>(
         if has_fallback {
             let fallback_key = FragmentKey::EachFallback(block_id);
             let fallback_body = gen_fragment(ctx, fallback_key);
-            let fallback_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
+            let fallback_fn = ctx
+                .b
+                .arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
             each_args.push(Arg::Expr(fallback_fn));
         }
 
         let each_call = ctx.b.call_expr("$.each", each_args);
         let each_stmt = super::add_svelte_meta(ctx, each_call, span_start, "each");
 
-        let async_thunk = if has_await { async_collection_thunk } else { None };
-        body.push(ctx.gen_async_block(block_id, anchor, has_await, async_thunk, "$$collection", vec![each_stmt]));
+        let async_thunk = if has_await {
+            async_collection_thunk
+        } else {
+            None
+        };
+        body.push(ctx.gen_async_block(
+            block_id,
+            anchor,
+            has_await,
+            async_thunk,
+            "$$collection",
+            vec![each_stmt],
+        ));
     } else {
         let mut each_args: Vec<Arg<'a, '_>> = vec![
             Arg::Expr(anchor),
@@ -204,7 +237,9 @@ pub(crate) fn gen_each_block<'a>(
         if has_fallback {
             let fallback_key = FragmentKey::EachFallback(block_id);
             let fallback_body = gen_fragment(ctx, fallback_key);
-            let fallback_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
+            let fallback_fn = ctx
+                .b
+                .arrow_block_expr(ctx.b.params(["$$anchor"]), fallback_body);
             each_args.push(Arg::Expr(fallback_fn));
         }
 
@@ -238,8 +273,13 @@ fn gen_destructuring_declarations<'a>(
             } else {
                 ctx.b.rid_expr("$$item")
             };
-            let to_array = ctx.b.call_expr("$.to_array", [Arg::Expr(item_access), Arg::Num(count as f64)]);
-            let derived = ctx.b.call_expr("$.derived", [Arg::Expr(ctx.b.thunk(to_array))]);
+            let to_array = ctx.b.call_expr(
+                "$.to_array",
+                [Arg::Expr(item_access), Arg::Num(count as f64)],
+            );
+            let derived = ctx
+                .b
+                .call_expr("$.derived", [Arg::Expr(ctx.b.thunk(to_array))]);
             decls.push(ctx.b.var_stmt(&array_name, derived));
 
             for (i, elem) in elements.into_iter().enumerate() {
@@ -255,7 +295,9 @@ fn gen_destructuring_declarations<'a>(
                     _ => continue,
                 };
                 let get_array = ctx.b.call_expr("$.get", [Arg::Ident(&array_name)]);
-                let access = ctx.b.computed_member_expr(get_array, ctx.b.num_expr(i as f64));
+                let access = ctx
+                    .b
+                    .computed_member_expr(get_array, ctx.b.num_expr(i as f64));
                 let thunk = ctx.b.thunk(access);
                 decls.push(ctx.b.let_init_stmt(&name, thunk));
             }
@@ -280,7 +322,9 @@ fn gen_destructuring_declarations<'a>(
                     }
                     BindingPattern::AssignmentPattern(assign) => {
                         let assign = assign.unbox();
-                        let BindingPattern::BindingIdentifier(id) = assign.left else { continue };
+                        let BindingPattern::BindingIdentifier(id) = assign.left else {
+                            continue;
+                        };
                         let name = id.name.as_str().to_string();
                         let prop_key = key_name.as_deref().unwrap_or(&name);
                         let item_access = if item_reactive {
@@ -289,8 +333,12 @@ fn gen_destructuring_declarations<'a>(
                             ctx.b.rid_expr("$$item")
                         };
                         let member = ctx.b.static_member_expr(item_access, prop_key);
-                        let fallback = ctx.b.call_expr("$.fallback", [Arg::Expr(member), Arg::Expr(assign.right)]);
-                        let derived = ctx.b.call_expr("$.derived_safe_equal", [Arg::Expr(ctx.b.thunk(fallback))]);
+                        let fallback = ctx
+                            .b
+                            .call_expr("$.fallback", [Arg::Expr(member), Arg::Expr(assign.right)]);
+                        let derived = ctx
+                            .b
+                            .call_expr("$.derived_safe_equal", [Arg::Expr(ctx.b.thunk(fallback))]);
                         decls.push(ctx.b.let_init_stmt(&name, derived));
                     }
                     _ => continue,
