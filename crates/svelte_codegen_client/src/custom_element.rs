@@ -1,4 +1,4 @@
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
 use svelte_parser::{CePropConfig, CeShadowMode, ParsedCeConfig};
 
@@ -46,12 +46,9 @@ pub fn gen_custom_element<'a>(
     // -- Arg 5: Shadow root config --
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);
 
-    // -- Arg 6: Extend (pre-parsed in analyze) --
-    let extend_arg: Option<Expression<'a>> = ctx
-        .ce_config()
-        .and_then(|c| c.extend_span)
-        .and_then(|span| ctx.state.parsed.expr_handle(span.start))
-        .and_then(|handle| ctx.state.parsed.take_expr(handle));
+    // CE config semantics come from analyze, but the extend expression itself is
+    // still sourced from the parser-owned object expression.
+    let extend_arg = take_extend_expr(ctx, ce_config);
     let b = &ctx.b;
 
     // Build $.create_custom_element() call
@@ -86,6 +83,36 @@ pub fn gen_custom_element<'a>(
     }
 
     stmts
+}
+
+fn take_extend_expr<'a>(
+    ctx: &mut Ctx<'a>,
+    ce_config: &CustomElementConfig,
+) -> Option<Expression<'a>> {
+    let CustomElementConfig::Expression(span) = ce_config else {
+        return None;
+    };
+    let config = ctx.ce_config()?;
+    config.extend_span?;
+
+    let handle = ctx.state.parsed.expr_handle(span.start)?;
+    let Expression::ObjectExpression(mut object) = ctx.state.parsed.take_expr(handle)? else {
+        return None;
+    };
+
+    for prop_kind in object.properties.drain(..) {
+        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else {
+            continue;
+        };
+        let prop = prop.unbox();
+        if let PropertyKey::StaticIdentifier(id) = &prop.key {
+            if id.name.as_str() == "extend" {
+                return Some(prop.value);
+            }
+        }
+    }
+
+    None
 }
 
 /// Build the props metadata object for `$.create_custom_element()`.

@@ -2,7 +2,7 @@ use oxc_ast::ast::{Expression, Statement};
 
 use crate::builder::Arg;
 
-use super::super::ScriptTransformer;
+use super::super::{compute_line_col, sanitize_location, ScriptTransformer};
 
 pub(super) fn is_inspect_call(expr: &Expression) -> bool {
     match expr {
@@ -43,26 +43,6 @@ pub(super) fn is_inspect_trace_call(expr: &Expression) -> bool {
         }
     }
     false
-}
-
-pub(crate) fn sanitize_location(filename: &str) -> String {
-    filename.replace('/', "/\u{200b}")
-}
-
-pub(crate) fn compute_line_col(source: &str, offset: u32) -> (usize, usize) {
-    let offset = offset as usize;
-    let bytes = source.as_bytes();
-    let mut line = 1;
-    let mut col = 0;
-    for i in 0..offset.min(bytes.len()) {
-        if bytes[i] == b'\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
@@ -137,7 +117,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             if member.property.name.as_str() == "with" {
                 if let Expression::CallExpression(inner_call) = &member.object {
                     if let Expression::Identifier(id) = &inner_call.callee {
-                        if id.name.as_str() == "$.inspect" {
+                        if matches!(id.name.as_str(), "$inspect" | "$.inspect") {
                             let Expression::CallExpression(outer_call) = node else {
                                 unreachable!()
                             };

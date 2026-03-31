@@ -22,14 +22,22 @@ mod render;
 mod runtime;
 mod template_data;
 
-pub use analysis::*;
-pub use async_data::*;
-pub use codegen_view::*;
-pub use elements::*;
-pub use expr::*;
-pub use fragments::*;
-pub use ignore::*;
-pub use props::*;
-pub use render::*;
-pub use runtime::*;
-pub use template_data::*;
+pub use analysis::AnalysisData;
+pub use async_data::{AsyncStmtMeta, BlockerData};
+pub use codegen_view::CodegenView;
+pub use elements::{
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    ElementFlags, EventHandlerMode,
+};
+pub use expr::{AwaitBindingInfo, DestructureKind, ExprDeps, ExprSite, ExpressionInfo, ExpressionKind};
+pub use fragments::{
+    ContentStrategy, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
+};
+pub use ignore::IgnoreData;
+pub use props::{PropAnalysis, PropsAnalysis};
+pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
+pub use runtime::RuntimePlan;
+pub use template_data::{
+    AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, EachBlockData,
+    SnippetData, TitleElementData,
+};

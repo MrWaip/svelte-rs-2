@@ -14,7 +14,7 @@ use oxc_ast_visit::walk_mut::{self, walk_arrow_function_expression, walk_express
 use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, ExprHandle, FragmentKey, IdentGen, ParserResult};
+use svelte_analyze::{AnalysisData, ExprHandle, IdentGen, ParserResult};
 use svelte_ast::{
     Attribute, Component, ConcatPart, Fragment, Node,
 };
@@ -44,7 +44,6 @@ pub fn transform_component<'a>(
     let mut ctx = TransformCtx {
         alloc,
         analysis,
-        scopes: TemplateScopeResolver::new(analysis),
         ident_gen,
         transform_data: TransformData::new(),
     };
@@ -56,96 +55,8 @@ pub fn transform_component<'a>(
 struct TransformCtx<'a, 'b> {
     alloc: &'a Allocator,
     analysis: &'b AnalysisData,
-    scopes: TemplateScopeResolver<'b>,
     ident_gen: &'b mut IdentGen,
     transform_data: TransformData,
-}
-
-struct TemplateScopeResolver<'a> {
-    analysis: &'a AnalysisData,
-}
-
-impl<'a> TemplateScopeResolver<'a> {
-    fn new(analysis: &'a AnalysisData) -> Self {
-        Self { analysis }
-    }
-
-    fn if_consequent(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::IfConsequent(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn if_alternate(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::IfAlternate(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn each_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::EachBody(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn snippet_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::SnippetBody(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn key_body(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::KeyBlockBody(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn head_body(&self, head_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::SvelteHeadBody(head_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn svelte_element_body(&self, el_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::SvelteElementBody(el_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn boundary_body(&self, boundary_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::SvelteBoundaryBody(boundary_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn await_pending(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::AwaitPending(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn await_then(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::AwaitThen(block_id))
-            .unwrap_or(parent_scope)
-    }
-
-    fn await_catch(&self, block_id: svelte_ast::NodeId, parent_scope: ScopeId) -> ScopeId {
-        self.analysis
-            .scoping
-            .fragment_scope(&FragmentKey::AwaitCatch(block_id))
-            .unwrap_or(parent_scope)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,10 +101,10 @@ fn walk_node<'a>(
             if let Some(handle) = parsed.expr_handle(block.test_span.start) {
                 transform_expr_at(ctx, handle, parsed, scope);
             }
-            let cons_scope = ctx.scopes.if_consequent(block.id, scope);
+            let cons_scope = ctx.analysis.if_consequent_scope(block.id, scope);
             walk_fragment(ctx, &block.consequent, component, parsed, cons_scope);
             if let Some(alt) = &block.alternate {
-                let alt_scope = ctx.scopes.if_alternate(block.id, scope);
+                let alt_scope = ctx.analysis.if_alternate_scope(block.id, scope);
                 walk_fragment(ctx, alt, component, parsed, alt_scope);
             }
         }
@@ -203,7 +114,7 @@ fn walk_node<'a>(
             }
 
             // Each block body uses child scope (context + index vars)
-            let body_scope = ctx.scopes.each_body(block.id, scope);
+            let body_scope = ctx.analysis.each_body_scope(block.id, scope);
             walk_fragment(ctx, &block.body, component, parsed, body_scope);
 
             // Fallback uses parent scope
@@ -212,7 +123,7 @@ fn walk_node<'a>(
             }
         }
         Node::SnippetBlock(block) => {
-            let snippet_scope = ctx.scopes.snippet_body(block.id, scope);
+            let snippet_scope = ctx.analysis.snippet_body_scope(block.id, scope);
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
@@ -246,11 +157,11 @@ fn walk_node<'a>(
             if let Some(handle) = parsed.expr_handle(block.expression_span.start) {
                 transform_expr_at(ctx, handle, parsed, scope);
             }
-            let child_scope = ctx.scopes.key_body(block.id, scope);
+            let child_scope = ctx.analysis.key_block_body_scope(block.id, scope);
             walk_fragment(ctx, &block.fragment, component, parsed, child_scope);
         }
         Node::SvelteHead(head) => {
-            let child_scope = ctx.scopes.head_body(head.id, scope);
+            let child_scope = ctx.analysis.svelte_head_body_scope(head.id, scope);
             walk_fragment(ctx, &head.fragment, component, parsed, child_scope);
         }
         Node::SvelteElement(el) => {
@@ -260,7 +171,7 @@ fn walk_node<'a>(
                 }
             }
             transform_attrs(ctx, &el.attributes, parsed, scope);
-            let child_scope = ctx.scopes.svelte_element_body(el.id, scope);
+            let child_scope = ctx.analysis.svelte_element_body_scope(el.id, scope);
             walk_fragment(ctx, &el.fragment, component, parsed, child_scope);
         }
         Node::SvelteWindow(w) => {
@@ -274,7 +185,7 @@ fn walk_node<'a>(
         }
         Node::SvelteBoundary(b) => {
             transform_attrs(ctx, &b.attributes, parsed, scope);
-            let child_scope = ctx.scopes.boundary_body(b.id, scope);
+            let child_scope = ctx.analysis.svelte_boundary_body_scope(b.id, scope);
             walk_fragment(ctx, &b.fragment, component, parsed, child_scope);
         }
         Node::AwaitBlock(block) => {
@@ -282,15 +193,15 @@ fn walk_node<'a>(
                 transform_expr_at(ctx, handle, parsed, scope);
             }
             if let Some(ref p) = block.pending {
-                let pending_scope = ctx.scopes.await_pending(block.id, scope);
+                let pending_scope = ctx.analysis.await_pending_scope(block.id, scope);
                 walk_fragment(ctx, p, component, parsed, pending_scope);
             }
             if let Some(ref t) = block.then {
-                let then_scope = ctx.scopes.await_then(block.id, scope);
+                let then_scope = ctx.analysis.await_then_scope(block.id, scope);
                 walk_fragment(ctx, t, component, parsed, then_scope);
             }
             if let Some(ref c) = block.catch {
-                let catch_scope = ctx.scopes.await_catch(block.id, scope);
+                let catch_scope = ctx.analysis.await_catch_scope(block.id, scope);
                 walk_fragment(ctx, c, component, parsed, catch_scope);
             }
         }

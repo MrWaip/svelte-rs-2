@@ -4,8 +4,6 @@
 //! utilities, and populates `ParserResult` with parsed expressions and statements.
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::Expression;
-
 use svelte_ast::{AstStore, Attribute, Component, ConcatPart, Fragment, Node, ScriptLanguage};
 use svelte_diagnostics::Diagnostic;
 
@@ -40,37 +38,13 @@ pub(crate) fn parse_js<'a>(
 
     walk_fragment(alloc, &component.fragment, &component.store, component, typescript, result, diags);
 
-    // Parse custom element config expression and its extend sub-expression (if present)
+    // Parse the custom element config expression itself. Property classification
+    // belongs in analyze, where CE object semantics are already interpreted.
     if let Some(svelte_ast::CustomElementConfig::Expression(span)) =
         component.options.as_ref().and_then(|o| o.custom_element.as_ref())
     {
         parse_span(alloc, component, *span, typescript, result, diags);
-
-        // Navigate the already-parsed ObjectExpression to find `extend` property span
-        if let Some(ext_span) = find_ce_extend_span(result, span.start) {
-            parse_span(alloc, component, ext_span, typescript, result, diags);
-        }
     }
-}
-
-/// Find the `extend` property span inside an already-parsed CE config ObjectExpression.
-/// OXC spans are relative to the expression start, so we adjust by `offset`.
-fn find_ce_extend_span(result: &ParserResult<'_>, offset: u32) -> Option<svelte_span::Span> {
-    use oxc_ast::ast::{ObjectPropertyKind, PropertyKey};
-    use oxc_span::GetSpan as _;
-
-    let expr = result.expr(result.expr_handle(offset)?)?;
-    let Expression::ObjectExpression(obj) = expr else { return None };
-    for prop_kind in &obj.properties {
-        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
-        if let PropertyKey::StaticIdentifier(id) = &prop.key {
-            if id.name.as_str() == "extend" {
-                let s = prop.value.span();
-                return Some(svelte_span::Span::new(s.start + offset, s.end + offset));
-            }
-        }
-    }
-    None
 }
 
 /// Parse an expression and store it by source offset.

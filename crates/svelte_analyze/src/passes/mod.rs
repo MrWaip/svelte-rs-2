@@ -249,6 +249,10 @@ pub(crate) enum PassPlanError {
         second: PassKey,
     },
     DependencyCycle,
+    LegacyOrderMismatch {
+        resolved: Vec<PassKey>,
+        legacy: Vec<PassKey>,
+    },
 }
 
 pub(crate) fn resolve_execution_order(
@@ -335,7 +339,10 @@ pub(crate) fn resolve_execution_order(
         return Err(PassPlanError::DependencyCycle);
     }
     if order != legacy_order {
-        return Ok(legacy_order.to_vec());
+        return Err(PassPlanError::LegacyOrderMismatch {
+            resolved: order,
+            legacy: legacy_order.to_vec(),
+        });
     }
     Ok(order)
 }
@@ -405,6 +412,33 @@ mod tests {
             PassPlanError::MissingRequirement {
                 pass: PassKey::MarkRunes,
                 token: DataToken::ScriptInfo
+            }
+        );
+    }
+
+    #[test]
+    fn detects_legacy_order_mismatch() {
+        const DESCRIPTORS: &[PassDescriptor] = &[
+            PassDescriptor {
+                key: PassKey::AnalyzeScript,
+                requires: &[DataToken::RuneMarks],
+                produces: &[DataToken::ScriptInfo],
+            },
+            PassDescriptor {
+                key: PassKey::MarkRunes,
+                requires: &[],
+                produces: &[DataToken::RuneMarks],
+            },
+        ];
+
+        let err = resolve_execution_order(DESCRIPTORS, &[PassKey::AnalyzeScript, PassKey::MarkRunes])
+            .expect_err("must reject mismatched legacy order");
+
+        assert_eq!(
+            err,
+            PassPlanError::LegacyOrderMismatch {
+                resolved: vec![PassKey::MarkRunes, PassKey::AnalyzeScript],
+                legacy: vec![PassKey::AnalyzeScript, PassKey::MarkRunes],
             }
         );
     }

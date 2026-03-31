@@ -11,8 +11,8 @@ pub struct StmtHandle(pub u32);
 
 pub struct ParserResult<'a> {
     pub program: Option<oxc_ast::ast::Program<'a>>,
-    pub exprs: FxHashMap<ExprHandle, Expression<'a>>,
-    pub stmts: FxHashMap<StmtHandle, Statement<'a>>,
+    exprs: FxHashMap<ExprHandle, Expression<'a>>,
+    stmts: FxHashMap<StmtHandle, Statement<'a>>,
     expr_by_offset: FxHashMap<u32, ExprHandle>,
     stmt_by_offset: FxHashMap<u32, StmtHandle>,
     next_expr: u32,
@@ -70,6 +70,10 @@ impl<'a> ParserResult<'a> {
 
     pub fn take_expr(&mut self, handle: ExprHandle) -> Option<Expression<'a>> {
         self.exprs.remove(&handle)
+    }
+
+    pub fn replace_expr(&mut self, handle: ExprHandle, expr: Expression<'a>) -> Option<Expression<'a>> {
+        self.exprs.insert(handle, expr)
     }
 
     pub fn stmt(&self, handle: StmtHandle) -> Option<&Statement<'a>> {

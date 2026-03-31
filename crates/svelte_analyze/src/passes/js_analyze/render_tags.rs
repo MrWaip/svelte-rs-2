@@ -39,7 +39,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
             ctx.data.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.take_expr(handle) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
-                    self.parsed.exprs.insert(handle, Expression::CallExpression(call));
+                    self.parsed.replace_expr(handle, Expression::CallExpression(call));
                 }
             }
         }

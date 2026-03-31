@@ -225,6 +225,90 @@ impl AnalysisData {
         let sym_id = self.scoping.find_binding(root, name)?;
         self.scoping.known_value_by_sym(sym_id)
     }
+    fn effective_fragment_scope(
+        &self,
+        key: FragmentKey,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.scoping.fragment_scope(&key).unwrap_or(parent_scope)
+    }
+    pub fn if_consequent_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::IfConsequent(block_id), parent_scope)
+    }
+    pub fn if_alternate_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::IfAlternate(block_id), parent_scope)
+    }
+    pub fn each_body_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::EachBody(block_id), parent_scope)
+    }
+    pub fn snippet_body_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::SnippetBody(block_id), parent_scope)
+    }
+    pub fn key_block_body_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::KeyBlockBody(block_id), parent_scope)
+    }
+    pub fn svelte_head_body_scope(
+        &self,
+        head_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::SvelteHeadBody(head_id), parent_scope)
+    }
+    pub fn svelte_element_body_scope(
+        &self,
+        el_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::SvelteElementBody(el_id), parent_scope)
+    }
+    pub fn svelte_boundary_body_scope(
+        &self,
+        boundary_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::SvelteBoundaryBody(boundary_id), parent_scope)
+    }
+    pub fn await_pending_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::AwaitPending(block_id), parent_scope)
+    }
+    pub fn await_then_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::AwaitThen(block_id), parent_scope)
+    }
+    pub fn await_catch_scope(
+        &self,
+        block_id: NodeId,
+        parent_scope: oxc_semantic::ScopeId,
+    ) -> oxc_semantic::ScopeId {
+        self.effective_fragment_scope(FragmentKey::AwaitCatch(block_id), parent_scope)
+    }
     pub fn fragment_references_any_symbol(
         &self,
         key: &FragmentKey,
