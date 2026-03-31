@@ -2,12 +2,13 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::FragmentKey;
+use svelte_analyze::{ExprSite, FragmentKey};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
 
+use super::async_plan::AsyncEmissionPlan;
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
@@ -24,8 +25,9 @@ pub(crate) fn gen_if_block<'a>(
     block_id: NodeId,
     anchor: Expression<'a>,
 ) -> Vec<Statement<'a>> {
-    let has_await = ctx.expr_has_await(block_id);
-    let needs_async = has_await || ctx.expr_has_blockers(block_id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
+    let has_await = async_plan.has_await();
+    let needs_async = async_plan.needs_async();
 
     // 1. Collect all branches by walking the elseif chain
     let mut branches: Vec<Branch> = Vec::new();
@@ -33,7 +35,7 @@ pub(crate) fn gen_if_block<'a>(
     let mut current = block_id;
 
     loop {
-        let block = ctx.if_block(current);
+        let block = ctx.query.if_block(current);
         let has_alternate = block.alternate.is_some();
 
         branches.push(Branch {
@@ -49,7 +51,11 @@ pub(crate) fn gen_if_block<'a>(
         let alt_is_elseif = ctx.is_elseif_alt(current);
 
         if alt_is_elseif {
-            let nested_id = ctx.lowered_fragment(&alternate_key).first_if_block_id().unwrap();
+            let nested_id = ctx
+                .query
+                .lowered_fragment(&alternate_key)
+                .first_if_block_id()
+                .unwrap();
             current = nested_id;
             continue;
         } else {
@@ -59,7 +65,11 @@ pub(crate) fn gen_if_block<'a>(
     }
 
     // Build the expression for the root condition (needed before stmts consume it)
-    let expression = if needs_async { Some(get_node_expr(ctx, block_id)) } else { None };
+    let expression = if needs_async {
+        Some(get_node_expr(ctx, block_id))
+    } else {
+        None
+    };
 
     let mut stmts = Vec::new();
 
@@ -91,7 +101,9 @@ pub(crate) fn gen_if_block<'a>(
             // Root async condition: resolved via $.get($$condition) inside $.async callback
             derived_names.push(None);
         } else {
-            let needs_memo = ctx.analysis.needs_expr_memoization(branch.block_id);
+            let needs_memo = ctx
+                .expr_deps(ExprSite::Node(branch.block_id))
+                .is_some_and(|deps| deps.needs_memo);
             if needs_memo {
                 let expr = get_node_expr(ctx, branch.block_id);
                 let thunk = ctx.b.thunk(expr);
@@ -108,9 +120,10 @@ pub(crate) fn gen_if_block<'a>(
     // 3. Build the if/else-if/else chain (bottom-up)
     let num_branches = branches.len();
 
-    let mut else_clause: Option<Statement<'a>> = alt_name
-        .as_ref()
-        .map(|an| ctx.b.call_stmt("$$render", [Arg::Ident(an), Arg::Num(-1.0)]));
+    let mut else_clause: Option<Statement<'a>> = alt_name.as_ref().map(|an| {
+        ctx.b
+            .call_stmt("$$render", [Arg::Ident(an), Arg::Num(-1.0)])
+    });
 
     for i in (0..num_branches).rev() {
         let test = if i == 0 && has_await {
@@ -134,7 +147,7 @@ pub(crate) fn gen_if_block<'a>(
     let render_fn = ctx.b.arrow(ctx.b.params(["$$render"]), [render_body_stmt]);
 
     // 4. $.if() call + optional $.async() wrapping
-    let span_start = ctx.if_block(block_id).span.start;
+    let span_start = ctx.query.if_block(block_id).span.start;
 
     if needs_async {
         // Inside $.async callback: use "node" param as anchor
@@ -143,8 +156,14 @@ pub(crate) fn gen_if_block<'a>(
         let if_call = ctx.b.call_expr("$.if", if_args);
         stmts.push(super::add_svelte_meta(ctx, if_call, span_start, "if"));
 
-        let async_thunk = if has_await { Some(ctx.b.async_thunk(expression.unwrap())) } else { None };
-        vec![ctx.gen_async_block(block_id, anchor, has_await, async_thunk, "$$condition", stmts)]
+        let async_thunk = expression.and_then(|expr| async_plan.async_thunk(ctx, expr));
+        vec![async_plan.wrap_async_block(
+            ctx,
+            anchor,
+            "$$condition",
+            async_thunk,
+            stmts,
+        )]
     } else {
         let if_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(anchor), Arg::Arrow(render_fn)];
         let if_call = ctx.b.call_expr("$.if", if_args);

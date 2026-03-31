@@ -19,7 +19,7 @@ use oxc_ast_visit::Visit;
 use svelte_ast::{Attribute, ConstTag, EachBlock, Node, SnippetBlock};
 
 use crate::scope::ComponentScoping;
-use crate::types::data::FragmentKey;
+use crate::types::data::{FragmentKey, StmtHandle};
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -27,11 +27,10 @@ pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
 }
 
-/// Extract the first VariableDeclarator from a parsed statement at the given offset.
-fn get_declarator<'a>(ctx: &VisitContext<'a>, offset: u32) -> Option<&'a VariableDeclarator<'a>> {
+/// Extract the first VariableDeclarator from a parsed statement handle.
+fn get_declarator<'a>(ctx: &VisitContext<'a>, handle: StmtHandle) -> Option<&'a VariableDeclarator<'a>> {
     ctx.parsed()?
-        .stmts
-        .get(&offset)
+        .stmt(handle)
         .and_then(|stmt| match stmt {
             Statement::VariableDeclaration(decl) => decl.declarations.first(),
             _ => None,
@@ -40,8 +39,15 @@ fn get_declarator<'a>(ctx: &VisitContext<'a>, offset: u32) -> Option<&'a Variabl
 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
+        if let Some(handle) = block.context_span.and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start))) {
+            ctx.data.each_context_stmt_handles.insert(block.id, handle);
+        }
+        if let Some(handle) = block.index_span.and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start))) {
+            ctx.data.each_index_stmt_handles.insert(block.id, handle);
+        }
         let is_destructured = block.context_span
-            .and_then(|cs| get_declarator(ctx, cs.start))
+            .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
+            .and_then(|handle| get_declarator(ctx, handle))
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         if is_destructured {
@@ -80,7 +86,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
             // Default bindings use $.derived_safe_equal (signals), non-default use getters.
             if let Some(parsed) = ctx.parsed() {
-                if let Some(stmt) = block.context_span.and_then(|cs| parsed.stmts.get(&cs.start)) {
+                if let Some(stmt) = block.context_span
+                    .and_then(|cs| parsed.stmt_handle(cs.start))
+                    .and_then(|handle| parsed.stmt(handle))
+                {
                     let mut marker = DestructuredGetterMarker {
                         scoping: &mut ctx.data.scoping,
                         in_default: false,
@@ -90,7 +99,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             }
         } else {
             let ctx_name = block.context_span
-                .and_then(|cs| get_declarator(ctx, cs.start))
+                .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
+                .and_then(|handle| get_declarator(ctx, handle))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
 
@@ -103,7 +113,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                     // key_is_item: key expression resolves to the same symbol as context
                     if let Some(key_span) = block.key_span {
                         let is_key_item = ctx.parsed()
-                            .and_then(|p| p.exprs.get(&key_span.start))
+                            .and_then(|p| p.expr_handle(key_span.start))
+                            .and_then(|handle| ctx.parsed().and_then(|p| p.expr(handle)))
                             .and_then(|expr| match expr {
                                 Expression::Identifier(ident) => ident.reference_id.get(),
                                 _ => None,
@@ -120,7 +131,9 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
 
         if let Some(idx_span) = block.index_span {
-            let idx_name = get_declarator(ctx, idx_span.start)
+            let idx_name = ctx.parsed()
+                .and_then(|p| p.stmt_handle(idx_span.start))
+                .and_then(|handle| get_declarator(ctx, handle))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
             if let Some(idx_name) = idx_name {
@@ -133,13 +146,19 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+        if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(block.expression_span.start)) {
+            ctx.data.snippet_stmt_handles.insert(block.id, handle);
+        }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
         }
         // Mark snippet params and collect param names
         if let Some(parsed) = ctx.parsed() {
-            if let Some(stmt) = parsed.stmts.get(&block.expression_span.start) {
+            if let Some(stmt) = parsed
+                .stmt_handle(block.expression_span.start)
+                .and_then(|handle| parsed.stmt(handle))
+            {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
                 marker.visit_statement(stmt);
 
@@ -155,8 +174,9 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
         if let Some(parsed) = ctx.parsed() {
-            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
-                parsed.stmts.get(&tag.expression_span.start)
+            if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
+                .stmt_handle(tag.expression_span.start)
+                .and_then(|handle| parsed.stmt(handle))
             {
                 if let Some(declarator) = decl.declarations.first() {
                     let mut name_strings = Vec::new();

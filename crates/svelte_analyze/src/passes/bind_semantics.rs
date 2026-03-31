@@ -157,7 +157,7 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
             if !referenced_syms.is_empty() {
                 let ancestor_eaches: Vec<_> = ctx.ancestors()
                     .filter(|p| p.kind == ParentKind::EachBlock)
-                    .map(|p| (p.id, ctx.data.scoping.fragment_scope(&crate::types::data::FragmentKey::EachBody(p.id)).unwrap_or(ctx.scope)))
+                    .map(|p| (p.id, ctx.data.each_body_scope(p.id, ctx.scope)))
                     .collect();
 
                 let mut parent_eaches = Vec::new();

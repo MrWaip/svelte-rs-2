@@ -2,6 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
+use svelte_analyze::ExprSite;
 use svelte_ast::{Attribute, Element, NodeId};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
@@ -67,7 +68,7 @@ pub(crate) fn process_attr<'a>(
     match attr {
         Attribute::StringAttribute(a) if a.name == "value" && ctx.has_bind_group(el_id) => {
             // bind:group + static value: emit el.value = el.__value = "val"
-            let val_text = ctx.component.source_text(a.value_span);
+            let val_text = ctx.query.component.source_text(a.value_span);
             let val_expr = ctx.b.str_expr(val_text);
             let __value_assign = ctx.b.assign_expr(
                 AssignLeft::StaticMember(ctx.b.static_member(ctx.b.rid_expr(el_name), "__value")),
@@ -87,6 +88,10 @@ pub(crate) fn process_attr<'a>(
             return;
         }
         Attribute::ExpressionAttribute(a) => {
+            let (attr_has_call, attr_needs_memo) = ctx
+                .expr_deps(ExprSite::Attr(attr_id))
+                .map(|deps| (deps.has_call(), deps.needs_memo))
+                .unwrap_or((false, false));
             if let Some(raw_event_name) = a.event_name.as_deref() {
                 let mode = ctx.event_handler_mode(attr_id)
                     .unwrap_or_else(|| panic!("missing event_handler_mode for attr {:?}", attr_id));
@@ -94,9 +99,8 @@ pub(crate) fn process_attr<'a>(
                     .unwrap_or(raw_event_name).to_string();
 
                 let expr_offset = a.expression_span.start;
-                let has_call = ctx.analysis.attr_expression(attr_id).map_or(false, |e| e.has_call);
                 let val = get_attr_expr(ctx, attr_id);
-                let handler = build_event_handler_s5(ctx, attr_id, val, has_call, init);
+                let handler = build_event_handler_s5(ctx, attr_id, val, attr_has_call, init);
                 let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
                 match mode {
@@ -137,8 +141,7 @@ pub(crate) fn process_attr<'a>(
                 return;
             }
             // Memoize dynamic attrs with has_call/await — extract into dependency array
-            let needs_memo = is_dyn
-                && ctx.analysis.attr_expression(attr_id).is_some_and(|e| e.has_call || e.has_await);
+            let needs_memo = is_dyn && attr_needs_memo;
             if needs_memo {
                 let (setter_fn, attr_name) = if a.name == "value" && tag_name == "input" {
                     ("$.set_value", None)
@@ -195,7 +198,7 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::Shorthand(a) => {
             let val = get_attr_expr(ctx, attr_id);
-            let name = ctx.component.source_text(a.expression_span).to_string();
+            let name = ctx.query.component.source_text(a.expression_span).to_string();
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
                 [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
@@ -437,7 +440,9 @@ fn build_style_concat<'a>(
         match part {
             svelte_ast::ConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
             svelte_ast::ConcatPart::Dynamic { span, .. } => {
-                let expr = get_concat_part_expr(ctx, span.start);
+                let expr = ctx.state.parsed.expr_handle(span.start)
+                    .map(|handle| get_concat_part_expr(ctx, handle))
+                    .unwrap_or_else(|| ctx.b.str_expr(""));
                 tpl_parts.push(TemplatePart::Expr(expr));
             }
         }
@@ -466,7 +471,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.bool_expr(true)));
             }
             Attribute::StringAttribute(a) => {
-                let val = ctx.component.source_text(a.value_span).to_string();
+                let val = ctx.query.component.source_text(a.value_span).to_string();
                 let name_alloc = ctx.b.alloc_str(&a.name);
                 props.push(ObjProp::KeyValue(name_alloc, ctx.b.str_expr(&val)));
             }
@@ -504,7 +509,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 props.push(ObjProp::Spread(expr));
             }
             Attribute::Shorthand(a) => {
-                let name = ctx.component.source_text(a.expression_span).trim();
+                let name = ctx.query.component.source_text(a.expression_span).trim();
                 let name_alloc = ctx.b.alloc_str(name);
                 props.push(ObjProp::Shorthand(name_alloc));
             }

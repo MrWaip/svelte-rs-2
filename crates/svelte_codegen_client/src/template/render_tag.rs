@@ -8,6 +8,7 @@ use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
+use crate::template::async_plan::AsyncEmissionPlan;
 use crate::template::expression::{MemoValueRef, TemplateMemoState};
 
 /// Generate a render tag call: `snippet(anchor, () => arg1, () => arg2, ...)`
@@ -24,8 +25,8 @@ pub(crate) fn gen_render_tag<'a>(
     is_standalone: bool,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let has_await = ctx.expr_has_await(id);
-    let needs_async = has_await || ctx.expr_has_blockers(id);
+    let async_plan = AsyncEmissionPlan::for_node(ctx, id);
+    let needs_async = async_plan.needs_async();
 
     // When async-wrapped, the inner render call uses the callback param as anchor;
     // the outer anchor_expr is passed to $.async() separately.
@@ -37,14 +38,16 @@ pub(crate) fn gen_render_tag<'a>(
     };
 
     let tag = ctx.render_tag(id);
-    let full_source = ctx.component.source_text(tag.expression_span);
+    let full_source = ctx.query.component.source_text(tag.expression_span);
 
-    let mode = ctx.analysis.render_tag_callee_mode(id);
+    let plan = ctx
+        .render_tag_plan(id)
+        .cloned()
+        .unwrap_or_else(|| panic!("render tag plan missing for {:?}", id));
+    let mode = plan.callee_mode;
 
     // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
-    let tag = ctx.render_tag(id);
-    let offset = tag.expression_span.start;
-    let expr = ctx.parsed.exprs.remove(&offset)
+    let expr = ctx.state.parsed.take_expr(ctx.node_expr_handle(id))
         .expect("render tag expression should be pre-parsed");
 
     let Expression::CallExpression(call) = expr else {
@@ -57,15 +60,9 @@ pub(crate) fn gen_render_tag<'a>(
     let callee_span = call.callee.span();
     let callee_text = &full_source[callee_span.start as usize..callee_span.end as usize];
 
-    let prop_sources = ctx.analysis.render_tag_prop_sources(id);
-
     // Unbox to separate callee expression and arguments
     let unboxed = call.unbox();
     let callee_expr = unboxed.callee;
-
-    let arg_infos = ctx.analysis.render_tag_arg_infos(id)
-        .map(|infos| infos.to_vec())
-        .unwrap_or_default();
 
     // Build argument thunks (shared between dynamic and non-dynamic paths)
     let mut arg_thunks: Vec<Arg<'a, '_>> = Vec::new();
@@ -73,34 +70,32 @@ pub(crate) fn gen_render_tag<'a>(
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
     let mut deps = TemplateMemoState::default();
 
-    for (i, arg) in unboxed.arguments.into_iter().enumerate() {
+    for (arg, arg_plan) in unboxed.arguments.into_iter().zip(plan.arg_plans.iter()) {
         let arg_expr = arg.into_expression();
 
         // Prop-source args: pass the getter identifier directly without a thunk
-        if let Some(Some(sym_id)) = prop_sources.and_then(|ps| ps.get(i)) {
-            let name = ctx.analysis.scoping.symbol_name(*sym_id);
+        if let Some(sym_id) = arg_plan.prop_source {
+            let name = ctx.symbol_name(sym_id);
             arg_thunks.push(Arg::Expr(ctx.b.rid_expr(name)));
             continue;
         }
 
-        let arg_info = arg_infos.get(i);
+        let arg_info = &arg_plan.info;
 
-        if let Some(info) = arg_info {
-            if info.has_await && !info.ref_symbols.is_empty() {
-                if let Some(MemoValueRef::Async(index)) =
-                    deps.add_memoized_expr(ctx, info, ctx.b.clone_expr(&arg_expr))
-                {
-                    let async_param = deps.async_param_expr(ctx, index);
-                    let param_expr = ctx.b.call_expr("$.get", [Arg::Expr(async_param)]);
-                    let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(param_expr)]);
-                    arg_thunks.push(Arg::Expr(thunk));
-                    continue;
-                }
+        if arg_info.has_await && !arg_info.ref_symbols.is_empty() {
+            if let Some(MemoValueRef::Async(index)) =
+                deps.add_memoized_expr(ctx, arg_info, ctx.b.clone_expr(&arg_expr))
+            {
+                let async_param = deps.async_param_expr(ctx, index);
+                let param_expr = ctx.b.call_expr("$.get", [Arg::Expr(async_param)]);
+                let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(param_expr)]);
+                arg_thunks.push(Arg::Expr(thunk));
+                continue;
             }
-            deps.push_expr_info(ctx, info);
         }
+        deps.push_expr_info(ctx, arg_info);
 
-        if arg_info.is_some_and(|info| info.has_call) {
+        if arg_info.has_call {
             let mut memo_name = String::with_capacity(4);
             memo_name.push('$');
             memo_name.push_str(&memo_counter.to_string());
@@ -147,7 +142,7 @@ pub(crate) fn gen_render_tag<'a>(
     if needs_async {
         let mut inner = memo_stmts;
         inner.push(final_stmt);
-        for idx in ctx.analysis.expression_blockers(id) {
+        for &idx in async_plan.blockers() {
             deps.push_script_blocker(idx);
         }
         let callback_params = if deps.has_async_values() {
