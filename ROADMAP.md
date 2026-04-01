@@ -8,7 +8,7 @@ For a full feature parity audit, see [PARITY.md](PARITY.md).
 ---
 
 <details>
-<summary>Done ✅ (AST & Parser, Analyze, Script codegen, Template codegen, Event handling, Bind directives, Directives, Special elements, Module compilation, Optimizations, WASM, Custom Elements, Tier 1 Core Gaps, Tier 1.1 Async infrastructure)</summary>
+<summary>Done ✅ (AST & Parser, Analyze, Script codegen, Template codegen, Event handling, Bind directives, Directives, Special elements, Module compilation, Optimizations, WASM, Custom Elements, Tier 1 Core Gaps, Tier 1.1 Experimental Async)</summary>
 
 ### AST & Parser (6 items)
 `Text`, `Element`, `ComponentNode`, `Comment`, `ExpressionTag`, `IfBlock`, `EachBlock`, `SnippetBlock`, `RenderTag`, Attributes, Script/Style blocks, Void elements
@@ -40,20 +40,10 @@ All completed.
 ### Tier 1 — Core Gaps ✅
 1a `ModuleCompileOptions`, 1b Template expression transforms (`svelte_transform`) — all completed.
 
-### Tier 1.1 — Experimental Async (completed items)
-Infrastructure (5/6), block wrapping (3/4), bind directives, actions/attachments/transitions — all completed.
+### Tier 1.1 — Experimental Async ✅
+All client-side async features completed: infrastructure, block wrapping (if/each/html/key/await/svelte:element), directive blockers, `{@const}` async, `$derived` async, memoizer async, `{@render}` async, `<title>` async, `<svelte:boundary>` async, `{await expr}` template syntax, pickled awaits, dev-mode reactivity loss tracking.
 
 </details>
-
----
-
-## Tier 1.1 — Experimental Async (remaining)
-
-Spec: `specs/experimental-async.md`
-
-- [ ] Full blocker tracking: const tags with async expressions → `binding.blocker` propagation
-- [ ] `{await expr}` experimental template syntax (Svelte 5.36+)
-- [ ] `<svelte:boundary>` — `experimental.async` handling for const tag scoping changes
 
 ---
 
@@ -414,7 +404,6 @@ trait NodeStore {
 
 ### experimental.async (Tier 1.1)
 - Function blocker analysis: deferred max-blocker tracking for function declarations
-- `for await` reactivity loss tracking (dev mode)
 
 ### $state rune — legacy (Tier 7)
 - `$.deep_read_state()` for bindable props in `$:` reactive statements — only used in non-runes mode (LabeledStatement.js, shared/utils.js build_expression)
