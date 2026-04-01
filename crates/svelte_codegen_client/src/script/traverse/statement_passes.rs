@@ -12,6 +12,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         self.strip_export_keywords(stmts);
         self.strip_prod_inspect(stmts);
         self.strip_props_id_declarations(stmts);
+        self.process_sync_derived_destructuring(stmts);
         self.process_async_derived_destructuring(stmts);
         self.expand_state_destructuring(stmts);
         self.replace_props_declaration(stmts);
