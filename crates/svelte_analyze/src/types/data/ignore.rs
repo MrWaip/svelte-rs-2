@@ -43,7 +43,8 @@ impl IgnoreData {
     /// Multiple comments targeting the same statement have their codes merged.
     pub fn scan_program_comments(&mut self, program: &oxc_ast::ast::Program<'_>, runes: bool) {
         let src = program.source_text;
-        // Collect codes grouped by attached_to position
+        // Multiple consecutive svelte-ignore comments can precede the same statement;
+        // merge their codes before interning
         let mut by_attached: FxHashMap<u32, FxHashSet<String>> = FxHashMap::default();
 
         for comment in program.comments.iter() {
@@ -56,7 +57,8 @@ impl IgnoreData {
             if !raw.contains("svelte-ignore") {
                 continue;
             }
-            // Strip comment delimiters: `//` for line comments, `/*` and `*/` for block
+            // OXC comment spans include the delimiter characters in the raw text,
+            // so strip them before extracting codes
             let (inner, inner_offset) = if comment.is_line() {
                 (&raw[2..], s as u32 + 2)
             } else if raw.len() >= 4 {

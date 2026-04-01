@@ -237,7 +237,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 let sym_id = id.symbol_id.get();
                 let is_mutated = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
 
-                // Determine if the value will be proxied (for tag_proxy vs tag decision)
+                // is_proxy must be computed before wrap_state_value consumes the accessor,
+                // and tag_proxy requires a different runtime call than tag
                 let is_proxy = matches!(rune_kind, RuneKind::State)
                     && svelte_transform::rune_refs::should_proxy(&accessor);
 
@@ -245,10 +246,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
                 let final_value = if self.dev {
                     if is_mutated {
-                        // $.tag($.state(...), "name")
                         self.b.call_expr("$.tag", [Arg::Expr(final_value), Arg::Str(name.to_string())])
                     } else if is_proxy {
-                        // $.tag_proxy($.proxy(...), "name")
                         self.b.call_expr("$.tag_proxy", [Arg::Expr(final_value), Arg::Str(name.to_string())])
                     } else {
                         final_value
