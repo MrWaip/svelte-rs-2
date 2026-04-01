@@ -131,6 +131,9 @@ pub fn analyze_with_options<'a>(
                 passes::mark_runes::mark_script_runes(&mut data);
                 if let Some(program) = &parsed.program {
                     passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
+                    if options.dev {
+                        data.ignore_data.scan_program_comments(program, runes);
+                    }
                 }
             }
             passes::PassKey::PrepareAwaitBindings => {

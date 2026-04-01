@@ -17,9 +17,14 @@ pub fn legacy_replacement(code: &str) -> Option<&'static str> {
     }
 }
 
-/// Returns true if the code is a valid compile-time warning code.
+/// Runtime-only warnings that can be suppressed via `svelte-ignore` but are not
+/// emitted by the compiler. Matches Svelte's `IGNORABLE_RUNTIME_WARNINGS`.
+const IGNORABLE_RUNTIME_WARNINGS: &[&str] = &["await_waterfall", "await_reactivity_loss", "state_snapshot_uncloneable"];
+
+/// Returns true if the code is a valid warning code (compile-time or runtime-ignorable).
 pub fn is_valid_warning_code(code: &str) -> bool {
     DiagnosticKind::all_warning_codes().contains(&code)
+        || IGNORABLE_RUNTIME_WARNINGS.contains(&code)
 }
 
 /// Finds the closest match for `input` among `candidates` using Levenshtein distance.

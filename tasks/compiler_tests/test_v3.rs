@@ -946,6 +946,21 @@ fn state_snapshot_not_ignored() {
 }
 
 #[rstest]
+fn state_snapshot_ignored_return() {
+    assert_compiler("state_snapshot_ignored_return");
+}
+
+#[rstest]
+fn for_await_ignored() {
+    assert_compiler("for_await_ignored");
+}
+
+#[rstest]
+fn await_reactivity_ignored() {
+    assert_compiler("await_reactivity_ignored");
+}
+
+#[rstest]
 fn state_class_constructor_proxy() {
     assert_compiler("state_class_constructor_proxy");
 }

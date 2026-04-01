@@ -32,13 +32,35 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     if let oxc_ast::ast::BindingPattern::BindingIdentifier(bid) = &node.id {
                         if let Some(sym_id) = bid.symbol_id.get() {
                             self.derived_pending.insert(sym_id);
+                            // Track async derived BEFORE `rewrite_dev_await_tracking` can
+                            // transform the `await` inside to `$.track_reactivity_loss` form.
+                            let is_async_init = call.arguments.first()
+                                .and_then(|a| a.as_expression())
+                                .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::AwaitExpression(_)));
+                            if is_async_init {
+                                self.async_derived_pending.insert(sym_id);
+                            }
                         }
                     }
                     node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
                 }
                 RuneKind::DerivedBy => {
                     call.callee = self.b.rid_expr("$.derived");
-                    node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
+                    let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
+                    node.init = if self.dev {
+                        let var_name = match &node.id {
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                id.name.as_str()
+                            }
+                            _ => "",
+                        };
+                        Some(self.b.call_expr(
+                            "$.tag",
+                            [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
+                        ))
+                    } else {
+                        Some(derived_expr)
+                    };
                 }
                 RuneKind::State | RuneKind::StateRaw => {
                     if mutated {
@@ -92,10 +114,24 @@ impl<'a> ScriptTransformer<'_, 'a> {
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             dummy.into_expression()
                         };
-                        let value = if kind == RuneKind::State
-                            && svelte_transform::rune_refs::should_proxy(&value)
-                        {
+                        let is_proxy = kind == RuneKind::State
+                            && svelte_transform::rune_refs::should_proxy(&value);
+                        let value = if is_proxy {
                             self.b.call_expr("$.proxy", [Arg::Expr(value)])
+                        } else {
+                            value
+                        };
+                        let value = if self.dev && is_proxy {
+                            let var_name = match &node.id {
+                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                    id.name.as_str()
+                                }
+                                _ => "",
+                            };
+                            self.b.call_expr(
+                                "$.tag_proxy",
+                                [Arg::Expr(value), Arg::StrRef(var_name)],
+                            )
                         } else {
                             value
                         };
@@ -163,6 +199,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             }
         }
 
+        let mut is_snapshot = false;
         let new_callee = match &call.callee {
             oxc_ast::ast::Expression::Identifier(id) if id.name.as_str() == "$effect" => {
                 Some("$.user_effect")
@@ -172,7 +209,10 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     match (obj.name.as_str(), member.property.name.as_str()) {
                         ("$effect", "pre") => Some("$.user_pre_effect"),
                         ("$effect", "root") => Some("$.effect_root"),
-                        ("$state", "snapshot") => Some("$.snapshot"),
+                        ("$state", "snapshot") => {
+                            is_snapshot = true;
+                            Some("$.snapshot")
+                        }
                         ("$effect", "tracking") => Some("$.effect_tracking"),
                         _ => None,
                     }
@@ -187,6 +227,11 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 unreachable!()
             };
             call.callee = self.b.rid_expr(callee_name);
+
+            // $.snapshot(val, true) when svelte-ignore state_snapshot_uncloneable is active
+            if is_snapshot && self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable") {
+                call.arguments.push(oxc_ast::ast::Argument::from(self.b.bool_expr(true)));
+            }
         }
     }
 

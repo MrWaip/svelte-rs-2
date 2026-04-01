@@ -32,6 +32,8 @@ impl<'a> CodegenView<'a> {
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> { self.data.blocker_data().symbol_blocker(sym) }
     pub fn is_pickled_await(&self, offset: u32) -> bool { self.data.is_pickled_await(offset) }
     pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool { self.data.ignore_data.is_ignored(node_id, code) }
+    pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool { self.data.ignore_data.is_ignored_at_span(span_start, code) }
+    pub fn ignore_data(&self) -> &IgnoreData { &self.data.ignore_data }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> { self.data.await_bindings.value(id) }
     pub fn await_error_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> { self.data.await_bindings.error(id) }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> { self.data.expr_deps(site) }

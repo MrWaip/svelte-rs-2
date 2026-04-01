@@ -2,7 +2,7 @@ use oxc_ast::ast::Expression;
 use oxc_semantic::Scoping;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use svelte_analyze::{ComponentScoping, PropsAnalysis, RuneKind};
+use svelte_analyze::{ComponentScoping, IgnoreData, PropsAnalysis, RuneKind};
 
 use crate::builder::Builder;
 
@@ -53,6 +53,7 @@ pub(super) struct FunctionInfo {
     pub(super) is_async: bool,
     pub(super) name: Option<String>,
     pub(super) span_start: u32,
+    pub(super) in_constructor: bool,
 }
 
 pub(super) struct ClassStateField {
@@ -71,6 +72,9 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) scoping: Scoping,
     pub(super) props_gen: Option<PropsGenInfo>,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+    /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
+    /// Used by `wrap_derived_thunks` to determine async thunk form after dev transforms run.
+    pub(super) async_derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     pub(super) strip_exports: bool,
     pub(super) dev: bool,
     pub(super) is_ts: bool,
@@ -82,11 +86,24 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) next_arrow_name: Option<String>,
     pub(super) ident_counter: u32,
     pub(super) class_state_stack: Vec<ClassStateInfo>,
+    pub(super) class_name_stack: Vec<Option<String>>,
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
+    pub(super) experimental_async: bool,
+    /// Svelte-ignore directives (populated in analyze, includes span-based JS comment lookups).
+    pub(super) ignore_data: &'b IgnoreData,
+    /// Stack of enclosing statement start positions for ignore lookups.
+    /// Pushed on enter_*_statement, popped on exit_*_statement.
+    pub(super) enclosing_stmt_start: Vec<u32>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
+    pub(super) fn is_in_ignored_stmt(&self, code: &str) -> bool {
+        self.enclosing_stmt_start
+            .last()
+            .is_some_and(|&start| self.ignore_data.is_ignored_at_span(start, code))
+    }
+
     pub(super) fn rune_for_binding(
         &self,
         id: &oxc_ast::ast::BindingIdentifier<'a>,
