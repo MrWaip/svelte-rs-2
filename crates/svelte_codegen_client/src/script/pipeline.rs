@@ -221,15 +221,14 @@ fn run_transform<'a>(
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {
-        let dev_ctx = super::traverse::DevContext {
-            dev,
+        let dev_ctx = dev.then(|| super::traverse::DevContext {
             component_source,
             script_content_start,
             filename,
             async_derived_pending: transformer.async_derived_pending,
             ignore_data: transformer.ignore_data,
-        };
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
+        });
+        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, dev_ctx.as_ref());
     }
 
     let has_tracing = transformer.has_tracing;

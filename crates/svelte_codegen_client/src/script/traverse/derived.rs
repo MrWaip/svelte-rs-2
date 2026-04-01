@@ -8,7 +8,6 @@ use crate::script::{compute_line_col, sanitize_location};
 
 /// Dev-mode context for adding label/location args to `$.async_derived`.
 pub(crate) struct DevContext<'a> {
-    pub(crate) dev: bool,
     pub(crate) component_source: &'a str,
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'a str,
@@ -77,6 +76,13 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                     ctx.async_derived_pending.contains(&sym_id)
                                 });
 
+                            let var_name = match &declarator.id {
+                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                    id.name.to_string()
+                                }
+                                _ => String::new(),
+                            };
+
                             if is_async {
                                 // Must read span before the mem::swap below invalidates arg positions.
                                 let init_span_start = call.span.start;
@@ -98,14 +104,8 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                 };
 
                                 let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
-                                if let Some(ctx) = dev_ctx.filter(|c| c.dev) {
-                                    let name = match &declarator.id {
-                                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                            id.name.to_string()
-                                        }
-                                        _ => String::new(),
-                                    };
-                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&name)));
+                                if let Some(ctx) = dev_ctx {
+                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
                                     // Only pass location if not suppressed by svelte-ignore await_waterfall
                                     if !ctx.ignore_data.is_ignored_at_span(decl_start, "await_waterfall") {
                                         let loc = ctx.locate(init_span_start);
@@ -124,17 +124,11 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                 let thunk = b.thunk(arg_expr);
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
 
-                                if dev_ctx.as_ref().is_some_and(|c| c.dev) {
-                                    let name = match &declarator.id {
-                                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                            id.name.to_string()
-                                        }
-                                        _ => String::new(),
-                                    };
+                                if dev_ctx.is_some() {
                                     let derived_expr = b.move_expr(declarator.init.as_mut().unwrap());
                                     declarator.init = Some(b.call_expr(
                                         "$.tag",
-                                        [Arg::Expr(derived_expr), Arg::Str(name)],
+                                        [Arg::Expr(derived_expr), Arg::Str(var_name)],
                                     ));
                                 }
                             }
