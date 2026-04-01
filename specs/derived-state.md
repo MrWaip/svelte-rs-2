@@ -7,13 +7,11 @@
 Core `$derived` and `$derived.by` are fully implemented for simple identifier bindings (sync and async), class fields, nested functions, and dev mode. 21 existing tests all pass.
 
 **Gaps found:**
-1. Sync destructured `$derived(expr)` — not implemented (codegen skips non-Identifier patterns in `wrap_derived_thunks`)
-2. Sync destructured `$derived.by(fn)` — same gap
-3. `derived_invalid_export` diagnostic — defined but never emitted from analyze
-4. `state_referenced_locally` warning — not emitted for derived bindings
-5. `$.save()` for nested async derived (`function_depth > 1`) — unknown, no test
+1. `derived_invalid_export` diagnostic — defined but never emitted from analyze
+2. `state_referenced_locally` warning — not emitted for derived bindings
+3. `$.save()` for nested async derived (`function_depth > 1`) — unknown, no test
 
-**Next:** Add test cases for gaps, then fix starting with sync destructured `$derived`.
+**Next:** port analyzer diagnostics (`derived_invalid_export`, `state_referenced_locally`) and add focused tests.
 
 ## Source
 
@@ -37,9 +35,9 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] `@const` tag bindings treated as derived
 
 ### In scope
-- [ ] Sync destructured `$derived(expr)` where arg is plain Identifier (no intermediate var)
-- [ ] Sync destructured `$derived(expr)` where arg is NOT plain Identifier (intermediate `$$d` var)
-- [ ] Sync destructured `$derived.by(fn)` (intermediate `$$d` var)
+- [x] Sync destructured `$derived(expr)` where arg is plain Identifier (no intermediate var)
+- [x] Sync destructured `$derived(expr)` where arg is NOT plain Identifier (intermediate `$$d` var)
+- [x] Sync destructured `$derived.by(fn)` (intermediate `$$d` var)
 - [ ] `derived_invalid_export` diagnostic when `export`ing derived binding
 - [ ] `state_referenced_locally` warning for derived bindings read at same function depth
 
@@ -104,3 +102,8 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - `derived_destructured_object` — sync destructured `$derived` with object pattern
 - `derived_destructured_array` — sync destructured `$derived` with array pattern
 - `derived_destructured_by` — sync destructured `$derived.by` with object pattern
+
+### Completed in this session
+- `derived_destructured_object`
+- `derived_destructured_array`
+- `derived_destructured_by`

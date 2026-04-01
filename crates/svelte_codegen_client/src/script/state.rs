@@ -99,6 +99,36 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
     }
 
+    /// Rewrite destructured sync `$derived(...)` / `$derived.by(...)` declarations.
+    pub(super) fn process_sync_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        let dev = self.dev;
+        self.rewrite_destructured_rune_decls(
+            stmts,
+            |declarator, rune_kind| {
+                !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
+                    && matches!(rune_kind, Some(RuneKind::Derived | RuneKind::DerivedBy))
+                    && declarator.init.as_ref().is_some_and(|init| {
+                        if let Expression::CallExpression(call) = init {
+                            call.arguments.first()
+                                .and_then(|arg| arg.as_expression())
+                                .is_some_and(|expr| {
+                                    !matches!(expr, Expression::AwaitExpression(_))
+                                        && !(dev
+                                            && matches!(expr, Expression::CallExpression(c)
+                                                if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_))))
+                                })
+                        } else {
+                            false
+                        }
+                    })
+            },
+            |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
+                let init = declarator.init.take().unwrap();
+                this.gen_sync_derived_destructuring(&declarator.id, init, rune_kind, decl_kind)
+            },
+        );
+    }
+
     /// Rewrite destructured async `$derived(await expr)` into a single block statement
     /// so async instance splitting keeps the original blocker metadata indexing.
     pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
@@ -129,6 +159,68 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start)
             },
         );
+    }
+
+    fn gen_sync_derived_destructuring(
+        &mut self,
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        init: Expression<'a>,
+        rune_kind: RuneKind,
+        decl_kind: oxc_ast::ast::VariableDeclarationKind,
+    ) -> Statement<'a> {
+        let Expression::CallExpression(mut call) = init else {
+            unreachable!("sync derived destructuring should be a call");
+        };
+        call.callee = self.b.rid_expr("$.derived");
+
+        let mut declarators = Vec::new();
+
+        let arg_expr = call.arguments.remove(0).into_expression();
+
+        let use_direct_access = matches!(rune_kind, RuneKind::Derived)
+            && matches!(arg_expr, Expression::Identifier(_));
+        let access_root = if use_direct_access {
+            arg_expr
+        } else {
+            let derived_arg = if matches!(rune_kind, RuneKind::DerivedBy) {
+                arg_expr
+            } else {
+                self.b.thunk(arg_expr)
+            };
+            call.arguments.push(oxc_ast::ast::Argument::from(derived_arg));
+            let tmp_name = self.gen_unique_name("$$d");
+            let tmp_name_str = self.b.alloc_str(&tmp_name);
+            let derived_call = Expression::CallExpression(call);
+            let tmp_declarator = self.b.ast.variable_declarator(
+                oxc_span::SPAN,
+                decl_kind,
+                self.b.ast.binding_pattern_binding_identifier(
+                    oxc_span::SPAN,
+                    self.b.ast.atom(tmp_name_str),
+                ),
+                NONE,
+                Some(derived_call),
+                false,
+            );
+            declarators.push(tmp_declarator);
+            self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)])
+        };
+
+        self.gen_destructure_declarators(
+            pattern,
+            access_root,
+            RuneKind::Derived,
+            decl_kind,
+            &mut declarators,
+        );
+
+        let decl = self.b.ast.variable_declaration(
+            oxc_span::SPAN,
+            decl_kind,
+            self.b.ast.vec_from_iter(declarators),
+            false,
+        );
+        Statement::VariableDeclaration(self.b.alloc(decl))
     }
 
     /// Expand destructured `$state`/`$state.raw` declarations into expanded form.

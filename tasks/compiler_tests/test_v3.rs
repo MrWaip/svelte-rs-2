@@ -2170,19 +2170,16 @@ fn tag_derived_by() {
 }
 
 #[rstest]
-#[ignore = "missing: sync destructured $derived with object pattern (codegen)"]
 fn derived_destructured_object() {
     assert_compiler("derived_destructured_object");
 }
 
 #[rstest]
-#[ignore = "missing: sync destructured $derived with array pattern (codegen)"]
 fn derived_destructured_array() {
     assert_compiler("derived_destructured_array");
 }
 
 #[rstest]
-#[ignore = "missing: sync destructured $derived.by (codegen)"]
 fn derived_destructured_by() {
     assert_compiler("derived_destructured_by");
 }
