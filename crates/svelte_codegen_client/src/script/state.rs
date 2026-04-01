@@ -237,7 +237,25 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 let sym_id = id.symbol_id.get();
                 let is_mutated = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
 
+                // Determine if the value will be proxied (for tag_proxy vs tag decision)
+                let is_proxy = matches!(rune_kind, RuneKind::State)
+                    && svelte_transform::rune_refs::should_proxy(&accessor);
+
                 let final_value = self.wrap_state_value(accessor, rune_kind, is_mutated);
+
+                let final_value = if self.dev {
+                    if is_mutated {
+                        // $.tag($.state(...), "name")
+                        self.b.call_expr("$.tag", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+                    } else if is_proxy {
+                        // $.tag_proxy($.proxy(...), "name")
+                        self.b.call_expr("$.tag_proxy", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+                    } else {
+                        final_value
+                    }
+                } else {
+                    final_value
+                };
 
                 let declarator = self.b.ast.variable_declarator(
                     oxc_span::SPAN,
@@ -287,6 +305,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 let to_array_call = self.b.call_expr("$.to_array", len_arg);
                 let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+                let derived_call = if self.dev {
+                    self.b.call_expr("$.tag", [
+                        Arg::Expr(derived_call),
+                        Arg::Str("[$state iterable]".to_string()),
+                    ])
+                } else {
+                    derived_call
+                };
 
                 let array_declarator = self.b.ast.variable_declarator(
                     oxc_span::SPAN,
@@ -435,6 +461,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         match pattern {
             oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
                 let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+                let value = if self.dev {
+                    self.b.call_expr("$.tag", [Arg::Expr(value), Arg::Str(id.name.to_string())])
+                } else {
+                    value
+                };
                 stmts.push(self.b.assign_stmt(crate::builder::AssignLeft::Ident(id.name.to_string()), value));
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
@@ -766,6 +797,15 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 }
                 _ => {}
             }
+            if self.dev && rune_kind.is_some() {
+                let field_name = match &prop.key {
+                    oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => format!("#{}", id.name),
+                    _ => String::new(),
+                };
+                let label = self.class_tag_label(&field_name);
+                let value = self.b.move_expr(prop.value.as_mut().unwrap());
+                prop.value = Some(self.b.call_expr("$.tag", [Arg::Expr(value), Arg::Str(label)]));
+            }
         }
     }
 
@@ -813,6 +853,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     self.b.call_expr("$.state", std::iter::empty::<Arg<'a, '_>>())
                 }
             }
+        };
+
+        let init_call = if self.dev {
+            let label = self.class_tag_label(name);
+            self.b.call_expr("$.tag", [Arg::Expr(init_call), Arg::Str(label)])
+        } else {
+            init_call
         };
 
         new_body.push(self.b.class_private_field(&field_info.private_name, Some(init_call)));
@@ -896,6 +943,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                                 }
                                             }
                                         }
+                                        if self.dev {
+                                            let label = self.class_tag_label(&name);
+                                            let rhs = self.b.move_expr(&mut assign.right);
+                                            assign.right = self.b.call_expr("$.tag", [Arg::Expr(rhs), Arg::Str(label)]);
+                                        }
                                         // Rewrite LHS only for rune declarations — non-rune assignments use the public setter
                                         let new_left = self.b.this_private_member(&field_info.private_name);
                                         if let Expression::PrivateFieldExpression(pfe) = new_left {
@@ -916,5 +968,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         self.class_state_stack.last().is_some_and(|info| {
             info.fields.iter().any(|f| f.public_name.is_none() && f.private_name == name)
         })
+    }
+
+    /// Build a dev-mode tag label like "ClassName.fieldName" or "[class].fieldName".
+    fn class_tag_label(&self, field_name: &str) -> String {
+        let class_name = self.class_name_stack.last()
+            .and_then(|n| n.as_deref())
+            .unwrap_or("[class]");
+        format!("{}.{}", class_name, field_name)
     }
 }

@@ -2,7 +2,7 @@ use rustc_hash::FxHashSet;
 
 use oxc_ast::ast::{Expression, Statement};
 
-use crate::builder::Builder;
+use crate::builder::{Arg, Builder};
 use crate::script::{compute_line_col, sanitize_location};
 
 /// Dev-mode context for adding label/location args to `$.async_derived`.
@@ -123,6 +123,20 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             } else {
                                 let thunk = b.thunk(arg_expr);
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
+
+                                if dev_ctx.as_ref().is_some_and(|c| c.dev) {
+                                    let name = match &declarator.id {
+                                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                            id.name.to_string()
+                                        }
+                                        _ => String::new(),
+                                    };
+                                    let derived_expr = b.move_expr(declarator.init.as_mut().unwrap());
+                                    declarator.init = Some(b.call_expr(
+                                        "$.tag",
+                                        [Arg::Expr(derived_expr), Arg::Str(name)],
+                                    ));
+                                }
                             }
                         }
                     }

@@ -149,6 +149,15 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         self.strip_ts_class_bits(node);
+        self.class_name_stack.push(node.id.as_ref().map(|id| id.name.to_string()));
+    }
+
+    fn exit_class(
+        &mut self,
+        _node: &mut oxc_ast::ast::Class<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.class_name_stack.pop();
     }
 
     fn enter_property_definition(

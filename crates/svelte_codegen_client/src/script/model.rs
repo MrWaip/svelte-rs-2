@@ -85,6 +85,7 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) next_arrow_name: Option<String>,
     pub(super) ident_counter: u32,
     pub(super) class_state_stack: Vec<ClassStateInfo>,
+    pub(super) class_name_stack: Vec<Option<String>>,
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
     pub(super) experimental_async: bool,

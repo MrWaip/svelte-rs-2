@@ -46,7 +46,21 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 }
                 RuneKind::DerivedBy => {
                     call.callee = self.b.rid_expr("$.derived");
-                    node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
+                    let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
+                    node.init = if self.dev {
+                        let var_name = match &node.id {
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                id.name.as_str()
+                            }
+                            _ => "",
+                        };
+                        Some(self.b.call_expr(
+                            "$.tag",
+                            [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
+                        ))
+                    } else {
+                        Some(derived_expr)
+                    };
                 }
                 RuneKind::State | RuneKind::StateRaw => {
                     if mutated {
@@ -100,10 +114,24 @@ impl<'a> ScriptTransformer<'_, 'a> {
                             std::mem::swap(&mut call.arguments[0], &mut dummy);
                             dummy.into_expression()
                         };
-                        let value = if kind == RuneKind::State
-                            && svelte_transform::rune_refs::should_proxy(&value)
-                        {
+                        let is_proxy = kind == RuneKind::State
+                            && svelte_transform::rune_refs::should_proxy(&value);
+                        let value = if is_proxy {
                             self.b.call_expr("$.proxy", [Arg::Expr(value)])
+                        } else {
+                            value
+                        };
+                        let value = if self.dev && is_proxy {
+                            let var_name = match &node.id {
+                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                    id.name.as_str()
+                                }
+                                _ => "",
+                            };
+                            self.b.call_expr(
+                                "$.tag_proxy",
+                                [Arg::Expr(value), Arg::StrRef(var_name)],
+                            )
                         } else {
                             value
                         };
