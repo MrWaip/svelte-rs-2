@@ -36,3 +36,4 @@ Write a ranked report such as `SIMPLIFY_REVIEW.md` with level, impact, current s
 Rules:
 - preserve behavior exactly
 - prefer explicit readable code over clever abstractions
+- require a balance check before keeping a finding

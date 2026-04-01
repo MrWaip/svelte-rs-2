@@ -1,0 +1,4 @@
+interface:
+  display_name: "Phase Boundaries"
+  short_description: "Apply strict compiler layer boundaries"
+  default_prompt: "Use $phase-boundaries to decide which compiler phase should own this logic."

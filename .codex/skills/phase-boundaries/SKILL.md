@@ -30,6 +30,7 @@ Rewrite parsed JS AST. Follow the same boundary rules as codegen: no semantic re
 - repeated `.iter().find(...)`, `.iter().filter_map(...)`, `.iter().any(...)` over the same collection to gather derived facts
 - deep chaining into `AnalysisData` internals instead of using a dedicated accessor
 - combining 2+ analysis booleans in codegen/transform to decide an output mode
+- codegen-local enums or structs that cache facts analyze should already own
 
 ## Green flags
 

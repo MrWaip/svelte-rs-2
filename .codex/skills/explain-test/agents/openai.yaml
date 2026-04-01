@@ -1,0 +1,4 @@
+interface:
+  display_name: "Explain Test"
+  short_description: "Explain compiler test behavior and failures"
+  default_prompt: "Use $explain-test to explain what this compiler case covers and why it passes or fails."

@@ -1,6 +1,6 @@
 ---
 name: oxc-analyze-api
-description: OXC visitor and semantic API reference for `svelte_analyze`. Use when writing or reviewing `Visit` or `VisitMut` code, scope or symbol-resolution logic, reference collection, write detection, or when you need exact visitor method signatures for a specific OXC AST node.
+description: OXC visitor and semantic API reference for `svelte_analyze`. Use when writing or reviewing `Visit` or `VisitMut` code, scope or symbol-resolution logic, reference collection, write detection, or when you need exact OXC method signatures instead of guessing.
 ---
 
 # OXC API For Analyze
@@ -33,6 +33,14 @@ Consult `scoping-api.txt` for exact methods. Typical operations include:
 - look up a binding by name inside a scope
 - get symbol names or flags by `SymbolId`
 - inspect scope flags
+
+## Upstream sources
+
+Use these only when the bundled references need a manual refresh:
+
+- `oxc_ast_visit/src/generated/visit.rs`
+- `oxc_semantic/src/scoping.rs`
+- `oxc_semantic/src/builder.rs`
 
 ## Working rule
 

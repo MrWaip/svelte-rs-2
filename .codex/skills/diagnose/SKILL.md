@@ -40,7 +40,7 @@ Report:
 
 ## 5) Convert findings into focused tests
 
-Turn the most important issues into narrow parser, analyzer, or compiler tests. Avoid a single giant reproduction test when smaller targeted tests would isolate behavior better.
+Turn the most important issues into narrow parser, analyzer, or compiler tests. Prefer at most a handful of focused tests over one giant reproduction.
 
 ## 6) Clean up
 
@@ -48,4 +48,5 @@ Remove the temporary `_diagnose_tmp` case and temporary test registration after 
 
 Rules:
 - never hand-edit generated `case-svelte.js` / `case-rust.js`
+- do not fix the compiler as part of diagnosis unless the user explicitly asks for that follow-up
 - keep diagnosis and implementation separated unless user explicitly asks to fix now

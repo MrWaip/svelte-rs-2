@@ -1,0 +1,4 @@
+interface:
+  display_name: "OXC Codegen API"
+  short_description: "Load OXC traversal API references"
+  default_prompt: "Use $oxc-codegen-api to load the exact OXC traversal hooks before changing transform or codegen code."

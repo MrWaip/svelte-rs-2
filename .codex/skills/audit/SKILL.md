@@ -35,6 +35,8 @@ Use `spec-template` for structure. Capture:
 - implementation tasks
 - recommended order
 
+If this audit creates a new spec for a roadmap feature, add a link to that spec in `ROADMAP.md` right away. Keep the checklist status unchanged; only append or refresh the `(specs/<name>.md)` reference for the matching item.
+
 ## 5) Add focused missing tests
 
 For Missing or Unknown cases, add focused compiler tests where useful. Generate expected output with the reference compiler and never hand-edit generated snapshots.

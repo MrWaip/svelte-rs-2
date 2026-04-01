@@ -1,0 +1,4 @@
+interface:
+  display_name: "Port"
+  short_description: "Port a feature from spec to code"
+  default_prompt: "Use $port to implement this feature from spec and verify it layer by layer."

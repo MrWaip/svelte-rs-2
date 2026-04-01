@@ -1,0 +1,4 @@
+interface:
+  display_name: "Legacy Conventions"
+  short_description: "Keep Svelte 4 legacy code isolated"
+  default_prompt: "Use $legacy-conventions to keep this Svelte 4 legacy change isolated and removable."

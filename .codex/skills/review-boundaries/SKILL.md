@@ -59,4 +59,4 @@ For each finding include:
 
 Saving a structured note such as `BOUNDARY_REVIEW.md` is appropriate for larger audits.
 
-Focus on ownership and data flow, not formatting, performance micro-tuning, or naming style.
+Focus on ownership and data flow, not formatting, performance micro-tuning, or naming style. Group repeated occurrences by root cause instead of emitting separate findings for the same mistake.

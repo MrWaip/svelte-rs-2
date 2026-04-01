@@ -30,6 +30,7 @@ Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` 
 |--------|-----------|----------------|
 | Current state | **Первое что видит человек.** Что сделано, что следующее, блокеры. Дата обновления. | Обязательно |
 | Source | Привязка к ROADMAP item или запросу | Обязательно |
+| Syntax variants | Все синтаксические формы фичи (из доков и парсера reference compiler) | Обязательно |
 | Use cases | Scope: что реализуем `[ ]`, что есть `[x]`, что откладываем (Deferred) | Обязательно |
 | Reference | Файлы reference compiler + наши файлы — чтобы следующая сессия не искала заново | Обязательно |
 | Tasks | Implementation plan по слоям, с конкретными файлами и функциями | Обязательно |

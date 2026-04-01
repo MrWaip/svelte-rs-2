@@ -31,8 +31,8 @@ Add a `#[rstest]` case to `tasks/compiler_tests/test_v3.rs`:
 
 ```rust
 #[rstest]
-fn test_name() {
-    assert_compiler("test_name");
+fn <name>() {
+    assert_compiler("<name>");
 }
 ```
 
@@ -50,4 +50,5 @@ Include:
 
 - what the test covers
 - whether it passed or failed
+- diff summary if it fails
 - the next recommended command, usually `fix-test <name>` or `port specs/<feature>.md`

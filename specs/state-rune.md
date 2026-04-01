@@ -1,14 +1,17 @@
 # $state rune
 
 ## Current state
-- **Working**: 35/37 use cases fully covered with passing tests
+- **Working**: 39/43 use cases covered with passing tests (35 compiler tests, 12 analyze unit tests)
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
-- **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
-- **Missing**: dev-mode features (#31-32), deep_read_state (#41), snapshot is_ignored (#42)
-- **Validation**: #33-36 all implemented — `$state.frozen` renamed, `$state.is` removed, placement, arg count
-- **Out of scope**: SSR (server-side codegen not started, will be separate phase)
-- **Next**: Dev-mode features (#31-32), then advanced (#41-42).
-- Last updated: 2026-03-29
+- **Missing (audit 2026-04-01)**:
+  - #37 `state_referenced_locally` warning — diagnostic defined but not emitted in analyze
+  - #38 `state_invalid_export` error — diagnostic defined but not emitted in analyze
+  - #39 Dev-mode `$.assign_*` transforms (`$.assign`, `$.assign_and`, `$.assign_or`, `$.assign_nullish`)
+  - #40 `$.safe_get` for `var`-declared state (currently uses `$.get`)
+- **Deferred**: #41 `$.deep_read_state()` — legacy-only (Svelte 4), Tier 7; #32 ObjectPattern dev labels
+- **Out of scope**: SSR, `immutable` compiler option
+- **Next**: implement #37-#40 via `/fix-test` or `/port`
+- Last updated: 2026-04-01
 
 ## Source
 Audit of existing implementation
@@ -80,8 +83,8 @@ Audit of existing implementation
 
 ### Dev mode
 30. [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
-31. [ ] `$.tag_proxy(proxy, label)` in dev mode for proxied props (missing)
-32. [~] `$.tag` label for destructured state — reference uses `[$state iterable]`/`[$state object]` labels (unknown — needs test)
+31. [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
+32. [~] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` implemented, ObjectPattern `[$state object]` requires intermediate `$.derived` restructuring
 
 ### Validation errors (analyze phase)
 33. [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
@@ -89,10 +92,18 @@ Audit of existing implementation
 35. [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)
 36. [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
 
+### Diagnostics (analyze phase — not yet emitted)
+37. [ ] `state_referenced_locally` warning — reading state/derived at same function depth captures initial value (test: state_referenced_locally, #[ignore], moderate)
+38. [ ] `state_invalid_export` error — cannot export reassigned state from module (test: state_invalid_export, #[ignore], moderate)
+
+### Codegen edge cases
+39. [ ] Dev-mode `$.assign_*` transforms — `(obj.x ??= []).push(v)` → `$.assign_nullish(obj, 'x', [])` (test: state_assign_dev, #[ignore], moderate)
+40. [ ] `$.safe_get` for `var`-declared state — `var x = $state(0); x` → `$.safe_get(x)` (test: state_var_safe_get, #[ignore], quick fix)
+
 ### Advanced / edge cases
-41. [ ] `$.deep_read_state()` for bindable props in reactive statements (missing)
-42. [ ] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (missing)
-43. [~] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (unknown — needs verification)
+41. Deferred — `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4 only, moved to Tier 7)
+42. [x] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (test: state_snapshot_ignored)
+43. [x] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (test: state_constructor_read_v, state_constructor_read_derived)
 
 ## Tasks (по слоям)
 
@@ -101,16 +112,22 @@ Audit of existing implementation
 2. [x] Add diagnostic: `$state.is` → rune removed
 3. [x] Add placement validation for `$state`/`$state.raw` (variable decl, class prop, constructor only)
 4. [x] Add argument count validation (0-1 for `$state`/`$state.raw`)
+5. [ ] Emit `state_referenced_locally` warning in Identifier visitor (needs function_depth tracking)
+6. [ ] Emit `state_invalid_export` error in export validation (needs `binding.reassigned` check)
 
 ### codegen
-5. [ ] `$.tag_proxy()` in dev mode when proxying a prop initializer
-6. [ ] `$.deep_read_state()` for bindable props in reactive statements
-7. [ ] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
+7. [x] `$.tag_proxy()` in dev mode when proxying a prop initializer (already implemented)
+8. Deferred — `$.deep_read_state()` for legacy reactive statements (Tier 7)
+9. [x] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
+10. [x] Constructor `this.#field.v` for `$state`/`$state.raw` inside constructor
+11. [ ] `$.safe_get` for `var`-declared state reads (quick fix in runes.rs)
+12. [ ] Dev-mode `$.assign_*` transforms for non-statement member assignment (moderate, new transform)
 
 ### tests
-11. [ ] Add test: `$state` dev mode tag_proxy
-12. [ ] Add test: destructured $state dev labels
-13. [ ] Add test: constructor member expression context (this.#field.v vs $.get)
+13. [x] `$.tag_proxy` dev mode — already covered by existing tag_* tests
+14. [~] Destructured $state dev labels — ArrayPattern covered, ObjectPattern deferred
+15. [x] Constructor member expression: state_constructor_read_v, state_constructor_read_derived
+16. [x] Snapshot ignored: state_snapshot_ignored, state_snapshot_not_ignored
 
 ## Discovered bugs (from new tests)
 

@@ -27,6 +27,8 @@ For roadmap-tier work, use `<tier-id>-<short-name>.md`.
 
 ## Source
 
+## Syntax variants
+
 ## Use cases
 
 ## Reference
@@ -58,4 +60,6 @@ Put `Current state` first. It is the session handoff section.
 
 ## Lifecycle
 
-Create the spec during `audit` or `port`, update `Current state` after each session, and keep the file as long-term reference instead of deleting it when complete.
+1. Create the spec during `audit` or `port`.
+2. Update `Current state` after each session.
+3. Keep completed specs as long-term reference instead of deleting them.

@@ -1,6 +1,6 @@
 ---
 name: legacy-conventions
-description: Conventions for Svelte 4 legacy features and deprecated syntax. Use when touching `on:` directives, legacy `bind:this` behavior, code marked `LEGACY(svelte4)`, or any implementation that must keep Svelte 4 logic isolated from the Svelte 5 path.
+description: Conventions for Svelte 4 legacy features and deprecated syntax. Use when touching `on:` directives, legacy `bind:this` behavior, code marked `LEGACY(svelte4)`, or any implementation that must keep Svelte 4 logic isolated from the Svelte 5 path so it can be deleted cleanly later.
 ---
 
 # Legacy Conventions
@@ -31,4 +31,10 @@ Use the same tag for short inline comments when needed:
 
 ## Isolation
 
-Keep legacy logic self-contained. Do not smear Svelte 4 branches across modern code paths if a dedicated helper or block can isolate them. The ideal cleanup path is: grep `LEGACY(svelte4)`, delete those sites, then compile.
+Keep legacy logic self-contained. Do not smear Svelte 4 branches across modern code paths if a dedicated helper or block can isolate them.
+
+The ideal cleanup path is:
+
+1. grep `LEGACY(svelte4)`
+2. delete those sites
+3. compile

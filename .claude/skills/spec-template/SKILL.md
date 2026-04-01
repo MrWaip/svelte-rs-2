@@ -27,6 +27,14 @@ Sections in fixed order. Most important first.
 ## Source
 <ROADMAP item reference or user request>
 
+## Syntax variants
+<!-- All syntactic forms of this feature, one per line -->
+<!-- Extracted from reference/docs/ and reference compiler parser -->
+```svelte
+{#feature expression}...{/feature}
+{#feature expression}...{:clause value}...{/feature}
+```
+
 ## Use cases
 
 ### <Category>
