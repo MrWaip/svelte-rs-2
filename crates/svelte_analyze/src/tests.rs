@@ -1097,6 +1097,13 @@ fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     );
 }
 
+fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
+    assert!(
+        diags.iter().any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
+        "expected warning '{code}', got: {diags:?}"
+    );
+}
+
 fn assert_no_errors(diags: &[svelte_diagnostics::Diagnostic]) {
     let errors: Vec<_> = diags.iter()
         .filter(|d| d.severity == svelte_diagnostics::Severity::Error)
@@ -1132,6 +1139,19 @@ $state(1);
 </script>"#,
     );
     assert_has_error(&diags, "state_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_key_block_empty_warns() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = 1;
+</script>
+
+{#key count} {/key}"#,
+    );
+    assert_has_warning(&diags, "block_empty");
 }
 
 #[test]
@@ -1185,6 +1205,112 @@ let x = $derived.by(fn1, fn2);
 }
 
 #[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_effect_invalid_placement_fn_arg() {
+    let diags = analyze_with_diags(
+        r#"<script>
+console.log($effect(() => {}));
+</script>"#,
+    );
+    assert_has_error(&diags, "effect_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_effect_pre_invalid_placement_assignment() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let cleanup = $effect.pre(() => {});
+</script>"#,
+    );
+    assert_has_error(&diags, "effect_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_effect_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$effect();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_effect_pre_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$effect.pre(a, b);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_inspect_requires_arguments() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$inspect();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_inspect_with_requires_callback() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$inspect(count).with();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_inspect_trace_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function demo() {
+    $inspect.trace('a', 'b');
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_inspect_trace_invalid_placement() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function demo() {
+    console.log('before');
+    $inspect.trace();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "inspect_trace_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_inspect_trace_generator_invalid() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function* demo() {
+    $inspect.trace();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "inspect_trace_generator");
+}
+
+#[test]
 fn validate_state_valid_positions() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1215,6 +1341,28 @@ class Foo {
 </script>"#,
     );
     assert_no_errors(&diags);
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_host_invalid_placement_without_custom_element() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let host = $host();
+</script>"#,
+    );
+    assert_has_error(&diags, "host_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_host_invalid_arguments() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let host = $host(1);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments");
 }
 
 #[test]
@@ -1255,4 +1403,181 @@ class Outer {
 </script>"#,
     );
     assert_no_errors(&diags);
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_bindable_invalid_location() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let value = $bindable();
+</script>"#,
+    );
+    assert_has_error(&diags, "bindable_invalid_location");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_bindable_too_many_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { value = $bindable(1, 2) } = $props();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_props_invalid_placement_inside_function() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function setup() {
+    let { value } = $props();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "props_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_props_duplicate() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { a } = $props();
+let { b } = $props();
+</script>"#,
+    );
+    assert_has_error(&diags, "props_duplicate");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_props_duplicate_with_props_id() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { a } = $props();
+const id = $props.id();
+</script>"#,
+    );
+    assert_has_error(&diags, "props_duplicate");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_props_invalid_pattern_computed_key() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { [key]: value } = $props();
+</script>"#,
+    );
+    assert_has_error(&diags, "props_invalid_pattern");
+}
+
+#[test]
+#[ignore = "missing: rune validation parity"]
+fn validate_props_id_invalid_placement_inside_function() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function setup() {
+    const id = $props.id();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "props_id_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: const_tag_invalid_placement template validation"]
+fn validate_const_tag_invalid_placement_root() {
+    let diags = analyze_with_diags("{@const doubled = count * 2}");
+    assert_has_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: each_key_without_as template validation"]
+fn validate_each_key_without_as() {
+    let diags = analyze_with_diags("{#each items (item.id)}<p />{/each}");
+    assert_has_error(&diags, "each_key_without_as");
+}
+
+#[test]
+#[ignore = "missing: animation_missing_key template validation"]
+fn validate_each_animation_missing_key() {
+    let diags = analyze_with_diags(
+        r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
+{#each items as item}
+    <div animate:flip>{item}</div>
+{/each}"#,
+    );
+    assert_has_error(&diags, "animation_missing_key");
+}
+
+#[test]
+#[ignore = "missing: animation_invalid_placement template validation"]
+fn validate_each_animation_invalid_placement() {
+    let diags = analyze_with_diags(
+        r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
+{#each items as item (item.id)}
+    <div animate:flip>{item}</div>
+    <span>extra</span>
+{/each}"#,
+    );
+    assert_has_error(&diags, "animation_invalid_placement");
+}
+
+#[test]
+#[ignore = "missing: each_item_invalid_assignment template validation"]
+fn validate_each_item_invalid_assignment() {
+    let diags = analyze_with_diags(
+        r#"<script>let items = $state([1, 2, 3]);</script>
+{#each items as item}
+    {item = 1}
+{/each}"#,
+    );
+    assert_has_error(&diags, "each_item_invalid_assignment");
+}
+
+#[test]
+#[ignore = "missing: bind_invalid_name template validation"]
+fn validate_bind_invalid_name() {
+    let diags = analyze_with_diags(
+        r#"<script>let value = $state('');</script>
+<input bind:vale={value}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_name");
+}
+
+#[test]
+#[ignore = "missing: bind_invalid_expression template validation"]
+fn validate_bind_invalid_expression() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let value = $state('');
+    let getter = () => value;
+</script>
+<input bind:value={getter()}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_expression");
+}
+
+#[test]
+#[ignore = "missing: bind_invalid_value template validation"]
+fn validate_bind_invalid_value() {
+    let diags = analyze_with_diags(
+        r#"<script>let value = '';</script>
+<input bind:value={value}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_value");
+}
+
+#[test]
+#[ignore = "missing: attribute_contenteditable_missing template validation"]
+fn validate_attribute_contenteditable_missing() {
+    let diags = analyze_with_diags(
+        r#"<script>let html = $state('');</script>
+<div bind:innerHTML={html}></div>"#,
+    );
+    assert_has_error(&diags, "attribute_contenteditable_missing");
 }
