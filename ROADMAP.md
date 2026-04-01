@@ -303,15 +303,14 @@ Theme: compiler options, source maps, dev mode support.
 ### 6b — `preserveComments` option
 - [ ] Keep HTML comments in template output (`push_comment()` in fragment codegen)
 
-### 6c — Dev: `$.tag()` / `$.tag_proxy()` rune tagging
-- [ ] `$state` — `$.tag($.proxy(val), "name")` / `$.tag($.state(val), "name")` in VariableDeclaration
-- [ ] `$derived` — `$.tag($.derived(...), "name")` in VariableDeclaration
-- [ ] Class fields — `$.tag(val, "Class.field")` in ClassBody, AssignmentExpression
-- [ ] `$bindable` — `$.tag_proxy($.proxy(val), "name")` for bindable props
-- [ ] Snippets — `$.tag(snip, "snippetName")` in SnippetBlock
-- [ ] `{@const}` — `$.tag()` wrapping in ConstTag
-
-Unblocks: remaining `{@debug}` tests (`$.tag_proxy`/`$.get(item)`)
+### 6c — Dev: `$.tag()` / `$.tag_proxy()` rune tagging ✅
+- [x] `$state` — `$.tag($.state(val), "name")` / `$.tag_proxy($.proxy(val), "name")` in VariableDeclaration
+- [x] `$derived` — `$.tag($.derived(...), "name")` in VariableDeclaration
+- [x] Class fields — `$.tag(val, "Class.field")` in ClassBody, AssignmentExpression
+- [x] `$bindable` — `$.tag_proxy($.proxy(val), "name")` for bindable props
+- [x] Snippets — `$.wrap_snippet(componentName, function)` in SnippetBlock
+- [x] `{@const}` — `$.tag()` wrapping in ConstTag
+- [x] Destructured state/derived — `$.tag`/`$.tag_proxy` on intermediates and leaves
 
 ### 6d — Dev: strict equality transforms
 - [ ] `===` / `!==` → `$.strict_equals(left, right)` / `$.strict_equals(left, right, false)`

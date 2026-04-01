@@ -1829,7 +1829,6 @@ fn async_derived_dev_ignored() {
 }
 
 #[rstest]
-#[ignore = "Tier 6c: $.tag() wrapping for destructured derived not implemented"]
 fn async_derived_dev_ignored_destructured() {
     assert_compiler("async_derived_dev_ignored_destructured");
 }
@@ -1957,4 +1956,54 @@ fn call_expr_nested_fn_dynamic() {
 #[rstest]
 fn effect_cleanup_return() {
     assert_compiler("effect_cleanup_return");
+}
+
+#[rstest]
+fn tag_derived_basic() {
+    assert_compiler("tag_derived_basic");
+}
+
+#[rstest]
+fn tag_derived_by() {
+    assert_compiler("tag_derived_by");
+}
+
+#[rstest]
+fn tag_state_unmutated() {
+    assert_compiler("tag_state_unmutated");
+}
+
+#[rstest]
+fn tag_state_unmutated_no_proxy() {
+    assert_compiler("tag_state_unmutated_no_proxy");
+}
+
+#[rstest]
+fn tag_bindable_proxy() {
+    assert_compiler("tag_bindable_proxy");
+}
+
+#[rstest]
+fn tag_class_field_public() {
+    assert_compiler("tag_class_field_public");
+}
+
+#[rstest]
+fn tag_class_field_private() {
+    assert_compiler("tag_class_field_private");
+}
+
+#[rstest]
+fn tag_class_constructor() {
+    assert_compiler("tag_class_constructor");
+}
+
+#[rstest]
+fn tag_snippet_dev() {
+    assert_compiler("tag_snippet_dev");
+}
+
+#[rstest]
+fn tag_state_destructured_array() {
+    assert_compiler("tag_state_destructured_array");
 }

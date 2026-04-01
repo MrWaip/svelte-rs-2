@@ -1,14 +1,14 @@
 # $state rune
 
 ## Current state
-- **Working**: 35/37 use cases fully covered with passing tests
+- **Working**: 37/37 use cases fully covered with passing tests
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
-- **Partial**: 2 use cases (dev labels for destructured state, constructor member expression)
-- **Missing**: dev-mode features (#31-32), deep_read_state (#41), snapshot is_ignored (#42)
+- **Dev-mode**: `$.tag()`/`$.tag_proxy()` for all $state variants including destructured, class fields, and constructor assignments (Tier 6c)
 - **Validation**: #33-36 all implemented — `$state.frozen` renamed, `$state.is` removed, placement, arg count
+- **Missing**: deep_read_state (#41), snapshot is_ignored (#42)
 - **Out of scope**: SSR (server-side codegen not started, will be separate phase)
-- **Next**: Dev-mode features (#31-32), then advanced (#41-42).
-- Last updated: 2026-03-29
+- **Next**: Advanced features (#41-42).
+- Last updated: 2026-04-01
 
 ## Source
 Audit of existing implementation

@@ -8,8 +8,8 @@ export default function App($$anchor, $$props) {
 	var name, age;
 	var $$promises = $.run([async () => {
 		var $$d = await $.async_derived(async () => (await $.track_reactivity_loss(fetch("/api")))(), "[$derived object]");
-		name = $.derived(() => $.get($$d).name);
-		age = $.derived(() => $.get($$d).age);
+		name = $.tag($.derived(() => $.get($$d).name), "name");
+		age = $.tag($.derived(() => $.get($$d).age), "age");
 	}]);
 	var $$exports = { ...$.legacy_api() };
 	var p = root();
