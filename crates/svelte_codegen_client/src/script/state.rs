@@ -9,7 +9,7 @@ use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
 
-use super::{ClassStateField, ClassStateInfo, ScriptTransformer};
+use super::{ClassStateField, ClassStateInfo, ScriptTransformer, compute_line_col, sanitize_location};
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
     fn rewrite_destructured_rune_decls(
@@ -22,6 +22,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         mut rewrite: impl FnMut(
             &mut Self,
             oxc_ast::ast::VariableDeclarationKind,
+            u32, // decl_span_start
             oxc_ast::ast::VariableDeclarator<'a>,
             RuneKind,
         ) -> Statement<'a>,
@@ -48,8 +49,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             let stmt = stmts.remove(i);
             let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
             let decl_kind = decl.kind;
+            let decl_span_start = decl.span.start;
             let declarator = decl.declarations.remove(0);
-            let replacement = rewrite(self, decl_kind, declarator, rune_kind.unwrap());
+            let replacement = rewrite(self, decl_kind, decl_span_start, declarator, rune_kind.unwrap());
             stmts.insert(i, replacement);
             self.ident_counter += 1;
             i += 1;
@@ -100,24 +102,31 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     /// Rewrite destructured async `$derived(await expr)` into a single block statement
     /// so async instance splitting keeps the original blocker metadata indexing.
     pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        let dev = self.dev;
         self.rewrite_destructured_rune_decls(
             stmts,
             |declarator, rune_kind| {
                 !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
                     && matches!(rune_kind, Some(RuneKind::Derived))
                     && declarator.init.as_ref().is_some_and(|init| {
-                        matches!(
-                            init,
-                            Expression::CallExpression(call)
-                                if call.arguments.first()
-                                    .and_then(|arg| arg.as_expression())
-                                    .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
-                        )
+                        if let Expression::CallExpression(call) = init {
+                            call.arguments.first()
+                                .and_then(|arg| arg.as_expression())
+                                .is_some_and(|expr| {
+                                    // Direct await: `$derived(await expr)`
+                                    matches!(expr, Expression::AwaitExpression(_))
+                                    // Dev-transformed: `$derived((await $.track_reactivity_loss(expr))())`
+                                    || (dev && matches!(expr, Expression::CallExpression(c)
+                                        if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_))))
+                                })
+                        } else {
+                            false
+                        }
                     })
             },
-            |this, _decl_kind, mut declarator, _| {
+            |this, _decl_kind, decl_span_start, mut declarator, _| {
                 let init = declarator.init.take().unwrap();
-                this.gen_async_derived_destructuring(&declarator.id, init)
+                this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start)
             },
         );
     }
@@ -132,7 +141,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     && matches!(rune_kind, Some(RuneKind::State | RuneKind::StateRaw))
                     && declarator.init.is_some()
             },
-            |this, decl_kind, mut declarator, rune_kind| {
+            |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
                 let init = declarator.init.take().unwrap();
                 let value = if let Expression::CallExpression(mut call) = init {
                     if call.arguments.is_empty() {
@@ -228,7 +237,25 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 let sym_id = id.symbol_id.get();
                 let is_mutated = sym_id.is_some_and(|s| self.component_scoping.is_mutated(s));
 
+                // Determine if the value will be proxied (for tag_proxy vs tag decision)
+                let is_proxy = matches!(rune_kind, RuneKind::State)
+                    && svelte_transform::rune_refs::should_proxy(&accessor);
+
                 let final_value = self.wrap_state_value(accessor, rune_kind, is_mutated);
+
+                let final_value = if self.dev {
+                    if is_mutated {
+                        // $.tag($.state(...), "name")
+                        self.b.call_expr("$.tag", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+                    } else if is_proxy {
+                        // $.tag_proxy($.proxy(...), "name")
+                        self.b.call_expr("$.tag_proxy", [Arg::Expr(final_value), Arg::Str(name.to_string())])
+                    } else {
+                        final_value
+                    }
+                } else {
+                    final_value
+                };
 
                 let declarator = self.b.ast.variable_declarator(
                     oxc_span::SPAN,
@@ -278,6 +305,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 let to_array_call = self.b.call_expr("$.to_array", len_arg);
                 let thunk = self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
+                let derived_call = if self.dev {
+                    self.b.call_expr("$.tag", [
+                        Arg::Expr(derived_call),
+                        Arg::Str("[$state iterable]".to_string()),
+                    ])
+                } else {
+                    derived_call
+                };
 
                 let array_declarator = self.b.ast.variable_declarator(
                     oxc_span::SPAN,
@@ -363,22 +398,52 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &mut self,
         pattern: &oxc_ast::ast::BindingPattern<'a>,
         init: Expression<'a>,
+        decl_span_start: u32,
     ) -> Statement<'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async derived destructuring should be a call");
         };
+        // Must read span before mem::swap removes the original argument.
+        let init_span_start = call.span.start;
         let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
         std::mem::swap(&mut call.arguments[0], &mut dummy);
         let awaited = dummy.into_expression();
-        let Expression::AwaitExpression(await_expr) = awaited else {
-            unreachable!("async derived destructuring should contain await");
+
+        // In dev mode, the await has been transformed by rewrite_dev_await_tracking
+        // from `await expr` to `(await $.track_reactivity_loss(expr))()`.
+        // We use the already-transformed expression as an async thunk body.
+        let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
+            // Non-dev: strip the outer await, wrap inner in async thunk.
+            let source_expr = await_expr.unbox().argument;
+            let await_inner = self.b.await_expr(source_expr);
+            self.b.async_thunk(await_inner)
+        } else {
+            // Dev: the expression is already `(await $.track_reactivity_loss(expr))()`.
+            // Wrap in `async () => expr` to produce the thunk.
+            self.b.async_arrow_expr_body(awaited)
         };
 
-        let source_expr = await_expr.unbox().argument;
         let tmp_name = self.gen_unique_name("$$d");
         let tmp_name_str = self.b.alloc_str(&tmp_name);
-        let thunk = self.b.thunk(source_expr);
-        let async_derived = self.b.call_expr("$.async_derived", [Arg::Expr(thunk)]);
+
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(thunk)];
+        if self.dev {
+            let kind = match pattern {
+                oxc_ast::ast::BindingPattern::ArrayPattern(_) => "iterable",
+                _ => "object",
+            };
+            let label = format!("[$derived {kind}]");
+            args.push(Arg::Expr(self.b.str_expr(&label)));
+            // Only pass location if not suppressed by svelte-ignore await_waterfall
+            if !self.ignore_data.is_ignored_at_span(decl_span_start, "await_waterfall") {
+                let full_offset = self.script_content_start + init_span_start;
+                let (line, col) = compute_line_col(self.component_source, full_offset);
+                let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
+                args.push(Arg::Expr(self.b.str_expr(&loc)));
+            }
+        }
+
+        let async_derived = self.b.call_expr("$.async_derived", args);
         let tmp_stmt = self.b.var_stmt(tmp_name_str, self.b.await_expr(async_derived));
 
         let access_root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);
@@ -396,6 +461,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         match pattern {
             oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
                 let value = self.wrap_state_value(accessor, RuneKind::Derived, false);
+                let value = if self.dev {
+                    self.b.call_expr("$.tag", [Arg::Expr(value), Arg::Str(id.name.to_string())])
+                } else {
+                    value
+                };
                 stmts.push(self.b.assign_stmt(crate::builder::AssignLeft::Ident(id.name.to_string()), value));
             }
             oxc_ast::ast::BindingPattern::ObjectPattern(obj) => {
@@ -727,6 +797,15 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 }
                 _ => {}
             }
+            if self.dev && rune_kind.is_some() {
+                let field_name = match &prop.key {
+                    oxc_ast::ast::PropertyKey::PrivateIdentifier(id) => format!("#{}", id.name),
+                    _ => String::new(),
+                };
+                let label = self.class_tag_label(&field_name);
+                let value = self.b.move_expr(prop.value.as_mut().unwrap());
+                prop.value = Some(self.b.call_expr("$.tag", [Arg::Expr(value), Arg::Str(label)]));
+            }
         }
     }
 
@@ -774,6 +853,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     self.b.call_expr("$.state", std::iter::empty::<Arg<'a, '_>>())
                 }
             }
+        };
+
+        let init_call = if self.dev {
+            let label = self.class_tag_label(name);
+            self.b.call_expr("$.tag", [Arg::Expr(init_call), Arg::Str(label)])
+        } else {
+            init_call
         };
 
         new_body.push(self.b.class_private_field(&field_info.private_name, Some(init_call)));
@@ -857,6 +943,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                                 }
                                             }
                                         }
+                                        if self.dev {
+                                            let label = self.class_tag_label(&name);
+                                            let rhs = self.b.move_expr(&mut assign.right);
+                                            assign.right = self.b.call_expr("$.tag", [Arg::Expr(rhs), Arg::Str(label)]);
+                                        }
                                         // Rewrite LHS only for rune declarations — non-rune assignments use the public setter
                                         let new_left = self.b.this_private_member(&field_info.private_name);
                                         if let Expression::PrivateFieldExpression(pfe) = new_left {
@@ -874,8 +965,28 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
     /// Check if we're inside a class body that has a private state field with given name.
     pub(super) fn is_private_state_field(&self, name: &str) -> bool {
-        self.class_state_stack.last().is_some_and(|info| {
-            info.fields.iter().any(|f| f.public_name.is_none() && f.private_name == name)
+        self.private_state_field_rune_kind(name).is_some()
+    }
+
+    /// Return the rune kind for a private state field, if it exists in the current class.
+    pub(super) fn private_state_field_rune_kind(&self, name: &str) -> Option<RuneKind> {
+        self.class_state_stack.last().and_then(|info| {
+            info.fields.iter()
+                .find(|f| f.public_name.is_none() && f.private_name == name)
+                .map(|f| f.rune_kind)
         })
+    }
+
+    /// Whether the current function context is a class constructor.
+    pub(super) fn in_constructor(&self) -> bool {
+        self.function_info_stack.last().is_some_and(|f| f.in_constructor)
+    }
+
+    /// Build a dev-mode tag label like "ClassName.fieldName" or "[class].fieldName".
+    fn class_tag_label(&self, field_name: &str) -> String {
+        let class_name = self.class_name_stack.last()
+            .and_then(|n| n.as_deref())
+            .unwrap_or("[class]");
+        format!("{}.{}", class_name, field_name)
     }
 }

@@ -5,8 +5,8 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Scoping, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::traverse_mut;
-use rustc_hash::{FxHashMap, FxHashSet};
-use svelte_analyze::{ComponentScoping, PropsAnalysis, RuneKind};
+use rustc_hash::FxHashMap;
+use svelte_analyze::{ComponentScoping, IgnoreData, PropsAnalysis, RuneKind};
 use svelte_ast::ScriptLanguage;
 
 use crate::builder::Builder;
@@ -39,6 +39,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     let component_source = &ctx.query.component.source;
     let script_content_start = ctx.query.component.script.as_ref().unwrap().content_span.start;
     let filename = ctx.state.filename;
+    let ignore_data = ctx.query.view.ignore_data();
 
     let program = ctx.state.parsed.program.take();
     if let Some(program) = program {
@@ -53,17 +54,20 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
                     .collect()
             })
             .unwrap_or_default();
-        return transform_program(
+        return run_transform(
             allocator,
             program,
             component_scoping,
             props,
             prop_defaults,
             Some(ctx.script_rune_call_kinds()),
+            true,
             dev,
             component_source,
             script_content_start,
             filename,
+            ctx.state.experimental_async,
+            ignore_data,
         );
     }
 
@@ -84,6 +88,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         script_content_start,
         filename,
         None,
+        ctx.state.experimental_async,
+        ignore_data,
     )
 }
 
@@ -93,6 +99,7 @@ pub fn transform_module_script<'a>(
     is_ts: bool,
     component_scoping: &ComponentScoping,
 ) -> ScriptOutput<'a> {
+    let empty_ignore = IgnoreData::new();
     transform_script_text(
         allocator,
         source,
@@ -105,9 +112,12 @@ pub fn transform_module_script<'a>(
         0,
         "(unknown)",
         None,
+        false,
+        &empty_ignore,
     )
 }
 
+/// Parse source text into a program and run the shared transform pipeline.
 fn transform_script_text<'a>(
     allocator: &'a Allocator,
     source: &'a str,
@@ -120,6 +130,8 @@ fn transform_script_text<'a>(
     script_content_start: u32,
     filename: &str,
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    experimental_async: bool,
+    ignore_data: &IgnoreData,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
         SourceType::default().with_typescript(true).with_module(true)
@@ -127,14 +139,10 @@ fn transform_script_text<'a>(
         SourceType::mjs()
     };
     let result = OxcParser::new(allocator, source, src_type).parse();
+    let program = result.program;
 
     let b = Builder::new(allocator);
-    let mut program = result.program;
-    let sem = SemanticBuilder::new().build(&program);
-    let scoping = sem.semantic.into_scoping();
-
     let props_gen = props.map(PropsGenInfo::from_analysis);
-
     let prop_default_exprs: Vec<Option<Expression<'a>>> = match &props_gen {
         Some(pg) => pg
             .props
@@ -144,75 +152,38 @@ fn transform_script_text<'a>(
         None => Vec::new(),
     };
 
-    let mut transformer = ScriptTransformer {
-        b: &b,
+    run_transform(
+        allocator,
+        program,
         component_scoping,
-        scoping,
-        props_gen,
-        derived_pending: FxHashSet::default(),
+        props,
+        prop_default_exprs,
+        script_rune_call_kinds,
         strip_exports,
         dev,
-        is_ts,
-        function_info_stack: Vec::new(),
-        has_tracing: false,
         component_source,
         script_content_start,
         filename,
-        next_arrow_name: None,
-        ident_counter: 0,
-        class_state_stack: Vec::new(),
-        prop_default_exprs,
-        script_rune_call_kinds,
-    };
-
-    let empty_scoping = Scoping::default();
-    traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
-
-    if !transformer.derived_pending.is_empty() {
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
-    }
-
-    let has_tracing = transformer.has_tracing;
-
-    if is_ts {
-        reattach_orphaned_comments(&mut program);
-    }
-
-    let comments: Vec<Comment> = program.comments.iter().copied().collect();
-    let source_text = program.source_text;
-    let program_span_end = program.span.end;
-
-    let mut imports = vec![];
-    let mut body = vec![];
-
-    for stmt in program.body {
-        match &stmt {
-            Statement::ImportDeclaration(_) => imports.push(stmt),
-            _ => body.push(stmt),
-        }
-    }
-
-    ScriptOutput {
-        imports,
-        body,
-        has_tracing,
-        comments,
-        source_text,
-        program_span_end,
-    }
+        experimental_async,
+        ignore_data,
+    )
 }
 
-fn transform_program<'a>(
+/// Shared transform pipeline: semantic analysis → OXC traverse → post-processing → output.
+fn run_transform<'a>(
     allocator: &'a Allocator,
     mut program: Program<'a>,
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     prop_default_exprs: Vec<Option<Expression<'a>>>,
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    strip_exports: bool,
     dev: bool,
     component_source: &str,
     script_content_start: u32,
     filename: &str,
+    experimental_async: bool,
+    ignore_data: &IgnoreData,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
@@ -225,8 +196,9 @@ fn transform_program<'a>(
         component_scoping,
         scoping,
         props_gen,
-        derived_pending: FxHashSet::default(),
-        strip_exports: true,
+        derived_pending: rustc_hash::FxHashSet::default(),
+        async_derived_pending: rustc_hash::FxHashSet::default(),
+        strip_exports,
         dev,
         is_ts,
         function_info_stack: Vec::new(),
@@ -237,15 +209,27 @@ fn transform_program<'a>(
         next_arrow_name: None,
         ident_counter: 0,
         class_state_stack: Vec::new(),
+        class_name_stack: Vec::new(),
         prop_default_exprs,
         script_rune_call_kinds,
+        experimental_async,
+        ignore_data,
+        enclosing_stmt_start: Vec::new(),
     };
 
     let empty_scoping = Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending);
+        let dev_ctx = super::traverse::DevContext {
+            dev,
+            component_source,
+            script_content_start,
+            filename,
+            async_derived_pending: transformer.async_derived_pending,
+            ignore_data: transformer.ignore_data,
+        };
+        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, Some(&dev_ctx));
     }
 
     let has_tracing = transformer.has_tracing;

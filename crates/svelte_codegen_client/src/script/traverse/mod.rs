@@ -6,11 +6,12 @@ mod statement_passes;
 mod ts_cleanup;
 
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, FunctionBody, Statement, VariableDeclarator};
+use oxc_span::GetSpan;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::{FunctionInfo, ScriptTransformer};
 
-pub(super) use derived::{wrap_derived_thunks, wrap_lazy};
+pub(super) use derived::{wrap_derived_thunks, wrap_lazy, DevContext};
 
 impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn enter_class_body(
@@ -41,7 +42,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
     fn enter_function(
         &mut self,
         node: &mut oxc_ast::ast::Function<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         self.strip_ts_function_bits(node);
         let name = node
@@ -49,10 +50,16 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             .as_ref()
             .map(|id| id.name.to_string())
             .or_else(|| self.next_arrow_name.take());
+        let in_constructor = matches!(
+            ctx.parent(),
+            oxc_traverse::Ancestor::MethodDefinitionValue(md)
+                if *md.kind() == oxc_ast::ast::MethodDefinitionKind::Constructor
+        );
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
+            in_constructor,
         });
     }
 
@@ -75,6 +82,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
+            in_constructor: false,
         });
     }
 
@@ -149,6 +157,15 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         self.strip_ts_class_bits(node);
+        self.class_name_stack.push(node.id.as_ref().map(|id| id.name.to_string()));
+    }
+
+    fn exit_class(
+        &mut self,
+        _node: &mut oxc_ast::ast::Class<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.class_name_stack.pop();
     }
 
     fn enter_property_definition(
@@ -183,6 +200,22 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.strip_ts_method_definition_bits(node);
     }
 
+    fn enter_statement(
+        &mut self,
+        node: &mut Statement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start.push(node.span().start);
+    }
+
+    fn exit_statement(
+        &mut self,
+        _node: &mut Statement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start.pop();
+    }
+
     fn enter_variable_declarator(
         &mut self,
         node: &mut VariableDeclarator<'a>,
@@ -191,6 +224,20 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.strip_ts_variable_declarator_bits(node);
         self.capture_variable_arrow_name(node);
         self.rewrite_variable_rune_init(node);
+    }
+
+    fn enter_for_of_statement(
+        &mut self,
+        node: &mut oxc_ast::ast::ForOfStatement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        if node.r#await && self.dev && self.experimental_async
+            && !self.is_in_ignored_stmt("await_reactivity_loss")
+        {
+            use crate::builder::Arg;
+            let right = self.b.move_expr(&mut node.right);
+            node.right = self.b.call_expr("$.for_await_track_reactivity_loss", [Arg::Expr(right)]);
+        }
     }
 
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a, ()>) {
