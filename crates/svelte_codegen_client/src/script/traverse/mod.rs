@@ -49,10 +49,13 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             .as_ref()
             .map(|id| id.name.to_string())
             .or_else(|| self.next_arrow_name.take());
+        let in_constructor = self.next_function_is_constructor;
+        self.next_function_is_constructor = false;
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
+            in_constructor,
         });
     }
 
@@ -75,6 +78,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
+            in_constructor: false,
         });
     }
 
@@ -190,6 +194,41 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         self.strip_ts_method_definition_bits(node);
+        if node.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
+            self.next_function_is_constructor = true;
+        }
+    }
+
+    fn enter_variable_declaration(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclaration<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start = Some(node.span.start);
+    }
+
+    fn exit_variable_declaration(
+        &mut self,
+        _node: &mut oxc_ast::ast::VariableDeclaration<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start = None;
+    }
+
+    fn enter_expression_statement(
+        &mut self,
+        node: &mut oxc_ast::ast::ExpressionStatement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start = Some(node.span.start);
+    }
+
+    fn exit_expression_statement(
+        &mut self,
+        _node: &mut oxc_ast::ast::ExpressionStatement<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        self.enclosing_stmt_start = None;
     }
 
     fn enter_variable_declarator(

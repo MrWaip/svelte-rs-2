@@ -53,6 +53,7 @@ pub(super) struct FunctionInfo {
     pub(super) is_async: bool,
     pub(super) name: Option<String>,
     pub(super) span_start: u32,
+    pub(super) in_constructor: bool,
 }
 
 pub(super) struct ClassStateField {
@@ -91,6 +92,12 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) experimental_async: bool,
     /// Statement start positions covered by `// svelte-ignore await_waterfall`.
     pub(super) waterfall_ignored_starts: FxHashSet<u32>,
+    /// Set by `enter_method_definition` when kind is Constructor, consumed by `enter_function`.
+    pub(super) next_function_is_constructor: bool,
+    /// Statement start positions covered by `// svelte-ignore state_snapshot_uncloneable`.
+    pub(super) snapshot_ignored_starts: FxHashSet<u32>,
+    /// Tracks the start position of the enclosing statement for ignore lookups.
+    pub(super) enclosing_stmt_start: Option<u32>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {

@@ -416,6 +416,9 @@ trait NodeStore {
 - Function blocker analysis: deferred max-blocker tracking for function declarations
 - `for await` reactivity loss tracking (dev mode)
 
+### $state rune — legacy (Tier 7)
+- `$.deep_read_state()` for bindable props in `$:` reactive statements — only used in non-runes mode (LabeledStatement.js, shared/utils.js build_expression)
+
 ### Early bail on parser errors
 - `compile()` currently runs analyze + codegen even when parser returned fatal errors
 - Reference compiler throws on first error and never reaches analyze

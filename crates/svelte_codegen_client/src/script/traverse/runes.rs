@@ -199,6 +199,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             }
         }
 
+        let mut is_snapshot = false;
         let new_callee = match &call.callee {
             oxc_ast::ast::Expression::Identifier(id) if id.name.as_str() == "$effect" => {
                 Some("$.user_effect")
@@ -208,7 +209,10 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     match (obj.name.as_str(), member.property.name.as_str()) {
                         ("$effect", "pre") => Some("$.user_pre_effect"),
                         ("$effect", "root") => Some("$.effect_root"),
-                        ("$state", "snapshot") => Some("$.snapshot"),
+                        ("$state", "snapshot") => {
+                            is_snapshot = true;
+                            Some("$.snapshot")
+                        }
                         ("$effect", "tracking") => Some("$.effect_tracking"),
                         _ => None,
                     }
@@ -223,6 +227,15 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 unreachable!()
             };
             call.callee = self.b.rid_expr(callee_name);
+
+            // $.snapshot(val, true) when svelte-ignore state_snapshot_uncloneable is active
+            if is_snapshot && self.dev {
+                if let Some(stmt_start) = self.enclosing_stmt_start {
+                    if self.snapshot_ignored_starts.contains(&stmt_start) {
+                        call.arguments.push(oxc_ast::ast::Argument::from(self.b.bool_expr(true)));
+                    }
+                }
+            }
         }
     }
 
