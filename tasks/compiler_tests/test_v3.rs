@@ -1824,6 +1824,17 @@ fn async_derived_dev() {
 }
 
 #[rstest]
+fn async_derived_dev_ignored() {
+    assert_compiler("async_derived_dev_ignored");
+}
+
+#[rstest]
+#[ignore = "Tier 6c: $.tag() wrapping for destructured derived not implemented"]
+fn async_derived_dev_ignored_destructured() {
+    assert_compiler("async_derived_dev_ignored_destructured");
+}
+
+#[rstest]
 fn async_for_await_dev() {
     assert_compiler("async_for_await_dev");
 }

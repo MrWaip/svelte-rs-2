@@ -22,6 +22,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         mut rewrite: impl FnMut(
             &mut Self,
             oxc_ast::ast::VariableDeclarationKind,
+            u32, // decl_span_start
             oxc_ast::ast::VariableDeclarator<'a>,
             RuneKind,
         ) -> Statement<'a>,
@@ -48,8 +49,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             let stmt = stmts.remove(i);
             let Statement::VariableDeclaration(mut decl) = stmt else { unreachable!() };
             let decl_kind = decl.kind;
+            let decl_span_start = decl.span.start;
             let declarator = decl.declarations.remove(0);
-            let replacement = rewrite(self, decl_kind, declarator, rune_kind.unwrap());
+            let replacement = rewrite(self, decl_kind, decl_span_start, declarator, rune_kind.unwrap());
             stmts.insert(i, replacement);
             self.ident_counter += 1;
             i += 1;
@@ -100,24 +102,31 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     /// Rewrite destructured async `$derived(await expr)` into a single block statement
     /// so async instance splitting keeps the original blocker metadata indexing.
     pub(super) fn process_async_derived_destructuring(&mut self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
+        let dev = self.dev;
         self.rewrite_destructured_rune_decls(
             stmts,
             |declarator, rune_kind| {
                 !matches!(declarator.id, oxc_ast::ast::BindingPattern::BindingIdentifier(_))
                     && matches!(rune_kind, Some(RuneKind::Derived))
                     && declarator.init.as_ref().is_some_and(|init| {
-                        matches!(
-                            init,
-                            Expression::CallExpression(call)
-                                if call.arguments.first()
-                                    .and_then(|arg| arg.as_expression())
-                                    .is_some_and(|expr| matches!(expr, Expression::AwaitExpression(_)))
-                        )
+                        if let Expression::CallExpression(call) = init {
+                            call.arguments.first()
+                                .and_then(|arg| arg.as_expression())
+                                .is_some_and(|expr| {
+                                    // Direct await: `$derived(await expr)`
+                                    matches!(expr, Expression::AwaitExpression(_))
+                                    // Dev-transformed: `$derived((await $.track_reactivity_loss(expr))())`
+                                    || (dev && matches!(expr, Expression::CallExpression(c)
+                                        if c.arguments.is_empty() && matches!(&c.callee, Expression::AwaitExpression(_))))
+                                })
+                        } else {
+                            false
+                        }
                     })
             },
-            |this, _decl_kind, mut declarator, _| {
+            |this, _decl_kind, decl_span_start, mut declarator, _| {
                 let init = declarator.init.take().unwrap();
-                this.gen_async_derived_destructuring(&declarator.id, init)
+                this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start)
             },
         );
     }
@@ -132,7 +141,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     && matches!(rune_kind, Some(RuneKind::State | RuneKind::StateRaw))
                     && declarator.init.is_some()
             },
-            |this, decl_kind, mut declarator, rune_kind| {
+            |this, decl_kind, _decl_span_start, mut declarator, rune_kind| {
                 let init = declarator.init.take().unwrap();
                 let value = if let Expression::CallExpression(mut call) = init {
                     if call.arguments.is_empty() {
@@ -363,6 +372,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &mut self,
         pattern: &oxc_ast::ast::BindingPattern<'a>,
         init: Expression<'a>,
+        decl_span_start: u32,
     ) -> Statement<'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async derived destructuring should be a call");
@@ -372,16 +382,23 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
         std::mem::swap(&mut call.arguments[0], &mut dummy);
         let awaited = dummy.into_expression();
-        let Expression::AwaitExpression(await_expr) = awaited else {
-            unreachable!("async derived destructuring should contain await");
+
+        // In dev mode, the await has been transformed by rewrite_dev_await_tracking
+        // from `await expr` to `(await $.track_reactivity_loss(expr))()`.
+        // We use the already-transformed expression as an async thunk body.
+        let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
+            // Non-dev: strip the outer await, wrap inner in async thunk.
+            let source_expr = await_expr.unbox().argument;
+            let await_inner = self.b.await_expr(source_expr);
+            self.b.async_thunk(await_inner)
+        } else {
+            // Dev: the expression is already `(await $.track_reactivity_loss(expr))()`.
+            // Wrap in `async () => expr` to produce the thunk.
+            self.b.async_arrow_expr_body(awaited)
         };
 
-        let source_expr = await_expr.unbox().argument;
         let tmp_name = self.gen_unique_name("$$d");
         let tmp_name_str = self.b.alloc_str(&tmp_name);
-
-        let await_inner = self.b.await_expr(source_expr);
-        let thunk = self.b.async_thunk(await_inner);
 
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(thunk)];
         if self.dev {
@@ -391,10 +408,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             };
             let label = format!("[$derived {kind}]");
             args.push(Arg::Expr(self.b.str_expr(&label)));
-            let full_offset = self.script_content_start + init_span_start;
-            let (line, col) = compute_line_col(self.component_source, full_offset);
-            let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
-            args.push(Arg::Expr(self.b.str_expr(&loc)));
+            // Only pass location if not suppressed by svelte-ignore await_waterfall
+            if !self.waterfall_ignored_starts.contains(&decl_span_start) {
+                let full_offset = self.script_content_start + init_span_start;
+                let (line, col) = compute_line_col(self.component_source, full_offset);
+                let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
+                args.push(Arg::Expr(self.b.str_expr(&loc)));
+            }
         }
 
         let async_derived = self.b.call_expr("$.async_derived", args);

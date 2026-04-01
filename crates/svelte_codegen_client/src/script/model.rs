@@ -88,6 +88,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
     pub(super) experimental_async: bool,
+    /// Statement start positions covered by `// svelte-ignore await_waterfall`.
+    pub(super) waterfall_ignored_starts: FxHashSet<u32>,
 }
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {

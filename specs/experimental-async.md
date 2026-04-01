@@ -2,12 +2,11 @@
 
 ## Current state
 
-- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling
-- **Partially working**: `await_waterfall` warning for async `$derived` still missing
+- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`)
 - **Not working**: —
 - **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Deferred / out of current batch**: `<slot>` async, `await_waterfall` warning
-- **Next**: `await_waterfall` warning for async `$derived`
+- **Deferred / out of current batch**: `<slot>` async
+- **Next**: All client-side async features complete. Remaining: destructured dev test blocked on Tier 6c `$.tag()`.
 - Last updated: 2026-03-31
 
 ## Source
@@ -115,7 +114,7 @@ Audit of existing implementation (2026-03-28)
 
 ### Dev mode
 34. N/A `{#await}` — reference `AwaitBlock.js` does not use `$.apply()`; no action needed
-35. [ ] `$derived` async — `await_waterfall` warning with location (missing)
+35. [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
 36. [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
 
 ### Tracing
@@ -154,8 +153,10 @@ Audit of existing implementation (2026-03-28)
 ### Done: Tracing (#37)
 1. [x] codegen: `$.trace` with async body — `async_thunk_block` + `await` in `inspect.rs`
 
-### Deferred: Dev-mode waterfall warning (#35)
-1. [ ] codegen: `await_waterfall` warning for async `$derived` (deferred to ROADMAP)
+### Done: Dev-mode waterfall warning suppression (#35)
+1. [x] diagnostics: `await_waterfall` + `await_reactivity_loss` added to `IGNORABLE_RUNTIME_WARNINGS`
+2. [x] codegen: scan JS comments for `// svelte-ignore await_waterfall`, omit location arg from `$.async_derived()` when present
+3. [x] codegen: fix destructured async `$derived` predicate to handle dev-transformed `await` form
 
 
 ## Test cases
@@ -183,3 +184,5 @@ Audit of existing implementation (2026-03-28)
 - `async_pickled_await_template` — template pickled await via `$.save()` ✅
 - `async_derived_dev` — `$.async_derived()` with dev label+location args ✅
 - `async_for_await_dev` — `for await...of` dev wrapping with `$.for_await_track_reactivity_loss` ✅
+- `async_derived_dev_ignored` — `svelte-ignore await_waterfall` suppresses location arg ✅
+- `async_derived_dev_ignored_destructured` — destructured variant (ignored: blocked on Tier 6c `$.tag()`) ⏸

@@ -14,6 +14,9 @@ pub(crate) struct DevContext<'a> {
     /// Symbols whose `$derived` init was `$derived(await expr)` — tracked before
     /// `rewrite_dev_await_tracking` can transform the `await` into a different form.
     pub(crate) async_derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+    /// Statement start positions covered by `// svelte-ignore await_waterfall`.
+    /// When matched, the location arg is omitted from `$.async_derived()`.
+    pub(crate) waterfall_ignored_starts: FxHashSet<u32>,
 }
 
 impl DevContext<'_> {
@@ -44,6 +47,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
     for stmt in stmts.iter_mut() {
         match stmt {
             Statement::VariableDeclaration(decl) => {
+                let decl_start = decl.span.start;
                 for declarator in decl.declarations.iter_mut() {
                     let sym_id = match &declarator.id {
                         oxc_ast::ast::BindingPattern::BindingIdentifier(id) => match id.symbol_id.get()
@@ -102,8 +106,11 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                         _ => String::new(),
                                     };
                                     extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&name)));
-                                    let loc = ctx.locate(init_span_start);
-                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                    // Only pass location if not suppressed by svelte-ignore await_waterfall
+                                    if !ctx.waterfall_ignored_starts.contains(&decl_start) {
+                                        let loc = ctx.locate(init_span_start);
+                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                    }
                                 }
 
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
