@@ -84,6 +84,13 @@ fn each_block() {
 }
 
 #[test]
+#[ignore = "missing: parser support for item-less each blocks with index"]
+fn each_block_no_item_with_index() {
+    let c = parse("{#each { length: 8 }, rank}<div>{rank}</div>{/each}");
+    assert_node(&c, 0, "{#each { length: 8 }, rank}<div>{rank}</div>{/each}");
+}
+
+#[test]
 fn script_tag() {
     let c = parse("<script>const i = 10;</script>");
     assert_script(&c, "const i = 10;");

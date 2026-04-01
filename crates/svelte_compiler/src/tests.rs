@@ -94,3 +94,17 @@ fn module_default_options_still_work() {
     let result = compile_module("let x = $state(0);", &ModuleCompileOptions::default());
     assert!(result.js.is_some());
 }
+
+#[test]
+#[ignore = "missing: const_tag_invalid_expression validation"]
+fn compile_const_tag_invalid_expression() {
+    let result = compile(
+        "{#if visible}{@const a = 1, b = 2}<p>{a}</p>{/if}",
+        &CompileOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == "const_tag_invalid_expression"),
+        "expected const_tag_invalid_expression, got: {:?}",
+        result.diagnostics
+    );
+}
