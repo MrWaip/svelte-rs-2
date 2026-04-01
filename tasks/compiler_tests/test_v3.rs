@@ -1929,6 +1929,26 @@ fn await_each_nested() {
 }
 
 #[rstest]
+fn await_pending_then() {
+    assert_compiler("await_pending_then");
+}
+
+#[rstest]
+fn await_pending_catch() {
+    assert_compiler("await_pending_catch");
+}
+
+#[rstest]
+fn await_short_catch_no_binding() {
+    assert_compiler("await_short_catch_no_binding");
+}
+
+#[rstest]
+fn await_nested_await() {
+    assert_compiler("await_nested_await");
+}
+
+#[rstest]
 fn fragment_counter_with_nested_if() {
     assert_compiler("fragment_counter_with_nested_if");
 }
