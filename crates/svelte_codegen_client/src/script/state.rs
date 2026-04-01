@@ -965,9 +965,21 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
     /// Check if we're inside a class body that has a private state field with given name.
     pub(super) fn is_private_state_field(&self, name: &str) -> bool {
-        self.class_state_stack.last().is_some_and(|info| {
-            info.fields.iter().any(|f| f.public_name.is_none() && f.private_name == name)
+        self.private_state_field_rune_kind(name).is_some()
+    }
+
+    /// Return the rune kind for a private state field, if it exists in the current class.
+    pub(super) fn private_state_field_rune_kind(&self, name: &str) -> Option<RuneKind> {
+        self.class_state_stack.last().and_then(|info| {
+            info.fields.iter()
+                .find(|f| f.public_name.is_none() && f.private_name == name)
+                .map(|f| f.rune_kind)
         })
+    }
+
+    /// Whether the current function context is a class constructor.
+    pub(super) fn in_constructor(&self) -> bool {
+        self.function_info_stack.last().is_some_and(|f| f.in_constructor)
     }
 
     /// Build a dev-mode tag label like "ClassName.fieldName" or "[class].fieldName".

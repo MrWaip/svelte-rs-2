@@ -153,6 +153,11 @@ fn transform_script_text<'a>(
     } else {
         FxHashSet::default()
     };
+    let snapshot_ignored_starts = if dev {
+        collect_snapshot_ignored_starts(&program)
+    } else {
+        FxHashSet::default()
+    };
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -177,6 +182,9 @@ fn transform_script_text<'a>(
         script_rune_call_kinds,
         experimental_async,
         waterfall_ignored_starts: waterfall_ignored_starts.clone(),
+        next_function_is_constructor: false,
+        snapshot_ignored_starts: snapshot_ignored_starts.clone(),
+        enclosing_stmt_start: None,
     };
 
     let empty_scoping = Scoping::default();
@@ -248,6 +256,11 @@ fn transform_program<'a>(
     } else {
         FxHashSet::default()
     };
+    let snapshot_ignored_starts = if dev {
+        collect_snapshot_ignored_starts(&program)
+    } else {
+        FxHashSet::default()
+    };
 
     let mut transformer = ScriptTransformer {
         b: &b,
@@ -272,6 +285,9 @@ fn transform_program<'a>(
         script_rune_call_kinds,
         experimental_async,
         waterfall_ignored_starts: waterfall_ignored_starts.clone(),
+        next_function_is_constructor: false,
+        snapshot_ignored_starts: snapshot_ignored_starts.clone(),
+        enclosing_stmt_start: None,
     };
 
     let empty_scoping = Scoping::default();
@@ -322,6 +338,16 @@ fn transform_program<'a>(
 /// `attached_to` positions of matching comments. These positions correspond
 /// to the start of the statement the comment precedes.
 fn collect_waterfall_ignored_starts(program: &Program<'_>) -> FxHashSet<u32> {
+    collect_svelte_ignore_starts(program, "await_waterfall")
+}
+
+/// Scan JS comments for `// svelte-ignore state_snapshot_uncloneable` and return the
+/// `attached_to` positions of matching comments.
+fn collect_snapshot_ignored_starts(program: &Program<'_>) -> FxHashSet<u32> {
+    collect_svelte_ignore_starts(program, "state_snapshot_uncloneable")
+}
+
+fn collect_svelte_ignore_starts(program: &Program<'_>, code: &str) -> FxHashSet<u32> {
     let mut starts = FxHashSet::default();
     let src = program.source_text;
     for comment in program.comments.iter() {
@@ -329,7 +355,7 @@ fn collect_waterfall_ignored_starts(program: &Program<'_>) -> FxHashSet<u32> {
         let e = comment.span.end as usize;
         if e <= src.len() {
             let text = &src[s..e];
-            if text.contains("svelte-ignore") && text.contains("await_waterfall") {
+            if text.contains("svelte-ignore") && text.contains(code) {
                 starts.insert(comment.attached_to);
             }
         }

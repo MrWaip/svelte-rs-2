@@ -1,13 +1,14 @@
 # $state rune
 
 ## Current state
-- **Working**: 37/37 use cases fully covered with passing tests
+- **Working**: 39/39 use cases fully covered with passing tests (375 total passing)
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
 - **Dev-mode**: `$.tag()`/`$.tag_proxy()` for all $state variants including destructured, class fields, and constructor assignments (Tier 6c)
 - **Validation**: #33-36 all implemented — `$state.frozen` renamed, `$state.is` removed, placement, arg count
-- **Missing**: deep_read_state (#41), snapshot is_ignored (#42)
+- **New**: #42 `$state.snapshot` `is_ignored` 2nd arg (dev mode), #43 constructor `this.#field.v` pattern
+- **Deferred**: #41 `$.deep_read_state()` — legacy-only (Svelte 4 `$:` reactive statements), moved to Tier 7
 - **Out of scope**: SSR (server-side codegen not started, will be separate phase)
-- **Next**: Advanced features (#41-42).
+- **Next**: #32 ObjectPattern `[$state object]` label requires structural refactoring — deferred.
 - Last updated: 2026-04-01
 
 ## Source
@@ -80,8 +81,8 @@ Audit of existing implementation
 
 ### Dev mode
 30. [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
-31. [ ] `$.tag_proxy(proxy, label)` in dev mode for proxied props (missing)
-32. [~] `$.tag` label for destructured state — reference uses `[$state iterable]`/`[$state object]` labels (unknown — needs test)
+31. [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
+32. [~] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` implemented, ObjectPattern `[$state object]` requires intermediate `$.derived` restructuring
 
 ### Validation errors (analyze phase)
 33. [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
@@ -90,9 +91,9 @@ Audit of existing implementation
 36. [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
 
 ### Advanced / edge cases
-41. [ ] `$.deep_read_state()` for bindable props in reactive statements (missing)
-42. [ ] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (missing)
-43. [~] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (unknown — needs verification)
+41. Deferred — `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4 only, moved to Tier 7)
+42. [x] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (test: state_snapshot_ignored)
+43. [x] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (test: state_constructor_read_v, state_constructor_read_derived)
 
 ## Tasks (по слоям)
 
@@ -103,14 +104,16 @@ Audit of existing implementation
 4. [x] Add argument count validation (0-1 for `$state`/`$state.raw`)
 
 ### codegen
-5. [ ] `$.tag_proxy()` in dev mode when proxying a prop initializer
-6. [ ] `$.deep_read_state()` for bindable props in reactive statements
-7. [ ] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
+5. [x] `$.tag_proxy()` in dev mode when proxying a prop initializer (already implemented)
+6. Deferred — `$.deep_read_state()` for legacy reactive statements (Tier 7)
+7. [x] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
+8. [x] Constructor `this.#field.v` for `$state`/`$state.raw` inside constructor
 
 ### tests
-11. [ ] Add test: `$state` dev mode tag_proxy
-12. [ ] Add test: destructured $state dev labels
-13. [ ] Add test: constructor member expression context (this.#field.v vs $.get)
+11. [x] `$.tag_proxy` dev mode — already covered by existing tag_* tests
+12. [~] Destructured $state dev labels — ArrayPattern covered, ObjectPattern deferred
+13. [x] Constructor member expression: state_constructor_read_v, state_constructor_read_derived
+14. [x] Snapshot ignored: state_snapshot_ignored, state_snapshot_not_ignored
 
 ## Discovered bugs (from new tests)
 

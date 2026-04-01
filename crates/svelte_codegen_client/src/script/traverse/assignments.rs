@@ -1,5 +1,6 @@
 use oxc_ast::ast::Expression;
 use oxc_traverse::TraverseCtx;
+use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
 
@@ -249,12 +250,22 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
     pub(super) fn rewrite_private_read_exit(&self, node: &mut Expression<'a>) -> bool {
         if let Expression::PrivateFieldExpression(pfe) = node {
-            if matches!(&pfe.object, Expression::ThisExpression(_))
-                && self.is_private_state_field(pfe.field.name.as_str())
-            {
-                let field_expr = self.b.move_expr(node);
-                *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
-                return true;
+            if matches!(&pfe.object, Expression::ThisExpression(_)) {
+                let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
+                if let Some(kind) = rune_kind {
+                    if self.in_constructor()
+                        && matches!(kind, RuneKind::State | RuneKind::StateRaw)
+                    {
+                        // Inside constructor, $state/$state.raw: this.#field → this.#field.v
+                        let field_expr = self.b.move_expr(node);
+                        *node = self.b.static_member_expr(field_expr, "v");
+                    } else {
+                        // Outside constructor or $derived: this.#field → $.get(this.#field)
+                        let field_expr = self.b.move_expr(node);
+                        *node = self.b.call_expr("$.get", [Arg::Expr(field_expr)]);
+                    }
+                    return true;
+                }
             }
         }
         false
