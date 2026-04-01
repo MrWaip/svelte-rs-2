@@ -71,6 +71,12 @@ fn push_binding_group_order() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn css_scoped_basic() {
+    assert_compiler("css_scoped_basic");
+}
+
+#[rstest]
 fn head_position_with_body() {
     assert_compiler("head_position_with_body");
 }
@@ -106,6 +112,12 @@ fn single_interpolation() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn text_entity_decoding() {
+    assert_compiler("text_entity_decoding");
+}
+
+#[rstest]
 fn single_if_block() {
     assert_compiler("single_if_block");
 }
@@ -115,9 +127,33 @@ fn single_if_else_block() {
     assert_compiler("single_if_else_block");
 }
 
+#[test]
+#[ignore = "missing: known v3 parity gap"]
+fn if_call_condition() {
+    assert_compiler("if_call_condition");
+}
+
 #[rstest]
 fn element_attributes() {
     assert_compiler("element_attributes");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn element_autofocus() {
+    assert_compiler("element_autofocus");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn textarea_child_value_dynamic() {
+    assert_compiler("textarea_child_value_dynamic");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn option_expr_child_value() {
+    assert_compiler("option_expr_child_value");
 }
 
 #[rstest]
@@ -198,6 +234,18 @@ fn generic_root_sequence() {
 #[rstest]
 fn spread_attribute() {
     assert_compiler("spread_attribute");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn spread_class_directive() {
+    assert_compiler("spread_class_directive");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn spread_style_directive() {
+    assert_compiler("spread_style_directive");
 }
 
 #[rstest]
@@ -296,6 +344,12 @@ fn component_basic() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn svelte_component_basic() {
+    assert_compiler("svelte_component_basic");
+}
+
+#[rstest]
 fn component_non_self_closing() {
     assert_compiler("component_non_self_closing");
 }
@@ -321,8 +375,20 @@ fn component_children() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn component_events() {
+    assert_compiler("component_events");
+}
+
+#[rstest]
 fn component_element_children() {
     assert_compiler("component_element_children");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn component_named_slot() {
+    assert_compiler("component_named_slot");
 }
 
 #[rstest]
@@ -381,6 +447,12 @@ fn host_basic() {
 }
 
 #[rstest]
+#[ignore = "missing: $host rest props should exclude $$host"]
+fn host_props_rest() {
+    assert_compiler("host_props_rest");
+}
+
+#[rstest]
 fn custom_element_props() {
     assert_compiler("custom_element_props");
 }
@@ -431,8 +503,18 @@ fn html_tag() {
 }
 
 #[rstest]
+fn html_tag_mathml() {
+    assert_compiler("html_tag_mathml");
+}
+
+#[rstest]
 fn key_block() {
     assert_compiler("key_block");
+}
+
+#[rstest]
+fn key_block_nested() {
+    assert_compiler("key_block_nested");
 }
 
 #[rstest]
@@ -463,6 +545,12 @@ fn on_directive() {
 #[rstest]
 fn on_directive_modifiers() {
     assert_compiler("on_directive_modifiers");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn on_directive_nonpassive() {
+    assert_compiler("on_directive_nonpassive");
 }
 
 #[rstest]
@@ -526,6 +614,12 @@ fn store_write() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn store_validate_dev() {
+    assert_compiler("store_validate_dev");
+}
+
+#[rstest]
 fn const_tag() {
     assert_compiler("const_tag");
 }
@@ -543,6 +637,11 @@ fn const_tag_destructured_multi() {
 #[rstest]
 fn const_tag_destructured_if() {
     assert_compiler("const_tag_destructured_if");
+}
+
+#[rstest]
+fn const_tag_key_block() {
+    assert_compiler("const_tag_key_block");
 }
 
 #[rstest]
@@ -628,6 +727,12 @@ fn component_bind_this() {
 #[rstest]
 fn component_bind_this_variants() {
     assert_compiler("component_bind_this_variants");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn svelte_self_if() {
+    assert_compiler("svelte_self_if");
 }
 
 #[rstest]
@@ -806,6 +911,16 @@ fn state_constructor_private_read() {
 }
 
 #[rstest]
+fn state_constructor_read_v() {
+    assert_compiler("state_constructor_read_v");
+}
+
+#[rstest]
+fn state_constructor_read_derived() {
+    assert_compiler("state_constructor_read_derived");
+}
+
+#[rstest]
 fn state_class_raw_field() {
     assert_compiler("state_class_raw_field");
 }
@@ -821,6 +936,16 @@ fn state_snapshot_in_template() {
 }
 
 #[rstest]
+fn state_snapshot_ignored() {
+    assert_compiler("state_snapshot_ignored");
+}
+
+#[rstest]
+fn state_snapshot_not_ignored() {
+    assert_compiler("state_snapshot_not_ignored");
+}
+
+#[rstest]
 fn state_class_constructor_proxy() {
     assert_compiler("state_class_constructor_proxy");
 }
@@ -828,6 +953,12 @@ fn state_class_constructor_proxy() {
 #[rstest]
 fn derived_class_field() {
     assert_compiler("derived_class_field");
+}
+
+#[rstest]
+#[ignore = "missing: constructor-assigned $derived.by class field rewrite drops original field declaration"]
+fn derived_by_class_fields() {
+    assert_compiler("derived_by_class_fields");
 }
 
 #[rstest]
@@ -991,6 +1122,12 @@ fn svelte_element_basic() {
 #[rstest]
 fn svelte_element_self_closing() {
     assert_compiler("svelte_element_self_closing");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn svelte_fragment_named_slot() {
+    assert_compiler("svelte_fragment_named_slot");
 }
 
 #[rstest]
@@ -1237,6 +1374,12 @@ fn component_prop_has_call_mixed() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn component_dynamic_dotted() {
+    assert_compiler("component_dynamic_dotted");
+}
+
+#[rstest]
 fn component_prop_memo_state() {
     assert_compiler("component_prop_memo_state");
 }
@@ -1317,6 +1460,11 @@ fn inspect_trace_contexts() {
 #[rstest]
 fn inspect_trace_prod_strip() {
     assert_compiler("inspect_trace_prod_strip");
+}
+
+#[rstest]
+fn inspect_trace_reactive_contexts() {
+    assert_compiler("inspect_trace_reactive_contexts");
 }
 
 // ---------------------------------------------------------------------------
@@ -1438,6 +1586,12 @@ fn html_tag_controlled() {
 #[rstest]
 fn html_tag_svg() {
     assert_compiler("html_tag_svg");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn html_tag_nested_svg() {
+    assert_compiler("html_tag_nested_svg");
 }
 
 #[rstest]
@@ -1595,6 +1749,12 @@ fn debug_non_dev() {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn debug_non_runes_untrack() {
+    assert_compiler("debug_non_runes_untrack");
+}
+
+#[rstest]
 fn animate_with_spread() {
     assert_compiler("animate_with_spread");
 }
@@ -1743,6 +1903,12 @@ fn async_if_basic() {
     assert_compiler("async_if_basic");
 }
 
+#[test]
+#[ignore = "missing: known v3 parity gap"]
+fn async_if_else_if_condition() {
+    assert_compiler("async_if_else_if_condition");
+}
+
 #[rstest]
 fn async_each_basic() {
     assert_compiler("async_each_basic");
@@ -1819,6 +1985,26 @@ fn async_derived_destructured() {
 }
 
 #[rstest]
+fn async_derived_dev() {
+    assert_compiler("async_derived_dev");
+}
+
+#[rstest]
+fn async_derived_dev_ignored() {
+    assert_compiler("async_derived_dev_ignored");
+}
+
+#[rstest]
+fn async_derived_dev_ignored_destructured() {
+    assert_compiler("async_derived_dev_ignored_destructured");
+}
+
+#[rstest]
+fn async_for_await_dev() {
+    assert_compiler("async_for_await_dev");
+}
+
+#[rstest]
 fn inline_await_basic() {
     assert_compiler("inline_await_basic");
 }
@@ -1889,6 +2075,26 @@ fn await_each_nested() {
 }
 
 #[rstest]
+fn await_pending_then() {
+    assert_compiler("await_pending_then");
+}
+
+#[rstest]
+fn await_pending_catch() {
+    assert_compiler("await_pending_catch");
+}
+
+#[rstest]
+fn await_short_catch_no_binding() {
+    assert_compiler("await_short_catch_no_binding");
+}
+
+#[rstest]
+fn await_nested_await() {
+    assert_compiler("await_nested_await");
+}
+
+#[rstest]
 fn fragment_counter_with_nested_if() {
     assert_compiler("fragment_counter_with_nested_if");
 }
@@ -1936,4 +2142,102 @@ fn call_expr_nested_fn_dynamic() {
 #[rstest]
 fn effect_cleanup_return() {
     assert_compiler("effect_cleanup_return");
+}
+
+#[rstest]
+fn tag_derived_basic() {
+    assert_compiler("tag_derived_basic");
+}
+
+#[rstest]
+fn tag_derived_by() {
+    assert_compiler("tag_derived_by");
+}
+
+#[rstest]
+#[ignore = "missing: sync destructured $derived with object pattern (codegen)"]
+fn derived_destructured_object() {
+    assert_compiler("derived_destructured_object");
+}
+
+#[rstest]
+#[ignore = "missing: sync destructured $derived with array pattern (codegen)"]
+fn derived_destructured_array() {
+    assert_compiler("derived_destructured_array");
+}
+
+#[rstest]
+#[ignore = "missing: sync destructured $derived.by (codegen)"]
+fn derived_destructured_by() {
+    assert_compiler("derived_destructured_by");
+}
+
+#[rstest]
+fn tag_state_unmutated() {
+    assert_compiler("tag_state_unmutated");
+}
+
+#[rstest]
+fn tag_state_unmutated_no_proxy() {
+    assert_compiler("tag_state_unmutated_no_proxy");
+}
+
+#[rstest]
+fn tag_bindable_proxy() {
+    assert_compiler("tag_bindable_proxy");
+}
+
+#[rstest]
+fn tag_class_field_public() {
+    assert_compiler("tag_class_field_public");
+}
+
+#[rstest]
+fn tag_class_field_private() {
+    assert_compiler("tag_class_field_private");
+}
+
+#[rstest]
+fn tag_class_constructor() {
+    assert_compiler("tag_class_constructor");
+}
+
+#[rstest]
+fn tag_snippet_dev() {
+    assert_compiler("tag_snippet_dev");
+}
+
+#[rstest]
+#[ignore = "missing: snippet parameter object destructuring (codegen)"]
+fn snippet_object_destructure() {
+    assert_compiler("snippet_object_destructure");
+}
+
+#[rstest]
+#[ignore = "missing: snippet parameter array destructuring (codegen)"]
+fn snippet_array_destructure() {
+    assert_compiler("snippet_array_destructure");
+}
+
+#[rstest]
+#[ignore = "missing: snippet mixed parameter types (codegen)"]
+fn snippet_mixed_params() {
+    assert_compiler("snippet_mixed_params");
+}
+
+#[rstest]
+fn tag_state_destructured_array() {
+    assert_compiler("tag_state_destructured_array");
+}
+
+#[rstest]
+#[ignore = "missing: $.safe_get for var-declared state (codegen)"]
+fn state_var_safe_get() {
+    assert_compiler("state_var_safe_get");
+}
+
+#[rstest]
+#[ignore = "missing: dev-mode $.assign_* transforms for non-statement member assignment (codegen)"]
+fn state_assign_dev() {
+    assert_compiler("state_assign_dev");
 }

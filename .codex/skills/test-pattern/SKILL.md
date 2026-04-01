@@ -59,6 +59,13 @@ assert_element_content_type(&data, &component, "span", ContentStrategy::DynamicT
 
 If the chain gets longer than three steps, split it into named variables. The variable names should explain the expected structure.
 
+## Anti-patterns
+
+- inline pattern matching in test bodies instead of helper-based assertions
+- assertions on collection lengths when a named node-level assertion would be clearer
+- node lookup by index or temporary id instead of source text or stable structure
+- bare `unwrap()` without a panic message that explains what was expected
+
 ## Module structure
 
 Prefer separate test files over inline tests in implementation modules.

@@ -16,6 +16,31 @@ Entry point: `svelte_compiler::compile(source: &str, options: &CompileOptions) -
 
 ---
 
+## Reference materials
+
+### `reference/compiler/`
+Исходники оригинального Svelte 5 JS-компилятора. Используется для понимания ожидаемого поведения при портировании фич.
+- `phases/1-parse/` — парсер (AST, template syntax branches)
+- `phases/2-analyze/` — анализ (visitors, scoping, validation)
+- `phases/3-transform/` — codegen (client/server JS output)
+- `errors.js`, `warnings.js` — диагностики
+
+### `reference/docs/`
+Официальная документация Svelte, разбитая по категориям:
+- `01-introduction/` — overview
+- `02-runes/` — `$state`, `$derived`, `$effect`, `$props` и др.
+- `03-template-syntax/` — `{#if}`, `{#each}`, `{#await}`, `{#snippet}`, `{@html}`, `{@render}` и др.
+- `04-styling/` — scoped styles, `:global()`
+- `05-special-elements/` — `<svelte:component>`, `<svelte:element>`, `<svelte:window>` и др.
+- `06-runtime/` — stores, lifecycle
+- `07-misc/` — TypeScript, custom elements
+- `98-reference/` — API reference
+- `99-legacy/` — Svelte 4 legacy syntax
+
+Используется `/audit` для извлечения синтаксических вариантов фич.
+
+---
+
 ## Crates
 
 ### `svelte_span`

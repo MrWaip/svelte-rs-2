@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Boundaries"
+  short_description: "Audit code for boundary violations"
+  default_prompt: "Use $review-boundaries to audit this crate or path for phase-boundary and data-flow violations."

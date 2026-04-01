@@ -18,10 +18,22 @@ Run `Glob("specs/*.md")` and scan the results for a file matching this feature (
 
 ## Step 1: Research
 
-Launch 2 agents in parallel:
+Launch 3 agents in parallel:
 
 1. **@reference-tracer** — trace `$ARGUMENTS` through all 3 phases. Focus on exhaustive enumeration: every code path = one use case.
 2. **@codebase-analyzer** — find everything related to `$ARGUMENTS` in our compiler. Run each existing test: `just test-case <name>` — which pass, which fail?
+3. **Syntax variants** (general-purpose agent) — extract all syntax variants of `$ARGUMENTS` from two sources:
+   - `reference/docs/` — grep for the feature, read relevant `.md` files, collect every syntax form shown in docs
+   - Reference compiler parser (`reference/compiler/phases/1-parse/`) — find the parsing logic for this feature, extract all syntactic branches
+
+   Output: a flat list of syntax variants, one per line, using Svelte template syntax. Example for `{#await}`:
+   ```
+   {#await expression}...{/await}
+   {#await expression}...{:then value}...{/await}
+   {#await expression}...{:then value}...{:catch error}...{/await}
+   {#await expression then value}...{/await}
+   {#await expression then value}...{:catch error}...{/await}
+   ```
 
 After agents complete, synthesize findings. Read key files agents flagged for details.
 
@@ -38,6 +50,8 @@ For each use case from the reference compiler, classify:
 ## Step 3: Write spec file
 
 Write the spec following the `spec-template` skill.
+
+If this step creates a new spec for an item that already exists in `ROADMAP.md`, immediately update that roadmap entry to include a link to `specs/<name>.md`. Do not mark the feature complete during audit; only sync the spec reference.
 
 ## Step 4: Add missing test cases
 

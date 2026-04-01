@@ -1,0 +1,4 @@
+interface:
+  display_name: "Svelte Reference Map"
+  short_description: "Map Rust code to Svelte reference"
+  default_prompt: "Use $svelte-reference-map to map this Rust compiler area to the reference Svelte compiler."

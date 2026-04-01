@@ -1,6 +1,6 @@
 ---
 name: dump-ast
-description: Dump JavaScript or TypeScript through OXC to inspect the ESTree-like AST. Use when implementing builders, transforms, or codegen for a JS construct, when unsure how OXC represents a syntax form, or when debugging AST-shape mismatches.
+description: Parse JS code through OXC and inspect the ESTree-like JSON AST. Use proactively when implementing builders, transforms, or codegen for a JS construct, before adding new builder logic for unfamiliar syntax, or when debugging AST-shape mismatches.
 ---
 
 # Dump OXC AST
@@ -14,8 +14,7 @@ just dump-ast '<js-code>'
 Show the JSON output directly.
 
 If parsing fails:
+- wrap the expression in parentheses when OXC expects expression context
+- turn the input into module-level code when it is really a declaration or statement
 
-- try wrapping the expression in parentheses
-- try turning the input into module-level code when it is really a declaration
-
-Use this proactively before adding new builder logic or traversal for unfamiliar JS syntax.
+Use this before guessing how OXC represents destructuring, spread, optional chaining, decorators, or other syntax that is easy to misremember.

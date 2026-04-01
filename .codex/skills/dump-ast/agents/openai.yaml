@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dump AST"
+  short_description: "Inspect OXC AST output for syntax"
+  default_prompt: "Use $dump-ast to inspect how OXC represents this JavaScript or TypeScript syntax."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose"
+  short_description: "Diagnose a component through the pipeline"
+  default_prompt: "Use $diagnose to compile this component, classify the mismatches by layer, and turn them into focused tests."

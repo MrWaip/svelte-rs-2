@@ -1,0 +1,4 @@
+interface:
+  display_name: "Improve"
+  short_description: "Improve an existing code path safely"
+  default_prompt: "Use $improve to clean up this code path with the right tests and layer ownership."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Boundary"
+  short_description: "Implement a selected boundary fix"
+  default_prompt: "Use $fix-boundary to implement the selected boundary review finding in upstream-first order."

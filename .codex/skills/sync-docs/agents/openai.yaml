@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Docs"
+  short_description: "Synchronize docs with verified changes"
+  default_prompt: "Use $sync-docs to update roadmap, codebase map, gotchas, and specs after verified changes."

@@ -13,6 +13,8 @@ Load this bundled reference before changing traversal code:
 
 Transform and codegen must not perform semantic analysis. No ad hoc symbol resolution, type inference, or scope reconstruction in these crates. If you need semantic facts, get them from `AnalysisData`.
 
+The same boundary applies to `svelte_transform` and `svelte_codegen_client`.
+
 ## Traversal rule
 
 Use the most specific `enter_*` or `exit_*` hook for the node type.
