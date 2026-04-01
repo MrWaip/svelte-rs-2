@@ -34,10 +34,29 @@ pub(crate) fn gen_snippet_block<'a>(
     let params = build_snippet_params(ctx, &param_names);
 
     let mut all_stmts = prepend_stmts;
+    if ctx.state.dev {
+        // $.validate_snippet_args(...arguments)
+        let args_id = ctx.b.rid_expr("arguments");
+        let validate_stmt = ctx.b.call_stmt("$.validate_snippet_args", [
+            crate::builder::Arg::Spread(args_id),
+        ]);
+        all_stmts.push(validate_stmt);
+    }
     all_stmts.extend(body_stmts);
-    let arrow = ctx.b.arrow(params, all_stmts);
 
-    ctx.b.const_stmt(&name, oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow)))
+    let snippet_expr = if ctx.state.dev {
+        let fn_expr = ctx.b.function_expr(params, all_stmts);
+        let component_name = ctx.b.rid_expr(ctx.state.name);
+        ctx.b.call_expr("$.wrap_snippet", [
+            crate::builder::Arg::Expr(component_name),
+            crate::builder::Arg::Expr(fn_expr),
+        ])
+    } else {
+        let arrow = ctx.b.arrow(params, all_stmts);
+        oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow))
+    };
+
+    ctx.b.const_stmt(&name, snippet_expr)
 }
 
 /// Build FormalParameters: `($$anchor, name = $.noop, ...)`
