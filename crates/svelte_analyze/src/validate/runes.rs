@@ -151,15 +151,7 @@ fn validate_state_referenced_locally_derived(
         if !rune_kind.is_derived() {
             continue;
         }
-        let decl_depth = data.scoping.function_depth(data.scoping.symbol_scope_id(sym_id));
-        let has_same_depth_read = data.scoping.resolved_reference_ids(sym_id).iter().any(|&ref_id| {
-            if data.scoping.is_template_reference(ref_id) {
-                return false;
-            }
-            let reference = data.scoping.get_reference(ref_id);
-            reference.is_read() && data.scoping.function_depth(reference.scope_id()) == decl_depth
-        });
-        if has_same_depth_read {
+        if data.scoping.has_same_function_depth_script_read(sym_id) {
             let name = data.scoping.symbol_name(sym_id);
             let decl = data.scoping.symbol_span(sym_id);
             diags.push(Diagnostic::warning(
