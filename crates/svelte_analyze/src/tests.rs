@@ -1363,7 +1363,6 @@ obj.x = 1;
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_effect_invalid_placement_fn_arg() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1374,7 +1373,6 @@ console.log($effect(() => {}));
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_effect_pre_invalid_placement_assignment() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1385,7 +1383,6 @@ let cleanup = $effect.pre(() => {});
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_effect_wrong_arg_count() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1396,7 +1393,6 @@ $effect();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_effect_pre_wrong_arg_count() {
     let diags = analyze_with_diags(
         r#"<script>

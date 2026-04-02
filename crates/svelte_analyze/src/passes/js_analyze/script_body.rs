@@ -5,6 +5,7 @@ use oxc_ast_visit::Visit;
 use crate::passes::js_analyze::expression_info::analyze_expression;
 use crate::types::data::{AnalysisData, ParserResult};
 use crate::types::script::{RuneKind, ScriptInfo};
+use crate::utils::script_info::detect_rune_from_call;
 
 /// Enrich pre-extracted ScriptInfo with semantic data and build Scoping.
 /// `script_info` comes from `JsParseResult` (extracted by parser).
@@ -75,8 +76,13 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
 
         match stmt {
             Statement::ExpressionStatement(es) => {
-                if is_effect_call(&es.expression) {
-                    self.has_effects = true;
+                if let Expression::CallExpression(call) = &es.expression {
+                    if matches!(
+                        detect_rune_from_call(call),
+                        Some(RuneKind::Effect | RuneKind::EffectPre)
+                    ) {
+                        self.has_effects = true;
+                    }
                 }
                 if analyze_expression(&es.expression).has_store_member_mutation {
                     self.has_store_member_mutations = true;
@@ -162,22 +168,6 @@ impl ScriptBodyAnalyzer<'_> {
     }
 }
 
-fn is_effect_call(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr {
-        match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "$effect" => return true,
-            Expression::StaticMemberExpression(member) => {
-                if let Expression::Identifier(obj) = &member.object {
-                    if obj.name.as_str() == "$effect" && member.property.name.as_str() == "pre" {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
 
 fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr else {
