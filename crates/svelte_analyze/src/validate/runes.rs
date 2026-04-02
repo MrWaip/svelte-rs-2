@@ -44,7 +44,7 @@ pub(super) fn validate(
     };
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
-    validate_state_referenced_locally_derived(data, diags);
+    validate_state_referenced_locally_derived(data, offset, diags);
 }
 
 struct RuneValidator<'a> {
@@ -143,8 +143,11 @@ fn validate_derived_invalid_export(
     }
 }
 
-fn validate_state_referenced_locally_derived(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    let Some(script) = &data.script else { return };
+fn validate_state_referenced_locally_derived(
+    data: &AnalysisData,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
     for (sym_id, rune_kind) in data.scoping.rune_symbols() {
         if !rune_kind.is_derived() {
             continue;
@@ -160,18 +163,13 @@ fn validate_state_referenced_locally_derived(data: &AnalysisData, diags: &mut Ve
             });
         if has_same_depth_read {
             let name = data.scoping.symbol_name(sym_id);
-            let span = script
-                .declarations
-                .iter()
-                .find(|decl| decl.name.as_str() == name)
-                .map(|decl| decl.span)
-                .unwrap_or(Span::new(0, 0));
+            let decl = data.scoping.symbol_span(sym_id);
             diags.push(Diagnostic::warning(
                 DiagnosticKind::StateReferencedLocally {
                     name: name.to_string(),
                     type_: "closure".into(),
                 },
-                span,
+                Span::new(decl.start + offset, decl.end + offset),
             ));
         }
     }

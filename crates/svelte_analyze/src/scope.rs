@@ -417,10 +417,6 @@ impl ComponentScoping {
         self.fragment_scopes.get(key).copied()
     }
 
-    pub fn is_template_scope(&self, scope_id: ScopeId) -> bool {
-        self.template_scope_set.contains(&scope_id)
-    }
-
     pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
         self.const_alias_tags.insert(sym_id, tag_id);
     }
