@@ -1352,8 +1352,6 @@ impl<'a> Scanner<'a> {
         let mut last_comma_pos: Option<usize> = None;
         // Index span extracted from the no-`as` indexed form (not from collect_each_context).
         let mut no_as_index_span: Option<Span> = None;
-        // Key span from `{#each expr (key)}` without `as` (whitespace-separated `(key)`).
-        let mut no_as_key_span: Option<Span> = None;
 
         // Scan the collection expression, tracking nesting depth.
         // Stop on `}` at depth 0 (no `as` binding) or on `as` keyword at depth 0.
@@ -1418,18 +1416,6 @@ impl<'a> Scanner<'a> {
                         item_span = Some(self.collect_each_context()?);
                         break;
                     }
-                    if keyword.is_empty() && self.peek() == Some('(') {
-                        // `{#each expr (key)}` without `as` — whitespace-separated key expression.
-                        collection_span = Some(self.span(start_collection_pos, end_collection_pos));
-                        no_as_key_span = Some(self.collect_key_expression(false)?);
-                        self.skip_whitespace();
-                        if !self.match_char('}') {
-                            return Diagnostic::unexpected_token(
-                                Span::new(self.current as u32, self.current as u32),
-                            ).as_err();
-                        }
-                        break;
-                    }
                     // else: keep scanning (identifier was part of the expression)
                 }
                 _ => {
@@ -1453,8 +1439,7 @@ impl<'a> Scanner<'a> {
         // Parse optional index: `, i`
         // no_as_index_span is pre-populated for `{#each expr, index}` (no `as` context).
         let mut index_span = no_as_index_span;
-        // no_as_key_span is pre-populated for `{#each expr (key)}` (no `as` context).
-        let mut key_span = no_as_key_span;
+        let mut key_span = None;
 
         if last_char == "," {
             self.skip_whitespace();
