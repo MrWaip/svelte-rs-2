@@ -1,71 +1,108 @@
 ---
 name: fix-test
-description: Diagnose and fix a single failing compiler test case. Use when the user names one test, asks to make one compiler case pass, or wants a focused single-test bugfix. Do not trigger for multi-test audits, feature-gap reviews, or broad component diagnosis.
+description: Fix a single failing compiler test case. Use when the user asks to fix one test, make one test pass, or provides a failing compiler test name.
 ---
 
-# Fix Single Test
+# Fix Failing Test
 
 **Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
 
-## 1) Reproduce and read the failure
+Fix a single compiler test case. The test name is provided as input.
 
-Run:
+## Approach
+
+When reading Svelte reference visitors to understand the fix, focus on what output they produce, not how they are structured. Do not port visitor patterns, mutable metadata, or JS workarounds. Use our existing architecture: direct recursion, `AnalysisData` side tables, and normal Rust control flow.
+
+## PLAN PHASE
+
+These steps are read-only. Complete them before writing any code.
+
+### Step 1: Understand The Failure
+
+If `/explain-test` was already run for this test in the current session, use its findings and skip Step 1 and Step 2.
+
+Run the test to see the diff:
 
 ```bash
-.codex/scripts/fix-test.sh <test-name>
+just test-case-verbose <test-name>
 ```
 
-Then read:
+Read the three files in `tasks/compiler_tests/cases2/<test-name>/`:
 
-- `tasks/compiler_tests/cases2/<test-name>/case.svelte`
-- `tasks/compiler_tests/cases2/<test-name>/case-svelte.js`
-- `tasks/compiler_tests/cases2/<test-name>/case-rust.js`
+- `case.svelte`
+- `case-svelte.js`
+- `case-rust.js`
 
-List the concrete mismatches between expected and actual output before editing code.
+Compare `case-rust.js` with `case-svelte.js`. List every mismatch.
 
-## 2) Diagnose the layer
+### Step 2: Diagnose The Root Cause
 
-Check the likely failure site in order:
+Determine which layer has the issue, in this order:
 
-1. parser / AST shape
-2. analyze / side tables / classifications
-3. transform
-4. client codegen
+1. parser or AST
+2. analysis
+3. codegen
 
-Use `CLAUDE.md`, `CODEBASE_MAP.md`, and `phase-boundaries` to keep the fix in the correct crate.
+Use `CLAUDE.md` to navigate to the right files. Read `CODEBASE_MAP.md` for type signatures or module structure when needed.
 
-## 3) Research before editing
+### Step 3: Research
 
-If needed, inspect the corresponding reference compiler path in `reference/compiler/` and compare it with the matching Rust module. Focus on what behavior is missing, not on copying JS implementation patterns.
+Research two things in parallel:
 
-Use `svelte-reference-map` when you need the file mapping.
+1. How the reference compiler handles this specific case. Focus on the code path that produces the observed diff.
+2. Where the corresponding code lives in our compiler: which function handles this node type, what analysis data is available, and what is missing.
 
-## 4) Implement the minimal correct fix
+After research completes, identify the gap: what the reference does that we do not.
+
+### Step 4: Plan The Fix
+
+Produce a plan with all of these sections:
+
+1. Layer
+2. Root cause
+3. Changes
+4. Unit tests
 
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
-- keep the change scoped to the named test unless investigation proves a shared root cause
-- prefer existing accessors and enums over ad hoc conditions
-- add or update unit tests if parser or analyze behavior changed
-- never hand-edit `case-svelte.js` or `case-rust.js`
+**Present the plan and wait for approval before proceeding.**
 
-## 5) Verify narrowly, then slightly wider
+## EXECUTE PHASE
 
-Run:
+Start here only after plan approval.
+
+### Step 5: Fix
+
+Implement the planned fix. Do not fix multiple test cases at once.
+
+Never edit `case-svelte.js` or `case-rust.js`.
+
+### Step 6: Unit Tests
+
+If the fix touches parser or analyze logic, add a unit test covering the specific behavior following project test patterns.
+
+### Step 7: Verify
+
+Run the single test:
 
 ```bash
 just test-case <test-name>
 ```
 
-Then run additional narrowly related verification, usually the closest crate tests or `just test-compiler` if codegen behavior changed broadly.
+Then run all compiler tests:
 
-If the same approach failed three times, stop looping and report the blocker clearly.
+```bash
+just test-compiler
+```
 
-## 6) Report
+If the fix breaks other tests, stop and report. Do not fix other tests in the same run.
 
-Provide:
+If the test still fails after 3 fix attempts, stop and report what you tried.
 
-- root cause
-- changed layer and files
-- commands run and outcomes
-- any remaining follow-up work
+### Step 8: Update Spec
+
+If this test is tracked in a spec file under `specs/*.md`, mark it as fixed and update the `Current state` section.
+
+Recommended next command:
+
+- `/qa`
