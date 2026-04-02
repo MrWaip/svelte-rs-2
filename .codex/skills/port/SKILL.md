@@ -20,6 +20,8 @@ Build:
 - a spec file using `spec-template`
 
 Defer out-of-scope cases explicitly instead of silently dropping them.
+When a case is deferred, add a dedicated unchecked checkbox for it in the matching spec `Use cases` deferred subsection so later sessions can see it in feature-local context.
+If no matching spec exists yet, tell the user explicitly that the deferred case was not recorded because there is no corresponding spec.
 
 ## 3) Add test cases before or alongside implementation
 
@@ -47,4 +49,4 @@ Update:
 - spec `Current state`
 - completed use cases and tasks
 - `ROADMAP.md` if the feature is now actually done
-- deferred items if new scope edges were discovered
+- deferred items as unchecked checkboxes in the spec if new scope edges were discovered

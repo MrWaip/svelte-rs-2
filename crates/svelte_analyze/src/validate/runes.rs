@@ -5,14 +5,14 @@ use oxc_ast::ast::{
     MethodDefinitionKind, PropertyDefinition, VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
-    walk_assignment_expression, walk_call_expression, walk_method_definition,
-    walk_property_definition,
+    walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
+    walk_function, walk_method_definition, walk_property_definition,
 };
 use oxc_ast_visit::Visit;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::script::RuneKind;
+use crate::{AnalysisData, types::script::RuneKind};
 use crate::utils::script_info::detect_rune_from_call;
 
 /// Constructor assignments to `this` are valid rune placement targets,
@@ -27,7 +27,12 @@ fn is_this_member_assign(target: &oxc_ast::ast::AssignmentTarget<'_>) -> bool {
     matches!(object, Expression::ThisExpression(_))
 }
 
-pub(super) fn validate(program: &oxc_ast::ast::Program<'_>, offset: u32, diags: &mut Vec<Diagnostic>) {
+pub(super) fn validate(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
     let mut v = RuneValidator {
         diags,
         offset,
@@ -37,6 +42,8 @@ pub(super) fn validate(program: &oxc_ast::ast::Program<'_>, offset: u32, diags: 
         in_this_assign_rhs: false,
     };
     v.visit_program(program);
+    validate_derived_invalid_export(data, program, offset, diags);
+    validate_state_referenced_locally_derived(data, program, offset, diags);
 }
 
 struct RuneValidator<'a> {
@@ -85,6 +92,99 @@ impl RuneValidator<'_> {
         }
     }
 
+}
+
+fn validate_derived_invalid_export(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for stmt in &program.body {
+        let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt else { continue };
+        let Some(oxc_ast::ast::Declaration::VariableDeclaration(var_decl)) = &export.declaration else { continue };
+        let has_derived = var_decl.declarations.iter().any(|declarator| {
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
+                return false;
+            };
+            ident.symbol_id.get()
+                .and_then(|sym_id| data.scoping.rune_kind(sym_id))
+                .is_some_and(|kind| kind.is_derived())
+        });
+        if has_derived {
+            diags.push(Diagnostic::error(
+                DiagnosticKind::DerivedInvalidExport,
+                Span::new(export.span.start + offset, export.span.end + offset),
+            ));
+        }
+    }
+}
+
+fn validate_state_referenced_locally_derived(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut v = StateRefLocallyValidator { data, offset, diags, in_state_rune_arg: false, _phantom: std::marker::PhantomData };
+    v.visit_program(program);
+}
+
+struct StateRefLocallyValidator<'a, 'b> {
+    data: &'b AnalysisData,
+    offset: u32,
+    diags: &'b mut Vec<Diagnostic>,
+    /// True when currently inside arguments of a `$state`/`$state.raw` call,
+    /// without a function boundary in between. Determines `type_` in the diagnostic.
+    in_state_rune_arg: bool,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
+    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        let Some(ref_id) = ident.reference_id.get() else { return };
+        if self.data.scoping.is_template_reference(ref_id) { return }
+        let reference = self.data.scoping.get_reference(ref_id);
+        if !reference.is_read() { return }
+        let Some(sym_id) = reference.symbol_id() else { return };
+        if !self.data.scoping.rune_kind(sym_id).is_some_and(|k| k.is_derived()) { return }
+        let decl_depth = self.data.scoping.function_depth(self.data.scoping.symbol_scope_id(sym_id));
+        if self.data.scoping.function_depth(reference.scope_id()) != decl_depth { return }
+        let name = self.data.scoping.symbol_name(sym_id);
+        let type_ = if self.in_state_rune_arg { "derived" } else { "closure" };
+        self.diags.push(Diagnostic::warning(
+            DiagnosticKind::StateReferencedLocally {
+                name: name.to_string(),
+                type_: type_.into(),
+            },
+            Span::new(ident.span.start + self.offset, ident.span.end + self.offset),
+        ));
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if detect_rune_from_call(call).is_some_and(|k| matches!(k, RuneKind::State | RuneKind::StateRaw)) {
+            self.visit_expression(&call.callee);
+            let prev = std::mem::replace(&mut self.in_state_rune_arg, true);
+            for arg in &call.arguments {
+                self.visit_argument(arg);
+            }
+            self.in_state_rune_arg = prev;
+        } else {
+            walk_call_expression(self, call);
+        }
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+        let prev = std::mem::replace(&mut self.in_state_rune_arg, false);
+        walk_arrow_function_expression(self, arrow);
+        self.in_state_rune_arg = prev;
+    }
+
+    fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: oxc_semantic::ScopeFlags) {
+        let prev = std::mem::replace(&mut self.in_state_rune_arg, false);
+        walk_function(self, func, flags);
+        self.in_state_rune_arg = prev;
+    }
 }
 
 impl<'a> Visit<'a> for RuneValidator<'_> {

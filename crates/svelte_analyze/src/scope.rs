@@ -22,6 +22,7 @@ pub struct Rune {
 /// bindings (each-block context/index) are added via `add_scope` / `add_binding`.
 pub struct ComponentScoping {
     scoping: Scoping,
+    template_reference_ids: FxHashSet<ReferenceId>,
     runes: FxHashMap<SymbolId, Rune>,
     // SymbolId-keyed classification fields (single source of truth for semantic decisions)
     prop_source_syms: FxHashSet<SymbolId>,
@@ -66,6 +67,7 @@ impl ComponentScoping {
         });
         Self {
             scoping,
+            template_reference_ids: FxHashSet::default(),
             runes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
@@ -131,6 +133,24 @@ impl ComponentScoping {
         self.scoping.symbol_name(id)
     }
 
+    pub fn function_depth(&self, mut scope: ScopeId) -> usize {
+        let mut depth = 0usize;
+        loop {
+            if self.scoping.scope_flags(scope).is_function() {
+                depth += 1;
+            }
+            let Some(parent) = self.scoping.scope_parent_id(scope) else {
+                break;
+            };
+            scope = parent;
+        }
+        depth
+    }
+
+    pub fn is_template_reference(&self, ref_id: ReferenceId) -> bool {
+        self.template_reference_ids.contains(&ref_id)
+    }
+
     // -- Rune tracking --
 
     pub fn mark_rune(&mut self, id: SymbolId, kind: RuneKind) {
@@ -158,6 +178,14 @@ impl ComponentScoping {
     /// Store a Reference object and return its ReferenceId.
     pub fn create_reference(&mut self, reference: OxcReference) -> ReferenceId {
         self.scoping.create_reference(reference)
+    }
+
+    /// Template references are synthesized by template visitors and do not map
+    /// to script AST nodes in OXC's semantic node table.
+    pub fn create_template_reference(&mut self, reference: OxcReference) -> ReferenceId {
+        let ref_id = self.scoping.create_reference(reference);
+        self.template_reference_ids.insert(ref_id);
+        ref_id
     }
 
     /// Record that a ReferenceId resolves to a SymbolId.

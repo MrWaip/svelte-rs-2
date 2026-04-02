@@ -7,11 +7,9 @@
 Core `$derived` and `$derived.by` are fully implemented for simple identifier bindings (sync and async), class fields, nested functions, and dev mode. 21 existing tests all pass.
 
 **Gaps found:**
-1. `derived_invalid_export` diagnostic — defined but never emitted from analyze
-2. `state_referenced_locally` warning — not emitted for derived bindings
-3. `$.save()` for nested async derived (`function_depth > 1`) — unknown, no test
+1. `$.save()` for nested async derived (`function_depth > 1`) — unknown, no test
 
-**Next:** port analyzer diagnostics (`derived_invalid_export`, `state_referenced_locally`) and add focused tests.
+**Next:** investigate async nested derived save path and add focused parity tests.
 
 ## Source
 
@@ -38,8 +36,8 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] Sync destructured `$derived(expr)` where arg is plain Identifier (no intermediate var)
 - [x] Sync destructured `$derived(expr)` where arg is NOT plain Identifier (intermediate `$$d` var)
 - [x] Sync destructured `$derived.by(fn)` (intermediate `$$d` var)
-- [ ] `derived_invalid_export` diagnostic when `export`ing derived binding
-- [ ] `state_referenced_locally` warning for derived bindings read at same function depth
+- [x] `derived_invalid_export` diagnostic when `export`ing derived binding
+- [x] `state_referenced_locally` warning for derived bindings read at same function depth
 
 ### Deferred
 - `$.save()` for nested async derived (`function_depth > 1`) — needs async infrastructure
@@ -107,3 +105,5 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - `derived_destructured_object`
 - `derived_destructured_array`
 - `derived_destructured_by`
+- `derived_invalid_export` analyzer diagnostic
+- `state_referenced_locally` warning for derived bindings

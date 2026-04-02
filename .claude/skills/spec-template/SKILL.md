@@ -43,7 +43,7 @@ Sections in fixed order. Most important first.
 3. [ ] <description> (test: <test_name>, #[ignore], needs infrastructure)
 
 ### Deferred
-- <use cases deferred to ROADMAP>
+- [ ] <use case deferred out of current scope>
 
 ## Reference
 - Svelte reference:
@@ -66,7 +66,7 @@ Sections in fixed order. Most important first.
 ## Scope rules
 - **Client-side only.** No SSR use cases.
 - `[ ]` = in scope, `[x]` = done with test, `[~]` = partial (describe what works)
-- "Deferred" = moved to ROADMAP, not in scope
+- "Deferred" = not in scope; keep each deferred case as its own unchecked checkbox in the spec
 
 ## Effort markers for use cases
 - **quick fix** — one file, add match arm or call by analogy
