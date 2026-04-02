@@ -1,6 +1,7 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{Attribute, ComponentNode};
+use svelte_ast::{Attribute, ComponentNode, Element, Node, is_mathml, is_svg, is_void};
+use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
@@ -21,6 +22,46 @@ impl<'src> ElementFlagsVisitor<'src> {
 }
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+        // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
+        if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::ElementInvalidSelfClosingTag { name: el.name.clone() },
+                el.span,
+            ));
+        }
+
+        let has_value_attr = el.attributes.iter().any(|a| {
+            matches!(a, Attribute::StringAttribute(sa) if sa.name == "value")
+                || matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
+        });
+
+        // <textarea>: detect expression children
+        if el.name == "textarea" && !el.fragment.nodes.is_empty() {
+            let has_expr_children = el.fragment.nodes.iter().any(|&id| {
+                matches!(ctx.store.get(id), Node::ExpressionTag(_))
+            });
+            if has_expr_children {
+                if has_value_attr {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::TextareaInvalidContent,
+                        el.span,
+                    ));
+                } else {
+                    ctx.data.element_flags.needs_textarea_value_lowering.insert(el.id);
+                }
+            }
+        }
+
+        // <option>: single ExpressionTag child, no explicit value attribute → synthetic __value
+        if el.name == "option" && !has_value_attr && el.fragment.nodes.len() == 1 {
+            let child_id = el.fragment.nodes[0];
+            if matches!(ctx.store.get(child_id), Node::ExpressionTag(_)) {
+                ctx.data.element_flags.option_synthetic_value_expr.insert(el.id, child_id);
+            }
+        }
+    }
+
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
         let Some(el_id) = ctx.nearest_element() else { return };
         match attr {

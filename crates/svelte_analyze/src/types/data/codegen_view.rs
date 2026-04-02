@@ -81,6 +81,8 @@ impl<'a> CodegenView<'a> {
     pub fn snippet_params(&self, id: NodeId) -> &[String] { self.data.snippets.params(id) }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.data.snippets.is_hoistable(id) }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> { self.data.element_flags.event_handler_mode(id) }
+    pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool { self.data.element_flags.needs_textarea_value_lowering(id) }
+    pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> { self.data.element_flags.option_synthetic_value_expr(id) }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> { self.data.render_tag_plan(id) }
     pub fn has_bind_group(&self, id: NodeId) -> bool { self.data.bind_semantics.has_bind_group(id) }
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> { self.data.bind_semantics.bind_group_value_attr(id) }

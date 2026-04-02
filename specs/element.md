@@ -1,10 +1,11 @@
 # Element
 
 ## Current state
-- **Working**: 7/13 use cases are covered or already tracked by passing compiler cases
-- **Missing**: template validation for regular elements, textarea/option/select special handling, and several regular-element runtime special cases
-- **Next**: implement regular-element template validation first, then port form-element special handling in analyze/codegen order
-- Last updated: 2026-04-01
+- **Working**: 9/13 use cases covered (added textarea child-content lowering and option synthetic __value)
+- **Partial**: template validation — `element_invalid_self_closing_tag` warning and `textarea_invalid_content` error now emitted
+- **Missing**: customizable select subtree, autofocus already done; node_invalid_placement, slot_attribute_invalid_placement, component_name_lowercase diagnostics still absent
+- **Next**: port remaining validation diagnostics (node_invalid_placement, slot_attribute_invalid_placement), then customizable select
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -51,16 +52,17 @@
   Existing tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`
 - `[~]` Regular-element directives and advanced attribute paths work, but coverage/spec ownership lives elsewhere
   See: `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
-- `[ ]` Template validation for regular elements and element attributes
-  Missing today: `node_invalid_placement`, `slot_attribute_invalid_placement`, `textarea_invalid_content`, `component_name_lowercase`, `element_invalid_self_closing_tag`
-- `[ ]` `<textarea>` child-content lowering to a synthetic `value` attribute
-  Missing behavior: reference compiler rewrites dynamic child content and clears fragment children
-- `[ ]` `<option>{expr}</option>` synthetic value handling
-  Missing behavior: reference compiler preserves non-string values via synthetic value metadata / codegen
+- `[~]` Template validation for regular elements and element attributes
+  Working: `element_invalid_self_closing_tag` warning, `textarea_invalid_content` error now emitted from `ElementFlagsVisitor`.
+  Missing: `node_invalid_placement`, `slot_attribute_invalid_placement`, `component_name_lowercase`
+- `[x]` `<textarea>` child-content lowering to a synthetic `value` attribute
+  Implemented: `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (no constant folding). Test: `textarea_child_value_dynamic`.
+- `[x]` `<option>{expr}</option>` synthetic value handling
+  Implemented: `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent. Test: `option_expr_child_value`.
 - `[ ]` Customizable select subtree handling
   Missing behavior: `select` / `option` / `optgroup` rich-content paths and `<selectedcontent>` handling
-- `[ ]` `autofocus` helper path on regular elements
-  Missing behavior: reference uses `$.autofocus(...)` instead of a generic attribute setter
+- `[x]` `autofocus` helper path on regular elements
+  Implemented: `$.autofocus(el, expr)` emitted from `attributes.rs`. Test: `element_autofocus`.
 - `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching
   Current coverage proves common cases only
 
@@ -97,23 +99,20 @@
 
 ## Tasks
 
-1. `[ ]` Add template-validation pass ownership in `svelte_analyze`
-   Files: new validate module(s) plus `crates/svelte_analyze/src/lib.rs`
-   Scope: regular-element placement, slot attribute placement, textarea conflict, self-closing warning, lowercase-component warning
-   Effort: needs infrastructure
-2. `[ ]` Port `<textarea>` dynamic child-content lowering into analyze-side metadata
-   Files: likely new element-side-table metadata in `svelte_analyze`, consumed by `crates/svelte_codegen_client/src/template/element.rs` / `attributes.rs`
-   Effort: moderate
-3. `[ ]` Port `<option>{expr}</option>` synthetic value handling
-   Files: analyze metadata + regular element codegen
-   Effort: moderate
-4. `[ ]` Port customizable select / selectedcontent behavior
+1. `[x]` Add `element_invalid_self_closing_tag` warning + `textarea_invalid_content` error in `ElementFlagsVisitor::visit_element`
+   Files: `crates/svelte_analyze/src/passes/element_flags.rs`
+2. `[x]` Port `<textarea>` dynamic child-content lowering into analyze-side metadata + codegen
+   Files: `crates/svelte_analyze/src/types/data/elements.rs`, `element_flags.rs`, `codegen_view.rs`, `context.rs`, `crates/svelte_codegen_client/src/template/element.rs`
+3. `[x]` Port `<option>{expr}</option>` synthetic value handling
+   Files: same as above
+4. `[x]` Port regular-element runtime special case `autofocus`
+   Files: `crates/svelte_codegen_client/src/template/attributes.rs`
+5. `[ ]` Port remaining template validation: `node_invalid_placement`, `slot_attribute_invalid_placement`, `component_name_lowercase`
+   Effort: moderate (needs component ancestor walk for slot, HTML tree validity table for placement)
+6. `[ ]` Port customizable select / selectedcontent behavior
    Files: analyze metadata + regular element codegen + maybe lowered fragment handling
    Effort: needs infrastructure
-5. `[ ]` Port regular-element runtime special cases such as `autofocus`
-   Files: `crates/svelte_codegen_client/src/template/attributes.rs`
-   Effort: quick fix
-6. `[ ]` Expand namespace edge-case coverage after the semantic gaps above land
+7. `[ ]` Expand namespace edge-case coverage
    Effort: moderate
 
 ## Implementation order
