@@ -360,6 +360,7 @@ pub fn analyze_module(
             let script_info = utils::script_info::extract_script_info(&program, 0, source);
             data.script = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
+            validate::validate_program(&data, &program, 0, &mut diags);
         }
         Err(errs) => diags.extend(errs),
     }

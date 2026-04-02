@@ -2246,6 +2246,16 @@ fn snippet_mixed_params() {
 }
 
 #[rstest]
+fn snippet_nested_destructure() {
+    assert_compiler("snippet_nested_destructure");
+}
+
+#[rstest]
+fn snippet_computed_key_destructure() {
+    assert_compiler("snippet_computed_key_destructure");
+}
+
+#[rstest]
 fn tag_state_destructured_array() {
     assert_compiler("tag_state_destructured_array");
 }

@@ -78,7 +78,6 @@ impl<'a> CodegenView<'a> {
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.data.element_flags.is_expression_shorthand(id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] { self.data.element_flags.component_props(id) }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] { self.data.snippets.component_snippets(id) }
-    pub fn snippet_params(&self, id: NodeId) -> &[String] { self.data.snippets.params(id) }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.data.snippets.is_hoistable(id) }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> { self.data.element_flags.event_handler_mode(id) }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool { self.data.element_flags.needs_textarea_value_lowering(id) }

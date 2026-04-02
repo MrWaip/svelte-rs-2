@@ -8,6 +8,8 @@
 //! so that sub-expression spans can be reported correctly.
 
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
+use oxc_ast_visit::{walk, Visit};
+use oxc_span::GetSpan;
 use svelte_ast::{AnimateDirective, EachBlock, Node, NodeId};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -97,40 +99,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let is_bind = ctx.parent().is_some_and(|p| p.kind == ParentKind::BindDirective);
 
         match expr {
-            Expression::AssignmentExpression(assign) if !is_bind => {
-                if let AssignmentTarget::AssignmentTargetIdentifier(ident) = &assign.left {
-                    if is_each_block_var_ref(ident, &ctx.data.scoping) {
-                        let span = self.oxc_to_svelte(assign.span);
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::EachItemInvalidAssignment,
-                            span,
-                        ));
-                    }
-                }
+            Expression::Identifier(ident) if is_bind && is_each_block_var_ref(ident, &ctx.data.scoping) => {
+                let span = self.oxc_to_svelte(expr.span());
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::EachItemInvalidAssignment,
+                    span,
+                ));
             }
-            Expression::UpdateExpression(update) if !is_bind => {
-                if let SimpleAssignmentTarget::AssignmentTargetIdentifier(ident) = &update.argument {
-                    if is_each_block_var_ref(ident, &ctx.data.scoping) {
-                        let span = self.oxc_to_svelte(update.span);
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::EachItemInvalidAssignment,
-                            span,
-                        ));
-                    }
-                }
-            }
-            Expression::Identifier(ident) if is_bind => {
-                if let Some(ref_id) = ident.reference_id.get() {
-                    if let Some(sym) = ctx.data.scoping.get_reference(ref_id).symbol_id() {
-                        if ctx.data.scoping.is_each_block_var(sym) {
-                            let span = self.oxc_to_svelte(ident.span);
-                            ctx.warnings_mut().push(Diagnostic::error(
-                                DiagnosticKind::EachItemInvalidAssignment,
-                                span,
-                            ));
-                        }
-                    }
-                }
+            _ if !is_bind && contains_invalid_each_assignment(expr, &ctx.data.scoping) => {
+                let span = self.oxc_to_svelte(expr.span());
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::EachItemInvalidAssignment,
+                    span,
+                ));
             }
             _ => {}
         }
@@ -156,4 +137,113 @@ fn is_each_block_var_ref(
         .get()
         .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
         .is_some_and(|sym| scoping.is_each_block_var(sym))
+}
+
+struct EachBlockVarRefVisitor<'s> {
+    scoping: &'s ComponentScoping,
+    found: bool,
+}
+
+impl<'a> Visit<'a> for EachBlockVarRefVisitor<'_> {
+    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        if is_each_block_var_ref(ident, self.scoping) {
+            self.found = true;
+        }
+    }
+
+    fn visit_assignment_target_property_identifier(
+        &mut self,
+        it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
+    ) {
+        if is_each_block_var_ref(&it.binding, self.scoping) {
+            self.found = true;
+        }
+        if let Some(init) = &it.init {
+            self.visit_expression(init);
+        }
+    }
+
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_expression(self, expr);
+    }
+
+    fn visit_assignment_target(&mut self, target: &AssignmentTarget<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_assignment_target(self, target);
+    }
+
+    fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_simple_assignment_target(self, target);
+    }
+}
+
+fn contains_each_block_var_in_assignment_target(
+    target: &AssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    let mut visitor = EachBlockVarRefVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_assignment_target(target);
+    visitor.found
+}
+
+fn contains_each_block_var_in_simple_target(
+    target: &SimpleAssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    let mut visitor = EachBlockVarRefVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_simple_assignment_target(target);
+    visitor.found
+}
+
+struct InvalidEachAssignmentVisitor<'s> {
+    scoping: &'s ComponentScoping,
+    found: bool,
+}
+
+impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
+    fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
+        if contains_each_block_var_in_assignment_target(&expr.left, self.scoping) {
+            self.found = true;
+            return;
+        }
+        walk::walk_assignment_expression(self, expr);
+    }
+
+    fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
+        if contains_each_block_var_in_simple_target(&expr.argument, self.scoping) {
+            self.found = true;
+            return;
+        }
+        walk::walk_update_expression(self, expr);
+    }
+
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_expression(self, expr);
+    }
+}
+
+fn contains_invalid_each_assignment(expr: &Expression<'_>, scoping: &ComponentScoping) -> bool {
+    let mut visitor = InvalidEachAssignmentVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_expression(expr);
+    visitor.found
 }

@@ -3,7 +3,7 @@ use super::*;
 pub struct SnippetData {
     pub(crate) hoistable: NodeBitSet,
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
-    pub(crate) params: NodeTable<Vec<String>>,
+    pub(crate) param_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
 }
 
 impl SnippetData {
@@ -11,7 +11,7 @@ impl SnippetData {
         Self {
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
-            params: NodeTable::new(node_count),
+            param_ref_symbols: NodeTable::new(node_count),
         }
     }
 
@@ -21,8 +21,8 @@ impl SnippetData {
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets.get(id).map_or(&[], |v| v.as_slice())
     }
-    pub fn params(&self, id: NodeId) -> &[String] {
-        self.params.get(id).map_or(&[], |v| v.as_slice())
+    pub fn param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.param_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
     }
 }
 

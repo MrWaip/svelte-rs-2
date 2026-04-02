@@ -161,7 +161,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
         }
-        // Mark snippet params and collect param names
+        // Mark snippet params. Codegen reads the original parsed param patterns via stmt handle.
         if let Some(parsed) = ctx.parsed() {
             if let Some(stmt) = parsed
                 .stmt_handle(block.expression_span.start)
@@ -169,13 +169,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping, in_default: false };
                 marker.visit_statement(stmt);
-
-                // SnippetParamMarker mutates scoping, so names must be collected in a separate pass
-                let mut collector = SnippetParamNameCollector { names: Vec::new() };
-                collector.visit_statement(stmt);
-                if !collector.names.is_empty() {
-                    ctx.data.snippets.params.insert(block.id, collector.names);
-                }
             }
         }
     }
@@ -193,30 +186,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         }
-    }
-}
-
-/// OXC Visit that collects param names from `const name = (a, b) => {}`.
-/// Mirrors `SnippetParamMarker` descent but collects names instead of marking symbols.
-struct SnippetParamNameCollector {
-    names: Vec<String>,
-}
-
-impl<'a> Visit<'a> for SnippetParamNameCollector {
-    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        self.names.push(ident.name.to_string());
-    }
-
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
-        // Skip decl.id — snippet name is not a param
-        if let Some(init) = &decl.init {
-            self.visit_expression(init);
-        }
-    }
-
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        // Only visit params — skip body to avoid collecting inner bindings
-        self.visit_formal_parameters(&arrow.params);
     }
 }
 
