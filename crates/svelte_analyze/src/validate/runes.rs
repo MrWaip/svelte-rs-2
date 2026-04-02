@@ -43,6 +43,7 @@ pub(super) fn validate(
     };
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
+    validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
 }
 
@@ -120,13 +121,40 @@ fn validate_derived_invalid_export(
     }
 }
 
+fn validate_state_invalid_export(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for stmt in &program.body {
+        let oxc_ast::ast::Statement::ExportNamedDeclaration(export) = stmt else { continue };
+        let Some(oxc_ast::ast::Declaration::VariableDeclaration(var_decl)) = &export.declaration else { continue };
+        let has_reassigned_state = var_decl.declarations.iter().any(|declarator| {
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
+                return false;
+            };
+            let Some(sym_id) = ident.symbol_id.get() else { return false };
+            data.scoping.rune_kind(sym_id)
+                .is_some_and(|k| matches!(k, RuneKind::State | RuneKind::StateRaw))
+                && data.scoping.is_mutated(sym_id)
+        });
+        if has_reassigned_state {
+            diags.push(Diagnostic::error(
+                DiagnosticKind::StateInvalidExport,
+                Span::new(export.span.start + offset, export.span.end + offset),
+            ));
+        }
+    }
+}
+
 fn validate_state_referenced_locally_derived(
     data: &AnalysisData,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = StateRefLocallyValidator { data, offset, diags, in_state_rune_arg: false, _phantom: std::marker::PhantomData };
+    let mut v = StateRefLocallyValidator { data, offset, diags, in_state_rune_arg: false, derived_call_depth: 0, _phantom: std::marker::PhantomData };
     v.visit_program(program);
 }
 
@@ -137,6 +165,10 @@ struct StateRefLocallyValidator<'a, 'b> {
     /// True when currently inside arguments of a `$state`/`$state.raw` call,
     /// without a function boundary in between. Determines `type_` in the diagnostic.
     in_state_rune_arg: bool,
+    /// Incremented when entering `$derived`/`$derived.by` call arguments.
+    /// Mirrors the reference compiler's `function_depth += 1` for `$derived` calls:
+    /// references inside `$derived(...)` are semantically deeper and should not warn.
+    derived_call_depth: usize,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -145,11 +177,25 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         let Some(ref_id) = ident.reference_id.get() else { return };
         if self.data.scoping.is_template_reference(ref_id) { return }
         let reference = self.data.scoping.get_reference(ref_id);
-        if !reference.is_read() { return }
+        // Skip if not a read, or if it's a write context (UpdateExpression, compound assignment LHS).
+        // Mirrors reference compiler: only warn for pure reads, not read-write operations.
+        if !reference.is_read() || reference.is_write() { return }
         let Some(sym_id) = reference.symbol_id() else { return };
-        if !self.data.scoping.rune_kind(sym_id).is_some_and(|k| k.is_derived()) { return }
+        let should_warn = match self.data.scoping.rune_kind(sym_id) {
+            Some(k) if k.is_derived() => true,
+            Some(RuneKind::StateRaw) => true,
+            Some(RuneKind::State) => {
+                self.data.scoping.is_mutated(sym_id)
+                    || !self.data.scoping.is_proxy_init_state(sym_id)
+            }
+            _ => false,
+        };
+        if !should_warn { return }
         let decl_depth = self.data.scoping.function_depth(self.data.scoping.symbol_scope_id(sym_id));
-        if self.data.scoping.function_depth(reference.scope_id()) != decl_depth { return }
+        // Add derived_call_depth to mirror the reference compiler's function_depth += 1 for $derived:
+        // references inside $derived(...) are semantically one level deeper and should not warn.
+        let ref_depth = self.data.scoping.function_depth(reference.scope_id()) + self.derived_call_depth;
+        if ref_depth != decl_depth { return }
         let name = self.data.scoping.symbol_name(sym_id);
         let type_ = if self.in_state_rune_arg { "derived" } else { "closure" };
         self.diags.push(Diagnostic::warning(
@@ -162,28 +208,41 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if detect_rune_from_call(call).is_some_and(|k| matches!(k, RuneKind::State | RuneKind::StateRaw)) {
-            self.visit_expression(&call.callee);
-            let prev = std::mem::replace(&mut self.in_state_rune_arg, true);
-            for arg in &call.arguments {
-                self.visit_argument(arg);
+        match detect_rune_from_call(call) {
+            Some(k) if matches!(k, RuneKind::State | RuneKind::StateRaw) => {
+                self.visit_expression(&call.callee);
+                let prev = std::mem::replace(&mut self.in_state_rune_arg, true);
+                for arg in &call.arguments {
+                    self.visit_argument(arg);
+                }
+                self.in_state_rune_arg = prev;
             }
-            self.in_state_rune_arg = prev;
-        } else {
-            walk_call_expression(self, call);
+            Some(k) if k.is_derived() => {
+                self.visit_expression(&call.callee);
+                self.derived_call_depth += 1;
+                for arg in &call.arguments {
+                    self.visit_argument(arg);
+                }
+                self.derived_call_depth -= 1;
+            }
+            _ => walk_call_expression(self, call),
         }
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
-        let prev = std::mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
         walk_arrow_function_expression(self, arrow);
-        self.in_state_rune_arg = prev;
+        self.in_state_rune_arg = prev_state_arg;
+        self.derived_call_depth = prev_derived_depth;
     }
 
     fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: oxc_semantic::ScopeFlags) {
-        let prev = std::mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
+        let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
         walk_function(self, func, flags);
-        self.in_state_rune_arg = prev;
+        self.in_state_rune_arg = prev_state_arg;
+        self.derived_call_depth = prev_derived_depth;
     }
 }
 

@@ -288,13 +288,19 @@ impl<'a> ScriptTransformer<'_, 'a> {
             *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
             return;
         }
-        let Some((kind, mutated)) = self.rune_for_ref(id) else {
-            return;
-        };
+        let Some(ref_id) = id.reference_id.get() else { return };
+        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else { return };
+        let Some(kind) = self.component_scoping.rune_kind(sym_id) else { return };
+        let mutated = self.component_scoping.is_mutated(sym_id);
         let needs_get = mutated || kind.is_derived();
         if needs_get {
             let name = id.name.as_str().to_string();
-            *node = svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
+            let alloc = self.b.ast.allocator;
+            *node = if self.component_scoping.is_var_declared_state(sym_id) {
+                svelte_transform::rune_refs::make_rune_safe_get(alloc, &name)
+            } else {
+                svelte_transform::rune_refs::make_rune_get(alloc, &name)
+            };
         }
     }
 }
