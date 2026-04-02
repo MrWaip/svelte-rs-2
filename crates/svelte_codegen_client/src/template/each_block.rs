@@ -58,25 +58,31 @@ pub(crate) fn gen_each_block<'a>(
     // Compute flags
     let mut flags: u32 = 0;
 
-    // EACH_ITEM_IMMUTABLE: runes mode without store (always set for now)
-    flags |= EACH_ITEM_IMMUTABLE;
-
     // EACH_INDEX_REACTIVE: keyed block with user-declared index
     if has_key && has_index {
         flags |= EACH_INDEX_REACTIVE;
     }
 
-    // EACH_ITEM_REACTIVE: collection references external state
-    // In runes mode: skip when key_is_item (item identity is the key)
+    // EACH_ITEM_REACTIVE: collection references external state.
+    // Reference also filters deps by function_depth (only external deps count),
+    // but our ref_symbols already excludes each-local bindings via scope resolution.
+    // In runes mode: skip when key_is_item unless store deps are present.
     let expr_deps = ctx
         .expr_deps(ExprSite::Node(block_id))
         .unwrap_or_else(|| panic!("missing expression deps for each block {:?}", block_id));
     let async_plan = AsyncEmissionPlan::for_node(ctx, block_id);
     let expr_has_refs = !expr_deps.info.ref_symbols.is_empty();
+    let uses_store = expr_deps.info.has_store_ref;
     let has_await = async_plan.has_await();
     let needs_async = async_plan.needs_async();
-    if expr_has_refs && !key_is_item {
+    if uses_store || (expr_has_refs && !key_is_item) {
         flags |= EACH_ITEM_REACTIVE;
+    }
+
+    // EACH_ITEM_IMMUTABLE: runes mode without store dependency.
+    // Reference: `runes && !uses_store`. We only compile runes mode currently.
+    if !uses_store {
+        flags |= EACH_ITEM_IMMUTABLE;
     }
 
     if is_controlled {
@@ -125,8 +131,7 @@ pub(crate) fn gen_each_block<'a>(
         ctx.b.rid_expr(expr_source)
     } else {
         let collection = get_node_expr(ctx, block_id);
-        ctx.b
-            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(collection)])
+        ctx.b.thunk(collection)
     };
 
     // Key function: keyed each uses (pattern[, index]) => key_expr, unkeyed uses $.index

@@ -89,13 +89,23 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             dollar_name.push_str(base_name);
             let dollar_name_str: &str = ctx.b.alloc_str(&dollar_name);
             let base_str: &str = ctx.b.alloc_str(base_name);
-            // const $name = () => $.store_get(name, "$name", $$stores)
             let store_get = ctx.b.call_expr("$.store_get", [
                 Arg::Ident(base_str),
                 Arg::Str(dollar_name.clone()),
                 Arg::Ident("$$stores"),
             ]);
-            let thunk = ctx.b.thunk(store_get);
+            // Dev mode: ($.validate_store(name, "name"), $.store_get(...))
+            // Prod mode: $.store_get(...)
+            let thunk_body = if ctx.state.dev {
+                let validate = ctx.b.call_expr("$.validate_store", [
+                    Arg::Ident(base_str),
+                    Arg::StrRef(ctx.b.alloc_str(base_name)),
+                ]);
+                ctx.b.seq_expr([validate, store_get])
+            } else {
+                store_get
+            };
+            let thunk = ctx.b.thunk(thunk_body);
             fn_body.push(ctx.b.const_stmt(dollar_name_str, thunk));
         }
 
@@ -167,15 +177,23 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     fn_body.extend(template_body);
 
     if runtime.needs_push {
-        if runtime.needs_pop_with_return {
+        if runtime.needs_pop_with_return && runtime.has_stores {
+            // var $$pop = $.pop($$exports); $$cleanup(); return $$pop;
+            let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
+            fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
+            fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
+            fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
+        } else if runtime.needs_pop_with_return {
             fn_body.push(ctx.b.return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])));
         } else {
             fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
+            // Store cleanup: $$cleanup() — runs after $.pop()
+            if runtime.has_stores {
+                fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
+            }
         }
-    }
-
-    // Store cleanup: $$cleanup() — runs after $.pop()
-    if runtime.has_stores {
+    } else if runtime.has_stores {
+        // No push/pop but still have stores — just cleanup
         fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
     }
 
