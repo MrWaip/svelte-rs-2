@@ -137,7 +137,7 @@ pub(crate) fn gen_svelte_element<'a>(
         }
 
         let element_stmt = ctx.b.call_stmt("$.element", args);
-        stmts.push(async_plan.wrap_async_block(ctx, anchor, "$$tag", async_tag_thunk, vec![element_stmt]));
+        stmts.push(async_plan.wrap_async_block(ctx, anchor, "node", "$$tag", async_tag_thunk, vec![element_stmt]));
     } else {
         // Build tag thunk: () => tag_expression (or () => "literal" for static tags)
         let tag_expr = if let Some(ref value) = tag_value {
