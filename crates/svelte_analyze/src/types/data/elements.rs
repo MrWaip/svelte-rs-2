@@ -69,6 +69,12 @@ pub struct ElementFlags {
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
+    /// `<textarea>` with expression children and no explicit `value` attribute —
+    /// codegen emits `$.remove_textarea_child` + `$.set_value` instead of textContent.
+    pub(crate) needs_textarea_value_lowering: NodeBitSet,
+    /// `<option>` with a single ExpressionTag child and no explicit `value` attribute.
+    /// Maps option element NodeId → ExpressionTag NodeId for `__value` synthesis.
+    pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
 }
 
 impl ElementFlags {
@@ -91,6 +97,8 @@ impl ElementFlags {
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
+            needs_textarea_value_lowering: NodeBitSet::new(node_count),
+            option_synthetic_value_expr: NodeTable::new(node_count),
         }
     }
 
@@ -160,5 +168,11 @@ impl ElementFlags {
     }
     pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
         self.event_handler_mode.get(attr_id).copied()
+    }
+    pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
+        self.needs_textarea_value_lowering.contains(&id)
+    }
+    pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
+        self.option_synthetic_value_expr.get(id).copied()
     }
 }

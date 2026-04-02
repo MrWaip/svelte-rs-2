@@ -5,6 +5,7 @@ export default function App($$anchor) {
 	var select = root();
 	var option = $.child(select);
 	option.textContent = "1";
+	option.__value = value;
 	$.reset(select);
 	$.append($$anchor, select);
 }
