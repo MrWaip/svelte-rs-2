@@ -40,10 +40,10 @@ fn get_declarator<'a>(ctx: &VisitContext<'a>, handle: StmtHandle) -> Option<&'a 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(handle) = block.context_span.and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start))) {
-            ctx.data.each_context_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.each_context_stmt_handles.insert(block.id, handle);
         }
         if let Some(handle) = block.index_span.and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start))) {
-            ctx.data.each_index_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.each_index_stmt_handles.insert(block.id, handle);
         }
         let is_destructured = block.context_span
             .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
@@ -155,7 +155,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
         if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(block.expression_span.start)) {
-            ctx.data.snippet_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.snippet_stmt_handles.insert(block.id, handle);
         }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {

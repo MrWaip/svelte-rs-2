@@ -19,17 +19,10 @@ pub struct AnalysisData {
     pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
     pub each_blocks: EachBlockData,
+    pub template_semantics: TemplateSemanticsData,
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     pub(crate) render_tag_is_chain: NodeBitSet,
     pub render_tag_plans: NodeTable<RenderTagPlan>,
-    pub node_expr_handles: NodeTable<ExprHandle>,
-    pub attr_expr_handles: NodeTable<ExprHandle>,
-    pub const_tag_stmt_handles: NodeTable<StmtHandle>,
-    pub snippet_stmt_handles: NodeTable<StmtHandle>,
-    pub each_context_stmt_handles: NodeTable<StmtHandle>,
-    pub each_index_stmt_handles: NodeTable<StmtHandle>,
-    pub await_value_stmt_handles: NodeTable<StmtHandle>,
-    pub await_error_stmt_handles: NodeTable<StmtHandle>,
     pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
     pub import_syms: FxHashSet<SymbolId>,
@@ -65,17 +58,10 @@ impl AnalysisData {
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             each_blocks: EachBlockData::new(node_count),
+            template_semantics: TemplateSemanticsData::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
             render_tag_plans: NodeTable::new(node_count),
-            node_expr_handles: NodeTable::new(node_count),
-            attr_expr_handles: NodeTable::new(node_count),
-            const_tag_stmt_handles: NodeTable::new(node_count),
-            snippet_stmt_handles: NodeTable::new(node_count),
-            each_context_stmt_handles: NodeTable::new(node_count),
-            each_index_stmt_handles: NodeTable::new(node_count),
-            await_value_stmt_handles: NodeTable::new(node_count),
-            await_error_stmt_handles: NodeTable::new(node_count),
             await_bindings: AwaitBindingData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
             import_syms: FxHashSet::default(),
@@ -119,33 +105,41 @@ impl AnalysisData {
     }
     pub fn node_expr_handle(&self, id: NodeId) -> ExprHandle {
         *self
+            .template_semantics
             .node_expr_handles
             .get(id)
             .unwrap_or_else(|| panic!("no expr handle for node {:?}", id))
     }
     pub fn attr_expr_handle(&self, id: NodeId) -> ExprHandle {
         *self
+            .template_semantics
             .attr_expr_handles
             .get(id)
             .unwrap_or_else(|| panic!("no expr handle for attr {:?}", id))
     }
     pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.const_tag_stmt_handles.get(id).copied()
+        self.template_semantics.const_tag_stmt_handles.get(id).copied()
     }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.snippet_stmt_handles.get(id).copied()
+        self.template_semantics.snippet_stmt_handles.get(id).copied()
     }
     pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.each_context_stmt_handles.get(id).copied()
+        self.template_semantics.each_context_stmt_handles.get(id).copied()
     }
     pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.each_index_stmt_handles.get(id).copied()
+        self.template_semantics.each_index_stmt_handles.get(id).copied()
     }
     pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.await_value_stmt_handles.get(id).copied()
+        self.template_semantics.await_value_stmt_handles.get(id).copied()
     }
     pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.await_error_stmt_handles.get(id).copied()
+        self.template_semantics.await_error_stmt_handles.get(id).copied()
+    }
+    pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.template_semantics.node_ref_symbols(id)
+    }
+    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.template_semantics.stmt_ref_symbols(id)
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.attr_expressions

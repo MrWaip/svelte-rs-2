@@ -292,7 +292,7 @@ fn assert_snippet_param_refs_include(
         .find_binding(root, binding_name)
         .unwrap_or_else(|| panic!("no binding '{binding_name}'"));
     assert!(
-        data.snippets.param_ref_symbols(block.id).contains(&sym),
+        data.stmt_ref_symbols(block.id).contains(&sym),
         "expected snippet '{snippet_name}' params to reference '{binding_name}'",
     );
 }

@@ -51,6 +51,8 @@ impl<'a> CodegenView<'a> {
     pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.each_index_stmt_handle(id) }
     pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.await_value_stmt_handle(id) }
     pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.await_error_stmt_handle(id) }
+    pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] { self.data.node_ref_symbols(id) }
+    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] { self.data.stmt_ref_symbols(id) }
     pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> { self.data.fragments.lowered(key) }
     pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] { self.data.fragments.fragment_blockers(key) }
     pub fn fragment_references_any_symbol(&self, key: &FragmentKey, syms: &FxHashSet<SymbolId>) -> bool {

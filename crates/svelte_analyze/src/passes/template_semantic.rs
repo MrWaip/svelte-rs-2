@@ -4,7 +4,7 @@ use oxc_semantic::{
     NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags,
     ScopeFlags,
 };
-use svelte_ast::{BindDirective, NodeId};
+use svelte_ast::{BindDirective, ClassDirective, NodeId, StyleDirective, StyleDirectiveValue};
 
 use crate::scope::ComponentScoping;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
@@ -28,13 +28,18 @@ impl TemplateVisitor for TemplateSemanticVisitor {
         if !dir.shorthand {
             return;
         }
-        // Shorthand bind:name — no parsed expression, create Write ref by name
-        if let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, dir.name.as_str()) {
-            let mut reference =
-                OxcReference::new(OxcNodeId::DUMMY, ctx.scope, OxcReferenceFlags::Write);
-            reference.set_symbol_id(sym_id);
-            let ref_id = ctx.data.scoping.create_template_reference(reference);
-            ctx.data.scoping.add_resolved_reference(sym_id, ref_id);
+        materialize_shorthand_reference(dir.id, dir.name.as_str(), ctx, OxcReferenceFlags::Write);
+    }
+
+    fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_>) {
+        if dir.expression_span.is_none() {
+            materialize_shorthand_reference(dir.id, dir.name.as_str(), ctx, OxcReferenceFlags::Read);
+        }
+    }
+
+    fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {
+        if matches!(dir.value, StyleDirectiveValue::Shorthand) {
+            materialize_shorthand_reference(dir.id, dir.name.as_str(), ctx, OxcReferenceFlags::Read);
         }
     }
 
@@ -71,6 +76,26 @@ impl TemplateVisitor for TemplateSemanticVisitor {
             current_ref_flags: None,
         };
         collector.visit_statement(stmt);
+    }
+}
+
+fn materialize_shorthand_reference(
+    node_id: NodeId,
+    name: &str,
+    ctx: &mut VisitContext<'_>,
+    flags: OxcReferenceFlags,
+) {
+    let mut reference = OxcReference::new(OxcNodeId::DUMMY, ctx.scope, flags);
+    if let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, name) {
+        reference.set_symbol_id(sym_id);
+        let ref_id = ctx.data.scoping.create_template_reference(reference);
+        ctx.data.scoping.add_resolved_reference(sym_id, ref_id);
+        ctx.data
+            .template_semantics
+            .node_ref_symbols
+            .insert(node_id, smallvec::smallvec![sym_id]);
+    } else {
+        ctx.data.scoping.create_template_reference(reference);
     }
 }
 

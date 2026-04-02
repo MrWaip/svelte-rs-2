@@ -1,5 +1,6 @@
 use svelte_ast::{Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue};
 
+use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 
@@ -14,12 +15,12 @@ impl<'s> BindSemanticsVisitor<'s> {
         Self { source }
     }
 
-    /// Check whether `name` resolves to a mutable rune at root scope.
-    fn is_mutable_rune(name: &str, data: &AnalysisData) -> bool {
-        let root = data.scoping.root_scope_id();
-        data.scoping
-            .find_binding(root, name)
-            .is_some_and(|sym| data.scoping.is_rune(sym) && data.scoping.is_mutated(sym))
+    fn is_mutable_rune(sym_id: SymbolId, data: &AnalysisData) -> bool {
+        data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id)
+    }
+
+    fn shorthand_symbol(node_id: svelte_ast::NodeId, data: &AnalysisData) -> Option<SymbolId> {
+        data.node_ref_symbols(node_id).first().copied()
     }
 
     /// Pre-compute each-block variable names referenced in a bind:this expression.
@@ -45,11 +46,16 @@ impl<'s> BindSemanticsVisitor<'s> {
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
         if dir.shorthand {
-            if Self::is_mutable_rune(&dir.name, data) {
-                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            if let Some(sym_id) = Self::shorthand_symbol(dir.id, data) {
+                if Self::is_mutable_rune(sym_id, data) {
+                    data.bind_semantics.mutable_rune_targets.insert(dir.id);
+                }
+                if data.blocker_data.has_async {
+                    if let Some(idx) = data.blocker_data.symbol_blocker(sym_id) {
+                        data.bind_semantics.bind_blockers.insert(dir.id, smallvec::smallvec![idx]);
+                    }
+                }
             }
-            // Blocker tracking for shorthand binds: bind target = dir.name
-            Self::classify_bind_blockers_by_name(&dir.name, dir.id, data);
             return;
         }
 
@@ -57,7 +63,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         if !matches!(info.kind, crate::types::data::ExpressionKind::Identifier(_)) { return }
 
         if let Some(&sym_id) = info.ref_symbols.first() {
-            if data.scoping.is_rune(sym_id) && data.scoping.is_mutated(sym_id) {
+            if Self::is_mutable_rune(sym_id, data) {
                 data.bind_semantics.mutable_rune_targets.insert(dir.id);
             }
             // Blocker tracking for non-shorthand binds: use resolved symbol
@@ -69,21 +75,8 @@ impl<'s> BindSemanticsVisitor<'s> {
         }
     }
 
-    /// Check if bind target name resolves to a blocked symbol (experimental.async).
-    fn classify_bind_blockers_by_name(name: &str, dir_id: svelte_ast::NodeId, data: &mut AnalysisData) {
-        if !data.blocker_data.has_async {
-            return;
-        }
-        let root = data.scoping.root_scope_id();
-        if let Some(sym) = data.scoping.find_binding(root, name) {
-            if let Some(idx) = data.blocker_data.symbol_blocker(sym) {
-                data.bind_semantics.bind_blockers.insert(dir_id, smallvec::smallvec![idx]);
-            }
-        }
-    }
-
     fn classify_class(dir: &ClassDirective, data: &mut AnalysisData) {
-        if Self::is_mutable_rune(&dir.name, data) {
+        if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data)) {
             data.bind_semantics.mutable_rune_targets.insert(dir.id);
         }
     }
@@ -92,7 +85,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         if !matches!(dir.value, StyleDirectiveValue::Shorthand) {
             return;
         }
-        if Self::is_mutable_rune(&dir.name, data) {
+        if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data)) {
             data.bind_semantics.mutable_rune_targets.insert(dir.id);
         }
     }
