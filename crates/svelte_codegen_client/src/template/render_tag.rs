@@ -47,7 +47,10 @@ pub(crate) fn gen_render_tag<'a>(
     let mode = plan.callee_mode;
 
     // Take ownership from ParsedExprs (already unwrapped from ChainExpression)
-    let expr = ctx.state.parsed.take_expr(ctx.node_expr_handle(id))
+    let expr = ctx
+        .state
+        .parsed
+        .take_expr(ctx.node_expr_handle(id))
         .expect("render tag expression should be pre-parsed");
 
     let Expression::CallExpression(call) = expr else {
@@ -88,7 +91,9 @@ pub(crate) fn gen_render_tag<'a>(
             {
                 let async_param = deps.async_param_expr(ctx, index);
                 let param_expr = ctx.b.call_expr("$.get", [Arg::Expr(async_param)]);
-                let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(param_expr)]);
+                let thunk = ctx
+                    .b
+                    .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(param_expr)]);
                 arg_thunks.push(Arg::Expr(thunk));
                 continue;
             }
@@ -108,7 +113,9 @@ pub(crate) fn gen_render_tag<'a>(
             let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(get)]);
             arg_thunks.push(Arg::Expr(thunk));
         } else {
-            let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(arg_expr)]);
+            let thunk = ctx
+                .b
+                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(arg_expr)]);
             arg_thunks.push(Arg::Expr(thunk));
         }
     }
@@ -118,7 +125,8 @@ pub(crate) fn gen_render_tag<'a>(
             // Dynamic callee: $.snippet(anchor, callee_getter, ...args)
             let callee_arg = build_dynamic_callee(ctx, callee_expr, mode.is_chain());
 
-            let mut snippet_args: Vec<Arg<'a, '_>> = vec![Arg::Expr(inner_anchor), Arg::Expr(callee_arg)];
+            let mut snippet_args: Vec<Arg<'a, '_>> =
+                vec![Arg::Expr(inner_anchor), Arg::Expr(callee_arg)];
             snippet_args.extend(arg_thunks);
 
             ctx.b.call_stmt("$.snippet", snippet_args)
@@ -153,12 +161,15 @@ pub(crate) fn gen_render_tag<'a>(
             ctx.b.params([anchor_name])
         };
         let callback = ctx.b.arrow_block_expr(callback_params, inner);
-        stmts.push(ctx.b.call_stmt("$.async", [
-            Arg::Expr(outer_anchor.unwrap()),
-            Arg::Expr(deps.blockers_expr(ctx)),
-            Arg::Expr(deps.async_values_expr(ctx)),
-            Arg::Expr(callback),
-        ]));
+        stmts.push(ctx.b.call_stmt(
+            "$.async",
+            [
+                Arg::Expr(outer_anchor.unwrap()),
+                Arg::Expr(deps.blockers_expr(ctx)),
+                Arg::Expr(deps.async_values_expr(ctx)),
+                Arg::Expr(callback),
+            ],
+        ));
         if is_standalone {
             stmts.push(ctx.b.call_stmt("$.next", std::iter::empty::<Arg>()));
         }
@@ -183,8 +194,11 @@ fn build_dynamic_callee<'a>(
 ) -> Expression<'a> {
     if is_chain {
         // Optional: () => callee_expr ?? $.noop
-        let coalesced = ctx.b.logical_coalesce(callee_expr, ctx.b.rid_expr("$.noop"));
-        ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(coalesced)])
+        let coalesced = ctx
+            .b
+            .logical_coalesce(callee_expr, ctx.b.rid_expr("$.noop"));
+        ctx.b
+            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(coalesced)])
     } else {
         // Regular: thunk(callee_expr) — unthunk optimizes () => f() to f
         ctx.b.thunk(callee_expr)

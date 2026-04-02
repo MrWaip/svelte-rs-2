@@ -65,7 +65,10 @@ impl AsyncEmissionPlan {
             ctx.b.promises_array(self.blockers())
         };
         let async_values = if self.has_await {
-            Arg::Expr(ctx.b.array_expr([async_thunk.expect("async thunk missing for await plan")]))
+            Arg::Expr(
+                ctx.b
+                    .array_expr([async_thunk.expect("async thunk missing for await plan")]),
+            )
         } else {
             Arg::Expr(ctx.b.void_zero_expr())
         };

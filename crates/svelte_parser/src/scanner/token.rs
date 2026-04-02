@@ -1,5 +1,5 @@
-use svelte_span::{GetSpan, Span};
 use svelte_diagnostics::Diagnostic;
+use svelte_span::{GetSpan, Span};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {

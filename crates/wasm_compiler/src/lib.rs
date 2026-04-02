@@ -25,10 +25,7 @@ struct WasmCompileResult {
     diagnostics: Vec<WasmDiagnostic>,
 }
 
-fn to_wasm_result(
-    result: CompileResult,
-    source: &str,
-) -> WasmCompileResult {
+fn to_wasm_result(result: CompileResult, source: &str) -> WasmCompileResult {
     let line_index = LineIndex::new(source);
 
     let diagnostics: Vec<WasmDiagnostic> = result
@@ -72,7 +69,11 @@ impl WasmCompiler {
     }
 
     #[wasm_bindgen()]
-    pub fn compile(&self, source: &str, options: JsValue) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    pub fn compile(
+        &self,
+        source: &str,
+        options: JsValue,
+    ) -> Result<JsValue, serde_wasm_bindgen::Error> {
         let opts: CompileOptions = if options.is_undefined() || options.is_null() {
             CompileOptions::default()
         } else {
@@ -83,7 +84,11 @@ impl WasmCompiler {
     }
 
     #[wasm_bindgen()]
-    pub fn compile_module(&self, source: &str, options: JsValue) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    pub fn compile_module(
+        &self,
+        source: &str,
+        options: JsValue,
+    ) -> Result<JsValue, serde_wasm_bindgen::Error> {
         let opts: ModuleCompileOptions = if options.is_undefined() || options.is_null() {
             ModuleCompileOptions::default()
         } else {

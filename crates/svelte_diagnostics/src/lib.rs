@@ -51,25 +51,43 @@ pub enum DiagnosticKind {
     // -----------------------------------------------------------------------
 
     // --- Options ---
-    OptionsInvalidValue { details: String },
-    OptionsRemoved { details: String },
-    OptionsUnrecognised { keypath: String },
+    OptionsInvalidValue {
+        details: String,
+    },
+    OptionsRemoved {
+        details: String,
+    },
+    OptionsUnrecognised {
+        keypath: String,
+    },
 
     // --- Runes & script ---
     BindableInvalidLocation,
-    ConstantAssignment { thing: String },
-    ConstantBinding { thing: String },
-    DeclarationDuplicate { name: String },
+    ConstantAssignment {
+        thing: String,
+    },
+    ConstantBinding {
+        thing: String,
+    },
+    DeclarationDuplicate {
+        name: String,
+    },
     DeclarationDuplicateModuleImport,
     DerivedInvalidExport,
     DollarBindingInvalid,
     DollarPrefixInvalid,
-    DuplicateClassField { name: String },
+    DuplicateClassField {
+        name: String,
+    },
     EachItemInvalidAssignment,
     EffectInvalidPlacement,
     ExperimentalAsync,
-    ExportUndefined { name: String },
-    GlobalReferenceInvalid { name: String },
+    ExportUndefined {
+        name: String,
+    },
+    GlobalReferenceInvalid {
+        name: String,
+    },
     HostInvalidPlacement,
     ImportSvelteInternalForbidden,
     InspectTraceGenerator,
@@ -81,38 +99,68 @@ pub enum DiagnosticKind {
     LegacyReactiveStatementInvalid,
     LegacyRestPropsInvalid,
     ModuleIllegalDefaultExport,
-    PropsDuplicate { rune: String },
+    PropsDuplicate {
+        rune: String,
+    },
     PropsIdInvalidPlacement,
     PropsIllegalName,
     PropsInvalidIdentifier,
     PropsInvalidPattern,
     PropsInvalidPlacement,
-    ReactiveDeclarationCycle { cycle: String },
-    RuneInvalidArguments { rune: String },
-    RuneInvalidArgumentsLength { rune: String, args: String },
+    ReactiveDeclarationCycle {
+        cycle: String,
+    },
+    RuneInvalidArguments {
+        rune: String,
+    },
+    RuneInvalidArgumentsLength {
+        rune: String,
+        args: String,
+    },
     RuneInvalidComputedProperty,
-    RuneInvalidName { name: String },
-    RuneInvalidSpread { rune: String },
-    RuneInvalidUsage { rune: String },
+    RuneInvalidName {
+        name: String,
+    },
+    RuneInvalidSpread {
+        rune: String,
+    },
+    RuneInvalidUsage {
+        rune: String,
+    },
     RuneMissingParentheses,
-    RuneRemoved { name: String },
-    RuneRenamed { name: String, replacement: String },
-    RunesModeInvalidImport { name: String },
+    RuneRemoved {
+        name: String,
+    },
+    RuneRenamed {
+        name: String,
+        replacement: String,
+    },
+    RunesModeInvalidImport {
+        name: String,
+    },
     SnippetInvalidExport,
     SnippetParameterAssignment,
-    StateFieldDuplicate { name: String },
+    StateFieldDuplicate {
+        name: String,
+    },
     StateFieldInvalidAssignment,
     StateInvalidExport,
-    StateInvalidPlacement { rune: String },
+    StateInvalidPlacement {
+        rune: String,
+    },
     StoreInvalidScopedSubscription,
     StoreInvalidSubscription,
     StoreInvalidSubscriptionModule,
-    TypescriptInvalidFeature { feature: String },
+    TypescriptInvalidFeature {
+        feature: String,
+    },
 
     // --- CSS errors ---
     CssEmptyDeclaration,
     CssExpectedIdentifier,
-    CssGlobalBlockInvalidCombinator { name: String },
+    CssGlobalBlockInvalidCombinator {
+        name: String,
+    },
     CssGlobalBlockInvalidDeclaration,
     CssGlobalBlockInvalidList,
     CssGlobalBlockInvalidModifier,
@@ -135,60 +183,112 @@ pub enum DiagnosticKind {
     AttributeEmptyShorthand,
     AttributeInvalidEventHandler,
     AttributeInvalidMultiple,
-    AttributeInvalidName { name: String },
+    AttributeInvalidName {
+        name: String,
+    },
     AttributeInvalidSequenceExpression,
     AttributeInvalidType,
     AttributeUnquotedSequence,
     BindGroupInvalidExpression,
     BindGroupInvalidSnippetParameter,
     BindInvalidExpression,
-    BindInvalidName { name: String, explanation: Option<String> },
-    BindInvalidParens { name: String },
-    BindInvalidTarget { name: String, elements: String },
+    BindInvalidName {
+        name: String,
+        explanation: Option<String>,
+    },
+    BindInvalidParens {
+        name: String,
+    },
+    BindInvalidTarget {
+        name: String,
+        elements: String,
+    },
     BindInvalidValue,
-    BlockDuplicateClause { name: String },
+    BlockDuplicateClause {
+        name: String,
+    },
     BlockInvalidContinuationPlacement,
     BlockInvalidElseif,
-    BlockInvalidPlacement { name: String, location: String },
+    BlockInvalidPlacement {
+        name: String,
+        location: String,
+    },
     BlockUnclosed,
-    BlockUnexpectedCharacter { character: String },
+    BlockUnexpectedCharacter {
+        character: String,
+    },
     BlockUnexpectedClose,
     ComponentInvalidDirective,
-    ConstTagCycle { cycle: String },
+    ConstTagCycle {
+        cycle: String,
+    },
     ConstTagInvalidExpression,
     ConstTagInvalidPlacement,
-    ConstTagInvalidReference { name: String },
+    ConstTagInvalidReference {
+        name: String,
+    },
     DebugTagInvalidArguments,
     DirectiveInvalidValue,
-    DirectiveMissingName { type_: String },
+    DirectiveMissingName {
+        type_: String,
+    },
     EachKeyWithoutAs,
-    ElementInvalidClosingTag { name: String },
-    ElementInvalidClosingTagAutoclosed { name: String, reason: String },
-    ElementUnclosed { name: String },
+    ElementInvalidClosingTag {
+        name: String,
+    },
+    ElementInvalidClosingTagAutoclosed {
+        name: String,
+        reason: String,
+    },
+    ElementUnclosed {
+        name: String,
+    },
     EventHandlerInvalidComponentModifier,
-    EventHandlerInvalidModifier { list: String },
-    EventHandlerInvalidModifierCombination { modifier1: String, modifier2: String },
+    EventHandlerInvalidModifier {
+        list: String,
+    },
+    EventHandlerInvalidModifierCombination {
+        modifier1: String,
+        modifier2: String,
+    },
     ExpectedAttributeValue,
     ExpectedBlockType,
     ExpectedIdentifier,
     ExpectedPattern,
     ExpectedTag,
-    ExpectedToken { token: String },
+    ExpectedToken {
+        token: String,
+    },
     ExpectedWhitespace,
     IllegalAwaitExpression,
-    IllegalElementAttribute { name: String },
-    JsParseError { message: String },
+    IllegalElementAttribute {
+        name: String,
+    },
+    JsParseError {
+        message: String,
+    },
     LetDirectiveInvalidPlacement,
-    MixedEventHandlerSyntaxes { name: String },
-    NodeInvalidPlacement { message: String },
+    MixedEventHandlerSyntaxes {
+        name: String,
+    },
+    NodeInvalidPlacement {
+        message: String,
+    },
     RenderTagInvalidCallExpression,
     RenderTagInvalidExpression,
     RenderTagInvalidSpreadArgument,
     ScriptDuplicate,
-    ScriptInvalidAttributeValue { name: String },
+    ScriptInvalidAttributeValue {
+        name: String,
+    },
     ScriptInvalidContext,
-    ScriptReservedAttribute { name: String },
-    SlotAttributeDuplicate { name: String, component: String },
+    ScriptReservedAttribute {
+        name: String,
+    },
+    SlotAttributeDuplicate {
+        name: String,
+        component: String,
+    },
     SlotAttributeInvalid,
     SlotAttributeInvalidPlacement,
     SlotDefaultDuplicate,
@@ -198,7 +298,9 @@ pub enum DiagnosticKind {
     SlotSnippetConflict,
     SnippetConflict,
     SnippetInvalidRestParameter,
-    SnippetShadowingProp { prop: String },
+    SnippetShadowingProp {
+        prop: String,
+    },
     StyleDirectiveInvalidModifier,
     StyleDuplicate,
     SvelteBodyIllegalAttribute,
@@ -210,17 +312,33 @@ pub enum DiagnosticKind {
     SvelteFragmentInvalidAttribute,
     SvelteFragmentInvalidPlacement,
     SvelteHeadIllegalAttribute,
-    SvelteMetaDuplicate { name: String },
-    SvelteMetaInvalidContent { name: String },
-    SvelteMetaInvalidPlacement { name: String },
-    SvelteMetaInvalidTag { list: String },
+    SvelteMetaDuplicate {
+        name: String,
+    },
+    SvelteMetaInvalidContent {
+        name: String,
+    },
+    SvelteMetaInvalidPlacement {
+        name: String,
+    },
+    SvelteMetaInvalidTag {
+        list: String,
+    },
     SvelteSelfInvalidPlacement,
-    TagInvalidPlacement { name: String, location: String },
+    TagInvalidPlacement {
+        name: String,
+        location: String,
+    },
     TextareaInvalidContent,
     TitleIllegalAttribute,
     TitleInvalidContent,
-    TransitionConflict { type_: String, existing: String },
-    TransitionDuplicate { type_: String },
+    TransitionConflict {
+        type_: String,
+        existing: String,
+    },
+    TransitionDuplicate {
+        type_: String,
+    },
     UnterminatedStringConstant,
 
     // -----------------------------------------------------------------------
@@ -228,53 +346,134 @@ pub enum DiagnosticKind {
     // -----------------------------------------------------------------------
     A11yAccesskey,
     A11yAriaActivedescendantHasTabindex,
-    A11yAriaAttributes { name: String },
-    A11yAutocompleteValid { value: String, type_: String },
+    A11yAriaAttributes {
+        name: String,
+    },
+    A11yAutocompleteValid {
+        value: String,
+        type_: String,
+    },
     A11yAutofocus,
     A11yClickEventsHaveKeyEvents,
     A11yConsiderExplicitLabel,
-    A11yDistractingElements { name: String },
+    A11yDistractingElements {
+        name: String,
+    },
     A11yFigcaptionIndex,
     A11yFigcaptionParent,
-    A11yHidden { name: String },
+    A11yHidden {
+        name: String,
+    },
     A11yImgRedundantAlt,
-    A11yIncorrectAriaAttributeType { attribute: String, type_: String },
-    A11yIncorrectAriaAttributeTypeBoolean { attribute: String },
-    A11yIncorrectAriaAttributeTypeId { attribute: String },
-    A11yIncorrectAriaAttributeTypeIdlist { attribute: String },
-    A11yIncorrectAriaAttributeTypeInteger { attribute: String },
-    A11yIncorrectAriaAttributeTypeToken { attribute: String, values: String },
-    A11yIncorrectAriaAttributeTypeTokenlist { attribute: String, values: String },
-    A11yIncorrectAriaAttributeTypeTristate { attribute: String },
-    A11yInteractiveSupportsFocus { role: String },
-    A11yInvalidAttribute { href_value: String, href_attribute: String },
+    A11yIncorrectAriaAttributeType {
+        attribute: String,
+        type_: String,
+    },
+    A11yIncorrectAriaAttributeTypeBoolean {
+        attribute: String,
+    },
+    A11yIncorrectAriaAttributeTypeId {
+        attribute: String,
+    },
+    A11yIncorrectAriaAttributeTypeIdlist {
+        attribute: String,
+    },
+    A11yIncorrectAriaAttributeTypeInteger {
+        attribute: String,
+    },
+    A11yIncorrectAriaAttributeTypeToken {
+        attribute: String,
+        values: String,
+    },
+    A11yIncorrectAriaAttributeTypeTokenlist {
+        attribute: String,
+        values: String,
+    },
+    A11yIncorrectAriaAttributeTypeTristate {
+        attribute: String,
+    },
+    A11yInteractiveSupportsFocus {
+        role: String,
+    },
+    A11yInvalidAttribute {
+        href_value: String,
+        href_attribute: String,
+    },
     A11yLabelHasAssociatedControl,
     A11yMediaHasCaption,
-    A11yMisplacedRole { name: String },
+    A11yMisplacedRole {
+        name: String,
+    },
     A11yMisplacedScope,
-    A11yMissingAttribute { name: String, article: String, sequence: String },
-    A11yMissingContent { name: String },
-    A11yMouseEventsHaveKeyEvents { event: String, accompanied_by: String },
-    A11yNoAbstractRole { role: String },
-    A11yNoInteractiveElementToNoninteractiveRole { element: String, role: String },
-    A11yNoNoninteractiveElementInteractions { element: String },
-    A11yNoNoninteractiveElementToInteractiveRole { element: String, role: String },
+    A11yMissingAttribute {
+        name: String,
+        article: String,
+        sequence: String,
+    },
+    A11yMissingContent {
+        name: String,
+    },
+    A11yMouseEventsHaveKeyEvents {
+        event: String,
+        accompanied_by: String,
+    },
+    A11yNoAbstractRole {
+        role: String,
+    },
+    A11yNoInteractiveElementToNoninteractiveRole {
+        element: String,
+        role: String,
+    },
+    A11yNoNoninteractiveElementInteractions {
+        element: String,
+    },
+    A11yNoNoninteractiveElementToInteractiveRole {
+        element: String,
+        role: String,
+    },
     A11yNoNoninteractiveTabindex,
-    A11yNoRedundantRoles { role: String },
-    A11yNoStaticElementInteractions { element: String, handler: String },
+    A11yNoRedundantRoles {
+        role: String,
+    },
+    A11yNoStaticElementInteractions {
+        element: String,
+        handler: String,
+    },
     A11yPositiveTabindex,
-    A11yRoleHasRequiredAriaProps { role: String, props: String },
-    A11yRoleSupportsAriaProps { attribute: String, role: String },
-    A11yRoleSupportsAriaPropsImplicit { attribute: String, role: String, name: String },
-    A11yUnknownAriaAttribute { attribute: String, suggestion: Option<String> },
-    A11yUnknownRole { role: String, suggestion: Option<String> },
+    A11yRoleHasRequiredAriaProps {
+        role: String,
+        props: String,
+    },
+    A11yRoleSupportsAriaProps {
+        attribute: String,
+        role: String,
+    },
+    A11yRoleSupportsAriaPropsImplicit {
+        attribute: String,
+        role: String,
+        name: String,
+    },
+    A11yUnknownAriaAttribute {
+        attribute: String,
+        suggestion: Option<String>,
+    },
+    A11yUnknownRole {
+        role: String,
+        suggestion: Option<String>,
+    },
 
     // -----------------------------------------------------------------------
     // Metadata warnings
     // -----------------------------------------------------------------------
     BidirectionalControlCharacters,
-    LegacyCode { code: String, suggestion: String },
-    UnknownCode { code: String, suggestion: Option<String> },
+    LegacyCode {
+        code: String,
+        suggestion: String,
+    },
+    UnknownCode {
+        code: String,
+        suggestion: Option<String>,
+    },
 
     // -----------------------------------------------------------------------
     // Options warnings
@@ -291,42 +490,74 @@ pub enum DiagnosticKind {
     // Component warnings
     // -----------------------------------------------------------------------
     CustomElementPropsIdentifier,
-    ExportLetUnused { name: String },
+    ExportLetUnused {
+        name: String,
+    },
     LegacyComponentCreation,
-    NonReactiveUpdate { name: String },
+    NonReactiveUpdate {
+        name: String,
+    },
     PerfAvoidInlineClass,
     PerfAvoidNestedClass,
     ReactiveDeclarationInvalidPlacement,
     ReactiveDeclarationModuleScriptDependency,
-    StateReferencedLocally { name: String, type_: String },
-    StoreRuneConflict { name: String },
+    StateReferencedLocally {
+        name: String,
+        type_: String,
+    },
+    StoreRuneConflict {
+        name: String,
+    },
 
     // -----------------------------------------------------------------------
     // CSS warnings
     // -----------------------------------------------------------------------
-    CssUnusedSelector { name: String },
+    CssUnusedSelector {
+        name: String,
+    },
 
     // -----------------------------------------------------------------------
     // Attribute / element warnings
     // -----------------------------------------------------------------------
     AttributeAvoidIs,
-    AttributeGlobalEventReference { name: String },
+    AttributeGlobalEventReference {
+        name: String,
+    },
     AttributeIllegalColon,
-    AttributeInvalidPropertyName { wrong: String, right: String },
+    AttributeInvalidPropertyName {
+        wrong: String,
+        right: String,
+    },
     AttributeQuoted,
-    BindInvalidEachRest { name: String },
+    BindInvalidEachRest {
+        name: String,
+    },
     BlockEmpty,
-    ComponentNameLowercase { name: String },
-    ElementImplicitlyClosed { tag: String, closing: String },
-    ElementInvalidSelfClosingTag { name: String },
-    EventDirectiveDeprecated { name: String },
-    NodeInvalidPlacementSsr { message: String },
+    ComponentNameLowercase {
+        name: String,
+    },
+    ElementImplicitlyClosed {
+        tag: String,
+        closing: String,
+    },
+    ElementInvalidSelfClosingTag {
+        name: String,
+    },
+    EventDirectiveDeprecated {
+        name: String,
+    },
+    NodeInvalidPlacementSsr {
+        message: String,
+    },
     ScriptContextDeprecated,
     ScriptUnknownAttribute,
     SlotElementDeprecated,
     SvelteComponentDeprecated,
     SvelteElementInvalidThis,
-    SvelteSelfDeprecated { name: String, basename: String },
+    SvelteSelfDeprecated {
+        name: String,
+        basename: String,
+    },
 }
 
 impl DiagnosticKind {
@@ -469,11 +700,17 @@ impl DiagnosticKind {
             Self::DirectiveMissingName { .. } => "directive_missing_name",
             Self::EachKeyWithoutAs => "each_key_without_as",
             Self::ElementInvalidClosingTag { .. } => "element_invalid_closing_tag",
-            Self::ElementInvalidClosingTagAutoclosed { .. } => "element_invalid_closing_tag_autoclosed",
+            Self::ElementInvalidClosingTagAutoclosed { .. } => {
+                "element_invalid_closing_tag_autoclosed"
+            }
             Self::ElementUnclosed { .. } => "element_unclosed",
-            Self::EventHandlerInvalidComponentModifier => "event_handler_invalid_component_modifier",
+            Self::EventHandlerInvalidComponentModifier => {
+                "event_handler_invalid_component_modifier"
+            }
             Self::EventHandlerInvalidModifier { .. } => "event_handler_invalid_modifier",
-            Self::EventHandlerInvalidModifierCombination { .. } => "event_handler_invalid_modifier_combination",
+            Self::EventHandlerInvalidModifierCombination { .. } => {
+                "event_handler_invalid_modifier_combination"
+            }
             Self::ExpectedAttributeValue => "expected_attribute_value",
             Self::ExpectedBlockType => "expected_block_type",
             Self::ExpectedIdentifier => "expected_identifier",
@@ -543,13 +780,27 @@ impl DiagnosticKind {
             Self::A11yHidden { .. } => "a11y_hidden",
             Self::A11yImgRedundantAlt => "a11y_img_redundant_alt",
             Self::A11yIncorrectAriaAttributeType { .. } => "a11y_incorrect_aria_attribute_type",
-            Self::A11yIncorrectAriaAttributeTypeBoolean { .. } => "a11y_incorrect_aria_attribute_type_boolean",
-            Self::A11yIncorrectAriaAttributeTypeId { .. } => "a11y_incorrect_aria_attribute_type_id",
-            Self::A11yIncorrectAriaAttributeTypeIdlist { .. } => "a11y_incorrect_aria_attribute_type_idlist",
-            Self::A11yIncorrectAriaAttributeTypeInteger { .. } => "a11y_incorrect_aria_attribute_type_integer",
-            Self::A11yIncorrectAriaAttributeTypeToken { .. } => "a11y_incorrect_aria_attribute_type_token",
-            Self::A11yIncorrectAriaAttributeTypeTokenlist { .. } => "a11y_incorrect_aria_attribute_type_tokenlist",
-            Self::A11yIncorrectAriaAttributeTypeTristate { .. } => "a11y_incorrect_aria_attribute_type_tristate",
+            Self::A11yIncorrectAriaAttributeTypeBoolean { .. } => {
+                "a11y_incorrect_aria_attribute_type_boolean"
+            }
+            Self::A11yIncorrectAriaAttributeTypeId { .. } => {
+                "a11y_incorrect_aria_attribute_type_id"
+            }
+            Self::A11yIncorrectAriaAttributeTypeIdlist { .. } => {
+                "a11y_incorrect_aria_attribute_type_idlist"
+            }
+            Self::A11yIncorrectAriaAttributeTypeInteger { .. } => {
+                "a11y_incorrect_aria_attribute_type_integer"
+            }
+            Self::A11yIncorrectAriaAttributeTypeToken { .. } => {
+                "a11y_incorrect_aria_attribute_type_token"
+            }
+            Self::A11yIncorrectAriaAttributeTypeTokenlist { .. } => {
+                "a11y_incorrect_aria_attribute_type_tokenlist"
+            }
+            Self::A11yIncorrectAriaAttributeTypeTristate { .. } => {
+                "a11y_incorrect_aria_attribute_type_tristate"
+            }
             Self::A11yInteractiveSupportsFocus { .. } => "a11y_interactive_supports_focus",
             Self::A11yInvalidAttribute { .. } => "a11y_invalid_attribute",
             Self::A11yLabelHasAssociatedControl => "a11y_label_has_associated_control",
@@ -560,16 +811,24 @@ impl DiagnosticKind {
             Self::A11yMissingContent { .. } => "a11y_missing_content",
             Self::A11yMouseEventsHaveKeyEvents { .. } => "a11y_mouse_events_have_key_events",
             Self::A11yNoAbstractRole { .. } => "a11y_no_abstract_role",
-            Self::A11yNoInteractiveElementToNoninteractiveRole { .. } => "a11y_no_interactive_element_to_noninteractive_role",
-            Self::A11yNoNoninteractiveElementInteractions { .. } => "a11y_no_noninteractive_element_interactions",
-            Self::A11yNoNoninteractiveElementToInteractiveRole { .. } => "a11y_no_noninteractive_element_to_interactive_role",
+            Self::A11yNoInteractiveElementToNoninteractiveRole { .. } => {
+                "a11y_no_interactive_element_to_noninteractive_role"
+            }
+            Self::A11yNoNoninteractiveElementInteractions { .. } => {
+                "a11y_no_noninteractive_element_interactions"
+            }
+            Self::A11yNoNoninteractiveElementToInteractiveRole { .. } => {
+                "a11y_no_noninteractive_element_to_interactive_role"
+            }
             Self::A11yNoNoninteractiveTabindex => "a11y_no_noninteractive_tabindex",
             Self::A11yNoRedundantRoles { .. } => "a11y_no_redundant_roles",
             Self::A11yNoStaticElementInteractions { .. } => "a11y_no_static_element_interactions",
             Self::A11yPositiveTabindex => "a11y_positive_tabindex",
             Self::A11yRoleHasRequiredAriaProps { .. } => "a11y_role_has_required_aria_props",
             Self::A11yRoleSupportsAriaProps { .. } => "a11y_role_supports_aria_props",
-            Self::A11yRoleSupportsAriaPropsImplicit { .. } => "a11y_role_supports_aria_props_implicit",
+            Self::A11yRoleSupportsAriaPropsImplicit { .. } => {
+                "a11y_role_supports_aria_props_implicit"
+            }
             Self::A11yUnknownAriaAttribute { .. } => "a11y_unknown_aria_attribute",
             Self::A11yUnknownRole { .. } => "a11y_unknown_role",
 
@@ -595,7 +854,9 @@ impl DiagnosticKind {
             Self::PerfAvoidInlineClass => "perf_avoid_inline_class",
             Self::PerfAvoidNestedClass => "perf_avoid_nested_class",
             Self::ReactiveDeclarationInvalidPlacement => "reactive_declaration_invalid_placement",
-            Self::ReactiveDeclarationModuleScriptDependency => "reactive_declaration_module_script_dependency",
+            Self::ReactiveDeclarationModuleScriptDependency => {
+                "reactive_declaration_module_script_dependency"
+            }
             Self::StateReferencedLocally { .. } => "state_referenced_locally",
             Self::StoreRuneConflict { .. } => "store_rune_conflict",
 
@@ -1221,36 +1482,68 @@ impl Diagnostic {
     }
 
     pub fn svelte_options_unknown_attribute(span: Span, name: String) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsUnknownAttribute(name), span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsUnknownAttribute(name),
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_invalid_attribute_value(span: Span, expected: String) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidAttributeValue(expected), span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsInvalidAttributeValue(expected),
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_invalid_custom_element_tag(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidCustomElementTag, span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsInvalidCustomElementTag,
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_reserved_tag_name(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsReservedTagName, span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsReservedTagName,
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_no_children(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsNoChildren, span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsNoChildren,
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_invalid_attribute(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsInvalidAttribute, span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsInvalidAttribute,
+            span,
+            severity: Severity::Error,
+        }
     }
 
     pub fn svelte_options_duplicate(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsDuplicate, span, severity: Severity::Error }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsDuplicate,
+            span,
+            severity: Severity::Error,
+        }
     }
 
     /// LEGACY(svelte4): `tag` attribute renamed to `customElement`.
     pub fn svelte_options_deprecated_tag(span: Span) -> Self {
-        Diagnostic { kind: DiagnosticKind::SvelteOptionsDeprecatedTag, span, severity: Severity::Warning }
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsDeprecatedTag,
+            span,
+            severity: Severity::Warning,
+        }
     }
 
     pub fn internal_error(message: String) -> Self {
@@ -1372,8 +1665,14 @@ mod tests {
             "element_invalid_closing_tag"
         );
         assert_eq!(DiagnosticKind::UnclosedNode.code(), "element_unclosed");
-        assert_eq!(DiagnosticKind::OnlyOneTopLevelScript.code(), "script_duplicate");
-        assert_eq!(DiagnosticKind::OnlyOneTopLevelStyle.code(), "style_duplicate");
+        assert_eq!(
+            DiagnosticKind::OnlyOneTopLevelScript.code(),
+            "script_duplicate"
+        );
+        assert_eq!(
+            DiagnosticKind::OnlyOneTopLevelStyle.code(),
+            "style_duplicate"
+        );
         assert_eq!(
             DiagnosticKind::VoidElementInvalidContent.code(),
             "void_element_invalid_content"
@@ -1392,8 +1691,20 @@ mod tests {
             DiagnosticKind::A11yAriaAttributes { name: "div".into() }.code(),
             "a11y_aria_attributes"
         );
-        assert_eq!(DiagnosticKind::CssUnusedSelector { name: ".foo".into() }.code(), "css_unused_selector");
-        assert_eq!(DiagnosticKind::EventDirectiveDeprecated { name: "click".into() }.code(), "event_directive_deprecated");
+        assert_eq!(
+            DiagnosticKind::CssUnusedSelector {
+                name: ".foo".into()
+            }
+            .code(),
+            "css_unused_selector"
+        );
+        assert_eq!(
+            DiagnosticKind::EventDirectiveDeprecated {
+                name: "click".into()
+            }
+            .code(),
+            "event_directive_deprecated"
+        );
     }
 
     #[test]
@@ -1404,26 +1715,44 @@ mod tests {
             "`<div>` should not have aria-* attributes"
         );
         assert_eq!(
-            DiagnosticKind::LegacyCode { code: "empty-block".into(), suggestion: "block_empty".into() }.message(),
+            DiagnosticKind::LegacyCode {
+                code: "empty-block".into(),
+                suggestion: "block_empty".into()
+            }
+            .message(),
             "`empty-block` is no longer valid \u{2014} please use `block_empty` instead"
         );
         assert_eq!(
-            DiagnosticKind::UnknownCode { code: "foo".into(), suggestion: Some("block_empty".into()) }.message(),
+            DiagnosticKind::UnknownCode {
+                code: "foo".into(),
+                suggestion: Some("block_empty".into())
+            }
+            .message(),
             "`foo` is not a recognised code (did you mean `block_empty`?)"
         );
         assert_eq!(
-            DiagnosticKind::UnknownCode { code: "foo".into(), suggestion: None }.message(),
+            DiagnosticKind::UnknownCode {
+                code: "foo".into(),
+                suggestion: None
+            }
+            .message(),
             "`foo` is not a recognised code"
         );
     }
 
     #[test]
     fn severity_from_kind() {
-        assert_eq!(DiagnosticKind::UnexpectedEndOfFile.severity(), Severity::Error);
+        assert_eq!(
+            DiagnosticKind::UnexpectedEndOfFile.severity(),
+            Severity::Error
+        );
         assert_eq!(DiagnosticKind::InvalidTagName.severity(), Severity::Error);
         assert_eq!(DiagnosticKind::BlockEmpty.severity(), Severity::Warning);
         assert_eq!(DiagnosticKind::A11yAccesskey.severity(), Severity::Warning);
-        assert_eq!(DiagnosticKind::SvelteOptionsDeprecatedTag.severity(), Severity::Warning);
+        assert_eq!(
+            DiagnosticKind::SvelteOptionsDeprecatedTag.severity(),
+            Severity::Warning
+        );
     }
 
     #[test]

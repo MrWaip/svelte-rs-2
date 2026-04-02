@@ -3,8 +3,8 @@ use oxc_ast::ast::{Expression, Statement};
 use crate::builder::Arg;
 
 use super::{
-    PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_RUNES,
-    PROPS_IS_UPDATED, ScriptTransformer,
+    ScriptTransformer, PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL,
+    PROPS_IS_RUNES, PROPS_IS_UPDATED,
 };
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -58,15 +58,15 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             seen_names.push(prop.prop_name.clone());
 
             if prop.is_rest {
-                let excluded: Vec<Arg<'a, '_>> = seen_names.iter()
+                let excluded: Vec<Arg<'a, '_>> = seen_names
+                    .iter()
                     .filter(|n| *n != &prop.local_name)
                     .map(|n| Arg::Str(n.clone()))
                     .collect();
                 let arr_expr = self.b.array_from_args(excluded);
-                let init = self.b.call_expr("$.rest_props", [
-                    Arg::Ident("$$props"),
-                    Arg::Expr(arr_expr),
-                ]);
+                let init = self
+                    .b
+                    .call_expr("$.rest_props", [Arg::Ident("$$props"), Arg::Expr(arr_expr)]);
                 declarators.push((self.b.alloc_str(&prop.local_name), init));
                 continue;
             }
@@ -83,10 +83,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 flags |= PROPS_IS_UPDATED;
             }
 
-            let mut args: Vec<Arg<'a, '_>> = vec![
-                Arg::Ident("$$props"),
-                Arg::Str(prop.prop_name.clone()),
-            ];
+            let mut args: Vec<Arg<'a, '_>> =
+                vec![Arg::Ident("$$props"), Arg::Str(prop.prop_name.clone())];
 
             if prop.default_text.is_some() {
                 if prop.is_lazy_default {
@@ -95,15 +93,23 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
                 args.push(Arg::Num(flags as f64));
 
-                let default_expr = self.prop_default_exprs.get_mut(i)
+                let default_expr = self
+                    .prop_default_exprs
+                    .get_mut(i)
                     .and_then(|e| e.take())
-                    .unwrap_or_else(|| panic!("prop_default_exprs missing for prop {}", prop.local_name));
+                    .unwrap_or_else(|| {
+                        panic!("prop_default_exprs missing for prop {}", prop.local_name)
+                    });
                 // Wrap $bindable() defaults in $.proxy() when needed
-                let is_bindable_proxy = prop.is_bindable && svelte_transform::rune_refs::should_proxy(&default_expr);
+                let is_bindable_proxy =
+                    prop.is_bindable && svelte_transform::rune_refs::should_proxy(&default_expr);
                 let default_expr = if is_bindable_proxy {
                     let proxied = self.b.call_expr("$.proxy", [Arg::Expr(default_expr)]);
                     if self.dev {
-                        self.b.call_expr("$.tag_proxy", [Arg::Expr(proxied), Arg::Str(prop.local_name.clone())])
+                        self.b.call_expr(
+                            "$.tag_proxy",
+                            [Arg::Expr(proxied), Arg::Str(prop.local_name.clone())],
+                        )
                     } else {
                         proxied
                     }

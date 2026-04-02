@@ -11,9 +11,7 @@ use crate::walker::{TemplateVisitor, VisitContext};
 
 /// Create a CollectSymbolsVisitor for use after TemplateSemanticVisitor.
 /// Consumes `ScopingBuilt` marker to enforce ordering.
-pub(crate) fn make_visitor(
-    _scoping: crate::types::markers::ScopingBuilt,
-) -> CollectSymbolsVisitor {
+pub(crate) fn make_visitor(_scoping: crate::types::markers::ScopingBuilt) -> CollectSymbolsVisitor {
     CollectSymbolsVisitor {
         pending_render_tag: None,
         pending_shorthand: None,
@@ -50,12 +48,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         }
     }
 
-    fn visit_expression(
-        &mut self,
-        node_id: NodeId,
-        span: Span,
-        ctx: &mut VisitContext<'_>,
-    ) {
+    fn visit_expression(&mut self, node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
         store_expr_offset(node_id, span, ctx);
     }
 
@@ -87,7 +80,10 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         };
         let symbols = collect_ref_symbols_from_formal_parameters(params, &mut ctx.data.scoping);
         if !symbols.is_empty() {
-            ctx.data.template_semantics.stmt_ref_symbols.insert(node_id, symbols);
+            ctx.data
+                .template_semantics
+                .stmt_ref_symbols
+                .insert(node_id, symbols);
         }
     }
 
@@ -96,26 +92,37 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         resolve_render_tag_callee(tag, ctx);
     }
 
-    fn visit_const_tag(
-        &mut self,
-        tag: &svelte_ast::ConstTag,
-        ctx: &mut VisitContext<'_>,
-    ) {
-        if let Some(handle) = ctx.parsed().and_then(|p| p.expr_handle(tag.expression_span.start)) {
-            ctx.data.template_semantics.node_expr_handles.insert(tag.id, handle);
+    fn visit_const_tag(&mut self, tag: &svelte_ast::ConstTag, ctx: &mut VisitContext<'_>) {
+        if let Some(handle) = ctx
+            .parsed()
+            .and_then(|p| p.expr_handle(tag.expression_span.start))
+        {
+            ctx.data
+                .template_semantics
+                .node_expr_handles
+                .insert(tag.id, handle);
         }
-        if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(tag.expression_span.start)) {
-            ctx.data.template_semantics.const_tag_stmt_handles.insert(tag.id, handle);
+        if let Some(handle) = ctx
+            .parsed()
+            .and_then(|p| p.stmt_handle(tag.expression_span.start))
+        {
+            ctx.data
+                .template_semantics
+                .const_tag_stmt_handles
+                .insert(tag.id, handle);
         }
         // Build ExpressionInfo for the @const init expression so that
         // mark_const_tag_bindings can read ref_symbols for derived_deps.
-        if let Some(init_expr) = ctx.parsed()
+        if let Some(init_expr) = ctx
+            .parsed()
             .and_then(|p| p.stmt_handle(tag.expression_span.start))
             .and_then(|handle| ctx.parsed().and_then(|p| p.stmt(handle)))
-            .and_then(|stmt| if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
-                decl.declarations.first().and_then(|d| d.init.as_ref())
-            } else {
-                None
+            .and_then(|stmt| {
+                if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
+                    decl.declarations.first().and_then(|d| d.init.as_ref())
+                } else {
+                    None
+                }
             })
         {
             let info = build_expression_info(init_expr, &mut ctx.data.scoping);
@@ -174,7 +181,9 @@ fn collect_ref_symbols_from_formal_parameters(
     params: &FormalParameters<'_>,
     scoping: &mut ComponentScoping,
 ) -> SmallVec<[SymbolId; 2]> {
-    collect_resolved_ref_symbols(scoping, |collector| collector.visit_formal_parameters(params))
+    collect_resolved_ref_symbols(scoping, |collector| {
+        collector.visit_formal_parameters(params)
+    })
 }
 
 fn extract_arrow_params<'s, 'a: 's>(stmt: &'s Statement<'a>) -> Option<&'s FormalParameters<'a>> {
@@ -195,7 +204,9 @@ fn detect_each_index_usage(
 ) {
     for &sym in symbols {
         if let Some(&block_id) = data.each_blocks.index_sym_to_block.get(&sym) {
-            let is_key = data.each_blocks.key_node_ids
+            let is_key = data
+                .each_blocks
+                .key_node_ids
                 .get(block_id)
                 .is_some_and(|&kid| kid == node_id);
             if is_key {
@@ -207,11 +218,7 @@ fn detect_each_index_usage(
     }
 }
 
-fn store_expression_info(
-    node_id: NodeId,
-    info: ExpressionInfo,
-    ctx: &mut VisitContext<'_>,
-) {
+fn store_expression_info(node_id: NodeId, info: ExpressionInfo, ctx: &mut VisitContext<'_>) {
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
         ctx.data.attr_expressions.insert(node_id, info);
     } else {
@@ -224,9 +231,15 @@ fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
         return;
     };
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
-        ctx.data.template_semantics.attr_expr_handles.insert(node_id, handle);
+        ctx.data
+            .template_semantics
+            .attr_expr_handles
+            .insert(node_id, handle);
     } else {
-        ctx.data.template_semantics.node_expr_handles.insert(node_id, handle);
+        ctx.data
+            .template_semantics
+            .node_expr_handles
+            .insert(node_id, handle);
     }
 }
 
@@ -251,7 +264,9 @@ fn classify_clsx(
     pending: &mut bool,
     data: &mut AnalysisData,
 ) {
-    if !*pending { return; }
+    if !*pending {
+        return;
+    }
     *pending = false;
     if !matches!(
         expr,
@@ -375,7 +390,10 @@ fn merge_concat_expression_info(
     ctx.data.attr_expressions.insert(parent_id, merged);
 }
 
-fn resolve_identifier_symbol(ident: &IdentifierReference, scoping: &ComponentScoping) -> Option<SymbolId> {
+fn resolve_identifier_symbol(
+    ident: &IdentifierReference,
+    scoping: &ComponentScoping,
+) -> Option<SymbolId> {
     let ref_id = ident.reference_id.get()?;
     scoping.get_reference(ref_id).symbol_id()
 }

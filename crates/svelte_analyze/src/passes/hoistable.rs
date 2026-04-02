@@ -17,10 +17,7 @@ pub(crate) struct HoistableSnippetsVisitor {
 }
 
 impl HoistableSnippetsVisitor {
-    pub(crate) fn new(
-        script_syms: FxHashSet<SymbolId>,
-        top_level_ids: FxHashSet<NodeId>,
-    ) -> Self {
+    pub(crate) fn new(script_syms: FxHashSet<SymbolId>, top_level_ids: FxHashSet<NodeId>) -> Self {
         Self {
             script_syms,
             top_level_ids,
@@ -67,7 +64,11 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
             ctx.data.expressions.get(node_id)
         };
         if let Some(info) = info {
-            if info.ref_symbols.iter().any(|s| self.script_syms.contains(s)) {
+            if info
+                .ref_symbols
+                .iter()
+                .any(|s| self.script_syms.contains(s))
+            {
                 self.tainted.insert(root_id);
             }
         }

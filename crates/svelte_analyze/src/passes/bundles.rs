@@ -83,11 +83,7 @@ pub(crate) struct TemplateClassificationBundle<'s> {
 }
 
 impl<'s> TemplateClassificationBundle<'s> {
-    pub(crate) fn new(
-        component: &'s Component,
-        data: &AnalysisData,
-        source: &'s str,
-    ) -> Self {
+    pub(crate) fn new(component: &'s Component, data: &AnalysisData, source: &'s str) -> Self {
         let root = data.scoping.root_scope_id();
         let script_syms: FxHashSet<SymbolId> = data
             .script
@@ -114,10 +110,7 @@ impl<'s> TemplateClassificationBundle<'s> {
 
         Self {
             element_flags: element_flags::ElementFlagsVisitor::new(source),
-            hoistable: hoistable::HoistableSnippetsVisitor::new(
-                script_syms,
-                top_level_snippet_ids,
-            ),
+            hoistable: hoistable::HoistableSnippetsVisitor::new(script_syms, top_level_snippet_ids),
             bind_semantics: bind_semantics::BindSemanticsVisitor::new(source),
             content_types: content_types::ContentAndVarVisitor { source },
         }

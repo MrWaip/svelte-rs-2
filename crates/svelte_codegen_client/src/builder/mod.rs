@@ -2,11 +2,11 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         self, Argument, ArrowFunctionExpression, AssignmentTarget, BindingIdentifier,
-        CallExpression, ChainElement, ComputedMemberExpression, Expression,
-        ExportDefaultDeclarationKind, FormalParameters, Function, FunctionType,
-        IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
-        NumericLiteral, Program, Statement, StaticMemberExpression, StringLiteral,
-        TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
+        CallExpression, ChainElement, ComputedMemberExpression, ExportDefaultDeclarationKind,
+        Expression, FormalParameters, Function, FunctionType, IdentifierReference,
+        ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration, NumericLiteral, Program,
+        Statement, StaticMemberExpression, StringLiteral, TemplateElementValue, TemplateLiteral,
+        VariableDeclarationKind,
     },
     AstBuilder, NONE,
 };

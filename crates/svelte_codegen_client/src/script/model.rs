@@ -155,8 +155,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &self,
         target: &'t oxc_ast::ast::AssignmentTarget<'a>,
     ) -> Option<(&'t str, &'t str)> {
-        let name =
-            svelte_transform::rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+        let name = svelte_transform::rune_refs::find_expr_root_name(
+            target.as_member_expression()?.object(),
+        )?;
         self.component_scoping
             .store_base_name(name)
             .map(|base| (name, base))
@@ -166,8 +167,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &self,
         target: &'t oxc_ast::ast::SimpleAssignmentTarget<'a>,
     ) -> Option<(&'t str, &'t str)> {
-        let name =
-            svelte_transform::rune_refs::find_expr_root_name(target.as_member_expression()?.object())?;
+        let name = svelte_transform::rune_refs::find_expr_root_name(
+            target.as_member_expression()?.object(),
+        )?;
         self.component_scoping
             .store_base_name(name)
             .map(|base| (name, base))

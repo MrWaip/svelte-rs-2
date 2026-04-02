@@ -1,6 +1,8 @@
 mod options;
 
-pub use options::{CompileOptions, CssMode, ExperimentalOptions, GenerateMode, ModuleCompileOptions, Namespace};
+pub use options::{
+    CompileOptions, CssMode, ExperimentalOptions, GenerateMode, ModuleCompileOptions, Namespace,
+};
 use svelte_diagnostics::Diagnostic;
 
 #[derive(serde::Serialize)]
@@ -24,10 +26,30 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             dev: options.dev,
             warning_filter: None,
         };
-        let (analysis, mut parsed, analyze_diags) = svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
-        let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
-        let transform_data = svelte_transform::transform_component(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen);
-        let js = svelte_codegen_client::generate(&js_alloc, &component, &analysis, &mut parsed, &mut ident_gen, transform_data, &name, options.dev, source, &options.filename, options.experimental.async_);
+        let (analysis, mut parsed, analyze_diags) =
+            svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
+        let mut ident_gen =
+            svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
+        let transform_data = svelte_transform::transform_component(
+            &js_alloc,
+            &component,
+            &analysis,
+            &mut parsed,
+            &mut ident_gen,
+        );
+        let js = svelte_codegen_client::generate(
+            &js_alloc,
+            &component,
+            &analysis,
+            &mut parsed,
+            &mut ident_gen,
+            transform_data,
+            &name,
+            options.dev,
+            source,
+            &options.filename,
+            options.experimental.async_,
+        );
         (js, analyze_diags)
     }));
 
@@ -74,7 +96,8 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     }
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, analyze_diags) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+        let (analysis, analyze_diags) =
+            svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
         let js = svelte_codegen_client::generate_module(&js_alloc, source, is_ts, &analysis, dev);
         (js, analyze_diags)
     }));

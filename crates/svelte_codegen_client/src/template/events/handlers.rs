@@ -30,7 +30,10 @@ pub(crate) fn build_event_handler_s5<'a>(
     if has_call {
         let id = ctx.gen_ident("event_handler");
         let thunk = ctx.b.thunk(handler);
-        init.push(ctx.b.var_stmt(&id, ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])));
+        init.push(
+            ctx.b
+                .var_stmt(&id, ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])),
+        );
         handler = ctx.b.call_expr("$.get", [Arg::Ident(&id)]);
     }
 
@@ -98,10 +101,9 @@ pub(crate) fn dev_event_handler<'a>(
             ctx.b.thunk_block(stmts)
         };
 
-        let trace_call = ctx.b.call_expr(
-            "$.trace",
-            [Arg::Expr(label_thunk), Arg::Expr(body_thunk)],
-        );
+        let trace_call = ctx
+            .b
+            .call_expr("$.trace", [Arg::Expr(label_thunk), Arg::Expr(body_thunk)]);
         let return_expr = if arrow.r#async {
             ctx.b.await_expr(trace_call)
         } else {
@@ -137,10 +139,9 @@ pub(crate) fn build_legacy_event_handler<'a>(
         Expression::Identifier(_) => handler,
         _ => {
             let apply = ctx.b.static_member_expr(handler, "apply");
-            let call = ctx.b.call_expr_callee(
-                apply,
-                [Arg::Expr(ctx.b.this_expr()), Arg::Ident("$$args")],
-            );
+            let call = ctx
+                .b
+                .call_expr_callee(apply, [Arg::Expr(ctx.b.this_expr()), Arg::Ident("$$args")]);
             ctx.b
                 .function_expr(ctx.b.rest_params("$$args"), vec![ctx.b.expr_stmt(call)])
         }

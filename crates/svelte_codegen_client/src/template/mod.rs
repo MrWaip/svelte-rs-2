@@ -1,7 +1,7 @@
 //! Template and DOM traversal code generation.
 
-pub(crate) mod attributes;
 pub(crate) mod async_plan;
+pub(crate) mod attributes;
 pub(crate) mod await_block;
 pub(crate) mod bind;
 
@@ -13,15 +13,15 @@ pub(crate) mod element;
 pub(crate) mod events;
 pub(crate) mod expression;
 pub(crate) mod html;
-pub(crate) mod if_block;
 pub(crate) mod html_tag;
+pub(crate) mod if_block;
 pub(crate) mod key_block;
 pub(crate) mod render_tag;
 pub(crate) mod snippet;
-pub(crate) mod svelte_boundary;
-pub(crate) mod svelte_element;
 pub(crate) mod svelte_body;
+pub(crate) mod svelte_boundary;
 pub(crate) mod svelte_document;
+pub(crate) mod svelte_element;
 pub(crate) mod svelte_head;
 pub(crate) mod svelte_window;
 pub(crate) mod title_element;
@@ -55,20 +55,31 @@ pub(crate) fn add_svelte_meta<'a>(
 
     let (line, col) = compute_line_col(ctx.state.source, span_start);
 
-    let thunk = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
-    ctx.b.call_stmt("$.add_svelte_meta", [
-        Arg::Expr(thunk),
-        Arg::StrRef(block_type),
-        Arg::Ident(ctx.state.name),
-        Arg::Num(line as f64),
-        Arg::Num(col as f64),
-    ])
+    let thunk = ctx
+        .b
+        .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
+    ctx.b.call_stmt(
+        "$.add_svelte_meta",
+        [
+            Arg::Expr(thunk),
+            Arg::StrRef(block_type),
+            Arg::Ident(ctx.state.name),
+            Arg::Num(line as f64),
+            Arg::Num(col as f64),
+        ],
+    )
 }
 
 /// Return the appropriate `$.from_*` function for the component's namespace.
 fn from_template_fn(ctx: &Ctx) -> &'static str {
     use svelte_ast::Namespace;
-    match ctx.query.component.options.as_ref().and_then(|o| o.namespace.as_ref()) {
+    match ctx
+        .query
+        .component
+        .options
+        .as_ref()
+        .and_then(|o| o.namespace.as_ref())
+    {
         Some(Namespace::Svg) => "$.from_svg",
         Some(Namespace::Mathml) => "$.from_mathml",
         _ => "$.from_html",
@@ -97,20 +108,20 @@ fn from_template_fn_for_items(ctx: &Ctx, items: &[FragmentItem]) -> &'static str
     }
     from_template_fn(ctx)
 }
-use expression::{emit_text_update, emit_trailing_next};
-use html::{element_html, fragment_html};
 use await_block::gen_await_block;
 use component::gen_component;
-use if_block::gen_if_block;
-use each_block::gen_each_block;
-use html_tag::gen_html_tag;
-use key_block::gen_key_block;
-use render_tag::gen_render_tag;
 use const_tag::gen_const_tags;
 use debug_tag::emit_debug_tags;
-use title_element::emit_title_elements;
+use each_block::gen_each_block;
+use expression::{emit_text_update, emit_trailing_next};
+use html::{element_html, fragment_html};
+use html_tag::gen_html_tag;
+use if_block::gen_if_block;
+use key_block::gen_key_block;
+use render_tag::gen_render_tag;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
+use title_element::emit_title_elements;
 use traverse::traverse_items;
 
 // ---------------------------------------------------------------------------
@@ -120,7 +131,14 @@ use traverse::traverse_items;
 /// Returns `(hoisted, body, snippet_stmts, hoistable_snippets)` for the root fragment.
 /// `snippet_stmts` are instance-level snippets that go inside the function body.
 /// `hoistable_snippets` are module-level snippet declarations.
-pub fn gen_root_fragment<'a>(ctx: &mut Ctx<'a>) -> (Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>, Vec<Statement<'a>>) {
+pub fn gen_root_fragment<'a>(
+    ctx: &mut Ctx<'a>,
+) -> (
+    Vec<Statement<'a>>,
+    Vec<Statement<'a>>,
+    Vec<Statement<'a>>,
+    Vec<Statement<'a>>,
+) {
     let key = FragmentKey::Root;
     let ct = ctx.content_type(&key);
 
@@ -238,7 +256,13 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
     ctx.state.module_hoisted.extend(sub_hoisted);
 
     // Title elements emit after DOM init but before $.append()
-    let has_append = matches!(ct, ContentStrategy::SingleElement(_) | ContentStrategy::DynamicText | ContentStrategy::Mixed { .. } | ContentStrategy::SingleBlock(_));
+    let has_append = matches!(
+        ct,
+        ContentStrategy::SingleElement(_)
+            | ContentStrategy::DynamicText
+            | ContentStrategy::Mixed { .. }
+            | ContentStrategy::SingleBlock(_)
+    );
     if has_append && !body.is_empty() {
         let append = body.pop().unwrap();
         emit_title_elements(ctx, key, &mut body);
@@ -311,10 +335,10 @@ fn emit_static_text<'a>(
         ctx.b.call_expr("$.text", [Arg::StrRef(text)])
     };
     body.push(ctx.b.var_stmt(&name, call));
-    body.push(ctx.b.call_stmt(
-        "$.append",
-        [Arg::Ident("$$anchor"), Arg::Ident(&name)],
-    ));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&name)]),
+    );
 }
 
 fn emit_dynamic_text<'a>(
@@ -336,10 +360,10 @@ fn emit_dynamic_text<'a>(
     }
     body.push(ctx.b.var_stmt(&name, ctx.b.call_expr("$.text", [])));
     emit_text_update(ctx, &item, &name, body);
-    body.push(ctx.b.call_stmt(
-        "$.append",
-        [Arg::Ident("$$anchor"), Arg::Ident(&name)],
-    ));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&name)]),
+    );
 }
 
 fn emit_single_element<'a>(
@@ -354,9 +378,13 @@ fn emit_single_element<'a>(
     let (html, import_node) = element_html(ctx, el);
     let from_fn = from_template_fn_for_element(ctx, &el.name);
     let mut from_html = if import_node {
-        ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)])
+        ctx.b.call_expr(
+            from_fn,
+            [Arg::Expr(ctx.b.template_str_expr(&html)), Arg::Num(2.0)],
+        )
     } else {
-        ctx.b.call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html))])
+        ctx.b
+            .call_expr(from_fn, [Arg::Expr(ctx.b.template_str_expr(&html))])
     };
     if ctx.state.dev {
         let locs = build_element_locations(ctx, el_id);
@@ -379,10 +407,26 @@ fn emit_single_element<'a>(
         let mut update = Vec::with_capacity(4);
         let mut after_update = Vec::with_capacity(4);
         let mut memo_attrs = Vec::new();
-        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update, &mut memo_attrs);
+        process_element(
+            ctx,
+            el_id,
+            &el_name,
+            &mut init,
+            &mut update,
+            hoisted,
+            &mut after_update,
+            &mut memo_attrs,
+        );
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
-        expression::emit_template_effect_with_memo(ctx, update, memo_attrs, el_blockers, local_blockers, body);
+        expression::emit_template_effect_with_memo(
+            ctx,
+            update,
+            memo_attrs,
+            el_blockers,
+            local_blockers,
+            body,
+        );
         body.extend(after_update);
     } else {
         // Non-root: template AFTER children (bottom-up)
@@ -390,19 +434,35 @@ fn emit_single_element<'a>(
         let mut update = Vec::with_capacity(4);
         let mut after_update = Vec::with_capacity(4);
         let mut memo_attrs = Vec::new();
-        process_element(ctx, el_id, &el_name, &mut init, &mut update, hoisted, &mut after_update, &mut memo_attrs);
+        process_element(
+            ctx,
+            el_id,
+            &el_name,
+            &mut init,
+            &mut update,
+            hoisted,
+            &mut after_update,
+            &mut memo_attrs,
+        );
         hoisted.push(tpl_stmt);
         body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
-        expression::emit_template_effect_with_memo(ctx, update, memo_attrs, el_blockers, local_blockers, body);
+        expression::emit_template_effect_with_memo(
+            ctx,
+            update,
+            memo_attrs,
+            el_blockers,
+            local_blockers,
+            body,
+        );
         body.extend(after_update);
     }
 
-    body.push(ctx.b.call_stmt(
-        "$.append",
-        [Arg::Ident("$$anchor"), Arg::Ident(&el_name)],
-    ));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&el_name)]),
+    );
 }
 
 fn emit_single_block<'a>(
@@ -421,12 +481,16 @@ fn emit_single_block<'a>(
                 .callee_mode
                 .is_dynamic() =>
         {
-            if !is_root { ctx.gen_ident("fragment"); }
+            if !is_root {
+                ctx.gen_ident("fragment");
+            }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
         FragmentItem::ComponentNode(id) => {
-            if !is_root { ctx.gen_ident("fragment"); }
+            if !is_root {
+                ctx.gen_ident("fragment");
+            }
             gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
             return;
         }
@@ -439,10 +503,10 @@ fn emit_single_block<'a>(
     let frag = ctx.gen_ident("fragment");
     let node = ctx.gen_ident("node");
     body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr("$.comment", [])));
-    body.push(ctx.b.var_stmt(
-        &node,
-        ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
-    ));
+    body.push(
+        ctx.b
+            .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+    );
 
     match item {
         FragmentItem::IfBlock(id) => {
@@ -477,10 +541,10 @@ fn emit_single_block<'a>(
         _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }
 
-    body.push(ctx.b.call_stmt(
-        "$.append",
-        [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-    ));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+    );
 }
 
 fn emit_mixed<'a>(
@@ -547,10 +611,10 @@ fn emit_mixed<'a>(
     body.extend(init);
     expression::emit_template_effect_with_memo(ctx, update, memo_attrs, vec![], vec![], body);
     body.extend(after_update);
-    body.push(ctx.b.call_stmt(
-        "$.append",
-        [Arg::Ident("$$anchor"), Arg::Ident(&frag)],
-    ));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -558,16 +622,23 @@ fn emit_mixed<'a>(
 // ---------------------------------------------------------------------------
 
 /// Wrap a `$.from_html(...)` expression with `$.add_locations(expr, App[$.FILENAME], locs)`.
-fn wrap_add_locations<'a>(ctx: &mut Ctx<'a>, from_html: Expression<'a>, locs: Expression<'a>) -> Expression<'a> {
+fn wrap_add_locations<'a>(
+    ctx: &mut Ctx<'a>,
+    from_html: Expression<'a>,
+    locs: Expression<'a>,
+) -> Expression<'a> {
     let filename_member = ctx.b.computed_member_expr(
         ctx.b.rid_expr(ctx.state.name),
         ctx.b.static_member_expr(ctx.b.rid_expr("$"), "FILENAME"),
     );
-    ctx.b.call_expr("$.add_locations", [
-        Arg::Expr(from_html),
-        Arg::Expr(filename_member),
-        Arg::Expr(locs),
-    ])
+    ctx.b.call_expr(
+        "$.add_locations",
+        [
+            Arg::Expr(from_html),
+            Arg::Expr(filename_member),
+            Arg::Expr(locs),
+        ],
+    )
 }
 
 /// Build element location arrays for a single element template.
@@ -578,13 +649,19 @@ fn build_element_locations<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Expression<'
 }
 
 /// Build `[line, col]` or `[line, col, [children...]]` for one element.
-fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &svelte_ast::Fragment) -> Expression<'a> {
+fn build_single_element_loc<'a>(
+    ctx: &mut Ctx<'a>,
+    span_start: u32,
+    fragment: &svelte_ast::Fragment,
+) -> Expression<'a> {
     let (line, col) = crate::script::compute_line_col(ctx.state.source, span_start);
     let mut inner: Vec<Arg<'a, '_>> = vec![Arg::Num(line as f64), Arg::Num(col as f64)];
 
     let child_locs = build_child_element_locs(ctx, fragment);
     if !child_locs.is_empty() {
-        let child_array = ctx.b.array_from_args(child_locs.into_iter().map(Arg::Expr).collect::<Vec<_>>());
+        let child_array = ctx
+            .b
+            .array_from_args(child_locs.into_iter().map(Arg::Expr).collect::<Vec<_>>());
         inner.push(Arg::Expr(child_array));
     }
 
@@ -592,7 +669,10 @@ fn build_single_element_loc<'a>(ctx: &mut Ctx<'a>, span_start: u32, fragment: &s
 }
 
 /// Recursively collect location arrays for child elements in a fragment.
-fn build_child_element_locs<'a>(ctx: &mut Ctx<'a>, fragment: &svelte_ast::Fragment) -> Vec<Expression<'a>> {
+fn build_child_element_locs<'a>(
+    ctx: &mut Ctx<'a>,
+    fragment: &svelte_ast::Fragment,
+) -> Vec<Expression<'a>> {
     let mut locs = Vec::new();
     for &id in &fragment.nodes {
         let node = ctx.query.component.store.get(id);
@@ -613,5 +693,6 @@ fn build_fragment_element_locations<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> 
             locs.push(build_single_element_loc(ctx, el.span.start, &el.fragment));
         }
     }
-    ctx.b.array_from_args(locs.into_iter().map(Arg::Expr).collect::<Vec<_>>())
+    ctx.b
+        .array_from_args(locs.into_iter().map(Arg::Expr).collect::<Vec<_>>())
 }

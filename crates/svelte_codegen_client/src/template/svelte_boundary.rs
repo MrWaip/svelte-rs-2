@@ -30,18 +30,24 @@ fn build_const_tag_stmts_from_cloned<'a>(
             let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
             stmts.push(ctx.b.const_stmt(&names[0], derived));
         } else if names.len() > 1 {
-            let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&cid)
+            let tmp_name = ctx
+                .transform_data
+                .const_tag_tmp_names
+                .get(&cid)
                 .expect("destructured const tag must have tmp_name from transform");
             let tmp_name: &str = ctx.b.alloc_str(tmp_name);
 
             let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
 
-            let props: Vec<ObjProp<'a>> = names.iter()
+            let props: Vec<ObjProp<'a>> = names
+                .iter()
                 .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
                 .collect();
             let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
 
-            let thunk = ctx.b.arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+            let thunk = ctx
+                .b
+                .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
             let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
             stmts.push(ctx.b.const_stmt(tmp_name, derived));
         }
@@ -124,7 +130,11 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let const_binding_syms: FxHashSet<SymbolId> = if has_const_tags {
         const_tag_ids
             .iter()
-            .flat_map(|cid| ctx.const_tag_syms(*cid).map(|syms| syms.to_vec()).unwrap_or_default())
+            .flat_map(|cid| {
+                ctx.const_tag_syms(*cid)
+                    .map(|syms| syms.to_vec())
+                    .unwrap_or_default()
+            })
             .collect()
     } else {
         FxHashSet::default()
@@ -148,8 +158,8 @@ pub(crate) fn gen_svelte_boundary<'a>(
                 // Clone init expression from the pre-parsed Statement in stmts.
                 // Shallow destructure — known top-level shape, not removing yet.
                 let stmt_handle = ctx.const_tag_stmt_handle(*cid);
-                if let Some(Statement::VariableDeclaration(decl)) = stmt_handle
-                    .and_then(|handle| ctx.state.parsed.stmt(handle))
+                if let Some(Statement::VariableDeclaration(decl)) =
+                    stmt_handle.and_then(|handle| ctx.state.parsed.stmt(handle))
                 {
                     if let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref()) {
                         let cloned = ctx.b.clone_expr(init);
@@ -195,11 +205,17 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let body_stmts = gen_fragment(ctx, FragmentKey::SvelteBoundaryBody(id));
 
     let props_expr = ctx.b.object_expr(props);
-    let body_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body_stmts);
+    let body_fn = ctx
+        .b
+        .arrow_block_expr(ctx.b.params(["$$anchor"]), body_stmts);
 
     let boundary_call = ctx.b.call_stmt(
         "$.boundary",
-        [Arg::Expr(node_expr), Arg::Expr(props_expr), Arg::Expr(body_fn)],
+        [
+            Arg::Expr(node_expr),
+            Arg::Expr(props_expr),
+            Arg::Expr(body_fn),
+        ],
     );
 
     if hoisted_stmts.is_empty() {

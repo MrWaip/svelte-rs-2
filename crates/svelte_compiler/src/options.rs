@@ -77,9 +77,7 @@ impl CompileOptions {
             .map_or(path, |(_, name)| name);
 
         // Strip `.svelte` extension (or any extension)
-        let stem = basename
-            .rsplit_once('.')
-            .map_or(basename, |(stem, _)| stem);
+        let stem = basename.rsplit_once('.').map_or(basename, |(stem, _)| stem);
 
         if stem.is_empty() {
             "Component".to_string()

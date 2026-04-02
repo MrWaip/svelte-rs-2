@@ -12,8 +12,8 @@ use super::component::gen_component;
 use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
 use super::expression::{parts_are_dynamic, MemoAttr};
-use super::if_block::gen_if_block;
 use super::html_tag::gen_html_tag;
+use super::if_block::gen_if_block;
 use super::key_block::gen_key_block;
 use super::render_tag::gen_render_tag;
 
@@ -68,16 +68,14 @@ pub(crate) fn traverse_items<'a>(
                                 ctx.pending_const_blockers.extend(exprs);
                             }
                         }
-                        let expr =
-                            super::expression::build_concat_from_parts(ctx, parts);
-                        update.push(ctx.b.call_stmt(
-                            "$.set_text",
-                            [Arg::Ident(&name), Arg::Expr(expr)],
-                        ));
+                        let expr = super::expression::build_concat_from_parts(ctx, parts);
+                        update.push(
+                            ctx.b
+                                .call_stmt("$.set_text", [Arg::Ident(&name), Arg::Expr(expr)]),
+                        );
                     } else {
                         // Static text or bound_contenteditable: nodeValue= in init
-                        let expr =
-                            super::expression::build_concat_from_parts(ctx, parts);
+                        let expr = super::expression::build_concat_from_parts(ctx, parts);
                         init.push(ctx.b.assign_stmt(
                             AssignLeft::StaticMember(
                                 ctx.b.static_member(ctx.b.rid_expr(&name), "nodeValue"),
@@ -93,7 +91,16 @@ pub(crate) fn traverse_items<'a>(
                     let el_name = ctx.gen_ident(&el_name_str);
                     init.push(ctx.b.var_stmt(&el_name, node_expr));
                     sibling_offset = 1;
-                    process_element(ctx, *el_id, &el_name, init, update, hoisted, after_update, memo_attrs);
+                    process_element(
+                        ctx,
+                        *el_id,
+                        &el_name,
+                        init,
+                        update,
+                        hoisted,
+                        after_update,
+                        memo_attrs,
+                    );
                     prev_ident = Some(el_name);
                 }
 
@@ -116,12 +123,20 @@ pub(crate) fn traverse_items<'a>(
                             let stmts = gen_if_block(ctx, *id, anchor);
                             init.push(ctx.b.block_stmt(stmts));
                         }
-                        FragmentItem::EachBlock(id) => gen_each_block(ctx, *id, anchor, false, init),
-                        FragmentItem::RenderTag(id) => gen_render_tag(ctx, *id, anchor, false, init),
+                        FragmentItem::EachBlock(id) => {
+                            gen_each_block(ctx, *id, anchor, false, init)
+                        }
+                        FragmentItem::RenderTag(id) => {
+                            gen_render_tag(ctx, *id, anchor, false, init)
+                        }
                         FragmentItem::HtmlTag(id) => gen_html_tag(ctx, *id, anchor, false, init),
                         FragmentItem::KeyBlock(id) => gen_key_block(ctx, *id, anchor, init),
-                        FragmentItem::SvelteElement(id) => super::svelte_element::gen_svelte_element(ctx, *id, anchor, init),
-                        FragmentItem::SvelteBoundary(id) => super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init),
+                        FragmentItem::SvelteElement(id) => {
+                            super::svelte_element::gen_svelte_element(ctx, *id, anchor, init)
+                        }
+                        FragmentItem::SvelteBoundary(id) => {
+                            super::svelte_boundary::gen_svelte_boundary(ctx, *id, anchor, init)
+                        }
                         FragmentItem::AwaitBlock(id) => gen_await_block(ctx, *id, anchor, init),
                         _ => unreachable!(),
                     }

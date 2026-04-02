@@ -13,11 +13,13 @@ impl<'a> Parser<'a> {
     // -----------------------------------------------------------------------
 
     pub(crate) fn extract_svelte_options(&mut self, component: &mut Component) {
-        let options_idx = component
-            .fragment
-            .nodes
-            .iter()
-            .position(|&id| component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:options"));
+        let options_idx = component.fragment.nodes.iter().position(|&id| {
+            component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:options")
+        });
 
         let Some(idx) = options_idx else {
             return;
@@ -28,11 +30,13 @@ impl<'a> Parser<'a> {
         let el = node.as_element().unwrap();
 
         // Check for duplicate <svelte:options>
-        let has_another = component
-            .fragment
-            .nodes
-            .iter()
-            .any(|&id| component.store.get(id).as_element().is_some_and(|e| e.name == "svelte:options"));
+        let has_another = component.fragment.nodes.iter().any(|&id| {
+            component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|e| e.name == "svelte:options")
+        });
         if has_another {
             self.recover(Diagnostic::svelte_options_duplicate(el.span));
         }
@@ -74,9 +78,7 @@ impl<'a> Parser<'a> {
                             self.process_svelte_option_bool(&ea.name, true, el.span, &mut options);
                         }
                         "false" => {
-                            self.process_svelte_option_bool(
-                                &ea.name, false, el.span, &mut options,
-                            );
+                            self.process_svelte_option_bool(&ea.name, false, el.span, &mut options);
                         }
                         _ => {
                             // Could be an object expression for customElement
@@ -87,9 +89,7 @@ impl<'a> Parser<'a> {
                                     &mut options,
                                 );
                             } else {
-                                self.recover(Diagnostic::svelte_options_invalid_attribute(
-                                    el.span,
-                                ));
+                                self.recover(Diagnostic::svelte_options_invalid_attribute(el.span));
                             }
                         }
                     }
@@ -232,15 +232,25 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_head(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:head") {
+            if !component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:head")
+            {
                 continue;
             }
-            let Node::Element(el) = component.store.take(id) else { unreachable!() };
-            component.store.replace(id, Node::SvelteHead(SvelteHead {
-                id: el.id,
-                span: el.span,
-                fragment: el.fragment,
-            }));
+            let Node::Element(el) = component.store.take(id) else {
+                unreachable!()
+            };
+            component.store.replace(
+                id,
+                Node::SvelteHead(SvelteHead {
+                    id: el.id,
+                    span: el.span,
+                    fragment: el.fragment,
+                }),
+            );
         }
     }
 
@@ -248,16 +258,26 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_window(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:window") {
+            if !component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:window")
+            {
                 continue;
             }
-            let Node::Element(el) = component.store.take(id) else { unreachable!() };
-            component.store.replace(id, Node::SvelteWindow(SvelteWindow {
-                id: el.id,
-                span: el.span,
-                attributes: el.attributes,
-                fragment: el.fragment,
-            }));
+            let Node::Element(el) = component.store.take(id) else {
+                unreachable!()
+            };
+            component.store.replace(
+                id,
+                Node::SvelteWindow(SvelteWindow {
+                    id: el.id,
+                    span: el.span,
+                    attributes: el.attributes,
+                    fragment: el.fragment,
+                }),
+            );
         }
     }
 
@@ -265,16 +285,26 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_document(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:document") {
+            if !component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:document")
+            {
                 continue;
             }
-            let Node::Element(el) = component.store.take(id) else { unreachable!() };
-            component.store.replace(id, Node::SvelteDocument(SvelteDocument {
-                id: el.id,
-                span: el.span,
-                attributes: el.attributes,
-                fragment: el.fragment,
-            }));
+            let Node::Element(el) = component.store.take(id) else {
+                unreachable!()
+            };
+            component.store.replace(
+                id,
+                Node::SvelteDocument(SvelteDocument {
+                    id: el.id,
+                    span: el.span,
+                    attributes: el.attributes,
+                    fragment: el.fragment,
+                }),
+            );
         }
     }
 
@@ -282,16 +312,26 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_body(component: &mut Component) {
         for i in 0..component.fragment.nodes.len() {
             let id = component.fragment.nodes[i];
-            if !component.store.get(id).as_element().is_some_and(|el| el.name == "svelte:body") {
+            if !component
+                .store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:body")
+            {
                 continue;
             }
-            let Node::Element(el) = component.store.take(id) else { unreachable!() };
-            component.store.replace(id, Node::SvelteBody(SvelteBody {
-                id: el.id,
-                span: el.span,
-                attributes: el.attributes,
-                fragment: el.fragment,
-            }));
+            let Node::Element(el) = component.store.take(id) else {
+                unreachable!()
+            };
+            component.store.replace(
+                id,
+                Node::SvelteBody(SvelteBody {
+                    id: el.id,
+                    span: el.span,
+                    attributes: el.attributes,
+                    fragment: el.fragment,
+                }),
+            );
         }
     }
 
@@ -304,18 +344,27 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_element(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
-            if store.get(id).as_element().is_some_and(|el| el.name == "svelte:element") {
-                let Node::Element(mut el) = store.take(id) else { unreachable!() };
+            if store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:element")
+            {
+                let Node::Element(mut el) = store.take(id) else {
+                    unreachable!()
+                };
                 let (tag_span, static_tag) = Self::extract_this_attribute(&mut el.attributes);
                 Self::convert_svelte_element(store, &el.fragment.nodes);
-                store.replace(id, Node::SvelteElement(svelte_ast::SvelteElement {
-                    id: el.id,
-                    span: el.span,
-                    tag_span,
-                    static_tag,
-                    attributes: el.attributes,
-                    fragment: el.fragment,
-                }));
+                store.replace(
+                    id,
+                    Node::SvelteElement(svelte_ast::SvelteElement {
+                        id: el.id,
+                        span: el.span,
+                        tag_span,
+                        static_tag,
+                        attributes: el.attributes,
+                        fragment: el.fragment,
+                    }),
+                );
             } else {
                 extend_child_node_ids(store.get(id), &mut next_level);
             }
@@ -330,15 +379,24 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_svelte_boundary(store: &mut AstStore, node_ids: &[NodeId]) {
         let mut next_level = Vec::new();
         for &id in node_ids {
-            if store.get(id).as_element().is_some_and(|el| el.name == "svelte:boundary") {
-                let Node::Element(el) = store.take(id) else { unreachable!() };
+            if store
+                .get(id)
+                .as_element()
+                .is_some_and(|el| el.name == "svelte:boundary")
+            {
+                let Node::Element(el) = store.take(id) else {
+                    unreachable!()
+                };
                 Self::convert_svelte_boundary(store, &el.fragment.nodes);
-                store.replace(id, Node::SvelteBoundary(SvelteBoundary {
-                    id: el.id,
-                    span: el.span,
-                    attributes: el.attributes,
-                    fragment: el.fragment,
-                }));
+                store.replace(
+                    id,
+                    Node::SvelteBoundary(SvelteBoundary {
+                        id: el.id,
+                        span: el.span,
+                        attributes: el.attributes,
+                        fragment: el.fragment,
+                    }),
+                );
             } else {
                 extend_child_node_ids(store.get(id), &mut next_level);
             }

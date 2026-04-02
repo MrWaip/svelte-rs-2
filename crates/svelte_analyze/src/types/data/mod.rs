@@ -26,10 +26,12 @@ pub use analysis::AnalysisData;
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use codegen_view::CodegenView;
 pub use elements::{
-    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ElementFlags, EventHandlerMode,
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
+    EventHandlerMode,
 };
-pub use expr::{AwaitBindingInfo, DestructureKind, ExprDeps, ExprSite, ExpressionInfo, ExpressionKind};
+pub use expr::{
+    AwaitBindingInfo, DestructureKind, ExprDeps, ExprSite, ExpressionInfo, ExpressionKind,
+};
 pub use fragments::{
     ContentStrategy, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
 };
@@ -38,6 +40,6 @@ pub use props::{PropAnalysis, PropsAnalysis};
 pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use runtime::RuntimePlan;
 pub use template_data::{
-    AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, EachBlockData,
-    SnippetData, TemplateSemanticsData, TitleElementData,
+    AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, EachBlockData, SnippetData,
+    TemplateSemanticsData, TitleElementData,
 };

@@ -228,7 +228,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
             Statement::ImportDeclaration(import) if import.import_kind.is_type() => false,
             Statement::ExportNamedDeclaration(export) if export.export_kind.is_type() => false,
             Statement::ExportAllDeclaration(export) if export.export_kind.is_type() => false,
-            Statement::ImportDeclaration(import) => import.specifiers.as_ref().is_none_or(|s| !s.is_empty()),
+            Statement::ImportDeclaration(import) => {
+                import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
+            }
             Statement::ExportNamedDeclaration(export) => {
                 export.declaration.is_some() || !export.specifiers.is_empty()
             }

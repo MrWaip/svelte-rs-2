@@ -85,11 +85,9 @@ impl<'a> Builder<'a> {
         let statements: Vec<_> = statements.into_iter().collect();
         let is_expr =
             statements.len() == 1 && matches!(&statements[0], Statement::ExpressionStatement(_));
-        let body = self.ast.function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(statements),
-        );
+        let body = self
+            .ast
+            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
         self.ast
             .arrow_function_expression(SPAN, is_expr, false, NONE, params, NONE, body)
     }
@@ -99,11 +97,9 @@ impl<'a> Builder<'a> {
         params: FormalParameters<'a>,
         statements: impl IntoIterator<Item = Statement<'a>>,
     ) -> ArrowFunctionExpression<'a> {
-        let body = self.ast.function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(statements),
-        );
+        let body = self
+            .ast
+            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
         self.ast
             .arrow_function_expression(SPAN, false, false, NONE, params, NONE, body)
     }
@@ -190,11 +186,9 @@ impl<'a> Builder<'a> {
     }
 
     pub fn async_thunk_block(&self, stmts: Vec<Statement<'a>>) -> Expression<'a> {
-        let body = self.ast.function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(stmts),
-        );
+        let body = self
+            .ast
+            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(stmts));
         let arrow = self.ast.arrow_function_expression(
             SPAN,
             false,
@@ -219,11 +213,9 @@ impl<'a> Builder<'a> {
         params: FormalParameters<'a>,
         body_span: Span,
     ) -> Function<'a> {
-        let body = self.ast.alloc_function_body(
-            body_span,
-            self.ast.vec(),
-            self.ast.vec_from_iter(body),
-        );
+        let body =
+            self.ast
+                .alloc_function_body(body_span, self.ast.vec(), self.ast.vec_from_iter(body));
         self.ast.function(
             SPAN,
             FunctionType::FunctionDeclaration,
@@ -244,11 +236,9 @@ impl<'a> Builder<'a> {
         params: FormalParameters<'a>,
         body: Vec<Statement<'a>>,
     ) -> Expression<'a> {
-        let body = self.ast.alloc_function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(body),
-        );
+        let body = self
+            .ast
+            .alloc_function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(body));
         Expression::FunctionExpression(self.alloc(self.ast.function(
             SPAN,
             FunctionType::FunctionExpression,
@@ -271,11 +261,9 @@ impl<'a> Builder<'a> {
         body: Vec<Statement<'a>>,
         is_async: bool,
     ) -> Expression<'a> {
-        let body = self.ast.alloc_function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(body),
-        );
+        let body = self
+            .ast
+            .alloc_function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(body));
         let id = self.ast.binding_identifier(SPAN, self.ast.atom(name));
         Expression::FunctionExpression(self.alloc(self.ast.function(
             SPAN,

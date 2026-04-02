@@ -13,8 +13,8 @@ use oxc_ast_visit::Visit;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::{AnalysisData, types::script::RuneKind};
 use crate::utils::script_info::detect_rune_from_call;
+use crate::{types::script::RuneKind, AnalysisData};
 
 /// Constructor assignments to `this` are valid rune placement targets,
 /// same as variable declarations and class property initializers.
@@ -70,8 +70,12 @@ impl RuneValidator<'_> {
     /// `detect_rune_from_call` only matches known rune names — deprecated forms like
     /// `$state.frozen(...)` are not recognized, so they must be intercepted here first.
     fn check_deprecated_rune(&mut self, call: &CallExpression<'_>) -> bool {
-        let Expression::StaticMemberExpression(member) = &call.callee else { return false };
-        let Expression::Identifier(obj) = &member.object else { return false };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
+        };
+        let Expression::Identifier(obj) = &member.object else {
+            return false;
+        };
         if obj.name != "$state" {
             return false;
         }
@@ -89,7 +93,9 @@ impl RuneValidator<'_> {
             }
             "is" => {
                 self.diags.push(Diagnostic::error(
-                    DiagnosticKind::RuneRemoved { name: "$state.is".into() },
+                    DiagnosticKind::RuneRemoved {
+                        name: "$state.is".into(),
+                    },
                     self.span(call.span),
                 ));
                 true
@@ -97,7 +103,6 @@ impl RuneValidator<'_> {
             _ => false,
         }
     }
-
 }
 
 fn validate_derived_invalid_export(
@@ -112,7 +117,11 @@ fn validate_derived_invalid_export(
         offset,
         diags,
         || DiagnosticKind::DerivedInvalidExport,
-        |data, sym_id| data.scoping.rune_kind(sym_id).is_some_and(|kind| kind.is_derived()),
+        |data, sym_id| {
+            data.scoping
+                .rune_kind(sym_id)
+                .is_some_and(|kind| kind.is_derived())
+        },
     );
 }
 
@@ -190,7 +199,11 @@ fn validate_invalid_default_export(
     let oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(ident) = &export.declaration else {
         return;
     };
-    let Some(sym_id) = ident.reference_id.get().and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id()) else {
+    let Some(sym_id) = ident
+        .reference_id
+        .get()
+        .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
+    else {
         return;
     };
     if predicate(data, sym_id) {
@@ -213,7 +226,10 @@ fn declaration_has_invalid_export(
         let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = &declarator.id else {
             return false;
         };
-        ident.symbol_id.get().is_some_and(|sym_id| predicate(data, sym_id))
+        ident
+            .symbol_id
+            .get()
+            .is_some_and(|sym_id| predicate(data, sym_id))
     })
 }
 
@@ -224,13 +240,15 @@ fn export_specifier_symbol(
     let ModuleExportName::IdentifierReference(ident) = &spec.local else {
         return None;
     };
-    ident.reference_id
+    ident
+        .reference_id
         .get()
         .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
 }
 
 fn is_reassigned_state_export(data: &AnalysisData, sym_id: oxc_semantic::SymbolId) -> bool {
-    data.scoping.rune_kind(sym_id)
+    data.scoping
+        .rune_kind(sym_id)
         .is_some_and(|k| matches!(k, RuneKind::State | RuneKind::StateRaw))
         && data.scoping.is_mutated(sym_id)
 }
@@ -241,7 +259,14 @@ fn validate_state_referenced_locally_derived(
     offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = StateRefLocallyValidator { data, offset, diags, in_state_rune_arg: false, derived_call_depth: 0, _phantom: std::marker::PhantomData };
+    let mut v = StateRefLocallyValidator {
+        data,
+        offset,
+        diags,
+        in_state_rune_arg: false,
+        derived_call_depth: 0,
+        _phantom: std::marker::PhantomData,
+    };
     v.visit_program(program);
 }
 
@@ -261,13 +286,21 @@ struct StateRefLocallyValidator<'a, 'b> {
 
 impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
     fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
-        let Some(ref_id) = ident.reference_id.get() else { return };
-        if self.data.scoping.is_template_reference(ref_id) { return }
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        if self.data.scoping.is_template_reference(ref_id) {
+            return;
+        }
         let reference = self.data.scoping.get_reference(ref_id);
         // Skip if not a read, or if it's a write context (UpdateExpression, compound assignment LHS).
         // Mirrors reference compiler: only warn for pure reads, not read-write operations.
-        if !reference.is_read() || reference.is_write() { return }
-        let Some(sym_id) = reference.symbol_id() else { return };
+        if !reference.is_read() || reference.is_write() {
+            return;
+        }
+        let Some(sym_id) = reference.symbol_id() else {
+            return;
+        };
         let should_warn = match self.data.scoping.rune_kind(sym_id) {
             Some(k) if k.is_derived() => true,
             Some(RuneKind::StateRaw) => true,
@@ -277,14 +310,26 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
             }
             _ => false,
         };
-        if !should_warn { return }
-        let decl_depth = self.data.scoping.function_depth(self.data.scoping.symbol_scope_id(sym_id));
+        if !should_warn {
+            return;
+        }
+        let decl_depth = self
+            .data
+            .scoping
+            .function_depth(self.data.scoping.symbol_scope_id(sym_id));
         // Add derived_call_depth to mirror the reference compiler's function_depth += 1 for $derived:
         // references inside $derived(...) are semantically one level deeper and should not warn.
-        let ref_depth = self.data.scoping.function_depth(reference.scope_id()) + self.derived_call_depth;
-        if ref_depth != decl_depth { return }
+        let ref_depth =
+            self.data.scoping.function_depth(reference.scope_id()) + self.derived_call_depth;
+        if ref_depth != decl_depth {
+            return;
+        }
         let name = self.data.scoping.symbol_name(sym_id);
-        let type_ = if self.in_state_rune_arg { "derived" } else { "closure" };
+        let type_ = if self.in_state_rune_arg {
+            "derived"
+        } else {
+            "closure"
+        };
         self.diags.push(Diagnostic::warning(
             DiagnosticKind::StateReferencedLocally {
                 name: name.to_string(),
@@ -316,7 +361,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         }
     }
 
-    fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
+    fn visit_arrow_function_expression(
+        &mut self,
+        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+    ) {
         let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
         let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
         walk_arrow_function_expression(self, arrow);
@@ -324,7 +372,11 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         self.derived_call_depth = prev_derived_depth;
     }
 
-    fn visit_function(&mut self, func: &oxc_ast::ast::Function<'a>, flags: oxc_semantic::ScopeFlags) {
+    fn visit_function(
+        &mut self,
+        func: &oxc_ast::ast::Function<'a>,
+        flags: oxc_semantic::ScopeFlags,
+    ) {
         let prev_state_arg = std::mem::replace(&mut self.in_state_rune_arg, false);
         let prev_derived_depth = std::mem::replace(&mut self.derived_call_depth, 0);
         walk_function(self, func, flags);
@@ -354,7 +406,10 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             return;
         };
 
-        if matches!(rune, RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy) {
+        if matches!(
+            rune,
+            RuneKind::State | RuneKind::StateRaw | RuneKind::Derived | RuneKind::DerivedBy
+        ) {
             let valid = self.in_var_declarator_init
                 || self.in_class_property_init
                 || self.in_this_assign_rhs;
@@ -403,7 +458,9 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
         if matches!(rune, RuneKind::EffectTracking) && !call.arguments.is_empty() {
             self.diags.push(Diagnostic::error(
-                DiagnosticKind::RuneInvalidArguments { rune: rune.display_name().into() },
+                DiagnosticKind::RuneInvalidArguments {
+                    rune: rune.display_name().into(),
+                },
                 self.span(call.span),
             ));
         }

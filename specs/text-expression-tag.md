@@ -1,10 +1,10 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 4/7 use cases
-- **Missing**: 2 use cases
-- **Next**: fix decoded text semantics for mixed text/expression output, then port template text diagnostics
-- Last updated: 2026-04-01
+- **Working**: 7/7 use cases
+- **Missing**: 0 use cases
+- **Next**: feature complete for current client-side scope; keep parity checks in `/qa` and follow-up audits
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -26,9 +26,9 @@
 - [x] Standalone expression tags compile at root and inside elements
 - [x] Mixed text and expression sequences compile for root, regular elements, and `<title>`
 - [x] SVG whitespace handling works for ignorable inter-element whitespace and `<text>` content
-- [~] Text entities are only correct when the browser decodes a static template; mixed text/expression concatenation currently uses raw source text instead of decoded text
-- [ ] Template validation for invalid text / expression placement is not implemented (`node_invalid_placement`)
-- [ ] Bidirectional control character warnings in text nodes are not implemented
+- [x] Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
+- [x] Template validation rejects invalid text / expression placement with `node_invalid_placement`
+- [x] Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
 
 ## Reference
 
@@ -53,11 +53,11 @@
 
 ## Tasks
 
-- [ ] Parse or store decoded text-node values so runtime text concatenation matches reference semantics for HTML entities
-- [ ] Thread decoded text through lowering/content classification without breaking whitespace-trimming rules
-- [ ] Add template validation for invalid text / expression placement using analyzer-side parent-context checks
-- [ ] Add bidirectional control character warnings for text nodes, including `svelte-ignore` handling
-- [ ] Expand compiler coverage for decoded text and diagnostics once behavior is implemented
+- [x] Parse and store decoded text-node values so runtime text concatenation matches reference semantics for HTML entities
+- [x] Thread decoded text through lowering/content classification without breaking whitespace-trimming rules
+- [x] Add template validation for invalid text / expression placement using analyzer-side parent-context checks
+- [x] Add bidirectional control character warnings for text nodes, including `svelte-ignore` handling
+- [x] Expand compiler coverage for decoded text and diagnostics once behavior is implemented
 
 ## Implementation order
 
@@ -67,7 +67,7 @@
 
 ## Discovered bugs
 
-- OPEN: text participating in runtime concatenation is emitted from raw source slices, so `&amp;` and similar entities remain escaped in output strings instead of decoding to their character values
+- FIXED: text participating in runtime concatenation now uses parser-decoded text payloads, so `&amp;` and similar entities emit decoded characters in runtime strings
 
 ## Test cases
 
@@ -82,3 +82,10 @@
 - `ts_strip_expression_tag`
 - Added in this audit:
 - `text_entity_decoding`
+- `text_entity_decoding_root`
+- `title_entity_decoding`
+- Analyzer unit coverage:
+- `validate_text_invalid_placement`
+- `validate_expression_tag_invalid_placement`
+- `validate_text_bidirectional_control_warning`
+- `validate_text_bidirectional_control_warning_ignored`

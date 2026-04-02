@@ -34,11 +34,9 @@ impl<'a> Builder<'a> {
         key: ast::PropertyKey<'a>,
         body_stmts: Vec<Statement<'a>>,
     ) -> ast::ClassElement<'a> {
-        let body = self.ast.alloc_function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(body_stmts),
-        );
+        let body =
+            self.ast
+                .alloc_function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(body_stmts));
         let func = self.ast.function(
             SPAN,
             FunctionType::FunctionExpression,
@@ -94,11 +92,9 @@ impl<'a> Builder<'a> {
             self.ast.vec_from_array([param]),
             NONE,
         );
-        let body = self.ast.alloc_function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter(body_stmts),
-        );
+        let body =
+            self.ast
+                .alloc_function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(body_stmts));
         let func = self.ast.function(
             SPAN,
             FunctionType::FunctionExpression,
@@ -135,9 +131,12 @@ impl<'a> Builder<'a> {
 
     pub fn this_private_member(&self, name: &str) -> Expression<'a> {
         let this_expr = self.ast.expression_this(SPAN);
-        let field =
-            self.ast
-                .private_field_expression(SPAN, this_expr, self.private_identifier(name), false);
+        let field = self.ast.private_field_expression(
+            SPAN,
+            this_expr,
+            self.private_identifier(name),
+            false,
+        );
         Expression::PrivateFieldExpression(self.alloc(field))
     }
 }

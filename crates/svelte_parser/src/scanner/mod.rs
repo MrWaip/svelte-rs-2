@@ -7,8 +7,8 @@ pub use svelte_ast::is_void;
 use token::{
     AnimateDirective, AttachTagToken, Attribute, AttributeIdentifierType, AttributeValue,
     BindDirective, ClassDirective, Concatenation, ConcatenationPart, ExpressionTag, HTMLAttribute,
-    OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag,
-    StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
+    OnDirectiveLegacy, ScriptTag, StartEachTag, StartIfTag, StartKeyTag, StartTag, StyleDirective,
+    Token, TokenType, TransitionDirective, UseDirective,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -65,7 +65,9 @@ impl<'a> Scanner<'a> {
         while !self.is_at_end() {
             match self.peek() {
                 Some('<') | Some('{') => break,
-                _ => { self.advance(); }
+                _ => {
+                    self.advance();
+                }
             }
         }
     }
@@ -190,13 +192,18 @@ impl<'a> Scanner<'a> {
             } else if AttributeIdentifierType::is_animate_directive(name) {
                 AttributeIdentifierType::AnimateDirective(value_span, value).as_ok()
             } else {
-                Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32)).as_err()
+                Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32))
+                    .as_err()
             }
         } else if start == self.current {
             AttributeIdentifierType::None.as_ok()
         } else {
             let full_span = self.span(start, self.current);
-            AttributeIdentifierType::HTMLAttribute(full_span, self.slice_source(start, self.current)).as_ok()
+            AttributeIdentifierType::HTMLAttribute(
+                full_span,
+                self.slice_source(start, self.current),
+            )
+            .as_ok()
         }
     }
 
@@ -262,7 +269,9 @@ impl<'a> Scanner<'a> {
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(self.span(name_start, self.current)));
+            return Err(Diagnostic::invalid_tag_name(
+                self.span(name_start, self.current),
+            ));
         }
 
         // Handle `svelte:*` special element names (e.g., svelte:options, svelte:head)
@@ -278,10 +287,9 @@ impl<'a> Scanner<'a> {
 
         if !self.match_char('>') {
             // Emit partial StartTag with recovery — parser-level will handle auto-close
-            self.recover(Diagnostic::unterminated_start_tag(self.span(
-                name_start,
-                self.current,
-            )));
+            self.recover(Diagnostic::unterminated_start_tag(
+                self.span(name_start, self.current),
+            ));
 
             self.add_token(TokenType::StartTag(StartTag {
                 attributes,
@@ -349,13 +357,15 @@ impl<'a> Scanner<'a> {
                     AttributeIdentifierType::ClassDirective(span, name) => {
                         self.class_directive(span, name)
                     }
-                    AttributeIdentifierType::StyleDirective(span, _) => {
-                        self.style_directive(span)
+                    AttributeIdentifierType::StyleDirective(span, _) => self.style_directive(span),
+                    AttributeIdentifierType::BindDirective(span, name) => {
+                        self.bind_directive(span, name)
                     }
-                    AttributeIdentifierType::BindDirective(span, name) => self.bind_directive(span, name),
                     AttributeIdentifierType::UseDirective(span, _) => self.use_directive(span),
                     // LEGACY(svelte4): on:directive
-                    AttributeIdentifierType::OnDirectiveLegacy(span, _) => self.on_directive_legacy(span),
+                    AttributeIdentifierType::OnDirectiveLegacy(span, _) => {
+                        self.on_directive_legacy(span)
+                    }
                     AttributeIdentifierType::TransitionDirective(span, prefix) => {
                         self.transition_directive(span, prefix)
                     }
@@ -524,7 +534,11 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse `transition:name|modifier={expr}`, `in:name`, or `out:name`.
-    fn transition_directive(&mut self, mut name_span: Span, prefix: &str) -> Result<Attribute, Diagnostic> {
+    fn transition_directive(
+        &mut self,
+        mut name_span: Span,
+        prefix: &str,
+    ) -> Result<Attribute, Diagnostic> {
         // Consume dotted name segments: transition:a.b.c
         while self.peek() == Some('.') {
             self.advance(); // consume '.'
@@ -662,7 +676,9 @@ impl<'a> Scanner<'a> {
                 has_expression = true;
 
                 if current_pos < self.current {
-                    parts.push(ConcatenationPart::String(self.span(current_pos, self.current)));
+                    parts.push(ConcatenationPart::String(
+                        self.span(current_pos, self.current),
+                    ));
                 }
 
                 let expression_tag = self.expression_tag()?;
@@ -712,7 +728,9 @@ impl<'a> Scanner<'a> {
         let name = self.identifier();
 
         if name.is_empty() {
-            return Err(Diagnostic::invalid_tag_name(self.span(name_start, self.current)));
+            return Err(Diagnostic::invalid_tag_name(
+                self.span(name_start, self.current),
+            ));
         }
 
         // Handle `svelte:*` special element names
@@ -726,7 +744,9 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            self.recover(Diagnostic::unexpected_token(self.span(name_start, self.current)));
+            self.recover(Diagnostic::unexpected_token(
+                self.span(name_start, self.current),
+            ));
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name_span }));
@@ -893,7 +913,10 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(
+                        start as u32,
+                        self.current as u32,
+                    )));
                 }
 
                 self.add_token(TokenType::EndIfTag);
@@ -904,7 +927,10 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(
+                        start as u32,
+                        self.current as u32,
+                    )));
                 }
 
                 self.add_token(TokenType::EndEachTag);
@@ -915,7 +941,10 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(
+                        start as u32,
+                        self.current as u32,
+                    )));
                 }
 
                 self.add_token(TokenType::EndSnippetTag);
@@ -926,7 +955,10 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(
+                        start as u32,
+                        self.current as u32,
+                    )));
                 }
 
                 self.add_token(TokenType::EndKeyTag);
@@ -937,7 +969,10 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
 
                 if !self.match_char('}') {
-                    self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                    self.recover(Diagnostic::unexpected_token(Span::new(
+                        start as u32,
+                        self.current as u32,
+                    )));
                 }
 
                 self.add_token(TokenType::EndAwaitTag);
@@ -989,7 +1024,10 @@ impl<'a> Scanner<'a> {
                     }));
                 } else {
                     if !self.match_char('}') {
-                        self.recover(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+                        self.recover(Diagnostic::unexpected_token(Span::new(
+                            start as u32,
+                            self.current as u32,
+                        )));
                     }
 
                     self.add_token(TokenType::ElseTag(token::ElseTag {
@@ -1091,7 +1129,10 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+            return Err(Diagnostic::unexpected_token(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
         }
 
         self.add_token(TokenType::ScriptTag(ScriptTag {
@@ -1143,7 +1184,10 @@ impl<'a> Scanner<'a> {
         self.skip_whitespace();
 
         if !self.match_char('>') {
-            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+            return Err(Diagnostic::unexpected_token(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
         }
 
         self.add_token(TokenType::StyleTag(token::StyleTag {
@@ -1158,11 +1202,17 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         if !self.match_char('-') {
-            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+            return Err(Diagnostic::unexpected_token(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
         }
 
         if !self.match_char('-') {
-            return Err(Diagnostic::unexpected_token(Span::new(start as u32, self.current as u32)));
+            return Err(Diagnostic::unexpected_token(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
         }
 
         while !self.is_at_end() {
@@ -1220,9 +1270,7 @@ impl<'a> Scanner<'a> {
                 self.skip_whitespace();
                 let expression_span = self.collect_js_expression()?;
 
-                self.add_token(TokenType::HtmlTag(token::HtmlTagToken {
-                    expression_span,
-                }));
+                self.add_token(TokenType::HtmlTag(token::HtmlTagToken { expression_span }));
 
                 Ok(())
             }
@@ -1273,9 +1321,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
 
-                self.add_token(TokenType::DebugTag(token::DebugTagToken {
-                    identifiers,
-                }));
+                self.add_token(TokenType::DebugTag(token::DebugTagToken { identifiers }));
 
                 Ok(())
             }
@@ -1367,7 +1413,9 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 ')' | ']' => {
-                    if depth > 0 { depth -= 1; }
+                    if depth > 0 {
+                        depth -= 1;
+                    }
                     self.advance();
                 }
                 '}' if depth > 0 => {
@@ -1390,7 +1438,8 @@ impl<'a> Scanner<'a> {
                             collection_span = Some(self.span(start_collection_pos, col_end));
                             let idx_leading = after_comma.len() - after_comma.trim_start().len();
                             let idx_start = comma_pos + 1 + idx_leading;
-                            let idx_end = raw_end - (after_comma.len() - after_comma.trim_end().len());
+                            let idx_end =
+                                raw_end - (after_comma.len() - after_comma.trim_end().len());
                             no_as_index_span = Some(self.span(idx_start, idx_end));
                             self.advance(); // consume `}`
                             break;
@@ -1425,7 +1474,8 @@ impl<'a> Scanner<'a> {
         }
 
         let Some(collection_span) = collection_span else {
-            return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32)).as_err();
+            return Diagnostic::unexpected_token(Span::new(self.start as u32, self.current as u32))
+                .as_err();
         };
 
         // last_char is only meaningful when item_span was parsed (collect_each_context sets self.prev)
@@ -1446,7 +1496,11 @@ impl<'a> Scanner<'a> {
             let idx_start = self.current;
             let idx_name = self.identifier();
             if idx_name.is_empty() {
-                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+                return Diagnostic::unexpected_token(Span::new(
+                    self.current as u32,
+                    self.current as u32,
+                ))
+                .as_err();
             }
             index_span = Some(self.span(idx_start, idx_start + idx_name.len()));
             self.skip_whitespace();
@@ -1458,7 +1512,11 @@ impl<'a> Scanner<'a> {
             }
 
             if !self.match_char('}') {
-                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+                return Diagnostic::unexpected_token(Span::new(
+                    self.current as u32,
+                    self.current as u32,
+                ))
+                .as_err();
             }
         } else if last_char == "(" {
             // Key expression directly after item (no index), `(` already consumed
@@ -1466,7 +1524,11 @@ impl<'a> Scanner<'a> {
             self.skip_whitespace();
 
             if !self.match_char('}') {
-                return Diagnostic::unexpected_token(Span::new(self.current as u32, self.current as u32)).as_err();
+                return Diagnostic::unexpected_token(Span::new(
+                    self.current as u32,
+                    self.current as u32,
+                ))
+                .as_err();
             }
         }
         // else: `}` — no index, no key
@@ -1583,9 +1645,18 @@ impl<'a> Scanner<'a> {
             }
 
             match ch {
-                '{' | '(' | '[' => { self.advance(); depth += 1; }
-                '}' if depth > 0 => { self.advance(); depth -= 1; }
-                ')' | ']' if depth > 0 => { self.advance(); depth -= 1; }
+                '{' | '(' | '[' => {
+                    self.advance();
+                    depth += 1;
+                }
+                '}' if depth > 0 => {
+                    self.advance();
+                    depth -= 1;
+                }
+                ')' | ']' if depth > 0 => {
+                    self.advance();
+                    depth -= 1;
+                }
                 '}' if depth == 0 => {
                     // End of tag — no then/catch keyword found
                     expr_end = self.current;
@@ -1597,19 +1668,31 @@ impl<'a> Scanner<'a> {
                     let ws_start = self.current;
                     self.skip_whitespace();
 
-                    if self.is_at_end() { break; }
+                    if self.is_at_end() {
+                        break;
+                    }
 
                     let kw = self.identifier();
 
-                    if (kw == "then" || kw == "catch") && self.peek().is_some_and(|c| c.is_ascii_whitespace() || c == '}') {
+                    if (kw == "then" || kw == "catch")
+                        && self
+                            .peek()
+                            .is_some_and(|c| c.is_ascii_whitespace() || c == '}')
+                    {
                         // Found the keyword — expression ends at whitespace before it
                         expr_end = ws_start;
-                        found_keyword = if kw == "then" { Some("then") } else { Some("catch") };
+                        found_keyword = if kw == "then" {
+                            Some("then")
+                        } else {
+                            Some("catch")
+                        };
                         break;
                     }
                     // Not a keyword — continue scanning (identifier was consumed, that's fine)
                 }
-                _ => { self.advance(); }
+                _ => {
+                    self.advance();
+                }
             }
         }
 
@@ -1717,7 +1800,10 @@ fn is_js_identifier(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
         None => false,
-        Some(c) => (c.is_alphabetic() || c == '_' || c == '$') && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$'),
+        Some(c) => {
+            (c.is_alphabetic() || c == '_' || c == '$')
+                && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        }
     }
 }
 
@@ -1804,7 +1890,10 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
 
         assert!(tokens[0].token_type == TokenType::Comment);
-        assert_eq!(tokens[0].span.source_text(source), "<!-- \nsome comment\n -->");
+        assert_eq!(
+            tokens[0].span.source_text(source),
+            "<!-- \nsome comment\n -->"
+        );
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
@@ -1862,32 +1951,56 @@ mod tests {
                 Attribute::HTMLAttribute(value) => match value.value {
                     AttributeValue::String(span) => span.source_text(source).to_string(),
                     AttributeValue::Empty => String::new(),
-                    AttributeValue::ExpressionTag(ref et) => et.expression_span.source_text(source).to_string(),
-                    AttributeValue::Concatenation(ref c) => {
-                        c.parts.iter().map(|p| match p {
-                            ConcatenationPart::String(span) => format!("({})", span.source_text(source)),
-                            ConcatenationPart::Expression(et) => format!("({{{}}})", et.expression_span.source_text(source)),
-                        }).collect()
+                    AttributeValue::ExpressionTag(ref et) => {
+                        et.expression_span.source_text(source).to_string()
                     }
+                    AttributeValue::Concatenation(ref c) => c
+                        .parts
+                        .iter()
+                        .map(|p| match p {
+                            ConcatenationPart::String(span) => {
+                                format!("({})", span.source_text(source))
+                            }
+                            ConcatenationPart::Expression(et) => {
+                                format!("({{{}}})", et.expression_span.source_text(source))
+                            }
+                        })
+                        .collect(),
                 },
-                Attribute::ExpressionTag(value) => value.expression_span.source_text(source).to_string(),
+                Attribute::ExpressionTag(value) => {
+                    value.expression_span.source_text(source).to_string()
+                }
                 Attribute::ClassDirective(cd) => cd.expression_span.source_text(source).to_string(),
                 Attribute::StyleDirective(sd) => match sd.value {
                     AttributeValue::String(span) => span.source_text(source).to_string(),
                     AttributeValue::Empty => String::new(),
-                    AttributeValue::ExpressionTag(ref et) => et.expression_span.source_text(source).to_string(),
-                    AttributeValue::Concatenation(ref c) => {
-                        c.parts.iter().map(|p| match p {
-                            ConcatenationPart::String(span) => format!("({})", span.source_text(source)),
-                            ConcatenationPart::Expression(et) => format!("({{{}}})", et.expression_span.source_text(source)),
-                        }).collect()
+                    AttributeValue::ExpressionTag(ref et) => {
+                        et.expression_span.source_text(source).to_string()
                     }
+                    AttributeValue::Concatenation(ref c) => c
+                        .parts
+                        .iter()
+                        .map(|p| match p {
+                            ConcatenationPart::String(span) => {
+                                format!("({})", span.source_text(source))
+                            }
+                            ConcatenationPart::Expression(et) => {
+                                format!("({{{}}})", et.expression_span.source_text(source))
+                            }
+                        })
+                        .collect(),
                 },
                 Attribute::BindDirective(bd) => bd.expression_span.source_text(source).to_string(),
                 Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
-                Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
-                Attribute::TransitionDirective(td) => td.expression_span.source_text(source).to_string(),
-                Attribute::AnimateDirective(ad) => ad.expression_span.source_text(source).to_string(),
+                Attribute::OnDirectiveLegacy(od) => {
+                    od.expression_span.source_text(source).to_string()
+                }
+                Attribute::TransitionDirective(td) => {
+                    td.expression_span.source_text(source).to_string()
+                }
+                Attribute::AnimateDirective(ad) => {
+                    ad.expression_span.source_text(source).to_string()
+                }
                 Attribute::AttachTag(at) => at.expression_span.source_text(source).to_string(),
             };
 
@@ -1896,14 +2009,25 @@ mod tests {
         }
     }
 
-    fn assert_start_each_tag(source: &str, token: &Token, expected_collection: &str, expected_item: &str) {
+    fn assert_start_each_tag(
+        source: &str,
+        token: &Token,
+        expected_collection: &str,
+        expected_item: &str,
+    ) {
         let tag = match &token.token_type {
             TokenType::StartEachTag(t) => t,
             _ => panic!("Expected token.type = StartEachTag"),
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
+        assert_eq!(
+            tag.context_span
+                .as_ref()
+                .expect("expected item binding")
+                .source_text(source),
+            expected_item
+        );
         assert!(tag.index_span.is_none(), "expected no index");
     }
 
@@ -1920,7 +2044,13 @@ mod tests {
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
+        assert_eq!(
+            tag.context_span
+                .as_ref()
+                .expect("expected item binding")
+                .source_text(source),
+            expected_item
+        );
         let index = tag.index_span.as_ref().expect("expected index");
         assert_eq!(index.source_text(source), expected_index);
     }
@@ -1945,7 +2075,12 @@ mod tests {
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
-    fn assert_no_as_each_with_index(source: &str, token: &Token, expected_collection: &str, expected_index: &str) {
+    fn assert_no_as_each_with_index(
+        source: &str,
+        token: &Token,
+        expected_collection: &str,
+        expected_index: &str,
+    ) {
         let tag = match &token.token_type {
             TokenType::StartEachTag(t) => t,
             _ => panic!("Expected token.type = StartEachTag"),
@@ -2063,7 +2198,13 @@ mod tests {
         };
 
         assert_eq!(tag.collection_span.source_text(source), expected_collection);
-        assert_eq!(tag.context_span.as_ref().expect("expected item binding").source_text(source), expected_item);
+        assert_eq!(
+            tag.context_span
+                .as_ref()
+                .expect("expected item binding")
+                .source_text(source),
+            expected_item
+        );
         let key = tag.key_span.as_ref().expect("expected key");
         assert_eq!(key.source_text(source), expected_key);
     }
@@ -2088,9 +2229,15 @@ mod tests {
             _ => panic!("Expected StartEachTag"),
         };
         assert_eq!(tag.collection_span.source_text(source), "items");
-        assert_eq!(tag.context_span.as_ref().unwrap().source_text(source), "item");
+        assert_eq!(
+            tag.context_span.as_ref().unwrap().source_text(source),
+            "item"
+        );
         assert_eq!(tag.index_span.as_ref().unwrap().source_text(source), "i");
-        assert_eq!(tag.key_span.as_ref().unwrap().source_text(source), "item.id");
+        assert_eq!(
+            tag.key_span.as_ref().unwrap().source_text(source),
+            "item.id"
+        );
     }
 
     #[test]
@@ -2220,7 +2367,10 @@ mod tests {
         let source = "{#snippet foo(a, b)}content{/snippet}";
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().0;
-        assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
+        assert!(matches!(
+            tokens[0].token_type,
+            TokenType::StartSnippetTag(_)
+        ));
         if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
             assert_eq!(st.expression_span.source_text(source), "foo(a, b)");
         }

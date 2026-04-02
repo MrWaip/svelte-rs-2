@@ -76,6 +76,7 @@ impl<'a> Builder<'a> {
 
     /// `(a, b, ...)` — sequence (comma) expression. Requires ≥2 expressions.
     pub fn seq_expr(&self, exprs: [Expression<'a>; 2]) -> Expression<'a> {
-        self.ast.expression_sequence(SPAN, self.ast.vec_from_iter(exprs))
+        self.ast
+            .expression_sequence(SPAN, self.ast.vec_from_iter(exprs))
     }
 }

@@ -112,9 +112,18 @@ fn single_interpolation() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn text_entity_decoding() {
     assert_compiler("text_entity_decoding");
+}
+
+#[rstest]
+fn text_entity_decoding_root() {
+    assert_compiler("text_entity_decoding_root");
+}
+
+#[rstest]
+fn title_entity_decoding() {
+    assert_compiler("title_entity_decoding");
 }
 
 #[rstest]
@@ -1918,7 +1927,6 @@ fn each_block_no_item_multi() {
 fn each_block_no_item_with_index() {
     assert_compiler("each_block_no_item_with_index");
 }
-
 
 #[rstest]
 fn async_if_basic() {

@@ -1,8 +1,6 @@
-use svelte_span::Span;
-use svelte_ast::{
-    Attribute, AwaitBlock, ConstTag, NodeId,
-};
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
+use svelte_ast::{Attribute, AwaitBlock, ConstTag, NodeId};
+use svelte_span::Span;
 
 pub(crate) struct ReactivityVisitor;
 
@@ -19,7 +17,12 @@ impl TemplateVisitor for ReactivityVisitor {
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
-        if ctx.data.expressions.get(tag.id).is_some_and(|info| info.is_dynamic) {
+        if ctx
+            .data
+            .expressions
+            .get(tag.id)
+            .is_some_and(|info| info.is_dynamic)
+        {
             ctx.data.dynamic_nodes.insert(tag.id);
         }
     }
@@ -38,12 +41,22 @@ impl TemplateVisitor for ReactivityVisitor {
         if parent_kind.is_some_and(|k| k.is_attr()) {
             // For concat parts, use the parent attribute's id for dynamic_attrs marking
             let attr_id = ctx.parent().map_or(node_id, |p| p.id);
-            let in_component = ctx.ancestors()
+            let in_component = ctx
+                .ancestors()
                 .nth(1) // grandparent (skip immediate attr parent)
-                .is_some_and(|gp| matches!(gp.kind, ParentKind::ComponentNode | ParentKind::SvelteBoundary));
+                .is_some_and(|gp| {
+                    matches!(
+                        gp.kind,
+                        ParentKind::ComponentNode | ParentKind::SvelteBoundary
+                    )
+                });
 
             let is_dynamic = ctx.data.attr_expressions.get(node_id).is_some_and(|info| {
-                if in_component { info.has_state } else { info.is_dynamic }
+                if in_component {
+                    info.has_state
+                } else {
+                    info.is_dynamic
+                }
             });
 
             if is_dynamic {
@@ -52,7 +65,10 @@ impl TemplateVisitor for ReactivityVisitor {
                     if let Some(el_id) = ctx.nearest_element() {
                         ctx.data.element_flags.needs_ref.insert(el_id);
                         if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
-                            ctx.data.element_flags.has_dynamic_class_directives.insert(el_id);
+                            ctx.data
+                                .element_flags
+                                .has_dynamic_class_directives
+                                .insert(el_id);
                         }
                     }
                 }
@@ -63,7 +79,12 @@ impl TemplateVisitor for ReactivityVisitor {
         {
             // SvelteElement tag expression (where node_id == parent el.id) is not
             // classified as dynamic_node. Child expressions have their own id.
-            if ctx.data.expressions.get(node_id).is_some_and(|info| info.is_dynamic) {
+            if ctx
+                .data
+                .expressions
+                .get(node_id)
+                .is_some_and(|info| info.is_dynamic)
+            {
                 ctx.data.dynamic_nodes.insert(node_id);
             }
         }

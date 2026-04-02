@@ -36,12 +36,10 @@ pub fn gen_custom_element<'a>(
     let slots = ctx.b.array_from_args(std::iter::empty::<Arg<'_, '_>>());
 
     // -- Arg 4: Accessors array (from exports) --
-    let accessors = ctx
-        .b
-        .array_from_args(ctx.query.exports().iter().map(|e| {
-            let name = e.alias.as_deref().unwrap_or(e.name.as_str());
-            Arg::StrRef(name)
-        }));
+    let accessors = ctx.b.array_from_args(ctx.query.exports().iter().map(|e| {
+        let name = e.alias.as_deref().unwrap_or(e.name.as_str());
+        Arg::StrRef(name)
+    }));
 
     // -- Arg 5: Shadow root config --
     let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeShadowMode::None);

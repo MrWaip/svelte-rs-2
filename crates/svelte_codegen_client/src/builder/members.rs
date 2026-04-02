@@ -22,11 +22,7 @@ impl<'a> Builder<'a> {
             .computed_member_expression(SPAN, object, property, false)
     }
 
-    pub fn static_member(
-        &self,
-        object: Expression<'a>,
-        prop: &str,
-    ) -> StaticMemberExpression<'a> {
+    pub fn static_member(&self, object: Expression<'a>, prop: &str) -> StaticMemberExpression<'a> {
         let property = self.ast.identifier_name(SPAN, self.ast.atom(prop));
         self.ast
             .static_member_expression(SPAN, object, property, false)
@@ -48,11 +44,12 @@ impl<'a> Builder<'a> {
     }
 
     pub fn array_expr(&self, items: impl IntoIterator<Item = Expression<'a>>) -> Expression<'a> {
-        let elements = items
-            .into_iter()
-            .map(ast::ArrayExpressionElement::from);
+        let elements = items.into_iter().map(ast::ArrayExpressionElement::from);
         Expression::ArrayExpression(
-            self.alloc(self.ast.array_expression(SPAN, self.ast.vec_from_iter(elements))),
+            self.alloc(
+                self.ast
+                    .array_expression(SPAN, self.ast.vec_from_iter(elements)),
+            ),
         )
     }
 
@@ -80,14 +77,18 @@ impl<'a> Builder<'a> {
         }
 
         match expr {
-            Expression::StaticMemberExpression(sme) => Expression::ChainExpression(self.alloc(
-                self.ast
-                    .chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
-            )),
-            Expression::ComputedMemberExpression(cme) => Expression::ChainExpression(self.alloc(
-                self.ast
-                    .chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
-            )),
+            Expression::StaticMemberExpression(sme) => Expression::ChainExpression(
+                self.alloc(
+                    self.ast
+                        .chain_expression(SPAN, ChainElement::StaticMemberExpression(sme)),
+                ),
+            ),
+            Expression::ComputedMemberExpression(cme) => Expression::ChainExpression(
+                self.alloc(
+                    self.ast
+                        .chain_expression(SPAN, ChainElement::ComputedMemberExpression(cme)),
+                ),
+            ),
             other => other,
         }
     }

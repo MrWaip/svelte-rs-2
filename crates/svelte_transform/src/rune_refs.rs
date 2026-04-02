@@ -38,9 +38,21 @@ pub fn make_rune_set<'a>(
     let value_arg = Argument::from(value);
     if proxy {
         let true_arg = Argument::from(ast.expression_boolean_literal(SPAN, true));
-        ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg, true_arg]), false)
+        ast.expression_call(
+            SPAN,
+            callee,
+            NONE,
+            ast.vec_from_array([name_arg, value_arg, true_arg]),
+            false,
+        )
     } else {
-        ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg]), false)
+        ast.expression_call(
+            SPAN,
+            callee,
+            NONE,
+            ast.vec_from_array([name_arg, value_arg]),
+            false,
+        )
     }
 }
 
@@ -59,7 +71,8 @@ pub fn make_rune_update<'a>(
     let args = if is_increment {
         ast.vec1(name_arg)
     } else {
-        let delta = Argument::from(ast.expression_numeric_literal(SPAN, -1.0, None, NumberBase::Decimal));
+        let delta =
+            Argument::from(ast.expression_numeric_literal(SPAN, -1.0, None, NumberBase::Decimal));
         ast.vec_from_array([name_arg, delta])
     };
 
@@ -78,9 +91,9 @@ pub fn make_member_get<'a>(alloc: &'a Allocator, signal_name: &str, prop: &str) 
     let ast = AstBuilder::new(alloc);
     let get_call = make_rune_get(alloc, signal_name);
     let property = ast.identifier_name(SPAN, ast.atom(prop));
-    Expression::StaticMemberExpression(ast.alloc(
-        ast.static_member_expression(SPAN, get_call, property, false),
-    ))
+    Expression::StaticMemberExpression(
+        ast.alloc(ast.static_member_expression(SPAN, get_call, property, false)),
+    )
 }
 
 /// Build `$$props.name` — static member expression.
@@ -88,9 +101,9 @@ pub fn make_props_access<'a>(alloc: &'a Allocator, prop_name: &str) -> Expressio
     let ast = AstBuilder::new(alloc);
     let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
     let property = ast.identifier_name(SPAN, ast.atom(prop_name));
-    Expression::StaticMemberExpression(ast.alloc(
-        ast.static_member_expression(SPAN, object, property, false),
-    ))
+    Expression::StaticMemberExpression(
+        ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
+    )
 }
 
 /// Build `$.eager(() => expr)` — wrap the argument in a thunk and call $.eager.
@@ -108,7 +121,13 @@ pub fn make_eager_pending<'a>(alloc: &'a Allocator) -> Expression<'a> {
     let eager_callee = make_dollar_member(&ast, "eager");
     // $.pending (identifier, not call — thunk optimization of () => $.pending())
     let pending_ref = make_dollar_member(&ast, "pending");
-    ast.expression_call(SPAN, eager_callee, NONE, ast.vec1(Argument::from(pending_ref)), false)
+    ast.expression_call(
+        SPAN,
+        eager_callee,
+        NONE,
+        ast.vec1(Argument::from(pending_ref)),
+        false,
+    )
 }
 
 /// Build `() => expr`, with unthunk optimization for zero-arg calls to identifiers.
@@ -117,7 +136,10 @@ fn make_thunk<'a>(ast: &AstBuilder<'a>, expr: Expression<'a>) -> Expression<'a> 
     if let Expression::CallExpression(call) = &expr {
         if call.arguments.is_empty()
             && !call.optional
-            && matches!(&call.callee, Expression::Identifier(_) | Expression::StaticMemberExpression(_))
+            && matches!(
+                &call.callee,
+                Expression::Identifier(_) | Expression::StaticMemberExpression(_)
+            )
         {
             // Return just the callee
             if let Expression::CallExpression(call) = expr {
@@ -132,9 +154,11 @@ fn make_thunk<'a>(ast: &AstBuilder<'a>, expr: Expression<'a>) -> Expression<'a> 
         ast.vec(),
         NONE,
     );
-    let body = ast.alloc(ast.function_body(SPAN, ast.vec(), ast.vec1(
-        ast.statement_expression(SPAN, expr),
-    )));
+    let body = ast.alloc(ast.function_body(
+        SPAN,
+        ast.vec(),
+        ast.vec1(ast.statement_expression(SPAN, expr)),
+    ));
     ast.expression_arrow_function(SPAN, true, false, NONE, params, NONE, body)
 }
 
@@ -148,7 +172,13 @@ pub fn make_store_set<'a>(
     let callee = make_dollar_member(&ast, "store_set");
     let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
     let value_arg = Argument::from(value);
-    ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, value_arg]), false)
+    ast.expression_call(
+        SPAN,
+        callee,
+        NONE,
+        ast.vec_from_array([name_arg, value_arg]),
+        false,
+    )
 }
 
 /// Build `$.update_store(base_name, $dollar_name()[, -1])` or `$.update_pre_store(...)`.
@@ -160,7 +190,11 @@ pub fn make_store_update<'a>(
     is_increment: bool,
 ) -> Expression<'a> {
     let ast = AstBuilder::new(alloc);
-    let fn_name = if is_prefix { "update_pre_store" } else { "update_store" };
+    let fn_name = if is_prefix {
+        "update_pre_store"
+    } else {
+        "update_store"
+    };
     let callee = make_dollar_member(&ast, fn_name);
     let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
     let thunk_call = make_thunk_call(alloc, dollar_name);
@@ -169,7 +203,8 @@ pub fn make_store_update<'a>(
     let args = if is_increment {
         ast.vec_from_array([name_arg, thunk_arg])
     } else {
-        let delta = Argument::from(ast.expression_numeric_literal(SPAN, -1.0, None, NumberBase::Decimal));
+        let delta =
+            Argument::from(ast.expression_numeric_literal(SPAN, -1.0, None, NumberBase::Decimal));
         ast.vec_from_array([name_arg, thunk_arg, delta])
     };
 
@@ -196,7 +231,13 @@ pub fn make_store_mutate<'a>(
     let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
     let mutation_arg = Argument::from(mutation);
     let untracked_arg = Argument::from(untracked);
-    ast.expression_call(SPAN, callee, NONE, ast.vec_from_array([name_arg, mutation_arg, untracked_arg]), false)
+    ast.expression_call(
+        SPAN,
+        callee,
+        NONE,
+        ast.vec_from_array([name_arg, mutation_arg, untracked_arg]),
+        false,
+    )
 }
 
 /// Expand a compound assignment operator into a binary/logical expression.
@@ -301,7 +342,7 @@ pub fn replace_expr_root_in_simple_target<'a>(
 pub(crate) fn make_dollar_member<'a>(ast: &AstBuilder<'a>, method: &str) -> Expression<'a> {
     let object = ast.expression_identifier(SPAN, ast.atom("$"));
     let property = ast.identifier_name(SPAN, ast.atom(method));
-    Expression::StaticMemberExpression(ast.alloc(
-        ast.static_member_expression(SPAN, object, property, false),
-    ))
+    Expression::StaticMemberExpression(
+        ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
+    )
 }

@@ -72,7 +72,11 @@ impl<'a> ParserResult<'a> {
         self.exprs.remove(&handle)
     }
 
-    pub fn replace_expr(&mut self, handle: ExprHandle, expr: Expression<'a>) -> Option<Expression<'a>> {
+    pub fn replace_expr(
+        &mut self,
+        handle: ExprHandle,
+        expr: Expression<'a>,
+    ) -> Option<Expression<'a>> {
         self.exprs.insert(handle, expr)
     }
 

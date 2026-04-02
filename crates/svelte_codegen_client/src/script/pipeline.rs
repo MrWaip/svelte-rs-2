@@ -37,7 +37,14 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
 
     let allocator = ctx.b.ast.allocator;
     let component_source = &ctx.query.component.source;
-    let script_content_start = ctx.query.component.script.as_ref().unwrap().content_span.start;
+    let script_content_start = ctx
+        .query
+        .component
+        .script
+        .as_ref()
+        .unwrap()
+        .content_span
+        .start;
     let filename = ctx.state.filename;
     let ignore_data = ctx.query.view.ignore_data();
 
@@ -50,7 +57,11 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             .map(|pa| {
                 pa.props
                     .iter()
-                    .map(|p| p.default_text.as_deref().map(|text| b.parse_expression(text)))
+                    .map(|p| {
+                        p.default_text
+                            .as_deref()
+                            .map(|text| b.parse_expression(text))
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -134,7 +145,9 @@ fn transform_script_text<'a>(
     ignore_data: &IgnoreData,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
-        SourceType::default().with_typescript(true).with_module(true)
+        SourceType::default()
+            .with_typescript(true)
+            .with_module(true)
     } else {
         SourceType::mjs()
     };
@@ -147,7 +160,11 @@ fn transform_script_text<'a>(
         Some(pg) => pg
             .props
             .iter()
-            .map(|prop| prop.default_text.as_deref().map(|text| b.parse_expression(text)))
+            .map(|prop| {
+                prop.default_text
+                    .as_deref()
+                    .map(|text| b.parse_expression(text))
+            })
             .collect(),
         None => Vec::new(),
     };
@@ -228,7 +245,12 @@ fn run_transform<'a>(
             async_derived_pending: transformer.async_derived_pending,
             ignore_data: transformer.ignore_data,
         });
-        super::traverse::wrap_derived_thunks(&b, &mut program, &transformer.derived_pending, dev_ctx.as_ref());
+        super::traverse::wrap_derived_thunks(
+            &b,
+            &mut program,
+            &transformer.derived_pending,
+            dev_ctx.as_ref(),
+        );
     }
 
     let has_tracing = transformer.has_tracing;

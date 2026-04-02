@@ -21,16 +21,23 @@ pub(crate) fn emit_debug_tags<'a>(
         let tag = ctx.debug_tag(id);
         let identifiers = tag.identifiers.clone();
 
-        let props: Vec<ObjProp<'a>> = identifiers.iter().enumerate().map(|(_i, span)| {
-            let name = ctx.query.component.source_text(*span);
-            let name_alloc: &str = ctx.b.alloc_str(name);
-            // Use pre-transformed expression (with $.get() wrapping for each-block vars)
-            let ident_expr = ctx.state.parsed.expr_handle(span.start)
-                .and_then(|handle| ctx.state.parsed.take_expr(handle))
-                .unwrap_or_else(|| ctx.b.rid_expr(name_alloc));
-            let snapshot = ctx.b.call_expr("$.snapshot", [Arg::Expr(ident_expr)]);
-            ObjProp::KeyValue(name_alloc, snapshot)
-        }).collect();
+        let props: Vec<ObjProp<'a>> = identifiers
+            .iter()
+            .enumerate()
+            .map(|(_i, span)| {
+                let name = ctx.query.component.source_text(*span);
+                let name_alloc: &str = ctx.b.alloc_str(name);
+                // Use pre-transformed expression (with $.get() wrapping for each-block vars)
+                let ident_expr = ctx
+                    .state
+                    .parsed
+                    .expr_handle(span.start)
+                    .and_then(|handle| ctx.state.parsed.take_expr(handle))
+                    .unwrap_or_else(|| ctx.b.rid_expr(name_alloc));
+                let snapshot = ctx.b.call_expr("$.snapshot", [Arg::Expr(ident_expr)]);
+                ObjProp::KeyValue(name_alloc, snapshot)
+            })
+            .collect();
 
         let obj = ctx.b.object_expr(props);
         let log_call = ctx.b.call_stmt("console.log", [Arg::Expr(obj)]);

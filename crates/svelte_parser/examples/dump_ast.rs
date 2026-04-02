@@ -4,7 +4,9 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn main() {
-    let input = std::env::args().nth(1).expect("Usage: dump_ast <js-expression>");
+    let input = std::env::args()
+        .nth(1)
+        .expect("Usage: dump_ast <js-expression>");
 
     let alloc = Allocator::default();
     let source_type = SourceType::mjs();

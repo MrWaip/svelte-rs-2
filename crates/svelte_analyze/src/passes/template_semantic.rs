@@ -1,8 +1,7 @@
 use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
 use oxc_semantic::{
-    NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags,
-    ScopeFlags,
+    NodeId as OxcNodeId, Reference as OxcReference, ReferenceFlags as OxcReferenceFlags, ScopeFlags,
 };
 use svelte_ast::{BindDirective, ClassDirective, NodeId, StyleDirective, StyleDirectiveValue};
 
@@ -33,13 +32,23 @@ impl TemplateVisitor for TemplateSemanticVisitor {
 
     fn visit_class_directive(&mut self, dir: &ClassDirective, ctx: &mut VisitContext<'_>) {
         if dir.expression_span.is_none() {
-            materialize_shorthand_reference(dir.id, dir.name.as_str(), ctx, OxcReferenceFlags::Read);
+            materialize_shorthand_reference(
+                dir.id,
+                dir.name.as_str(),
+                ctx,
+                OxcReferenceFlags::Read,
+            );
         }
     }
 
     fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_>) {
         if matches!(dir.value, StyleDirectiveValue::Shorthand) {
-            materialize_shorthand_reference(dir.id, dir.name.as_str(), ctx, OxcReferenceFlags::Read);
+            materialize_shorthand_reference(
+                dir.id,
+                dir.name.as_str(),
+                ctx,
+                OxcReferenceFlags::Read,
+            );
         }
     }
 
@@ -50,7 +59,9 @@ impl TemplateVisitor for TemplateSemanticVisitor {
         ctx: &mut VisitContext<'_>,
     ) {
         // bind:value={name} — top-level identifier gets Write reference
-        let bind_write = ctx.parent().is_some_and(|p| p.kind == ParentKind::BindDirective)
+        let bind_write = ctx
+            .parent()
+            .is_some_and(|p| p.kind == ParentKind::BindDirective)
             && matches!(expr, Expression::Identifier(_));
         let mut collector = SemanticCollector {
             scoping: &mut ctx.data.scoping,
@@ -182,7 +193,10 @@ impl<'a> Visit<'a> for SemanticCollector<'_> {
     // -- References --
 
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        let flags = self.current_ref_flags.take().unwrap_or(OxcReferenceFlags::Read);
+        let flags = self
+            .current_ref_flags
+            .take()
+            .unwrap_or(OxcReferenceFlags::Read);
         let mut reference = OxcReference::new(OxcNodeId::DUMMY, self.scope, flags);
         if let Some(sym_id) = self.scoping.find_binding(self.scope, ident.name.as_str()) {
             reference.set_symbol_id(sym_id);
@@ -206,7 +220,11 @@ impl<'a> Visit<'a> for SemanticCollector<'_> {
     }
 
     fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
-        if !self.current_ref_flags.as_ref().is_some_and(|f| f.is_write()) {
+        if !self
+            .current_ref_flags
+            .as_ref()
+            .is_some_and(|f| f.is_write())
+        {
             self.current_ref_flags = Some(OxcReferenceFlags::Write);
         }
         walk::walk_simple_assignment_target(self, it);

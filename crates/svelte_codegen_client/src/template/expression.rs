@@ -4,10 +4,12 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_ast_visit::VisitMut;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::{ExprHandle, ExprSite, ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart};
+use svelte_analyze::ExpressionKind;
+use svelte_analyze::{
+    ExprHandle, ExprSite, ExpressionInfo, FragmentItem, FragmentKey, LoweredTextPart,
+};
 use svelte_ast::ConcatPart as AstConcatPart;
 use svelte_ast::NodeId;
-use svelte_analyze::ExpressionKind;
 
 use crate::builder::{Arg, AssignLeft, TemplatePart};
 use crate::context::Ctx;
@@ -92,8 +94,6 @@ fn finalize_await_exprs<'a>(ctx: &Ctx<'a>, ignore_node: Option<NodeId>, expr: &m
     let mut finalizer = AwaitExprFinalizer { ctx, ignore_node };
     finalizer.visit_expression(expr);
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Thunk builder — `() => expr` with rune transforms
@@ -189,7 +189,10 @@ pub(crate) fn build_attr_concat<'a>(
         match part {
             AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
             AstConcatPart::Dynamic { span, .. } => {
-                let expr = ctx.state.parsed.expr_handle(span.start)
+                let expr = ctx
+                    .state
+                    .parsed
+                    .expr_handle(span.start)
                     .map(|handle| get_concat_part_expr(ctx, handle))
                     .unwrap_or_else(|| ctx.b.str_expr(""));
                 tpl_parts.push(TemplatePart::Expr(expr));
@@ -293,7 +296,8 @@ impl<'a> TemplateMemoState<'a> {
     }
 
     pub(crate) fn async_param_expr(&self, ctx: &Ctx<'a>, index: usize) -> Expression<'a> {
-        ctx.b.rid_expr(&format!("${}", self.sync_values.len() + index))
+        ctx.b
+            .rid_expr(&format!("${}", self.sync_values.len() + index))
     }
 
     pub(crate) fn sync_values_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
@@ -312,18 +316,21 @@ impl<'a> TemplateMemoState<'a> {
         if self.async_values.is_empty() {
             ctx.b.void_zero_expr()
         } else {
-            ctx.b.array_expr(self.async_values.drain(..).map(|expr| async_value_thunk(ctx, expr)))
+            ctx.b.array_expr(
+                self.async_values
+                    .drain(..)
+                    .map(|expr| async_value_thunk(ctx, expr)),
+            )
         }
     }
 
     pub(crate) fn blockers_expr(&mut self, ctx: &Ctx<'a>) -> Expression<'a> {
-        let mut all_blockers: Vec<Expression<'a>> = self.blockers
+        let mut all_blockers: Vec<Expression<'a>> = self
+            .blockers
             .iter()
             .map(|&idx| {
-                ctx.b.computed_member_expr(
-                    ctx.b.rid_expr("$$promises"),
-                    ctx.b.num_expr(idx as f64),
-                )
+                ctx.b
+                    .computed_member_expr(ctx.b.rid_expr("$$promises"), ctx.b.num_expr(idx as f64))
             })
             .collect();
         all_blockers.extend(self.extra_blockers.drain(..));
@@ -366,7 +373,8 @@ pub(crate) fn emit_effect_call<'a>(
 fn async_value_thunk<'a>(ctx: &Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
     if let Expression::AwaitExpression(await_expr) = expr {
         let inner = await_expr.unbox().argument;
-        ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
+        ctx.b
+            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
     } else {
         ctx.b.async_arrow_expr_body(expr)
     }
@@ -397,14 +405,18 @@ pub(crate) fn emit_text_update<'a>(
                         .expr_deps(ExprSite::Node(*id))
                         .unwrap_or_else(|| panic!("missing expression deps for {:?}", id));
                     for idx in deps.blockers {
-                        if !blockers.contains(&idx) { blockers.push(idx); }
+                        if !blockers.contains(&idx) {
+                            blockers.push(idx);
+                        }
                     }
                     extra_blockers.extend(ctx.const_tag_blocker_exprs(*id));
                 }
             }
             blockers.sort_unstable();
         }
-        let set = ctx.b.call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
+        let set = ctx
+            .b
+            .call_stmt("$.set_text", [Arg::Ident(node_name), Arg::Expr(expr)]);
         emit_template_effect_with_blockers(ctx, vec![set], blockers, extra_blockers, body);
     } else {
         body.push(ctx.b.assign_stmt(
@@ -413,7 +425,6 @@ pub(crate) fn emit_text_update<'a>(
         ));
     }
 }
-
 
 /// Emit `$.template_effect(callback, sync_values?, async_values?, blockers?)`.
 /// `script_blockers`: indices into `$$promises` (script-level async).
@@ -436,8 +447,6 @@ pub(crate) fn emit_template_effect_with_blockers<'a>(
     deps.extra_blockers.extend(extra_blockers);
     emit_effect_call(ctx, "$.template_effect", eff, &mut deps, body);
 }
-
-
 
 /// Emit `$.next()` or `$.next(N)` for trailing static siblings after the last named var.
 pub(crate) fn emit_trailing_next<'a>(
@@ -463,9 +472,16 @@ pub(crate) fn emit_trailing_next<'a>(
 pub(crate) fn item_is_dynamic(item: &FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         FragmentItem::TextConcat { parts, .. } => parts_are_dynamic(parts, ctx),
-        FragmentItem::Element(id) | FragmentItem::ComponentNode(id) | FragmentItem::IfBlock(id) | FragmentItem::EachBlock(id) | FragmentItem::RenderTag(id) | FragmentItem::HtmlTag(id) | FragmentItem::KeyBlock(id) | FragmentItem::SvelteElement(id) | FragmentItem::SvelteBoundary(id) | FragmentItem::AwaitBlock(id) => {
-            ctx.is_dynamic(*id)
-        }
+        FragmentItem::Element(id)
+        | FragmentItem::ComponentNode(id)
+        | FragmentItem::IfBlock(id)
+        | FragmentItem::EachBlock(id)
+        | FragmentItem::RenderTag(id)
+        | FragmentItem::HtmlTag(id)
+        | FragmentItem::KeyBlock(id)
+        | FragmentItem::SvelteElement(id)
+        | FragmentItem::SvelteBoundary(id)
+        | FragmentItem::AwaitBlock(id) => ctx.is_dynamic(*id),
     }
 }
 
@@ -474,7 +490,9 @@ pub(crate) fn item_has_local_blockers(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
         return false;
     };
     parts.iter().any(|part| {
-        let LoweredTextPart::Expr(id) = part else { return false };
+        let LoweredTextPart::Expr(id) = part else {
+            return false;
+        };
         ctx.expression(*id).is_some_and(|info| {
             info.ref_symbols
                 .iter()
@@ -483,14 +501,21 @@ pub(crate) fn item_has_local_blockers(item: &FragmentItem, ctx: &Ctx<'_>) -> boo
     })
 }
 
-pub(crate) fn build_fragment_local_blockers<'a>(ctx: &Ctx<'a>, key: &FragmentKey) -> Vec<Expression<'a>> {
+pub(crate) fn build_fragment_local_blockers<'a>(
+    ctx: &Ctx<'a>,
+    key: &FragmentKey,
+) -> Vec<Expression<'a>> {
     let mut out = Vec::new();
     let mut seen_syms = FxHashSet::default();
     let items = &ctx.lowered_fragment(key).items;
     for item in items {
-        let FragmentItem::TextConcat { parts, .. } = item else { continue };
+        let FragmentItem::TextConcat { parts, .. } = item else {
+            continue;
+        };
         for part in parts {
-            let LoweredTextPart::Expr(id) = part else { continue };
+            let LoweredTextPart::Expr(id) = part else {
+                continue;
+            };
             if let Some(info) = ctx.expression(*id) {
                 for sym in &info.ref_symbols {
                     if seen_syms.insert(*sym) {
@@ -541,10 +566,9 @@ pub(crate) fn emit_memoized_text_effect<'a>(
     } else {
         ctx.b.params(param_names.iter().map(|s| s.as_str()))
     };
-    let set_text = ctx.b.call_stmt(
-        "$.set_text",
-        [Arg::Ident(text_name), Arg::Expr(expr)],
-    );
+    let set_text = ctx
+        .b
+        .call_stmt("$.set_text", [Arg::Ident(text_name), Arg::Expr(expr)]);
     let callback = ctx.b.arrow_expr(params, [set_text]);
     emit_effect_call(ctx, "$.template_effect", callback, &mut deps, body);
 }
@@ -571,7 +595,13 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
     body: &mut Vec<Statement<'a>>,
 ) {
     if memo_attrs.is_empty() {
-        emit_template_effect_with_blockers(ctx, regular_updates, script_blockers, extra_blockers, body);
+        emit_template_effect_with_blockers(
+            ctx,
+            regular_updates,
+            script_blockers,
+            extra_blockers,
+            body,
+        );
         return;
     }
 
@@ -583,7 +613,13 @@ pub(crate) fn emit_template_effect_with_memo<'a>(
 
     for (i, memo) in memo_attrs.into_iter().enumerate() {
         param_names.push(format!("${i}"));
-        memo_data.push((memo.attr_id, memo.setter_fn, memo.el_name, memo.attr_name, memo.expr));
+        memo_data.push((
+            memo.attr_id,
+            memo.setter_fn,
+            memo.el_name,
+            memo.attr_name,
+            memo.expr,
+        ));
     }
 
     // Build getter thunks and setter stmts (needs references to param_names)

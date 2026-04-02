@@ -1,10 +1,12 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{Attribute, ComponentNode, Element, Node, is_mathml, is_svg, is_void};
+use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, Node};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::types::data::{ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode};
+use crate::types::data::{
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode,
+};
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) struct ElementFlagsVisitor<'src> {
@@ -26,7 +28,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
         if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
             ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::ElementInvalidSelfClosingTag { name: el.name.clone() },
+                DiagnosticKind::ElementInvalidSelfClosingTag {
+                    name: el.name.clone(),
+                },
                 el.span,
             ));
         }
@@ -38,9 +42,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
         // <textarea>: detect expression children
         if el.name == "textarea" && !el.fragment.nodes.is_empty() {
-            let has_expr_children = el.fragment.nodes.iter().any(|&id| {
-                matches!(ctx.store.get(id), Node::ExpressionTag(_))
-            });
+            let has_expr_children = el
+                .fragment
+                .nodes
+                .iter()
+                .any(|&id| matches!(ctx.store.get(id), Node::ExpressionTag(_)));
             if has_expr_children {
                 if has_value_attr {
                     ctx.warnings_mut().push(Diagnostic::error(
@@ -48,7 +54,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         el.span,
                     ));
                 } else {
-                    ctx.data.element_flags.needs_textarea_value_lowering.insert(el.id);
+                    ctx.data
+                        .element_flags
+                        .needs_textarea_value_lowering
+                        .insert(el.id);
                 }
             }
         }
@@ -57,25 +66,38 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if el.name == "option" && !has_value_attr && el.fragment.nodes.len() == 1 {
             let child_id = el.fragment.nodes[0];
             if matches!(ctx.store.get(child_id), Node::ExpressionTag(_)) {
-                ctx.data.element_flags.option_synthetic_value_expr.insert(el.id, child_id);
+                ctx.data
+                    .element_flags
+                    .option_synthetic_value_expr
+                    .insert(el.id, child_id);
             }
         }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
-        let Some(el_id) = ctx.nearest_element() else { return };
+        let Some(el_id) = ctx.nearest_element() else {
+            return;
+        };
         match attr {
             Attribute::StringAttribute(sa) if sa.name == "class" => {
-                ctx.data.element_flags.static_class.insert(el_id, self.source_text(sa.value_span).to_string());
+                ctx.data
+                    .element_flags
+                    .static_class
+                    .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::StringAttribute(sa) if sa.name == "style" => {
-                ctx.data.element_flags.static_style.insert(el_id, self.source_text(sa.value_span).to_string());
+                ctx.data
+                    .element_flags
+                    .static_style
+                    .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::SpreadAttribute(_) => {
                 ctx.data.element_flags.has_spread.insert(el_id);
             }
             Attribute::ClassDirective(cd) => {
-                ctx.data.element_flags.class_directive_info
+                ctx.data
+                    .element_flags
+                    .class_directive_info
                     .get_or_default(el_id)
                     .push(ClassDirectiveInfo {
                         id: cd.id,
@@ -84,7 +106,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     });
             }
             Attribute::StyleDirective(sd) => {
-                ctx.data.element_flags.style_directives
+                ctx.data
+                    .element_flags
+                    .style_directives
                     .get_or_default(el_id)
                     .push(sd.clone());
             }
@@ -96,7 +120,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.element_flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
-                    let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw) {
+                    let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw)
+                    {
                         (base, true)
                     } else {
                         (raw, false)
@@ -107,7 +132,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     } else {
                         EventHandlerMode::Direct { capture, passive }
                     };
-                    ctx.data.element_flags.event_handler_mode.insert(ea.id, mode);
+                    ctx.data
+                        .element_flags
+                        .event_handler_mode
+                        .insert(ea.id, mode);
                 }
             }
             Attribute::BindDirective(bd) => {
@@ -151,7 +179,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 },
                 Attribute::Shorthand(a) => {
                     let name = self.source_text(a.expression_span).trim().to_string();
-                    ComponentPropKind::Shorthand { attr_id: a.id, name }
+                    ComponentPropKind::Shorthand {
+                        attr_id: a.id,
+                        name,
+                    }
                 }
                 Attribute::SpreadAttribute(a) => ComponentPropKind::Spread { attr_id: a.id },
                 Attribute::BindDirective(b) if b.name == "this" => {
@@ -159,7 +190,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 }
                 Attribute::BindDirective(b) => {
                     let root = data.scoping.root_scope_id();
-                    let mode = data.scoping.find_binding(root, &b.name)
+                    let mode = data
+                        .scoping
+                        .find_binding(root, &b.name)
                         .map(|sym| {
                             if data.scoping.is_prop_source(sym) {
                                 ComponentBindMode::PropSource
@@ -180,7 +213,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 _ => continue,
             };
             let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());
-            data.element_flags.component_props
+            data.element_flags
+                .component_props
                 .get_or_default(cn.id)
                 .push(ComponentPropInfo { kind, is_dynamic });
         }

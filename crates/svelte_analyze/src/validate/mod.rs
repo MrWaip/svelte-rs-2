@@ -3,10 +3,12 @@ mod runes;
 use oxc_ast::ast::Program;
 use svelte_diagnostics::Diagnostic;
 
-use crate::{AnalysisData, types::data::ParserResult};
+use crate::{types::data::ParserResult, AnalysisData};
 
 pub fn validate(data: &AnalysisData, parsed: &ParserResult, diags: &mut Vec<Diagnostic>) {
-    let Some(program) = &parsed.program else { return };
+    let Some(program) = &parsed.program else {
+        return;
+    };
     let offset = parsed.script_content_span.map_or(0, |s| s.start);
 
     validate_program(data, program, offset, diags);

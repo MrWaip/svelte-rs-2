@@ -28,7 +28,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] `{@html}` — [spec](specs/html-tag.md)
 - [ ] `{@const}` — [spec](specs/const-tag.md)
 - [ ] `{@debug}` — [spec](specs/debug-tag.md)
-- [ ] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
+- [x] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
 - [ ] Experimental async — [spec](specs/experimental-async.md)
 
 ## Attributes & Spreads

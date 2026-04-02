@@ -12,8 +12,8 @@
 //! by that time dispatch_stmt has already created the bindings via OXC Visit.
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingIdentifier, BindingPattern, Expression,
-    Statement, VariableDeclarator,
+    ArrowFunctionExpression, BindingIdentifier, BindingPattern, Expression, Statement,
+    VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use svelte_ast::{Attribute, ConstTag, EachBlock, Node, SnippetBlock};
@@ -28,30 +28,46 @@ pub(crate) struct TemplateSideTablesVisitor<'c> {
 }
 
 /// Extract the first VariableDeclarator from a parsed statement handle.
-fn get_declarator<'a>(ctx: &VisitContext<'a>, handle: StmtHandle) -> Option<&'a VariableDeclarator<'a>> {
-    ctx.parsed()?
-        .stmt(handle)
-        .and_then(|stmt| match stmt {
-            Statement::VariableDeclaration(decl) => decl.declarations.first(),
-            _ => None,
-        })
+fn get_declarator<'a>(
+    ctx: &VisitContext<'a>,
+    handle: StmtHandle,
+) -> Option<&'a VariableDeclarator<'a>> {
+    ctx.parsed()?.stmt(handle).and_then(|stmt| match stmt {
+        Statement::VariableDeclaration(decl) => decl.declarations.first(),
+        _ => None,
+    })
 }
 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
-        if let Some(handle) = block.context_span.and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start))) {
-            ctx.data.template_semantics.each_context_stmt_handles.insert(block.id, handle);
+        if let Some(handle) = block
+            .context_span
+            .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
+        {
+            ctx.data
+                .template_semantics
+                .each_context_stmt_handles
+                .insert(block.id, handle);
         }
-        if let Some(handle) = block.index_span.and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start))) {
-            ctx.data.template_semantics.each_index_stmt_handles.insert(block.id, handle);
+        if let Some(handle) = block
+            .index_span
+            .and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start)))
+        {
+            ctx.data
+                .template_semantics
+                .each_index_stmt_handles
+                .insert(block.id, handle);
         }
-        let is_destructured = block.context_span
+        let is_destructured = block
+            .context_span
             .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
             .and_then(|handle| get_declarator(ctx, handle))
             .is_some_and(|d| !matches!(&d.id, BindingPattern::BindingIdentifier(_)));
 
         if is_destructured {
-            let child_scope = ctx.data.scoping
+            let child_scope = ctx
+                .data
+                .scoping
                 .fragment_scope(&FragmentKey::EachBody(block.id))
                 .expect("EachBody scope must exist");
             // $$item is synthetic — no OXC AST node for it
@@ -64,7 +80,9 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
         if block.body.nodes.iter().any(|&nid| {
             if let Node::Element(el) = ctx.store.get(nid) {
-                el.attributes.iter().any(|a| matches!(a, Attribute::AnimateDirective(_)))
+                el.attributes
+                    .iter()
+                    .any(|a| matches!(a, Attribute::AnimateDirective(_)))
             } else {
                 false
             }
@@ -74,7 +92,9 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
-        let child_scope = ctx.data.scoping
+        let child_scope = ctx
+            .data
+            .scoping
             .fragment_scope(&FragmentKey::EachBody(block.id))
             .expect("EachBody scope must exist");
 
@@ -82,11 +102,15 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
         if is_destructured {
             // Destructured context: name is always "$$item"
-            ctx.data.each_blocks.context_names.insert(block.id, "$$item".to_string());
+            ctx.data
+                .each_blocks
+                .context_names
+                .insert(block.id, "$$item".to_string());
 
             // Default bindings use $.derived_safe_equal (signals), non-default use getters.
             if let Some(parsed) = ctx.parsed() {
-                if let Some(stmt) = block.context_span
+                if let Some(stmt) = block
+                    .context_span
                     .and_then(|cs| parsed.stmt_handle(cs.start))
                     .and_then(|handle| parsed.stmt(handle))
                 {
@@ -98,21 +122,26 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         } else {
-            let ctx_name = block.context_span
+            let ctx_name = block
+                .context_span
                 .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
                 .and_then(|handle| get_declarator(ctx, handle))
                 .and_then(|d| d.id.get_binding_identifier())
                 .map(|ident| ident.name.as_str());
 
             if let Some(ctx_name) = ctx_name {
-                ctx.data.each_blocks.context_names.insert(block.id, ctx_name.to_string());
+                ctx.data
+                    .each_blocks
+                    .context_names
+                    .insert(block.id, ctx_name.to_string());
 
                 if let Some(ctx_sym) = ctx.data.scoping.find_binding(child_scope, ctx_name) {
                     ctx.data.scoping.mark_each_block_var(ctx_sym);
 
                     // key_is_item: key expression resolves to the same symbol as context
                     if let Some(key_span) = block.key_span {
-                        let is_key_item = ctx.parsed()
+                        let is_key_item = ctx
+                            .parsed()
                             .and_then(|p| p.expr_handle(key_span.start))
                             .and_then(|handle| ctx.parsed().and_then(|p| p.expr(handle)))
                             .and_then(|expr| match expr {
@@ -131,7 +160,8 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         }
 
         if let Some(idx_span) = block.index_span {
-            let idx_name = ctx.parsed()
+            let idx_name = ctx
+                .parsed()
                 .and_then(|p| p.stmt_handle(idx_span.start))
                 .and_then(|handle| get_declarator(ctx, handle))
                 .and_then(|d| d.id.get_binding_identifier())
@@ -154,8 +184,14 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     }
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
-        if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(block.expression_span.start)) {
-            ctx.data.template_semantics.snippet_stmt_handles.insert(block.id, handle);
+        if let Some(handle) = ctx
+            .parsed()
+            .and_then(|p| p.stmt_handle(block.expression_span.start))
+        {
+            ctx.data
+                .template_semantics
+                .snippet_stmt_handles
+                .insert(block.id, handle);
         }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
@@ -167,7 +203,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .stmt_handle(block.expression_span.start)
                 .and_then(|handle| parsed.stmt(handle))
             {
-                let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping, in_default: false };
+                let mut marker = SnippetParamMarker {
+                    scoping: &mut ctx.data.scoping,
+                    in_default: false,
+                };
                 marker.visit_statement(stmt);
             }
         }

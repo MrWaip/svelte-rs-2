@@ -12,21 +12,92 @@ pub fn is_void(name: &str) -> bool {
 /// Elements that belong to the SVG namespace.
 /// Matches the reference Svelte compiler's `SVG_ELEMENTS` list.
 const SVG_ELEMENTS: &[&str] = &[
-    "altGlyph", "altGlyphDef", "altGlyphItem", "animate", "animateColor",
-    "animateMotion", "animateTransform", "circle", "clipPath", "color-profile",
-    "cursor", "defs", "desc", "discard", "ellipse", "feBlend", "feColorMatrix",
-    "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting",
-    "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA",
-    "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge",
-    "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting",
-    "feSpotLight", "feTile", "feTurbulence", "filter", "font", "font-face",
-    "font-face-format", "font-face-name", "font-face-src", "font-face-uri",
-    "foreignObject", "g", "glyph", "glyphRef", "hatch", "hatchpath", "hkern",
-    "image", "line", "linearGradient", "marker", "mask", "mesh", "meshgradient",
-    "meshpatch", "meshrow", "metadata", "missing-glyph", "mpath", "path", "pattern",
-    "polygon", "polyline", "radialGradient", "rect", "set", "solidcolor", "stop",
-    "svg", "switch", "symbol", "text", "textPath", "tref", "tspan", "unknown",
-    "use", "view", "vkern",
+    "altGlyph",
+    "altGlyphDef",
+    "altGlyphItem",
+    "animate",
+    "animateColor",
+    "animateMotion",
+    "animateTransform",
+    "circle",
+    "clipPath",
+    "color-profile",
+    "cursor",
+    "defs",
+    "desc",
+    "discard",
+    "ellipse",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDistantLight",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "fePointLight",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+    "filter",
+    "font",
+    "font-face",
+    "font-face-format",
+    "font-face-name",
+    "font-face-src",
+    "font-face-uri",
+    "foreignObject",
+    "g",
+    "glyph",
+    "glyphRef",
+    "hatch",
+    "hatchpath",
+    "hkern",
+    "image",
+    "line",
+    "linearGradient",
+    "marker",
+    "mask",
+    "mesh",
+    "meshgradient",
+    "meshpatch",
+    "meshrow",
+    "metadata",
+    "missing-glyph",
+    "mpath",
+    "path",
+    "pattern",
+    "polygon",
+    "polyline",
+    "radialGradient",
+    "rect",
+    "set",
+    "solidcolor",
+    "stop",
+    "svg",
+    "switch",
+    "symbol",
+    "text",
+    "textPath",
+    "tref",
+    "tspan",
+    "unknown",
+    "use",
+    "view",
+    "vkern",
 ];
 
 pub fn is_svg(name: &str) -> bool {
@@ -35,10 +106,36 @@ pub fn is_svg(name: &str) -> bool {
 
 /// Elements that belong to the MathML namespace.
 const MATHML_ELEMENTS: &[&str] = &[
-    "annotation", "annotation-xml", "maction", "math", "merror", "mfrac", "mi",
-    "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mprescripts",
-    "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msubsup", "msup",
-    "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "semantics",
+    "annotation",
+    "annotation-xml",
+    "maction",
+    "math",
+    "merror",
+    "mfrac",
+    "mi",
+    "mmultiscripts",
+    "mn",
+    "mo",
+    "mover",
+    "mpadded",
+    "mphantom",
+    "mprescripts",
+    "mroot",
+    "mrow",
+    "ms",
+    "mspace",
+    "msqrt",
+    "mstyle",
+    "msub",
+    "msubsup",
+    "msup",
+    "mtable",
+    "mtd",
+    "mtext",
+    "mtr",
+    "munder",
+    "munderover",
+    "semantics",
 ];
 
 pub fn is_mathml(name: &str) -> bool {
@@ -73,7 +170,13 @@ pub struct Component {
 }
 
 impl Component {
-    pub fn new(source: String, fragment: Fragment, store: AstStore, script: Option<Script>, css: Option<RawBlock>) -> Self {
+    pub fn new(
+        source: String,
+        fragment: Fragment,
+        store: AstStore,
+        script: Option<Script>,
+        css: Option<RawBlock>,
+    ) -> Self {
         Self {
             fragment,
             store,
@@ -196,12 +299,20 @@ pub struct ErrorNode {
 pub struct Text {
     pub id: NodeId,
     pub span: Span,
+    pub decoded: Option<String>,
 }
 
 impl Text {
-    /// Get the text value from source.
-    pub fn value<'a>(&self, source: &'a str) -> &'a str {
+    /// Returns the original source slice for diagnostics and span-based lookups.
+    pub fn raw_value<'a>(&self, source: &'a str) -> &'a str {
         &source[self.span.start as usize..self.span.end as usize]
+    }
+
+    /// Returns decoded text content when entities were normalized during parsing.
+    pub fn value<'a>(&'a self, source: &'a str) -> &'a str {
+        self.decoded
+            .as_deref()
+            .unwrap_or_else(|| self.raw_value(source))
     }
 }
 
@@ -852,7 +963,9 @@ impl AstStore {
 
     /// Create a store pre-allocated for the expected number of nodes.
     pub fn with_capacity(cap: usize) -> Self {
-        Self { nodes: Vec::with_capacity(cap) }
+        Self {
+            nodes: Vec::with_capacity(cap),
+        }
     }
 
     /// Push a template node into the store. Sets the node's id to match its index.
@@ -867,7 +980,10 @@ impl AstStore {
     /// Fills with a placeholder — must never be accessed via `get()`.
     pub fn reserve(&mut self) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
-        self.nodes.push(Node::Error(ErrorNode { id, span: Span::new(0, 0) }));
+        self.nodes.push(Node::Error(ErrorNode {
+            id,
+            span: Span::new(0, 0),
+        }));
         id
     }
 
@@ -885,7 +1001,10 @@ impl AstStore {
     pub fn take(&mut self, id: NodeId) -> Node {
         std::mem::replace(
             &mut self.nodes[id.0 as usize],
-            Node::Error(ErrorNode { id, span: Span::new(0, 0) }),
+            Node::Error(ErrorNode {
+                id,
+                span: Span::new(0, 0),
+            }),
         )
     }
 

@@ -118,8 +118,11 @@ pub(crate) fn gen_transition_directive<'a>(
         .unwrap();
     let name_thunk = ctx.b.thunk(name_expr);
 
-    let mut args: Vec<Arg<'a, '_>> =
-        vec![Arg::Num(flags as f64), Arg::Ident(el_name), Arg::Expr(name_thunk)];
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::Num(flags as f64),
+        Arg::Ident(el_name),
+        Arg::Expr(name_thunk),
+    ];
 
     if td.expression_span.is_some() {
         let expr = get_attr_expr(ctx, attr_id);

@@ -1,7 +1,7 @@
 use oxc_span::{GetSpan, GetSpanMut};
 
-use super::inspect::{is_inspect_call, is_inspect_trace_call};
 use super::super::ScriptTransformer;
+use super::inspect::{is_inspect_call, is_inspect_trace_call};
 
 impl<'a> ScriptTransformer<'_, 'a> {
     pub(super) fn process_statement_block(
@@ -41,10 +41,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
     }
 
-    fn strip_prod_inspect(
-        &self,
-        stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>,
-    ) {
+    fn strip_prod_inspect(&self, stmts: &mut oxc_allocator::Vec<'a, oxc_ast::ast::Statement<'a>>) {
         if self.dev {
             return;
         }

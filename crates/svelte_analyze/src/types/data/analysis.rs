@@ -118,22 +118,40 @@ impl AnalysisData {
             .unwrap_or_else(|| panic!("no expr handle for attr {:?}", id))
     }
     pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.const_tag_stmt_handles.get(id).copied()
+        self.template_semantics
+            .const_tag_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.snippet_stmt_handles.get(id).copied()
+        self.template_semantics
+            .snippet_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.each_context_stmt_handles.get(id).copied()
+        self.template_semantics
+            .each_context_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.each_index_stmt_handles.get(id).copied()
+        self.template_semantics
+            .each_index_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.await_value_stmt_handles.get(id).copied()
+        self.template_semantics
+            .await_value_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics.await_error_stmt_handles.get(id).copied()
+        self.template_semantics
+            .await_error_stmt_handles
+            .get(id)
+            .copied()
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template_semantics.node_ref_symbols(id)
@@ -352,7 +370,8 @@ impl AnalysisData {
                 }
                 FragmentItem::IfBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::IfConsequent(*id), syms)
                         || self.fragment_references_any_symbol(&FragmentKey::IfAlternate(*id), syms)
                     {
                         return true;
@@ -361,7 +380,8 @@ impl AnalysisData {
                 FragmentItem::EachBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
                         || self.fragment_references_any_symbol(&FragmentKey::EachBody(*id), syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms)
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::EachFallback(*id), syms)
                     {
                         return true;
                     }
@@ -373,7 +393,8 @@ impl AnalysisData {
                 }
                 FragmentItem::KeyBlock(id) => {
                     if self.node_expr_references_syms(*id, syms)
-                        || self.fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms)
+                        || self
+                            .fragment_references_any_symbol(&FragmentKey::KeyBlockBody(*id), syms)
                     {
                         return true;
                     }
@@ -389,10 +410,9 @@ impl AnalysisData {
                     }
                 }
                 FragmentItem::SvelteBoundary(id) => {
-                    if self.fragment_references_any_symbol(
-                        &FragmentKey::SvelteBoundaryBody(*id),
-                        syms,
-                    ) {
+                    if self
+                        .fragment_references_any_symbol(&FragmentKey::SvelteBoundaryBody(*id), syms)
+                    {
                         return true;
                     }
                 }

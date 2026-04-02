@@ -8,10 +8,10 @@ use svelte_ast::{Attribute, Element, NodeId};
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
-use super::bind::{gen_bind_directive, BindPlacement, emit_bind_group_value};
+use super::bind::{emit_bind_group_value, gen_bind_directive, BindPlacement};
 use super::events::{
-    build_event_handler_s5, dev_event_handler, gen_use_directive, gen_on_directive_legacy,
-    gen_transition_directive, gen_animate_directive, gen_attach_tag,
+    build_event_handler_s5, dev_event_handler, gen_animate_directive, gen_attach_tag,
+    gen_on_directive_legacy, gen_transition_directive, gen_use_directive,
 };
 use super::expression::{build_attr_concat, get_attr_expr, MemoAttr};
 
@@ -89,10 +89,10 @@ pub(crate) fn process_attr<'a>(
         }
         Attribute::ExpressionAttribute(a) if a.name == "autofocus" => {
             let val = get_attr_expr(ctx, attr_id);
-            init.push(ctx.b.call_stmt(
-                "$.autofocus",
-                [Arg::Ident(el_name), Arg::Expr(val)],
-            ));
+            init.push(
+                ctx.b
+                    .call_stmt("$.autofocus", [Arg::Ident(el_name), Arg::Expr(val)]),
+            );
         }
         Attribute::ExpressionAttribute(a) => {
             let (attr_has_call, attr_needs_memo) = ctx
@@ -100,10 +100,12 @@ pub(crate) fn process_attr<'a>(
                 .map(|deps| (deps.has_call(), deps.needs_memo))
                 .unwrap_or((false, false));
             if let Some(raw_event_name) = a.event_name.as_deref() {
-                let mode = ctx.event_handler_mode(attr_id)
+                let mode = ctx
+                    .event_handler_mode(attr_id)
                     .unwrap_or_else(|| panic!("missing event_handler_mode for attr {:?}", attr_id));
                 let event_name = svelte_analyze::strip_capture_event(raw_event_name)
-                    .unwrap_or(raw_event_name).to_string();
+                    .unwrap_or(raw_event_name)
+                    .to_string();
 
                 let expr_offset = a.expression_span.start;
                 let val = get_attr_expr(ctx, attr_id);
@@ -131,7 +133,11 @@ pub(crate) fn process_attr<'a>(
                             Arg::Expr(handler),
                         ];
                         if capture || passive {
-                            args.push(if capture { Arg::Bool(true) } else { Arg::Expr(ctx.b.void_zero_expr()) });
+                            args.push(if capture {
+                                Arg::Bool(true)
+                            } else {
+                                Arg::Expr(ctx.b.void_zero_expr())
+                            });
                         }
                         if passive {
                             args.push(Arg::Bool(true));
@@ -165,61 +171,61 @@ pub(crate) fn process_attr<'a>(
                     expr: val,
                 });
             } else if a.name == "value" && tag_name == "input" {
-                target.push(ctx.b.call_stmt(
-                    "$.set_value",
-                    [Arg::Ident(el_name), Arg::Expr(val)],
-                ));
+                target.push(
+                    ctx.b
+                        .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(val)]),
+                );
             } else if a.name == "style" {
-                target.push(ctx.b.call_stmt(
-                    "$.set_style",
-                    [Arg::Ident(el_name), Arg::Expr(val)],
-                ));
+                target.push(
+                    ctx.b
+                        .call_stmt("$.set_style", [Arg::Ident(el_name), Arg::Expr(val)]),
+                );
             } else {
                 target.push(ctx.b.call_stmt(
                     "$.set_attribute",
-                    [
-                        Arg::Ident(el_name),
-                        Arg::StrRef(&a.name),
-                        Arg::Expr(val),
-                    ],
+                    [Arg::Ident(el_name), Arg::StrRef(&a.name), Arg::Expr(val)],
                 ));
             }
         }
         Attribute::ConcatenationAttribute(a) => {
             let val = build_attr_concat(ctx, attr_id, &a.parts);
             if a.name == "style" {
-                target.push(ctx.b.call_stmt(
-                    "$.set_style",
-                    [Arg::Ident(el_name), Arg::Expr(val)],
-                ));
+                target.push(
+                    ctx.b
+                        .call_stmt("$.set_style", [Arg::Ident(el_name), Arg::Expr(val)]),
+                );
             } else {
                 target.push(ctx.b.call_stmt(
                     "$.set_attribute",
-                    [
-                        Arg::Ident(el_name),
-                        Arg::StrRef(&a.name),
-                        Arg::Expr(val),
-                    ],
+                    [Arg::Ident(el_name), Arg::StrRef(&a.name), Arg::Expr(val)],
                 ));
             }
         }
         Attribute::Shorthand(a) => {
             let val = get_attr_expr(ctx, attr_id);
-            let name = ctx.query.component.source_text(a.expression_span).to_string();
+            let name = ctx
+                .query
+                .component
+                .source_text(a.expression_span)
+                .to_string();
             target.push(ctx.b.call_stmt(
                 "$.set_attribute",
                 [Arg::Ident(el_name), Arg::Str(name), Arg::Expr(val)],
             ));
         }
         Attribute::BindDirective(bind) => {
-            if let Some(placement) = gen_bind_directive(ctx, bind, el_name, tag_name, has_use_directive) {
+            if let Some(placement) =
+                gen_bind_directive(ctx, bind, el_name, tag_name, has_use_directive)
+            {
                 match placement {
                     BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),
                     BindPlacement::Init(stmt) => directive_init.push(stmt),
                 }
             }
         }
-        Attribute::SpreadAttribute(_) | Attribute::ClassDirective(_) | Attribute::StyleDirective(_) => {
+        Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_) => {
             // Spread handled by process_attrs_spread; class/style directives by dedicated functions
         }
         Attribute::UseDirective(ud) => {
@@ -241,12 +247,12 @@ pub(crate) fn process_attr<'a>(
     }
 }
 
-fn build_class_directives_object<'a>(
-    ctx: &mut Ctx<'a>,
-    el_id: NodeId,
-) -> Option<Expression<'a>> {
+fn build_class_directives_object<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Option<Expression<'a>> {
     let dir_snapshot: Vec<_> = match ctx.class_directive_info(el_id) {
-        Some(dirs) => dirs.iter().map(|cd| (cd.id, cd.name.clone(), cd.has_expression)).collect(),
+        Some(dirs) => dirs
+            .iter()
+            .map(|cd| (cd.id, cd.name.clone(), cd.has_expression))
+            .collect(),
         None => return None,
     };
 
@@ -285,7 +291,8 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     // --- Build class value ---
     let class_value = if has_class_attr {
-        let class_attr_id = ctx.class_attr_id(el_id)
+        let class_attr_id = ctx
+            .class_attr_id(el_id)
             .expect("has_class_attribute set but no class attr id");
 
         let mut expr = get_attr_expr(ctx, class_attr_id);
@@ -323,10 +330,9 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
                     Arg::Expr(dir_obj),
                 ],
             );
-            let assign = ctx.b.assign_expr(
-                AssignLeft::Ident(classes_name.clone()),
-                set_class_call,
-            );
+            let assign = ctx
+                .b
+                .assign_expr(AssignLeft::Ident(classes_name.clone()), set_class_call);
             init.push(ctx.b.let_stmt(&classes_name));
             update.push(ctx.b.expr_stmt(assign));
         } else {
@@ -381,7 +387,11 @@ pub(crate) fn process_style_directives<'a>(
 
     for sd in &style_dirs {
         let name = &sd.name;
-        let target = if sd.important { &mut important_props } else { &mut normal_props };
+        let target = if sd.important {
+            &mut important_props
+        } else {
+            &mut normal_props
+        };
 
         match &sd.value {
             StyleDirectiveValue::Shorthand => {
@@ -411,7 +421,8 @@ pub(crate) fn process_style_directives<'a>(
     } else {
         let normal_obj = ctx.b.object_expr(normal_props);
         let important_obj = ctx.b.object_expr(important_props);
-        ctx.b.array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
+        ctx.b
+            .array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
     };
 
     let styles_name = ctx.gen_ident("styles");
@@ -426,10 +437,9 @@ pub(crate) fn process_style_directives<'a>(
         ],
     );
 
-    let assign = ctx.b.assign_expr(
-        AssignLeft::Ident(styles_name.clone()),
-        set_style_call,
-    );
+    let assign = ctx
+        .b
+        .assign_expr(AssignLeft::Ident(styles_name.clone()), set_style_call);
 
     init.push(ctx.b.let_stmt(&styles_name));
     update.push(ctx.b.expr_stmt(assign));
@@ -443,15 +453,18 @@ fn build_style_concat<'a>(
     _attr_id: NodeId,
     parts: &[svelte_ast::ConcatPart],
 ) -> Expression<'a> {
-    use crate::builder::TemplatePart;
     use super::expression::get_concat_part_expr;
+    use crate::builder::TemplatePart;
 
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
         match part {
             svelte_ast::ConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
             svelte_ast::ConcatPart::Dynamic { span, .. } => {
-                let expr = ctx.state.parsed.expr_handle(span.start)
+                let expr = ctx
+                    .state
+                    .parsed
+                    .expr_handle(span.start)
                     .map(|handle| get_concat_part_expr(ctx, handle))
                     .unwrap_or_else(|| ctx.b.str_expr(""));
                 tpl_parts.push(TemplatePart::Expr(expr));
@@ -537,7 +550,7 @@ pub(crate) fn process_attrs_spread<'a>(
                 continue;
             }
             Attribute::ClassDirective(_) => continue,
-        Attribute::StyleDirective(_) => continue,
+            Attribute::StyleDirective(_) => continue,
             Attribute::UseDirective(_) => continue,
             // LEGACY(svelte4): on:directive handled separately
             Attribute::OnDirectiveLegacy(_) => continue,
@@ -571,7 +584,13 @@ pub(crate) fn process_attrs_spread<'a>(
             let name = &sd.name;
             match &sd.value {
                 StyleDirectiveValue::Shorthand => {
-                    style_props.push(build_directive_prop(ctx, sd.id, name, ctx.b.rid_expr(name), true));
+                    style_props.push(build_directive_prop(
+                        ctx,
+                        sd.id,
+                        name,
+                        ctx.b.rid_expr(name),
+                        true,
+                    ));
                 }
                 StyleDirectiveValue::Expression(_) => {
                     let parsed = get_attr_expr(ctx, sd.id);
@@ -599,7 +618,10 @@ pub(crate) fn process_attrs_spread<'a>(
     if !props.is_empty() {
         let obj = ctx.b.object_expr(props);
         let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
-        init.push(ctx.b.call_stmt("$.attribute_effect", [Arg::Ident(el_name), Arg::Expr(arrow)]));
+        init.push(ctx.b.call_stmt(
+            "$.attribute_effect",
+            [Arg::Ident(el_name), Arg::Expr(arrow)],
+        ));
     }
 }
 
