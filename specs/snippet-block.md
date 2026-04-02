@@ -32,6 +32,8 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 14. [ ] `snippet_parameter_assignment` — error on assignment to snippet param (deferred to Tier 5b)
 
 ### Deferred
+- [ ] Nested object destructuring in snippet params: `{#snippet foo({ a: { b } })}` (silently skipped, binding lost — codegen produces wrong output)
+- [ ] Nested array destructuring in snippet params: `{#snippet foo({ a: [x, y] })}` (same)
 - SSR snippet codegen
 - `snippet_invalid_rest_parameter` validation (rest params in snippet are an error in reference)
 - `snippet_shadowing_prop` / `snippet_conflict` validation (Tier 5)

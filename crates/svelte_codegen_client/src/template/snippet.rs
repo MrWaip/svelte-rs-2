@@ -32,22 +32,15 @@ pub(crate) fn gen_snippet_block<'a>(
         .snippet_stmt_handle(id)
         .and_then(|h| ctx.state.parsed.take_stmt(h));
 
-    // Save/restore snippet param names for nested snippet correctness.
-    let saved_params = std::mem::replace(&mut ctx.state.snippet_param_names, Vec::new());
-
     // Build formal parameters and any inline declarations from destructured params.
+    // The stmt handle must always be present — the parser sets it for every snippet block.
+    let stmt = parsed_stmt.unwrap_or_else(|| {
+        panic!("snippet block {:?} has no pre-parsed statement — parser invariant broken", id)
+    });
     let mut declarations: Vec<Statement<'a>> = Vec::new();
-    let params = if let Some(ref stmt) = parsed_stmt {
-        build_snippet_params_from_parsed(ctx, stmt, &mut declarations)
-    } else {
-        // Fallback: plain identifier params only (should not occur in normal flow).
-        let flat_names = ctx.snippet_params(id).to_vec();
-        build_snippet_params(ctx, &flat_names)
-    };
+    let params = build_snippet_params_from_parsed(ctx, &stmt, &mut declarations);
 
     let body_stmts = gen_fragment(ctx, FragmentKey::SnippetBody(id));
-
-    ctx.state.snippet_param_names = saved_params;
 
     let mut all_stmts = prepend_stmts;
     if ctx.state.dev {
@@ -325,39 +318,3 @@ fn emit_array_destructuring<'a>(
     let _ = alloc; // used via clone_in in AssignmentPattern arms above
 }
 
-/// Build FormalParameters: `($$anchor, name = $.noop, ...)`
-/// Used as fallback when no parsed stmt is available.
-fn build_snippet_params<'a>(
-    ctx: &Ctx<'a>,
-    param_names: &[String],
-) -> FormalParameters<'a> {
-    use oxc_ast::ast;
-
-    let b = &ctx.b;
-    let mut params = Vec::new();
-
-    // $$anchor (no default)
-    let anchor_pattern = b.ast.binding_pattern_binding_identifier(SPAN, b.ast.atom("$$anchor"));
-    params.push(b.ast.formal_parameter(
-        SPAN, b.ast.vec(), anchor_pattern,
-        oxc_ast::NONE, oxc_ast::NONE, false, None, false, false,
-    ));
-
-    // Each snippet param: name = $.noop
-    for name in param_names {
-        let default_expr = b.static_member_expr(b.rid_expr("$"), "noop");
-        let inner_pattern = b.ast.binding_pattern_binding_identifier(SPAN, b.ast.atom(name.as_str()));
-        let pattern = b.ast.binding_pattern_assignment_pattern(SPAN, inner_pattern, default_expr);
-        params.push(b.ast.formal_parameter(
-            SPAN, b.ast.vec(), pattern,
-            oxc_ast::NONE, oxc_ast::NONE, false, None, false, false,
-        ));
-    }
-
-    b.ast.formal_parameters(
-        SPAN,
-        ast::FormalParameterKind::ArrowFormalParameters,
-        b.ast.vec_from_iter(params),
-        oxc_ast::NONE,
-    )
-}
