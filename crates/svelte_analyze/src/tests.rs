@@ -1205,6 +1205,29 @@ let x = $derived.by(fn1, fn2);
 }
 
 #[test]
+fn validate_derived_invalid_export() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let total = $derived(count * 2);
+export { total };
+</script>"#,
+    );
+    assert_has_error(&diags, "derived_invalid_export");
+}
+
+#[test]
+fn validate_state_referenced_locally_for_derived() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+let total = $derived(count * 2);
+const snapshot = total;
+</script>"#,
+    );
+    assert_has_warning(&diags, "state_referenced_locally");
+}
+
+#[test]
 #[ignore = "missing: rune validation parity"]
 fn validate_effect_invalid_placement_fn_arg() {
     let diags = analyze_with_diags(

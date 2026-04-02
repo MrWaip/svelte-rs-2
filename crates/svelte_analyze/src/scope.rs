@@ -126,9 +126,31 @@ impl ComponentScoping {
         self.scoping.symbol_scope_id(id)
     }
 
+    pub fn symbol_span(&self, id: SymbolId) -> oxc_span::Span {
+        self.scoping.symbol_span(id)
+    }
+
     /// Get the declared name of a symbol.
     pub fn symbol_name(&self, id: SymbolId) -> &str {
         self.scoping.symbol_name(id)
+    }
+
+    pub fn resolved_references(&self, id: SymbolId) -> impl Iterator<Item = &OxcReference> {
+        self.scoping.get_resolved_references(id)
+    }
+
+    pub fn function_depth(&self, mut scope: ScopeId) -> usize {
+        let mut depth = 0usize;
+        loop {
+            if self.scoping.scope_flags(scope).is_function() {
+                depth += 1;
+            }
+            let Some(parent) = self.scoping.scope_parent_id(scope) else {
+                break;
+            };
+            scope = parent;
+        }
+        depth
     }
 
     // -- Rune tracking --
@@ -149,6 +171,10 @@ impl ComponentScoping {
 
     pub fn rune_kind(&self, id: SymbolId) -> Option<RuneKind> {
         self.runes.get(&id).map(|r| r.kind)
+    }
+
+    pub fn rune_symbols(&self) -> impl Iterator<Item = (SymbolId, RuneKind)> + '_ {
+        self.runes.iter().map(|(sym_id, rune)| (*sym_id, rune.kind))
     }
 
     pub fn is_rune(&self, id: SymbolId) -> bool {
@@ -389,6 +415,10 @@ impl ComponentScoping {
 
     pub fn fragment_scope(&self, key: &FragmentKey) -> Option<ScopeId> {
         self.fragment_scopes.get(key).copied()
+    }
+
+    pub fn is_template_scope(&self, scope_id: ScopeId) -> bool {
+        self.template_scope_set.contains(&scope_id)
     }
 
     pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
