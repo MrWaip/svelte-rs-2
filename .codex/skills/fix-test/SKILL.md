@@ -5,6 +5,8 @@ description: Diagnose and fix a single failing compiler test case. Use when the 
 
 # Fix Single Test
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 ## 1) Reproduce and read the failure
 
 Run:
@@ -39,6 +41,8 @@ If needed, inspect the corresponding reference compiler path in `reference/compi
 Use `svelte-reference-map` when you need the file mapping.
 
 ## 4) Implement the minimal correct fix
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 - keep the change scoped to the named test unless investigation proves a shared root cause
 - prefer existing accessors and enums over ad hoc conditions

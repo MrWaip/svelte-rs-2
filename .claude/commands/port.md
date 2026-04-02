@@ -5,6 +5,8 @@ argument-hint: "[feature-description or path/to/spec.md]"
 
 # Port Svelte feature: $ARGUMENTS
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 Reference Svelte compiler is in `reference/compiler/`. Our Rust compiler is in `crates/svelte_*`.
 
 The command argument is either:
@@ -110,6 +112,8 @@ Produce a concrete plan:
 If the feature requires changes that don't fit the existing architecture (new crate, new pattern, new phase) — flag this explicitly and wait for approval. Do not improvise structural changes.
 
 Write the plan to `specs/<feature-name>.md` following the `spec-template` skill. Current state section goes FIRST.
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 **Present the plan and wait for approval before proceeding.**
 

@@ -5,6 +5,8 @@ description: Fix an existing codebase problem such as a bug, workaround, hack, m
 
 # Improve Existing Code
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 ## 1) Understand the problem
 
 If the input is a file path, read the file and locate the issue. If it is a description, search the repo for the relevant code.
@@ -26,6 +28,8 @@ Answer:
 2. what the correct architectural fix is
 3. whether JS output should change
 4. how many files must change
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 If the fix is large, break it into bounded steps instead of mixing multiple problems together.
 

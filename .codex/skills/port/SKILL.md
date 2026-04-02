@@ -5,6 +5,8 @@ description: Spec-driven feature port workflow for implementing Svelte compiler 
 
 # Port Feature
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 ## 1) Resume from spec when possible
 
 If the input is a spec path or a matching spec exists, read it first and continue from `Current state` instead of replanning.
@@ -18,6 +20,8 @@ Build:
 - a use-case checklist
 - an implementation plan by layer
 - a spec file using `spec-template`
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 Defer out-of-scope cases explicitly instead of silently dropping them.
 When a case is deferred, add a dedicated unchecked checkbox for it in the matching spec `Use cases` deferred subsection so later sessions can see it in feature-local context.
