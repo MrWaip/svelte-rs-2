@@ -50,6 +50,10 @@ pub struct ComponentScoping {
     rest_prop_sym: Option<SymbolId>,
     /// Prop names explicitly destructured before the rest element (excluded from rewriting)
     rest_prop_excluded: FxHashSet<String>,
+    /// Symbols declared with `var` (as opposed to `let`/`const`) that are state runes.
+    /// `var`-declared state must use `$.safe_get` instead of `$.get` because `var` hoisting
+    /// means the binding may be read before its initializer runs.
+    var_state_syms: FxHashSet<SymbolId>,
 }
 
 impl ComponentScoping {
@@ -83,6 +87,7 @@ impl ComponentScoping {
             dynamic_sym_cache: None,
             rest_prop_sym: None,
             rest_prop_excluded: FxHashSet::default(),
+            var_state_syms: FxHashSet::default(),
         }
     }
 
@@ -173,6 +178,24 @@ impl ComponentScoping {
 
     pub fn is_rune(&self, id: SymbolId) -> bool {
         self.runes.contains_key(&id)
+    }
+
+    /// True when a `$state`/`$state.raw` init argument is non-primitive (proxy candidate).
+    /// Proxy-candidate state is still reactive through property mutations even without reassignment.
+    pub fn is_proxy_init_state(&self, id: SymbolId) -> bool {
+        self.runes.get(&id).is_some_and(|r| r.is_proxy_init)
+    }
+
+    /// Mark a state rune symbol as `var`-declared.
+    /// `var`-declared state requires `$.safe_get` instead of `$.get` because var hoisting means
+    /// the binding may be read before its initializer has run.
+    pub fn mark_var_state(&mut self, id: SymbolId) {
+        self.var_state_syms.insert(id);
+    }
+
+    /// True when the symbol is a state rune declared with `var`.
+    pub fn is_var_declared_state(&self, id: SymbolId) -> bool {
+        self.var_state_syms.contains(&id)
     }
 
     /// Store a Reference object and return its ReferenceId.

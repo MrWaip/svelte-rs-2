@@ -9,7 +9,7 @@ use oxc_ast_visit::Visit;
 
 use crate::scope::{ComponentScoping, ScopeId, SymbolId};
 use crate::types::data::AnalysisData;
-use crate::types::script::RuneKind;
+use crate::types::script::{DeclarationKind, RuneKind};
 
 /// Mark runes declared at the root scope from ScriptInfo.
 pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
@@ -20,6 +20,11 @@ pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
         let Some(sym_id) = data.scoping.find_binding(root, &decl.name) else { continue };
         let is_proxy = data.proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
         data.scoping.mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
+        if decl.kind == DeclarationKind::Var
+            && matches!(rune_kind, RuneKind::State | RuneKind::StateRaw)
+        {
+            data.scoping.mark_var_state(sym_id);
+        }
         if rune_kind.is_derived() && !decl.rune_init_refs.is_empty() {
             let deps: Vec<SymbolId> = decl.rune_init_refs.iter()
                 .filter_map(|name| data.scoping.find_binding(root, name))

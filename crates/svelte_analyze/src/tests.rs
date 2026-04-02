@@ -1257,6 +1257,112 @@ let x = $state(() => total);
 }
 
 #[test]
+fn validate_state_referenced_locally_for_reassigned_state() {
+    // Reassigned $state at the same function depth — should warn.
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+count = 1;
+const snapshot = count;
+</script>"#,
+    );
+    assert_has_warning(&diags, "state_referenced_locally");
+}
+
+#[test]
+fn validate_state_referenced_locally_for_primitive_state() {
+    // $state with primitive init and no reassignment: !is_proxy_init — should warn.
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(42);
+const snapshot = count;
+</script>"#,
+    );
+    assert_has_warning(&diags, "state_referenced_locally");
+}
+
+#[test]
+fn validate_state_referenced_locally_no_warning_for_proxy_state() {
+    // $state({}) has is_proxy_init = true and is not reassigned — no warning.
+    let diags = analyze_with_diags(
+        r#"<script>
+let obj = $state({ x: 1 });
+obj.x = 2;
+const ref_ = obj;
+</script>"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        "unexpected warning for proxy state: {diags:?}",
+    );
+}
+
+#[test]
+fn validate_state_referenced_locally_for_state_raw() {
+    // $state.raw is always warned at same function depth.
+    let diags = analyze_with_diags(
+        r#"<script>
+let items = $state.raw([1, 2, 3]);
+const snapshot = items;
+</script>"#,
+    );
+    assert_has_warning(&diags, "state_referenced_locally");
+}
+
+#[test]
+fn validate_state_referenced_locally_no_warning_across_fn_boundary_state() {
+    // Inside a function the depth differs — no warning for $state either.
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+count = 1;
+const fn_ = () => count;
+</script>"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        "unexpected warning across fn boundary: {diags:?}",
+    );
+}
+
+#[test]
+fn validate_state_invalid_export_for_reassigned_state() {
+    let diags = analyze_with_diags(
+        r#"<script>
+export let count = $state(0);
+count = 1;
+</script>"#,
+    );
+    assert_has_error(&diags, "state_invalid_export");
+}
+
+#[test]
+fn validate_state_invalid_export_for_reassigned_state_raw() {
+    let diags = analyze_with_diags(
+        r#"<script>
+export let items = $state.raw([]);
+items = [];
+</script>"#,
+    );
+    assert_has_error(&diags, "state_invalid_export");
+}
+
+#[test]
+fn validate_state_invalid_export_no_error_without_reassignment() {
+    // Property mutations do not count as reassignment.
+    let diags = analyze_with_diags(
+        r#"<script>
+export let obj = $state({ x: 0 });
+obj.x = 1;
+</script>"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "state_invalid_export"),
+        "unexpected error: {diags:?}",
+    );
+}
+
+#[test]
 #[ignore = "missing: rune validation parity"]
 fn validate_effect_invalid_placement_fn_arg() {
     let diags = analyze_with_diags(

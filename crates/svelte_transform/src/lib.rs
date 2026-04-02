@@ -394,7 +394,11 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
             } else if let Some(kind) = self.ctx.analysis.scoping.rune_kind(sym_id) {
                 let needs_get = self.ctx.analysis.scoping.is_mutated(sym_id) || kind.is_derived();
                 if needs_get {
-                    *it = rune_refs::make_rune_get(self.ctx.alloc, name);
+                    *it = if self.ctx.analysis.scoping.is_var_declared_state(sym_id) {
+                        rune_refs::make_rune_safe_get(self.ctx.alloc, name)
+                    } else {
+                        rune_refs::make_rune_get(self.ctx.alloc, name)
+                    };
                 }
             }
             return;

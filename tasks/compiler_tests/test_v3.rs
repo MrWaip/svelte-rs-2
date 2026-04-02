@@ -2246,13 +2246,11 @@ fn tag_state_destructured_array() {
 }
 
 #[rstest]
-#[ignore = "missing: $.safe_get for var-declared state (codegen)"]
 fn state_var_safe_get() {
     assert_compiler("state_var_safe_get");
 }
 
 #[rstest]
-#[ignore = "missing: dev-mode $.assign_* transforms for non-statement member assignment (codegen)"]
 fn state_assign_dev() {
     assert_compiler("state_assign_dev");
 }

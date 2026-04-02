@@ -1,17 +1,16 @@
 # $state rune
 
 ## Current state
-- **Working**: 39/43 use cases covered with passing tests (35 compiler tests, 12 analyze unit tests)
+- **Working**: 43/43 use cases covered — ALL items complete
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
-- **Missing (audit 2026-04-01)**:
-  - #37 `state_referenced_locally` warning — diagnostic defined but not emitted in analyze
-  - #38 `state_invalid_export` error — diagnostic defined but not emitted in analyze
-  - #39 Dev-mode `$.assign_*` transforms (`$.assign`, `$.assign_and`, `$.assign_or`, `$.assign_nullish`)
-  - #40 `$.safe_get` for `var`-declared state (currently uses `$.get`)
+- **Completed (2026-04-02)**:
+  - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads ✅
+  - #38 `state_invalid_export` error for exported reassigned state ✅
+  - #39 Dev-mode `$.assign_*` transforms for non-statement member assignments ✅
+  - #40 `$.safe_get` for `var`-declared state ✅
 - **Deferred**: #41 `$.deep_read_state()` — legacy-only (Svelte 4), Tier 7; #32 ObjectPattern dev labels
 - **Out of scope**: SSR, `immutable` compiler option
-- **Next**: implement #37-#40 via `/fix-test` or `/port`
-- Last updated: 2026-04-01
+- Last updated: 2026-04-02
 
 ## Source
 Audit of existing implementation
