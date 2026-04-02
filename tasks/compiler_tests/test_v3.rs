@@ -139,7 +139,6 @@ fn element_attributes() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn element_autofocus() {
     assert_compiler("element_autofocus");
 }
@@ -237,13 +236,11 @@ fn spread_attribute() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn spread_class_directive() {
     assert_compiler("spread_class_directive");
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn spread_style_directive() {
     assert_compiler("spread_style_directive");
 }
@@ -1029,7 +1026,6 @@ fn assert_compiler_module(case: &str) {
         .unwrap()
         .write_all(js.as_bytes())
         .unwrap();
-
     assert_eq!(js, expected);
 }
 

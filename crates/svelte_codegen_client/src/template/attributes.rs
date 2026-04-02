@@ -87,6 +87,13 @@ pub(crate) fn process_attr<'a>(
             // Handled by process_class_attribute_and_directives
             return;
         }
+        Attribute::ExpressionAttribute(a) if a.name == "autofocus" => {
+            let val = get_attr_expr(ctx, attr_id);
+            init.push(ctx.b.call_stmt(
+                "$.autofocus",
+                [Arg::Ident(el_name), Arg::Expr(val)],
+            ));
+        }
         Attribute::ExpressionAttribute(a) => {
             let (attr_has_call, attr_needs_memo) = ctx
                 .expr_deps(ExprSite::Attr(attr_id))
@@ -234,6 +241,29 @@ pub(crate) fn process_attr<'a>(
     }
 }
 
+fn build_class_directives_object<'a>(
+    ctx: &mut Ctx<'a>,
+    el_id: NodeId,
+) -> Option<Expression<'a>> {
+    let dir_snapshot: Vec<_> = match ctx.class_directive_info(el_id) {
+        Some(dirs) => dirs.iter().map(|cd| (cd.id, cd.name.clone(), cd.has_expression)).collect(),
+        None => return None,
+    };
+
+    let mut props: Vec<ObjProp<'a>> = Vec::new();
+    for (id, name, has_expression) in &dir_snapshot {
+        let (expr, same_name) = if *has_expression {
+            let parsed = get_attr_expr(ctx, *id);
+            (parsed, ctx.is_expression_shorthand(*id))
+        } else {
+            (ctx.b.rid_expr(name), true)
+        };
+        props.push(build_directive_prop(ctx, *id, name, expr, same_name));
+    }
+
+    Some(ctx.b.object_expr(props))
+}
+
 /// Generate `$.set_class(el, 1, value, null, prev, { ... })` for class expression attributes
 /// and/or class:name directives. Handles all combinations:
 /// - class={expr} only -> `$.set_class(el, 1, $.clsx(expr))`
@@ -271,28 +301,9 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
     };
 
     // --- Build class directives object ---
-    let directives_obj = if has_class_dirs {
-        // Snapshot directive info to release the immutable borrow on ctx before the mutable loop.
-        let dir_snapshot: Vec<_> = ctx.class_directive_info(el_id)
-            .expect("has_class_directives set but no directive info")
-            .iter()
-            .map(|cd| (cd.id, cd.name.clone(), cd.has_expression))
-            .collect();
-
-        let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for (id, name, has_expression) in &dir_snapshot {
-            let (expr, same_name) = if *has_expression {
-                let parsed = get_attr_expr(ctx, *id);
-                (parsed, ctx.is_expression_shorthand(*id))
-            } else {
-                (ctx.b.rid_expr(name), true)
-            };
-            props.push(build_directive_prop(ctx, *id, name, expr, same_name));
-        }
-        Some(ctx.b.object_expr(props))
-    } else {
-        None
-    };
+    let directives_obj = has_class_dirs
+        .then(|| build_class_directives_object(ctx, el_id))
+        .flatten();
 
     let has_state = ctx.class_needs_state(el_id);
 
@@ -457,6 +468,8 @@ pub(crate) fn process_attrs_spread<'a>(
     el_tag: &str,
     attrs: &[Attribute],
     el_name: &str,
+    include_class_directives: bool,
+    include_style_base: bool,
     init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
 ) {
@@ -534,15 +547,23 @@ pub(crate) fn process_attrs_spread<'a>(
         }
     }
 
+    if include_class_directives {
+        if let Some(class_obj) = build_class_directives_object(ctx, el_id) {
+            let class_key_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "CLASS");
+            props.push(ObjProp::Computed(class_key_expr, class_obj));
+        }
+    }
+
     // Collect style directives into [$.STYLE] computed property
     let style_dirs = ctx.style_directives(el_id).to_vec();
 
     if !style_dirs.is_empty() {
         use svelte_ast::StyleDirectiveValue;
 
-        // Add `style: ""` for the static style base
-        let style_key = ctx.b.alloc_str("style");
-        props.push(ObjProp::KeyValue(style_key, ctx.b.str_expr("")));
+        if include_style_base {
+            let style_key = ctx.b.alloc_str("style");
+            props.push(ObjProp::KeyValue(style_key, ctx.b.str_expr("")));
+        }
 
         // Build style directives object
         let mut style_props: Vec<ObjProp<'a>> = Vec::new();
@@ -594,23 +615,9 @@ pub(crate) fn process_svelte_element_class_directives<'a>(
     el_name: &str,
     init: &mut Vec<Statement<'a>>,
 ) {
-    let dir_snapshot: Vec<_> = match ctx.class_directive_info(el.id) {
-        Some(dirs) => dirs.iter().map(|cd| (cd.id, cd.name.clone(), cd.has_expression)).collect(),
-        None => return,
+    let Some(dir_obj) = build_class_directives_object(ctx, el.id) else {
+        return;
     };
-
-    let mut props: Vec<ObjProp<'a>> = Vec::new();
-    for (id, name, has_expression) in &dir_snapshot {
-        let (expr, same_name) = if *has_expression {
-            let parsed = get_attr_expr(ctx, *id);
-            (parsed, ctx.is_expression_shorthand(*id))
-        } else {
-            (ctx.b.rid_expr(name), true)
-        };
-        props.push(build_directive_prop(ctx, *id, name, expr, same_name));
-    }
-
-    let dir_obj = ctx.b.object_expr(props);
     let set_class_call = ctx.b.call_stmt(
         "$.set_class",
         [

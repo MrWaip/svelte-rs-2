@@ -1,10 +1,10 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 8/13 use cases are covered by existing compiler cases
-- **Missing**: analyze-side attribute validation/warnings, spread composition parity for `class`/`style`, and the regular-element `autofocus` helper path
-- **Next**: fix the three failing compiler cases added during this audit (`element_autofocus`, `spread_class_directive`, `spread_style_directive`), then port analyze-owned validation instead of adding more codegen-side special cases
-- Last updated: 2026-04-01
+- **Working**: 11/13 use cases are covered by existing compiler cases
+- **Missing**: analyze-side attribute validation/warnings and the remaining form-element validation/special handling gaps
+- **Next**: port analyze-owned generic attribute validation (`attribute_duplicate`, `attribute_invalid_name`, `attribute_unquoted_sequence`, `attribute_illegal_colon`, `attribute_quoted`, slot placement) before adding more codegen-side special cases
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -45,11 +45,11 @@
   Existing tests: `svelte_element_attributes`, `svelte_element_spread`, `svelte_element_class_directive`, `svelte_element_style_directive`
 - `[x]` Form-element special cases for dynamic textarea children and `<option>{expr}</option>` are covered by focused compiler cases
   Existing tests: `textarea_child_value_dynamic`, `option_expr_child_value`
-- `[~]` Spread attributes coexist with plain attrs, but spread composition with `class={...}` / `class:*` is not covered and likely diverges from reference `$.attribute_effect(...)` shape
+- `[x]` Spread attributes compose with `class={...}` / `class:*` through a single `$.attribute_effect(...)` shape
   Added during this audit: `spread_class_directive`
-- `[~]` Spread attributes coexist with plain attrs, but spread composition with `style={...}` / `style:*` is not covered and likely diverges from reference `$.attribute_effect(...)` shape
+- `[x]` Spread attributes compose with `style={...}` / `style:*` through a single `$.attribute_effect(...)` shape
   Added during this audit: `spread_style_directive`
-- `[ ]` Regular-element `autofocus` should lower through `$.autofocus(...)` instead of a generic attribute setter
+- `[x]` Regular-element `autofocus` lowers through `$.autofocus(...)`
   Added during this audit: `element_autofocus`
 - `[ ]` Analyze-side attribute validation/warnings are mostly absent
   Missing today: `attribute_duplicate`, `attribute_invalid_name`, `attribute_unquoted_sequence`, `attribute_illegal_colon`, `attribute_quoted`, `slot_attribute_invalid`, `slot_attribute_invalid_placement`
@@ -95,10 +95,10 @@
    Files: `crates/svelte_analyze/src/validate/mod.rs` plus new template validation modules
    Scope: duplicate/invalid/unquoted/quoted/slot-placement validation and warnings
    Effort: needs infrastructure
-2. `[ ]` Align spread + `class` / `style` composition with reference `$.attribute_effect(...)`
+2. `[x]` Align spread + `class` / `style` composition with reference `$.attribute_effect(...)`
    Files: `crates/svelte_codegen_client/src/template/attributes.rs`, `crates/svelte_codegen_client/src/template/element.rs`, `crates/svelte_codegen_client/src/template/svelte_element.rs`
    Effort: moderate
-3. `[ ]` Port the regular-element `autofocus` helper path
+3. `[x]` Port the regular-element `autofocus` helper path
    Files: `crates/svelte_codegen_client/src/template/attributes.rs`
    Effort: quick fix
 4. `[ ]` Finish remaining form-element attribute ownership in analyze/codegen order
@@ -114,10 +114,9 @@
 ## Discovered bugs
 
 - OPEN: `crates/svelte_analyze/src/validate/mod.rs` validates runes only; generic template attribute validation is absent.
-- OPEN: `crates/svelte_codegen_client/src/template/attributes.rs` has no dedicated `autofocus` lowering path and treats it like a generic attribute.
-- OPEN: `element_autofocus` currently emits `$.set_attribute(input, "autofocus", enabled)` instead of reference `$.autofocus(input, enabled)`.
-- OPEN: `spread_class_directive` currently emits separate `$.attribute_effect(...props)` plus `$.set_class(...)` calls instead of a single `$.attribute_effect(..., [$.CLASS])` shape.
-- OPEN: `spread_style_directive` panics in codegen with `missing pre-transformed expr at handle ExprHandle(1)`, so spread + `style:` is currently broken rather than merely mismatched.
+- FIXED: regular-element `autofocus` now lowers through `$.autofocus(...)` in `crates/svelte_codegen_client/src/template/attributes.rs`.
+- FIXED: regular-element spread + `class:` composition now folds into a single `$.attribute_effect(...)` object with `[$.CLASS]`.
+- FIXED: regular-element spread + `style:` composition now folds into a single `$.attribute_effect(...)` object with `[$.STYLE]`, avoiding the double-consumption panic from the separate style-directive pass.
 
 ## Test cases
 
@@ -141,8 +140,8 @@
   - `textarea_child_value_dynamic`
   - `option_expr_child_value`
 - Added during this audit:
-  - `element_autofocus` (fails: generic `set_attribute` vs `$.autofocus`)
-  - `spread_class_directive` (fails: split emission vs single `$.attribute_effect`)
-  - `spread_style_directive` (fails: codegen panic on spread + `style:`)
+  - `element_autofocus` (passing)
+  - `spread_class_directive` (passing)
+  - `spread_style_directive` (passing)
 - Recommended next command:
-  - `port specs/attributes-spreads.md`
+  - `improve crates/svelte_analyze/src/validate/mod.rs`

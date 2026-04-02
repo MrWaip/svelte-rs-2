@@ -3,13 +3,13 @@ var root = $.from_html(`<div></div>`);
 export default function App($$anchor) {
 	let props = $.proxy({
 		id: "a",
-		class: "from-spread"
+		style: "border-color: blue;"
 	});
-	let active = true;
+	let color = "red";
 	var div = root();
 	$.attribute_effect(div, () => ({
 		...props,
-		[$.CLASS]: { active }
+		[$.STYLE]: { color }
 	}));
 	$.append($$anchor, div);
 }
