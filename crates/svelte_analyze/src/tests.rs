@@ -541,10 +541,19 @@ fn each_block_shadowing() {
 
 #[test]
 fn each_block_shadowing_does_not_mutate_rune() {
-    // `count = 99` inside each targets the each-block variable, not the rune
-    let (_c, data) = analyze_source(
-        r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#,
+    // `count = 99` inside each targets the each-block variable (shadowing the rune), not the rune.
+    // In runes mode this also triggers each_item_invalid_assignment — that's expected.
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#;
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(parse_diags.is_empty());
+    let (data, _parsed, diags) = analyze(&component, js_result);
+    // The assignment to the each-block var is invalid in runes mode — exactly one diagnostic.
+    assert!(
+        diags.iter().all(|d| d.kind.code() == "each_item_invalid_assignment"),
+        "expected only each_item_invalid_assignment diagnostics, got: {diags:?}"
     );
+    // The ROOT-scoped rune `count` must NOT be mutated — shadowing works correctly.
     assert_is_rune(&data, "count");
     let root = data.scoping.root_scope_id();
     let count_sym = data
@@ -558,11 +567,13 @@ fn each_block_shadowing_does_not_mutate_rune() {
 }
 
 #[test]
-fn each_block_index_is_dynamic() {
+fn each_block_index_is_not_dynamic_unkeyed() {
+    // In an unkeyed each block, the index is a plain iteration counter — not reactive, not dynamic.
+    // Codegen uses direct assignment (div.textContent = i) rather than $.template_effect.
     let (c, data) = analyze_source(
         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
     );
-    assert_dynamic_tag(&data, &c, "i");
+    assert_not_dynamic_tag(&data, &c, "i");
 }
 
 // ---------------------------------------------------------------------------
@@ -1650,14 +1661,12 @@ fn validate_const_tag_invalid_placement_root() {
 }
 
 #[test]
-#[ignore = "missing: each_key_without_as template validation"]
 fn validate_each_key_without_as() {
     let diags = analyze_with_diags("{#each items (item.id)}<p />{/each}");
     assert_has_error(&diags, "each_key_without_as");
 }
 
 #[test]
-#[ignore = "missing: animation_missing_key template validation"]
 fn validate_each_animation_missing_key() {
     let diags = analyze_with_diags(
         r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
@@ -1669,7 +1678,6 @@ fn validate_each_animation_missing_key() {
 }
 
 #[test]
-#[ignore = "missing: animation_invalid_placement template validation"]
 fn validate_each_animation_invalid_placement() {
     let diags = analyze_with_diags(
         r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
@@ -1682,7 +1690,6 @@ fn validate_each_animation_invalid_placement() {
 }
 
 #[test]
-#[ignore = "missing: each_item_invalid_assignment template validation"]
 fn validate_each_item_invalid_assignment() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]);</script>

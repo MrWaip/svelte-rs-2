@@ -1348,6 +1348,12 @@ impl<'a> Scanner<'a> {
         let mut depth: u32 = 0;
         let mut collection_span: Option<Span> = None;
         let mut item_span: Option<Span> = None;
+        // Tracks the last `,` byte position at depth 0, to support `{#each expr, index}`.
+        let mut last_comma_pos: Option<usize> = None;
+        // Index span extracted from the no-`as` indexed form (not from collect_each_context).
+        let mut no_as_index_span: Option<Span> = None;
+        // Key span from `{#each expr (key)}` without `as` (whitespace-separated `(key)`).
+        let mut no_as_key_span: Option<Span> = None;
 
         // Scan the collection expression, tracking nesting depth.
         // Stop on `}` at depth 0 (no `as` binding) or on `as` keyword at depth 0.
@@ -1371,12 +1377,36 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 '}' => {
-                    // End of tag without `as` binding — trim trailing whitespace
-                    let raw = self.slice_source(start_collection_pos, self.current);
+                    // End of tag without `as` binding.
+                    // Check for `{#each expr, index}` — a trailing `, identifier` at depth 0
+                    // signals the item-less indexed form (mirrors SequenceExpression unwrap in
+                    // the reference parser). Commas inside brackets are never recorded because
+                    // last_comma_pos is only updated at depth 0.
+                    let raw_end = self.current;
+                    if let Some(comma_pos) = last_comma_pos {
+                        let after_comma = self.slice_source(comma_pos + 1, raw_end);
+                        let idx_trimmed = after_comma.trim();
+                        if is_js_identifier(idx_trimmed) {
+                            let raw_before = self.slice_source(start_collection_pos, comma_pos);
+                            let col_end = start_collection_pos + raw_before.trim_end().len();
+                            collection_span = Some(self.span(start_collection_pos, col_end));
+                            let idx_leading = after_comma.len() - after_comma.trim_start().len();
+                            let idx_start = comma_pos + 1 + idx_leading;
+                            let idx_end = raw_end - (after_comma.len() - after_comma.trim_end().len());
+                            no_as_index_span = Some(self.span(idx_start, idx_end));
+                            self.advance(); // consume `}`
+                            break;
+                        }
+                    }
+                    let raw = self.slice_source(start_collection_pos, raw_end);
                     let trimmed_end = start_collection_pos + raw.trim_end().len();
                     collection_span = Some(self.span(start_collection_pos, trimmed_end));
                     self.advance(); // consume `}`
                     break;
+                }
+                ',' if depth == 0 => {
+                    last_comma_pos = Some(self.current);
+                    self.advance();
                 }
                 c if c.is_ascii_whitespace() && depth == 0 => {
                     end_collection_pos = self.current;
@@ -1386,6 +1416,18 @@ impl<'a> Scanner<'a> {
                         collection_span = Some(self.span(start_collection_pos, end_collection_pos));
                         self.skip_whitespace();
                         item_span = Some(self.collect_each_context()?);
+                        break;
+                    }
+                    if keyword.is_empty() && self.peek() == Some('(') {
+                        // `{#each expr (key)}` without `as` — whitespace-separated key expression.
+                        collection_span = Some(self.span(start_collection_pos, end_collection_pos));
+                        no_as_key_span = Some(self.collect_key_expression(false)?);
+                        self.skip_whitespace();
+                        if !self.match_char('}') {
+                            return Diagnostic::unexpected_token(
+                                Span::new(self.current as u32, self.current as u32),
+                            ).as_err();
+                        }
                         break;
                     }
                     // else: keep scanning (identifier was part of the expression)
@@ -1409,8 +1451,10 @@ impl<'a> Scanner<'a> {
         };
 
         // Parse optional index: `, i`
-        let mut index_span = None;
-        let mut key_span = None;
+        // no_as_index_span is pre-populated for `{#each expr, index}` (no `as` context).
+        let mut index_span = no_as_index_span;
+        // no_as_key_span is pre-populated for `{#each expr (key)}` (no `as` context).
+        let mut key_span = no_as_key_span;
 
         if last_char == "," {
             self.skip_whitespace();
@@ -1682,6 +1726,16 @@ impl<'a> Scanner<'a> {
     }
 }
 
+/// Returns `true` if `s` is a valid JS identifier (non-empty, starts with `_`/`$`/alpha,
+/// rest are `_`/`$`/alphanumeric). Used to detect the `{#each expr, index}` no-`as` form.
+fn is_js_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => false,
+        Some(c) => (c.is_alphabetic() || c == '_' || c == '$') && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$'),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use svelte_diagnostics::DiagnosticKind;
@@ -1903,6 +1957,36 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
 
         assert_start_each_tag_with_index(source, &tokens[0], "items", "{ value, flag }", "idx");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    fn assert_no_as_each_with_index(source: &str, token: &Token, expected_collection: &str, expected_index: &str) {
+        let tag = match &token.token_type {
+            TokenType::StartEachTag(t) => t,
+            _ => panic!("Expected token.type = StartEachTag"),
+        };
+        assert_eq!(tag.collection_span.source_text(source), expected_collection);
+        assert!(tag.context_span.is_none(), "expected no context (no `as`)");
+        let index = tag.index_span.as_ref().expect("expected index span");
+        assert_eq!(index.source_text(source), expected_index);
+        assert!(tag.key_span.is_none(), "expected no key");
+    }
+
+    #[test]
+    fn each_block_no_as_with_index_simple() {
+        let source = "{#each items, rank}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert_no_as_each_with_index(source, &tokens[0], "items", "rank");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn each_block_no_as_with_index_object_literal() {
+        let source = "{#each { length: 8 }, rank}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert_no_as_each_with_index(source, &tokens[0], "{ length: 8 }", "rank");
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 

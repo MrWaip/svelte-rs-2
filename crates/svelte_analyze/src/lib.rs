@@ -311,6 +311,19 @@ pub fn analyze_with_options<'a>(
             passes::PassKey::ClassifyRemainingFragments => {
                 passes::content_types::classify_remaining_fragments(&mut data, &component.source);
             }
+            passes::PassKey::ValidateTemplate => {
+                let mut bundle = passes::bundles::TemplateValidationBundle::new();
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    &mut data,
+                    &parsed,
+                    &component.source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+            }
             passes::PassKey::Validate => {
                 validate::validate(&data, &parsed, &mut diags);
             }

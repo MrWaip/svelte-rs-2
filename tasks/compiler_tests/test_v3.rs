@@ -1914,6 +1914,11 @@ fn each_block_no_item_multi() {
     assert_compiler("each_block_no_item_multi");
 }
 
+#[rstest]
+fn each_block_no_item_with_index() {
+    assert_compiler("each_block_no_item_with_index");
+}
+
 
 #[rstest]
 fn async_if_basic() {

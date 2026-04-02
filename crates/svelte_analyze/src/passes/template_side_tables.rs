@@ -140,6 +140,14 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
                     ctx.data.scoping.mark_each_block_var(idx_sym);
                     ctx.data.each_blocks.index_syms.insert(block.id, idx_sym);
+                    // EACH_INDEX_REACTIVE is only set for keyed blocks. For unkeyed blocks the
+                    // index is a plain iteration counter — not a reactive signal — so reads
+                    // must not be wrapped in $.get().
+                    if block.key_span.is_none() {
+                        ctx.data.scoping.mark_each_non_reactive(idx_sym);
+                        // Unkeyed index is also non-dynamic: no $.template_effect needed.
+                        ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
+                    }
                 }
             }
         }
