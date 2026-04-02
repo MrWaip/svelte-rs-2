@@ -66,6 +66,24 @@ impl<'a> Builder<'a> {
         self.array_expr(elements)
     }
 
+    /// Build `callee?.().prop` — optional call followed by static property access in one chain.
+    ///
+    /// Equivalent to `callee?.()` then `.prop`, but avoids parenthesising the chain expression
+    /// when a member access follows: `ChainExpression(SME { object: Call(optional), prop })`.
+    pub fn optional_call_member(&self, callee: Expression<'a>, prop: &str) -> Expression<'a> {
+        let call = self.ast.call_expression(SPAN, callee, NONE, self.ast.vec(), true);
+        let property = self.ast.identifier_name(SPAN, self.ast.atom(prop));
+        let member = self.ast.static_member_expression(
+            SPAN,
+            Expression::CallExpression(self.alloc(call)),
+            property,
+            false,
+        );
+        Expression::ChainExpression(self.alloc(
+            self.ast.chain_expression(SPAN, ChainElement::StaticMemberExpression(self.alloc(member))),
+        ))
+    }
+
     pub fn make_optional_chain(&self, mut expr: Expression<'a>) -> Expression<'a> {
         {
             let mut current = &mut expr;

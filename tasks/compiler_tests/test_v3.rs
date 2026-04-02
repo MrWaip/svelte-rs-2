@@ -2228,19 +2228,16 @@ fn tag_snippet_dev() {
 }
 
 #[rstest]
-#[ignore = "missing: snippet parameter object destructuring (codegen)"]
 fn snippet_object_destructure() {
     assert_compiler("snippet_object_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: snippet parameter array destructuring (codegen)"]
 fn snippet_array_destructure() {
     assert_compiler("snippet_array_destructure");
 }
 
 #[rstest]
-#[ignore = "missing: snippet mixed parameter types (codegen)"]
 fn snippet_mixed_params() {
     assert_compiler("snippet_mixed_params");
 }

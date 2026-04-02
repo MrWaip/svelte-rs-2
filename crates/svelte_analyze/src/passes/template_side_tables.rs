@@ -159,7 +159,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .stmt_handle(block.expression_span.start)
                 .and_then(|handle| parsed.stmt(handle))
             {
-                let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping };
+                let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping, in_default: false };
                 marker.visit_statement(stmt);
 
                 // SnippetParamMarker mutates scoping, so names must be collected in a separate pass
@@ -213,16 +213,28 @@ impl<'a> Visit<'a> for SnippetParamNameCollector {
 }
 
 /// OXC Visit that marks arrow function param bindings as snippet params.
+/// Non-default bindings → getter (thunk call). Default bindings (AssignmentPattern) → signal ($.get).
 /// Descends through VariableDeclaration → ArrowFunctionExpression → params only.
 struct SnippetParamMarker<'s> {
     scoping: &'s mut ComponentScoping,
+    in_default: bool,
 }
 
 impl<'a> Visit<'a> for SnippetParamMarker<'_> {
     fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        if let Some(sym_id) = ident.symbol_id.get() {
-            self.scoping.mark_getter(sym_id);
+        if !self.in_default {
+            if let Some(sym_id) = ident.symbol_id.get() {
+                self.scoping.mark_getter(sym_id);
+            }
         }
+    }
+
+    fn visit_assignment_pattern(&mut self, pat: &oxc_ast::ast::AssignmentPattern<'a>) {
+        // Default value pattern — bindings become $.derived_safe_equal signals, not getter thunks
+        self.in_default = true;
+        self.visit_binding_pattern(&pat.left);
+        self.in_default = false;
+        // Don't visit pat.right — it's the default expression, not a binding
     }
 
     fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {

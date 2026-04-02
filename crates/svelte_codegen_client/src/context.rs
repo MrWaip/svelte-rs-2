@@ -147,8 +147,6 @@ pub struct CodegenState<'a> {
     /// Set while processing children of a contenteditable element with bind:innerHTML/innerText/textContent.
     /// Text nodes use `nodeValue=` init instead of `$.set_text()` update.
     pub bound_contenteditable: bool,
-    /// Snippet param names for the currently generating snippet body.
-    pub snippet_param_names: Vec<String>,
 
     /// Event names that use delegation (e.g., "click" from `onclick={handler}`).
     /// Ordered Vec for deterministic output + HashSet for O(1) dedup.
@@ -193,7 +191,6 @@ impl<'a> CodegenState<'a> {
             needs_binding_group: false,
             group_index_names: FxHashMap::default(),
             bound_contenteditable: false,
-            snippet_param_names: Vec::new(),
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
             has_tracing: false,
@@ -538,10 +535,6 @@ impl<'a> Ctx<'a> {
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
         self.query.view.is_snippet_hoistable(id)
     }
-    pub fn snippet_params(&self, id: NodeId) -> &[String] {
-        self.query.view.snippet_params(id)
-    }
-
     // -- ConstTag shortcuts --
 
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
@@ -597,6 +590,10 @@ impl<'a> Ctx<'a> {
 
     pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
         self.query.view.each_context_stmt_handle(id)
+    }
+
+    pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
+        self.query.view.snippet_stmt_handle(id)
     }
 
     pub fn fragment_references_any_symbol(
