@@ -1,10 +1,15 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 7/15 client use cases
-- **Missing**: dev validation, store cleanup ordering when `$.push`/`$.pop` is active, subscription teardown on reassignment, each-block store invalidation, component prop store binding marking, store-specific diagnostics, module compilation validation, nested-scope subscription validation
-- **Next**: port analyzer validation for store subscriptions first, then fill the missing client codegen hooks (`validate_store`, `invalidate_store`, `mark_store_binding`, `store_unsub`)
-- Last updated: 2026-04-01
+- **Working**: 10/15 client use cases (was 7)
+- **Fixed this session**:
+  - Dev-mode `$.validate_store` in store thunk (sequence expression)
+  - Store cleanup ordering: `var $$pop = $.pop($$exports); $$cleanup(); return $$pop;`
+  - Each-block flags: `EACH_ITEM_IMMUTABLE` not set when collection depends on store; `EACH_ITEM_REACTIVE` set when `has_store_ref`
+  - Each-block collection thunk optimization: `b.thunk()` collapses `() => $items()` to `$items`
+- **Missing**: `$.store_unsub` (legacy-only, needs non-runes mode), `$.invalidate_store` (legacy each-block mutation), `$.mark_store_binding` (component store bindings), store-specific diagnostics, module compilation validation
+- **Next**: `$.mark_store_binding` for component bindings (runes-compatible), then legacy-mode features
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -34,10 +39,11 @@
 - [x] Deep member assignment rewrites to `$.store_mutate`
 - [x] Deep member update rewrites to `$.store_mutate`
 - [x] Runtime plan marks store setup without forcing component context by default
-- [ ] Dev-mode store setup validates the underlying store with `$.validate_store`
-- [ ] Store cleanup runs after `$.pop(...)` without becoming unreachable when stores and component return values coexist
-- [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub`
-- [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store`
+- [x] Dev-mode store setup validates the underlying store with `$.validate_store`
+- [x] Store cleanup runs after `$.pop(...)` without becoming unreachable when stores and component return values coexist
+- [x] Each-block with store-backed collection sets correct flags (`EACH_ITEM_REACTIVE`, no `EACH_ITEM_IMMUTABLE`)
+- [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` (legacy-only)
+- [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` (legacy-only)
 - [ ] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding`
 - [ ] Analyzer rejects subscriptions to stores not declared at component top level
 - [ ] Analyzer rejects `$store` reads inside `<script module>`
@@ -45,7 +51,10 @@
 
 ### Deferred
 
-- SSR store subscription codegen and cleanup parity
+- [ ] SSR store subscription codegen and cleanup parity
+- [ ] `$.store_unsub` — only fires in legacy (non-runes) mode when store variable is promoted to reactive state
+- [ ] `$.invalidate_store` — only fires in legacy (non-runes) mode for each-block item mutations
+- [ ] `$.mark_store_binding` — component binding getter injection for store-backed bindings
 
 ## Reference
 
@@ -104,10 +113,10 @@
 
 ## Discovered bugs
 
-- OPEN: client codegen sets up store subscriptions but never emits `$.validate_store` in dev mode.
-- OPEN: when stores coexist with `$.pop($$exports)`, generated cleanup is emitted after `return` and becomes unreachable.
+- FIXED: client codegen sets up store subscriptions but never emits `$.validate_store` in dev mode.
+- FIXED: when stores coexist with `$.pop($$exports)`, generated cleanup is emitted after `return` and becomes unreachable.
 - OPEN: the analyzer validation entrypoint only runs rune validation today, so store-specific diagnostics are currently absent.
-- OPEN: no Rust codegen path currently emits `$.invalidate_store`, `$.mark_store_binding`, or `$.store_unsub`.
+- OPEN: no Rust codegen path currently emits `$.invalidate_store`, `$.mark_store_binding`, or `$.store_unsub` (legacy-only features).
 
 ## Test cases
 
@@ -119,9 +128,9 @@
   - `store_update_template`
   - `store_deep_mutation`
   - `store_deep_update`
-- Added during this audit:
-  - `store_validate_dev` — captures missing `$.validate_store` dev-mode output and broken `$$cleanup()` ordering in push/pop mode
+  - `store_validate_dev` — dev-mode `$.validate_store` + correct `$$cleanup()` ordering
+  - `store_reassign_unsub` — store variable reassignment in runes mode (no legacy state promotion)
+  - `store_each_invalidate` — each block with store-backed collection, correct flags
 - Recommended next cases after implementation starts:
-  - `store_reassign_unsub`
   - `store_each_invalidate`
   - analyzer/unit tests for `store_invalid_scoped_subscription`, `store_invalid_subscription`, `store_invalid_subscription_module`, `store_rune_conflict`

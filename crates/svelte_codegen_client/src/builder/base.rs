@@ -73,4 +73,9 @@ impl<'a> Builder<'a> {
     pub fn cheap_expr(&self) -> Expression<'a> {
         self.ast.expression_boolean_literal(SPAN, false)
     }
+
+    /// `(a, b, ...)` — sequence (comma) expression.
+    pub fn seq_expr(&self, exprs: impl IntoIterator<Item = Expression<'a>>) -> Expression<'a> {
+        self.ast.expression_sequence(SPAN, self.ast.vec_from_iter(exprs))
+    }
 }
