@@ -10,6 +10,7 @@
 
 ## Rust LSP
 - For Rust code navigation, symbol lookup, references, definitions, hover, diagnostics, and rename operations, always use the `rust-lsp` MCP server first.
+- Before Rust LSP queries, start the MCP-backed Rust language server for the current workspace. Use `server_id: "rust"` and `workspace_root` set to the repository root.
 - Use `rg` or other text search only as a fallback for non-code text search, regex search, or when `rust-lsp` cannot answer the query.
 
 ## Hard architecture rules
@@ -54,6 +55,7 @@ Use `.codex/skills/` workflows with original command naming:
 - `diagnose`
 - `improve`
 - `qa`
+- `rust-lsp-workflow`
 - `review-boundaries`
 - `fix-boundary`
 - `review-simplify`
