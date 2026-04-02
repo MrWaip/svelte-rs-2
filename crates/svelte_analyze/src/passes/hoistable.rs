@@ -1,12 +1,13 @@
 //! HoistableSnippetsVisitor — detect which top-level snippets can be hoisted.
 //!
-//! A snippet is hoistable if its body doesn't reference any script-declared variables.
+//! A snippet is hoistable if neither its body nor its parameter expressions
+//! reference script-declared variables.
 
-use oxc_semantic::SymbolId;
 use rustc_hash::FxHashSet;
-use svelte_ast::NodeId;
+use svelte_ast::{NodeId, SnippetBlock};
 use svelte_span::Span;
 
+use crate::scope::SymbolId;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 
 pub(crate) struct HoistableSnippetsVisitor {
@@ -38,6 +39,21 @@ impl HoistableSnippetsVisitor {
 }
 
 impl TemplateVisitor for HoistableSnippetsVisitor {
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+        if !self.top_level_ids.contains(&block.id) {
+            return;
+        }
+
+        if ctx
+            .data
+            .snippet_param_ref_symbols(block.id)
+            .iter()
+            .any(|sym| self.script_syms.contains(sym))
+        {
+            self.tainted.insert(block.id);
+        }
+    }
+
     fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_>) {
         let root = ctx
             .ancestors()
@@ -51,11 +67,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
             ctx.data.expressions.get(node_id)
         };
         if let Some(info) = info {
-            if info
-                .ref_symbols
-                .iter()
-                .any(|s| self.script_syms.contains(s))
-            {
+            if info.ref_symbols.iter().any(|s| self.script_syms.contains(s)) {
                 self.tainted.insert(root_id);
             }
         }

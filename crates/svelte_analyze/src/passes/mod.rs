@@ -12,6 +12,7 @@ pub(crate) mod reactivity;
 pub(crate) mod template_scoping;
 pub(crate) mod template_semantic;
 pub(crate) mod template_side_tables;
+pub(crate) mod template_validation;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;
@@ -41,6 +42,7 @@ pub(crate) enum PassKey {
     ReactivityWalk,
     TemplateClassificationWalk,
     ClassifyRemainingFragments,
+    ValidateTemplate,
     Validate,
 }
 
@@ -70,6 +72,7 @@ pub(crate) enum DataToken {
     Reactivity,
     TemplateClassification,
     FragmentClassification,
+    TemplateValidation,
     Validation,
 }
 
@@ -201,6 +204,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::ClassifyRemainingFragments,
         requires: &[DataToken::TemplateClassification],
         produces: &[DataToken::FragmentClassification],
+    },
+    PassDescriptor {
+        key: PassKey::ValidateTemplate,
+        requires: &[DataToken::SymbolRefs],
+        produces: &[DataToken::TemplateValidation],
     },
     PassDescriptor {
         key: PassKey::Validate,

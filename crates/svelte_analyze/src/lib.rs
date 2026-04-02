@@ -311,6 +311,19 @@ pub fn analyze_with_options<'a>(
             passes::PassKey::ClassifyRemainingFragments => {
                 passes::content_types::classify_remaining_fragments(&mut data, &component.source);
             }
+            passes::PassKey::ValidateTemplate => {
+                let mut bundle = passes::bundles::TemplateValidationBundle::new();
+                let mut visitors = bundle.visitors();
+                run_parsed_template_bundle(
+                    component,
+                    &mut data,
+                    &parsed,
+                    &component.source,
+                    runes,
+                    &mut diags,
+                    &mut visitors,
+                );
+            }
             passes::PassKey::Validate => {
                 validate::validate(&data, &parsed, &mut diags);
             }
@@ -347,6 +360,7 @@ pub fn analyze_module(
             let script_info = utils::script_info::extract_script_info(&program, 0, source);
             data.script = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
+            validate::validate_program(&data, &program, 0, &mut diags);
         }
         Err(errs) => diags.extend(errs),
     }
@@ -404,7 +418,7 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
     use oxc_ast::ast::Expression;
     let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_plans.keys().collect();
     for tag_id in tag_ids {
-        let handle = match data.node_expr_handles.get(tag_id) {
+        let handle = match data.template_semantics.node_expr_handles.get(tag_id) {
             Some(&handle) => handle,
             None => continue,
         };

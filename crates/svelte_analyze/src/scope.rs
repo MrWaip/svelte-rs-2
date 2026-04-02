@@ -33,8 +33,13 @@ pub struct ComponentScoping {
     getter_syms: FxHashSet<SymbolId>,
     snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
-    /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization).
+    /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization and
+    /// unkeyed index vars).
     each_non_reactive_syms: FxHashSet<SymbolId>,
+    /// Unkeyed each index vars: plain iteration counters that are non-reactive AND non-dynamic.
+    /// Distinct from `each_non_reactive_syms` (which includes key_is_item context vars that
+    /// are still dynamic due to proxy-based property reads).
+    each_index_non_dynamic_syms: FxHashSet<SymbolId>,
     /// Unified scope index: FragmentKey → ScopeId for all template-introduced scopes
     /// (EachBody, SnippetBody, IfConsequent, IfAlternate, AwaitThen, AwaitCatch, etc.)
     fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
@@ -81,6 +86,7 @@ impl ComponentScoping {
             snippet_name_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
             each_non_reactive_syms: FxHashSet::default(),
+            each_index_non_dynamic_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
             template_scope_set: FxHashSet::default(),
             const_alias_tags: FxHashMap::default(),
@@ -231,8 +237,11 @@ impl ComponentScoping {
             if cache.contains(&sym_id) {
                 return true;
             }
-            // Non-rune symbol: dynamic iff declared in non-root scope
+            // Non-rune symbol: dynamic iff declared in non-root scope AND not a non-dynamic each index
             if !self.runes.contains_key(&sym_id) {
+                if self.each_index_non_dynamic_syms.contains(&sym_id) {
+                    return false;
+                }
                 return self.symbol_scope_id(sym_id) != self.root_scope_id();
             }
             return false;
@@ -257,6 +266,10 @@ impl ComponentScoping {
                 return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_uncached(dep, depth + 1));
             }
             return true;
+        }
+        // Unkeyed each index var: plain iteration counter, not a signal — not dynamic.
+        if self.each_index_non_dynamic_syms.contains(&sym_id) {
+            return false;
         }
         // Non-root-scope binding (each block context/index) is always dynamic
         self.symbol_scope_id(sym_id) != self.root_scope_id()
@@ -370,6 +383,12 @@ impl ComponentScoping {
         self.each_non_reactive_syms.insert(sym_id);
     }
 
+    /// Mark an unkeyed each index var as non-dynamic (plain iteration counter — no `$.template_effect`).
+    /// These vars are non-reactive AND non-dynamic: reads produce a plain identifier, no wrapping.
+    pub fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
+        self.each_index_non_dynamic_syms.insert(sym_id);
+    }
+
     pub fn mark_rest_prop(&mut self, sym_id: SymbolId, excluded: FxHashSet<String>) {
         self.rest_prop_sym = Some(sym_id);
         self.rest_prop_excluded = excluded;
@@ -421,6 +440,11 @@ impl ComponentScoping {
     /// Each-block var that does NOT need `$.get()` (key_is_item optimization in runes mode).
     pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
         self.each_non_reactive_syms.contains(&sym_id)
+    }
+
+    /// Unkeyed each index var: plain iteration counter — no `$.get()` AND no `$.template_effect`.
+    pub fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
+        self.each_index_non_dynamic_syms.contains(&sym_id)
     }
 
     /// A binding is "normal" if it's a regular const/let/function — not a rune, prop,
