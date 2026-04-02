@@ -37,6 +37,11 @@ impl AsyncEmissionPlan {
         &self.blockers
     }
 
+    /// Returns true if this plan's blockers are a superset of `other`.
+    pub(crate) fn blockers_contain_all(&self, other: &[u32]) -> bool {
+        other.iter().all(|b| self.blockers.contains(b))
+    }
+
     pub(crate) fn async_thunk<'a>(
         &self,
         ctx: &mut Ctx<'a>,
@@ -49,7 +54,8 @@ impl AsyncEmissionPlan {
         &self,
         ctx: &mut Ctx<'a>,
         anchor: Expression<'a>,
-        param_name: &str,
+        node_param: &str,
+        condition_param: &str,
         async_thunk: Option<Expression<'a>>,
         inner_stmts: Vec<Statement<'a>>,
     ) -> Statement<'a> {
@@ -64,9 +70,9 @@ impl AsyncEmissionPlan {
             Arg::Expr(ctx.b.void_zero_expr())
         };
         let callback_params = if self.has_await {
-            ctx.b.params(["node", param_name])
+            ctx.b.params([node_param, condition_param])
         } else {
-            ctx.b.params(["node"])
+            ctx.b.params([node_param])
         };
         let callback = ctx.b.arrow_block_expr(callback_params, inner_stmts);
         ctx.b.call_stmt(

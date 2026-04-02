@@ -128,7 +128,6 @@ fn single_if_else_block() {
 }
 
 #[test]
-#[ignore = "missing: known v3 parity gap"]
 fn if_call_condition() {
     assert_compiler("if_call_condition");
 }
@@ -1915,9 +1914,13 @@ fn async_if_basic() {
 }
 
 #[test]
-#[ignore = "missing: known v3 parity gap"]
 fn async_if_else_if_condition() {
     assert_compiler("async_if_else_if_condition");
+}
+
+#[test]
+fn if_elseif_new_blockers() {
+    assert_compiler("if_elseif_new_blockers");
 }
 
 #[rstest]

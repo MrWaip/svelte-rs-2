@@ -213,6 +213,7 @@ pub(crate) fn gen_each_block<'a>(
         body.push(async_plan.wrap_async_block(
             ctx,
             anchor,
+            "node",
             "$$collection",
             async_collection_thunk,
             vec![each_stmt],
