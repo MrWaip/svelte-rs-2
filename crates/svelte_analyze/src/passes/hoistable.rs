@@ -46,7 +46,7 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
 
         if ctx
             .data
-            .stmt_ref_symbols(block.id)
+            .snippet_param_ref_symbols(block.id)
             .iter()
             .any(|sym| self.script_syms.contains(sym))
         {

@@ -97,6 +97,49 @@ fn find_element<'a>(fragment: &'a Fragment, component: &'a Component, tag_name: 
     None
 }
 
+fn find_bind_directive_id(
+    fragment: &Fragment,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+) -> Option<NodeId> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::Element(el) => {
+                if el.name == tag_name {
+                    if let Some(dir_id) = el.attributes.iter().find_map(|attr| match attr {
+                        svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => Some(dir.id),
+                        _ => None,
+                    }) {
+                        return Some(dir_id);
+                    }
+                }
+                if let Some(found) = find_bind_directive_id(&el.fragment, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(found) = find_bind_directive_id(&b.consequent, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(found) = find_bind_directive_id(alt, component, tag_name, bind_name) {
+                        return Some(found);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn find_if_block<'a>(
     fragment: &'a Fragment,
     component: &'a Component,
@@ -292,8 +335,55 @@ fn assert_snippet_param_refs_include(
         .find_binding(root, binding_name)
         .unwrap_or_else(|| panic!("no binding '{binding_name}'"));
     assert!(
-        data.stmt_ref_symbols(block.id).contains(&sym),
+        data.snippet_param_ref_symbols(block.id).contains(&sym),
         "expected snippet '{snippet_name}' params to reference '{binding_name}'",
+    );
+}
+
+fn assert_bind_target_symbol_name(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+    expected_binding_name: &str,
+) {
+    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+        .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
+    let sym = data
+        .bind_target_symbol(dir_id)
+        .unwrap_or_else(|| panic!("no bind target symbol for bind:{bind_name} on <{tag_name}>"));
+    assert_eq!(
+        data.scoping.symbol_name(sym),
+        expected_binding_name,
+        "unexpected bind target symbol for bind:{bind_name} on <{tag_name}>",
+    );
+}
+
+fn assert_shorthand_symbol_name(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    attr_name: &str,
+    expected_binding_name: &str,
+) {
+    let el = find_element(&component.fragment, component, tag_name)
+        .unwrap_or_else(|| panic!("no element <{tag_name}>"));
+    let attr_id = el
+        .attributes
+        .iter()
+        .find_map(|attr| match attr {
+            svelte_ast::Attribute::ClassDirective(dir) if dir.name == attr_name => Some(dir.id),
+            svelte_ast::Attribute::StyleDirective(dir) if dir.name == attr_name => Some(dir.id),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no shorthand attr '{attr_name}' on <{tag_name}>"));
+    let sym = data
+        .shorthand_symbol(attr_id)
+        .unwrap_or_else(|| panic!("no shorthand symbol for '{attr_name}' on <{tag_name}>"));
+    assert_eq!(
+        data.scoping.symbol_name(sym),
+        expected_binding_name,
+        "unexpected shorthand symbol for '{attr_name}' on <{tag_name}>",
     );
 }
 
@@ -1900,7 +1990,6 @@ fn snippet_param_ref_symbols_capture_script_refs() {
 function key() {
     return "label";
 }
-
 let fallback = () => "ok";
 </script>
 
@@ -1911,6 +2000,37 @@ let fallback = () => "ok";
 
     assert_snippet_param_refs_include(&data, &component, "view", "key");
     assert_snippet_param_refs_include(&data, &component, "view", "fallback");
+}
+
+#[test]
+fn bind_target_symbol_covers_shorthand_and_identifier_bindings() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let value = $state('');
+let checked = $state(false);
+</script>
+
+<input bind:value />
+<input type="checkbox" bind:checked={checked} />"#,
+    );
+
+    assert_bind_target_symbol_name(&data, &component, "input", "value", "value");
+    assert_bind_target_symbol_name(&data, &component, "input", "checked", "checked");
+}
+
+#[test]
+fn shorthand_symbol_returns_symbol_for_class_and_style_shorthand() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let active = $state(false);
+let color = $state('red');
+</script>
+
+<div class:active style:color></div>"#,
+    );
+
+    assert_shorthand_symbol_name(&data, &component, "div", "active", "active");
+    assert_shorthand_symbol_name(&data, &component, "div", "color", "color");
 }
 
 #[test]

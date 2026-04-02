@@ -141,6 +141,24 @@ impl AnalysisData {
     pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template_semantics.stmt_ref_symbols(id)
     }
+    pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.template_semantics.stmt_ref_symbols(id)
+    }
+    pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
+        self.template_semantics
+            .node_ref_symbols(id)
+            .first()
+            .copied()
+    }
+    pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> {
+        self.attr_expressions
+            .get(id)
+            .and_then(|info| match info.kind {
+                ExpressionKind::Identifier(_) => info.ref_symbols.first().copied(),
+                _ => None,
+            })
+            .or_else(|| self.shorthand_symbol(id))
+    }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.attr_expressions
             .get(attr_id)

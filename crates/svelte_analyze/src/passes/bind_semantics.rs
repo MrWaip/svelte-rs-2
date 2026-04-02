@@ -20,7 +20,7 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn shorthand_symbol(node_id: svelte_ast::NodeId, data: &AnalysisData) -> Option<SymbolId> {
-        data.node_ref_symbols(node_id).first().copied()
+        data.shorthand_symbol(node_id)
     }
 
     /// Pre-compute each-block variable names referenced in a bind:this expression.
@@ -45,28 +45,10 @@ impl<'s> BindSemanticsVisitor<'s> {
     }
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
-        if dir.shorthand {
-            if let Some(sym_id) = Self::shorthand_symbol(dir.id, data) {
-                if Self::is_mutable_rune(sym_id, data) {
-                    data.bind_semantics.mutable_rune_targets.insert(dir.id);
-                }
-                if data.blocker_data.has_async {
-                    if let Some(idx) = data.blocker_data.symbol_blocker(sym_id) {
-                        data.bind_semantics.bind_blockers.insert(dir.id, smallvec::smallvec![idx]);
-                    }
-                }
-            }
-            return;
-        }
-
-        let Some(info) = data.attr_expressions.get(dir.id) else { return };
-        if !matches!(info.kind, crate::types::data::ExpressionKind::Identifier(_)) { return }
-
-        if let Some(&sym_id) = info.ref_symbols.first() {
+        if let Some(sym_id) = data.bind_target_symbol(dir.id) {
             if Self::is_mutable_rune(sym_id, data) {
                 data.bind_semantics.mutable_rune_targets.insert(dir.id);
             }
-            // Blocker tracking for non-shorthand binds: use resolved symbol
             if data.blocker_data.has_async {
                 if let Some(idx) = data.blocker_data.symbol_blocker(sym_id) {
                     data.bind_semantics.bind_blockers.insert(dir.id, smallvec::smallvec![idx]);
