@@ -89,7 +89,7 @@ struct Component {
 struct Fragment { nodes: Vec<Node> }
 
 enum Node {
-    Text(Text),                   // id, span
+    Text(Text),                   // id, span, decoded?
     Element(Element),             // id, span, name, self_closing, attributes, fragment, kind
     ComponentNode(ComponentNode), // id, span, name, attributes, fragment
     Comment(Comment),             // id, span
@@ -138,6 +138,14 @@ enum ScriptLanguage { JavaScript, TypeScript }
 struct Script { id, span, content_span, context, language }
 struct RawBlock { span, content_span }
 struct NodeIdAllocator  // используется только внутри парсера
+
+struct Text {
+    id: NodeId,
+    span: Span,
+    decoded: Option<String>,  // set when parser decodes HTML character references
+}
+// Text::raw_value(source) -> &str
+// Text::value(source) -> &str   // decoded if available, otherwise raw source slice
 ```
 
 ---
@@ -167,6 +175,10 @@ struct ParserResult<'a> {
 ```
 
 Внутри: `scanner/mod.rs` + `scanner/token.rs`, `parse_js.rs`.
+
+Parser-owned HTML character reference decoding for template text lives in
+`crates/svelte_parser/src/html.rs`, with the generated named-entity table in
+`crates/svelte_parser/src/html_entities.rs`.
 
 ---
 
@@ -210,10 +222,14 @@ enum ExpressionKind { Identifier(CompactString), Literal, CallExpression { calle
 8. `post_resolve` — props analysis (`mark_prop_source`, `mark_rest_prop`), known values, store needs_context aggregation
 9. `classify_expression_dynamicity` — dynamicity classification
 10. `lower` — whitespace trim, Text+ExprTag merge → `LoweredFragment`
+    Uses `Text::value(...)`, so decoded entities flow into `LoweredTextPart::TextOwned`
+    when the lowered text no longer maps back to a raw source span.
 11. **Walk 1: `reactivity`** — dynamic_nodes, dynamic_attrs, needs_ref
 12. **Walk 2: `element_flags` + `hoistable` + `bind_semantics` + `content_types`** — 4 visitors за один обход, зависят от Walk 1
 13. `classify_non_element_fragments` — Root, IfConsequent, EachBody classification
 14. `validate` — семантические проверки
+    `ValidateTemplate` now also visits `Text` nodes directly for
+    `node_invalid_placement` and `bidirectional_control_characters`.
 
 **Scope system** (`scope.rs`):
 ```rust

@@ -184,6 +184,15 @@ export default function App($$anchor) {   // ← no $$props param
 
 **This is a bug in the reference Svelte compiler that we intentionally replicate.** The fix would be: detect `$host()` in script analysis → set `needs_context = true` → triggers `$$props` param + `$.push`/`$.pop`. Not implemented because the reference compiler has the same bug. See `host_basic` test case.
 
+### 10. `Text::raw_value()` and `Text::value()` are intentionally different
+
+- `Text::raw_value(source)` is for span-accurate diagnostics and source slicing.
+- `Text::value(source)` is for semantic text content and may return decoded HTML entities.
+
+Lowering and text-concat code must use `value()`, while diagnostics that report original source
+locations should keep using spans or `raw_value()`. If you use `raw_value()` in lowering, mixed
+text/expression output will regress back to escaped `&amp;`-style strings.
+
 ---
 
 ## Checklist for a New Node Type
