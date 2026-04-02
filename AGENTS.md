@@ -8,6 +8,10 @@
 3. `CODEBASE_MAP.md` when touching APIs/types
 4. Relevant `specs/*.md` `Current state` for multi-session feature work
 
+## Rust LSP
+- For Rust code navigation, symbol lookup, references, definitions, hover, diagnostics, and rename operations, always use the `rust-lsp` MCP server first.
+- Use `rg` or other text search only as a fallback for non-code text search, regex search, or when `rust-lsp` cannot answer the query.
+
 ## Hard architecture rules
 - Keep logic in the correct layer:
   - `svelte_parser`: parse + JS pre-parse, immutable AST only
