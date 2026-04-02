@@ -1,12 +1,12 @@
 //! Rune validation — placement, argument count, deprecated/removed runes.
 
 use oxc_ast::ast::{
-    AssignmentOperator, CallExpression, Expression,
+    AssignmentOperator, CallExpression, Expression, ExpressionStatement,
     MethodDefinitionKind, PropertyDefinition, VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_function, walk_method_definition, walk_property_definition,
+    walk_expression_statement, walk_function, walk_method_definition, walk_property_definition,
 };
 use oxc_ast_visit::Visit;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -40,6 +40,7 @@ pub(super) fn validate(
         in_class_property_init: false,
         in_constructor_body: false,
         in_this_assign_rhs: false,
+        in_expression_statement_expr: false,
     };
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
@@ -55,6 +56,9 @@ struct RuneValidator<'a> {
     in_constructor_body: bool,
     /// RHS of `this.x = ...` inside a constructor — valid rune placement.
     in_this_assign_rhs: bool,
+    /// True only when we are visiting the direct expression of an ExpressionStatement.
+    /// Reset to false whenever we descend into a nested call expression.
+    in_expression_statement_expr: bool,
 }
 
 impl RuneValidator<'_> {
@@ -247,7 +251,17 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 }
 
 impl<'a> Visit<'a> for RuneValidator<'_> {
+    fn visit_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) {
+        let prev = std::mem::replace(&mut self.in_expression_statement_expr, true);
+        walk_expression_statement(self, stmt);
+        self.in_expression_statement_expr = prev;
+    }
+
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        // Capture whether this call is the direct expression of an ExpressionStatement,
+        // then reset for children — nested calls are never in statement position.
+        let is_expr_stmt = std::mem::replace(&mut self.in_expression_statement_expr, false);
+
         if self.check_deprecated_rune(call) {
             return;
         }
@@ -271,6 +285,13 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             }
         }
 
+        if matches!(rune, RuneKind::Effect | RuneKind::EffectPre) && !is_expr_stmt {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::EffectInvalidPlacement,
+                self.span(call.span),
+            ));
+        }
+
         let arg_violation = match rune {
             RuneKind::Derived | RuneKind::DerivedBy | RuneKind::StateEager
                 if call.arguments.len() != 1 =>
@@ -280,6 +301,11 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             RuneKind::State | RuneKind::StateRaw if call.arguments.len() > 1 => {
                 Some("zero or one arguments")
             }
+            RuneKind::Effect | RuneKind::EffectPre | RuneKind::EffectRoot
+                if call.arguments.len() != 1 =>
+            {
+                Some("exactly one argument")
+            }
             _ => None,
         };
         if let Some(args) = arg_violation {
@@ -288,6 +314,13 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                     rune: rune.display_name().into(),
                     args: args.into(),
                 },
+                self.span(call.span),
+            ));
+        }
+
+        if matches!(rune, RuneKind::EffectTracking) && !call.arguments.is_empty() {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneInvalidArguments { rune: rune.display_name().into() },
                 self.span(call.span),
             ));
         }
