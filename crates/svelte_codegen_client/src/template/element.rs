@@ -68,6 +68,8 @@ pub(crate) fn process_element<'a>(
             &el_tag,
             &spread_attrs,
             el_name,
+            true,
+            false,
             init,
             after_update,
         );
@@ -155,12 +157,14 @@ pub(crate) fn process_element<'a>(
     }
 
     // Class directives only (no class expression attribute) — processed after attr loop
-    if !ctx.has_class_attribute(el_id) {
+    if !ctx.has_spread(el_id) && !ctx.has_class_attribute(el_id) {
         process_class_attribute_and_directives(ctx, el_id, el_name, init, update);
     }
 
     // Style directives
-    process_style_directives(ctx, el_id, el_name, init, update);
+    if !ctx.has_spread(el_id) {
+        process_style_directives(ctx, el_id, el_name, init, update);
+    }
 
     // --- Children ---
     // Debug tags inside this element's fragment (before child DOM traversal)

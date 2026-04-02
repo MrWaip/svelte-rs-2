@@ -3,6 +3,6 @@ var root = $.from_html(`<input/>`);
 export default function App($$anchor) {
 	let enabled = true;
 	var input = root();
-	$.set_attribute(input, "autofocus", enabled);
+	$.autofocus(input, enabled);
 	$.append($$anchor, input);
 }

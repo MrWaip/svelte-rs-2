@@ -80,7 +80,17 @@ pub(crate) fn gen_svelte_element<'a>(
     } else if has_attrs {
         // Generic spread-like handling for svelte:element
         // because the element tag is unknown at compile time.
-        process_attrs_spread(ctx, id, "", &el_clone.attributes, &el_name, &mut inner_init, &mut inner_after_update);
+        process_attrs_spread(
+            ctx,
+            id,
+            "",
+            &el_clone.attributes,
+            &el_name,
+            false,
+            true,
+            &mut inner_init,
+            &mut inner_after_update,
+        );
     }
 
     // Class directives on svelte:element use $.set_class with flag 0

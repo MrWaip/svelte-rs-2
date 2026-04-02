@@ -5,7 +5,7 @@ export default function App($$anchor) {
 		x: 0,
 		y: 0
 	});
-	let { x, y } = $derived(coords);
+	let x = $.derived(() => coords.x), y = $.derived(() => coords.y);
 	var p = root();
 	var text = $.child(p);
 	$.reset(p);

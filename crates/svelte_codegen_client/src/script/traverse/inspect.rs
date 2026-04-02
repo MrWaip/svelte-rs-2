@@ -1,4 +1,4 @@
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{Argument, Expression, Statement};
 
 use crate::builder::Arg;
 
@@ -200,5 +200,71 @@ impl<'a> ScriptTransformer<'_, 'a> {
             .call_expr_callee(cb, [Arg::Spread(self.b.rid_expr("$$args"))]);
         self.b
             .arrow_expr(self.b.rest_params("$$args"), [self.b.expr_stmt(call)])
+    }
+
+    pub(super) fn transform_console_log(
+        &mut self,
+        node: &mut Expression<'a>,
+    ) -> Option<Expression<'a>> {
+        if !self.dev {
+            return None;
+        }
+        let Expression::CallExpression(call) = node else {
+            return None;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return None;
+        };
+        let Expression::Identifier(console_id) = &member.object else {
+            return None;
+        };
+        if console_id.name != "console" {
+            return None;
+        }
+        let method_name = member.property.name.as_str();
+        if !matches!(
+            method_name,
+            "debug"
+                | "dir"
+                | "error"
+                | "group"
+                | "groupCollapsed"
+                | "info"
+                | "log"
+                | "trace"
+                | "warn"
+        ) {
+            return None;
+        }
+        // Wrap only when at least one arg might contain state (not a trivially-static literal)
+        let has_potential_state = call.arguments.iter().any(|arg| {
+            !matches!(
+                arg,
+                Argument::StringLiteral(_)
+                    | Argument::NumericLiteral(_)
+                    | Argument::BooleanLiteral(_)
+                    | Argument::NullLiteral(_)
+            )
+        });
+        if !has_potential_state {
+            return None;
+        }
+        // Rewrite: console.log(...$.log_if_contains_state("method", ...original_args))
+        let method_str = method_name.to_string();
+        let Expression::CallExpression(call) = node else {
+            unreachable!()
+        };
+        let callee = self.b.move_expr(&mut call.callee);
+        let mut inner_args: Vec<Arg<'a, '_>> = vec![Arg::Str(method_str)];
+        for arg in call.arguments.drain(..) {
+            match arg {
+                Argument::SpreadElement(spread) => {
+                    inner_args.push(Arg::Spread(spread.unbox().argument));
+                }
+                arg => inner_args.push(Arg::Expr(arg.into_expression())),
+            }
+        }
+        let log_if_call = self.b.call_expr("$.log_if_contains_state", inner_args);
+        Some(self.b.call_expr_callee(callee, [Arg::Spread(log_if_call)]))
     }
 }

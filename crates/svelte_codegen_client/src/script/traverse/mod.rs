@@ -264,6 +264,10 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
                 *node = replacement;
                 return;
             }
+            if let Some(replacement) = self.transform_console_log(node) {
+                *node = replacement;
+                return;
+            }
             self.rewrite_dev_await_tracking(node);
         }
     }

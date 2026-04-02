@@ -7,7 +7,7 @@ export default function App($$anchor, $$props) {
 	async function process(items) {
 		// svelte-ignore await_reactivity_loss
 		for await (const item of items) {
-			console.log(item);
+			console.log(...$.log_if_contains_state("log", item));
 		}
 	}
 	var $$exports = { ...$.legacy_api() };
