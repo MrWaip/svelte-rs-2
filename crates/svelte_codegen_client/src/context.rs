@@ -599,6 +599,10 @@ impl<'a> Ctx<'a> {
         self.query.view.each_context_stmt_handle(id)
     }
 
+    pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<svelte_analyze::StmtHandle> {
+        self.query.view.snippet_stmt_handle(id)
+    }
+
     pub fn fragment_references_any_symbol(
         &self,
         key: &FragmentKey,
