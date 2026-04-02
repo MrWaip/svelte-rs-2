@@ -312,7 +312,7 @@ pub fn analyze_with_options<'a>(
                 passes::content_types::classify_remaining_fragments(&mut data, &component.source);
             }
             passes::PassKey::Validate => {
-                validate::validate(&parsed, &mut diags);
+                validate::validate(&data, &parsed, &mut diags);
             }
         }
     }

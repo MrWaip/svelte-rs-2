@@ -1205,6 +1205,58 @@ let x = $derived.by(fn1, fn2);
 }
 
 #[test]
+fn validate_derived_invalid_export() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const count = $state(0);
+export const total = $derived(count * 2);
+</script>"#,
+    );
+    assert_has_error(&diags, "derived_invalid_export");
+}
+
+#[test]
+fn validate_state_referenced_locally_for_derived() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+let total = $derived(count * 2);
+const snapshot = total;
+</script>"#,
+    );
+    assert_has_warning(&diags, "state_referenced_locally");
+}
+
+#[test]
+fn validate_state_referenced_locally_derived_type_is_derived_inside_state_arg() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+let total = $derived(count * 2);
+let x = $state(total);
+</script>"#,
+    );
+    let w = diags.iter().find(|d| d.kind.code() == "state_referenced_locally").expect("warning missing");
+    assert!(w.kind.message().contains("derived"), "expected type_ == 'derived', got: {}", w.kind.message());
+}
+
+#[test]
+fn validate_state_referenced_locally_derived_no_warning_across_fn_boundary() {
+    // Inside an arrow function the function_depth differs from declaration depth — no warning.
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = $state(0);
+let total = $derived(count * 2);
+let x = $state(() => total);
+</script>"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        "unexpected warning: {diags:?}",
+    );
+}
+
+#[test]
 #[ignore = "missing: rune validation parity"]
 fn validate_effect_invalid_placement_fn_arg() {
     let diags = analyze_with_diags(

@@ -33,7 +33,7 @@ impl TemplateVisitor for TemplateSemanticVisitor {
             let mut reference =
                 OxcReference::new(OxcNodeId::DUMMY, ctx.scope, OxcReferenceFlags::Write);
             reference.set_symbol_id(sym_id);
-            let ref_id = ctx.data.scoping.create_reference(reference);
+            let ref_id = ctx.data.scoping.create_template_reference(reference);
             ctx.data.scoping.add_resolved_reference(sym_id, ref_id);
         }
     }
@@ -161,11 +161,11 @@ impl<'a> Visit<'a> for SemanticCollector<'_> {
         let mut reference = OxcReference::new(OxcNodeId::DUMMY, self.scope, flags);
         if let Some(sym_id) = self.scoping.find_binding(self.scope, ident.name.as_str()) {
             reference.set_symbol_id(sym_id);
-            let ref_id = self.scoping.create_reference(reference);
+            let ref_id = self.scoping.create_template_reference(reference);
             self.scoping.add_resolved_reference(sym_id, ref_id);
             ident.set_reference_id(ref_id);
         } else {
-            let ref_id = self.scoping.create_reference(reference);
+            let ref_id = self.scoping.create_template_reference(reference);
             ident.set_reference_id(ref_id);
         }
     }
