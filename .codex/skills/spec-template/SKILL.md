@@ -50,7 +50,7 @@ Put `Current state` first. It is the session handoff section.
 - `[ ]` means in scope and not done
 - `[x]` means implemented and covered by test
 - `[~]` means partial
-- `Deferred` inside `Use cases` means not in current scope
+- `Deferred` inside `Use cases` means not in current scope; list each deferred case as its own unchecked checkbox so it stays visible in the feature-local checklist
 
 ## Effort markers
 

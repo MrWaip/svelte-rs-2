@@ -128,16 +128,12 @@ impl ComponentScoping {
         self.scoping.symbol_scope_id(id)
     }
 
-    pub fn symbol_span(&self, id: SymbolId) -> oxc_span::Span {
-        self.scoping.symbol_span(id)
-    }
-
     /// Get the declared name of a symbol.
     pub fn symbol_name(&self, id: SymbolId) -> &str {
         self.scoping.symbol_name(id)
     }
 
-    fn function_depth(&self, mut scope: ScopeId) -> usize {
+    pub fn function_depth(&self, mut scope: ScopeId) -> usize {
         let mut depth = 0usize;
         loop {
             if self.scoping.scope_flags(scope).is_function() {
@@ -151,18 +147,8 @@ impl ComponentScoping {
         depth
     }
 
-    /// True when the symbol has a non-template read reference at the same
-    /// function nesting depth as its declaration.
-    pub fn has_same_function_depth_script_read(&self, sym_id: SymbolId) -> bool {
-        let decl_depth = self.function_depth(self.symbol_scope_id(sym_id));
-        self.scoping
-            .get_resolved_reference_ids(sym_id)
-            .iter()
-            .filter(|ref_id| !self.template_reference_ids.contains(ref_id))
-            .map(|&ref_id| self.scoping.get_reference(ref_id))
-            .any(|reference| {
-                reference.is_read() && self.function_depth(reference.scope_id()) == decl_depth
-            })
+    pub fn is_template_reference(&self, ref_id: ReferenceId) -> bool {
+        self.template_reference_ids.contains(&ref_id)
     }
 
     // -- Rune tracking --
@@ -183,10 +169,6 @@ impl ComponentScoping {
 
     pub fn rune_kind(&self, id: SymbolId) -> Option<RuneKind> {
         self.runes.get(&id).map(|r| r.kind)
-    }
-
-    pub fn rune_symbols(&self) -> impl Iterator<Item = (SymbolId, RuneKind)> + '_ {
-        self.runes.iter().map(|(sym_id, rune)| (*sym_id, rune.kind))
     }
 
     pub fn is_rune(&self, id: SymbolId) -> bool {

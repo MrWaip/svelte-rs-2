@@ -43,7 +43,7 @@ Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` 
 - Use case с пометкой `[ ]` = в scope текущей работы
 - Use case с пометкой `[x]` = реализован и покрыт тестом
 - Use case с пометкой `[~]` = частично (описать что работает, что нет)
-- Секция "Deferred" внутри Use cases = отложено в ROADMAP, не в scope
+- Секция "Deferred" внутри Use cases = отложено, не в scope; каждый такой кейс держать отдельным чекбоксом в соответствующей spec
 
 ### Жизненный цикл
 1. Создаётся: `/port` step 3 или `/audit` step 3 (шаблон: `spec-template` skill)
@@ -88,7 +88,7 @@ To port a new feature: `/port <feature>`. To audit existing feature completeness
 To fix existing code problems (bugs, workarounds, missing tests): `/improve <description>`.
 Read `ROADMAP.md` for the full feature catalog and current priorities.
 
-When discovering deferred items, add them to the **Deferred** section of `ROADMAP.md`.
+When discovering deferred items, add them to the matching spec `Use cases` deferred subsection as unchecked checkboxes. If there is no matching spec, report that explicitly to the user instead of recording the deferred item elsewhere.
 
 For legacy Svelte 4 features, see the `legacy-conventions` skill.
 
@@ -126,7 +126,7 @@ If any check fails — fix before committing. Don't create a TODO.
 If implementation fails after 3 attempts on the same approach:
 1. Commit what works (WIP commit if partial)
 2. Document the blocker in `specs/<feature>.md` Current state section
-3. If blocker is a separate task — add to ROADMAP.md Deferred
+3. If blocker is a separate task — add it to the spec `Use cases` deferred subsection as an unchecked checkbox; if there is no matching spec, report that explicitly to the user
 4. Report to user: what was tried, what failed, what the blocker is
 5. Move to next task or end session
 
