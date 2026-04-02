@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rust LSP Workflow"
+  short_description: "Start and use Rust LSP correctly"
+  default_prompt: "Use $rust-lsp-workflow to inspect or navigate Rust code through the rust-lsp MCP server in this repository."
