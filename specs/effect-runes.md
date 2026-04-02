@@ -1,10 +1,15 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 5/9 use cases
-- **Missing**: 4/9 use cases
-- **Next**: Port analyzer-side rune classification and validation for `$effect` / `$effect.pre`, then expand the same validator path to related `$effect.*` siblings that currently bypass `RuneKind`.
-- Last updated: 2026-04-01
+- **Working**: 9/9 use cases — ALL complete
+- **Missing**: None
+- **Completed (2026-04-02)**:
+  - Added `EffectPre` and `EffectRoot` to `RuneKind`; wired into `detect_rune_from_call()`
+  - Ported `$effect` / `$effect.pre` placement validation (`EffectInvalidPlacement`)
+  - Ported arg-count validation for `$effect` / `$effect.pre` / `$effect.root` (exactly 1) and `$effect.tracking` (zero args)
+  - Deleted ad-hoc `is_effect_call()` helper; replaced with canonical `detect_rune_from_call()` path
+  - Unignored 4 analyzer tests: all pass
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -35,14 +40,14 @@
   Tests: `effect_tracking`
 - [~] `$effect.pending()` lowers in template expressions, but coverage is limited to template/branch positions rather than script-side usage
   Tests: `effect_pending`
-- [ ] `$effect()` placement validation: only allowed as an expression statement
-  Missing: analyzer does not emit `effect_invalid_placement`
-- [ ] `$effect.pre()` placement validation: only allowed as an expression statement
-  Missing: analyzer does not classify `$effect.pre` as a rune, so the validator never checks it
-- [ ] `$effect()` argument validation: exactly one argument required
-  Missing: analyzer currently skips arg-count checks for `RuneKind::Effect`
-- [ ] `$effect.pre()` argument validation: exactly one argument required
-  Missing: analyzer does not classify `$effect.pre` as a rune, so the validator never checks it
+- [x] `$effect()` placement validation: only allowed as an expression statement
+  Tests: `validate_effect_invalid_placement_fn_arg`
+- [x] `$effect.pre()` placement validation: only allowed as an expression statement
+  Tests: `validate_effect_pre_invalid_placement_assignment`
+- [x] `$effect()` argument validation: exactly one argument required
+  Tests: `validate_effect_wrong_arg_count`
+- [x] `$effect.pre()` argument validation: exactly one argument required
+  Tests: `validate_effect_pre_wrong_arg_count`
 
 ### Deferred
 

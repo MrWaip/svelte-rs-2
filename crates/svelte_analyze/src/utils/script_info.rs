@@ -134,6 +134,8 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
                     ("$derived", "by") => Some(RuneKind::DerivedBy),
                     ("$state", "raw") => Some(RuneKind::StateRaw),
                     ("$state", "eager") => Some(RuneKind::StateEager),
+                    ("$effect", "pre") => Some(RuneKind::EffectPre),
+                    ("$effect", "root") => Some(RuneKind::EffectRoot),
                     ("$effect", "tracking") => Some(RuneKind::EffectTracking),
                     ("$effect", "pending") => Some(RuneKind::EffectPending),
                     ("$props", "id") => Some(RuneKind::PropsId),
