@@ -21,7 +21,7 @@ impl AsyncEmissionPlan {
         };
         Self {
             has_await: deps.has_await(),
-            blockers: deps.blockers.into_iter().collect(),
+            blockers: deps.blockers.to_vec(),
         }
     }
 
