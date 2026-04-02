@@ -1,14 +1,10 @@
 # If Block
 
 ## Current state
-- **Working**: 5/8 use cases
-- **Missing**: 3/8 use cases
-- **Next**: use `/port specs/if-block.md` to fix the reproduced call-memoization mismatch and the async `else if` flattening mismatch, then add one blocker-changing `{:else if}` snapshot to close the remaining audit gap.
-- **Risk**: client codegen currently flattens structural `{:else if}` chains unconditionally, while the reference only flattens when the nested branch does not introduce `await` or new blockers.
-- **Confirmed mismatches**:
-- `if_call_condition`: Rust emits `$.derived(is_even)` while the reference emits `$.derived(() => is_even())`.
-- `async_if_else_if_condition`: Rust flattens `{:else if await second()}` into the parent `$.if`, while the reference keeps it nested in a transparent else-if branch.
-- Last updated: 2026-04-01
+- **Working**: 8/8 use cases
+- **Missing**: None — all client-side use cases covered and passing
+- **Next**: Feature complete. Diagnostics deferred.
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -32,9 +28,14 @@
 - `[x]` `{@const}` inside `if` / `else if` branches.
 - `[x]` Root async condition `{#if await expr}` with `experimental.async`.
 - `[x]` Nested blocks under `{#if}` such as `{#await}`, `<svelte:boundary>`, `<svelte:element>`, `use:` and transitions.
-- `[ ]` Condition expressions containing calls and tracked symbols should memoize exactly like the reference. Reproduced mismatch: `if_call_condition`.
-- `[ ]` `{:else if await expr}` under `experimental.async` should remain a nested transparent else-if instead of being flattened into the parent branch chain.
-- `[ ]` `{:else if expr}` that introduces blockers not present in the parent branch should follow the same non-flattened path as the reference compiler.
+- `[x]` Condition expressions containing calls and tracked symbols memoize exactly like the reference (`$.derived(() => expr)`).
+- `[x]` `{:else if await expr}` under `experimental.async` remains a nested transparent else-if instead of being flattened into the parent branch chain.
+- `[x]` `{:else if expr}` that introduces blockers not present in the parent branch follows the same non-flattened path as the reference compiler.
+
+### Deferred
+
+- `[ ]` Analyzer validation: `validate_block_not_empty` for consequent/alternate
+- `[ ]` Analyzer validation: `validate_opening_tag` for runes mode
 
 ## Reference
 
@@ -50,32 +51,33 @@
 - `crates/svelte_analyze/src/passes/lower.rs`
 - `crates/svelte_analyze/src/types/data/analysis.rs`
 - `crates/svelte_codegen_client/src/template/if_block.rs`
-- Existing and new compiler tests:
+- `crates/svelte_codegen_client/src/template/async_plan.rs`
+- Existing compiler tests:
 - `tasks/compiler_tests/cases2/single_if_block/case.svelte`
 - `tasks/compiler_tests/cases2/single_if_else_block/case.svelte`
 - `tasks/compiler_tests/cases2/if_else_chain_with_const/case.svelte`
 - `tasks/compiler_tests/cases2/async_if_basic/case.svelte`
 - `tasks/compiler_tests/cases2/if_call_condition/case.svelte`
 - `tasks/compiler_tests/cases2/async_if_else_if_condition/case.svelte`
+- `tasks/compiler_tests/cases2/if_elseif_new_blockers/case.svelte`
 
 ## Tasks
 
-- `[ ]` Compare generated Rust snapshot for `async_if_else_if_condition` against the reference snapshot and capture the exact structural mismatch.
-- `[ ]` Fix condition call memoization in `crates/svelte_codegen_client/src/template/if_block.rs` so memoized call conditions always wrap the expression in a thunk, matching the reference `$.derived(() => expr)` shape.
-- `[ ]` Move else-if flattening ownership from structural lowering to analysis/codegen data that can respect `has_await` and blocker comparisons.
-- `[ ]` Preserve the current sync flattening fast path for plain `{:else if}` chains.
-- `[ ]` Keep `elseif` transition locality behavior aligned with the reference when the alternate remains nested.
-
-## Implementation order
-
-- 1. Reproduce on `async_if_else_if_condition`.
-- 2. Fix flattening eligibility for else-if branches.
-- 3. Re-run the focused compiler tests and existing `if` snapshots.
+- `[x]` Fix condition call memoization: always wrap in arrow for `$.derived()`, don't use `thunk()` which strips no-arg calls.
+- `[x]` Fix statement ordering: interleave consequent arrows with derived declarations per branch (matching reference order).
+- `[x]` Move else-if flattening guard to codegen: check `has_await` and `has_more_blockers_than` before flattening.
+- `[x]` Add `elseif` flag (`true` third arg) on `$.if()` for non-flattened else-if blocks.
+- `[x]` Fix expression consumption for blocker-only async: only consume at root for `has_await`, not `needs_async`.
+- `[x]` Add unique `node` parameter naming in `$.async` callbacks to support nesting.
+- `[x]` Add `if_elseif_new_blockers` test case for blocker-changing else-if.
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_codegen_client/src/template/if_block.rs` follows `alt_is_elseif` structurally and therefore cannot distinguish sync-flattenable `{:else if}` from async or blocker-changing branches that must stay nested.
-- OPEN: `crates/svelte_codegen_client/src/template/if_block.rs` emits `$.derived(expr)` for memoized `if` call conditions instead of the reference `$.derived(() => expr)` form.
+- FIXED: `thunk()` strips no-arg calls (`is_even()` → `is_even`) but `$.derived` requires the call preserved inside an arrow.
+- FIXED: Statement ordering: all consequent arrows emitted first, then all deriveds; reference interleaves per-branch.
+- FIXED: `alt_is_elseif` flattened unconditionally — no check for `has_await` or new blockers on the nested else-if.
+- FIXED: `$.async` callback always used hardcoded `"node"` parameter, causing name collisions when nested.
+- FIXED: Root expression consumed when `needs_async` even for blocker-only async where it's not needed for the thunk.
 
 ## Test cases
 
@@ -85,6 +87,8 @@
 - `if_else_chain_with_const`
 - `async_if_basic`
 - `await_in_if`
-- Added during this audit:
-- `if_call_condition`
-- `async_if_else_if_condition`
+- Fixed during this port:
+- `if_call_condition` — condition call memoization
+- `async_if_else_if_condition` — async else-if flattening
+- Added during this port:
+- `if_elseif_new_blockers` — blocker-changing else-if

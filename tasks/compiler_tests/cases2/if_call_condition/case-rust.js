@@ -13,11 +13,11 @@ export default function App($$anchor) {
 			var p = root_1();
 			$.append($$anchor, p);
 		};
+		var d = $.derived(() => is_even());
 		var alternate = ($$anchor) => {
 			var p_1 = root_2();
 			$.append($$anchor, p_1);
 		};
-		var d = $.derived(is_even);
 		$.if(node, ($$render) => {
 			if ($.get(d)) $$render(consequent);
 			else $$render(alternate, -1);
