@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use oxc_traverse::TraverseCtx;
+use oxc_traverse::{Ancestor, TraverseCtx};
 use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
@@ -10,7 +10,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
     pub(super) fn transform_assignment(
         &self,
         node: &mut Expression<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         let Expression::AssignmentExpression(assign) = node else {
             return;
@@ -59,13 +59,20 @@ impl<'a> ScriptTransformer<'_, 'a> {
             if let Some((kind, mutated)) = self.rune_for_ref(id) {
                 if mutated {
                     let name = id.name.as_str().to_string();
+                    // Resolve sym_id while `id` borrow is still available (before move_expr borrows assign).
+                    let is_var_state = id.reference_id.get()
+                        .and_then(|r| self.scoping.get_reference(r).symbol_id())
+                        .is_some_and(|s| self.component_scoping.is_var_declared_state(s));
                     let right = self.b.move_expr(&mut assign.right);
 
                     let value = if assign.operator.is_assign() {
                         right
                     } else {
-                        let left_get =
-                            svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name);
+                        let left_get = if is_var_state {
+                            svelte_transform::rune_refs::make_rune_safe_get(self.b.ast.allocator, &name)
+                        } else {
+                            svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name)
+                        };
                         if let Some(bin_op) = assign.operator.to_binary_operator() {
                             self.b
                                 .ast
@@ -106,6 +113,84 @@ impl<'a> ScriptTransformer<'_, 'a> {
             let untracked = svelte_transform::rune_refs::make_untrack(alloc, &root_name);
             *node = svelte_transform::rune_refs::make_store_mutate(
                 alloc, &base_name, mutation, untracked,
+            );
+            return;
+        }
+
+        // Dev-mode: rewrite non-statement member-expression assignments to $.assign_*(obj, key, rhs, loc)
+        if !self.dev {
+            return;
+        }
+        let Expression::AssignmentExpression(assign) = &*node else { return };
+        let fn_name = match assign.operator {
+            oxc_ast::ast::AssignmentOperator::Assign         => "$.assign",
+            oxc_ast::ast::AssignmentOperator::LogicalAnd     => "$.assign_and",
+            oxc_ast::ast::AssignmentOperator::LogicalOr      => "$.assign_or",
+            oxc_ast::ast::AssignmentOperator::LogicalNullish => "$.assign_nullish",
+            _ => return,
+        };
+        if !svelte_transform::rune_refs::should_proxy(&assign.right) {
+            return;
+        }
+        if matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_)) {
+            return;
+        }
+        let is_static = matches!(
+            &assign.left,
+            oxc_ast::ast::AssignmentTarget::StaticMemberExpression(_)
+        );
+        let is_computed = matches!(
+            &assign.left,
+            oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(_)
+        );
+        if !is_static && !is_computed {
+            return;
+        }
+
+        // Capture span before moving (spans are Copy)
+        let left_span_start = assign.span.start;
+        let offset = self.script_content_start + left_span_start;
+        let (line, col) = crate::script::location::compute_line_col(self.component_source, offset);
+        let loc = format!(
+            "{}:{}:{}",
+            crate::script::location::sanitize_location(self.filename),
+            line,
+            col
+        );
+
+        // Move whole node to obtain ownership, then destructure
+        let whole = self.b.move_expr(node);
+        let Expression::AssignmentExpression(assign_box) = whole else { unreachable!() };
+        let assign = assign_box.unbox();
+
+        if is_static {
+            let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(m) = assign.left else {
+                unreachable!()
+            };
+            let m = m.unbox();
+            let key = self.b.str_expr(m.property.name.as_str());
+            *node = self.b.call_expr(
+                fn_name,
+                [
+                    Arg::Expr(m.object),
+                    Arg::Expr(key),
+                    Arg::Expr(assign.right),
+                    Arg::Str(loc),
+                ],
+            );
+        } else {
+            let oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(m) = assign.left else {
+                unreachable!()
+            };
+            let m = m.unbox();
+            *node = self.b.call_expr(
+                fn_name,
+                [
+                    Arg::Expr(m.object),
+                    Arg::Expr(m.expression),
+                    Arg::Expr(assign.right),
+                    Arg::Str(loc),
+                ],
             );
         }
     }

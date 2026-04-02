@@ -14,6 +14,16 @@ pub fn make_rune_get<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
     ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
 }
 
+/// Build `$.safe_get(name)` call expression.
+/// Used instead of `$.get` for `var`-declared state, because `var` hoisting means the binding
+/// may be read before the initializer runs and the signal is set.
+pub fn make_rune_safe_get<'a>(alloc: &'a Allocator, name: &str) -> Expression<'a> {
+    let ast = AstBuilder::new(alloc);
+    let callee = make_dollar_member(&ast, "safe_get");
+    let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
+    ast.expression_call(SPAN, callee, NONE, ast.vec1(name_arg), false)
+}
+
 /// Build `$.set(name, value[, true])` call expression.
 /// If `proxy` is true, adds a third `true` argument.
 pub fn make_rune_set<'a>(
