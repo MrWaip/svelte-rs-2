@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::Statement;
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -18,8 +18,8 @@ use super::events::{
     gen_use_directive,
 };
 use super::expression::{
-    build_concat, emit_memoized_text_effect, emit_trailing_next, item_has_local_blockers,
-    text_content_needs_memo, MemoAttr,
+    build_concat, emit_memoized_text_effect, emit_trailing_next, get_node_expr,
+    item_has_local_blockers, text_content_needs_memo, MemoAttr,
 };
 use super::html_tag::gen_html_tag;
 use super::traverse::traverse_items;
@@ -179,9 +179,17 @@ pub(crate) fn process_element<'a>(
         ContentStrategy::Empty | ContentStrategy::Static(_) => {}
 
         ContentStrategy::DynamicText if !has_state => {
-            // textContent shortcut
             let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
-            if !item_has_local_blockers(&items[0], ctx) {
+
+            if ctx.needs_textarea_value_lowering(el_id) {
+                // <textarea> with expression children: remove static child, set value property.
+                // Use the raw expression (bypasses build_concat constant folding) so the variable
+                // reference is preserved — $.set_value must receive the live binding, not a literal.
+                init.push(ctx.b.call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]));
+                let expr = extract_single_raw_expr_or_concat(ctx, &items[0]);
+                init.push(ctx.b.call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]));
+            } else if !item_has_local_blockers(&items[0], ctx) {
+                // textContent shortcut
                 let expr = build_concat(ctx, &items[0]);
                 init.push(ctx.b.assign_stmt(
                     crate::builder::AssignLeft::StaticMember(
@@ -189,6 +197,18 @@ pub(crate) fn process_element<'a>(
                     ),
                     expr,
                 ));
+                // <option> with expression child and no explicit value attr: synthesize __value.
+                // Uses the raw expression (bypasses constant folding) so the variable reference
+                // is preserved for select-binding value comparisons at runtime.
+                if let Some(expr_id) = ctx.option_synthetic_value_expr(el_id) {
+                    let raw_expr = get_node_expr(ctx, expr_id);
+                    init.push(ctx.b.assign_stmt(
+                        crate::builder::AssignLeft::StaticMember(
+                            ctx.b.static_member(ctx.b.rid_expr(el_name), "__value"),
+                        ),
+                        raw_expr,
+                    ));
+                }
             } else {
                 let text_name = ctx.gen_ident("text");
                 let child_call = ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
@@ -326,4 +346,21 @@ pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>)
         | svelte_analyze::FragmentItem::SvelteBoundary(_)
         | svelte_analyze::FragmentItem::AwaitBlock(_) => true,
     }
+}
+
+/// Build a value expression from a fragment item without constant folding.
+///
+/// When a fragment item is a single expression tag, returns the raw node expression
+/// (variable reference preserved). Falls back to `build_concat` for multi-part items.
+/// Used where the live binding must be passed (e.g. `$.set_value` for textarea).
+fn extract_single_raw_expr_or_concat<'a>(
+    ctx: &mut Ctx<'a>,
+    item: &FragmentItem,
+) -> oxc_ast::ast::Expression<'a> {
+    if let FragmentItem::TextConcat { parts, .. } = item {
+        if let [LoweredTextPart::Expr(nid)] = parts.as_slice() {
+            return get_node_expr(ctx, *nid);
+        }
+    }
+    build_concat(ctx, item)
 }

@@ -143,13 +143,11 @@ fn element_autofocus() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn textarea_child_value_dynamic() {
     assert_compiler("textarea_child_value_dynamic");
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn option_expr_child_value() {
     assert_compiler("option_expr_child_value");
 }

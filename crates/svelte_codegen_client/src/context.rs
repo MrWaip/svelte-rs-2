@@ -434,6 +434,12 @@ impl<'a> Ctx<'a> {
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.query.view.needs_input_defaults(id)
     }
+    pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
+        self.query.view.needs_textarea_value_lowering(id)
+    }
+    pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
+        self.query.view.option_synthetic_value_expr(id)
+    }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }
