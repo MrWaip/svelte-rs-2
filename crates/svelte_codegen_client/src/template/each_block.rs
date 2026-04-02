@@ -63,8 +63,10 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_INDEX_REACTIVE;
     }
 
-    // EACH_ITEM_REACTIVE: collection references external state
-    // In runes mode: skip when key_is_item (item identity is the key)
+    // EACH_ITEM_REACTIVE: collection references external state.
+    // Reference also filters deps by function_depth (only external deps count),
+    // but our ref_symbols already excludes each-local bindings via scope resolution.
+    // In runes mode: skip when key_is_item unless store deps are present.
     let expr_deps = ctx
         .expr_deps(ExprSite::Node(block_id))
         .unwrap_or_else(|| panic!("missing expression deps for each block {:?}", block_id));
@@ -77,7 +79,8 @@ pub(crate) fn gen_each_block<'a>(
         flags |= EACH_ITEM_REACTIVE;
     }
 
-    // EACH_ITEM_IMMUTABLE: runes mode without store dependency
+    // EACH_ITEM_IMMUTABLE: runes mode without store dependency.
+    // Reference: `runes && !uses_store`. We only compile runes mode currently.
     if !uses_store {
         flags |= EACH_ITEM_IMMUTABLE;
     }
