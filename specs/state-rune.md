@@ -92,12 +92,12 @@ Audit of existing implementation
 36. [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
 
 ### Diagnostics (analyze phase — not yet emitted)
-37. [ ] `state_referenced_locally` warning — reading state/derived at same function depth captures initial value (test: state_referenced_locally, #[ignore], moderate)
-38. [ ] `state_invalid_export` error — cannot export reassigned state from module (test: state_invalid_export, #[ignore], moderate)
+37. [x] `state_referenced_locally` warning — reading state/derived at same function depth captures initial value (covered by analyzer tests: `validate_state_referenced_locally_*`)
+38. [x] `state_invalid_export` error — cannot export reassigned state from module (covered by analyzer tests: `validate_state_invalid_export_*`)
 
 ### Codegen edge cases
-39. [ ] Dev-mode `$.assign_*` transforms — `(obj.x ??= []).push(v)` → `$.assign_nullish(obj, 'x', [])` (test: state_assign_dev, #[ignore], moderate)
-40. [ ] `$.safe_get` for `var`-declared state — `var x = $state(0); x` → `$.safe_get(x)` (test: state_var_safe_get, #[ignore], quick fix)
+39. [x] Dev-mode `$.assign_*` transforms — `(obj.x ??= []).push(v)` → `$.assign_nullish(obj, 'x', [])` (covered, test: state_assign_dev)
+40. [x] `$.safe_get` for `var`-declared state — `var x = $state(0); x` → `$.safe_get(x)` (covered, test: state_var_safe_get)
 
 ### Advanced / edge cases
 41. Deferred — `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4 only, moved to Tier 7)
@@ -111,16 +111,16 @@ Audit of existing implementation
 2. [x] Add diagnostic: `$state.is` → rune removed
 3. [x] Add placement validation for `$state`/`$state.raw` (variable decl, class prop, constructor only)
 4. [x] Add argument count validation (0-1 for `$state`/`$state.raw`)
-5. [ ] Emit `state_referenced_locally` warning in Identifier visitor (needs function_depth tracking)
-6. [ ] Emit `state_invalid_export` error in export validation (needs `binding.reassigned` check)
+5. [x] Emit `state_referenced_locally` warning in validation pass
+6. [x] Emit `state_invalid_export` error in export validation
 
 ### codegen
 7. [x] `$.tag_proxy()` in dev mode when proxying a prop initializer (already implemented)
 8. Deferred — `$.deep_read_state()` for legacy reactive statements (Tier 7)
 9. [x] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
 10. [x] Constructor `this.#field.v` for `$state`/`$state.raw` inside constructor
-11. [ ] `$.safe_get` for `var`-declared state reads (quick fix in runes.rs)
-12. [ ] Dev-mode `$.assign_*` transforms for non-statement member assignment (moderate, new transform)
+11. [x] `$.safe_get` for `var`-declared state reads
+12. [x] Dev-mode `$.assign_*` transforms for non-statement member assignment
 
 ### tests
 13. [x] `$.tag_proxy` dev mode — already covered by existing tag_* tests
@@ -139,4 +139,3 @@ Audit of existing implementation
 
 ### BUG-3: ~~Constructor `$state([])` missing `$.proxy()` wrapping~~ FIXED
 - **Test**: `state_class_constructor_proxy` — PASSING
-
