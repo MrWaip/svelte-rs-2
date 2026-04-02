@@ -22,6 +22,7 @@ pub struct Rune {
 /// bindings (each-block context/index) are added via `add_scope` / `add_binding`.
 pub struct ComponentScoping {
     scoping: Scoping,
+    template_reference_ids: FxHashSet<ReferenceId>,
     runes: FxHashMap<SymbolId, Rune>,
     // SymbolId-keyed classification fields (single source of truth for semantic decisions)
     prop_source_syms: FxHashSet<SymbolId>,
@@ -66,6 +67,7 @@ impl ComponentScoping {
         });
         Self {
             scoping,
+            template_reference_ids: FxHashSet::default(),
             runes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
@@ -135,8 +137,8 @@ impl ComponentScoping {
         self.scoping.symbol_name(id)
     }
 
-    pub fn resolved_references(&self, id: SymbolId) -> impl Iterator<Item = &OxcReference> {
-        self.scoping.get_resolved_references(id)
+    pub fn resolved_reference_ids(&self, id: SymbolId) -> &[ReferenceId] {
+        self.scoping.get_resolved_reference_ids(id)
     }
 
     pub fn function_depth(&self, mut scope: ScopeId) -> usize {
@@ -186,6 +188,14 @@ impl ComponentScoping {
         self.scoping.create_reference(reference)
     }
 
+    /// Template references are synthesized by template visitors and do not map
+    /// to script AST nodes in OXC's semantic node table.
+    pub fn create_template_reference(&mut self, reference: OxcReference) -> ReferenceId {
+        let ref_id = self.scoping.create_reference(reference);
+        self.template_reference_ids.insert(ref_id);
+        ref_id
+    }
+
     /// Record that a ReferenceId resolves to a SymbolId.
     pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
         self.scoping.add_resolved_reference(sym_id, ref_id);
@@ -194,6 +204,10 @@ impl ComponentScoping {
     /// Get a reference by ReferenceId.
     pub fn get_reference(&self, ref_id: ReferenceId) -> &OxcReference {
         self.scoping.get_reference(ref_id)
+    }
+
+    pub fn is_template_reference(&self, ref_id: ReferenceId) -> bool {
+        self.template_reference_ids.contains(&ref_id)
     }
 
     // -- Convenience: SymbolId-based dynamism check --

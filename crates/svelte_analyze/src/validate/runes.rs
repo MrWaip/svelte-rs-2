@@ -4,7 +4,6 @@ use oxc_ast::ast::{
     AssignmentOperator, CallExpression, Expression,
     MethodDefinitionKind, PropertyDefinition, VariableDeclarator,
 };
-use oxc_semantic::NodeId as OxcNodeId;
 use oxc_ast_visit::walk::{
     walk_assignment_expression, walk_call_expression, walk_method_definition,
     walk_property_definition,
@@ -153,14 +152,13 @@ fn validate_state_referenced_locally_derived(
             continue;
         }
         let decl_depth = data.scoping.function_depth(data.scoping.symbol_scope_id(sym_id));
-        let has_same_depth_read = data
-            .scoping
-            .resolved_references(sym_id)
-            .any(|reference| {
-                reference.is_read()
-                    && reference.node_id() != OxcNodeId::DUMMY
-                    && data.scoping.function_depth(reference.scope_id()) == decl_depth
-            });
+        let has_same_depth_read = data.scoping.resolved_reference_ids(sym_id).iter().any(|&ref_id| {
+            if data.scoping.is_template_reference(ref_id) {
+                return false;
+            }
+            let reference = data.scoping.get_reference(ref_id);
+            reference.is_read() && data.scoping.function_depth(reference.scope_id()) == decl_depth
+        });
         if has_same_depth_read {
             let name = data.scoping.symbol_name(sym_id);
             let decl = data.scoping.symbol_span(sym_id);
