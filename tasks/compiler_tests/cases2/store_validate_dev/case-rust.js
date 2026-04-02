@@ -5,7 +5,7 @@ var root = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[5, 0]]);
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, true, App);
-	const $count = () => $.store_get(count, "$count", $$stores);
+	const $count = () => ($.validate_store(count, "count"), $.store_get(count, "$count", $$stores));
 	const [$$stores, $$cleanup] = $.setup_stores();
 	var $$exports = { ...$.legacy_api() };
 	var p = root();
@@ -13,6 +13,7 @@ export default function App($$anchor, $$props) {
 	$.reset(p);
 	$.template_effect(() => $.set_text(text, $count()));
 	$.append($$anchor, p);
-	return $.pop($$exports);
+	var $$pop = $.pop($$exports);
 	$$cleanup();
+	return $$pop;
 }

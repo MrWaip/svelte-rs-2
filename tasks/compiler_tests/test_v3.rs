@@ -610,9 +610,18 @@ fn store_write() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn store_validate_dev() {
     assert_compiler("store_validate_dev");
+}
+
+#[rstest]
+fn store_reassign_unsub() {
+    assert_compiler("store_reassign_unsub");
+}
+
+#[rstest]
+fn store_each_invalidate() {
+    assert_compiler("store_each_invalidate");
 }
 
 #[rstest]
