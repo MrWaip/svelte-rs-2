@@ -40,10 +40,10 @@ fn get_declarator<'a>(ctx: &VisitContext<'a>, handle: StmtHandle) -> Option<&'a 
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(handle) = block.context_span.and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start))) {
-            ctx.data.each_context_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.each_context_stmt_handles.insert(block.id, handle);
         }
         if let Some(handle) = block.index_span.and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start))) {
-            ctx.data.each_index_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.each_index_stmt_handles.insert(block.id, handle);
         }
         let is_destructured = block.context_span
             .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
@@ -140,6 +140,14 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
                     ctx.data.scoping.mark_each_block_var(idx_sym);
                     ctx.data.each_blocks.index_syms.insert(block.id, idx_sym);
+                    // EACH_INDEX_REACTIVE is only set for keyed blocks. For unkeyed blocks the
+                    // index is a plain iteration counter — not a reactive signal — so reads
+                    // must not be wrapped in $.get().
+                    if block.key_span.is_none() {
+                        ctx.data.scoping.mark_each_non_reactive(idx_sym);
+                        // Unkeyed index is also non-dynamic: no $.template_effect needed.
+                        ctx.data.scoping.mark_each_index_non_dynamic(idx_sym);
+                    }
                 }
             }
         }
@@ -147,13 +155,13 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
         if let Some(handle) = ctx.parsed().and_then(|p| p.stmt_handle(block.expression_span.start)) {
-            ctx.data.snippet_stmt_handles.insert(block.id, handle);
+            ctx.data.template_semantics.snippet_stmt_handles.insert(block.id, handle);
         }
         let name = block.name(&self.component.source);
         if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
             ctx.data.scoping.mark_snippet_name(name_sym);
         }
-        // Mark snippet params and collect param names
+        // Mark snippet params. Codegen reads the original parsed param patterns via stmt handle.
         if let Some(parsed) = ctx.parsed() {
             if let Some(stmt) = parsed
                 .stmt_handle(block.expression_span.start)
@@ -161,13 +169,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             {
                 let mut marker = SnippetParamMarker { scoping: &mut ctx.data.scoping, in_default: false };
                 marker.visit_statement(stmt);
-
-                // SnippetParamMarker mutates scoping, so names must be collected in a separate pass
-                let mut collector = SnippetParamNameCollector { names: Vec::new() };
-                collector.visit_statement(stmt);
-                if !collector.names.is_empty() {
-                    ctx.data.snippets.params.insert(block.id, collector.names);
-                }
             }
         }
     }
@@ -185,30 +186,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         }
-    }
-}
-
-/// OXC Visit that collects param names from `const name = (a, b) => {}`.
-/// Mirrors `SnippetParamMarker` descent but collects names instead of marking symbols.
-struct SnippetParamNameCollector {
-    names: Vec<String>,
-}
-
-impl<'a> Visit<'a> for SnippetParamNameCollector {
-    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        self.names.push(ident.name.to_string());
-    }
-
-    fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
-        // Skip decl.id — snippet name is not a param
-        if let Some(init) = &decl.init {
-            self.visit_expression(init);
-        }
-    }
-
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        // Only visit params — skip body to avoid collecting inner bindings
-        self.visit_formal_parameters(&arrow.params);
     }
 }
 

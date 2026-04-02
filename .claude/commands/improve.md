@@ -5,6 +5,8 @@ argument-hint: "[description-or-file-path]"
 
 # Improve: $ARGUMENTS
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 Fix an existing codebase problem: bug, workaround, ad hoc solution, architectural issue, or missing test coverage.
 
 ## Step 1: Understand the problem
@@ -27,6 +29,8 @@ Before writing any code, answer:
 2. **What's the correct fix?** Not the quick fix — the architecturally right one.
 3. **Does the fix change JS output?** If yes, existing tests will catch regressions. If no, this is a pure refactor.
 4. **How many files change?** If > 5 files — break into steps, one commit per logical change.
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 State the layer and approach. Wait for approval if the scope is large (> 5 files).
 

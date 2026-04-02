@@ -39,5 +39,5 @@ pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use runtime::RuntimePlan;
 pub use template_data::{
     AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, EachBlockData,
-    SnippetData, TitleElementData,
+    SnippetData, TemplateSemanticsData, TitleElementData,
 };

@@ -97,6 +97,49 @@ fn find_element<'a>(fragment: &'a Fragment, component: &'a Component, tag_name: 
     None
 }
 
+fn find_bind_directive_id(
+    fragment: &Fragment,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+) -> Option<NodeId> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::Element(el) => {
+                if el.name == tag_name {
+                    if let Some(dir_id) = el.attributes.iter().find_map(|attr| match attr {
+                        svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => Some(dir.id),
+                        _ => None,
+                    }) {
+                        return Some(dir_id);
+                    }
+                }
+                if let Some(found) = find_bind_directive_id(&el.fragment, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(found) = find_bind_directive_id(&b.consequent, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(found) = find_bind_directive_id(alt, component, tag_name, bind_name) {
+                        return Some(found);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn find_if_block<'a>(
     fragment: &'a Fragment,
     component: &'a Component,
@@ -129,6 +172,41 @@ fn find_each_block<'a>(
     None
 }
 
+fn find_snippet_block<'a>(
+    fragment: &'a Fragment,
+    component: &'a Component,
+    name: &str,
+) -> Option<&'a svelte_ast::SnippetBlock> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::SnippetBlock(block) if block.name(&component.source) == name => return Some(block),
+            Node::Element(el) => {
+                if let Some(block) = find_snippet_block(&el.fragment, component, name) {
+                    return Some(block);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(block) = find_snippet_block(&b.consequent, component, name) {
+                    return Some(block);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(block) = find_snippet_block(alt, component, name) {
+                        return Some(block);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(block) = find_snippet_block(&b.body, component, name) {
+                    return Some(block);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 // -----------------------------------------------------------------------
 // Assertion helpers
 // -----------------------------------------------------------------------
@@ -155,6 +233,12 @@ fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Compon
     let (data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
     assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
     (component, data)
+}
+
+fn analyze_module_with_diags(source: &str) -> Vec<Diagnostic> {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_data, diags) = analyze_module(&alloc, source, false, false);
+    diags
 }
 
 fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
@@ -219,6 +303,87 @@ fn assert_dynamic_each(data: &AnalysisData, component: &Component, expr_text: &s
     assert!(
         data.dynamic_nodes.contains(&block.id),
         "expected EachBlock '{expr_text}' to be dynamic"
+    );
+}
+
+fn assert_snippet_hoistable(
+    data: &AnalysisData,
+    component: &Component,
+    name: &str,
+    expected: bool,
+) {
+    let block = find_snippet_block(&component.fragment, component, name)
+        .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
+    assert_eq!(
+        data.snippets.is_hoistable(block.id),
+        expected,
+        "unexpected hoistability for snippet '{name}'",
+    );
+}
+
+fn assert_snippet_param_refs_include(
+    data: &AnalysisData,
+    component: &Component,
+    snippet_name: &str,
+    binding_name: &str,
+) {
+    let block = find_snippet_block(&component.fragment, component, snippet_name)
+        .unwrap_or_else(|| panic!("no SnippetBlock named '{snippet_name}'"));
+    let root = data.scoping.root_scope_id();
+    let sym = data
+        .scoping
+        .find_binding(root, binding_name)
+        .unwrap_or_else(|| panic!("no binding '{binding_name}'"));
+    assert!(
+        data.snippet_param_ref_symbols(block.id).contains(&sym),
+        "expected snippet '{snippet_name}' params to reference '{binding_name}'",
+    );
+}
+
+fn assert_bind_target_symbol_name(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    bind_name: &str,
+    expected_binding_name: &str,
+) {
+    let dir_id = find_bind_directive_id(&component.fragment, component, tag_name, bind_name)
+        .unwrap_or_else(|| panic!("no bind:{bind_name} on <{tag_name}>"));
+    let sym = data
+        .bind_target_symbol(dir_id)
+        .unwrap_or_else(|| panic!("no bind target symbol for bind:{bind_name} on <{tag_name}>"));
+    assert_eq!(
+        data.scoping.symbol_name(sym),
+        expected_binding_name,
+        "unexpected bind target symbol for bind:{bind_name} on <{tag_name}>",
+    );
+}
+
+fn assert_shorthand_symbol_name(
+    data: &AnalysisData,
+    component: &Component,
+    tag_name: &str,
+    attr_name: &str,
+    expected_binding_name: &str,
+) {
+    let el = find_element(&component.fragment, component, tag_name)
+        .unwrap_or_else(|| panic!("no element <{tag_name}>"));
+    let attr_id = el
+        .attributes
+        .iter()
+        .find_map(|attr| match attr {
+            svelte_ast::Attribute::ClassDirective(dir) if dir.name == attr_name => Some(dir.id),
+            svelte_ast::Attribute::StyleDirective(dir) if dir.name == attr_name => Some(dir.id),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no shorthand attr '{attr_name}' on <{tag_name}>"));
+    let sym = data
+        .shorthand_symbol(attr_id)
+        .unwrap_or_else(|| panic!("no shorthand symbol for '{attr_name}' on <{tag_name}>"));
+    assert_eq!(
+        data.scoping.symbol_name(sym),
+        expected_binding_name,
+        "unexpected shorthand symbol for '{attr_name}' on <{tag_name}>",
     );
 }
 
@@ -541,10 +706,19 @@ fn each_block_shadowing() {
 
 #[test]
 fn each_block_shadowing_does_not_mutate_rune() {
-    // `count = 99` inside each targets the each-block variable, not the rune
-    let (_c, data) = analyze_source(
-        r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#,
+    // `count = 99` inside each targets the each-block variable (shadowing the rune), not the rune.
+    // In runes mode this also triggers each_item_invalid_assignment — that's expected.
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"<script>let count = $state(0); let items = $state([]);</script>{#each items as count}{count = 99}{/each}"#;
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(parse_diags.is_empty());
+    let (data, _parsed, diags) = analyze(&component, js_result);
+    // The assignment to the each-block var is invalid in runes mode — exactly one diagnostic.
+    assert!(
+        diags.iter().all(|d| d.kind.code() == "each_item_invalid_assignment"),
+        "expected only each_item_invalid_assignment diagnostics, got: {diags:?}"
     );
+    // The ROOT-scoped rune `count` must NOT be mutated — shadowing works correctly.
     assert_is_rune(&data, "count");
     let root = data.scoping.root_scope_id();
     let count_sym = data
@@ -558,11 +732,13 @@ fn each_block_shadowing_does_not_mutate_rune() {
 }
 
 #[test]
-fn each_block_index_is_dynamic() {
+fn each_block_index_is_not_dynamic_unkeyed() {
+    // In an unkeyed each block, the index is a plain iteration counter — not reactive, not dynamic.
+    // Codegen uses direct assignment (div.textContent = i) rather than $.template_effect.
     let (c, data) = analyze_source(
         r#"<script>let items = $state([]);</script>{#each items as item, i}<p>{i}</p>{/each}"#,
     );
-    assert_dynamic_tag(&data, &c, "i");
+    assert_not_dynamic_tag(&data, &c, "i");
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,6 +1392,30 @@ export const total = $derived(count * 2);
 }
 
 #[test]
+fn validate_derived_invalid_export_specifier() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const count = $state(0);
+const total = $derived(count * 2);
+export { total };
+</script>"#,
+    );
+    assert_has_error(&diags, "derived_invalid_export");
+}
+
+#[test]
+fn validate_derived_invalid_default_export() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const count = $state(0);
+const total = $derived(count * 2);
+export default total;
+</script>"#,
+    );
+    assert_has_error(&diags, "derived_invalid_export");
+}
+
+#[test]
 fn validate_state_referenced_locally_for_derived() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1355,6 +1555,45 @@ fn validate_state_invalid_export_no_error_without_reassignment() {
 export let obj = $state({ x: 0 });
 obj.x = 1;
 </script>"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "state_invalid_export"),
+        "unexpected error: {diags:?}",
+    );
+}
+
+#[test]
+fn validate_state_invalid_export_for_reassigned_state_export_specifier() {
+    let diags = analyze_module_with_diags(
+        r#"
+let count = $state(0);
+count = 1;
+export { count };
+"#,
+    );
+    assert_has_error(&diags, "state_invalid_export");
+}
+
+#[test]
+fn validate_state_invalid_export_for_reassigned_state_default_export() {
+    let diags = analyze_module_with_diags(
+        r#"
+let count = $state(0);
+count = 1;
+export default count;
+"#,
+    );
+    assert_has_error(&diags, "state_invalid_export");
+}
+
+#[test]
+fn validate_state_invalid_export_no_error_for_default_export_without_reassignment() {
+    let diags = analyze_module_with_diags(
+        r#"
+let count = $state(0);
+count.value = 1;
+export default count;
+"#,
     );
     assert!(
         diags.iter().all(|d| d.kind.code() != "state_invalid_export"),
@@ -1650,14 +1889,14 @@ fn validate_const_tag_invalid_placement_root() {
 }
 
 #[test]
-#[ignore = "missing: each_key_without_as template validation"]
+#[ignore = "each_key_without_as is unreachable from valid Svelte template syntax — \
+            the JS expression parser always consumes (key) as a call expression"]
 fn validate_each_key_without_as() {
     let diags = analyze_with_diags("{#each items (item.id)}<p />{/each}");
     assert_has_error(&diags, "each_key_without_as");
 }
 
 #[test]
-#[ignore = "missing: animation_missing_key template validation"]
 fn validate_each_animation_missing_key() {
     let diags = analyze_with_diags(
         r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
@@ -1669,7 +1908,6 @@ fn validate_each_animation_missing_key() {
 }
 
 #[test]
-#[ignore = "missing: animation_invalid_placement template validation"]
 fn validate_each_animation_invalid_placement() {
     let diags = analyze_with_diags(
         r#"<script>import { flip } from 'svelte/animate'; let items = [];</script>
@@ -1682,12 +1920,169 @@ fn validate_each_animation_invalid_placement() {
 }
 
 #[test]
-#[ignore = "missing: each_item_invalid_assignment template validation"]
 fn validate_each_item_invalid_assignment() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]);</script>
 {#each items as item}
     {item = 1}
+{/each}"#,
+    );
+    assert_has_error(&diags, "each_item_invalid_assignment");
+}
+
+#[test]
+fn validate_each_item_invalid_assignment_bind_identifier() {
+    let diags = analyze_with_diags(
+        r#"<script>let items = $state([{ value: "a" }]);</script>
+{#each items as item}
+    <input bind:value={item}>
+{/each}"#,
+    );
+    assert_has_error(&diags, "each_item_invalid_assignment");
+}
+
+#[test]
+fn validate_each_item_bind_member_expression_no_invalid_assignment() {
+    let diags = analyze_with_diags(
+        r#"<script>let items = $state([{ value: "a" }]);</script>
+{#each items as item}
+    <input bind:value={item.value}>
+{/each}"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.kind.code() != "each_item_invalid_assignment"),
+        "unexpected error: {diags:?}",
+    );
+}
+
+#[test]
+fn validate_each_item_invalid_assignment_array_destructure() {
+    let diags = analyze_with_diags(
+        r#"<script>let items = $state([1, 2, 3]);</script>
+{#each items as item}
+    {([item] = [1])}
+{/each}"#,
+    );
+    assert_has_error(&diags, "each_item_invalid_assignment");
+}
+
+#[test]
+fn snippet_hoistability_taints_computed_key_script_reference() {
+    let (component, data) = analyze_source(
+        r#"<script>
+function key() {
+    return "label";
+}
+</script>
+
+{#snippet view({ [key()]: value })}
+    <p>{value}</p>
+{/snippet}"#,
+    );
+
+    assert_snippet_hoistable(&data, &component, "view", false);
+}
+
+#[test]
+fn snippet_param_ref_symbols_capture_script_refs() {
+    let (component, data) = analyze_source(
+        r#"<script>
+function key() {
+    return "label";
+}
+let fallback = () => "ok";
+</script>
+
+{#snippet view({ [key()]: value = fallback() })}
+    <p>{value}</p>
+{/snippet}"#,
+    );
+
+    assert_snippet_param_refs_include(&data, &component, "view", "key");
+    assert_snippet_param_refs_include(&data, &component, "view", "fallback");
+}
+
+#[test]
+fn bind_target_symbol_covers_shorthand_and_identifier_bindings() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let value = $state('');
+let checked = $state(false);
+</script>
+
+<input bind:value />
+<input type="checkbox" bind:checked={checked} />"#,
+    );
+
+    assert_bind_target_symbol_name(&data, &component, "input", "value", "value");
+    assert_bind_target_symbol_name(&data, &component, "input", "checked", "checked");
+}
+
+#[test]
+fn shorthand_symbol_returns_symbol_for_class_and_style_shorthand() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let active = $state(false);
+let color = $state('red');
+</script>
+
+<div class:active style:color></div>"#,
+    );
+
+    assert_shorthand_symbol_name(&data, &component, "div", "active", "active");
+    assert_shorthand_symbol_name(&data, &component, "div", "color", "color");
+}
+
+#[test]
+fn snippet_hoistability_taints_default_initializer_script_reference() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let fallback = () => "ok";
+</script>
+
+{#snippet view({ value = fallback() })}
+    <p>{value}</p>
+{/snippet}"#,
+    );
+
+    assert_snippet_hoistable(&data, &component, "view", false);
+}
+
+#[test]
+fn snippet_hoistability_ignores_nested_destructure_without_script_refs() {
+    let (component, data) = analyze_source(
+        r#"{#snippet view({ outer: { value = "ok" } })}
+    <p>{value}</p>
+{/snippet}"#,
+    );
+
+    assert_snippet_hoistable(&data, &component, "view", true);
+}
+
+#[test]
+fn snippet_hoistability_uses_symbols_not_names() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let fallback = "script";
+</script>
+
+{#snippet view({ value = (() => {
+    let fallback = () => "ok";
+    return fallback();
+})() })}
+    <p>{value}</p>
+{/snippet}"#,
+    );
+
+    assert_snippet_hoistable(&data, &component, "view", true);
+}
+
+#[test]
+fn validate_each_item_invalid_assignment_nested_object_destructure() {
+    let diags = analyze_with_diags(
+        r#"<script>let items = $state([1, 2, 3]); let value = { nested: { current: 1 } };</script>
+{#each items as item}
+    {({ nested: { current: item } } = value)}
 {/each}"#,
     );
     assert_has_error(&diags, "each_item_invalid_assignment");

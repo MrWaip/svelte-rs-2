@@ -1914,6 +1914,11 @@ fn each_block_no_item_multi() {
     assert_compiler("each_block_no_item_multi");
 }
 
+#[rstest]
+fn each_block_no_item_with_index() {
+    assert_compiler("each_block_no_item_with_index");
+}
+
 
 #[rstest]
 fn async_if_basic() {
@@ -2238,6 +2243,16 @@ fn snippet_array_destructure() {
 #[rstest]
 fn snippet_mixed_params() {
     assert_compiler("snippet_mixed_params");
+}
+
+#[rstest]
+fn snippet_nested_destructure() {
+    assert_compiler("snippet_nested_destructure");
+}
+
+#[rstest]
+fn snippet_computed_key_destructure() {
+    assert_compiler("snippet_computed_key_destructure");
 }
 
 #[rstest]

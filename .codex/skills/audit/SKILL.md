@@ -1,53 +1,85 @@
 ---
 name: audit
-description: Feature completeness audit workflow for comparing this compiler against the reference Svelte compiler. Use when the user asks what is missing for a feature, wants a gap analysis, or needs a spec plus failing tests before implementation. Do not trigger when the task is already a known focused fix.
+description: Gap analysis for an existing feature vs reference Svelte compiler. Use when the user asks what is missing in our implementation of a feature, asks to audit a feature, or wants to check feature completeness against the reference compiler.
 ---
 
 # Audit Feature
 
-## 1) Resume existing work first
+Gap analysis for an existing feature: compare our implementation against the reference Svelte compiler and produce a spec file with what is missing.
 
-If a matching spec already exists in `specs/`, read it and continue from `Current state` instead of restarting the audit.
+## Session Continuation
 
-## 2) Research both sides
+Run `Glob("specs/*.md")` and scan the results for a file matching this feature. Names may differ from the argument — for example `$state` may map to `state-rune.md`. If a matching spec exists:
 
-Compare:
+1. Read the spec file
+2. Check the `Current state` section — what is done, what is next
+3. Skip to the appropriate step, likely Step 4 or Step 5
+4. Do not re-run Steps 1–3 unless the spec says the audit needs revision
 
-- reference compiler behavior and tests in `reference/compiler/`
-- current Rust implementation and existing compiler tests
+## Step 1: Research
 
-## 3) Build a use-case matrix
+Research three things in parallel:
 
-Classify each use case as:
+1. Trace the feature through all three phases of the reference compiler. Focus on exhaustive enumeration: every code path equals one use case.
+2. Find everything related to the feature in our compiler. Run each existing test with `just test-case <name>` and determine which pass and which fail.
+3. Extract all syntax variants of the feature from two sources:
+   - `reference/docs/`
+   - reference compiler parser under `reference/compiler/phases/1-parse/`
+
+The syntax variants output should be a flat list of Svelte template forms, one per line.
+
+After research completes, synthesize findings. Read only the key files identified as critical.
+
+## Step 2: Gap Analysis
+
+For each use case from the reference compiler, classify it as:
 
 - Covered
 - Partial
 - Missing
 - Unknown
 
-## 4) Write or update a spec
+## Step 3: Write Spec File
 
-Use `spec-template` for structure. Capture:
+Write the spec following the `spec-template` skill.
 
-- use cases
-- reference files
-- our files
-- implementation tasks
-- recommended order
+If this step creates a new spec for an item that already exists in `ROADMAP.md`, immediately update that roadmap entry to include a link to `specs/<name>.md`. Do not mark the feature complete during audit; only sync the spec reference.
 
-If this audit creates a new spec for a roadmap feature, add a link to that spec in `ROADMAP.md` right away. Keep the checklist status unchanged; only append or refresh the `(specs/<name>.md)` reference for the matching item.
+## Step 4: Add Missing Test Cases
 
-## 5) Add focused missing tests
+For each `Missing` or `Unknown` use case, create a test case:
 
-For Missing or Unknown cases, add focused compiler tests where useful. Generate expected output with the reference compiler and never hand-edit generated snapshots.
+- `tasks/compiler_tests/cases2/<feature>_<variant>/case.svelte`
+- run `just generate` once for all new cases
+- add `#[rstest]` functions in `test_v3.rs`
+- run tests and report which pass and which fail
 
-Cap the run to a bounded set of new tests rather than exploding coverage in one go.
+For each test that fails:
 
-## 6) Report recommended fix order
+- add `#[ignore = "missing: <description> (<layer>)"]`
+- classify effort as quick fix, moderate, or needs infrastructure
 
-Point to the next best command:
+Rule: if an existing test case covers the same feature and `case.svelte` is under 30 lines, extend it instead of creating a new one.
 
-- `fix-test <name>` for narrow gaps
-- `port specs/<name>.md` for infrastructure or multi-layer work
+Rules:
 
-Keep audit primarily diagnostic. Do not mix in broad implementation.
+- do not fix the compiler during audit
+- do not edit `case-svelte.js` or `case-rust.js`
+- max 5 new test cases per run
+- if stuck after 3 attempts, stop and report
+
+## Step 5: Report
+
+Report:
+
+- coverage count and percentage
+- passing tests
+- failing tests
+- recommended fix order
+- test results by effort
+- spec file path
+
+Recommended next commands:
+
+- `/port specs/<name>.md` for infrastructure work
+- `/fix-test <name>` for quick-fix and moderate tests

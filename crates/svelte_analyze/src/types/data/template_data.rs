@@ -1,9 +1,46 @@
 use super::*;
 
+pub struct TemplateSemanticsData {
+    pub(crate) node_expr_handles: NodeTable<ExprHandle>,
+    pub(crate) attr_expr_handles: NodeTable<ExprHandle>,
+    pub(crate) const_tag_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) snippet_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) each_context_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) each_index_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) await_value_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) await_error_stmt_handles: NodeTable<StmtHandle>,
+    pub(crate) node_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
+    pub(crate) stmt_ref_symbols: NodeTable<SmallVec<[SymbolId; 2]>>,
+}
+
+impl TemplateSemanticsData {
+    pub fn new(node_count: u32) -> Self {
+        Self {
+            node_expr_handles: NodeTable::new(node_count),
+            attr_expr_handles: NodeTable::new(node_count),
+            const_tag_stmt_handles: NodeTable::new(node_count),
+            snippet_stmt_handles: NodeTable::new(node_count),
+            each_context_stmt_handles: NodeTable::new(node_count),
+            each_index_stmt_handles: NodeTable::new(node_count),
+            await_value_stmt_handles: NodeTable::new(node_count),
+            await_error_stmt_handles: NodeTable::new(node_count),
+            node_ref_symbols: NodeTable::new(node_count),
+            stmt_ref_symbols: NodeTable::new(node_count),
+        }
+    }
+
+    pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.node_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
+    }
+
+    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
+        self.stmt_ref_symbols.get(id).map_or(&[], |v| v.as_slice())
+    }
+}
+
 pub struct SnippetData {
     pub(crate) hoistable: NodeBitSet,
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
-    pub(crate) params: NodeTable<Vec<String>>,
 }
 
 impl SnippetData {
@@ -11,7 +48,6 @@ impl SnippetData {
         Self {
             hoistable: NodeBitSet::new(node_count),
             component_snippets: NodeTable::new(node_count),
-            params: NodeTable::new(node_count),
         }
     }
 
@@ -20,9 +56,6 @@ impl SnippetData {
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.component_snippets.get(id).map_or(&[], |v| v.as_slice())
-    }
-    pub fn params(&self, id: NodeId) -> &[String] {
-        self.params.get(id).map_or(&[], |v| v.as_slice())
     }
 }
 

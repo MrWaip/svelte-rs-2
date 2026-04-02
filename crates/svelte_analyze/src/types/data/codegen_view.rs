@@ -51,6 +51,11 @@ impl<'a> CodegenView<'a> {
     pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.each_index_stmt_handle(id) }
     pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.await_value_stmt_handle(id) }
     pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> { self.data.await_error_stmt_handle(id) }
+    pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] { self.data.node_ref_symbols(id) }
+    pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] { self.data.stmt_ref_symbols(id) }
+    pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] { self.data.snippet_param_ref_symbols(id) }
+    pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> { self.data.shorthand_symbol(id) }
+    pub fn bind_target_symbol(&self, id: NodeId) -> Option<SymbolId> { self.data.bind_target_symbol(id) }
     pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> { self.data.fragments.lowered(key) }
     pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] { self.data.fragments.fragment_blockers(key) }
     pub fn fragment_references_any_symbol(&self, key: &FragmentKey, syms: &FxHashSet<SymbolId>) -> bool {
@@ -78,7 +83,6 @@ impl<'a> CodegenView<'a> {
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool { self.data.element_flags.is_expression_shorthand(id) }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] { self.data.element_flags.component_props(id) }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] { self.data.snippets.component_snippets(id) }
-    pub fn snippet_params(&self, id: NodeId) -> &[String] { self.data.snippets.params(id) }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool { self.data.snippets.is_hoistable(id) }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> { self.data.element_flags.event_handler_mode(id) }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool { self.data.element_flags.needs_textarea_value_lowering(id) }

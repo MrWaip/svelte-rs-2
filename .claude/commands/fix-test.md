@@ -5,6 +5,8 @@ argument-hint: "[test-case-name]"
 
 # Fix failing test: $ARGUMENTS
 
+**Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.**
+
 Fix a single compiler test case. The test name is provided as argument.
 
 ## Approach
@@ -60,6 +62,8 @@ Produce a plan with ALL of these sections:
 2. **Root cause**: what's missing or wrong — missing code path, wrong condition, wrong layer
 3. **Changes**: specific functions/match arms to add or modify, with the rationale
 4. **Unit tests**: what unit tests to add if the fix touches parser or analyze (test name, what it verifies). Write "N/A — codegen-only change" if not applicable.
+
+The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
 **Present the plan and wait for approval before proceeding.**
 

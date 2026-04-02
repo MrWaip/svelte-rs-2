@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grill It"
+  short_description: "Challenge recent work against the quality bar"
+  default_prompt: "Use $grill-it to challenge recent work against the project quality bar."

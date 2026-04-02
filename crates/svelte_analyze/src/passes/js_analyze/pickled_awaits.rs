@@ -14,12 +14,12 @@ pub(crate) fn classify_pickled_awaits(parsed: &ParserResult<'_>, data: &mut Anal
     let expr_handles: Vec<_> = data
         .expressions
         .iter()
-        .filter_map(|(node_id, _)| data.node_expr_handles.get(node_id).copied())
+        .filter_map(|(node_id, _)| data.template_semantics.node_expr_handles.get(node_id).copied())
         .collect();
     let attr_handles: Vec<_> = data
         .attr_expressions
         .iter()
-        .filter_map(|(node_id, _)| data.attr_expr_handles.get(node_id).copied())
+        .filter_map(|(node_id, _)| data.template_semantics.attr_expr_handles.get(node_id).copied())
         .collect();
 
     collect_pickled_await_offsets(parsed, data, expr_handles.into_iter());

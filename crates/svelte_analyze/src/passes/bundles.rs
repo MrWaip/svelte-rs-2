@@ -3,7 +3,7 @@ use svelte_ast::{Component, Node, NodeId};
 
 use crate::passes::{
     bind_semantics, collect_symbols, content_types, element_flags, hoistable, js_analyze,
-    reactivity, template_semantic, template_side_tables,
+    reactivity, template_semantic, template_side_tables, template_validation,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -134,5 +134,21 @@ impl<'s> TemplateClassificationBundle<'s> {
 
     pub(crate) fn finish(self, data: &mut AnalysisData) {
         self.hoistable.finish(data);
+    }
+}
+
+pub(crate) struct TemplateValidationBundle {
+    validation: template_validation::TemplateValidationVisitor,
+}
+
+impl TemplateValidationBundle {
+    pub(crate) fn new() -> Self {
+        Self {
+            validation: template_validation::TemplateValidationVisitor::new(),
+        }
+    }
+
+    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
+        [&mut self.validation]
     }
 }

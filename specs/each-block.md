@@ -1,10 +1,8 @@
 # Each Block
 
 ## Current state
-- **Working**: 10/15 core client-side `{#each}` use cases are covered by parser/codegen tests.
-- **Missing**: parser support for `{#each expression, index}`, plus analyzer validation for keyed item-less each blocks, animate placement/key diagnostics, and runes-mode each-item assignment.
-- **Next**: implement missing parser/analyzer behavior in that order, then promote the ignored audit tests.
-- Last updated: 2026-04-01
+- **Working**: 15/15 core client-side `{#each}` use cases implemented and passing.
+- Last updated: 2026-04-02
 
 ## Source
 
@@ -33,14 +31,14 @@
 - `[x]` Destructured object and array patterns.
 - `[x]` Destructured defaults inside each context.
 - `[x]` Item-less each blocks: `{#each items}`.
-- `[ ]` Item-less each blocks with index: `{#each { length: 8 }, rank}`.
+- `[x]` Item-less each blocks with index: `{#each { length: 8 }, rank}`.
 - `[x]` `{:else}` fallback blocks for empty collections.
 - `[x]` Bind/group and bind:this interactions with parent each scopes.
 - `[x]` `animate:` codegen flags for keyed each blocks that already satisfy placement constraints.
-- `[ ]` Diagnostic: keyed each without `as` should raise `each_key_without_as`.
-- `[ ]` Diagnostic: `animate:` outside a keyed each or on a non-sole child should raise `animation_invalid_placement`.
-- `[ ]` Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
-- `[ ]` Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
+- `[x]` Diagnostic: keyed each without `as` should raise `each_key_without_as`.
+- `[x]` Diagnostic: `animate:` outside a keyed each or on a non-sole child should raise `animation_invalid_placement`.
+- `[x]` Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
+- `[x]` Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 
 ### Deferred
 

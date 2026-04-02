@@ -10,7 +10,7 @@ pub use data::{
     EachBlockData, ElementFlags, EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo,
     ExpressionKind, FragmentData, FragmentItem, FragmentKey, IgnoreData, LoweredFragment,
     LoweredTextPart, PropAnalysis, PropsAnalysis, RenderTagArgPlan, RenderTagCalleeMode,
-    RenderTagPlan, RuntimePlan, SnippetData, TitleElementData,
+    RenderTagPlan, RuntimePlan, SnippetData, TemplateSemanticsData, TitleElementData,
 };
 pub use script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind,
