@@ -45,9 +45,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn export_default(&self, declaration: ExportDefaultDeclarationKind<'a>) -> Statement<'a> {
-        let res = self
-            .ast
-            .alloc_export_default_declaration(SPAN, declaration);
+        let res = self.ast.alloc_export_default_declaration(SPAN, declaration);
         Statement::from(ModuleDeclaration::ExportDefaultDeclaration(res))
     }
 

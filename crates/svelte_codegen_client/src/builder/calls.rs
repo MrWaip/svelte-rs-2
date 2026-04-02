@@ -24,10 +24,12 @@ impl<'a> Builder<'a> {
             };
             ast::ArrayExpressionElement::from(expr)
         });
-        Expression::ArrayExpression(self.alloc(
-            self.ast
-                .array_expression(SPAN, self.ast.vec_from_iter(elements)),
-        ))
+        Expression::ArrayExpression(
+            self.alloc(
+                self.ast
+                    .array_expression(SPAN, self.ast.vec_from_iter(elements)),
+            ),
+        )
     }
 
     pub fn call<'short>(
@@ -64,10 +66,13 @@ impl<'a> Builder<'a> {
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
-        Expression::CallExpression(self.alloc(
-            self.ast
-                .call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), false),
-        ))
+        Expression::CallExpression(self.alloc(self.ast.call_expression(
+            SPAN,
+            callee,
+            NONE,
+            self.ast.vec_from_iter(args),
+            false,
+        )))
     }
 
     pub fn maybe_call_expr<'short>(
@@ -76,13 +81,15 @@ impl<'a> Builder<'a> {
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
-        let call =
-            self.ast
-                .call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), true);
-        Expression::ChainExpression(self.alloc(
-            self.ast
-                .chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
-        ))
+        let call = self
+            .ast
+            .call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), true);
+        Expression::ChainExpression(
+            self.alloc(
+                self.ast
+                    .chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
+            ),
+        )
     }
 
     pub fn optional_member_call_expr<'short>(
@@ -100,10 +107,12 @@ impl<'a> Builder<'a> {
         let call =
             self.ast
                 .call_expression(SPAN, callee, NONE, self.ast.vec_from_iter(args), false);
-        Expression::ChainExpression(self.alloc(
-            self.ast
-                .chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
-        ))
+        Expression::ChainExpression(
+            self.alloc(
+                self.ast
+                    .chain_expression(SPAN, ChainElement::CallExpression(self.alloc(call))),
+            ),
+        )
     }
 
     pub(super) fn arg_to_argument<'short>(&self, arg: Arg<'a, 'short>) -> Argument<'a> {

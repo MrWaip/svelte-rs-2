@@ -99,7 +99,8 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
         let var_decl = match stmt_ref {
             Statement::VariableDeclaration(v) => Some(&**v),
             Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(v)) = &export.declaration {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(v)) = &export.declaration
+                {
                     Some(&**v)
                 } else {
                     None
@@ -112,7 +113,9 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
             for declarator in &var_decl.declarations {
                 if matches!(
                     &declarator.init,
-                    Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                    Some(
+                        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                    )
                 ) {
                     continue;
                 }

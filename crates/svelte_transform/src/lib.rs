@@ -14,12 +14,9 @@ use oxc_ast_visit::walk_mut::{self, walk_arrow_function_expression, walk_express
 use oxc_ast_visit::VisitMut;
 
 use svelte_analyze::scope::ScopeId;
-use svelte_analyze::{AnalysisData, ExprHandle, IdentGen, ParserResult};
-use svelte_ast::{
-    Attribute, Component, ConcatPart, Fragment, Node,
-};
 use svelte_analyze::RuneKind;
-
+use svelte_analyze::{AnalysisData, ExprHandle, IdentGen, ParserResult};
+use svelte_ast::{Attribute, Component, ConcatPart, Fragment, Node};
 
 /// Transform all parsed template expressions in-place.
 ///
@@ -147,7 +144,12 @@ fn walk_node<'a>(
                 }
             }
 
-            let names = ctx.analysis.const_tags.names(tag.id).cloned().unwrap_or_default();
+            let names = ctx
+                .analysis
+                .const_tags
+                .names(tag.id)
+                .cloned()
+                .unwrap_or_default();
             if names.len() > 1 {
                 let tmp = ctx.ident_gen.gen("computed_const");
                 ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
@@ -286,7 +288,8 @@ fn get_attr_expr_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Option<E
         Attribute::TransitionDirective(a) => a.expression_span.map(|s| s.start),
         Attribute::AnimateDirective(a) => a.expression_span.map(|s| s.start),
         Attribute::AttachTag(a) => Some(a.expression_span.start),
-        Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+        Attribute::StringAttribute(_)
+        | Attribute::BooleanAttribute(_)
         | Attribute::ConcatenationAttribute(_) => None,
     }?;
     parsed.expr_handle(offset)
@@ -312,11 +315,7 @@ fn get_directive_name_handle(parsed: &ParserResult<'_>, attr: &Attribute) -> Opt
 /// JS scopes (arrows, functions, for-loops, blocks, catch) are registered
 /// during analysis, so `find_binding` naturally resolves local bindings — no
 /// separate shadow stack needed.
-fn transform_expr<'a>(
-    ctx: &mut TransformCtx<'a, '_>,
-    expr: &mut Expression<'a>,
-    scope: ScopeId,
-) {
+fn transform_expr<'a>(ctx: &mut TransformCtx<'a, '_>, expr: &mut Expression<'a>, scope: ScopeId) {
     let mut visitor = ExprTransformer { ctx, scope };
     visitor.visit_expression(expr);
 }
@@ -332,15 +331,24 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
         // Resolved via reference_id (set by TemplateSemanticVisitor during analysis)
         if let Expression::StaticMemberExpression(member) = it {
             if let Expression::Identifier(id) = &member.object {
-                let sym_id = id.reference_id.get()
+                let sym_id = id
+                    .reference_id
+                    .get()
                     .and_then(|ref_id| self.ctx.analysis.scoping.get_reference(ref_id).symbol_id());
                 if let Some(sym_id) = sym_id {
                     if self.ctx.analysis.scoping.is_rest_prop(sym_id)
-                        && !self.ctx.analysis.scoping.is_rest_prop_excluded(&member.property.name)
+                        && !self
+                            .ctx
+                            .analysis
+                            .scoping
+                            .is_rest_prop_excluded(&member.property.name)
                     {
-                        let Expression::StaticMemberExpression(member) = it else { unreachable!() };
+                        let Expression::StaticMemberExpression(member) = it else {
+                            unreachable!()
+                        };
                         let ast = oxc_ast::AstBuilder::new(self.ctx.alloc);
-                        member.object = ast.expression_identifier(oxc_span::SPAN, ast.atom("$$props"));
+                        member.object =
+                            ast.expression_identifier(oxc_span::SPAN, ast.atom("$$props"));
                         walk_expression(self, it);
                         return;
                     }
@@ -416,7 +424,11 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 if self.ctx.analysis.scoping.is_store_ref(name) {
                     let base_name = &name[1..];
                     *it = rune_refs::make_store_update(
-                        self.ctx.alloc, base_name, name, upd.prefix, is_increment,
+                        self.ctx.alloc,
+                        base_name,
+                        name,
+                        upd.prefix,
+                        is_increment,
                     );
                     return;
                 }
@@ -427,7 +439,10 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                         && self.ctx.analysis.scoping.is_mutated(sym_id)
                     {
                         *it = rune_refs::make_rune_update(
-                            self.ctx.alloc, name, upd.prefix, is_increment,
+                            self.ctx.alloc,
+                            name,
+                            upd.prefix,
+                            is_increment,
                         );
                         return;
                     }
@@ -435,12 +450,17 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
             }
 
             // Deep store update: $store.count++ → $.store_mutate(store, ...)
-            if let Some(root_name) = extract_member_root_store_simple(&upd.argument, &self.ctx.analysis.scoping) {
+            if let Some(root_name) =
+                extract_member_root_store_simple(&upd.argument, &self.ctx.analysis.scoping)
+            {
                 let root_name = root_name.to_string();
                 let base_name = root_name[1..].to_string();
                 let alloc = self.ctx.alloc;
                 walk_simple_target_member_objects(self, &mut upd.argument);
-                rune_refs::replace_expr_root_in_simple_target(&mut upd.argument, rune_refs::make_untrack(alloc, &root_name));
+                rune_refs::replace_expr_root_in_simple_target(
+                    &mut upd.argument,
+                    rune_refs::make_untrack(alloc, &root_name),
+                );
                 // Swap out the entire UpdateExpression to break the borrow on `upd`
                 let placeholder = rune_refs::make_rune_get(alloc, "");
                 let mutation = std::mem::replace(it, placeholder);
@@ -454,13 +474,18 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
 
         // --- Pre-walk: deep store assignment ($store.field = val) ---
         if let Expression::AssignmentExpression(assign) = it {
-            if let Some(root_name) = extract_member_root_store_assign(&assign.left, &self.ctx.analysis.scoping) {
+            if let Some(root_name) =
+                extract_member_root_store_assign(&assign.left, &self.ctx.analysis.scoping)
+            {
                 let root_name = root_name.to_string();
                 let base_name = root_name[1..].to_string();
                 let alloc = self.ctx.alloc;
                 self.visit_expression(&mut assign.right);
                 walk_target_member_objects(self, &mut assign.left);
-                rune_refs::replace_expr_root_in_assign_target(&mut assign.left, rune_refs::make_untrack(alloc, &root_name));
+                rune_refs::replace_expr_root_in_assign_target(
+                    &mut assign.left,
+                    rune_refs::make_untrack(alloc, &root_name),
+                );
                 // Swap out the entire AssignmentExpression to break the borrow on `assign`
                 let placeholder = rune_refs::make_rune_get(alloc, "");
                 let mutation = std::mem::replace(it, placeholder);
@@ -483,7 +508,9 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                                 }
                             }
                             // Replace: $state.eager(val) → $.eager(() => val)
-                            if let Expression::CallExpression(call) = std::mem::replace(it, rune_refs::make_eager_pending(self.ctx.alloc)) {
+                            if let Expression::CallExpression(call) =
+                                std::mem::replace(it, rune_refs::make_eager_pending(self.ctx.alloc))
+                            {
                                 let mut call = call.unbox();
                                 if !call.arguments.is_empty() {
                                     let arg = call.arguments.remove(0).into_expression();
@@ -500,7 +527,9 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                                 }
                             }
                             // Replace callee: $state.snapshot → $.snapshot
-                            let Expression::CallExpression(call) = it else { unreachable!() };
+                            let Expression::CallExpression(call) = it else {
+                                unreachable!()
+                            };
                             let ast = oxc_ast::AstBuilder::new(self.ctx.alloc);
                             call.callee = rune_refs::make_dollar_member(&ast, "snapshot");
                             return;
@@ -529,10 +558,8 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 // Store compound: $count += 1 → $.store_set(count, $count() + 1)
                 if self.ctx.analysis.scoping.is_store_ref(name) {
                     let base_name = &name[1..];
-                    let right = std::mem::replace(
-                        &mut assign.right,
-                        rune_refs::make_rune_get(alloc, ""),
-                    );
+                    let right =
+                        std::mem::replace(&mut assign.right, rune_refs::make_rune_get(alloc, ""));
                     let value = if operator.is_assign() {
                         right
                     } else {
@@ -557,8 +584,8 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                                 let left_read = rune_refs::make_rune_get(alloc, name);
                                 rune_refs::build_compound_value(alloc, operator, left_read, right)
                             };
-                            let needs_proxy = kind != RuneKind::StateRaw
-                                && rune_refs::should_proxy(&value);
+                            let needs_proxy =
+                                kind != RuneKind::StateRaw && rune_refs::should_proxy(&value);
                             *it = rune_refs::make_rune_set(alloc, name, value, needs_proxy);
                         }
                     }

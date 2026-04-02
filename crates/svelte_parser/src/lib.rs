@@ -1,7 +1,4 @@
-use scanner::{
-    token::TokenType,
-    Scanner,
-};
+use scanner::{token::TokenType, Scanner};
 use svelte_span::Span;
 
 use svelte_ast::{
@@ -11,6 +8,8 @@ use svelte_ast::{
 
 use svelte_diagnostics::Diagnostic;
 
+mod html;
+mod html_entities;
 pub mod parse_js;
 pub mod scanner;
 pub mod types;
@@ -21,10 +20,7 @@ mod handlers;
 mod svelte_elements;
 
 // Re-export all shared types for convenience
-pub use types::{
-    CePropConfig, CeShadowMode, ExprHandle, ParsedCeConfig, ParserResult, StmtHandle,
-};
-
+pub use types::{CePropConfig, CeShadowMode, ExprHandle, ParsedCeConfig, ParserResult, StmtHandle};
 
 /// Parse a standalone `.svelte.js`/`.svelte.ts` module.
 ///
@@ -37,7 +33,10 @@ pub fn parse_module<'a>(
 ) -> Result<(oxc_ast::ast::Program<'a>, oxc_semantic::Scoping), Vec<Diagnostic>> {
     let arena_source: &'a str = alloc.alloc_str(source);
     let program = parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)?;
-    let scoping = oxc_semantic::SemanticBuilder::new().build(&program).semantic.into_scoping();
+    let scoping = oxc_semantic::SemanticBuilder::new()
+        .build(&program)
+        .semantic
+        .into_scoping();
     Ok((program, scoping))
 }
 
@@ -202,9 +201,11 @@ impl<'a> Parser<'a> {
         for token in tokens {
             match token.token_type {
                 TokenType::Text => {
+                    let raw = token.span.source_text(self.source);
                     let id = self.push_node(Node::Text(Text {
                         id: NodeId(0), // set by store.push
                         span: token.span,
+                        decoded: html::decode_text(raw),
                     }));
                     push_child(&mut children_stack, id);
                 }
@@ -436,8 +437,13 @@ impl<'a> Parser<'a> {
         });
 
         let store = std::mem::take(&mut self.store);
-        let mut component =
-            Component::new(self.source.to_string(), Fragment::new(roots), store, script, css);
+        let mut component = Component::new(
+            self.source.to_string(),
+            Fragment::new(roots),
+            store,
+            script,
+            css,
+        );
         // Extract <svelte:options> from fragment (must be top-level)
         self.extract_svelte_options(&mut component);
 

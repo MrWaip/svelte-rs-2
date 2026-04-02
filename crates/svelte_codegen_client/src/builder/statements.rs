@@ -205,11 +205,9 @@ impl<'a> Builder<'a> {
                 self.ast.binding_property(SPAN, key, value, true, false)
             })
             .collect();
-        let object_pattern = self.ast.object_pattern(
-            SPAN,
-            self.ast.vec_from_iter(properties),
-            NONE,
-        );
+        let object_pattern =
+            self.ast
+                .object_pattern(SPAN, self.ast.vec_from_iter(properties), NONE);
         let pattern = ast::BindingPattern::ObjectPattern(self.alloc(object_pattern));
         let decl = self.ast.variable_declarator(
             SPAN,
@@ -270,11 +268,9 @@ impl<'a> Builder<'a> {
                 self.ast.binding_property(SPAN, key, value, true, false)
             })
             .collect();
-        let object_pattern = self.ast.object_pattern(
-            SPAN,
-            self.ast.vec_from_iter(properties),
-            NONE,
-        );
+        let object_pattern =
+            self.ast
+                .object_pattern(SPAN, self.ast.vec_from_iter(properties), NONE);
         let pattern = ast::BindingPattern::ObjectPattern(self.alloc(object_pattern));
         let decl = self.ast.variable_declarator(
             SPAN,
@@ -305,12 +301,9 @@ impl<'a> Builder<'a> {
         let decl = self
             .ast
             .variable_declarator(SPAN, kind, pattern, NONE, Some(init), false);
-        let declaration = self.ast.variable_declaration(
-            SPAN,
-            kind,
-            self.ast.vec_from_array([decl]),
-            false,
-        );
+        let declaration =
+            self.ast
+                .variable_declaration(SPAN, kind, self.ast.vec_from_array([decl]), false);
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
@@ -329,9 +322,7 @@ impl<'a> Builder<'a> {
         consequent: Statement<'a>,
         alternate: Option<Statement<'a>>,
     ) -> Statement<'a> {
-        Statement::IfStatement(self.alloc(
-            self.ast.if_statement(SPAN, test, consequent, alternate),
-        ))
+        Statement::IfStatement(self.alloc(self.ast.if_statement(SPAN, test, consequent, alternate)))
     }
 
     pub fn assign_stmt(&self, left: AssignLeft<'a>, right: Expression<'a>) -> Statement<'a> {
@@ -357,7 +348,11 @@ impl<'a> Builder<'a> {
         Expression::AssignmentExpression(self.alloc(assign))
     }
 
-    pub fn assign_expr_raw(&self, left: AssignmentTarget<'a>, right: Expression<'a>) -> Expression<'a> {
+    pub fn assign_expr_raw(
+        &self,
+        left: AssignmentTarget<'a>,
+        right: Expression<'a>,
+    ) -> Expression<'a> {
         let assign =
             self.ast
                 .assignment_expression(SPAN, ast::AssignmentOperator::Assign, left, right);

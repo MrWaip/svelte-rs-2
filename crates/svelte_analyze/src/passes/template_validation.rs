@@ -10,7 +10,7 @@
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
-use svelte_ast::{AnimateDirective, EachBlock, Node, NodeId};
+use svelte_ast::{AnimateDirective, EachBlock, ExpressionTag, Node, NodeId, Text};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -25,7 +25,9 @@ pub(crate) struct TemplateValidationVisitor {
 
 impl TemplateValidationVisitor {
     pub(crate) fn new() -> Self {
-        Self { current_expr_offset: 0 }
+        Self {
+            current_expr_offset: 0,
+        }
     }
 
     fn oxc_to_svelte(&self, span: oxc_span::Span) -> Span {
@@ -37,6 +39,46 @@ impl TemplateValidationVisitor {
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
+    fn visit_text(&mut self, text: &Text, ctx: &mut VisitContext<'_>) {
+        let value = text.value(ctx.source);
+
+        if contains_non_whitespace_text(value) {
+            if let Some(message) = invalid_text_parent_message(ctx) {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::NodeInvalidPlacement { message },
+                    text.span,
+                ));
+            }
+        }
+
+        for (offset, ch) in value.char_indices() {
+            if !is_bidi_control(ch) {
+                continue;
+            }
+            if ctx
+                .data
+                .ignore_data
+                .is_ignored(text.id, "bidirectional_control_characters")
+            {
+                break;
+            }
+            let start = text.span.start + offset as u32;
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::BidirectionalControlCharacters,
+                Span::new(start, start + ch.len_utf8() as u32),
+            ));
+        }
+    }
+
+    fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_>) {
+        if let Some(message) = invalid_text_parent_message(ctx) {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::NodeInvalidPlacement { message },
+                tag.span,
+            ));
+        }
+    }
+
     // Use case 2: each_key_without_as
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if block.key_span.is_some() && block.context_span.is_none() {
@@ -66,9 +108,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     if each_block.key_span.is_none() {
                         Some(DiagnosticKind::AnimationMissingKey)
                     } else {
-                        let non_trivial = each_block.body.nodes.iter().filter(|&&nid| {
-                            !is_trivial_node(ctx.store.get(nid), ctx.source)
-                        }).count();
+                        let non_trivial = each_block
+                            .body
+                            .nodes
+                            .iter()
+                            .filter(|&&nid| !is_trivial_node(ctx.store.get(nid), ctx.source))
+                            .count();
                         if non_trivial > 1 {
                             Some(DiagnosticKind::AnimationInvalidPlacement)
                         } else {
@@ -92,14 +137,23 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     // Use case 5: each_item_invalid_assignment (runes mode only)
-    fn visit_js_expression(&mut self, _id: NodeId, expr: &Expression<'_>, ctx: &mut VisitContext<'_>) {
+    fn visit_js_expression(
+        &mut self,
+        _id: NodeId,
+        expr: &Expression<'_>,
+        ctx: &mut VisitContext<'_>,
+    ) {
         if !ctx.runes {
             return;
         }
-        let is_bind = ctx.parent().is_some_and(|p| p.kind == ParentKind::BindDirective);
+        let is_bind = ctx
+            .parent()
+            .is_some_and(|p| p.kind == ParentKind::BindDirective);
 
         match expr {
-            Expression::Identifier(ident) if is_bind && is_each_block_var_ref(ident, &ctx.data.scoping) => {
+            Expression::Identifier(ident)
+                if is_bind && is_each_block_var_ref(ident, &ctx.data.scoping) =>
+            {
                 let span = self.oxc_to_svelte(expr.span());
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EachItemInvalidAssignment,
@@ -123,8 +177,47 @@ impl TemplateVisitor for TemplateValidationVisitor {
 fn is_trivial_node(node: &Node, source: &str) -> bool {
     match node {
         Node::Comment(_) | Node::ConstTag(_) => true,
-        Node::Text(t) => source[t.span.start as usize..t.span.end as usize].trim().is_empty(),
+        Node::Text(t) => source[t.span.start as usize..t.span.end as usize]
+            .trim()
+            .is_empty(),
         _ => false,
+    }
+}
+
+fn contains_non_whitespace_text(text: &str) -> bool {
+    text.chars()
+        .any(|ch| !matches!(ch, ' ' | '\t' | '\r' | '\n'))
+}
+
+fn is_bidi_control(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{202A}'
+            | '\u{202B}'
+            | '\u{202C}'
+            | '\u{202D}'
+            | '\u{202E}'
+            | '\u{2066}'
+            | '\u{2067}'
+            | '\u{2068}'
+            | '\u{2069}'
+    )
+}
+
+fn invalid_text_parent_message(ctx: &VisitContext<'_>) -> Option<String> {
+    let parent = ctx
+        .ancestors()
+        .find(|parent| parent.kind == ParentKind::Element)?;
+    let element = ctx.store.get(parent.id).as_element()?;
+    let name = element.name.as_str();
+
+    if matches!(
+        name,
+        "table" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" | "select" | "datalist"
+    ) {
+        Some(format!("`<{}>` cannot contain text nodes", name))
+    } else {
+        None
     }
 }
 

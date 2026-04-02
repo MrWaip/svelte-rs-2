@@ -34,9 +34,13 @@ impl<'a> ScriptTransformer<'_, 'a> {
                             self.derived_pending.insert(sym_id);
                             // Track async derived BEFORE `rewrite_dev_await_tracking` can
                             // transform the `await` inside to `$.track_reactivity_loss` form.
-                            let is_async_init = call.arguments.first()
+                            let is_async_init = call
+                                .arguments
+                                .first()
                                 .and_then(|a| a.as_expression())
-                                .is_some_and(|e| matches!(e, oxc_ast::ast::Expression::AwaitExpression(_)));
+                                .is_some_and(|e| {
+                                    matches!(e, oxc_ast::ast::Expression::AwaitExpression(_))
+                                });
                             if is_async_init {
                                 self.async_derived_pending.insert(sym_id);
                             }
@@ -49,15 +53,15 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     let derived_expr = oxc_ast::ast::Expression::CallExpression(call);
                     node.init = if self.dev {
                         let var_name = match &node.id {
-                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                id.name.as_str()
-                            }
+                            oxc_ast::ast::BindingPattern::BindingIdentifier(id) => id.name.as_str(),
                             _ => "",
                         };
-                        Some(self.b.call_expr(
-                            "$.tag",
-                            [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
-                        ))
+                        Some(
+                            self.b.call_expr(
+                                "$.tag",
+                                [Arg::Expr(derived_expr), Arg::StrRef(var_name)],
+                            ),
+                        )
                     } else {
                         Some(derived_expr)
                     };
@@ -78,8 +82,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                                 .as_expression()
                                 .is_some_and(svelte_transform::rune_refs::should_proxy);
                             if needs_proxy {
-                                let mut dummy =
-                                    oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
                                 std::mem::swap(&mut call.arguments[0], &mut dummy);
                                 let inner = dummy.into_expression();
                                 let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
@@ -88,20 +91,21 @@ impl<'a> ScriptTransformer<'_, 'a> {
                         }
 
                         let state_expr = oxc_ast::ast::Expression::CallExpression(call);
-                        node.init = if self.dev {
-                            let var_name = match &node.id {
-                                oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
-                                    id.name.as_str()
-                                }
-                                _ => "state",
+                        node.init =
+                            if self.dev {
+                                let var_name = match &node.id {
+                                    oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                                        id.name.as_str()
+                                    }
+                                    _ => "state",
+                                };
+                                Some(self.b.call_expr(
+                                    "$.tag",
+                                    [Arg::Expr(state_expr), Arg::StrRef(var_name)],
+                                ))
+                            } else {
+                                Some(state_expr)
                             };
-                            Some(self.b.call_expr(
-                                "$.tag",
-                                [Arg::Expr(state_expr), Arg::StrRef(var_name)],
-                            ))
-                        } else {
-                            Some(state_expr)
-                        };
                     } else {
                         let value = if call.arguments.is_empty() {
                             self.b.ast.expression_unary(
@@ -128,10 +132,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
                                 }
                                 _ => "",
                             };
-                            self.b.call_expr(
-                                "$.tag_proxy",
-                                [Arg::Expr(value), Arg::StrRef(var_name)],
-                            )
+                            self.b
+                                .call_expr("$.tag_proxy", [Arg::Expr(value), Arg::StrRef(var_name)])
                         } else {
                             value
                         };
@@ -140,18 +142,16 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 }
                 RuneKind::StateEager => {
                     let arg = call.arguments.remove(0).into_expression();
-                    node.init = Some(self.b.call_expr(
-                        "$.eager",
-                        [Arg::Expr(self.b.thunk(arg))],
-                    ));
+                    node.init = Some(self.b.call_expr("$.eager", [Arg::Expr(self.b.thunk(arg))]));
                 }
                 RuneKind::EffectPending => {
-                    let pending_call =
-                        self.b.call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
-                    node.init = Some(self.b.call_expr(
-                        "$.eager",
-                        [Arg::Expr(self.b.thunk(pending_call))],
-                    ));
+                    let pending_call = self
+                        .b
+                        .call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+                    node.init = Some(
+                        self.b
+                            .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),
+                    );
                 }
                 _ => {
                     node.init = Some(oxc_ast::ast::Expression::CallExpression(call));
@@ -167,7 +167,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
         if let oxc_ast::ast::Expression::Identifier(id) = &call.callee {
             if id.name.as_str() == "$host" {
-                *node = self.b.static_member_expr(self.b.rid_expr("$$props"), "$$host");
+                *node = self
+                    .b
+                    .static_member_expr(self.b.rid_expr("$$props"), "$$host");
                 return;
             }
         }
@@ -186,12 +188,12 @@ impl<'a> ScriptTransformer<'_, 'a> {
                         return;
                     }
                     ("$effect", "pending") => {
-                        let pending_call =
-                            self.b.call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
-                        *node = self.b.call_expr(
-                            "$.eager",
-                            [Arg::Expr(self.b.thunk(pending_call))],
-                        );
+                        let pending_call = self
+                            .b
+                            .call_expr("$.pending", std::iter::empty::<Arg<'a, '_>>());
+                        *node = self
+                            .b
+                            .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]);
                         return;
                     }
                     _ => {}
@@ -230,7 +232,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
             // $.snapshot(val, true) when svelte-ignore state_snapshot_uncloneable is active
             if is_snapshot && self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable") {
-                call.arguments.push(oxc_ast::ast::Argument::from(self.b.bool_expr(true)));
+                call.arguments
+                    .push(oxc_ast::ast::Argument::from(self.b.bool_expr(true)));
             }
         }
     }
@@ -277,7 +280,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
                 }
                 PropKind::NonSource(prop_name) => {
-                    *node = self.b.static_member_expr(self.b.rid_expr("$$props"), &prop_name);
+                    *node = self
+                        .b
+                        .static_member_expr(self.b.rid_expr("$$props"), &prop_name);
                 }
             }
             return;
@@ -288,9 +293,15 @@ impl<'a> ScriptTransformer<'_, 'a> {
             *node = self.b.call_expr(&name, std::iter::empty::<Arg<'a, '_>>());
             return;
         }
-        let Some(ref_id) = id.reference_id.get() else { return };
-        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else { return };
-        let Some(kind) = self.component_scoping.rune_kind(sym_id) else { return };
+        let Some(ref_id) = id.reference_id.get() else {
+            return;
+        };
+        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else {
+            return;
+        };
+        let Some(kind) = self.component_scoping.rune_kind(sym_id) else {
+            return;
+        };
         let mutated = self.component_scoping.is_mutated(sym_id);
         let needs_get = mutated || kind.is_derived();
         if needs_get {

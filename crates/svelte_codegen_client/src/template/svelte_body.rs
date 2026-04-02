@@ -12,11 +12,7 @@ use super::events::{gen_event_attr_on, gen_legacy_event_on, gen_use_directive_on
 ///
 /// Events → `$.event(name, $.document.body, handler)` pushed to init.
 /// Actions → `$.action($.document.body, handler, thunk)`.
-pub(crate) fn gen_svelte_body<'a>(
-    ctx: &mut Ctx<'a>,
-    id: NodeId,
-    stmts: &mut Vec<Statement<'a>>,
-) {
+pub(crate) fn gen_svelte_body<'a>(ctx: &mut Ctx<'a>, id: NodeId, stmts: &mut Vec<Statement<'a>>) {
     let body = ctx.svelte_body(id);
     let attrs: Vec<_> = body.attributes.clone();
 
@@ -29,7 +25,14 @@ pub(crate) fn gen_svelte_body<'a>(
             Attribute::ExpressionAttribute(ea) => {
                 if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
-                    gen_event_attr_on(ctx, attr_id, event_name, "$.document.body", stmts, ea.expression_span.start);
+                    gen_event_attr_on(
+                        ctx,
+                        attr_id,
+                        event_name,
+                        "$.document.body",
+                        stmts,
+                        ea.expression_span.start,
+                    );
                 }
             }
             Attribute::UseDirective(ud) => {

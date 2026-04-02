@@ -14,8 +14,13 @@ pub struct ComponentPropInfo {
 
 #[derive(Clone)]
 pub enum ComponentPropKind {
-    String { name: String, value_span: Span },
-    Boolean { name: String },
+    String {
+        name: String,
+        value_span: Span,
+    },
+    Boolean {
+        name: String,
+    },
     Expression {
         name: String,
         attr_id: NodeId,
@@ -27,15 +32,24 @@ pub enum ComponentPropKind {
         attr_id: NodeId,
         parts: Vec<ConcatPart>,
     },
-    Shorthand { attr_id: NodeId, name: String },
-    BindThis { bind_id: NodeId },
+    Shorthand {
+        attr_id: NodeId,
+        name: String,
+    },
+    BindThis {
+        bind_id: NodeId,
+    },
     Bind {
         name: String,
         bind_id: NodeId,
         mode: ComponentBindMode,
     },
-    Spread { attr_id: NodeId },
-    Attach { attr_id: NodeId },
+    Spread {
+        attr_id: NodeId,
+    },
+    Attach {
+        attr_id: NodeId,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]

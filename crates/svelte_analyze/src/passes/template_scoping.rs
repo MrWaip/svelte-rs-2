@@ -18,7 +18,13 @@ pub(crate) fn create_template_scopes(
     walk(&component.fragment, scoping, root, parsed, &component.store);
 }
 
-fn walk(fragment: &Fragment, scoping: &mut ComponentScoping, current_scope: ScopeId, parsed: &ParserResult<'_>, store: &AstStore) {
+fn walk(
+    fragment: &Fragment,
+    scoping: &mut ComponentScoping,
+    current_scope: ScopeId,
+    parsed: &ParserResult<'_>,
+    store: &AstStore,
+) {
     for &id in &fragment.nodes {
         match store.get(id) {
             Node::EachBlock(block) => {
@@ -110,7 +116,9 @@ fn walk(fragment: &Fragment, scoping: &mut ComponentScoping, current_scope: Scop
 fn extract_arrow_from_const<'a>(
     stmt: &'a oxc_ast::ast::Statement<'a>,
 ) -> Option<&'a oxc_ast::ast::ArrowFunctionExpression<'a>> {
-    let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else { return None };
+    let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else {
+        return None;
+    };
     let declarator = decl.declarations.first()?;
     let oxc_ast::ast::Expression::ArrowFunctionExpression(arrow) = declarator.init.as_ref()? else {
         return None;

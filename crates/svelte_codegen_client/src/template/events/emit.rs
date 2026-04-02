@@ -15,7 +15,9 @@ pub(crate) fn gen_on_directive_legacy<'a>(
     after_update: &mut Vec<Statement<'a>>,
 ) {
     let handler = if od.expression_span.is_none() {
-        let bubble_call = ctx.b.static_member_expr(ctx.b.rid_expr("$.bubble_event"), "call");
+        let bubble_call = ctx
+            .b
+            .static_member_expr(ctx.b.rid_expr("$.bubble_event"), "call");
         let call = ctx.b.call_expr_callee(
             bubble_call,
             [
@@ -40,8 +42,11 @@ pub(crate) fn gen_on_directive_legacy<'a>(
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
-    let mut args: Vec<Arg<'a, '_>> =
-        vec![Arg::StrRef(&od.name), Arg::Ident(el_name), Arg::Expr(wrapped)];
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::StrRef(&od.name),
+        Arg::Ident(el_name),
+        Arg::Expr(wrapped),
+    ];
     if mods.capture || mods.passive.is_some() {
         args.push(Arg::Bool(mods.capture));
     }
@@ -60,7 +65,9 @@ pub(crate) fn gen_legacy_event_on<'a>(
     stmts: &mut Vec<Statement<'a>>,
 ) {
     let handler = if od.expression_span.is_none() {
-        let bubble_call = ctx.b.static_member_expr(ctx.b.rid_expr("$.bubble_event"), "call");
+        let bubble_call = ctx
+            .b
+            .static_member_expr(ctx.b.rid_expr("$.bubble_event"), "call");
         let call = ctx.b.call_expr_callee(
             bubble_call,
             [
@@ -85,8 +92,11 @@ pub(crate) fn gen_legacy_event_on<'a>(
         wrapped = ctx.b.call_expr(&fn_name, [Arg::Expr(wrapped)]);
     }
 
-    let mut args: Vec<Arg<'a, '_>> =
-        vec![Arg::StrRef(&od.name), Arg::Ident(target), Arg::Expr(wrapped)];
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::StrRef(&od.name),
+        Arg::Ident(target),
+        Arg::Expr(wrapped),
+    ];
     if mods.capture || mods.passive.is_some() {
         args.push(Arg::Bool(mods.capture));
     }
@@ -118,8 +128,11 @@ pub(crate) fn gen_event_attr_on<'a>(
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
     let passive = svelte_analyze::is_passive_event(&event_name);
-    let mut args: Vec<Arg<'a, '_>> =
-        vec![Arg::StrRef(&event_name), Arg::Ident(target), Arg::Expr(handler)];
+    let mut args: Vec<Arg<'a, '_>> = vec![
+        Arg::StrRef(&event_name),
+        Arg::Ident(target),
+        Arg::Expr(handler),
+    ];
     if capture || passive {
         args.push(if capture {
             Arg::Bool(true)

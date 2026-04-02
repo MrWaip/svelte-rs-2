@@ -130,7 +130,10 @@ fn unclosed_element_returns_diagnostic() {
     );
     // AST should still contain the auto-closed element
     assert_eq!(component.fragment.nodes.len(), 1);
-    assert!(component.store.get(component.fragment.nodes[0]).is_element());
+    assert!(component
+        .store
+        .get(component.fragment.nodes[0])
+        .is_element());
 }
 
 #[test]

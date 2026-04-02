@@ -3,7 +3,7 @@ use oxc_semantic::ScopeId;
 use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
-    ConcatPart, ConcatenationAttribute, ComponentNode, ConstTag, DebugTag, EachBlock, Element,
+    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
     ExpressionAttribute, ExpressionTag, Fragment, HtmlTag, IfBlock, KeyBlock, Node, NodeId,
     OnDirectiveLegacy, RenderTag, Shorthand, SnippetBlock, SpreadAttribute, StyleDirective,
     StyleDirectiveValue, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,

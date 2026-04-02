@@ -1,6 +1,8 @@
 use svelte_ast::{Attribute, Element};
 
-use crate::types::data::{AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
+use crate::types::data::{
+    AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart,
+};
 use crate::walker::TemplateVisitor;
 
 /// Visitor that computes content_type + has_dynamic_children + needs_var
@@ -19,7 +21,10 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
         // Compute content_type + has_dynamic for this element's fragment
         if let Some(lf) = ctx.data.fragments.lowered.get(&key) {
             let cs = classify_items(&lf.items, self.source);
-            let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &ctx.data.dynamic_nodes));
+            let has_dynamic = lf
+                .items
+                .iter()
+                .any(|item| item_is_dynamic(item, &ctx.data.dynamic_nodes));
             ctx.data.fragments.content_types.insert(key, cs);
             if has_dynamic {
                 ctx.data.fragments.has_dynamic_children.insert(key);
@@ -36,14 +41,20 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
 /// Classify non-element fragments after the composite walk completes.
 /// Element fragments are already classified by ContentAndVarVisitor::leave_element.
 pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
-    let keys: Vec<_> = data.fragments.lowered.keys()
+    let keys: Vec<_> = data
+        .fragments
+        .lowered
+        .keys()
         .filter(|k| !matches!(k, FragmentKey::Element(_)))
         .copied()
         .collect();
     for key in keys {
         let lf = &data.fragments.lowered[&key];
         let cs = classify_items(&lf.items, source);
-        let has_dynamic = lf.items.iter().any(|item| item_is_dynamic(item, &data.dynamic_nodes));
+        let has_dynamic = lf
+            .items
+            .iter()
+            .any(|item| item_is_dynamic(item, &data.dynamic_nodes));
         data.fragments.content_types.insert(key, cs);
         if has_dynamic {
             data.fragments.has_dynamic_children.insert(key);
@@ -58,10 +69,12 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         return true;
     }
 
-    let has_runtime_attrs = el
-        .attributes
-        .iter()
-        .any(|a| !matches!(a, Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)));
+    let has_runtime_attrs = el.attributes.iter().any(|a| {
+        !matches!(
+            a,
+            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+        )
+    });
     if has_runtime_attrs {
         return true;
     }
@@ -93,9 +106,14 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
             // Bottom-up: child elements' needs_var already computed via leave_element
             data.element_flags.needs_var.contains(id)
         }
-        FragmentItem::ComponentNode(_) | FragmentItem::IfBlock(_) | FragmentItem::EachBlock(_)
-        | FragmentItem::RenderTag(_) | FragmentItem::HtmlTag(_) | FragmentItem::KeyBlock(_)
-        | FragmentItem::SvelteElement(_) | FragmentItem::SvelteBoundary(_)
+        FragmentItem::ComponentNode(_)
+        | FragmentItem::IfBlock(_)
+        | FragmentItem::EachBlock(_)
+        | FragmentItem::RenderTag(_)
+        | FragmentItem::HtmlTag(_)
+        | FragmentItem::KeyBlock(_)
+        | FragmentItem::SvelteElement(_)
+        | FragmentItem::SvelteBoundary(_)
         | FragmentItem::AwaitBlock(_) => true,
     }
 }
@@ -105,9 +123,9 @@ fn item_is_dynamic(
     dynamic_nodes: &crate::types::node_table::NodeBitSet,
 ) -> bool {
     match item {
-        FragmentItem::TextConcat { parts, .. } => parts.iter().any(|p| {
-            matches!(p, LoweredTextPart::Expr(id) if dynamic_nodes.contains(id))
-        }),
+        FragmentItem::TextConcat { parts, .. } => parts
+            .iter()
+            .any(|p| matches!(p, LoweredTextPart::Expr(id) if dynamic_nodes.contains(id))),
         FragmentItem::Element(id)
         | FragmentItem::ComponentNode(id)
         | FragmentItem::IfBlock(id)
@@ -163,18 +181,25 @@ fn classify_items(items: &[FragmentItem], source: &str) -> ContentStrategy {
 
     if has_element || has_block {
         let has_text = has_static_text || has_dynamic_text;
-        return ContentStrategy::Mixed { has_elements: has_element, has_blocks: has_block, has_text };
+        return ContentStrategy::Mixed {
+            has_elements: has_element,
+            has_blocks: has_block,
+            has_text,
+        };
     }
 
     if has_dynamic_text {
         ContentStrategy::DynamicText
     } else if has_static_text {
         let text = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
-            parts.iter().map(|p| match p {
-                LoweredTextPart::TextSpan(span) => span.source_text(&source),
-                LoweredTextPart::TextOwned(t) => t.as_str(),
-                LoweredTextPart::Expr(_) => "",
-            }).collect::<String>()
+            parts
+                .iter()
+                .map(|p| match p {
+                    LoweredTextPart::TextSpan(span) => span.source_text(&source),
+                    LoweredTextPart::TextOwned(t) => t.as_str(),
+                    LoweredTextPart::Expr(_) => "",
+                })
+                .collect::<String>()
         } else {
             String::new()
         };

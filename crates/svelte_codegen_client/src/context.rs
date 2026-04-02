@@ -6,8 +6,8 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
     AnalysisData, ClassDirectiveInfo, CodegenView, ComponentPropInfo, ContentStrategy,
-    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, LoweredFragment, ParserResult,
-    RenderTagPlan, RuntimePlan,
+    EventHandlerMode, ExprDeps, ExprSite, ExpressionInfo, FragmentKey, IdentGen, LoweredFragment,
+    ParserResult, RenderTagPlan, RuntimePlan,
 };
 use svelte_ast::{
     AwaitBlock, Component, ComponentNode, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -253,10 +253,7 @@ impl<'a> Ctx<'a> {
         let filename = allocator.alloc_str(filename);
 
         Self {
-            query: CodegenQuery::new(
-                component,
-                analysis,
-            ),
+            query: CodegenQuery::new(component, analysis),
             state: CodegenState::new(
                 allocator,
                 name,
@@ -486,9 +483,7 @@ impl<'a> Ctx<'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()
     }
-    pub fn script_rune_call_kinds(
-        &self,
-    ) -> &rustc_hash::FxHashMap<u32, svelte_analyze::RuneKind> {
+    pub fn script_rune_call_kinds(&self) -> &rustc_hash::FxHashMap<u32, svelte_analyze::RuneKind> {
         self.query.view.script_rune_call_kinds()
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {

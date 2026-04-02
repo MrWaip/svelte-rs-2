@@ -11,21 +11,17 @@ use crate::context::Ctx;
 use super::gen_fragment;
 
 /// Generate `$.head(hash, ($$anchor) => { ... })`.
-pub(crate) fn gen_svelte_head<'a>(
-    ctx: &mut Ctx<'a>,
-    id: NodeId,
-    stmts: &mut Vec<Statement<'a>>,
-) {
+pub(crate) fn gen_svelte_head<'a>(ctx: &mut Ctx<'a>, id: NodeId, stmts: &mut Vec<Statement<'a>>) {
     let body = gen_fragment(ctx, FragmentKey::SvelteHeadBody(id));
     let body_fn = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
 
     // hash(filename) — Svelte uses djb2 hash of the filename for scope isolation.
     let hash_str = hash(ctx.state.filename);
 
-    stmts.push(ctx.b.call_stmt(
-        "$.head",
-        [Arg::Str(hash_str), Arg::Expr(body_fn)],
-    ));
+    stmts.push(
+        ctx.b
+            .call_stmt("$.head", [Arg::Str(hash_str), Arg::Expr(body_fn)]),
+    );
 }
 
 /// Svelte's hash — iterates string bytes in reverse, returns base-36 string.
@@ -33,7 +29,9 @@ pub(crate) fn gen_svelte_head<'a>(
 fn hash(s: &str) -> String {
     let mut h: u32 = 5381;
     for &b in s.as_bytes().iter().rev() {
-        if b == b'\r' { continue; }
+        if b == b'\r' {
+            continue;
+        }
         h = (h.wrapping_shl(5).wrapping_sub(h)) ^ (b as u32);
     }
     to_base36(h)

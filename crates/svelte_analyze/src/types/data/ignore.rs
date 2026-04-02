@@ -66,8 +66,11 @@ impl IgnoreData {
             } else {
                 continue;
             };
-            let result =
-                svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore(inner_offset, inner, runes);
+            let result = svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore(
+                inner_offset,
+                inner,
+                runes,
+            );
             if !result.codes.is_empty() {
                 let entry = by_attached.entry(comment.attached_to).or_default();
                 for code in result.codes {
@@ -120,9 +123,7 @@ mod tests {
 
     #[test]
     fn scan_line_comment() {
-        let ignore = parse_and_scan(
-            "// svelte-ignore state_snapshot_uncloneable\nlet x = 1;",
-        );
+        let ignore = parse_and_scan("// svelte-ignore state_snapshot_uncloneable\nlet x = 1;");
         assert!(ignore.is_ignored_at_span(44, "state_snapshot_uncloneable"));
         assert!(!ignore.is_ignored_at_span(44, "await_waterfall"));
     }
@@ -130,9 +131,7 @@ mod tests {
     #[test]
     fn scan_block_comment() {
         // "/* svelte-ignore await_waterfall */\n" = 36 bytes, so `let` starts at 36
-        let ignore = parse_and_scan(
-            "/* svelte-ignore await_waterfall */\nlet x = 1;",
-        );
+        let ignore = parse_and_scan("/* svelte-ignore await_waterfall */\nlet x = 1;");
         assert!(ignore.is_ignored_at_span(36, "await_waterfall"));
     }
 
@@ -148,9 +147,7 @@ mod tests {
 
     #[test]
     fn no_match_for_unrelated_span() {
-        let ignore = parse_and_scan(
-            "let y = 2;\n// svelte-ignore await_waterfall\nlet x = 1;",
-        );
+        let ignore = parse_and_scan("let y = 2;\n// svelte-ignore await_waterfall\nlet x = 1;");
         // First statement has no ignore
         assert!(!ignore.is_ignored_at_span(0, "await_waterfall"));
     }

@@ -1,9 +1,11 @@
-use rustc_hash::{FxHashMap, FxHashSet};
+use oxc_semantic::{
+    NodeId as OxcNodeId, Reference as OxcReference, ReferenceId, ScopeFlags, Scoping, SymbolFlags,
+};
 pub use oxc_semantic::{ScopeId, SymbolId};
-use oxc_semantic::{NodeId as OxcNodeId, Reference as OxcReference, ReferenceId, ScopeFlags, Scoping, SymbolFlags};
+use rustc_hash::{FxHashMap, FxHashSet};
 
-use svelte_ast::NodeId;
 use crate::types::script::RuneKind;
+use svelte_ast::NodeId;
 
 use crate::types::data::FragmentKey;
 
@@ -165,11 +167,25 @@ impl ComponentScoping {
     // -- Rune tracking --
 
     pub fn mark_rune(&mut self, id: SymbolId, kind: RuneKind) {
-        self.runes.insert(id, Rune { kind, derived_deps: Vec::new(), is_proxy_init: false });
+        self.runes.insert(
+            id,
+            Rune {
+                kind,
+                derived_deps: Vec::new(),
+                is_proxy_init: false,
+            },
+        );
     }
 
     pub fn mark_rune_with_proxy(&mut self, id: SymbolId, kind: RuneKind, is_proxy_init: bool) {
-        self.runes.insert(id, Rune { kind, derived_deps: Vec::new(), is_proxy_init });
+        self.runes.insert(
+            id,
+            Rune {
+                kind,
+                derived_deps: Vec::new(),
+                is_proxy_init,
+            },
+        );
     }
 
     pub fn set_derived_deps(&mut self, id: SymbolId, deps: Vec<SymbolId>) {
@@ -263,7 +279,10 @@ impl ComponentScoping {
                 if rune.derived_deps.is_empty() {
                     return true; // deps unknown (e.g. $derived.by) — assume dynamic
                 }
-                return rune.derived_deps.iter().any(|&dep| self.is_dynamic_by_id_uncached(dep, depth + 1));
+                return rune
+                    .derived_deps
+                    .iter()
+                    .any(|&dep| self.is_dynamic_by_id_uncached(dep, depth + 1));
             }
             return true;
         }
@@ -283,7 +302,8 @@ impl ComponentScoping {
         for sym_id in rune_ids {
             self.compute_dynamic_memoized(sym_id, &mut memo, 0);
         }
-        let dynamic_set = memo.into_iter()
+        let dynamic_set = memo
+            .into_iter()
             .filter(|(_, is_dyn)| *is_dyn)
             .map(|(sym, _)| sym)
             .collect();
@@ -292,13 +312,20 @@ impl ComponentScoping {
 
     /// Add blocked symbols to the dynamic cache and propagate to derived symbols.
     /// Blocked symbols change when their async promise resolves, so they are reactive.
-    pub fn mark_blocked_symbols_dynamic(&mut self, symbol_blockers: &rustc_hash::FxHashMap<oxc_semantic::SymbolId, u32>) {
-        let Some(cache) = &mut self.dynamic_sym_cache else { return };
+    pub fn mark_blocked_symbols_dynamic(
+        &mut self,
+        symbol_blockers: &rustc_hash::FxHashMap<oxc_semantic::SymbolId, u32>,
+    ) {
+        let Some(cache) = &mut self.dynamic_sym_cache else {
+            return;
+        };
         for &sym in symbol_blockers.keys() {
             cache.insert(sym);
         }
         // Chains like a→b→c require iterating until stable — a single pass misses transitive deps.
-        let rune_ids: Vec<(SymbolId, Vec<SymbolId>)> = self.runes.iter()
+        let rune_ids: Vec<(SymbolId, Vec<SymbolId>)> = self
+            .runes
+            .iter()
             .filter(|(_, rune)| rune.kind.is_derived())
             .map(|(&sym, rune)| (sym, rune.derived_deps.clone()))
             .collect();
@@ -310,7 +337,9 @@ impl ComponentScoping {
                     changed = true;
                 }
             }
-            if !changed { break; }
+            if !changed {
+                break;
+            }
         }
     }
 
@@ -336,7 +365,8 @@ impl ComponentScoping {
                 } else {
                     // Collect deps to avoid borrow conflict with &self
                     let deps: Vec<SymbolId> = rune.derived_deps.clone();
-                    deps.iter().any(|&dep| self.compute_dynamic_memoized(dep, memo, depth + 1))
+                    deps.iter()
+                        .any(|&dep| self.compute_dynamic_memoized(dep, memo, depth + 1))
                 }
             } else {
                 true
@@ -490,15 +520,22 @@ impl ComponentScoping {
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
-        self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import)
+        self.scoping
+            .symbol_flags(sym_id)
+            .contains(SymbolFlags::Import)
     }
 
     /// Collect all import-flagged SymbolIds from root scope.
     /// Used to pre-compute the set once during analysis rather than per-lookup in codegen.
     pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
         let root = self.root_scope_id();
-        self.scoping.iter_bindings_in(root)
-            .filter(|&sym_id| self.scoping.symbol_flags(sym_id).contains(SymbolFlags::Import))
+        self.scoping
+            .iter_bindings_in(root)
+            .filter(|&sym_id| {
+                self.scoping
+                    .symbol_flags(sym_id)
+                    .contains(SymbolFlags::Import)
+            })
             .collect()
     }
 
@@ -517,11 +554,13 @@ impl ComponentScoping {
         if name.starts_with('$') && name.len() > 1 {
             let base = &name[1..];
             let root = self.root_scope_id();
-            if self.find_binding(root, base).is_some_and(|sym| self.is_store(sym)) {
+            if self
+                .find_binding(root, base)
+                .is_some_and(|sym| self.is_store(sym))
+            {
                 return Some(base);
             }
         }
         None
     }
-
 }

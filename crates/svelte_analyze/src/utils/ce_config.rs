@@ -17,10 +17,14 @@ pub(crate) fn extract_ce_config_from_expr(
         extend_span: None,
     };
 
-    let Expression::ObjectExpression(obj) = expr else { return config };
+    let Expression::ObjectExpression(obj) = expr else {
+        return config;
+    };
 
     for prop_kind in &obj.properties {
-        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else { continue };
+        let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else {
+            continue;
+        };
         let key_name = match &prop.key {
             PropertyKey::StaticIdentifier(id) => id.name.as_str(),
             _ => continue,
@@ -45,10 +49,8 @@ pub(crate) fn extract_ce_config_from_expr(
             "extend" => {
                 use oxc_span::GetSpan as _;
                 let ext_span = prop.value.span();
-                config.extend_span = Some(Span::new(
-                    ext_span.start + offset,
-                    ext_span.end + offset,
-                ));
+                config.extend_span =
+                    Some(Span::new(ext_span.start + offset, ext_span.end + offset));
             }
             _ => {}
         }
@@ -58,9 +60,13 @@ pub(crate) fn extract_ce_config_from_expr(
 }
 
 fn extract_ce_props(value: &Expression<'_>, config: &mut svelte_parser::ParsedCeConfig) {
-    let Expression::ObjectExpression(props_obj) = value else { return };
+    let Expression::ObjectExpression(props_obj) = value else {
+        return;
+    };
     for prop_entry in &props_obj.properties {
-        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else { continue };
+        let ObjectPropertyKind::ObjectProperty(entry) = prop_entry else {
+            continue;
+        };
         let prop_name = match &entry.key {
             PropertyKey::StaticIdentifier(id) => id.name.to_string(),
             _ => continue,
@@ -73,7 +79,9 @@ fn extract_ce_props(value: &Expression<'_>, config: &mut svelte_parser::ParsedCe
         };
         if let Expression::ObjectExpression(def_obj) = &entry.value {
             for def_prop in &def_obj.properties {
-                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else { continue };
+                let ObjectPropertyKind::ObjectProperty(dp) = def_prop else {
+                    continue;
+                };
                 let dk = match &dp.key {
                     PropertyKey::StaticIdentifier(id) => id.name.as_str(),
                     _ => continue,

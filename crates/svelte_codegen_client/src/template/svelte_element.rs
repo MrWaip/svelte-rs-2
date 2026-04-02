@@ -9,7 +9,10 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 use super::async_plan::AsyncEmissionPlan;
-use super::attributes::{process_attrs_spread, process_svelte_element_class_directives, process_svelte_element_style_directives};
+use super::attributes::{
+    process_attrs_spread, process_svelte_element_class_directives,
+    process_svelte_element_style_directives,
+};
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
@@ -110,10 +113,8 @@ pub(crate) fn gen_svelte_element<'a>(
     inner.extend(child_body);
 
     let callback = (!inner.is_empty()).then(|| {
-        ctx.b.arrow_block_expr(
-            ctx.b.params([el_name.as_str(), "$$anchor"]),
-            inner,
-        )
+        ctx.b
+            .arrow_block_expr(ctx.b.params([el_name.as_str(), "$$anchor"]), inner)
     });
 
     if needs_async {
@@ -123,21 +124,27 @@ pub(crate) fn gen_svelte_element<'a>(
             } else {
                 get_node_expr(ctx, id)
             };
-            async_plan.async_thunk(ctx, tag_expr).expect("async tag thunk missing for await plan")
+            async_plan
+                .async_thunk(ctx, tag_expr)
+                .expect("async tag thunk missing for await plan")
         });
 
         let get_tag = ctx.b.thunk(ctx.b.call_expr("$.get", [Arg::Ident("$$tag")]));
-        let mut args: Vec<Arg<'a, '_>> = vec![
-            Arg::Ident("node"),
-            Arg::Expr(get_tag),
-            Arg::Expr(is_svg),
-        ];
+        let mut args: Vec<Arg<'a, '_>> =
+            vec![Arg::Ident("node"), Arg::Expr(get_tag), Arg::Expr(is_svg)];
         if let Some(cb) = callback {
             args.push(Arg::Expr(cb));
         }
 
         let element_stmt = ctx.b.call_stmt("$.element", args);
-        stmts.push(async_plan.wrap_async_block(ctx, anchor, "node", "$$tag", async_tag_thunk, vec![element_stmt]));
+        stmts.push(async_plan.wrap_async_block(
+            ctx,
+            anchor,
+            "node",
+            "$$tag",
+            async_tag_thunk,
+            vec![element_stmt],
+        ));
     } else {
         // Build tag thunk: () => tag_expression (or () => "literal" for static tags)
         let tag_expr = if let Some(ref value) = tag_value {
@@ -147,11 +154,8 @@ pub(crate) fn gen_svelte_element<'a>(
         };
         let get_tag = ctx.b.thunk(tag_expr);
 
-        let mut args: Vec<Arg<'a, '_>> = vec![
-            Arg::Expr(anchor),
-            Arg::Expr(get_tag),
-            Arg::Expr(is_svg),
-        ];
+        let mut args: Vec<Arg<'a, '_>> =
+            vec![Arg::Expr(anchor), Arg::Expr(get_tag), Arg::Expr(is_svg)];
         if let Some(cb) = callback {
             args.push(Arg::Expr(cb));
         }

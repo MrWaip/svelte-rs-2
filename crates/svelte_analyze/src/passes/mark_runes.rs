@@ -13,20 +13,33 @@ use crate::types::script::{DeclarationKind, RuneKind};
 
 /// Mark runes declared at the root scope from ScriptInfo.
 pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
-    let Some(script_info) = &data.script else { return };
+    let Some(script_info) = &data.script else {
+        return;
+    };
     let root = data.scoping.root_scope_id();
     for decl in &script_info.declarations {
-        let Some(rune_kind) = decl.is_rune else { continue };
-        let Some(sym_id) = data.scoping.find_binding(root, &decl.name) else { continue };
-        let is_proxy = data.proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
-        data.scoping.mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
+        let Some(rune_kind) = decl.is_rune else {
+            continue;
+        };
+        let Some(sym_id) = data.scoping.find_binding(root, &decl.name) else {
+            continue;
+        };
+        let is_proxy = data
+            .proxy_state_inits
+            .get(&decl.name)
+            .copied()
+            .unwrap_or(false);
+        data.scoping
+            .mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
         if decl.kind == DeclarationKind::Var
             && matches!(rune_kind, RuneKind::State | RuneKind::StateRaw)
         {
             data.scoping.mark_var_state(sym_id);
         }
         if rune_kind.is_derived() && !decl.rune_init_refs.is_empty() {
-            let deps: Vec<SymbolId> = decl.rune_init_refs.iter()
+            let deps: Vec<SymbolId> = decl
+                .rune_init_refs
+                .iter()
                 .filter_map(|name| data.scoping.find_binding(root, name))
                 .collect();
             if !deps.is_empty() {
@@ -39,7 +52,10 @@ pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
 /// Mark runes declared in nested function scopes ($derived, $state, etc.).
 /// Root-scope runes are already marked by `mark_script_runes`;
 /// this handles the remaining non-root declarations that `extract_script_info` skips.
-pub(crate) fn mark_nested_runes(program: &oxc_ast::ast::Program<'_>, scoping: &mut ComponentScoping) {
+pub(crate) fn mark_nested_runes(
+    program: &oxc_ast::ast::Program<'_>,
+    scoping: &mut ComponentScoping,
+) {
     let root = scoping.root_scope_id();
     let mut visitor = NestedRuneVisitor { scoping, root };
     visitor.visit_program(program);
@@ -53,13 +69,25 @@ struct NestedRuneVisitor<'s> {
 impl<'a> Visit<'a> for NestedRuneVisitor<'_> {
     fn visit_variable_declarator(&mut self, declarator: &oxc_ast::ast::VariableDeclarator<'a>) {
         let Some(init) = &declarator.init else { return };
-        let Some(rune_kind) = crate::utils::script_info::detect_rune(init) else { return };
-        if !matches!(rune_kind, RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw) {
+        let Some(rune_kind) = crate::utils::script_info::detect_rune(init) else {
+            return;
+        };
+        if !matches!(
+            rune_kind,
+            RuneKind::Derived | RuneKind::DerivedBy | RuneKind::State | RuneKind::StateRaw
+        ) {
             return;
         }
-        let Some(sym_id) = declarator.id.get_binding_identifier()
-            .and_then(|id| id.symbol_id.get()) else { return };
-        if self.scoping.symbol_scope_id(sym_id) == self.root { return; }
+        let Some(sym_id) = declarator
+            .id
+            .get_binding_identifier()
+            .and_then(|id| id.symbol_id.get())
+        else {
+            return;
+        };
+        if self.scoping.symbol_scope_id(sym_id) == self.root {
+            return;
+        }
         self.scoping.mark_rune(sym_id, rune_kind);
     }
 }

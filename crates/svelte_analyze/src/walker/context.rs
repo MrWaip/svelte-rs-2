@@ -184,9 +184,7 @@ impl<'a> VisitContext<'a> {
     }
 
     pub fn nearest_element(&self) -> Option<NodeId> {
-        self.ancestors()
-            .find(|p| p.kind.is_element())
-            .map(|p| p.id)
+        self.ancestors().find(|p| p.kind.is_element()).map(|p| p.id)
     }
 
     pub fn push_ignore(&mut self, codes: Vec<String>) {

@@ -55,7 +55,9 @@ impl SnippetData {
         self.hoistable.contains(&id)
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
-        self.component_snippets.get(id).map_or(&[], |v| v.as_slice())
+        self.component_snippets
+            .get(id)
+            .map_or(&[], |v| v.as_slice())
     }
 }
 

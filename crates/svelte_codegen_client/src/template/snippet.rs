@@ -33,7 +33,10 @@ pub(crate) fn gen_snippet_block<'a>(
         .snippet_stmt_handle(id)
         .and_then(|h| ctx.state.parsed.take_stmt(h));
     let stmt = parsed_stmt.unwrap_or_else(|| {
-        panic!("snippet block {:?} has no pre-parsed statement — parser invariant broken", id)
+        panic!(
+            "snippet block {:?} has no pre-parsed statement — parser invariant broken",
+            id
+        )
     });
 
     let mut declarations: Vec<Statement<'a>> = Vec::new();
@@ -43,9 +46,9 @@ pub(crate) fn gen_snippet_block<'a>(
     let mut all_stmts = prepend_stmts;
     if ctx.state.dev {
         let args_id = ctx.b.rid_expr("arguments");
-        let validate_stmt = ctx.b.call_stmt("$.validate_snippet_args", [
-            Arg::Spread(args_id),
-        ]);
+        let validate_stmt = ctx
+            .b
+            .call_stmt("$.validate_snippet_args", [Arg::Spread(args_id)]);
         all_stmts.push(validate_stmt);
     }
     all_stmts.extend(declarations);
@@ -54,10 +57,10 @@ pub(crate) fn gen_snippet_block<'a>(
     let snippet_expr = if ctx.state.dev {
         let fn_expr = ctx.b.function_expr(params, all_stmts);
         let component_name = ctx.b.rid_expr(ctx.state.name);
-        ctx.b.call_expr("$.wrap_snippet", [
-            Arg::Expr(component_name),
-            Arg::Expr(fn_expr),
-        ])
+        ctx.b.call_expr(
+            "$.wrap_snippet",
+            [Arg::Expr(component_name), Arg::Expr(fn_expr)],
+        )
     } else {
         let arrow = ctx.b.arrow(params, all_stmts);
         oxc_ast::ast::Expression::ArrowFunctionExpression(ctx.b.alloc(arrow))
@@ -105,14 +108,11 @@ fn build_snippet_params_from_parsed<'stmt, 'a: 'stmt>(
             BindingPattern::BindingIdentifier(id) => {
                 let name = ctx.b.ast.atom(id.name.as_str());
                 let default_expr = ctx.b.static_member_expr(ctx.b.rid_expr("$"), "noop");
-                let inner = ctx
-                    .b
-                    .ast
-                    .binding_pattern_binding_identifier(SPAN, name);
-                let pattern = ctx
-                    .b
-                    .ast
-                    .binding_pattern_assignment_pattern(SPAN, inner, default_expr);
+                let inner = ctx.b.ast.binding_pattern_binding_identifier(SPAN, name);
+                let pattern =
+                    ctx.b
+                        .ast
+                        .binding_pattern_assignment_pattern(SPAN, inner, default_expr);
                 params.push(ctx.b.ast.formal_parameter(
                     SPAN,
                     ctx.b.ast.vec(),
@@ -154,13 +154,21 @@ fn build_snippet_params_from_parsed<'stmt, 'a: 'stmt>(
                     inserts.iter().map(|insert| insert.name.clone()).collect();
 
                 for insert in inserts {
-                    let derived = ctx.b.call_expr("$.derived", [Arg::Expr(ctx.b.thunk(insert.value))]);
+                    let derived = ctx
+                        .b
+                        .call_expr("$.derived", [Arg::Expr(ctx.b.thunk(insert.value))]);
                     decls.push(ctx.b.var_stmt(&insert.name, derived));
                 }
 
                 for mut path in paths {
                     rewrite_array_reads(ctx, &mut path.expression, &array_insert_names);
-                    emit_leaf_binding(ctx, &path.name, path.expression, path.has_default_value, decls);
+                    emit_leaf_binding(
+                        ctx,
+                        &path.name,
+                        path.expression,
+                        path.has_default_value,
+                        decls,
+                    );
                 }
             }
         }
@@ -179,7 +187,8 @@ fn extract_arrow_param_items<'s, 'a: 's>(
 ) -> Option<&'s [oxc_ast::ast::FormalParameter<'a>]> {
     if let Statement::VariableDeclaration(decl) = stmt {
         if let Some(declarator) = decl.declarations.first() {
-            if let Some(oxc_ast::ast::Expression::ArrowFunctionExpression(arrow)) = &declarator.init {
+            if let Some(oxc_ast::ast::Expression::ArrowFunctionExpression(arrow)) = &declarator.init
+            {
                 return Some(arrow.params.items.as_slice());
             }
         }
@@ -256,7 +265,14 @@ fn collect_object_pattern<'a>(
 ) {
     for prop in &obj.properties {
         let property_access = build_object_property_access(ctx, &expression, prop);
-        collect_binding_pattern(ctx, &prop.value, property_access, has_default_value, inserts, paths);
+        collect_binding_pattern(
+            ctx,
+            &prop.value,
+            property_access,
+            has_default_value,
+            inserts,
+            paths,
+        );
     }
 
     if let Some(rest) = &obj.rest {
@@ -286,10 +302,7 @@ fn collect_array_pattern<'a>(
     } else {
         ctx.b.call_expr(
             "$.to_array",
-            [
-                Arg::Expr(expression),
-                Arg::Num(arr.elements.len() as f64),
-            ],
+            [Arg::Expr(expression), Arg::Num(arr.elements.len() as f64)],
         )
     };
     inserts.push(SnippetInsert {
@@ -304,7 +317,14 @@ fn collect_array_pattern<'a>(
             &ctx.b.rid_expr(&array_name),
             ctx.b.num_expr(index as f64),
         );
-        collect_binding_pattern(ctx, pattern, element_access, has_default_value, inserts, paths);
+        collect_binding_pattern(
+            ctx,
+            pattern,
+            element_access,
+            has_default_value,
+            inserts,
+            paths,
+        );
     }
 
     if let Some(rest) = &arr.rest {
@@ -373,10 +393,13 @@ fn excluded_key_expr<'a>(
         PropertyKey::StaticIdentifier(id) if !prop.computed => ctx.b.str_expr(id.name.as_str()),
         PropertyKey::StringLiteral(str_) => ctx.b.str_expr(str_.value.as_str()),
         PropertyKey::NumericLiteral(num) => ctx.b.str_expr(&num.value.to_string()),
-        key if prop.computed => {
-            ctx.b.call_expr("String", [Arg::Expr(clone_property_key_expr(ctx, key))])
-        }
-        _ => ctx.b.call_expr("String", [Arg::Expr(clone_property_key_expr(ctx, &prop.key))]),
+        key if prop.computed => ctx
+            .b
+            .call_expr("String", [Arg::Expr(clone_property_key_expr(ctx, key))]),
+        _ => ctx.b.call_expr(
+            "String",
+            [Arg::Expr(clone_property_key_expr(ctx, &prop.key))],
+        ),
     }
 }
 
@@ -387,55 +410,99 @@ fn clone_property_key_expr<'a>(
     match key {
         PropertyKey::StaticIdentifier(id) => ctx.b.str_expr(id.name.as_str()),
         PropertyKey::PrivateIdentifier(id) => ctx.b.str_expr(id.name.as_str()),
-        PropertyKey::BooleanLiteral(it) => Expression::BooleanLiteral(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::BooleanLiteral(it) => {
+            Expression::BooleanLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::NullLiteral(it) => Expression::NullLiteral(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::NumericLiteral(it) => Expression::NumericLiteral(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::BigIntLiteral(it) => Expression::BigIntLiteral(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::RegExpLiteral(it) => Expression::RegExpLiteral(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::StringLiteral(it) => Expression::StringLiteral(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::TemplateLiteral(it) => Expression::TemplateLiteral(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::NumericLiteral(it) => {
+            Expression::NumericLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::BigIntLiteral(it) => {
+            Expression::BigIntLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::RegExpLiteral(it) => {
+            Expression::RegExpLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::StringLiteral(it) => {
+            Expression::StringLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::TemplateLiteral(it) => {
+            Expression::TemplateLiteral(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::Identifier(it) => Expression::Identifier(it.clone_in(ctx.b.ast.allocator)),
         PropertyKey::MetaProperty(it) => Expression::MetaProperty(it.clone_in(ctx.b.ast.allocator)),
         PropertyKey::Super(it) => Expression::Super(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::ArrayExpression(it) => Expression::ArrayExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::ArrayExpression(it) => {
+            Expression::ArrayExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::ArrowFunctionExpression(it) => {
             Expression::ArrowFunctionExpression(it.clone_in(ctx.b.ast.allocator))
         }
         PropertyKey::AssignmentExpression(it) => {
             Expression::AssignmentExpression(it.clone_in(ctx.b.ast.allocator))
         }
-        PropertyKey::AwaitExpression(it) => Expression::AwaitExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::BinaryExpression(it) => Expression::BinaryExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::CallExpression(it) => Expression::CallExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::ChainExpression(it) => Expression::ChainExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::ClassExpression(it) => Expression::ClassExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::AwaitExpression(it) => {
+            Expression::AwaitExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::BinaryExpression(it) => {
+            Expression::BinaryExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::CallExpression(it) => {
+            Expression::CallExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::ChainExpression(it) => {
+            Expression::ChainExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::ClassExpression(it) => {
+            Expression::ClassExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::ConditionalExpression(it) => {
             Expression::ConditionalExpression(it.clone_in(ctx.b.ast.allocator))
         }
         PropertyKey::FunctionExpression(it) => {
             Expression::FunctionExpression(it.clone_in(ctx.b.ast.allocator))
         }
-        PropertyKey::ImportExpression(it) => Expression::ImportExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::LogicalExpression(it) => Expression::LogicalExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::NewExpression(it) => Expression::NewExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::ObjectExpression(it) => Expression::ObjectExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::ImportExpression(it) => {
+            Expression::ImportExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::LogicalExpression(it) => {
+            Expression::LogicalExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::NewExpression(it) => {
+            Expression::NewExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::ObjectExpression(it) => {
+            Expression::ObjectExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::ParenthesizedExpression(it) => {
             Expression::ParenthesizedExpression(it.clone_in(ctx.b.ast.allocator))
         }
-        PropertyKey::SequenceExpression(it) => Expression::SequenceExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::SequenceExpression(it) => {
+            Expression::SequenceExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::TaggedTemplateExpression(it) => {
             Expression::TaggedTemplateExpression(it.clone_in(ctx.b.ast.allocator))
         }
-        PropertyKey::ThisExpression(it) => Expression::ThisExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::UnaryExpression(it) => Expression::UnaryExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::UpdateExpression(it) => Expression::UpdateExpression(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::YieldExpression(it) => Expression::YieldExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::ThisExpression(it) => {
+            Expression::ThisExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::UnaryExpression(it) => {
+            Expression::UnaryExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::UpdateExpression(it) => {
+            Expression::UpdateExpression(it.clone_in(ctx.b.ast.allocator))
+        }
+        PropertyKey::YieldExpression(it) => {
+            Expression::YieldExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::PrivateInExpression(it) => {
             Expression::PrivateInExpression(it.clone_in(ctx.b.ast.allocator))
         }
         PropertyKey::JSXElement(it) => Expression::JSXElement(it.clone_in(ctx.b.ast.allocator)),
         PropertyKey::JSXFragment(it) => Expression::JSXFragment(it.clone_in(ctx.b.ast.allocator)),
-        PropertyKey::TSAsExpression(it) => Expression::TSAsExpression(it.clone_in(ctx.b.ast.allocator)),
+        PropertyKey::TSAsExpression(it) => {
+            Expression::TSAsExpression(it.clone_in(ctx.b.ast.allocator))
+        }
         PropertyKey::TSSatisfiesExpression(it) => {
             Expression::TSSatisfiesExpression(it.clone_in(ctx.b.ast.allocator))
         }
@@ -476,12 +543,10 @@ fn build_static_member_access<'a>(
             property,
             false,
         );
-        return Expression::ChainExpression(ctx.b.alloc(
-            ctx.b.ast.chain_expression(
-                SPAN,
-                ChainElement::StaticMemberExpression(ctx.b.alloc(member)),
-            ),
-        ));
+        return Expression::ChainExpression(ctx.b.alloc(ctx.b.ast.chain_expression(
+            SPAN,
+            ChainElement::StaticMemberExpression(ctx.b.alloc(member)),
+        )));
     }
 
     ctx.b.static_member_expr(ctx.b.clone_expr(object), prop)
@@ -499,20 +564,21 @@ fn build_computed_member_access<'a>(
             property,
             false,
         );
-        return Expression::ChainExpression(ctx.b.alloc(
-            ctx.b.ast.chain_expression(
-                SPAN,
-                ChainElement::ComputedMemberExpression(ctx.b.alloc(member)),
-            ),
-        ));
+        return Expression::ChainExpression(ctx.b.alloc(ctx.b.ast.chain_expression(
+            SPAN,
+            ChainElement::ComputedMemberExpression(ctx.b.alloc(member)),
+        )));
     }
 
-    ctx.b.computed_member_expr(ctx.b.clone_expr(object), property)
+    ctx.b
+        .computed_member_expr(ctx.b.clone_expr(object), property)
 }
 
 fn clone_chain_element_expr<'a>(ctx: &Ctx<'a>, element: &ChainElement<'a>) -> Expression<'a> {
     match element {
-        ChainElement::CallExpression(call) => Expression::CallExpression(call.clone_in(ctx.b.ast.allocator)),
+        ChainElement::CallExpression(call) => {
+            Expression::CallExpression(call.clone_in(ctx.b.ast.allocator))
+        }
         ChainElement::StaticMemberExpression(member) => {
             Expression::StaticMemberExpression(member.clone_in(ctx.b.ast.allocator))
         }

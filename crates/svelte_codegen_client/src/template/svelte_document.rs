@@ -31,7 +31,14 @@ pub(crate) fn gen_svelte_document<'a>(
             Attribute::ExpressionAttribute(ea) => {
                 if let Some(event_name) = ea.event_name.as_deref() {
                     let attr_id = attr.id();
-                    gen_event_attr_on(ctx, attr_id, event_name, "$.document", stmts, ea.expression_span.start);
+                    gen_event_attr_on(
+                        ctx,
+                        attr_id,
+                        event_name,
+                        "$.document",
+                        stmts,
+                        ea.expression_span.start,
+                    );
                 }
             }
             Attribute::BindDirective(bind) => {
@@ -61,34 +68,44 @@ fn gen_document_binding<'a>(
     let stmt = match bind.name.as_str() {
         "activeElement" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt("$.bind_active_element", [Arg::Expr(setter)])
+            ctx.b
+                .call_stmt("$.bind_active_element", [Arg::Expr(setter)])
         }
         "fullscreenElement" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt("$.bind_property", [
-                Arg::StrRef("fullscreenElement"),
-                Arg::StrRef("fullscreenchange"),
-                Arg::Ident("$.document"),
-                Arg::Expr(setter),
-            ])
+            ctx.b.call_stmt(
+                "$.bind_property",
+                [
+                    Arg::StrRef("fullscreenElement"),
+                    Arg::StrRef("fullscreenchange"),
+                    Arg::Ident("$.document"),
+                    Arg::Expr(setter),
+                ],
+            )
         }
         "pointerLockElement" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt("$.bind_property", [
-                Arg::StrRef("pointerLockElement"),
-                Arg::StrRef("pointerlockchange"),
-                Arg::Ident("$.document"),
-                Arg::Expr(setter),
-            ])
+            ctx.b.call_stmt(
+                "$.bind_property",
+                [
+                    Arg::StrRef("pointerLockElement"),
+                    Arg::StrRef("pointerlockchange"),
+                    Arg::Ident("$.document"),
+                    Arg::Expr(setter),
+                ],
+            )
         }
         "visibilityState" => {
             let setter = build_binding_setter_silent(ctx, var_name, is_rune);
-            ctx.b.call_stmt("$.bind_property", [
-                Arg::StrRef("visibilityState"),
-                Arg::StrRef("visibilitychange"),
-                Arg::Ident("$.document"),
-                Arg::Expr(setter),
-            ])
+            ctx.b.call_stmt(
+                "$.bind_property",
+                [
+                    Arg::StrRef("visibilityState"),
+                    Arg::StrRef("visibilitychange"),
+                    Arg::Ident("$.document"),
+                    Arg::Expr(setter),
+                ],
+            )
         }
         _ => return,
     };

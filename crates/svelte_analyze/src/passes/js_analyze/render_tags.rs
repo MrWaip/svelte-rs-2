@@ -39,7 +39,8 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
             ctx.data.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.take_expr(handle) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
-                    self.parsed.replace_expr(handle, Expression::CallExpression(call));
+                    self.parsed
+                        .replace_expr(handle, Expression::CallExpression(call));
                 }
             }
         }
@@ -57,7 +58,10 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
         let Some(parsed) = ctx.parsed() else { return };
         if let Some(val_span) = block.value_span {
             if let Some(handle) = parsed.stmt_handle(val_span.start) {
-                ctx.data.template_semantics.await_value_stmt_handles.insert(block.id, handle);
+                ctx.data
+                    .template_semantics
+                    .await_value_stmt_handles
+                    .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, val_span.start) {
                 ctx.data.await_bindings.values.insert(block.id, info);
@@ -65,7 +69,10 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
         }
         if let Some(err_span) = block.error_span {
             if let Some(handle) = parsed.stmt_handle(err_span.start) {
-                ctx.data.template_semantics.await_error_stmt_handles.insert(block.id, handle);
+                ctx.data
+                    .template_semantics
+                    .await_error_stmt_handles
+                    .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, err_span.start) {
                 ctx.data.await_bindings.errors.insert(block.id, info);
@@ -74,10 +81,7 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
     }
 }
 
-fn extract_await_binding_info(
-    parsed: &ParserResult<'_>,
-    offset: u32,
-) -> Option<AwaitBindingInfo> {
+fn extract_await_binding_info(parsed: &ParserResult<'_>, offset: u32) -> Option<AwaitBindingInfo> {
     use oxc_ast::ast::{BindingPattern, Statement};
 
     let stmt = parsed.stmt(parsed.stmt_handle(offset)?)?;

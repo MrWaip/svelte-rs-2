@@ -5,7 +5,9 @@ use crate::DiagnosticKind;
 pub fn legacy_replacement(code: &str) -> Option<&'static str> {
     match code {
         "non-top-level-reactive-declaration" => Some("reactive_declaration_invalid_placement"),
-        "module-script-reactive-declaration" => Some("reactive_declaration_module_script_dependency"),
+        "module-script-reactive-declaration" => {
+            Some("reactive_declaration_module_script_dependency")
+        }
         "empty-block" => Some("block_empty"),
         "avoid-is" => Some("attribute_avoid_is"),
         "invalid-html-attribute" => Some("attribute_invalid_property_name"),
@@ -19,7 +21,11 @@ pub fn legacy_replacement(code: &str) -> Option<&'static str> {
 
 /// Runtime-only warnings that can be suppressed via `svelte-ignore` but are not
 /// emitted by the compiler. Matches Svelte's `IGNORABLE_RUNTIME_WARNINGS`.
-const IGNORABLE_RUNTIME_WARNINGS: &[&str] = &["await_waterfall", "await_reactivity_loss", "state_snapshot_uncloneable"];
+const IGNORABLE_RUNTIME_WARNINGS: &[&str] = &[
+    "await_waterfall",
+    "await_reactivity_loss",
+    "state_snapshot_uncloneable",
+];
 
 /// Returns true if the code is a valid warning code (compile-time or runtime-ignorable).
 pub fn is_valid_warning_code(code: &str) -> bool {
@@ -57,10 +63,12 @@ fn levenshtein(a: &str, b: &str) -> usize {
     for i in 1..=m {
         curr[0] = i;
         for j in 1..=n {
-            let cost = if a_bytes[i - 1] == b_bytes[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            let cost = if a_bytes[i - 1] == b_bytes[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }

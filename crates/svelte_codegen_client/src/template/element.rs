@@ -185,9 +185,15 @@ pub(crate) fn process_element<'a>(
                 // <textarea> with expression children: remove static child, set value property.
                 // Use the raw expression (bypasses build_concat constant folding) so the variable
                 // reference is preserved — $.set_value must receive the live binding, not a literal.
-                init.push(ctx.b.call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]));
+                init.push(
+                    ctx.b
+                        .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
+                );
                 let expr = extract_single_raw_expr_or_concat(ctx, &items[0]);
-                init.push(ctx.b.call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]));
+                init.push(
+                    ctx.b
+                        .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]),
+                );
             } else if !item_has_local_blockers(&items[0], ctx) {
                 // textContent shortcut
                 let expr = build_concat(ctx, &items[0]);
@@ -211,11 +217,16 @@ pub(crate) fn process_element<'a>(
                 }
             } else {
                 let text_name = ctx.gen_ident("text");
-                let child_call = ctx.b.call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
+                let child_call = ctx
+                    .b
+                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
                 init.push(ctx.b.var_stmt(&text_name, child_call));
                 init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
                 let expr = build_concat(ctx, &items[0]);
-                update.push(ctx.b.call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]));
+                update.push(
+                    ctx.b
+                        .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
+                );
             }
         }
 
@@ -327,7 +338,6 @@ pub(crate) fn process_element<'a>(
     // --- Merge directive statements after children (matching Svelte's element_state merge) ---
     init.extend(directive_init);
     after_update.extend(directive_after_update);
-
 }
 
 /// Check if a fragment item needs a DOM variable.

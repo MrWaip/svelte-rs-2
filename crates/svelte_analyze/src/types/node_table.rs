@@ -61,22 +61,25 @@ impl<T> NodeTable<T> {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.0.iter().enumerate().filter_map(|(i, slot)| {
-            slot.as_ref().map(|_| NodeId(i as u32))
-        })
+        self.0
+            .iter()
+            .enumerate()
+            .filter_map(|(i, slot)| slot.as_ref().map(|_| NodeId(i as u32)))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &T)> {
-        self.0.iter().enumerate().filter_map(|(i, slot)| {
-            slot.as_ref().map(|v| (NodeId(i as u32), v))
-        })
+        self.0
+            .iter()
+            .enumerate()
+            .filter_map(|(i, slot)| slot.as_ref().map(|v| (NodeId(i as u32), v)))
     }
 
     /// Drain all populated entries, yielding (NodeId, T) pairs and clearing the table.
     pub fn drain(&mut self) -> impl Iterator<Item = (NodeId, T)> + '_ {
-        self.0.iter_mut().enumerate().filter_map(|(i, slot)| {
-            slot.take().map(|v| (NodeId(i as u32), v))
-        })
+        self.0
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(i, slot)| slot.take().map(|v| (NodeId(i as u32), v)))
     }
 }
 

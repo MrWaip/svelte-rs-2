@@ -4,11 +4,10 @@ use std::time::Instant;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let file = args.get(1).expect("Usage: bench_cli <file.svelte> [iterations]");
-    let iterations: u64 = args
-        .get(2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+    let file = args
+        .get(1)
+        .expect("Usage: bench_cli <file.svelte> [iterations]");
+    let iterations: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(100);
 
     let source = read_to_string(file).expect("failed to read file");
 

@@ -5,7 +5,9 @@ mod runes;
 mod statement_passes;
 mod ts_cleanup;
 
-use oxc_ast::ast::{ArrowFunctionExpression, Expression, FunctionBody, Statement, VariableDeclarator};
+use oxc_ast::ast::{
+    ArrowFunctionExpression, Expression, FunctionBody, Statement, VariableDeclarator,
+};
 use oxc_span::GetSpan;
 use oxc_traverse::{Traverse, TraverseCtx};
 
@@ -94,11 +96,7 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.function_info_stack.pop();
     }
 
-    fn exit_function_body(
-        &mut self,
-        body: &mut FunctionBody<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn exit_function_body(&mut self, body: &mut FunctionBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         self.rewrite_trace_function_body(body);
     }
 
@@ -151,20 +149,13 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.strip_ts_tagged_template_bits(node);
     }
 
-    fn enter_class(
-        &mut self,
-        node: &mut oxc_ast::ast::Class<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn enter_class(&mut self, node: &mut oxc_ast::ast::Class<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         self.strip_ts_class_bits(node);
-        self.class_name_stack.push(node.id.as_ref().map(|id| id.name.to_string()));
+        self.class_name_stack
+            .push(node.id.as_ref().map(|id| id.name.to_string()));
     }
 
-    fn exit_class(
-        &mut self,
-        _node: &mut oxc_ast::ast::Class<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn exit_class(&mut self, _node: &mut oxc_ast::ast::Class<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         self.class_name_stack.pop();
     }
 
@@ -200,19 +191,11 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         self.strip_ts_method_definition_bits(node);
     }
 
-    fn enter_statement(
-        &mut self,
-        node: &mut Statement<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn enter_statement(&mut self, node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         self.enclosing_stmt_start.push(node.span().start);
     }
 
-    fn exit_statement(
-        &mut self,
-        _node: &mut Statement<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
+    fn exit_statement(&mut self, _node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         self.enclosing_stmt_start.pop();
     }
 
@@ -231,12 +214,16 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
         node: &mut oxc_ast::ast::ForOfStatement<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        if node.r#await && self.dev && self.experimental_async
+        if node.r#await
+            && self.dev
+            && self.experimental_async
             && !self.is_in_ignored_stmt("await_reactivity_loss")
         {
             use crate::builder::Arg;
             let right = self.b.move_expr(&mut node.right);
-            node.right = self.b.call_expr("$.for_await_track_reactivity_loss", [Arg::Expr(right)]);
+            node.right = self
+                .b
+                .call_expr("$.for_await_track_reactivity_loss", [Arg::Expr(right)]);
         }
     }
 
@@ -246,7 +233,9 @@ impl<'a> Traverse<'a, ()> for ScriptTransformer<'_, 'a> {
             Expression::AssignmentExpression(_) => self.transform_assignment(node, ctx),
             Expression::UpdateExpression(_) => self.transform_update(node, ctx),
             Expression::CallExpression(_) => self.rewrite_call_expression(node),
-            Expression::StaticMemberExpression(_) => self.rewrite_static_member_expression(node, ctx),
+            Expression::StaticMemberExpression(_) => {
+                self.rewrite_static_member_expression(node, ctx)
+            }
             Expression::Identifier(_) => self.rewrite_identifier_expression(node),
             _ => {}
         }

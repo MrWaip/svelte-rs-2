@@ -1,9 +1,14 @@
 use super::*;
 
 fn check(source: &str, expected: &str) {
-    let opts = CompileOptions { name: Some("App".into()), ..Default::default() };
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        ..Default::default()
+    };
     let result = compile(source, &opts);
-    let js = result.js.unwrap_or_else(|| panic!("compile produced no JS"));
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
     assert_eq!(js, expected);
 }
 
@@ -86,7 +91,10 @@ fn module_typescript_from_filename() {
     let source = "let x: number = $state(0);";
     let result = compile_module(source, &opts);
     assert!(result.js.is_some());
-    assert!(result.diagnostics.is_empty(), "TS source should parse without errors");
+    assert!(
+        result.diagnostics.is_empty(),
+        "TS source should parse without errors"
+    );
 }
 
 #[test]
@@ -103,7 +111,10 @@ fn compile_const_tag_invalid_expression() {
         &CompileOptions::default(),
     );
     assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == "const_tag_invalid_expression"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "const_tag_invalid_expression"),
         "expected const_tag_invalid_expression, got: {:?}",
         result.diagnostics
     );

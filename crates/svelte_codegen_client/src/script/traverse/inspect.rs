@@ -46,7 +46,10 @@ pub(super) fn is_inspect_trace_call(expr: &Expression) -> bool {
 }
 
 impl<'a> ScriptTransformer<'_, 'a> {
-    pub(super) fn rewrite_trace_function_body(&mut self, body: &mut oxc_ast::ast::FunctionBody<'a>) {
+    pub(super) fn rewrite_trace_function_body(
+        &mut self,
+        body: &mut oxc_ast::ast::FunctionBody<'a>,
+    ) {
         if !self.dev {
             return;
         }
@@ -92,10 +95,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
             self.b.thunk_block(remaining)
         };
 
-        let trace_call = self.b.call_expr("$.trace", [
-            Arg::Expr(label_thunk),
-            Arg::Expr(body_thunk),
-        ]);
+        let trace_call = self
+            .b
+            .call_expr("$.trace", [Arg::Expr(label_thunk), Arg::Expr(body_thunk)]);
         let return_expr = if info.is_async {
             self.b.await_expr(trace_call)
         } else {
@@ -105,10 +107,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         self.has_tracing = true;
     }
 
-    pub(super) fn transform_inspect(
-        &self,
-        node: &mut Expression<'a>,
-    ) -> Option<Expression<'a>> {
+    pub(super) fn transform_inspect(&self, node: &mut Expression<'a>) -> Option<Expression<'a>> {
         let Expression::CallExpression(outer_call) = node else {
             return None;
         };
@@ -125,8 +124,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                             let cb = if outer_call.arguments.is_empty() {
                                 self.b.rid_expr("undefined")
                             } else {
-                                let mut dummy =
-                                    oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
                                 std::mem::swap(&mut outer_call.arguments[0], &mut dummy);
                                 dummy.into_expression()
                             };
@@ -143,17 +141,18 @@ impl<'a> ScriptTransformer<'_, 'a> {
                             let mut inner_call = inner_call.unbox();
 
                             let thunk = {
-                                let mut dummy =
-                                    oxc_ast::ast::Argument::from(self.b.cheap_expr());
+                                let mut dummy = oxc_ast::ast::Argument::from(self.b.cheap_expr());
                                 std::mem::swap(&mut inner_call.arguments[0], &mut dummy);
                                 dummy.into_expression()
                             };
 
                             let inspector = self.build_inspect_arrow(cb);
-                            return Some(self.b.call_expr(
-                                "$.inspect",
-                                [Arg::Expr(thunk), Arg::Expr(inspector)],
-                            ));
+                            return Some(
+                                self.b.call_expr(
+                                    "$.inspect",
+                                    [Arg::Expr(thunk), Arg::Expr(inspector)],
+                                ),
+                            );
                         }
                     }
                 }
@@ -165,15 +164,17 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 let Expression::CallExpression(call) = node else {
                     unreachable!()
                 };
-                let inspect_args: Vec<Expression<'a>> =
-                    call.arguments.drain(..).map(|a| a.into_expression()).collect();
+                let inspect_args: Vec<Expression<'a>> = call
+                    .arguments
+                    .drain(..)
+                    .map(|a| a.into_expression())
+                    .collect();
 
                 let thunk = self.build_inspect_thunk(inspect_args);
                 let console_log = self.b.static_member_expr(self.b.rid_expr("console"), "log");
-                let log_call = self.b.call_expr_callee(
-                    console_log,
-                    [Arg::Spread(self.b.rid_expr("$$args"))],
-                );
+                let log_call = self
+                    .b
+                    .call_expr_callee(console_log, [Arg::Spread(self.b.rid_expr("$$args"))]);
                 let inspector = self
                     .b
                     .arrow_expr(self.b.rest_params("$$args"), [self.b.expr_stmt(log_call)]);
@@ -191,7 +192,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
     fn build_inspect_thunk(&self, args: Vec<Expression<'a>>) -> Expression<'a> {
         let array_args: Vec<Arg<'a, '_>> = args.into_iter().map(Arg::Expr).collect();
         let array = self.b.array_from_args(array_args);
-        self.b.arrow_expr(self.b.no_params(), [self.b.expr_stmt(array)])
+        self.b
+            .arrow_expr(self.b.no_params(), [self.b.expr_stmt(array)])
     }
 
     fn build_inspect_arrow(&self, cb: Expression<'a>) -> Expression<'a> {

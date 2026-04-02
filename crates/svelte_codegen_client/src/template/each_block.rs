@@ -39,11 +39,14 @@ pub(crate) fn gen_each_block<'a>(
     // Extract the context binding pattern once when `as ...` is present.
     // Consumed by key function (clone for arrow param) and destructuring (ownership transfer).
     let context_pattern = block.context_span.map(|cs| {
-        let stmt = ctx.state.parsed.take_stmt(
-            ctx.each_context_stmt_handle(block_id)
-                .or_else(|| ctx.state.parsed.stmt_handle(cs.start))
-                .expect("each block with context must have pre-parsed context stmt handle"),
-        )
+        let stmt = ctx
+            .state
+            .parsed
+            .take_stmt(
+                ctx.each_context_stmt_handle(block_id)
+                    .or_else(|| ctx.state.parsed.stmt_handle(cs.start))
+                    .expect("each block with context must have pre-parsed context stmt handle"),
+            )
             .expect("each block with context must have pre-parsed context stmt");
         let Statement::VariableDeclaration(mut var_decl) = stmt else {
             unreachable!("each context stmt must be VariableDeclaration");

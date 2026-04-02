@@ -1,12 +1,21 @@
 use std::borrow::Cow;
 
-use svelte_ast::{AstStore, Component, Fragment, Node, is_svg, is_whitespace_removable_parent};
+use svelte_ast::{is_svg, is_whitespace_removable_parent, AstStore, Component, Fragment, Node};
 use svelte_span::Span;
 
-use crate::types::data::{LoweredTextPart, FragmentItem, FragmentKey, LoweredFragment, AnalysisData};
+use crate::types::data::{
+    AnalysisData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
+};
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
-    lower_fragment(&component.fragment, FragmentKey::Root, component, data, &component.store, false);
+    lower_fragment(
+        &component.fragment,
+        FragmentKey::Root,
+        component,
+        data,
+        &component.store,
+        false,
+    );
 }
 
 /// Collect const_tags.by_fragment before lower runs. Needed so that
@@ -44,7 +53,12 @@ fn collect_const_tags_in(
                 collect_const_tags_in(&cn.fragment, FragmentKey::ComponentNode(cn.id), data, store);
             }
             Node::IfBlock(block) => {
-                collect_const_tags_in(&block.consequent, FragmentKey::IfConsequent(block.id), data, store);
+                collect_const_tags_in(
+                    &block.consequent,
+                    FragmentKey::IfConsequent(block.id),
+                    data,
+                    store,
+                );
                 if let Some(alt) = &block.alternate {
                     collect_const_tags_in(alt, FragmentKey::IfAlternate(block.id), data, store);
                 }
@@ -59,16 +73,36 @@ fn collect_const_tags_in(
                 collect_const_tags_in(&block.body, FragmentKey::SnippetBody(block.id), data, store);
             }
             Node::KeyBlock(block) => {
-                collect_const_tags_in(&block.fragment, FragmentKey::KeyBlockBody(block.id), data, store);
+                collect_const_tags_in(
+                    &block.fragment,
+                    FragmentKey::KeyBlockBody(block.id),
+                    data,
+                    store,
+                );
             }
             Node::SvelteHead(head) => {
-                collect_const_tags_in(&head.fragment, FragmentKey::SvelteHeadBody(head.id), data, store);
+                collect_const_tags_in(
+                    &head.fragment,
+                    FragmentKey::SvelteHeadBody(head.id),
+                    data,
+                    store,
+                );
             }
             Node::SvelteElement(el) => {
-                collect_const_tags_in(&el.fragment, FragmentKey::SvelteElementBody(el.id), data, store);
+                collect_const_tags_in(
+                    &el.fragment,
+                    FragmentKey::SvelteElementBody(el.id),
+                    data,
+                    store,
+                );
             }
             Node::SvelteBoundary(b) => {
-                collect_const_tags_in(&b.fragment, FragmentKey::SvelteBoundaryBody(b.id), data, store);
+                collect_const_tags_in(
+                    &b.fragment,
+                    FragmentKey::SvelteBoundaryBody(b.id),
+                    data,
+                    store,
+                );
             }
             Node::AwaitBlock(block) => {
                 if let Some(ref p) = block.pending {
@@ -147,7 +181,9 @@ fn lower_fragment(
         }
     }
 
-    data.fragments.lowered.insert(key, LoweredFragment { items });
+    data.fragments
+        .lowered
+        .insert(key, LoweredFragment { items });
 
     for &id in &fragment.nodes {
         match store.get(id) {
@@ -164,10 +200,20 @@ fn lower_fragment(
                 } else {
                     is_whitespace_removable_parent(&el.name)
                 };
-                lower_fragment(&el.fragment, FragmentKey::Element(el.id), component, data, store, child_svg);
+                lower_fragment(
+                    &el.fragment,
+                    FragmentKey::Element(el.id),
+                    component,
+                    data,
+                    store,
+                    child_svg,
+                );
             }
             Node::ComponentNode(cn) => {
-                let snippets: Vec<_> = cn.fragment.nodes.iter()
+                let snippets: Vec<_> = cn
+                    .fragment
+                    .nodes
+                    .iter()
                     .filter_map(|&nid| {
                         if let Node::SnippetBlock(s) = store.get(nid) {
                             Some(s.id)
@@ -179,10 +225,24 @@ fn lower_fragment(
                 if !snippets.is_empty() {
                     data.snippets.component_snippets.insert(cn.id, snippets);
                 }
-                lower_fragment(&cn.fragment, FragmentKey::ComponentNode(cn.id), component, data, store, false);
+                lower_fragment(
+                    &cn.fragment,
+                    FragmentKey::ComponentNode(cn.id),
+                    component,
+                    data,
+                    store,
+                    false,
+                );
             }
             Node::IfBlock(block) => {
-                lower_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), component, data, store, in_svg_non_text);
+                lower_fragment(
+                    &block.consequent,
+                    FragmentKey::IfConsequent(block.id),
+                    component,
+                    data,
+                    store,
+                    in_svg_non_text,
+                );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
                     lower_fragment(alt, alt_key, component, data, store, in_svg_non_text);
@@ -198,39 +258,116 @@ fn lower_fragment(
                 }
             }
             Node::EachBlock(block) => {
-                lower_fragment(&block.body, FragmentKey::EachBody(block.id), component, data, store, in_svg_non_text);
+                lower_fragment(
+                    &block.body,
+                    FragmentKey::EachBody(block.id),
+                    component,
+                    data,
+                    store,
+                    in_svg_non_text,
+                );
                 if let Some(fb) = &block.fallback {
-                    lower_fragment(fb, FragmentKey::EachFallback(block.id), component, data, store, in_svg_non_text);
+                    lower_fragment(
+                        fb,
+                        FragmentKey::EachFallback(block.id),
+                        component,
+                        data,
+                        store,
+                        in_svg_non_text,
+                    );
                 }
             }
             Node::SnippetBlock(block) => {
-                lower_fragment(&block.body, FragmentKey::SnippetBody(block.id), component, data, store, false);
+                lower_fragment(
+                    &block.body,
+                    FragmentKey::SnippetBody(block.id),
+                    component,
+                    data,
+                    store,
+                    false,
+                );
             }
             Node::KeyBlock(block) => {
-                lower_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), component, data, store, in_svg_non_text);
+                lower_fragment(
+                    &block.fragment,
+                    FragmentKey::KeyBlockBody(block.id),
+                    component,
+                    data,
+                    store,
+                    in_svg_non_text,
+                );
             }
             Node::SvelteHead(head) => {
-                lower_fragment(&head.fragment, FragmentKey::SvelteHeadBody(head.id), component, data, store, false);
+                lower_fragment(
+                    &head.fragment,
+                    FragmentKey::SvelteHeadBody(head.id),
+                    component,
+                    data,
+                    store,
+                    false,
+                );
             }
             Node::SvelteElement(el) => {
-                lower_fragment(&el.fragment, FragmentKey::SvelteElementBody(el.id), component, data, store, in_svg_non_text);
+                lower_fragment(
+                    &el.fragment,
+                    FragmentKey::SvelteElementBody(el.id),
+                    component,
+                    data,
+                    store,
+                    in_svg_non_text,
+                );
             }
             Node::SvelteBoundary(b) => {
-                lower_fragment(&b.fragment, FragmentKey::SvelteBoundaryBody(b.id), component, data, store, false);
+                lower_fragment(
+                    &b.fragment,
+                    FragmentKey::SvelteBoundaryBody(b.id),
+                    component,
+                    data,
+                    store,
+                    false,
+                );
             }
             Node::AwaitBlock(block) => {
                 if let Some(ref p) = block.pending {
-                    lower_fragment(p, FragmentKey::AwaitPending(block.id), component, data, store, in_svg_non_text);
+                    lower_fragment(
+                        p,
+                        FragmentKey::AwaitPending(block.id),
+                        component,
+                        data,
+                        store,
+                        in_svg_non_text,
+                    );
                 }
                 if let Some(ref t) = block.then {
-                    lower_fragment(t, FragmentKey::AwaitThen(block.id), component, data, store, in_svg_non_text);
+                    lower_fragment(
+                        t,
+                        FragmentKey::AwaitThen(block.id),
+                        component,
+                        data,
+                        store,
+                        in_svg_non_text,
+                    );
                 }
                 if let Some(ref c) = block.catch {
-                    lower_fragment(c, FragmentKey::AwaitCatch(block.id), component, data, store, in_svg_non_text);
+                    lower_fragment(
+                        c,
+                        FragmentKey::AwaitCatch(block.id),
+                        component,
+                        data,
+                        store,
+                        in_svg_non_text,
+                    );
                 }
             }
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
-            Node::Text(_) | Node::Comment(_) | Node::ExpressionTag(_) | Node::RenderTag(_) | Node::HtmlTag(_) | Node::ConstTag(_) | Node::DebugTag(_) | Node::Error(_) => {}
+            Node::Text(_)
+            | Node::Comment(_)
+            | Node::ExpressionTag(_)
+            | Node::RenderTag(_)
+            | Node::HtmlTag(_)
+            | Node::ConstTag(_)
+            | Node::DebugTag(_)
+            | Node::Error(_) => {}
         }
     }
 }
@@ -248,15 +385,27 @@ fn lower_fragment(
 #[inline]
 fn is_skipped_node(node: &Node, inside_head: bool) -> bool {
     match node {
-        Node::Comment(_) | Node::SnippetBlock(_) | Node::ConstTag(_) | Node::DebugTag(_)
-        | Node::SvelteHead(_) | Node::SvelteWindow(_) | Node::SvelteDocument(_)
-        | Node::SvelteBody(_) | Node::Error(_) => true,
+        Node::Comment(_)
+        | Node::SnippetBlock(_)
+        | Node::ConstTag(_)
+        | Node::DebugTag(_)
+        | Node::SvelteHead(_)
+        | Node::SvelteWindow(_)
+        | Node::SvelteDocument(_)
+        | Node::SvelteBody(_)
+        | Node::Error(_) => true,
         Node::Element(el) if inside_head && el.name == "title" => true,
         _ => false,
     }
 }
 
-fn build_items(fragment: &Fragment, component: &Component, inside_head: bool, can_remove_entirely: bool, store: &AstStore) -> Vec<FragmentItem> {
+fn build_items(
+    fragment: &Fragment,
+    component: &Component,
+    inside_head: bool,
+    can_remove_entirely: bool,
+    store: &AstStore,
+) -> Vec<FragmentItem> {
     let nodes = &fragment.nodes;
 
     // Build filtered index list to avoid allocating Vec<&Node>.
@@ -315,13 +464,21 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool, ca
         let idx = filtered[fi];
         match store.get(nodes[idx]) {
             Node::Text(text) => {
-                let raw = text.value(&component.source);
+                let value = text.value(&component.source);
                 let is_first = fi == 0;
                 let is_last = fi == len - 1;
-                let prev = if fi > 0 { Some(store.get(nodes[filtered[fi - 1]])) } else { None };
-                let next = if fi + 1 < len { Some(store.get(nodes[filtered[fi + 1]])) } else { None };
+                let prev = if fi > 0 {
+                    Some(store.get(nodes[filtered[fi - 1]]))
+                } else {
+                    None
+                };
+                let next = if fi + 1 < len {
+                    Some(store.get(nodes[filtered[fi + 1]]))
+                } else {
+                    None
+                };
 
-                let trimmed = trim_text(raw, is_first, is_last, prev, next, prev_text_ends_ws);
+                let trimmed = trim_text(value, is_first, is_last, prev, next, prev_text_ends_ws);
 
                 prev_text_ends_ws = ends_with_ws(&trimmed);
 
@@ -330,11 +487,15 @@ fn build_items(fragment: &Fragment, component: &Component, inside_head: bool, ca
                     // Don't add — whitespace between elements is insignificant
                 } else if !trimmed.is_empty() {
                     let part = match trimmed {
-                        Cow::Borrowed(s) => {
+                        Cow::Borrowed(s) if text.decoded.is_none() => {
                             // Compute span from pointer offset into source
                             let offset = s.as_ptr() as usize - component.source.as_ptr() as usize;
-                            LoweredTextPart::TextSpan(Span::new(offset as u32, (offset + s.len()) as u32))
+                            LoweredTextPart::TextSpan(Span::new(
+                                offset as u32,
+                                (offset + s.len()) as u32,
+                            ))
                         }
+                        Cow::Borrowed(s) => LoweredTextPart::TextOwned(s.to_string()),
                         Cow::Owned(s) => LoweredTextPart::TextOwned(s),
                     };
                     concat.push(part);
@@ -490,6 +651,7 @@ mod tests {
         Node::Text(Text {
             id: NodeId(0), // overwritten by store.push
             span: Span { start, end },
+            decoded: None,
         })
     }
 
@@ -527,15 +689,27 @@ mod tests {
 
     #[test]
     fn test_replace_leading_ws() {
-        assert_eq!(&*replace_leading_ws(Cow::Borrowed("\n  hello"), " "), " hello");
-        assert_eq!(&*replace_leading_ws(Cow::Borrowed("\n  hello"), ""), "hello");
+        assert_eq!(
+            &*replace_leading_ws(Cow::Borrowed("\n  hello"), " "),
+            " hello"
+        );
+        assert_eq!(
+            &*replace_leading_ws(Cow::Borrowed("\n  hello"), ""),
+            "hello"
+        );
         assert_eq!(&*replace_leading_ws(Cow::Borrowed("hello"), " "), "hello");
     }
 
     #[test]
     fn test_replace_trailing_ws() {
-        assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello  \n"), " "), "hello ");
-        assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello  \n"), ""), "hello");
+        assert_eq!(
+            &*replace_trailing_ws(Cow::Borrowed("hello  \n"), " "),
+            "hello "
+        );
+        assert_eq!(
+            &*replace_trailing_ws(Cow::Borrowed("hello  \n"), ""),
+            "hello"
+        );
         assert_eq!(&*replace_trailing_ws(Cow::Borrowed("hello"), " "), "hello");
     }
 
@@ -569,13 +743,7 @@ mod tests {
     fn make_component(source: &str, nodes: Vec<Node>) -> Component {
         let mut store = AstStore::new();
         let ids: Vec<NodeId> = nodes.into_iter().map(|n| store.push(n)).collect();
-        Component::new(
-            source.to_string(),
-            Fragment::new(ids),
-            store,
-            None,
-            None,
-        )
+        Component::new(source.to_string(), Fragment::new(ids), store, None, None)
     }
 
     fn collect_text_parts(items: &[FragmentItem], source: &str) -> Vec<String> {
@@ -596,7 +764,10 @@ mod tests {
     fn trim_leading_and_trailing() {
         let src = "\n  hello  \n";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -604,7 +775,10 @@ mod tests {
     fn preserve_internal_newlines() {
         let src = "hello\n  world";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["hello\n  world"]);
     }
 
@@ -612,7 +786,10 @@ mod tests {
     fn tabs_and_crlf() {
         let src = "\r\n\thello\r\n";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["hello"]);
     }
 
@@ -627,33 +804,33 @@ mod tests {
     #[test]
     fn expr_neighbor_preserves_ws() {
         let src = "{expr}\n  hello";
-        let comp = make_component(src, vec![
-            expr_node(),
-            text_node(6, src.len() as u32),
-        ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let comp = make_component(src, vec![expr_node(), text_node(6, src.len() as u32)]);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["\n  hello"]);
     }
 
     #[test]
     fn expr_next_preserves_trailing_ws() {
         let src = "hello  \n{expr}";
-        let comp = make_component(src, vec![
-            text_node(0, 8),
-            expr_node(),
-        ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let comp = make_component(src, vec![text_node(0, 8), expr_node()]);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["hello  \n"]);
     }
 
     #[test]
     fn adjacent_text_nodes_no_double_space() {
         let src = "\n\n";
-        let comp = make_component(src, vec![
-            text_node(0, 1),
-            text_node(1, 2),
-        ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let comp = make_component(src, vec![text_node(0, 1), text_node(1, 2)]);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert!(texts.is_empty());
     }
 
@@ -661,31 +838,32 @@ mod tests {
     fn ws_between_non_expr_nodes_collapses_to_space() {
         let src = "hello\n\n  world";
         let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["hello\n\n  world"]);
     }
 
     #[test]
     fn text_between_expressions_preserves_all_ws() {
         let src = "{a}\n  \n{b}";
-        let comp = make_component(src, vec![
-            expr_node(),
-            text_node(3, 7),
-            expr_node(),
-        ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let comp = make_component(src, vec![expr_node(), text_node(3, 7), expr_node()]);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["\n  \n"]);
     }
 
     #[test]
     fn text_after_expr_before_non_expr() {
         let src = "{expr}\n  hello\n  x";
-        let comp = make_component(src, vec![
-            expr_node(),
-            text_node(6, 16),
-            text_node(16, 18),
-        ]);
-        let texts = collect_text_parts(&build_items(&comp.fragment, &comp, false, false, &comp.store), &comp.source);
+        let comp = make_component(src, vec![expr_node(), text_node(6, 16), text_node(16, 18)]);
+        let texts = collect_text_parts(
+            &build_items(&comp.fragment, &comp, false, false, &comp.store),
+            &comp.source,
+        );
         assert_eq!(texts, vec!["\n  hello ", "x"]);
     }
 
@@ -693,7 +871,14 @@ mod tests {
     fn no_alloc_when_text_unchanged() {
         // Text without any boundary whitespace: should stay Cow::Borrowed
         let raw = "hello";
-        let result = trim_text(raw, false, false, Some(&expr_node()), Some(&expr_node()), false);
+        let result = trim_text(
+            raw,
+            false,
+            false,
+            Some(&expr_node()),
+            Some(&expr_node()),
+            false,
+        );
         assert!(matches!(result, Cow::Borrowed("hello")));
     }
 
@@ -738,6 +923,9 @@ mod tests {
         // With can_remove_entirely: whitespace is dropped entirely
         let items_svg = build_items(&comp.fragment, &comp, false, true, &comp.store);
         let texts_svg = collect_text_parts(&items_svg, &comp.source);
-        assert!(texts_svg.is_empty(), "SVG context should drop inter-element whitespace");
+        assert!(
+            texts_svg.is_empty(),
+            "SVG context should drop inter-element whitespace"
+        );
     }
 }

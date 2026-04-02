@@ -23,7 +23,8 @@ pub(crate) fn gen_component<'a>(
     let name: &str = &cn.name;
 
     // Snapshot pre-classified props to release immutable borrow before mutable ctx usage
-    let prop_infos: Vec<_> = ctx.component_props(id)
+    let prop_infos: Vec<_> = ctx
+        .component_props(id)
         .iter()
         .map(|p| (p.kind.clone(), p.is_dynamic))
         .collect();
@@ -39,13 +40,24 @@ pub(crate) fn gen_component<'a>(
             ComponentPropKind::String { name, value_span } => {
                 let value_text = ctx.query.component.source_text(value_span);
                 let key = ctx.b.alloc_str(&name);
-                items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, ctx.b.str_expr(value_text))));
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                    key,
+                    ctx.b.str_expr(value_text),
+                )));
             }
             ComponentPropKind::Boolean { name } => {
                 let key = ctx.b.alloc_str(&name);
-                items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, ctx.b.bool_expr(true))));
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                    key,
+                    ctx.b.bool_expr(true),
+                )));
             }
-            ComponentPropKind::Expression { name, attr_id, shorthand, needs_memo } => {
+            ComponentPropKind::Expression {
+                name,
+                attr_id,
+                shorthand,
+                needs_memo,
+            } => {
                 let key = ctx.b.alloc_str(&name);
                 if needs_memo {
                     let mut memo_name = String::with_capacity(4);
@@ -70,7 +82,11 @@ pub(crate) fn gen_component<'a>(
                     }
                 }
             }
-            ComponentPropKind::Concatenation { name, attr_id, parts } => {
+            ComponentPropKind::Concatenation {
+                name,
+                attr_id,
+                parts,
+            } => {
                 let key = ctx.b.alloc_str(&name);
                 let val = build_attr_concat(ctx, attr_id, &parts);
                 if is_dynamic {
@@ -88,7 +104,11 @@ pub(crate) fn gen_component<'a>(
                     items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
                 }
             }
-            ComponentPropKind::Bind { name, bind_id: _, mode } => {
+            ComponentPropKind::Bind {
+                name,
+                bind_id: _,
+                mode,
+            } => {
                 let key = ctx.b.alloc_str(&name);
                 let name_ref = ctx.b.alloc_str(&name);
                 match mode {
@@ -96,19 +116,38 @@ pub(crate) fn gen_component<'a>(
                         let get_body = ctx.b.call_expr(name_ref, []);
                         items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
                         let set_body = ctx.b.call_expr(name_ref, [Arg::Ident("$$value")]);
-                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(
+                            key,
+                            "$$value",
+                            None,
+                            vec![ctx.b.expr_stmt(set_body)],
+                        )));
                     }
                     ComponentBindMode::Rune => {
                         let get_body = ctx.b.call_expr("$.get", [Arg::Ident(name_ref)]);
                         items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                        let set_body = ctx.b.call_expr("$.set", [Arg::Ident(name_ref), Arg::Ident("$$value")]);
-                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
+                        let set_body = ctx
+                            .b
+                            .call_expr("$.set", [Arg::Ident(name_ref), Arg::Ident("$$value")]);
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(
+                            key,
+                            "$$value",
+                            None,
+                            vec![ctx.b.expr_stmt(set_body)],
+                        )));
                     }
                     ComponentBindMode::Plain => {
                         let get_body = ctx.b.rid_expr(name_ref);
                         items.push(PropOrSpread::Prop(ObjProp::Getter(key, get_body)));
-                        let set_body = ctx.b.assign_expr(AssignLeft::Ident(name), ctx.b.rid_expr("$$value"));
-                        items.push(PropOrSpread::Prop(ObjProp::Setter(key, "$$value", None, vec![ctx.b.expr_stmt(set_body)])));
+                        let set_body = ctx
+                            .b
+                            .assign_expr(AssignLeft::Ident(name), ctx.b.rid_expr("$$value"));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(
+                            key,
+                            "$$value",
+                            None,
+                            vec![ctx.b.expr_stmt(set_body)],
+                        )));
                     }
                 }
             }
@@ -121,7 +160,9 @@ pub(crate) fn gen_component<'a>(
                 if is_dynamic {
                     // Lazy evaluation so the runtime can track reactive dependencies
                     let call = ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);
-                    let wrapper = ctx.b.arrow_expr(ctx.b.params(["$$node"]), [ctx.b.expr_stmt(call)]);
+                    let wrapper = ctx
+                        .b
+                        .arrow_expr(ctx.b.params(["$$node"]), [ctx.b.expr_stmt(call)]);
                     items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, wrapper)));
                 } else {
                     items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, expr)));
@@ -129,11 +170,7 @@ pub(crate) fn gen_component<'a>(
             }
             ComponentPropKind::Spread { attr_id } => {
                 let expr = get_attr_expr(ctx, attr_id);
-                let spread_expr = if is_dynamic {
-                    ctx.b.thunk(expr)
-                } else {
-                    expr
-                };
+                let spread_expr = if is_dynamic { ctx.b.thunk(expr) } else { expr };
                 items.push(PropOrSpread::Spread(spread_expr));
             }
         }
@@ -145,11 +182,18 @@ pub(crate) fn gen_component<'a>(
     let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
     let mut slot_entries: Vec<ObjProp<'a>> = Vec::new();
     for snippet_id in &snippet_ids {
-        let snippet_name = ctx.snippet_block(*snippet_id).name(ctx.state.source).to_string();
+        let snippet_name = ctx
+            .snippet_block(*snippet_id)
+            .name(ctx.state.source)
+            .to_string();
         snippet_decls.push(snippet::gen_snippet_block(ctx, *snippet_id, vec![]));
         let key = ctx.b.alloc_str(&snippet_name);
         items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
-        let slot_key = if snippet_name == "children" { "default" } else { ctx.b.alloc_str(&snippet_name) };
+        let slot_key = if snippet_name == "children" {
+            "default"
+        } else {
+            ctx.b.alloc_str(&snippet_name)
+        };
         slot_entries.push(ObjProp::KeyValue(slot_key, ctx.b.bool_expr(true)));
     }
 
@@ -161,7 +205,10 @@ pub(crate) fn gen_component<'a>(
 
         // For text-first content (Static/DynamicText), gen_fragment doesn't emit $.next(),
         // so the component handler must. For Dynamic (mixed), gen_fragment handles it.
-        let needs_next = matches!(children_ct, ContentStrategy::Static(_) | ContentStrategy::DynamicText);
+        let needs_next = matches!(
+            children_ct,
+            ContentStrategy::Static(_) | ContentStrategy::DynamicText
+        );
 
         let mut body_stmts = Vec::new();
         if needs_next {
@@ -176,11 +223,16 @@ pub(crate) fn gen_component<'a>(
     }
 
     if !slot_entries.is_empty() {
-        items.push(PropOrSpread::Prop(ObjProp::KeyValue("$$slots", ctx.b.object_expr(slot_entries))));
+        items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+            "$$slots",
+            ctx.b.object_expr(slot_entries),
+        )));
     }
 
     let props_expr = build_props_expr(ctx, items);
-    let component_call = ctx.b.call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
+    let component_call = ctx
+        .b
+        .call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
 
     let final_expr = if let Some(bind_id) = bind_this_info {
         build_bind_this_call(ctx, id, bind_id, component_call)
@@ -216,7 +268,15 @@ fn build_bind_this_call<'a>(
     // Consume the transformed attr expr to keep the side table clean
     let cn_tmp = ctx.component_node(component_id);
     let bind_tmp = cn_tmp.attributes.iter().find_map(|a| {
-        if let Attribute::BindDirective(b) = a { if b.id == bind_id { Some(b) } else { None } } else { None }
+        if let Attribute::BindDirective(b) = a {
+            if b.id == bind_id {
+                Some(b)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     });
     if let Some(b) = bind_tmp {
         if let Some(span) = b.expression_span {
@@ -228,9 +288,21 @@ fn build_bind_this_call<'a>(
 
     // Look up the bind directive from the component AST to get expression text
     let cn = ctx.component_node(component_id);
-    let bind = cn.attributes.iter().find_map(|a| {
-        if let Attribute::BindDirective(b) = a { if b.id == bind_id { Some(b) } else { None } } else { None }
-    }).expect("bind:this attribute must exist");
+    let bind = cn
+        .attributes
+        .iter()
+        .find_map(|a| {
+            if let Attribute::BindDirective(b) = a {
+                if b.id == bind_id {
+                    Some(b)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .expect("bind:this attribute must exist");
 
     let var_name = if bind.shorthand {
         bind.name.clone()
@@ -246,42 +318,39 @@ fn build_bind_this_call<'a>(
         let expr_text = ctx.b.alloc_str(&var_name);
 
         let setter = if is_rune {
-            let body = ctx.b.call_expr("$.set", [
-                Arg::Ident(expr_text),
-                Arg::Ident("$$value"),
-                Arg::Expr(ctx.b.bool_expr(true)),
-            ]);
+            let body = ctx.b.call_expr(
+                "$.set",
+                [
+                    Arg::Ident(expr_text),
+                    Arg::Ident("$$value"),
+                    Arg::Expr(ctx.b.bool_expr(true)),
+                ],
+            );
             ctx.b
                 .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
         } else {
-            let body = ctx.b.assign_expr(
-                AssignLeft::Ident(var_name),
-                ctx.b.rid_expr("$$value"),
-            );
+            let body = ctx
+                .b
+                .assign_expr(AssignLeft::Ident(var_name), ctx.b.rid_expr("$$value"));
             ctx.b
                 .arrow_expr(ctx.b.params(["$$value"]), [ctx.b.expr_stmt(body)])
         };
 
         let getter = if is_rune {
             let body = ctx.b.call_expr("$.get", [Arg::Ident(expr_text)]);
-            ctx.b
-                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
         } else {
             let body = ctx.b.rid_expr(expr_text);
-            ctx.b
-                .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
+            ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(body)])
         };
 
-        ctx.b.call_expr("$.bind_this", [
-            Arg::Expr(value),
-            Arg::Expr(setter),
-            Arg::Expr(getter),
-        ])
+        ctx.b.call_expr(
+            "$.bind_this",
+            [Arg::Expr(value), Arg::Expr(setter), Arg::Expr(getter)],
+        )
     } else {
         // Member/computed expression: re-parse from source to avoid reactive wrapping
-        let each_context: Vec<String> = ctx.bind_each_context(bind_id)
-            .cloned()
-            .unwrap_or_default();
+        let each_context: Vec<String> = ctx.bind_each_context(bind_id).cloned().unwrap_or_default();
 
         // Setter: ($$value[, ctx_vars]) => <expr> = $$value
         let setter_body = format!("{var_name} = $$value");
@@ -306,11 +375,10 @@ fn build_bind_this_call<'a>(
             .arrow_expr(ctx.b.params(getter_params), [ctx.b.expr_stmt(getter_expr)]);
 
         if each_context.is_empty() {
-            ctx.b.call_expr("$.bind_this", [
-                Arg::Expr(value),
-                Arg::Expr(setter),
-                Arg::Expr(getter),
-            ])
+            ctx.b.call_expr(
+                "$.bind_this",
+                [Arg::Expr(value), Arg::Expr(setter), Arg::Expr(getter)],
+            )
         } else {
             // 4th arg: () => [ctx_var1, ctx_var2, ...]
             let context_values: Vec<Arg<'_, '_>> = each_context
@@ -323,12 +391,15 @@ fn build_bind_this_call<'a>(
             let context_array = ctx.b.array_from_args(context_values);
             let context_thunk = ctx.b.thunk(context_array);
 
-            ctx.b.call_expr("$.bind_this", [
-                Arg::Expr(value),
-                Arg::Expr(setter),
-                Arg::Expr(getter),
-                Arg::Expr(context_thunk),
-            ])
+            ctx.b.call_expr(
+                "$.bind_this",
+                [
+                    Arg::Expr(value),
+                    Arg::Expr(setter),
+                    Arg::Expr(getter),
+                    Arg::Expr(context_thunk),
+                ],
+            )
         }
     }
 }
@@ -344,8 +415,12 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
     let has_spread = items.iter().any(|i| matches!(i, PropOrSpread::Spread(_)));
 
     if !has_spread {
-        let props: Vec<ObjProp<'a>> = items.into_iter()
-            .filter_map(|i| match i { PropOrSpread::Prop(p) => Some(p), _ => None })
+        let props: Vec<ObjProp<'a>> = items
+            .into_iter()
+            .filter_map(|i| match i {
+                PropOrSpread::Prop(p) => Some(p),
+                _ => None,
+            })
             .collect();
         return ctx.b.object_expr(props);
     }
@@ -359,7 +434,9 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
             PropOrSpread::Prop(p) => current_props.push(p),
             PropOrSpread::Spread(expr) => {
                 if !current_props.is_empty() {
-                    args.push(Arg::Expr(ctx.b.object_expr(std::mem::take(&mut current_props))));
+                    args.push(Arg::Expr(
+                        ctx.b.object_expr(std::mem::take(&mut current_props)),
+                    ));
                 }
                 args.push(Arg::Expr(expr));
             }

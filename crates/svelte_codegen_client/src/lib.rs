@@ -17,8 +17,32 @@ use builder::{Arg, AssignLeft, Builder, ObjProp};
 use context::Ctx;
 
 /// Generate JavaScript client-side code for a compiled Svelte component.
-pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'a AnalysisData, parsed: &'a mut ParserResult<'a>, ident_gen: &'a mut IdentGen, transform_data: TransformData, name: &str, dev: bool, source: &'a str, filename: &str, experimental_async: bool) -> String {
-    let mut ctx = Ctx::new(alloc, component, analysis, parsed, ident_gen, transform_data, name, dev, source, filename, experimental_async);
+pub fn generate<'a>(
+    alloc: &'a Allocator,
+    component: &'a Component,
+    analysis: &'a AnalysisData,
+    parsed: &'a mut ParserResult<'a>,
+    ident_gen: &'a mut IdentGen,
+    transform_data: TransformData,
+    name: &str,
+    dev: bool,
+    source: &'a str,
+    filename: &str,
+    experimental_async: bool,
+) -> String {
+    let mut ctx = Ctx::new(
+        alloc,
+        component,
+        analysis,
+        parsed,
+        ident_gen,
+        transform_data,
+        name,
+        dev,
+        source,
+        filename,
+        experimental_async,
+    );
 
     // -----------------------------------------------------------------------
     // 1. Script transformation
@@ -35,7 +59,8 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // 2. Template generation (consumes "root" ident first)
     //    instance_snippets are generated inside gen_root_fragment for correct numbering
     // -----------------------------------------------------------------------
-    let (hoisted, template_body, instance_snippets, hoistable_snippets) = template::gen_root_fragment(&mut ctx);
+    let (hoisted, template_body, instance_snippets, hoistable_snippets) =
+        template::gen_root_fragment(&mut ctx);
 
     // Layout: hoistable snippets → inner hoisted → root hoisted
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
@@ -53,17 +78,23 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // $props.id() → must be first statement for hydration correctness
     if let Some(props_id_name) = ctx.query.props_id() {
         let name: &str = ctx.b.alloc_str(props_id_name);
-        let call = ctx.b.call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
+        let call = ctx
+            .b
+            .call_expr("$.props_id", std::iter::empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
     if ctx.state.dev {
-        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.check_target", [
-            Arg::Expr(ctx.b.new_target_expr()),
-        ])));
+        fn_body.push(
+            ctx.b.expr_stmt(
+                ctx.b
+                    .call_expr("$.check_target", [Arg::Expr(ctx.b.new_target_expr())]),
+            ),
+        );
     }
     if runtime.needs_push {
-        let mut push_args: Vec<Arg<'_, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(ctx.b.bool_expr(true))];
+        let mut push_args: Vec<Arg<'_, '_>> =
+            vec![Arg::Ident("$$props"), Arg::Expr(ctx.b.bool_expr(true))];
         if ctx.state.dev {
             push_args.push(Arg::Ident(ctx.state.name));
         }
@@ -78,7 +109,11 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     //   const [$$stores, $$cleanup] = $.setup_stores();
     if runtime.has_stores {
         // Sort store base names for deterministic output
-        let mut store_names: Vec<&str> = ctx.query.scoping().store_symbol_ids().iter()
+        let mut store_names: Vec<&str> = ctx
+            .query
+            .scoping()
+            .store_symbol_ids()
+            .iter()
             .map(|&sym| ctx.query.scoping().symbol_name(sym))
             .collect();
         store_names.sort();
@@ -89,18 +124,24 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             dollar_name.push_str(base_name);
             let dollar_name_str: &str = ctx.b.alloc_str(&dollar_name);
             let base_str: &str = ctx.b.alloc_str(base_name);
-            let store_get = ctx.b.call_expr("$.store_get", [
-                Arg::Ident(base_str),
-                Arg::Str(dollar_name.clone()),
-                Arg::Ident("$$stores"),
-            ]);
+            let store_get = ctx.b.call_expr(
+                "$.store_get",
+                [
+                    Arg::Ident(base_str),
+                    Arg::Str(dollar_name.clone()),
+                    Arg::Ident("$$stores"),
+                ],
+            );
             // Dev mode: ($.validate_store(name, "name"), $.store_get(...))
             // Prod mode: $.store_get(...)
             let thunk_body = if ctx.state.dev {
-                let validate = ctx.b.call_expr("$.validate_store", [
-                    Arg::Ident(base_str),
-                    Arg::StrRef(ctx.b.alloc_str(base_name)),
-                ]);
+                let validate = ctx.b.call_expr(
+                    "$.validate_store",
+                    [
+                        Arg::Ident(base_str),
+                        Arg::StrRef(ctx.b.alloc_str(base_name)),
+                    ],
+                );
                 ctx.b.seq_expr([validate, store_get])
             } else {
                 store_get
@@ -110,8 +151,13 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         }
 
         // const [$$stores, $$cleanup] = $.setup_stores()
-        let setup_call = ctx.b.call_expr("$.setup_stores", std::iter::empty::<Arg<'_, '_>>());
-        fn_body.push(ctx.b.const_array_destruct_stmt(&["$$stores", "$$cleanup"], setup_call));
+        let setup_call = ctx
+            .b
+            .call_expr("$.setup_stores", std::iter::empty::<Arg<'_, '_>>());
+        fn_body.push(
+            ctx.b
+                .const_array_destruct_stmt(&["$$stores", "$$cleanup"], setup_call),
+        );
     }
 
     // Instance-level snippet declarations (generated during root template for correct numbering)
@@ -156,11 +202,15 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     // set name($$value = default?) { name($$value); $.flush(); }
-                    let default_expr = prop.default_text.as_deref()
+                    let default_expr = prop
+                        .default_text
+                        .as_deref()
                         .map(|text| ctx.b.parse_expression(text));
                     let setter_body = vec![
-                        ctx.b.expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
-                        ctx.b.call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
+                        ctx.b
+                            .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
+                        ctx.b
+                            .call_stmt("$.flush", std::iter::empty::<Arg<'_, '_>>()),
                     ];
                     export_props.push(ObjProp::Setter(key, "$$value", default_expr, setter_body));
                 }
@@ -170,8 +220,13 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
         fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr(export_props)));
     } else if ctx.state.dev && runtime.needs_push {
         // var $$exports = { ...$.legacy_api() }
-        let legacy_call = ctx.b.call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
-        fn_body.push(ctx.b.var_stmt("$$exports", ctx.b.object_expr([ObjProp::Spread(legacy_call)])));
+        let legacy_call = ctx
+            .b
+            .call_expr("$.legacy_api", std::iter::empty::<Arg<'_, '_>>());
+        fn_body.push(ctx.b.var_stmt(
+            "$$exports",
+            ctx.b.object_expr([ObjProp::Spread(legacy_call)]),
+        ));
     }
 
     fn_body.extend(template_body);
@@ -181,20 +236,35 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             // var $$pop = $.pop($$exports); $$cleanup(); return $$pop;
             let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
-            fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
+            fn_body.push(
+                ctx.b
+                    .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+            );
             fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
         } else if runtime.needs_pop_with_return {
-            fn_body.push(ctx.b.return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])));
+            fn_body.push(
+                ctx.b
+                    .return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])),
+            );
         } else {
-            fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())));
+            fn_body.push(
+                ctx.b
+                    .expr_stmt(ctx.b.call_expr("$.pop", std::iter::empty::<Arg<'_, '_>>())),
+            );
             // Store cleanup: $$cleanup() — runs after $.pop()
             if runtime.has_stores {
-                fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
+                fn_body.push(
+                    ctx.b
+                        .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+                );
             }
         }
     } else if runtime.has_stores {
         // No push/pop but still have stores — just cleanup
-        fn_body.push(ctx.b.call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()));
+        fn_body.push(
+            ctx.b
+                .call_stmt("$$cleanup", std::iter::empty::<Arg<'_, '_>>()),
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -202,12 +272,16 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     // -----------------------------------------------------------------------
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
     if !ctx.state.delegated_events.is_empty() {
-        let events: Vec<Arg<'_, '_>> = ctx.state.delegated_events.iter()
+        let events: Vec<Arg<'_, '_>> = ctx
+            .state
+            .delegated_events
+            .iter()
             .map(|e| Arg::Str(e.clone()))
             .collect();
-        delegate_stmts.push(ctx.b.call_stmt("$.delegate", [
-            Arg::Expr(ctx.b.array_from_args(events)),
-        ]));
+        delegate_stmts.push(
+            ctx.b
+                .call_stmt("$.delegate", [Arg::Expr(ctx.b.array_from_args(events))]),
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -225,9 +299,11 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
             Node::SvelteDocument(d) => Some(&d.attributes),
             _ => None,
         };
-        attrs.is_some_and(|attrs| attrs.iter().any(|a| {
-            matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression_span.is_none())
-        }))
+        attrs.is_some_and(|attrs| {
+            attrs.iter().any(
+                |a| matches!(a, Attribute::OnDirectiveLegacy(od) if od.expression_span.is_none()),
+            )
+        })
     });
 
     let fn_params = if runtime.needs_props_param || has_bubble_events {
@@ -271,12 +347,21 @@ pub fn generate<'a>(alloc: &'a Allocator, component: &'a Component, analysis: &'
     program_body.extend(delegate_stmts);
 
     // Custom element wrapping: customElements.define(tag, $.create_custom_element(App, ...))
-    if let Some(ce_config) = component.options.as_ref().and_then(|o| o.custom_element.as_ref()) {
+    if let Some(ce_config) = component
+        .options
+        .as_ref()
+        .and_then(|o| o.custom_element.as_ref())
+    {
         let ce_stmts = custom_element::gen_custom_element(&mut ctx, ce_config);
         program_body.extend(ce_stmts);
     }
 
-    let program = ctx.b.program(program_body, script_comments, script_source_text, script_span_end);
+    let program = ctx.b.program(
+        program_body,
+        script_comments,
+        script_source_text,
+        script_span_end,
+    );
 
     Codegen::default().build(&program).code
 }
@@ -334,8 +419,10 @@ fn split_async_instance_body<'a>(
                     // Function-valued init: keep in sync section
                     if matches!(
                         &declarator.init,
-                        Some(oxc_ast::ast::Expression::ArrowFunctionExpression(_)
-                            | oxc_ast::ast::Expression::FunctionExpression(_))
+                        Some(
+                            oxc_ast::ast::Expression::ArrowFunctionExpression(_)
+                                | oxc_ast::ast::Expression::FunctionExpression(_)
+                        )
                     ) {
                         result.push(b.var_init_stmt(declarator));
                         continue;
@@ -418,10 +505,17 @@ fn try_binding_to_assignment<'a>(
 
 /// Generate JavaScript for a standalone `.svelte.js`/`.svelte.ts` module.
 /// Applies rune transforms but produces a plain ES module (no component wrapping).
-pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &AnalysisData, dev: bool) -> String {
+pub fn generate_module(
+    alloc: &Allocator,
+    source: &str,
+    is_ts: bool,
+    analysis: &AnalysisData,
+    dev: bool,
+) -> String {
     let _ = dev; // reserved for future dev-mode codegen (e.g. $.tag, strict_equals)
     let arena_source: &str = alloc.alloc_str(source);
-    let script_output = script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
+    let script_output =
+        script::transform_module_script(alloc, arena_source, is_ts, &analysis.scoping);
 
     let b = Builder::new(alloc);
     let import_svelte = b.import_all("$", "svelte/internal/client");
@@ -431,6 +525,11 @@ pub fn generate_module(alloc: &Allocator, source: &str, is_ts: bool, analysis: &
     program_body.extend(script_output.imports);
     program_body.extend(script_output.body);
 
-    let program = b.program(program_body, script_output.comments, script_output.source_text, script_output.program_span_end);
+    let program = b.program(
+        program_body,
+        script_output.comments,
+        script_output.source_text,
+        script_output.program_span_end,
+    );
     Codegen::default().build(&program).code
 }

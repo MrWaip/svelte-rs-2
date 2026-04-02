@@ -33,7 +33,8 @@ pub fn extract_svelte_ignore(offset: u32, text: &str, runes: bool) -> ExtractRes
     }
 
     let codes_text = after_prefix.trim_start();
-    let codes_offset = offset + (leading_ws + prefix.len() + (after_prefix.len() - codes_text.len())) as u32;
+    let codes_offset =
+        offset + (leading_ws + prefix.len() + (after_prefix.len() - codes_text.len())) as u32;
 
     if runes {
         extract_runes_mode(codes_offset, codes_text)

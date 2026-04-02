@@ -1,5 +1,5 @@
-use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 use crate::types::script::RuneKind;
+use svelte_ast::{Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 
 use super::*;
 
@@ -66,7 +66,11 @@ fn find_expr_tag(fragment: &Fragment, component: &Component, target: &str) -> Op
     None
 }
 
-fn find_element<'a>(fragment: &'a Fragment, component: &'a Component, tag_name: &str) -> Option<&'a Element> {
+fn find_element<'a>(
+    fragment: &'a Fragment,
+    component: &'a Component,
+    tag_name: &str,
+) -> Option<&'a Element> {
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
@@ -109,28 +113,36 @@ fn find_bind_directive_id(
             Node::Element(el) => {
                 if el.name == tag_name {
                     if let Some(dir_id) = el.attributes.iter().find_map(|attr| match attr {
-                        svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => Some(dir.id),
+                        svelte_ast::Attribute::BindDirective(dir) if dir.name == bind_name => {
+                            Some(dir.id)
+                        }
                         _ => None,
                     }) {
                         return Some(dir_id);
                     }
                 }
-                if let Some(found) = find_bind_directive_id(&el.fragment, component, tag_name, bind_name) {
+                if let Some(found) =
+                    find_bind_directive_id(&el.fragment, component, tag_name, bind_name)
+                {
                     return Some(found);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(found) = find_bind_directive_id(&b.consequent, component, tag_name, bind_name) {
+                if let Some(found) =
+                    find_bind_directive_id(&b.consequent, component, tag_name, bind_name)
+                {
                     return Some(found);
                 }
                 if let Some(alt) = &b.alternate {
-                    if let Some(found) = find_bind_directive_id(alt, component, tag_name, bind_name) {
+                    if let Some(found) = find_bind_directive_id(alt, component, tag_name, bind_name)
+                    {
                         return Some(found);
                     }
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name) {
+                if let Some(found) = find_bind_directive_id(&b.body, component, tag_name, bind_name)
+                {
                     return Some(found);
                 }
             }
@@ -180,7 +192,9 @@ fn find_snippet_block<'a>(
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
-            Node::SnippetBlock(block) if block.name(&component.source) == name => return Some(block),
+            Node::SnippetBlock(block) if block.name(&component.source) == name => {
+                return Some(block)
+            }
             Node::Element(el) => {
                 if let Some(block) = find_snippet_block(&el.fragment, component, name) {
                     return Some(block);
@@ -715,7 +729,9 @@ fn each_block_shadowing_does_not_mutate_rune() {
     let (data, _parsed, diags) = analyze(&component, js_result);
     // The assignment to the each-block var is invalid in runes mode — exactly one diagnostic.
     assert!(
-        diags.iter().all(|d| d.kind.code() == "each_item_invalid_assignment"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() == "each_item_invalid_assignment"),
         "expected only each_item_invalid_assignment diagnostics, got: {diags:?}"
     );
     // The ROOT-scoped rune `count` must NOT be mutated — shadowing works correctly.
@@ -759,7 +775,9 @@ fn rune_kind_state_raw() {
 
 #[test]
 fn rune_kind_derived() {
-    let (_c, data) = analyze_source(r#"<script>let count = $state(0); let doubled = $derived(count * 2);</script>"#);
+    let (_c, data) = analyze_source(
+        r#"<script>let count = $state(0); let doubled = $derived(count * 2);</script>"#,
+    );
     assert_rune_kind(&data, "count", RuneKind::State);
     assert_rune_kind(&data, "doubled", RuneKind::Derived);
 }
@@ -849,8 +867,8 @@ fn no_store_ref_for_regular_var() {
 // ---------------------------------------------------------------------------
 
 mod expression_info_tests {
-    use crate::types::data::{ExpressionInfo, ExpressionKind};
     use crate::passes::js_analyze::analyze_expression;
+    use crate::types::data::{ExpressionInfo, ExpressionKind};
     use compact_str::CompactString;
     use oxc_allocator::Allocator;
     use oxc_parser::Parser as OxcParser;
@@ -907,7 +925,6 @@ mod expression_info_tests {
         let info = parse_and_analyze("$count + 1", 0).unwrap();
         assert!(info.has_store_ref);
     }
-
 }
 
 // -----------------------------------------------------------------------
@@ -987,10 +1004,7 @@ fn assert_stmt_meta_hoist_names(data: &AnalysisData, stmt_index: usize, expected
         .stmt_meta(stmt_index)
         .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
     let actual: Vec<&str> = meta.hoist_names().iter().map(|s| s.as_str()).collect();
-    assert_eq!(
-        actual, expected,
-        "stmt_meta[{stmt_index}].hoist_names"
-    );
+    assert_eq!(actual, expected, "stmt_meta[{stmt_index}].hoist_names");
 }
 
 fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -1023,9 +1037,8 @@ fn blocker_no_await_no_async() {
 
 #[test]
 fn blocker_single_await() {
-    let (_c, data) = analyze_source(
-        r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#,
-    );
+    let (_c, data) =
+        analyze_source(r#"<script>let data = await fetch('/api');</script><p>{data}</p>"#);
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
     assert_symbol_blocker(&data, "data", 0);
@@ -1134,8 +1147,8 @@ let data = await fetch('/api');
 </script>
 {#if await check(data)}yes{/if}"#,
     );
-    let block = find_if_block(&c.fragment, &c, "await check(data)")
-        .unwrap_or_else(|| panic!("no IfBlock"));
+    let block =
+        find_if_block(&c.fragment, &c, "await check(data)").unwrap_or_else(|| panic!("no IfBlock"));
     assert!(
         data.needs_expr_memoization(block.id),
         "expression with await + ref_symbols should need memoization"
@@ -1204,9 +1217,8 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
 
 #[test]
 fn runtime_plan_bindable_props_require_push_without_component_exports() {
-    let (_c, data) = analyze_source(
-        "<script>let { value = $bindable() } = $props();</script><p>{value}</p>",
-    );
+    let (_c, data) =
+        analyze_source("<script>let { value = $bindable() } = $props();</script><p>{value}</p>");
     let plan = data.runtime_plan;
 
     assert!(plan.needs_push);
@@ -1221,9 +1233,8 @@ fn runtime_plan_bindable_props_require_push_without_component_exports() {
 
 #[test]
 fn runtime_plan_store_subscriptions_do_not_force_push() {
-    let (_c, data) = analyze_source(
-        "<script>import { count } from './stores';</script><p>{$count}</p>",
-    );
+    let (_c, data) =
+        analyze_source("<script>import { count } from './stores';</script><p>{$count}</p>");
     let plan = data.runtime_plan;
 
     assert!(!plan.needs_push);
@@ -1275,13 +1286,16 @@ fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
 
 fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     assert!(
-        diags.iter().any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
+        diags
+            .iter()
+            .any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
         "expected warning '{code}', got: {diags:?}"
     );
 }
 
 fn assert_no_errors(diags: &[svelte_diagnostics::Diagnostic]) {
-    let errors: Vec<_> = diags.iter()
+    let errors: Vec<_> = diags
+        .iter()
         .filter(|d| d.severity == svelte_diagnostics::Severity::Error)
         .collect();
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
@@ -1436,8 +1450,15 @@ let total = $derived(count * 2);
 let x = $state(total);
 </script>"#,
     );
-    let w = diags.iter().find(|d| d.kind.code() == "state_referenced_locally").expect("warning missing");
-    assert!(w.kind.message().contains("derived"), "expected type_ == 'derived', got: {}", w.kind.message());
+    let w = diags
+        .iter()
+        .find(|d| d.kind.code() == "state_referenced_locally")
+        .expect("warning missing");
+    assert!(
+        w.kind.message().contains("derived"),
+        "expected type_ == 'derived', got: {}",
+        w.kind.message()
+    );
 }
 
 #[test]
@@ -1451,7 +1472,9 @@ let x = $state(() => total);
 </script>"#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "state_referenced_locally"),
         "unexpected warning: {diags:?}",
     );
 }
@@ -1492,7 +1515,9 @@ const ref_ = obj;
 </script>"#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "state_referenced_locally"),
         "unexpected warning for proxy state: {diags:?}",
     );
 }
@@ -1520,7 +1545,9 @@ const fn_ = () => count;
 </script>"#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "state_referenced_locally"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "state_referenced_locally"),
         "unexpected warning across fn boundary: {diags:?}",
     );
 }
@@ -1557,7 +1584,9 @@ obj.x = 1;
 </script>"#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "state_invalid_export"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "state_invalid_export"),
         "unexpected error: {diags:?}",
     );
 }
@@ -1596,7 +1625,9 @@ export default count;
 "#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "state_invalid_export"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "state_invalid_export"),
         "unexpected error: {diags:?}",
     );
 }
@@ -1950,7 +1981,9 @@ fn validate_each_item_bind_member_expression_no_invalid_assignment() {
 {/each}"#,
     );
     assert!(
-        diags.iter().all(|d| d.kind.code() != "each_item_invalid_assignment"),
+        diags
+            .iter()
+            .all(|d| d.kind.code() != "each_item_invalid_assignment"),
         "unexpected error: {diags:?}",
     );
 }
@@ -1964,6 +1997,40 @@ fn validate_each_item_invalid_assignment_array_destructure() {
 {/each}"#,
     );
     assert_has_error(&diags, "each_item_invalid_assignment");
+}
+
+#[test]
+fn validate_text_invalid_placement() {
+    let diags = analyze_with_diags("<table>bad</table>");
+    assert_has_error(&diags, "node_invalid_placement");
+}
+
+#[test]
+fn validate_expression_tag_invalid_placement() {
+    let diags = analyze_with_diags("<table>{value}</table>");
+    assert_has_error(&diags, "node_invalid_placement");
+}
+
+#[test]
+fn validate_text_bidirectional_control_warning() {
+    let source = format!("<p>before {} after</p>", '\u{202E}');
+    let diags = analyze_with_diags(&source);
+    assert_has_warning(&diags, "bidirectional_control_characters");
+}
+
+#[test]
+fn validate_text_bidirectional_control_warning_ignored() {
+    let source = format!(
+        "<!-- svelte-ignore bidirectional_control_characters --><p>before {} after</p>",
+        '\u{202E}'
+    );
+    let diags = analyze_with_diags(&source);
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "bidirectional_control_characters"),
+        "expected bidi warning to be ignored, got: {diags:?}"
+    );
 }
 
 #[test]

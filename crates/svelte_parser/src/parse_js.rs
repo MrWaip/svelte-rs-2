@@ -176,7 +176,6 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
     result.program.body.into_iter().next()
 }
 
-
 /// Parse snippet declaration `name(params)` or `name` into `const name = (params) => {}`.
 ///
 /// Returns a VariableDeclaration with an ArrowFunctionExpression initializer.

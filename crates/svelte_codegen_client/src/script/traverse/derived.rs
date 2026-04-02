@@ -49,11 +49,12 @@ fn wrap_derived_thunks_in_stmts<'a>(
                 let decl_start = decl.span.start;
                 for declarator in decl.declarations.iter_mut() {
                     let sym_id = match &declarator.id {
-                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => match id.symbol_id.get()
-                        {
-                            Some(s) => s,
-                            None => continue,
-                        },
+                        oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
+                            match id.symbol_id.get() {
+                                Some(s) => s,
+                                None => continue,
+                            }
+                        }
                         _ => continue,
                     };
                     if !pending.contains(&sym_id) {
@@ -72,9 +73,9 @@ fn wrap_derived_thunks_in_stmts<'a>(
                             // `rewrite_dev_await_tracking`, so we can't detect it by
                             // checking for `AwaitExpression` alone.
                             let is_async = matches!(arg_expr, Expression::AwaitExpression(_))
-                                || dev_ctx.as_ref().is_some_and(|ctx| {
-                                    ctx.async_derived_pending.contains(&sym_id)
-                                });
+                                || dev_ctx
+                                    .as_ref()
+                                    .is_some_and(|ctx| ctx.async_derived_pending.contains(&sym_id));
 
                             let var_name = match &declarator.id {
                                 oxc_ast::ast::BindingPattern::BindingIdentifier(id) => {
@@ -89,27 +90,33 @@ fn wrap_derived_thunks_in_stmts<'a>(
 
                                 // Thunk form depends on whether arg is still AwaitExpression
                                 // (non-dev mode) or already transformed (dev mode).
-                                let thunk = if let Expression::AwaitExpression(await_expr) = arg_expr {
-                                    // Non-dev: strip the await, create non-async thunk.
-                                    // `async () => await fetch(x)` → optimized to `() => fetch(x)`
-                                    // by the reference's `unthunk`. We match that behavior directly.
-                                    let inner = await_expr.unbox().argument;
-                                    b.thunk(inner)
-                                } else {
-                                    // Dev mode: arg was already transformed to
-                                    // `(await $.track_reactivity_loss(expr))()` by
-                                    // `rewrite_dev_await_tracking`. Use async_arrow_expr_body
-                                    // to avoid adding an extra `await`.
-                                    b.async_arrow_expr_body(arg_expr)
-                                };
+                                let thunk =
+                                    if let Expression::AwaitExpression(await_expr) = arg_expr {
+                                        // Non-dev: strip the await, create non-async thunk.
+                                        // `async () => await fetch(x)` → optimized to `() => fetch(x)`
+                                        // by the reference's `unthunk`. We match that behavior directly.
+                                        let inner = await_expr.unbox().argument;
+                                        b.thunk(inner)
+                                    } else {
+                                        // Dev mode: arg was already transformed to
+                                        // `(await $.track_reactivity_loss(expr))()` by
+                                        // `rewrite_dev_await_tracking`. Use async_arrow_expr_body
+                                        // to avoid adding an extra `await`.
+                                        b.async_arrow_expr_body(arg_expr)
+                                    };
 
                                 let mut extra_args: Vec<oxc_ast::ast::Argument<'a>> = Vec::new();
                                 if let Some(ctx) = dev_ctx {
-                                    extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
+                                    extra_args
+                                        .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
                                     // Only pass location if not suppressed by svelte-ignore await_waterfall
-                                    if !ctx.ignore_data.is_ignored_at_span(decl_start, "await_waterfall") {
+                                    if !ctx
+                                        .ignore_data
+                                        .is_ignored_at_span(decl_start, "await_waterfall")
+                                    {
                                         let loc = ctx.locate(init_span_start);
-                                        extra_args.push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
+                                        extra_args
+                                            .push(oxc_ast::ast::Argument::from(b.str_expr(&loc)));
                                     }
                                 }
 
@@ -125,7 +132,8 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                 call.arguments[0] = oxc_ast::ast::Argument::from(thunk);
 
                                 if dev_ctx.is_some() {
-                                    let derived_expr = b.move_expr(declarator.init.as_mut().unwrap());
+                                    let derived_expr =
+                                        b.move_expr(declarator.init.as_mut().unwrap());
                                     declarator.init = Some(b.call_expr(
                                         "$.tag",
                                         [Arg::Expr(derived_expr), Arg::Str(var_name)],

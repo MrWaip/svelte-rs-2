@@ -3,14 +3,14 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::FragmentKey;
-use svelte_ast::NodeId;
 use svelte_analyze::{AwaitBindingInfo, DestructureKind};
+use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
 
-use super::gen_fragment;
 use super::expression::build_node_thunk;
+use super::gen_fragment;
 
 /// Generate statements for an `{#await ...}` block.
 ///
@@ -63,7 +63,8 @@ pub(crate) fn gen_await_block<'a>(
     let pending_fn = if has_pending {
         let pending_key = FragmentKey::AwaitPending(block_id);
         let frag_body = gen_fragment(ctx, pending_key);
-        ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body)
+        ctx.b
+            .arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body)
     } else {
         ctx.b.null_expr()
     };
@@ -95,15 +96,15 @@ fn gen_await_callback<'a>(
     let frag_body = gen_fragment(ctx, fragment_key);
 
     match binding {
-        Some(AwaitBindingInfo::Simple(name)) => {
-            ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", name]), frag_body)
-        }
+        Some(AwaitBindingInfo::Simple(name)) => ctx
+            .b
+            .arrow_block_expr(ctx.b.params(["$$anchor", name]), frag_body),
         Some(AwaitBindingInfo::Destructured { kind, names }) => {
             gen_destructured_callback(ctx, *kind, names, frag_body)
         }
-        None => {
-            ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body)
-        }
+        None => ctx
+            .b
+            .arrow_block_expr(ctx.b.params(["$$anchor"]), frag_body),
     }
 }
 
@@ -132,11 +133,14 @@ fn gen_destructured_callback<'a>(
     for name in names {
         let get_value = ctx.b.call_expr("$.get", [Arg::Ident("$$value")]);
         let member = ctx.b.static_member_expr(get_value, name);
-        let getter_fn = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(member)]);
+        let getter_fn = ctx
+            .b
+            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(member)]);
         let per_field_derived = ctx.b.call_expr("$.derived", [Arg::Expr(getter_fn)]);
         declarations.push(ctx.b.var_stmt(name, per_field_derived));
     }
 
     declarations.extend(frag_body);
-    ctx.b.arrow_block_expr(ctx.b.params(["$$anchor", "$$source"]), declarations)
+    ctx.b
+        .arrow_block_expr(ctx.b.params(["$$anchor", "$$source"]), declarations)
 }

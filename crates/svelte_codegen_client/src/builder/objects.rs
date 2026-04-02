@@ -3,10 +3,12 @@ use super::*;
 impl<'a> Builder<'a> {
     pub fn object_expr(&self, props: impl IntoIterator<Item = ObjProp<'a>>) -> Expression<'a> {
         let properties = props.into_iter().map(|p| self.obj_prop_to_ast(p));
-        Expression::ObjectExpression(self.alloc(
-            self.ast
-                .object_expression(SPAN, self.ast.vec_from_iter(properties)),
-        ))
+        Expression::ObjectExpression(
+            self.alloc(
+                self.ast
+                    .object_expression(SPAN, self.ast.vec_from_iter(properties)),
+            ),
+        )
     }
 
     pub(super) fn obj_prop_to_ast(&self, prop: ObjProp<'a>) -> ast::ObjectPropertyKind<'a> {

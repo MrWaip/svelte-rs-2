@@ -34,7 +34,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 let value = if assign.operator.is_assign() {
                     right
                 } else {
-                    let current = self.b.call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
+                    let current = self
+                        .b
+                        .call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
                     if let Some(bin_op) = assign.operator.to_binary_operator() {
                         self.b
                             .ast
@@ -50,17 +52,18 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     }
                 };
 
-                *node = self.b.call_expr(
-                    "$.store_set",
-                    [Arg::Ident(base_name), Arg::Expr(value)],
-                );
+                *node = self
+                    .b
+                    .call_expr("$.store_set", [Arg::Ident(base_name), Arg::Expr(value)]);
                 return;
             }
             if let Some((kind, mutated)) = self.rune_for_ref(id) {
                 if mutated {
                     let name = id.name.as_str().to_string();
                     // Resolve sym_id while `id` borrow is still available (before move_expr borrows assign).
-                    let is_var_state = id.reference_id.get()
+                    let is_var_state = id
+                        .reference_id
+                        .get()
                         .and_then(|r| self.scoping.get_reference(r).symbol_id())
                         .is_some_and(|s| self.component_scoping.is_var_declared_state(s));
                     let right = self.b.move_expr(&mut assign.right);
@@ -69,7 +72,10 @@ impl<'a> ScriptTransformer<'_, 'a> {
                         right
                     } else {
                         let left_get = if is_var_state {
-                            svelte_transform::rune_refs::make_rune_safe_get(self.b.ast.allocator, &name)
+                            svelte_transform::rune_refs::make_rune_safe_get(
+                                self.b.ast.allocator,
+                                &name,
+                            )
                         } else {
                             svelte_transform::rune_refs::make_rune_get(self.b.ast.allocator, &name)
                         };
@@ -121,11 +127,13 @@ impl<'a> ScriptTransformer<'_, 'a> {
         if !self.dev {
             return;
         }
-        let Expression::AssignmentExpression(assign) = &*node else { return };
+        let Expression::AssignmentExpression(assign) = &*node else {
+            return;
+        };
         let fn_name = match assign.operator {
-            oxc_ast::ast::AssignmentOperator::Assign         => "$.assign",
-            oxc_ast::ast::AssignmentOperator::LogicalAnd     => "$.assign_and",
-            oxc_ast::ast::AssignmentOperator::LogicalOr      => "$.assign_or",
+            oxc_ast::ast::AssignmentOperator::Assign => "$.assign",
+            oxc_ast::ast::AssignmentOperator::LogicalAnd => "$.assign_and",
+            oxc_ast::ast::AssignmentOperator::LogicalOr => "$.assign_or",
             oxc_ast::ast::AssignmentOperator::LogicalNullish => "$.assign_nullish",
             _ => return,
         };
@@ -160,7 +168,9 @@ impl<'a> ScriptTransformer<'_, 'a> {
 
         // Move whole node to obtain ownership, then destructure
         let whole = self.b.move_expr(node);
-        let Expression::AssignmentExpression(assign_box) = whole else { unreachable!() };
+        let Expression::AssignmentExpression(assign_box) = whole else {
+            unreachable!()
+        };
         let assign = assign_box.unbox();
 
         if is_static {
@@ -204,7 +214,8 @@ impl<'a> ScriptTransformer<'_, 'a> {
             return;
         };
 
-        if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument {
+        if let oxc_ast::ast::SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument
+        {
             if let Some(prop_kind) = self.prop_kind_for_ref(id) {
                 if matches!(prop_kind, PropKind::Source) {
                     let name = id.name.as_str().to_string();
@@ -230,9 +241,10 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 } else {
                     "$.update_store"
                 };
-                let thunk_call = self.b.call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
-                let mut args: Vec<Arg<'a, '_>> =
-                    vec![Arg::Ident(base_name), Arg::Expr(thunk_call)];
+                let thunk_call = self
+                    .b
+                    .call_expr(dollar_name, std::iter::empty::<Arg<'a, '_>>());
+                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident(base_name), Arg::Expr(thunk_call)];
                 if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
                     args.push(Arg::Num(-1.0));
                 }
@@ -259,7 +271,11 @@ impl<'a> ScriptTransformer<'_, 'a> {
                 && self.is_private_state_field(pfe.field.name.as_str())
             {
                 let field_name = pfe.field.name.as_str();
-                let fn_name = if upd.prefix { "$.update_pre" } else { "$.update" };
+                let fn_name = if upd.prefix {
+                    "$.update_pre"
+                } else {
+                    "$.update"
+                };
                 let field_expr = self.b.this_private_member(field_name);
                 let mut args: Vec<Arg<'a, '_>> = vec![Arg::Expr(field_expr)];
                 if upd.operator == oxc_ast::ast::UpdateOperator::Decrement {
@@ -338,8 +354,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
             if matches!(&pfe.object, Expression::ThisExpression(_)) {
                 let rune_kind = self.private_state_field_rune_kind(pfe.field.name.as_str());
                 if let Some(kind) = rune_kind {
-                    if self.in_constructor()
-                        && matches!(kind, RuneKind::State | RuneKind::StateRaw)
+                    if self.in_constructor() && matches!(kind, RuneKind::State | RuneKind::StateRaw)
                     {
                         // Inside constructor, $state/$state.raw: this.#field → this.#field.v
                         let field_expr = self.b.move_expr(node);

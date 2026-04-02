@@ -16,7 +16,9 @@ pub(crate) fn collect_script_rune_call_kinds(parsed: &ParserResult<'_>, data: &m
     impl<'a> Visit<'a> for Collector<'_> {
         fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
             if let Some(kind) = crate::utils::script_info::detect_rune_from_call(call) {
-                self.data.script_rune_call_kinds.insert(call.span.start, kind);
+                self.data
+                    .script_rune_call_kinds
+                    .insert(call.span.start, kind);
             }
             walk_call_expression(self, call);
         }

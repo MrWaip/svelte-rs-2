@@ -10,10 +10,9 @@ pub use types::data::{
     AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
     ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
     ConstTagData, ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode,
-    ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentItem, FragmentKey,
-    IgnoreData,
-    LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis, PropsAnalysis,
-    RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData, StmtHandle,
+    ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentItem,
+    FragmentKey, IgnoreData, LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis,
+    PropsAnalysis, RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData, StmtHandle,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -51,14 +50,8 @@ fn run_parsed_template_bundle<'a, const N: usize>(
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
-    let mut ctx = walker::VisitContext::with_parsed(
-        root,
-        data,
-        &component.store,
-        parsed,
-        source,
-        runes,
-    );
+    let mut ctx =
+        walker::VisitContext::with_parsed(root, data, &component.store, parsed, source, runes);
     walker::walk_template(&component.fragment, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
 }
@@ -480,7 +473,8 @@ fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
     let has_exports = !data.exports.is_empty();
     let has_bindable = data.props.as_ref().is_some_and(|p| p.has_bindable);
     let has_stores = !data.scoping.store_symbol_ids().is_empty();
-    let has_ce_props = data.custom_element && data.props.as_ref().is_some_and(|p| !p.props.is_empty());
+    let has_ce_props =
+        data.custom_element && data.props.as_ref().is_some_and(|p| !p.props.is_empty());
     let needs_push = has_bindable || has_exports || has_ce_props || data.needs_context || dev;
     let has_component_exports = has_exports || has_ce_props || dev;
     let needs_props_param = data.props.is_some() || needs_push;

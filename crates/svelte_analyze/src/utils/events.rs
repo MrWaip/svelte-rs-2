@@ -31,9 +31,7 @@ pub fn is_delegatable_event(name: &str) -> bool {
 }
 
 pub fn is_capture_event(name: &str) -> bool {
-    name.ends_with("capture")
-        && name != "gotpointercapture"
-        && name != "lostpointercapture"
+    name.ends_with("capture") && name != "gotpointercapture" && name != "lostpointercapture"
 }
 
 pub fn strip_capture_event(name: &str) -> Option<&str> {
@@ -51,6 +49,9 @@ pub fn is_passive_event(name: &str) -> bool {
 /// Check if a string is a simple JS identifier (no member access, no computed access).
 pub fn is_simple_identifier(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        && s.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }

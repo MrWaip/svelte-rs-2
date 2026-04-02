@@ -95,7 +95,8 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
                 self.check_proxy_state_inits(&decl.declarations);
             }
             Statement::ExportNamedDeclaration(export) => {
-                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration {
+                if let Some(oxc_ast::ast::Declaration::VariableDeclaration(d)) = &export.declaration
+                {
                     self.check_proxy_state_inits(&d.declarations);
                 }
             }
@@ -167,7 +168,6 @@ impl ScriptBodyAnalyzer<'_> {
         }
     }
 }
-
 
 fn is_proxyable_state_init(expr: &Expression<'_>) -> bool {
     let Expression::CallExpression(call) = expr else {

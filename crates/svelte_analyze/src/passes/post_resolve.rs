@@ -51,7 +51,11 @@ fn analyze_declarations(data: &mut AnalysisData) {
 }
 
 fn analyze_props_declaration(data: &mut AnalysisData) {
-    let decl = match data.script.as_ref().and_then(|s| s.props_declaration.as_ref()) {
+    let decl = match data
+        .script
+        .as_ref()
+        .and_then(|s| s.props_declaration.as_ref())
+    {
         Some(d) => d,
         None => return,
     };
@@ -63,22 +67,24 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
         .iter()
         .map(|p| {
             let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
-            let is_mutated = data.custom_element
-                || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
-            let is_prop_source =
-                data.custom_element || p.default_span.is_some() || is_mutated;
+            let is_mutated =
+                data.custom_element || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
+            let is_prop_source = data.custom_element || p.default_span.is_some() || is_mutated;
 
             if !p.is_rest {
                 if let Some(sym_id) = sym_id {
                     if is_prop_source {
                         data.scoping.mark_prop_source(sym_id);
                     } else {
-                        data.scoping.mark_prop_non_source(sym_id, p.prop_name.to_string());
+                        data.scoping
+                            .mark_prop_non_source(sym_id, p.prop_name.to_string());
                     }
                 }
             } else if let Some(sym_id) = sym_id {
                 // Collect all previously seen (non-rest) prop names as excluded set
-                let excluded = decl.props.iter()
+                let excluded = decl
+                    .props
+                    .iter()
                     .take_while(|prev| !prev.is_rest)
                     .map(|prev| prev.prop_name.to_string())
                     .collect();
@@ -104,7 +110,11 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
 
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
-    data.props = Some(PropsAnalysis { props, has_bindable, is_identifier_pattern: decl.is_identifier_pattern });
+    data.props = Some(PropsAnalysis {
+        props,
+        has_bindable,
+        is_identifier_pattern: decl.is_identifier_pattern,
+    });
 }
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
@@ -113,8 +123,14 @@ fn aggregate_store_needs_context(data: &mut AnalysisData) {
         return;
     }
 
-    let has_deep = data.expressions.values().any(|i| i.has_store_member_mutation)
-        || data.attr_expressions.values().any(|i| i.has_store_member_mutation)
+    let has_deep = data
+        .expressions
+        .values()
+        .any(|i| i.has_store_member_mutation)
+        || data
+            .attr_expressions
+            .values()
+            .any(|i| i.has_store_member_mutation)
         || data.has_store_member_mutations;
 
     if has_deep {

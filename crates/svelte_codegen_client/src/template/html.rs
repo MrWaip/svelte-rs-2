@@ -5,8 +5,8 @@ use std::fmt::Write;
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
-use crate::context::Ctx;
 use super::expression::item_has_local_blockers;
+use crate::context::Ctx;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 /// Returns `(html, needs_import_node)` — the flag is true when the fragment

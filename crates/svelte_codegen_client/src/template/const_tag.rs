@@ -20,9 +20,10 @@ pub(crate) fn gen_const_tags<'a>(
     };
 
     // Check if any const tag triggers async mode
-    let needs_async = ctx.state.experimental_async && ids.iter().any(|&id| {
-        ctx.expr_has_await(id) || !ctx.query.expression_blockers(id).is_empty()
-    });
+    let needs_async = ctx.state.experimental_async
+        && ids
+            .iter()
+            .any(|&id| ctx.expr_has_await(id) || !ctx.query.expression_blockers(id).is_empty());
 
     if needs_async {
         gen_const_tags_async(ctx, key, &ids, stmts)
@@ -48,7 +49,8 @@ fn emit_const_tags_sync<'a>(
 
             let final_expr = if ctx.state.dev {
                 let name_str = ctx.b.alloc_str(&names[0]);
-                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
+                ctx.b
+                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
             } else {
                 derived
             };
@@ -79,7 +81,10 @@ fn gen_const_tags_async<'a>(
 
     for &id in ids {
         let names = ctx.const_tag_names(id).cloned().unwrap_or_default();
-        let syms = ctx.const_tag_syms(id).map(|syms| syms.to_vec()).unwrap_or_default();
+        let syms = ctx
+            .const_tag_syms(id)
+            .map(|syms| syms.to_vec())
+            .unwrap_or_default();
         let has_await = ctx.expr_has_await(id);
         let blockers = ctx.query.expression_blockers(id);
         let init_expr = extract_const_init(ctx, id);
@@ -91,7 +96,8 @@ fn gen_const_tags_async<'a>(
             let derived = create_derived(ctx, init_expr, has_await);
             let final_derived = if ctx.state.dev {
                 let name_str = ctx.b.alloc_str(&names[0]);
-                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
+                ctx.b
+                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef(name_str)])
             } else {
                 derived
             };
@@ -118,25 +124,33 @@ fn gen_const_tags_async<'a>(
 
             let thunk_idx = thunks.len() - 1;
             if let Some(&sym_id) = syms.first() {
-                ctx.const_tag_blockers.insert(sym_id, (promises_name.clone(), thunk_idx));
+                ctx.const_tag_blockers
+                    .insert(sym_id, (promises_name.clone(), thunk_idx));
             }
         } else if names.len() > 1 {
-            let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&id)
+            let tmp_name = ctx
+                .transform_data
+                .const_tag_tmp_names
+                .get(&id)
                 .expect("destructured const tag must have tmp_name from transform")
                 .clone();
 
             stmts.push(ctx.b.let_stmt(&tmp_name));
             emit_blocker_thunks(ctx, &blockers, &mut thunks);
             let destruct_stmt = ctx.b.const_object_destruct_stmt(&names, init_expr);
-            let props: Vec<ObjProp<'a>> = names.iter()
+            let props: Vec<ObjProp<'a>> = names
+                .iter()
                 .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
                 .collect();
             let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
-            let block_arrow = ctx.b.arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+            let block_arrow = ctx
+                .b
+                .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
             let derived = create_derived(ctx, block_arrow, has_await);
 
             let final_derived = if ctx.state.dev {
-                ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
+                ctx.b
+                    .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
             } else {
                 derived
             };
@@ -153,7 +167,8 @@ fn gen_const_tags_async<'a>(
 
             let thunk_idx = thunks.len() - 1;
             for sym_id in syms {
-                ctx.const_tag_blockers.insert(sym_id, (promises_name.clone(), thunk_idx));
+                ctx.const_tag_blockers
+                    .insert(sym_id, (promises_name.clone(), thunk_idx));
             }
         }
     }
@@ -171,11 +186,7 @@ fn gen_const_tags_async<'a>(
 /// Emit blocker thunks for upstream script-level dependencies.
 /// For 1 blocker: `() => $$promises[N].promise`
 /// For N blockers: `() => $.wait([$$promises[N], ...])`
-fn emit_blocker_thunks<'a>(
-    ctx: &mut Ctx<'a>,
-    blockers: &[u32],
-    thunks: &mut Vec<Expression<'a>>,
-) {
+fn emit_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
     if blockers.is_empty() {
         return;
     }
@@ -187,11 +198,12 @@ fn emit_blocker_thunks<'a>(
         let promise_access = ctx.b.static_member_expr(member, "promise");
         thunks.push(ctx.b.thunk(promise_access));
     } else {
-        let arr_elements: Vec<Expression<'a>> = blockers.iter()
-            .map(|&idx| ctx.b.computed_member_expr(
-                ctx.b.rid_expr("$$promises"),
-                ctx.b.num_expr(idx as f64),
-            ))
+        let arr_elements: Vec<Expression<'a>> = blockers
+            .iter()
+            .map(|&idx| {
+                ctx.b
+                    .computed_member_expr(ctx.b.rid_expr("$$promises"), ctx.b.num_expr(idx as f64))
+            })
             .collect();
         let arr = ctx.b.array_expr(arr_elements);
         let wait_call = ctx.b.call_expr("$.wait", [Arg::Expr(arr)]);
@@ -207,20 +219,27 @@ fn emit_destructured_const_sync<'a>(
     init_expr: Expression<'a>,
     stmts: &mut Vec<Statement<'a>>,
 ) {
-    let tmp_name = ctx.transform_data.const_tag_tmp_names.get(&id)
+    let tmp_name = ctx
+        .transform_data
+        .const_tag_tmp_names
+        .get(&id)
         .expect("destructured const tag must have tmp_name from transform");
     let tmp_name: &str = ctx.b.alloc_str(tmp_name);
 
     let destruct_stmt = ctx.b.const_object_destruct_stmt(names, init_expr);
-    let props: Vec<ObjProp<'a>> = names.iter()
+    let props: Vec<ObjProp<'a>> = names
+        .iter()
         .map(|n| ObjProp::Shorthand(ctx.b.alloc_str(n)))
         .collect();
     let ret = ctx.b.return_stmt(ctx.b.object_expr(props));
-    let thunk = ctx.b.arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
+    let thunk = ctx
+        .b
+        .arrow_block_expr(ctx.b.no_params(), [destruct_stmt, ret]);
     let derived = ctx.b.call_expr("$.derived", [Arg::Expr(thunk)]);
 
     let final_expr = if ctx.state.dev {
-        ctx.b.call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
+        ctx.b
+            .call_expr("$.tag", [Arg::Expr(derived), Arg::StrRef("[@const]")])
     } else {
         derived
     };
@@ -241,14 +260,20 @@ fn create_derived<'a>(ctx: &mut Ctx<'a>, init: Expression<'a>, has_await: bool) 
 
 /// Extract the init expression from a pre-parsed const tag Statement.
 fn extract_const_init<'a>(ctx: &mut Ctx<'a>, id: svelte_ast::NodeId) -> Expression<'a> {
-    let stmt = ctx.state.parsed.take_stmt(
-        ctx.const_tag_stmt_handle(id)
-            .unwrap_or_else(|| panic!("const tag stmt handle missing for {:?}", id)),
-    )
+    let stmt = ctx
+        .state
+        .parsed
+        .take_stmt(
+            ctx.const_tag_stmt_handle(id)
+                .unwrap_or_else(|| panic!("const tag stmt handle missing for {:?}", id)),
+        )
         .expect("const tag stmt missing from parsed.stmts");
     let Statement::VariableDeclaration(mut decl) = stmt else {
         unreachable!("const tag stmt must be VariableDeclaration")
     };
-    decl.declarations.remove(0).init.take()
+    decl.declarations
+        .remove(0)
+        .init
+        .take()
         .expect("const tag declarator must have init expression")
 }
