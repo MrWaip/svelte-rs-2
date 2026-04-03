@@ -39,7 +39,6 @@
 ### Deferred
 
 - Dev-mode-only parity from the roadmap item `$.apply() + event handler naming` belongs under Dev Mode rather than this client-output audit
-- [ ] Mixed-syntax detection (`MixedEventHandlerSyntaxes`) is not implemented for `<svelte:element>` — requires a `leave_svelte_element` hook in `TemplateVisitor` which does not yet exist
 
 ## Reference
 

@@ -12,7 +12,7 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
     AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, Node, NodeId,
-    OnDirectiveLegacy, Text,
+    OnDirectiveLegacy, SvelteElement, Text,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -62,14 +62,8 @@ impl TemplateValidationVisitor {
             self.current_expr_offset + span.end,
         )
     }
-}
 
-impl TemplateVisitor for TemplateValidationVisitor {
-    fn visit_element(&mut self, _el: &Element, _ctx: &mut VisitContext<'_>) {
-        self.element_event_state.push(ElementEventState::default());
-    }
-
-    fn leave_element(&mut self, _el: &Element, ctx: &mut VisitContext<'_>) {
+    fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_>) {
         if let Some(state) = self.element_event_state.pop() {
             if state.has_s5_events {
                 if let Some((span, name)) = state.first_on_directive {
@@ -80,6 +74,24 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 }
             }
         }
+    }
+}
+
+impl TemplateVisitor for TemplateValidationVisitor {
+    fn visit_element(&mut self, _el: &Element, _ctx: &mut VisitContext<'_>) {
+        self.element_event_state.push(ElementEventState::default());
+    }
+
+    fn leave_element(&mut self, _el: &Element, ctx: &mut VisitContext<'_>) {
+        self.emit_mixed_syntax_if_needed(ctx);
+    }
+
+    fn visit_svelte_element(&mut self, _el: &SvelteElement, _ctx: &mut VisitContext<'_>) {
+        self.element_event_state.push(ElementEventState::default());
+    }
+
+    fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+        self.emit_mixed_syntax_if_needed(ctx);
     }
 
     fn visit_expression_attribute(

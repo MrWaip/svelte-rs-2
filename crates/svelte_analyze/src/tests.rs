@@ -2397,3 +2397,11 @@ fn on_directive_mixed_syntax() {
     );
     assert_has_error(&diags, "mixed_event_handler_syntaxes");
 }
+
+#[test]
+fn on_directive_mixed_syntax_svelte_element() {
+    let diags = analyze_with_diags(
+        r#"<script>let tag = $state("div"); function f(){} function g(){}</script><svelte:element this={tag} onclick={f} on:click={g}></svelte:element>"#,
+    );
+    assert_has_error(&diags, "mixed_event_handler_syntaxes");
+}
