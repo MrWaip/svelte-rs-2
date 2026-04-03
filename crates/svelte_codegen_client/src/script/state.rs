@@ -923,16 +923,48 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             .map(|f| f.private_name.as_str())
             .collect();
 
-        let mut new_body: Vec<ClassElement<'a>> = Vec::new();
-        // Track which public field names were handled from PropertyDefinition
-        let mut handled_public: FxHashSet<String> = FxHashSet::default();
-
         // Take ownership of old body elements
         let old_elements: Vec<ClassElement<'a>> = {
             let mut temp = self.b.ast.vec();
             std::mem::swap(&mut body.body, &mut temp);
             temp.into_iter().collect()
         };
+
+        // Identify fields that have a body-level PropertyDefinition with a rune initializer.
+        // Those not in this set are constructor-assigned and get their backing emitted first
+        // so they appear at the top of the class body (matches reference compiler output).
+        let body_rune_names: FxHashSet<String> = old_elements
+            .iter()
+            .filter_map(|el| {
+                if let ClassElement::PropertyDefinition(prop) = el {
+                    let is_rune = prop
+                        .value
+                        .as_ref()
+                        .is_some_and(|v| self.rune_kind_from_expr(v).is_some());
+                    if is_rune {
+                        if let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &prop.key {
+                            if !prop.computed {
+                                return Some(id.name.to_string());
+                            }
+                        }
+                    }
+                }
+                None
+            })
+            .collect();
+
+        let mut new_body: Vec<ClassElement<'a>> = Vec::new();
+
+        // Pre-emit constructor-assigned fields at the top of the class body
+        for field_info in info
+            .fields
+            .iter()
+            .filter(|f| f.public_name.as_deref().is_some_and(|n| !body_rune_names.contains(n)))
+        {
+            let name = field_info.public_name.as_deref().unwrap();
+            new_body.push(self.b.class_private_field(&field_info.private_name, None));
+            self.emit_getter_setter(&mut new_body, field_info, name);
+        }
 
         for element in old_elements {
             match element {
@@ -942,7 +974,18 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         .as_ref()
                         .is_some_and(|v| self.rune_kind_from_expr(v).is_some());
                     if !is_rune_prop {
-                        new_body.push(ClassElement::PropertyDefinition(prop));
+                        // A bare field declaration (no initializer) whose name matches a
+                        // constructor-assigned rune field was already pre-emitted above — skip it.
+                        let is_ctor_placeholder = match &prop.key {
+                            oxc_ast::ast::PropertyKey::StaticIdentifier(id) if !prop.computed => {
+                                public_fields.contains_key(id.name.as_str())
+                                    && !body_rune_names.contains(id.name.as_str())
+                            }
+                            _ => false,
+                        };
+                        if !is_ctor_placeholder {
+                            new_body.push(ClassElement::PropertyDefinition(prop));
+                        }
                         continue;
                     }
 
@@ -951,15 +994,12 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             let name = id.name.to_string();
                             if private_fields.contains(name.as_str()) {
                                 self.rewrite_private_field_callee(&mut prop);
-                                new_body.push(ClassElement::PropertyDefinition(prop));
-                            } else {
-                                new_body.push(ClassElement::PropertyDefinition(prop));
                             }
+                            new_body.push(ClassElement::PropertyDefinition(prop));
                         }
                         oxc_ast::ast::PropertyKey::StaticIdentifier(id) if !prop.computed => {
                             let name = id.name.to_string();
                             if let Some(field_info) = public_fields.get(name.as_str()) {
-                                handled_public.insert(name.clone());
                                 self.emit_public_field_rewrite(
                                     &mut new_body,
                                     &mut prop,
@@ -977,20 +1017,8 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 }
                 ClassElement::MethodDefinition(mut method) => {
                     if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
-                        let ctor_fields: Vec<&ClassStateField> = info
-                            .fields
-                            .iter()
-                            .filter(|f| {
-                                f.public_name.is_some()
-                                    && !handled_public.contains(f.public_name.as_deref().unwrap())
-                            })
-                            .collect();
-                        for field_info in &ctor_fields {
-                            let name = field_info.public_name.as_deref().unwrap();
-                            new_body
-                                .push(self.b.class_private_field(&field_info.private_name, None));
-                            self.emit_getter_setter(&mut new_body, field_info, name);
-                        }
+                        // Constructor-assigned fields were pre-emitted at the top; only rewrite
+                        // the constructor body to replace `this.x = $rune(...)` assignments.
                         self.rewrite_constructor(&mut method, info);
                     }
                     new_body.push(ClassElement::MethodDefinition(method));
