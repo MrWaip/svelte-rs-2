@@ -312,6 +312,16 @@ fn props_rest() {
 }
 
 #[rstest]
+fn props_renamed() {
+    assert_compiler("props_renamed");
+}
+
+#[rstest]
+fn props_renamed_bindable() {
+    assert_compiler("props_renamed_bindable");
+}
+
+#[rstest]
 fn props_bindable() {
     assert_compiler("props_bindable");
 }

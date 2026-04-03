@@ -426,6 +426,10 @@ impl ComponentScoping {
 
     // -- SymbolId-keyed classification: read --
 
+    pub fn has_rest_prop(&self) -> bool {
+        self.rest_prop_sym.is_some()
+    }
+
     pub fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
         self.rest_prop_sym == Some(sym_id)
     }
