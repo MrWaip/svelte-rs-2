@@ -25,7 +25,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
                 .items
                 .iter()
                 .any(|item| item_is_dynamic(item, &ctx.data.dynamic_nodes));
-            ctx.data.fragments.content_types.insert(key, cs);
+            ctx.data.fragments.content_types.insert(key.clone(), cs);
             if has_dynamic {
                 ctx.data.fragments.has_dynamic_children.insert(key);
             }
@@ -46,7 +46,7 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
         .lowered
         .keys()
         .filter(|k| !matches!(k, FragmentKey::Element(_)))
-        .copied()
+        .cloned()
         .collect();
     for key in keys {
         let lf = &data.fragments.lowered[&key];
@@ -55,7 +55,7 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
             .items
             .iter()
             .any(|item| item_is_dynamic(item, &data.dynamic_nodes));
-        data.fragments.content_types.insert(key, cs);
+        data.fragments.content_types.insert(key.clone(), cs);
         if has_dynamic {
             data.fragments.has_dynamic_children.insert(key);
         }

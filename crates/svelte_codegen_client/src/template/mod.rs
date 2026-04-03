@@ -191,8 +191,8 @@ pub fn gen_root_fragment<'a>(
     let mut hoisted = Vec::with_capacity(4);
     let mut body = Vec::with_capacity(8);
 
-    let async_const_run = gen_const_tags(ctx, key, &mut body);
-    emit_debug_tags(ctx, key, &mut body);
+    let async_const_run = gen_const_tags(ctx, key.clone(), &mut body);
+    emit_debug_tags(ctx, key.clone(), &mut body);
     if let Some(run_stmt) = async_const_run {
         body.push(run_stmt);
     }
@@ -245,14 +245,14 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
 
     let mut body: Vec<Statement<'a>> = Vec::with_capacity(8);
 
-    let async_const_run = gen_const_tags(ctx, key, &mut body);
-    emit_debug_tags(ctx, key, &mut body);
+    let async_const_run = gen_const_tags(ctx, key.clone(), &mut body);
+    emit_debug_tags(ctx, key.clone(), &mut body);
     if let Some(run_stmt) = async_const_run {
         body.push(run_stmt);
     }
 
     let mut sub_hoisted = Vec::with_capacity(2);
-    emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
+    emit_content_strategy(ctx, key.clone(), &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
     ctx.state.module_hoisted.extend(sub_hoisted);
 
     // Title elements emit after DOM init but before $.append()
@@ -487,7 +487,7 @@ fn emit_single_block<'a>(
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
-        FragmentItem::ComponentNode(id) => {
+        FragmentItem::ComponentNode(id) if !ctx.is_dynamic_component(*id) => {
             if !is_root {
                 ctx.gen_ident("fragment");
             }
@@ -538,6 +538,9 @@ fn emit_single_block<'a>(
         FragmentItem::RenderTag(id) => {
             gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
+        FragmentItem::ComponentNode(id) => {
+            gen_component(ctx, *id, ctx.b.rid_expr(&node), body);
+        }
         _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }
 
@@ -563,7 +566,7 @@ fn emit_mixed<'a>(
         body.push(ctx.b.call_stmt("$.next", []));
     }
 
-    let (html, import_node) = fragment_html(ctx, key);
+    let (html, import_node) = fragment_html(ctx, key.clone());
     let flags = if import_node { 3.0 } else { 1.0 };
     let from_fn = from_template_fn_for_items(ctx, &items);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
@@ -580,7 +583,7 @@ fn emit_mixed<'a>(
 
     if is_root {
         // Root: template BEFORE children (top-down)
-        hoisted.push(make_tpl_stmt(ctx, key));
+        hoisted.push(make_tpl_stmt(ctx, key.clone()));
     }
 
     let frag = ctx.gen_ident("fragment");

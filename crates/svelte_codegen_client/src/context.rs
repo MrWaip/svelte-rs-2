@@ -477,6 +477,12 @@ impl<'a> Ctx<'a> {
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.query.view.component_snippets(id)
     }
+    pub fn component_named_slots(&self, id: NodeId) -> &[(String, FragmentKey)] {
+        self.query.view.component_named_slots(id)
+    }
+    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
+        self.query.view.is_dynamic_component(id)
+    }
     pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
         self.query.view.event_handler_mode(attr_id)
     }

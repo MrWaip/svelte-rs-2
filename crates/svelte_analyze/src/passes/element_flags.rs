@@ -154,6 +154,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         let data = &mut *ctx.data;
+        // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
+        if cn.name.contains('.') {
+            data.element_flags.is_dynamic_component.insert(cn.id);
+        }
         for attr in &cn.attributes {
             let kind = match attr {
                 Attribute::StringAttribute(a) => ComponentPropKind::String {
@@ -235,6 +239,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     }
                 }
                 Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },
+                Attribute::OnDirectiveLegacy(a) => ComponentPropKind::Event {
+                    name: a.name.clone(),
+                    attr_id: a.id,
+                    has_once_modifier: a.modifiers.iter().any(|m| m == "once"),
+                },
                 _ => continue,
             };
             let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());

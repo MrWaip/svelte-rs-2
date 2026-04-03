@@ -1,10 +1,11 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FragmentKey {
     Root,
     Element(NodeId),
     ComponentNode(NodeId),
+    NamedSlot(NodeId, String),
     IfConsequent(NodeId),
     IfAlternate(NodeId),
     EachBody(NodeId),
@@ -32,6 +33,7 @@ impl FragmentKey {
                 | Self::EachFallback(_)
                 | Self::SnippetBody(_)
                 | Self::ComponentNode(_)
+                | Self::NamedSlot(_, _)
                 | Self::SvelteBoundaryBody(_)
         )
     }
@@ -41,6 +43,7 @@ impl FragmentKey {
             Self::Root => None,
             Self::Element(id)
             | Self::ComponentNode(id)
+            | Self::NamedSlot(id, _)
             | Self::IfConsequent(id)
             | Self::IfAlternate(id)
             | Self::EachBody(id)
