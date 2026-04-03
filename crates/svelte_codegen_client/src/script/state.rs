@@ -831,6 +831,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
 
         // Scan PropertyDefinitions for $state/$state.raw/$derived/$derived.by
+        let mut body_public_names: FxHashSet<String> = FxHashSet::default();
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::PropertyDefinition(prop) = element {
                 let Some(value) = &prop.value else { continue };
@@ -853,6 +854,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                             backing = format!("#_{}", backing.trim_start_matches('#'));
                         }
                         existing_private.insert(backing.trim_start_matches('#').to_string());
+                        body_public_names.insert(name.clone());
                         fields.push(ClassStateField {
                             public_name: Some(name),
                             private_name: backing.trim_start_matches('#').to_string(),
@@ -864,7 +866,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             }
         }
 
-        // Scan constructor for `this.name = $state(...)` assignments
+        // Scan constructor for `this.name = $state(...)` assignments.
+        // Only register a name in ctor_field_names if it has no body-level PropertyDefinition
+        // with a rune initializer — a name in both body and constructor is a Svelte error that
+        // the analyzer catches; we avoid double-lowering it in codegen.
         let mut ctor_field_names = FxHashSet::default();
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::MethodDefinition(method) = element {
@@ -878,6 +883,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                             if let Expression::ThisExpression(_) = &member.object {
                                                 if let Some(rune_kind) = self.rune_kind_from_expr(&assign.right) {
                                                     let name = member.property.name.to_string();
+                                                    if body_public_names.contains(&name) {
+                                                        continue;
+                                                    }
                                                     let mut backing = format!("#{}", name);
                                                     while existing_private.contains(backing.trim_start_matches('#')) {
                                                         backing = format!("#_{}", backing.trim_start_matches('#'));
@@ -954,14 +962,19 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         .as_ref()
                         .is_some_and(|v| self.rune_kind_from_expr(v).is_some());
                     if !is_rune_prop {
-                        // A bare field declaration (no initializer) whose name matches a
-                        // constructor-assigned rune field was already pre-emitted above — skip it.
-                        let is_ctor_placeholder = match &prop.key {
-                            oxc_ast::ast::PropertyKey::StaticIdentifier(id) if !prop.computed => {
-                                info.ctor_field_names.contains(id.name.as_str())
-                            }
-                            _ => false,
-                        };
+                        // A bare field declaration (no initializer, i.e. `total;`) whose name
+                        // matches a constructor-assigned rune field was already pre-emitted above.
+                        // Fields with an initializer (`total = 1;`) are not placeholders and must
+                        // be kept even if the same name appears in ctor_field_names.
+                        let is_ctor_placeholder = prop.value.is_none()
+                            && match &prop.key {
+                                oxc_ast::ast::PropertyKey::StaticIdentifier(id)
+                                    if !prop.computed =>
+                                {
+                                    info.ctor_field_names.contains(id.name.as_str())
+                                }
+                                _ => false,
+                            };
                         if !is_ctor_placeholder {
                             new_body.push(ClassElement::PropertyDefinition(prop));
                         }
