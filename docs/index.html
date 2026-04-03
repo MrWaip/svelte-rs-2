@@ -393,6 +393,43 @@
                 }
             }
 
+            function diagnosticLabel(prefix, diagnostic) {
+                const code = diagnostic.code ? `${diagnostic.code} - ` : "";
+                return `${prefix}: ${code}${diagnostic.message}`;
+            }
+
+            function createMarker(prefix, diagnostic, defaultSeverity) {
+                const start = diagnostic.start ?? {
+                    line: (diagnostic.start_line ?? 0) + 1,
+                    column: diagnostic.start_col ?? 0,
+                };
+                const end = diagnostic.end ?? {
+                    line: (diagnostic.end_line ?? start.line - 1) + 1,
+                    column: diagnostic.end_col ?? start.column,
+                };
+
+                return {
+                    severity: diagnostic.severity === "Error" || defaultSeverity === "error"
+                        ? monaco.MarkerSeverity.Error
+                        : monaco.MarkerSeverity.Warning,
+                    startLineNumber: start.line,
+                    startColumn: start.column + 1,
+                    endLineNumber: end.line,
+                    endColumn: end.column + 1,
+                    message: diagnosticLabel(prefix, diagnostic),
+                    source: prefix,
+                    code: diagnostic.code,
+                };
+            }
+
+            function setDiagnostics(owner, prefix, diagnostics, defaultSeverity = "warning") {
+                if (!editorInstance) return;
+
+                const model = editorInstance.getModel();
+                const markers = diagnostics.map((diagnostic) => createMarker(prefix, diagnostic, defaultSeverity));
+                monaco.editor.setModelMarkers(model, owner, markers);
+            }
+
             function compileRust() {
                 if (!compiler) {
                     modifiedModel.setValue(
@@ -419,29 +456,11 @@
                         modifiedModel.setValue("// compilation failed");
                     }
 
-                    // Show diagnostics as Monaco markers
-                    const model = editorInstance.getModel();
-                    if (result.diagnostics && result.diagnostics.length > 0) {
-                        const markers = result.diagnostics.map(d => ({
-                            severity: d.severity === "Error"
-                                ? monaco.MarkerSeverity.Error
-                                : monaco.MarkerSeverity.Warning,
-                            startLineNumber: d.start_line + 1,
-                            startColumn: d.start_col + 1,
-                            endLineNumber: d.end_line + 1,
-                            endColumn: d.end_col + 1,
-                            message: d.message,
-                        }));
-                        monaco.editor.setModelMarkers(model, "svelte-rust", markers);
-                    } else {
-                        monaco.editor.setModelMarkers(model, "svelte-rust", []);
-                    }
+                    setDiagnostics("svelte-rust", "wasm", result.diagnostics ?? []);
                 } catch (e) {
                     console.error(e);
                     modifiedModel.setValue("// compilation failed");
-                    if (editorInstance) {
-                        monaco.editor.setModelMarkers(editorInstance.getModel(), "svelte-rust", []);
-                    }
+                    setDiagnostics("svelte-rust", "wasm", []);
                 }
             }
 
@@ -470,9 +489,11 @@
                     }
                     code = compiler ? compiler.format(code) : code;
                     originalModel.setValue(code);
+                    setDiagnostics("svelte-original", "original", result.warnings ?? []);
                 } catch (e) {
                     console.error(e);
                     originalModel.setValue("Compiler error");
+                    setDiagnostics("svelte-original", "original", e?.code ? [e] : [], "error");
                 }
             }
 
