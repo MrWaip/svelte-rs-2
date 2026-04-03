@@ -137,8 +137,19 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
                     ("$effect", "tracking") => Some(RuneKind::EffectTracking),
                     ("$effect", "pending") => Some(RuneKind::EffectPending),
                     ("$props", "id") => Some(RuneKind::PropsId),
+                    ("$inspect", "trace") => Some(RuneKind::InspectTrace),
                     _ => None,
                 }
+            } else if member.property.name == "with" {
+                // `$inspect(...).with(callback)` — callee is `$inspect(...).with`
+                if let Expression::CallExpression(inner) = &member.object {
+                    if let Expression::Identifier(id) = &inner.callee {
+                        if id.name == "$inspect" {
+                            return Some(RuneKind::InspectWith);
+                        }
+                    }
+                }
+                None
             } else {
                 None
             }

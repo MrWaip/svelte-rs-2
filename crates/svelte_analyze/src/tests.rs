@@ -1763,7 +1763,6 @@ $effect.tracking(someFn);
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_inspect_requires_arguments() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1774,7 +1773,6 @@ $inspect();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_inspect_with_requires_callback() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1785,7 +1783,6 @@ $inspect(count).with();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_inspect_trace_wrong_arg_count() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1798,7 +1795,6 @@ function demo() {
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_inspect_trace_invalid_placement() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1812,7 +1808,6 @@ function demo() {
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_inspect_trace_generator_invalid() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2718,4 +2713,145 @@ fn await_valid_then_catch_no_unexpected_character() {
             .any(|d| d.kind.code() == "block_unexpected_character"),
         "unexpected block_unexpected_character: {diags:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// $inspect / $inspect().with / $inspect.trace validation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_inspect_zero_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$inspect();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_inspect_one_or_more_args_ok() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let a = $state(1);
+$inspect(a);
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_inspect_with_wrong_arg_count_zero() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let a = $state(1);
+$inspect(a).with();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_inspect_with_wrong_arg_count_two() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let a = $state(1);
+$inspect(a).with(console.log, console.warn);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_inspect_with_one_arg_ok() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let a = $state(1);
+$inspect(a).with(console.log);
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_inspect_trace_too_many_args() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function fn1() {
+    $inspect.trace("a", "b");
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_inspect_trace_zero_args_ok() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function fn1() {
+    $inspect.trace();
+}
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_inspect_trace_one_arg_ok() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function fn1() {
+    $inspect.trace("label");
+}
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_inspect_trace_invalid_placement_top_level() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$inspect.trace();
+</script>"#,
+    );
+    assert_has_error(&diags, "inspect_trace_invalid_placement");
+}
+
+#[test]
+fn validate_inspect_trace_invalid_placement_not_first_stmt() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function fn1() {
+    let x = 1;
+    $inspect.trace();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "inspect_trace_invalid_placement");
+}
+
+#[test]
+fn validate_inspect_trace_valid_in_arrow() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const fn1 = () => {
+    $inspect.trace();
+};
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_inspect_trace_generator_rejected() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function* gen() {
+    $inspect.trace();
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "inspect_trace_generator");
 }

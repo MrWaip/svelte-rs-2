@@ -76,6 +76,8 @@ pub enum RuneKind {
     StateEager,
     EffectPending,
     Inspect,
+    InspectWith,
+    InspectTrace,
     Host,
     PropsId,
 }
@@ -101,6 +103,8 @@ impl RuneKind {
             RuneKind::PropsId => "$props.id",
             RuneKind::Bindable => "$bindable",
             RuneKind::Inspect => "$inspect",
+            RuneKind::InspectWith => "$inspect().with",
+            RuneKind::InspectTrace => "$inspect.trace",
             RuneKind::Host => "$host",
         }
     }
