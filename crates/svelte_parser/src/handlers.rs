@@ -295,7 +295,11 @@ impl<'a> Parser<'a> {
             AwaitPhase::Then => {
                 ab.then_children = Some(current_children);
             }
-            AwaitPhase::Catch => unreachable!("duplicate catch handled above"),
+            // {:then} after {:catch} with no prior {:then} — out-of-order clauses.
+            // Save the catch content so handle_end_await_tag can still produce a catch fragment.
+            AwaitPhase::Catch => {
+                ab.catch_children = Some(current_children);
+            }
         }
 
         match clause_tag.clause {
@@ -337,7 +341,9 @@ impl<'a> Parser<'a> {
             AwaitPhase::Pending => (Some(Fragment::new(current_children)), None, None),
             AwaitPhase::Then => {
                 let pending = ab.pending_children.map(Fragment::new);
-                (pending, Some(Fragment::new(current_children)), None)
+                // catch_children is Some when {:catch} preceded {:then} (out-of-order).
+                let catch = ab.catch_children.map(Fragment::new);
+                (pending, Some(Fragment::new(current_children)), catch)
             }
             AwaitPhase::Catch => {
                 let pending = ab.pending_children.map(Fragment::new);
@@ -502,7 +508,7 @@ impl<'a> Parser<'a> {
                     AwaitPhase::Then => (
                         ab.pending_children.map(Fragment::new),
                         Some(Fragment::new(current_children)),
-                        None,
+                        ab.catch_children.map(Fragment::new),
                     ),
                     AwaitPhase::Catch => (
                         ab.pending_children.map(Fragment::new),

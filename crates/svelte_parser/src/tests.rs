@@ -907,6 +907,27 @@ fn await_valid_then_catch_no_duplicate() {
     );
 }
 
+#[test]
+fn await_duplicate_then_after_catch_then() {
+    // {:then}{:catch}{:then} — the third clause triggers the then_children.is_some() branch
+    let (_, diags) =
+        parse_with_diagnostics("{#await p}{:then a}t{:catch e}err{:then b}more{/await}");
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        "expected block_duplicate_clause, got: {diags:?}"
+    );
+}
+
+#[test]
+fn await_catch_before_then_no_panic() {
+    // {:catch} before {:then} with no prior {:then} must not panic
+    let (_, diags) = parse_with_diagnostics("{#await p}{:catch e}err{:then a}ok{/await}");
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        "unexpected block_duplicate_clause for out-of-order catch/then: {diags:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // JS parsing tests (moved from svelte_types)
 // ---------------------------------------------------------------------------

@@ -123,10 +123,12 @@ struct AwaitBlockEntry {
     error_span: Option<Span>,
     /// Which phase we are currently collecting children for.
     phase: AwaitPhase,
-    /// Pending children (collected before {:then}).
+    /// Pending children (collected before {:then} or {:catch}).
     pending_children: Option<Vec<NodeId>>,
-    /// Then children (collected between {:then} and {:catch}).
+    /// Then children (collected between {:then} and a following {:catch}).
     then_children: Option<Vec<NodeId>>,
+    /// Catch children saved when {:then} follows {:catch} (out-of-order clauses).
+    catch_children: Option<Vec<NodeId>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +335,7 @@ impl<'a> Parser<'a> {
                         phase,
                         pending_children: None,
                         then_children: None,
+                        catch_children: None,
                     }));
                     children_stack.push(vec![]);
                 }

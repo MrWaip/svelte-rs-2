@@ -1310,7 +1310,7 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
 /// Returns true when `window` (the source slice just before a binding pattern) contains
 /// whitespace between the opening `{` and the clause keyword (`:then` or `:catch`).
 /// Catches patterns like `{ :then val}` where a space precedes the colon.
-pub(crate) fn has_whitespace_before_clause(window: &str, clause: &str) -> bool {
+fn has_whitespace_before_clause(window: &str, clause: &str) -> bool {
     if let Some(brace_pos) = window.rfind('{') {
         let between = &window[brace_pos + 1..];
         let ws_len = between.len() - between.trim_start().len();

@@ -1,8 +1,8 @@
 # Await Block
 
 ## Current state
-- **Complete**: all 25 use cases done (2026-04-03)
-- **Note**: `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace is structurally implemented in the analyzer but cannot be triggered: the scanner does not parse `{ :then val}` (whitespace between `{` and `:`) as an AwaitClauseTag. The check will fire when the scanner is made permissive.
+- **Working**: 24/25 use cases. One partial (`block_unexpected_character`).
+- `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace is structurally implemented in the analyzer but cannot be triggered: the scanner dispatches immediately on the char after `{` and does not skip whitespace before `:`. The check will fire when the scanner is made permissive. Tracked as `[~]` below.
 - Last updated: 2026-04-03
 
 ## Source
