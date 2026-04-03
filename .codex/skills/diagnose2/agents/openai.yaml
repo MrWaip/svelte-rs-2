@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose 2"
+  short_description: "Map repro mismatches to spec-owned work"
+  default_prompt: "Use $diagnose2 to analyze this playground or component mismatch and map it to the right spec-owned next step."

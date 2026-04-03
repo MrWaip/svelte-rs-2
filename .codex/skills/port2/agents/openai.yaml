@@ -1,0 +1,4 @@
+interface:
+  display_name: "Port 2"
+  short_description: "Port one approved slice from a spec"
+  default_prompt: "Use $port2 to implement the next approved slice from this spec and verify only that slice."
