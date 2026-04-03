@@ -865,6 +865,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
 
         // Scan constructor for `this.name = $state(...)` assignments
+        let mut ctor_field_names = FxHashSet::default();
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::MethodDefinition(method) = element {
                 if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
@@ -882,6 +883,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                                         backing = format!("#_{}", backing.trim_start_matches('#'));
                                                     }
                                                     existing_private.insert(backing.trim_start_matches('#').to_string());
+                                                    ctor_field_names.insert(name.clone());
                                                     fields.push(ClassStateField {
                                                         public_name: Some(name),
                                                         private_name: backing.trim_start_matches('#').to_string(),
@@ -899,7 +901,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             }
         }
 
-        ClassStateInfo { fields }
+        ClassStateInfo { fields, ctor_field_names }
     }
 
     /// Rewrite class body: replace state fields with private backing + getter/setter.
@@ -930,36 +932,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             temp.into_iter().collect()
         };
 
-        // Identify fields that have a body-level PropertyDefinition with a rune initializer.
-        // Those not in this set are constructor-assigned and get their backing emitted first
-        // so they appear at the top of the class body (matches reference compiler output).
-        let body_rune_names: FxHashSet<String> = old_elements
-            .iter()
-            .filter_map(|el| {
-                if let ClassElement::PropertyDefinition(prop) = el {
-                    let is_rune = prop
-                        .value
-                        .as_ref()
-                        .is_some_and(|v| self.rune_kind_from_expr(v).is_some());
-                    if is_rune {
-                        if let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &prop.key {
-                            if !prop.computed {
-                                return Some(id.name.to_string());
-                            }
-                        }
-                    }
-                }
-                None
-            })
-            .collect();
-
         let mut new_body: Vec<ClassElement<'a>> = Vec::new();
 
-        // Pre-emit constructor-assigned fields at the top of the class body
+        // Pre-emit constructor-assigned fields at the top of the class body so they sort
+        // before body-declared fields (matches reference compiler output order).
         for field_info in info
             .fields
             .iter()
-            .filter(|f| f.public_name.as_deref().is_some_and(|n| !body_rune_names.contains(n)))
+            .filter(|f| f.public_name.as_deref().is_some_and(|n| info.ctor_field_names.contains(n)))
         {
             let name = field_info.public_name.as_deref().unwrap();
             new_body.push(self.b.class_private_field(&field_info.private_name, None));
@@ -978,8 +958,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         // constructor-assigned rune field was already pre-emitted above — skip it.
                         let is_ctor_placeholder = match &prop.key {
                             oxc_ast::ast::PropertyKey::StaticIdentifier(id) if !prop.computed => {
-                                public_fields.contains_key(id.name.as_str())
-                                    && !body_rune_names.contains(id.name.as_str())
+                                info.ctor_field_names.contains(id.name.as_str())
                             }
                             _ => false,
                         };
