@@ -108,6 +108,7 @@ pub(crate) fn gen_component<'a>(
                 name,
                 bind_id: _,
                 mode,
+                ref expr_name,
             } => {
                 let key = ctx.b.alloc_str(&name);
                 let name_ref = ctx.b.alloc_str(&name);
@@ -142,6 +143,34 @@ pub(crate) fn gen_component<'a>(
                         let set_body = ctx
                             .b
                             .assign_expr(AssignLeft::Ident(name), ctx.b.rid_expr("$$value"));
+                        items.push(PropOrSpread::Prop(ObjProp::Setter(
+                            key,
+                            "$$value",
+                            None,
+                            vec![ctx.b.expr_stmt(set_body)],
+                        )));
+                    }
+                    ComponentBindMode::StoreSub => {
+                        let store_ref = expr_name
+                            .as_deref()
+                            .unwrap_or_else(|| panic!("StoreSub bind must have expr_name"));
+                        let store_id = ctx.b.alloc_str(store_ref);
+                        // get value() { $.mark_store_binding(); return $count(); }
+                        let mark_stmt =
+                            ctx.b.expr_stmt(ctx.b.call_expr("$.mark_store_binding", []));
+                        let return_expr = ctx.b.call_expr(store_id, []);
+                        let return_stmt = ctx.b.return_stmt(return_expr);
+                        items.push(PropOrSpread::Prop(ObjProp::GetterBody(
+                            key,
+                            vec![mark_stmt, return_stmt],
+                        )));
+                        // set value($$value) { $.store_set(count, $$value); }
+                        let base_name = &store_ref[1..]; // strip '$' prefix
+                        let base_id: &str = ctx.b.alloc_str(base_name);
+                        let set_body = ctx.b.call_expr(
+                            "$.store_set",
+                            [Arg::Ident(base_id), Arg::Ident("$$value")],
+                        );
                         items.push(PropOrSpread::Prop(ObjProp::Setter(
                             key,
                             "$$value",

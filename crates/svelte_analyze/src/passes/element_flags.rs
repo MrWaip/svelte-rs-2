@@ -189,24 +189,49 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ComponentPropKind::BindThis { bind_id: b.id }
                 }
                 Attribute::BindDirective(b) => {
-                    let root = data.scoping.root_scope_id();
-                    let mode = data
-                        .scoping
-                        .find_binding(root, &b.name)
-                        .map(|sym| {
-                            if data.scoping.is_prop_source(sym) {
-                                ComponentBindMode::PropSource
-                            } else if data.scoping.is_rune(sym) && data.scoping.is_mutated(sym) {
-                                ComponentBindMode::Rune
-                            } else {
-                                ComponentBindMode::Plain
-                            }
-                        })
-                        .unwrap_or(ComponentBindMode::Plain);
-                    ComponentPropKind::Bind {
-                        name: b.name.clone(),
-                        bind_id: b.id,
-                        mode,
+                    // Store-sub detection: only possible with explicit expression
+                    // (`bind:value={$count}`). Shorthand `bind:count` binds to `count`,
+                    // never to `$count`, so it can't be a store sub.
+                    let expr_text = if b.shorthand {
+                        None
+                    } else {
+                        b.expression_span.map(|span| self.source_text(span).to_string())
+                    };
+
+                    let is_store = expr_text
+                        .as_deref()
+                        .is_some_and(|t| data.scoping.is_store_ref(t));
+
+                    if is_store {
+                        ComponentPropKind::Bind {
+                            name: b.name.clone(),
+                            bind_id: b.id,
+                            mode: ComponentBindMode::StoreSub,
+                            expr_name: expr_text,
+                        }
+                    } else {
+                        let root = data.scoping.root_scope_id();
+                        let mode = data
+                            .scoping
+                            .find_binding(root, &b.name)
+                            .map(|sym| {
+                                if data.scoping.is_prop_source(sym) {
+                                    ComponentBindMode::PropSource
+                                } else if data.scoping.is_rune(sym)
+                                    && data.scoping.is_mutated(sym)
+                                {
+                                    ComponentBindMode::Rune
+                                } else {
+                                    ComponentBindMode::Plain
+                                }
+                            })
+                            .unwrap_or(ComponentBindMode::Plain);
+                        ComponentPropKind::Bind {
+                            name: b.name.clone(),
+                            bind_id: b.id,
+                            mode,
+                            expr_name: None,
+                        }
                     }
                 }
                 Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },

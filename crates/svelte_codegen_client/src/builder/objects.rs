@@ -89,6 +89,43 @@ impl<'a> Builder<'a> {
                 );
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
+            ObjProp::GetterBody(name, stmts) => {
+                let name_atom = self.ast.atom(name);
+                let key_node = ast::PropertyKey::StaticIdentifier(
+                    self.alloc(self.ast.identifier_name(SPAN, name_atom)),
+                );
+                let mut body_stmts = self.ast.vec_with_capacity(stmts.len());
+                for s in stmts {
+                    body_stmts.push(s);
+                }
+                let body =
+                    self.ast
+                        .alloc_function_body(SPAN, self.ast.vec(), body_stmts);
+                let getter = self.ast.function(
+                    SPAN,
+                    FunctionType::FunctionExpression,
+                    None,
+                    false,
+                    false,
+                    false,
+                    NONE,
+                    NONE,
+                    self.no_params(),
+                    NONE,
+                    Some(body),
+                );
+                let value = Expression::FunctionExpression(self.alloc(getter));
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Get,
+                    key_node,
+                    value,
+                    false,
+                    false,
+                    false,
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
             ObjProp::Computed(key_expr, value) => {
                 let key_node = ast::PropertyKey::from(key_expr);
                 let obj_prop = self.ast.object_property(

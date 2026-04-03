@@ -544,6 +544,14 @@ impl ComponentScoping {
         self.scoping.symbol_names().map(|s| s.to_string()).collect()
     }
 
+    /// Check if a name exists as a symbol in any scope (not just root).
+    /// Used for `store_invalid_scoped_subscription` to detect nested declarations.
+    pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
+        self.scoping
+            .symbol_ids()
+            .find(|&id| self.scoping.symbol_name(id) == name)
+    }
+
     /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
     pub fn is_store_ref(&self, name: &str) -> bool {
         self.store_base_name(name).is_some()

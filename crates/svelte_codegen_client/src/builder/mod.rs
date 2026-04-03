@@ -64,6 +64,8 @@ pub enum ObjProp<'a> {
     Spread(Expression<'a>),
     /// `get name() { return expr }`
     Getter(&'a str, Expression<'a>),
+    /// `get name() { stmts... }` — multi-statement getter body
+    GetterBody(&'a str, Vec<Statement<'a>>),
     /// `set name(param_name = default?) { body }`
     Setter(&'a str, &'a str, Option<Expression<'a>>, Vec<Statement<'a>>),
     /// `[computed_key]: value` — computed property key

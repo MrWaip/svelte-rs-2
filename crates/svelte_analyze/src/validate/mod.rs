@@ -1,4 +1,5 @@
 mod runes;
+mod stores;
 
 use oxc_ast::ast::Program;
 use svelte_diagnostics::Diagnostic;
@@ -21,4 +22,5 @@ pub fn validate_program(
     diags: &mut Vec<Diagnostic>,
 ) {
     runes::validate(data, program, offset, diags);
+    stores::validate(data, program, offset, diags);
 }
