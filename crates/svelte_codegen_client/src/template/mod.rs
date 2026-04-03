@@ -88,7 +88,7 @@ fn from_template_fn(ctx: &Ctx) -> &'static str {
 
 /// Return the `$.from_*` function based on the element's tag name.
 /// An inline `<svg>` in an HTML component needs `$.from_svg`, not `$.from_html`.
-fn from_template_fn_for_element(ctx: &Ctx, el_name: &str) -> &'static str {
+pub(crate) fn from_template_fn_for_element(ctx: &Ctx, el_name: &str) -> &'static str {
     if svelte_ast::is_svg(el_name) {
         "$.from_svg"
     } else if svelte_ast::is_mathml(el_name) {
@@ -400,9 +400,6 @@ fn emit_single_element<'a>(
     let el_blockers = ctx.fragment_blockers(&el_key).to_vec();
 
     if is_root {
-        // Root: template BEFORE children (top-down)
-        hoisted.push(tpl_stmt);
-        body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         let mut init = Vec::with_capacity(8);
         let mut update = Vec::with_capacity(4);
         let mut after_update = Vec::with_capacity(4);
@@ -417,6 +414,9 @@ fn emit_single_element<'a>(
             &mut after_update,
             &mut memo_attrs,
         );
+        // Root template after child templates (child templates may be hoisted during process_element)
+        hoisted.push(tpl_stmt);
+        body.push(ctx.b.var_stmt(&el_name, ctx.b.call_expr(tpl_name, [])));
         body.extend(init);
         let local_blockers = expression::build_fragment_local_blockers(ctx, &el_key);
         expression::emit_template_effect_with_memo(

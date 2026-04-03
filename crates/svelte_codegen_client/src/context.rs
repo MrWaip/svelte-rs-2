@@ -437,6 +437,12 @@ impl<'a> Ctx<'a> {
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.option_synthetic_value_expr(id)
     }
+    pub fn is_customizable_select(&self, id: NodeId) -> bool {
+        self.query.view.is_customizable_select(id)
+    }
+    pub fn is_selectedcontent(&self, id: NodeId) -> bool {
+        self.query.view.is_selectedcontent(id)
+    }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }

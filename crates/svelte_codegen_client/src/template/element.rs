@@ -5,7 +5,7 @@ use oxc_ast::ast::Statement;
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart};
 use svelte_ast::NodeId;
 
-use crate::builder::Arg;
+use crate::builder::{Arg, AssignLeft};
 use crate::context::Ctx;
 
 use super::attributes::{
@@ -18,10 +18,13 @@ use super::events::{
     gen_use_directive,
 };
 use super::expression::{
-    build_concat, emit_memoized_text_effect, emit_trailing_next, get_node_expr,
-    item_has_local_blockers, text_content_needs_memo, MemoAttr,
+    build_concat, build_fragment_local_blockers, emit_memoized_text_effect,
+    emit_template_effect_with_memo, emit_trailing_next, get_node_expr, item_has_local_blockers,
+    text_content_needs_memo, MemoAttr,
 };
+use super::html::fragment_html;
 use super::html_tag::gen_html_tag;
+use super::from_template_fn_for_element;
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -166,6 +169,8 @@ pub(crate) fn process_element<'a>(
         process_style_directives(ctx, el_id, el_name, init, update);
     }
 
+    let is_selectedcontent = ctx.is_selectedcontent(el_id);
+
     // --- Children ---
     // Debug tags inside this element's fragment (before child DOM traversal)
     super::debug_tag::emit_debug_tags(ctx, child_key, init);
@@ -175,6 +180,10 @@ pub(crate) fn process_element<'a>(
         ctx.bound_contenteditable = true;
     }
     let has_state = ctx.has_dynamic_children(&child_key);
+
+    if ctx.is_customizable_select(el_id) {
+        emit_customizable_select(ctx, el_name, &child_key, init, hoisted);
+    } else {
     match ct {
         ContentStrategy::Empty | ContentStrategy::Static(_) => {}
 
@@ -332,8 +341,25 @@ pub(crate) fn process_element<'a>(
             update.extend(child_update);
         }
     }
+    } // end else (non-customizable-select child path)
 
     ctx.bound_contenteditable = prev_bound_contenteditable;
+
+    // <selectedcontent>: after children are processed, register a node-setter so the runtime
+    // can swap in the cloned option content element.
+    if is_selectedcontent {
+        let assign = ctx
+            .b
+            .assign_expr(AssignLeft::Ident(el_name.to_string()), ctx.b.rid_expr("$$element"));
+        let setter = ctx.b.arrow_expr(
+            ctx.b.params(["$$element"]),
+            [ctx.b.expr_stmt(assign)],
+        );
+        init.push(
+            ctx.b
+                .call_stmt("$.selectedcontent", [Arg::Ident(el_name), Arg::Expr(setter)]),
+        );
+    }
 
     // --- Merge directive statements after children (matching Svelte's element_state merge) ---
     init.extend(directive_init);
@@ -373,4 +399,83 @@ fn extract_single_raw_expr_or_concat<'a>(
         }
     }
     build_concat(ctx, item)
+}
+
+/// Emit `$.customizable_select(el, () => { ... })` for elements with rich DOM content.
+///
+/// Creates a separate hoisted template for the element's children, then wraps them in a
+/// callback that clones the template, initialises content, and appends it as a child.
+/// Port of the `is_customizable_select_element` branch in reference `RegularElement.js`.
+fn emit_customizable_select<'a>(
+    ctx: &mut Ctx<'a>,
+    el_name: &str,
+    child_key: &FragmentKey,
+    init: &mut Vec<oxc_ast::ast::Statement<'a>>,
+    hoisted: &mut Vec<oxc_ast::ast::Statement<'a>>,
+) {
+    let (children_html, import_node) = fragment_html(ctx, *child_key);
+    let flags = if import_node { 3.0 } else { 1.0 };
+    let from_fn = from_template_fn_for_element(ctx, el_name);
+    let tpl = ctx.b.call_expr(
+        from_fn,
+        [Arg::Expr(ctx.b.template_str_expr(&children_html)), Arg::Num(flags)],
+    );
+    let tpl_name = ctx.gen_ident(&format!("{el_name}_content"));
+    hoisted.push(ctx.b.var_stmt(&tpl_name, tpl));
+
+    let anchor_name = ctx.gen_ident("anchor");
+    let fragment_name = ctx.gen_ident("fragment");
+    let first_child = ctx
+        .b
+        .call_expr("$.first_child", [Arg::Ident(&fragment_name)]);
+
+    let child_items = ctx.lowered_fragment(child_key).items.clone();
+    let mut child_init: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+    let mut child_update: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+    let mut child_after_update: Vec<oxc_ast::ast::Statement<'a>> = Vec::new();
+    let mut child_memo: Vec<MemoAttr<'a>> = Vec::new();
+    let trailing = traverse_items(
+        ctx,
+        &child_items,
+        first_child,
+        &mut child_init,
+        &mut child_update,
+        hoisted,
+        &mut child_after_update,
+        &mut child_memo,
+    );
+    emit_trailing_next(ctx, trailing, &mut child_init);
+
+    let el_blockers = ctx.fragment_blockers(child_key).to_vec();
+    let local_blockers = build_fragment_local_blockers(ctx, child_key);
+
+    let mut body: Vec<oxc_ast::ast::Statement<'a>> = vec![
+        ctx.b.var_stmt(
+            &anchor_name,
+            ctx.b.call_expr("$.child", [Arg::Ident(el_name)]),
+        ),
+        ctx.b
+            .var_stmt(&fragment_name, ctx.b.call_expr(&tpl_name, [])),
+    ];
+    body.extend(child_init);
+    emit_template_effect_with_memo(
+        ctx,
+        child_update,
+        child_memo,
+        el_blockers,
+        local_blockers,
+        &mut body,
+    );
+    body.extend(child_after_update);
+    body.push(ctx.b.call_stmt(
+        "$.append",
+        [Arg::Ident(&anchor_name), Arg::Ident(&fragment_name)],
+    ));
+
+    let callback = ctx.b.arrow_block_expr(ctx.b.no_params(), body);
+    init.push(ctx.b.call_stmt(
+        "$.customizable_select",
+        [Arg::Ident(el_name), Arg::Expr(callback)],
+    ));
+
 }

@@ -103,6 +103,14 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         return (html, import_node);
     }
 
+    // Customizable select: children live in a separate hoisted template.
+    // Only a hydration comment placeholder goes inside the element itself.
+    if ctx.is_customizable_select(el.id) {
+        html.push_str("<!>");
+        write!(html, "</{}>", el.name).unwrap();
+        return (html, import_node);
+    }
+
     let child_key = FragmentKey::Element(el.id);
     let ct = ctx.content_type(&child_key);
     let has_state = ctx.has_dynamic_children(&child_key);

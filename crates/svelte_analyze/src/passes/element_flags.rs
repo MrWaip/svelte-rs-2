@@ -1,6 +1,6 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, Node};
+use svelte_ast::{is_mathml, is_svg, is_void, AstStore, Attribute, ComponentNode, Element, Fragment, Node};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -71,6 +71,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .option_synthetic_value_expr
                     .insert(el.id, child_id);
             }
+        }
+
+        // Customizable select: <select>, <optgroup>, <option> with rich DOM content.
+        if is_customizable_select_element(el, ctx.store, self.source) {
+            ctx.data.element_flags.customizable_select.insert(el.id);
+        }
+        if el.name == "selectedcontent" {
+            ctx.data.element_flags.is_selectedcontent.insert(el.id);
         }
     }
 
@@ -254,4 +262,93 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .push(ComponentPropInfo { kind, is_dynamic });
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Customizable select detection
+// ---------------------------------------------------------------------------
+
+/// Returns true for `<select>`, `<optgroup>`, or `<option>` elements that contain
+/// "rich content" — DOM structure that requires `$.customizable_select` at runtime.
+///
+/// Port of `is_customizable_select_element` from `reference/compiler/phases/nodes.js`.
+fn is_customizable_select_element(el: &Element, store: &AstStore, source: &str) -> bool {
+    matches!(el.name.as_str(), "select" | "optgroup" | "option")
+        && find_rich_descendants(&el.fragment, &el.name, store, source)
+}
+
+/// Recursively walks a fragment looking for rich content under `parent_name`.
+/// Skips SnippetBlock, DebugTag, ConstTag, Comment, ExpressionTag.
+/// Recurses into control-flow blocks.
+fn find_rich_descendants(fragment: &Fragment, parent_name: &str, store: &AstStore, source: &str) -> bool {
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            // Non-content nodes — never rich
+            Node::Comment(_)
+            | Node::ConstTag(_)
+            | Node::DebugTag(_)
+            | Node::ExpressionTag(_)
+            | Node::SnippetBlock(_) => {}
+            // Recurse into control flow — only rich if descendants are rich
+            Node::IfBlock(b) => {
+                if find_rich_descendants(&b.consequent, parent_name, store, source) {
+                    return true;
+                }
+                if let Some(alt) = &b.alternate {
+                    if find_rich_descendants(alt, parent_name, store, source) {
+                        return true;
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if find_rich_descendants(&b.body, parent_name, store, source) {
+                    return true;
+                }
+                if let Some(fallback) = &b.fallback {
+                    if find_rich_descendants(fallback, parent_name, store, source) {
+                        return true;
+                    }
+                }
+            }
+            Node::KeyBlock(b) => {
+                if find_rich_descendants(&b.fragment, parent_name, store, source) {
+                    return true;
+                }
+            }
+            Node::AwaitBlock(b) => {
+                for frag in [b.pending.as_ref(), b.then.as_ref(), b.catch.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    if find_rich_descendants(frag, parent_name, store, source) {
+                        return true;
+                    }
+                }
+            }
+            // Non-whitespace text is rich for <select>/<optgroup> (they should only have element children)
+            Node::Text(t) => {
+                if matches!(parent_name, "select" | "optgroup")
+                    && !t.raw_value(source).trim().is_empty()
+                {
+                    return true;
+                }
+            }
+            // RegularElement: rich depending on what the parent allows
+            Node::Element(child_el) => match parent_name {
+                "select" if child_el.name != "option" && child_el.name != "optgroup" => return true,
+                "optgroup" if child_el.name != "option" => return true,
+                "option" => return true,
+                _ => {}
+            },
+            // Recurse into SvelteBoundary — only rich if descendants are rich
+            Node::SvelteBoundary(b) => {
+                if find_rich_descendants(&b.fragment, parent_name, store, source) {
+                    return true;
+                }
+            }
+            // Any other node type counts as rich content
+            _ => return true,
+        }
+    }
+    false
 }

@@ -99,8 +99,24 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_snippet_children_conflict(block, ctx);
     }
 
-    fn visit_element(&mut self, _el: &Element, _ctx: &mut VisitContext<'_>) {
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
+
+        // slot_attribute_invalid_placement: a slot="..." attribute on a regular element
+        // is only valid when the element is a direct child of a component.
+        let has_slot_attr = el.attributes.iter().any(|a| {
+            matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot")
+        });
+        if has_slot_attr
+            && !ctx
+                .parent()
+                .is_some_and(|p| p.kind == ParentKind::ComponentNode)
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SlotAttributeInvalidPlacement,
+                el.span,
+            ));
+        }
     }
 
     fn leave_element(&mut self, _el: &Element, ctx: &mut VisitContext<'_>) {

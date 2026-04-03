@@ -69,6 +69,16 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         return true;
     }
 
+    // Customizable select elements require a JS var so codegen can call $.customizable_select(el, ...).
+    if data.element_flags.is_customizable_select(id) {
+        return true;
+    }
+
+    // <selectedcontent> requires a JS var so codegen can call $.selectedcontent(el, setter).
+    if data.element_flags.is_selectedcontent(id) {
+        return true;
+    }
+
     let has_runtime_attrs = el.attributes.iter().any(|a| {
         !matches!(
             a,

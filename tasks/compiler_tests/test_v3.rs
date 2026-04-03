@@ -185,6 +185,21 @@ fn option_expr_child_value() {
 }
 
 #[rstest]
+fn customizable_select_option_el() {
+    assert_compiler("customizable_select_option_el");
+}
+
+#[rstest]
+fn customizable_select_select_div() {
+    assert_compiler("customizable_select_select_div");
+}
+
+#[rstest]
+fn selectedcontent_basic() {
+    assert_compiler("selectedcontent_basic");
+}
+
+#[rstest]
 fn state_runes() {
     assert_compiler("state_runes");
 }

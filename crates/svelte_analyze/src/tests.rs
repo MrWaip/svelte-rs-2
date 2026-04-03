@@ -2691,3 +2691,9 @@ fn on_directive_mixed_syntax_svelte_element() {
     );
     assert_has_error(&diags, "mixed_event_handler_syntaxes");
 }
+
+#[test]
+fn slot_attribute_invalid_placement_root() {
+    let diags = analyze_with_diags(r#"<script></script><div slot="foo">content</div>"#);
+    assert_has_error(&diags, "slot_attribute_invalid_placement");
+}
