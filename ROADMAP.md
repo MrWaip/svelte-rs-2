@@ -9,7 +9,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 - [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
-- [ ] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
+- [x] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
 - [ ] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [ ] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
 - [ ] `$host` — [spec](specs/host-rune.md)
