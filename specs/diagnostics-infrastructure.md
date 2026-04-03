@@ -1,7 +1,8 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-Complete. All infrastructure implemented and tested (120+ tests across 3 crates, 324 compiler integration tests passing).
+- **Working**: 14/18 use cases — all infrastructure complete
+- **Missing**: 4 (warning emission logic, A11y, CSS unused selector, early bail on parser errors)
 Last updated: 2026-03-29
 
 ## Source
@@ -26,35 +27,26 @@ ROADMAP Tier 5, item 5a
 
 ## Use cases
 
-### Basic Infrastructure
 1. [x] Warning constructor `Diagnostic::warning(kind, span)` (test: unit)
 2. [x] All 81 warning enum variants with `code()`, `message()`, `svelte_doc_url()` (test: unit)
 3. [x] All ~165 semantic error enum variants with `code()`, `message()` (test: compile)
 4. [x] `DiagnosticKind::all_warning_codes()` registry for svelte-ignore validation (test: unit)
 5. [x] Legacy code migration map — 9 mappings (test: unit)
-
-### svelte-ignore Parsing
 6. [x] Runes mode: comma-separated, strict validation (test: unit)
 7. [x] Legacy mode: space-separated, lenient (test: unit)
 8. [x] Legacy code auto-migration in svelte-ignore comments (test: unit)
 9. [x] Unknown code fuzzy-match suggestion (test: unit)
 10. [x] `LegacyCode` / `UnknownCode` warning emission from svelte-ignore parser (test: unit)
-
-### Ignore Stack
 11. [x] Ignore stack push/pop in walker — preceding comment scan (test: integration)
 12. [x] Per-node ignore snapshot in `IgnoreData` side table (test: unit)
 13. [x] `is_ignored(node_id, code)` check (test: unit)
-
-### Warning Filter & API
 14. [x] `AnalyzeOptions` struct replacing `custom_element: bool` (test: compile)
 15. [x] `warning_filter` applied after analysis (test: unit)
 16. [x] `ctx.warn(node_id, kind, span)` API for visitors (test: integration)
-
-### Deferred
-- Individual warning emission logic (5b–5g)
-- A11y checks (5f)
-- CSS unused selector warning (depends on Tier 3)
-- Early bail on parser errors (added to ROADMAP Deferred)
+- [ ] Individual warning emission logic (5b–5g)
+- [ ] A11y checks (5f)
+- [ ] CSS unused selector warning (depends on Tier 3)
+- [ ] Early bail on parser errors
 
 ## Tasks
 

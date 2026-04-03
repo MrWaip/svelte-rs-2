@@ -35,11 +35,6 @@
 - [ ] `<svelte:fragment slot="name">` contributes named-slot content without adding a wrapper element
 - [ ] `<svelte:fragment>` validation rejects non-component placement and non-`slot`/`let:` attributes
 
-### Deferred
-
-- SSR parity for the same tags
-- Migration-specific warnings or tooling outside compile/analyze parity
-
 ## Reference
 
 - Reference docs:

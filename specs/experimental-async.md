@@ -4,8 +4,7 @@
 
 - **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`)
 - **Not working**: —
-- **Out of scope**: SSR (`$.await()` server-side — will be separate phase)
-- **Deferred / out of current batch**: `<slot>` async
+- **Missing**: `<slot>` async (use case 26)
 - **Next**: All client-side async features complete. Remaining: destructured dev test blocked on Tier 6c `$.tag()`.
 - Last updated: 2026-03-31
 
@@ -55,14 +54,11 @@ Audit of existing implementation (2026-03-28)
 
 ## Use cases
 
-### Infrastructure
 1. [x] `ExpressionInfo.has_await` — detect `await` in expression metadata (covered, tests: async_*)
 2. [x] `has_blockers()` / `expression_blockers()` — blocker resolution (covered, tests: *_blockers)
 3. [x] `CompileOptions.experimental.async_` option + flag import (covered, test: async_flag_import)
 4. [x] Instance body splitting: sync/async segments → `var $$promises = $.run([thunks])` (covered, test: async_blockers_basic)
 5. [x] Blocker tracking: `BlockerData.symbol_blockers` mapping (covered)
-
-### Block wrapping (`$.async()`)
 6. [x] `{#if}` — `$.async()` wrapping with has_await (covered, test: async_if_basic)
 7. [x] `{#each}` — `$.async()` wrapping with has_await (covered, test: async_each_basic)
 8. [x] `{@html}` — `$.async()` wrapping with has_await (covered, test: async_html_basic)
@@ -70,55 +66,34 @@ Audit of existing implementation (2026-03-28)
 10. [x] `{#await}` — async thunk + `$.async()` for blockers (covered, test: async_await_has_await)
 11. [x] Block wrapping with non-empty blockers (has_blockers but no has_await) (covered, test: async_blockers_basic)
 12. [x] `<svelte:element>` — `$.async()` wrapping for dynamic tag with has_await/has_blockers (covered, test: async_svelte_element)
-
-### Directive blocker wrapping (`$.run_after_blockers()`)
-13. [x] `bind:` — (covered, test: async_bind_basic)
-14. [x] `use:action` — (covered, test: action_blockers)
-15. [x] `{@attach}` — (covered, test: attach_blockers)
-16. [x] `transition:` — (covered, test: transition_blockers)
-17. [x] `animate:` — (covered, test: animate_blockers)
-
-### `{@const}` async handling
+13. [x] `bind:` — `$.run_after_blockers()` wrapping (covered, test: async_bind_basic)
+14. [x] `use:action` — `$.run_after_blockers()` wrapping (covered, test: action_blockers)
+15. [x] `{@attach}` — `$.run_after_blockers()` wrapping (covered, test: attach_blockers)
+16. [x] `transition:` — `$.run_after_blockers()` wrapping (covered, test: transition_blockers)
+17. [x] `animate:` — `$.run_after_blockers()` wrapping (covered, test: animate_blockers)
 18. [x] `{@const}` with async expression — `$.run()` accumulation with blockers and `has_await` (test: async_const_tag)
 19. [x] `{@const}` blocker propagation — `promises[N]` in downstream template effects (test: async_const_tag)
-
-### `$derived` async
 20. [x] `$derived`/`$derived.by` with `await` → `$.async_derived()` call (covered, test: async_derived_basic)
 21. [x] `$derived` async with destructured pattern → `$.async_derived()` + destructure (covered, test: async_derived_destructured)
-
-### Memoizer async support
 22. [x] `Memoizer.async_values()` — shared codegen helper tracks async vs sync memoized expressions across render/title/generic template-effect paths
 23. [x] `Memoizer.async_ids()` — shared callback param ordering covers render/title/generic template-effect paths
 24. [x] `Memoizer.blockers()` — shared blocker collection covers render/title/generic template-effect paths
-
-### `{@render}` / `<slot>` async
 25. [x] `{@render}` — async wrapping with blockers plus complex-arg `async_values()` coverage (covered, tests: async_render_tag, async_render_tag_complex_args)
-26. [ ] `<slot>` — out of current batch
+26. [x] `<title>` — `$.deferred_template_effect()` with Memoizer async_values/blockers (covered, test: async_title_basic)
+27. [x] `<svelte:boundary>` — async-aware const tag + snippet handling (covered, test: async_boundary_const)
+28. [x] Snippets not hoisted when `experimental.async && has_const` (covered, test: async_boundary_const)
+29. [x] `$.template_effect()` with blockers argument — `emit_template_effect_with_blockers()` (covered)
+30. [x] `$.template_effect()` with `async_values` argument (covered for generic memoized text/attr paths)
+31. [x] `{await expr}` experimental template syntax — Svelte 5.36+ (covered: parser/analyze/codegen)
+32. [x] `(await $.save(expr))()` — context preservation for awaits in reactive expressions (covered for template/attr expressions)
+33. N/A `{#await}` dev mode — reference `AwaitBlock.js` does not use `$.apply()`; no action needed
+34. [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
+35. [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
+36. [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
 
-### `<title>` async
-27. [x] `<title>` — `$.deferred_template_effect()` with Memoizer async_values/blockers (covered, test: async_title_basic)
+## Out of scope
 
-### `<svelte:boundary>` async
-28. [x] `<svelte:boundary>` — async-aware const tag + snippet handling (covered, test: async_boundary_const)
-29. [x] Snippets not hoisted when `experimental.async && has_const` (covered, test: async_boundary_const)
-
-### `$.template_effect` async
-30. [x] `$.template_effect()` with blockers argument — `emit_template_effect_with_blockers()` (covered)
-31. [x] `$.template_effect()` with `async_values` argument (covered for generic memoized text/attr paths)
-
-### `{await expr}` template syntax
-32. [x] `{await expr}` experimental template syntax — Svelte 5.36+ (covered: parser/analyze/codegen)
-
-### Pickled awaits (`$.save()`)
-33. [x] `(await $.save(expr))()` — context preservation for awaits in reactive expressions (covered for template/attr expressions)
-
-### Dev mode
-34. N/A `{#await}` — reference `AwaitBlock.js` does not use `$.apply()`; no action needed
-35. [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
-36. [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
-
-### Tracing
-37. [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
+- `<slot>` async — not part of Svelte 5 runes model (legacy feature)
 
 ## Tasks
 

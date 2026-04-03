@@ -31,10 +31,6 @@
 - [~] `$host()` coexists with `$props()` in custom elements.
   Current status: direct `$host()` rewrites work, but rest props do not exclude `$$host`, so `let { a, ...rest } = $props()` can expose the host handle in `rest`.
 
-Deferred
-
-- SSR transform parity from `reference/compiler/phases/3-transform/server/visitors/CallExpression.js` is out of scope for this client-only roadmap item.
-
 ## Reference
 
 - Reference compiler

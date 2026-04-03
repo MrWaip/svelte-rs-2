@@ -51,11 +51,6 @@ ROADMAP.md — CSS
 - `[~]` Nested `<style>` elements inside markup
   Likely compile as plain elements today because top-level style handling is separate, but there is no focused compiler case for the required "unscoped, inserted as-is" behavior
 
-### Deferred
-
-- SSR CSS behavior is out of scope for this spec
-- `style:` directives, `class:` directives, and class object/array syntax belong to the `Attributes & Spreads` roadmap area, not this CSS pipeline spec
-
 ## Reference
 
 - `reference/docs/04-styling/01-scoped-styles.md`

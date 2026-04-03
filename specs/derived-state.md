@@ -17,7 +17,6 @@ ROADMAP.md — `$derived` rune (core reactivity)
 
 ## Use cases
 
-### Implemented
 - [x] Basic `$derived(expr)` → `$.derived(() => expr)`
 - [x] `$derived.by(fn)` → `$.derived(fn)`
 - [x] `$derived` in nested function scope
@@ -31,17 +30,13 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] Async dev mode with label and location args
 - [x] Async dev mode with `svelte-ignore await_waterfall` suppression
 - [x] `@const` tag bindings treated as derived
-
-### In scope
 - [x] Sync destructured `$derived(expr)` where arg is plain Identifier (no intermediate var)
 - [x] Sync destructured `$derived(expr)` where arg is NOT plain Identifier (intermediate `$$d` var)
 - [x] Sync destructured `$derived.by(fn)` (intermediate `$$d` var)
 - [x] `derived_invalid_export` diagnostic when `export`ing derived binding
 - [x] `state_referenced_locally` warning for derived bindings read at same function depth
-
-### Deferred
-- `$.save()` for nested async derived (`function_depth > 1`) — needs async infrastructure
-- `rune_invalid_usage` in non-runes mode — broader runes validation scope
+- [ ] `$.save()` for nested async derived (`function_depth > 1`)
+- [ ] `rune_invalid_usage` in non-runes mode
 
 ## Reference
 

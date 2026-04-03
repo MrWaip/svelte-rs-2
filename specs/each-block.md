@@ -40,11 +40,6 @@
 - `[x]` Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
 - `[x]` Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
 
-### Deferred
-
-- Store-backed each invalidation is tracked in `specs/store-subscriptions.md`; do not duplicate that work here.
-- SSR each-block behavior is out of scope for this roadmap item.
-
 ## Reference
 
 - Reference docs:

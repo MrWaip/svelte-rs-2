@@ -25,7 +25,6 @@ ROADMAP.md — `$props` / `$bindable`
 
 ## Use cases
 
-### Covered
 - [x] Basic destructured props source: `let { x, y = 10 } = $props()` (`props_basic`)
 - [x] Rest props lowering: `let { x, ...rest } = $props()` (`props_rest`)
 - [x] Identifier pattern: `const props = $props()` (`props_identifier_basic`, `props_identifier_await_expression`)
@@ -37,26 +36,14 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] Renamed/aliased props (`props_renamed`): `let { foo: local = 'default' } = $props()` uses prop key in `$.prop()` call
 - [x] Renamed + bindable props (`props_renamed_bindable`): `let { value: local = $bindable('fallback') } = $props()`
 - [x] `$props.id()` basic lowering (`props_id_basic`, `props_id_with_props`)
-
-### Partial
-- [~] `$props.id()` basic lowering works (`props_id_basic`, `props_id_with_props`), but analyze still lacks focused placement/duplicate parity with reference `$props()` validation
-
-### Missing
-- [x] `$bindable()` validation in analyze:
-  `bindable_invalid_location` and argument-count checks — DONE
-- [x] `$props()` validation in analyze:
-  `props_invalid_placement`, `props_duplicate`, and rune argument-count checks — DONE
-- [x] `$props.id()` validation in analyze:
-  `props_id_invalid_placement`, duplicate detection with `$props()`, and zero-argument enforcement — DONE
-- [x] `$props()` pattern validation in analyze:
-  `props_invalid_pattern` and `props_invalid_identifier` — DONE
-- [x] `props_illegal_name` for MemberExpression access on rest props — DONE
-- [x] Custom-element warning parity:
-  `custom_element_props_identifier` emitted for identifier/rest `$props()` in custom elements — DONE
-
-### Deferred
-- `$$props` / `$$restProps` legacy compatibility is out of scope for this Svelte 5 rune audit
-- SSR behavior for props is out of scope
+- [~] `$props.id()` basic lowering works, but analyze still lacks focused placement/duplicate parity with reference `$props()` validation
+- [x] `$bindable()` validation: `bindable_invalid_location` and argument-count checks
+- [x] `$props()` validation: `props_invalid_placement`, `props_duplicate`, and rune argument-count checks
+- [x] `$props.id()` validation: `props_id_invalid_placement`, duplicate detection with `$props()`, zero-argument enforcement
+- [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
+- [x] `props_illegal_name` for MemberExpression access on rest props
+- [x] Custom-element warning: `custom_element_props_identifier` for identifier/rest `$props()` in custom elements
+- [ ] `$$props` / `$$restProps` legacy compatibility (Tier 7)
 
 ## Reference
 

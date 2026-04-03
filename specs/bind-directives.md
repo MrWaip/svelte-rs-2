@@ -53,10 +53,6 @@ ROADMAP.md — Bindings
 - `[ ]` Warning parity for rest-pattern each bindings
   `bind_invalid_each_rest`
 
-### Deferred
-
-- SSR binding behavior is out of scope for this spec
-
 ## Reference
 
 - `reference/compiler/phases/bindings.js` — canonical binding property matrix

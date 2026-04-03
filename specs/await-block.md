@@ -1,9 +1,9 @@
 # Await Block
 
 ## Current state
-- **Working**: 16/16 use cases (100%)
-- **Missing**: None — all use cases covered and passing
-- **Next**: Feature complete. Diagnostics deferred.
+- **Working**: 16/18 use cases
+- **Missing**: 2 diagnostics (`block_duplicate_clause`, `block_unexpected_character`)
+- **Next**: implement diagnostics
 - Last updated: 2026-04-01
 
 ## Source
@@ -11,7 +11,6 @@ Audit of existing implementation (2026-04-01)
 
 ## Use cases
 
-### Parser variants
 1. [x] Full form: `{#await expr}...{:then val}...{:catch err}...{/await}` (test: `await_basic`)
 2. [x] Pending only: `{#await expr}...{/await}` (test: `await_pending_only`)
 3. [x] Shorthand then: `{#await expr then val}...{/await}` (test: `await_short_then`)
@@ -21,31 +20,22 @@ Audit of existing implementation (2026-04-01)
 7. [x] Pending + separate then (no catch): `{#await expr}...{:then val}...{/await}` (test: `await_pending_then`)
 8. [x] Pending + separate catch (no then): `{#await expr}...{:catch err}...{/await}` (test: `await_pending_catch`)
 9. [x] Shorthand catch without binding: `{#await expr catch}...{/await}` (test: `await_short_catch_no_binding`)
-
-### Codegen variants
 10. [x] Basic `$.await(anchor, thunk, pending, then, catch)` (test: `await_basic`)
 11. [x] Thunk optimization for call expressions (test: `await_thunk_optimization`)
 12. [x] Async thunk when expression has `await` keyword (test: `async_await_has_await`)
 13. [x] Destructured then: object `{a, b}` (test: `await_destructured`)
 14. [x] Destructured then: array `[a, b]` (test: `await_array_destructured`)
 15. [x] Reactive expression (test: `await_reactive`)
-
-### Nesting / composition
 16. [x] Await inside each (test: `await_in_each`)
 17. [x] Await inside if (test: `await_in_if`)
 18. [x] Each inside await (test: `await_each_nested`)
 19. [x] Rich content in all branches (test: `await_nested_content`)
 20. [x] Text before element in then (test: `await_then_text_before_element`)
 21. [x] Nested await (await inside await) (test: `await_nested_await`)
-
-### Experimental async
 22. [x] `$.async()` wrapping with blockers (test: `async_await_has_await`)
 23. [x] Pickled await in template (test: `async_pickled_await_template`)
-
-### Deferred
-- SSR: `$.await()` server-side rendering — separate phase
-- Diagnostics: `block_duplicate_clause` error for duplicate `:then`/`:catch`
-- Diagnostics: `block_unexpected_character` validation for whitespace before `:then`/`:catch`
+- [ ] `block_duplicate_clause` error for duplicate `:then`/`:catch`
+- [ ] `block_unexpected_character` validation for whitespace before `:then`/`:catch`
 
 ## Reference
 

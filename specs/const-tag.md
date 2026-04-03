@@ -44,10 +44,6 @@
 - `[ ]` Invalid declaration shapes should report `const_tag_invalid_expression`.
 - `[ ]` Snippets that reference an out-of-scope `{@const}` binding should report `const_tag_invalid_reference`.
 
-### Deferred
-
-- `experimental.async` behavior stays tracked in `specs/experimental-async.md`; this audit only covers the baseline client feature.
-
 ## Reference
 
 - Reference docs:
@@ -115,7 +111,7 @@
 - `boundary_const_tag`
 - `boundary_const_in_snippet`
 - `if_else_chain_with_const`
-- Deferred to `experimental-async`:
+- Covered by `experimental-async` spec:
 - `async_const_tag`
 - `async_const_derived_chain`
 - `async_boundary_const`

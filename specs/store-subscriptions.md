@@ -6,7 +6,7 @@
   - `$.mark_store_binding()` in component bind getter for store-backed bindings
   - `store_invalid_scoped_subscription` diagnostic for nested-scope store refs
   - `store_rune_conflict` warning for `$name` that shadows a rune
-- **Missing**: `$.store_unsub` (legacy-only), `$.invalidate_store` (legacy-only), `$store` in `<script module>` / module compilation (needs dual-script AST and module compilation infrastructure)
+- **Missing**: 3 — `$.store_unsub` (legacy-only), `$.invalidate_store` (legacy-only), `$store` in `<script module>` / module compilation
 - **Next**: legacy-mode features when non-runes infrastructure is added; module-level diagnostics when dual-script AST is available
 - Last updated: 2026-04-03
 
@@ -48,14 +48,6 @@
 - [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`)
 - [ ] Analyzer rejects `$store` reads inside `<script module>`
 - [ ] Module compilation rejects `$store` reads outside `.svelte` components
-
-### Deferred
-
-- [ ] SSR store subscription codegen and cleanup parity
-- [ ] `$.store_unsub` — only fires in legacy (non-runes) mode when store variable is promoted to reactive state
-- [ ] `$.invalidate_store` — only fires in legacy (non-runes) mode for each-block item mutations
-- [ ] `store_invalid_subscription` — needs dual-script AST (`<script module>` + `<script>`)
-- [ ] `store_invalid_subscription_module` — needs module compilation path (`.svelte.js`)
 
 ## Reference
 

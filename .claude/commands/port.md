@@ -96,11 +96,11 @@ If 10 or fewer use cases total — present all at once. If more than 10 — pres
 
 ```
 Selected for porting (N cases): ...
-Deferred in spec (M cases): ...
+Not selected (M cases): ...
 ```
 
-Add each deferred case as its own unchecked checkbox in the spec's `Use cases` → `Deferred` subsection so the feature-local checklist stays complete.
-If there is no corresponding spec, report that explicitly to the user instead of writing the deferred case anywhere else.
+Add each non-selected case as an unchecked checkbox in the spec's Use cases section.
+If there is no corresponding spec, report that explicitly to the user instead of writing the case anywhere else.
 
 ### Step 3: Implementation plan
 
@@ -201,7 +201,7 @@ If a test fails after 3 attempts, stop and report what you tried. Do NOT fix oth
 **Update tracking:**
 - Update `specs/<feature>.md`: mark completed tasks, update Current state section
 - Move completed feature to **Done ✅** in `ROADMAP.md`
-- Add any newly discovered deferred items to the spec `Use cases` deferred subsection as unchecked checkboxes
+- Add any newly discovered items to the spec `Use cases` as unchecked checkboxes
 
 **Benchmark** (only if the feature adds new syntax — new AST node types, block types, directive types):
 1. Add the construct to `tasks/generate_benchmark/src/main.rs`

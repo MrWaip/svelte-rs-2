@@ -1,9 +1,9 @@
 # If Block
 
 ## Current state
-- **Working**: 8/8 use cases
-- **Missing**: None — all client-side use cases covered and passing
-- **Next**: Feature complete. Diagnostics deferred.
+- **Working**: 8/10 use cases
+- **Missing**: 2 validation diagnostics (`validate_block_not_empty`, `validate_opening_tag`)
+- **Next**: implement validation diagnostics
 - Last updated: 2026-04-02
 
 ## Source
@@ -31,8 +31,6 @@
 - `[x]` Condition expressions containing calls and tracked symbols memoize exactly like the reference (`$.derived(() => expr)`).
 - `[x]` `{:else if await expr}` under `experimental.async` remains a nested transparent else-if instead of being flattened into the parent branch chain.
 - `[x]` `{:else if expr}` that introduces blockers not present in the parent branch follows the same non-flattened path as the reference compiler.
-
-### Deferred
 
 - `[ ]` Analyzer validation: `validate_block_not_empty` for consequent/alternate
 - `[ ]` Analyzer validation: `validate_opening_tag` for runes mode

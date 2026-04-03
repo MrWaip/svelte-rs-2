@@ -1,7 +1,7 @@
 # Events
 
 ## Current state
-- **Working**: 9/10 event use cases
+- **Working**: 9/11 event use cases
 - **Done this session**: fixed `nonpassive` codegen (`void 0` capture slot), added `name_span` to `OnDirectiveLegacy` AST, implemented analyzer event diagnostics (`EventHandlerInvalidModifier`, `EventHandlerInvalidModifierCombination`, `EventDirectiveDeprecated`, `MixedEventHandlerSyntaxes`)
 - **Remaining**: component `$$events` forwarding tracked in `specs/component-node.md`
 - Last updated: 2026-04-03
@@ -36,9 +36,7 @@
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
 - [~] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` remains open in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
 
-### Deferred
-
-- Dev-mode-only parity from the roadmap item `$.apply() + event handler naming` belongs under Dev Mode rather than this client-output audit
+- [ ] Dev-mode `$.apply()` + event handler naming
 
 ## Reference
 

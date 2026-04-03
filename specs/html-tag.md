@@ -1,8 +1,8 @@
 # `{@html}`
 
 ## Current state
-- **Working**: 6/8 use cases
-- **Missing**: 2 use cases
+- **Working**: 6/9 use cases
+- **Missing**: 3 use cases
 - **Unknown**: 0 use cases
 - **Next**: fix non-controlled namespace propagation for nested `svg`/`mathml`, then decide whether hydration-ignore and diagnostics work belong here or stays under diagnostics/hydration tracks
 - Last updated: 2026-04-01
@@ -32,10 +32,7 @@
   Current code only checks component options in client codegen, so nested namespace switches are not represented on the `$.html(...)` call.
 - [ ] Preserve reference behavior for non-repaired hydration mismatches / `svelte-ignore hydration_html_changed`
 
-### Deferred
-
-- SSR behavior is out of scope for this client-only roadmap item.
-- Runes-mode invalid-opening-tag diagnostics should be coordinated with diagnostics coverage instead of being implemented ad hoc in codegen.
+- [ ] Runes-mode invalid-opening-tag diagnostics
 
 ## Reference
 
