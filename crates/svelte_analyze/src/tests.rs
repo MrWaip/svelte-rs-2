@@ -1366,7 +1366,6 @@ let count = 1;
     assert_has_warning(&diags, "block_empty");
 }
 
-
 #[test]
 fn validate_state_invalid_placement_fn_arg() {
     let diags = analyze_with_diags(
