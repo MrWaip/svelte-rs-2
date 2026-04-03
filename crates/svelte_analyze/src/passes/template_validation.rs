@@ -11,8 +11,8 @@ use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, KeyBlock, Node,
-    NodeId, OnDirectiveLegacy, SvelteElement, Text,
+    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SvelteElement, Text,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -202,18 +202,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: block_empty, block_unexpected_character
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {
-        // block_empty: exactly one whitespace-only text node in the fragment
-        if block.fragment.nodes.len() == 1 {
-            let node_id = block.fragment.nodes[0];
-            if let Node::Text(text) = ctx.store.get(node_id) {
-                if text.value(ctx.source).trim().is_empty() {
-                    ctx.warnings_mut().push(Diagnostic::warning(
-                        DiagnosticKind::BlockEmpty,
-                        text.span,
-                    ));
-                }
-            }
-        }
+        check_empty_fragment(&block.fragment, ctx);
 
         // block_unexpected_character: runes mode only — char after `{` must be `#`
         if ctx.runes {
@@ -221,6 +210,28 @@ impl TemplateVisitor for TemplateValidationVisitor {
             if ctx.source.as_bytes().get(start + 1) != Some(&b'#') {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::BlockUnexpectedCharacter { character: "#".to_string() },
+                    Span::new(block.span.start, block.span.start + 5),
+                ));
+            }
+        }
+    }
+
+    // Use cases: block_empty (consequent + alternate), block_unexpected_character
+    fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_>) {
+        check_empty_fragment(&block.consequent, ctx);
+        if let Some(alt) = &block.alternate {
+            check_empty_fragment(alt, ctx);
+        }
+
+        // block_unexpected_character: runes mode only — `{#if` needs `#`, `{:else if` needs `:`
+        if ctx.runes {
+            let expected: u8 = if block.elseif { b':' } else { b'#' };
+            let start = block.span.start as usize;
+            if ctx.source.as_bytes().get(start + 1) != Some(&expected) {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::BlockUnexpectedCharacter {
+                        character: (expected as char).to_string(),
+                    },
                     Span::new(block.span.start, block.span.start + 5),
                 ));
             }
@@ -316,6 +327,22 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 ));
             }
             _ => {}
+        }
+    }
+}
+
+/// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
+/// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
+fn check_empty_fragment(fragment: &Fragment, ctx: &mut VisitContext<'_>) {
+    if fragment.nodes.len() == 1 {
+        let node_id = fragment.nodes[0];
+        if let Node::Text(text) = ctx.store.get(node_id) {
+            if text.value(ctx.source).trim().is_empty() {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::BlockEmpty,
+                    text.span,
+                ));
+            }
         }
     }
 }

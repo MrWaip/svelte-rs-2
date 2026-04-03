@@ -142,6 +142,16 @@ fn if_call_condition() {
 }
 
 #[rstest]
+fn if_block_empty_consequent() {
+    assert_compiler("if_block_empty_consequent");
+}
+
+#[rstest]
+fn if_block_empty_alternate() {
+    assert_compiler("if_block_empty_alternate");
+}
+
+#[rstest]
 fn element_attributes() {
     assert_compiler("element_attributes");
 }

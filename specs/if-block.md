@@ -1,10 +1,8 @@
 # If Block
 
 ## Current state
-- **Working**: 8/10 use cases
-- **Missing**: 2 validation diagnostics (`validate_block_not_empty`, `validate_opening_tag`)
-- **Next**: implement validation diagnostics
-- Last updated: 2026-04-02
+- **Working**: 10/10 use cases — Complete
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -32,8 +30,8 @@
 - `[x]` `{:else if await expr}` under `experimental.async` remains a nested transparent else-if instead of being flattened into the parent branch chain.
 - `[x]` `{:else if expr}` that introduces blockers not present in the parent branch follows the same non-flattened path as the reference compiler.
 
-- `[ ]` Analyzer validation: `validate_block_not_empty` for consequent/alternate
-- `[ ]` Analyzer validation: `validate_opening_tag` for runes mode
+- `[x]` Analyzer validation: `validate_block_not_empty` for consequent/alternate
+- `[x]` Analyzer validation: `validate_opening_tag` for runes mode
 
 ## Reference
 
@@ -59,6 +57,14 @@
 - `tasks/compiler_tests/cases2/async_if_else_if_condition/case.svelte`
 - `tasks/compiler_tests/cases2/if_elseif_new_blockers/case.svelte`
 
+## Discovered bugs
+
+- FIXED: `thunk()` strips no-arg calls (`is_even()` → `is_even`) but `$.derived` requires the call preserved inside an arrow.
+- FIXED: Statement ordering: all consequent arrows emitted first, then all deriveds; reference interleaves per-branch.
+- FIXED: `alt_is_elseif` flattened unconditionally — no check for `has_await` or new blockers on the nested else-if.
+- FIXED: `$.async` callback always used hardcoded `"node"` parameter, causing name collisions when nested.
+- FIXED: Root expression consumed when `needs_async` even for blocker-only async where it's not needed for the thunk.
+
 ## Tasks
 
 - `[x]` Fix condition call memoization: always wrap in arrow for `$.derived()`, don't use `thunk()` which strips no-arg calls.
@@ -68,14 +74,8 @@
 - `[x]` Fix expression consumption for blocker-only async: only consume at root for `has_await`, not `needs_async`.
 - `[x]` Add unique `node` parameter naming in `$.async` callbacks to support nesting.
 - `[x]` Add `if_elseif_new_blockers` test case for blocker-changing else-if.
-
-## Discovered bugs
-
-- FIXED: `thunk()` strips no-arg calls (`is_even()` → `is_even`) but `$.derived` requires the call preserved inside an arrow.
-- FIXED: Statement ordering: all consequent arrows emitted first, then all deriveds; reference interleaves per-branch.
-- FIXED: `alt_is_elseif` flattened unconditionally — no check for `has_await` or new blockers on the nested else-if.
-- FIXED: `$.async` callback always used hardcoded `"node"` parameter, causing name collisions when nested.
-- FIXED: Root expression consumed when `needs_async` even for blocker-only async where it's not needed for the thunk.
+- `[x]` Add `validate_block_not_empty` in `TemplateValidationVisitor::visit_if_block` (consequent + alternate).
+- `[x]` Add `validate_opening_tag` in `visit_if_block` (runes mode, `#` for `{#if}`, `:` for `{:else if}`).
 
 ## Test cases
 
@@ -90,3 +90,5 @@
 - `async_if_else_if_condition` — async else-if flattening
 - Added during this port:
 - `if_elseif_new_blockers` — blocker-changing else-if
+- `if_block_empty_consequent` — BlockEmpty warning on whitespace-only consequent
+- `if_block_empty_alternate` — BlockEmpty warning on whitespace-only alternate
