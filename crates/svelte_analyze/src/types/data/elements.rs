@@ -43,6 +43,9 @@ pub enum ComponentPropKind {
         name: String,
         bind_id: NodeId,
         mode: ComponentBindMode,
+        /// For store-sub binds: the expression identifier (e.g., `"$count"`).
+        /// `None` for non-store binds where `name` is used directly.
+        expr_name: Option<String>,
     },
     Spread {
         attr_id: NodeId,
@@ -57,6 +60,9 @@ pub enum ComponentBindMode {
     PropSource,
     Rune,
     Plain,
+    /// Bind expression targets a store subscription (e.g. `bind:value={$count}`).
+    /// Codegen emits `$.mark_store_binding()` in the getter.
+    StoreSub,
 }
 
 #[derive(Debug, Clone, Copy)]

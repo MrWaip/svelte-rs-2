@@ -632,6 +632,11 @@ fn store_each_invalidate() {
 }
 
 #[rstest]
+fn store_mark_binding() {
+    assert_compiler("store_mark_binding");
+}
+
+#[rstest]
 fn const_tag() {
     assert_compiler("const_tag");
 }

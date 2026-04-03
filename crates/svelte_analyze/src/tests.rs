@@ -2200,3 +2200,28 @@ fn validate_attribute_contenteditable_missing() {
     );
     assert_has_error(&diags, "attribute_contenteditable_missing");
 }
+
+#[test]
+fn validate_store_invalid_scoped_subscription() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function foo() {
+    let count = 0;
+    console.log($count);
+}
+</script>"#,
+    );
+    assert_has_error(&diags, "store_invalid_scoped_subscription");
+}
+
+#[test]
+fn validate_store_rune_conflict() {
+    let diags = analyze_with_diags(
+        r#"<script>
+import { writable } from 'svelte/store';
+let state = writable(0);
+let x = $state(0);
+</script>"#,
+    );
+    assert_has_warning(&diags, "store_rune_conflict");
+}
