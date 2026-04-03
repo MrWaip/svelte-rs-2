@@ -1,8 +1,8 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 11/13 use cases are covered by existing compiler cases
-- **Missing**: analyze-side attribute validation/warnings and the remaining form-element validation/special handling gaps
+- **Working**: 11/16 use cases
+- **Missing**: 5 — analyze-side attribute validation/warnings, form-element validation gaps, event/binding/A11y attribute diagnostics
 - **Next**: port analyze-owned generic attribute validation (`attribute_duplicate`, `attribute_invalid_name`, `attribute_unquoted_sequence`, `attribute_illegal_colon`, `attribute_quoted`, slot placement) before adding more codegen-side special cases
 - Last updated: 2026-04-02
 
@@ -56,14 +56,9 @@
 - `[ ]` Form-element validation and remaining special handling are incomplete
   Missing today: `textarea_invalid_content`, customizable `select` / `optgroup` / `selectedcontent` paths, and the remaining bind-sensitive attribute validations tracked in `specs/bind-directives.md`
 
-### Deferred
-
 - `[ ]` Event attribute validation specifics
-  Tracked in `specs/events.md`
-- `[ ]` Binding-driven attribute diagnostics such as `attribute_invalid_type`, `attribute_invalid_multiple`, and contenteditable checks
-  Tracked in `specs/bind-directives.md`
-- `[ ]` A11y-only attribute warnings beyond structural parity
-  Tracked under diagnostics work rather than this spec
+- `[ ]` Binding-driven attribute diagnostics (`attribute_invalid_type`, `attribute_invalid_multiple`, contenteditable)
+- `[ ]` A11y attribute warnings
 
 ## Reference
 

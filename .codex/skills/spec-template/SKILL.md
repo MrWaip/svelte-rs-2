@@ -31,6 +31,8 @@ For roadmap-tier work, use `<tier-id>-<short-name>.md`.
 
 ## Use cases
 
+## Out of scope
+
 ## Reference
 
 ## Tasks
@@ -50,7 +52,8 @@ Put `Current state` first. It is the session handoff section.
 - `[ ]` means in scope and not done
 - `[x]` means implemented and covered by test
 - `[~]` means partial
-- `Deferred` inside `Use cases` means not in current scope; list each deferred case as its own unchecked checkbox so it stays visible in the feature-local checklist
+- Use cases: flat list of checkboxes only — no `###` subsections
+- Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
 
 ## Effort markers
 

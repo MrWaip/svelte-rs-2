@@ -1,9 +1,9 @@
 # Element
 
 ## Current state
-- **Working**: 9/13 use cases covered (added textarea child-content lowering and option synthetic __value)
+- **Working**: 9/16 use cases
 - **Partial**: template validation — `element_invalid_self_closing_tag` warning and `textarea_invalid_content` error now emitted
-- **Missing**: customizable select subtree, autofocus already done; node_invalid_placement, slot_attribute_invalid_placement, component_name_lowercase diagnostics still absent
+- **Missing**: 7 — customizable select, namespace edge cases, legacy slots, A11y, CSS-scoped metadata, remaining diagnostics
 - **Next**: port remaining validation diagnostics (node_invalid_placement, slot_attribute_invalid_placement), then customizable select
 - Last updated: 2026-04-02
 
@@ -66,14 +66,9 @@
 - `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching
   Current coverage proves common cases only
 
-### Deferred
-
 - `[ ]` Legacy `<slot>` semantics and slot elements
-  Tracked in `specs/legacy-component-tags.md`
 - `[ ]` A11y warnings for regular elements
-  Tracked under diagnostics roadmap work, not this spec
 - `[ ]` CSS-scoped element metadata and pruning
-  Tracked in `specs/css-pipeline.md`
 
 ## Reference
 

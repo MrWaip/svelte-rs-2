@@ -69,9 +69,9 @@ Produce a structured list grouped by category. Number every case. Mark which are
 If more than 10 use cases exist, present them to the user in batches and get explicit selection before proceeding. After selection, record:
 
 - selected for porting
-- deferred in spec
+- not selected
 
-Add each deferred case as its own unchecked checkbox in the spec `Use cases` deferred subsection. If there is no corresponding spec, report that explicitly instead of recording it elsewhere.
+Add each non-selected case as an unchecked checkbox in the spec's Use cases section. If there is no corresponding spec, report that explicitly instead of recording it elsewhere.
 
 ### Step 3: Implementation Plan
 
@@ -176,7 +176,7 @@ Update tracking:
 
 - update `specs/<feature>.md`
 - move completed feature to `Done` in `ROADMAP.md` when appropriate
-- add newly discovered deferred items to the spec as unchecked checkboxes
+- add newly discovered items to the spec Use cases as unchecked checkboxes
 
 Benchmark only when the feature adds new syntax or other benchmark-relevant constructs.
 

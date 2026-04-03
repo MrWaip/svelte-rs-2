@@ -1,9 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 13/14 use cases — all basic snippets plus full parameter destructuring (object, array, defaults, rest, mixed)
-- **Missing**: use case 14 — `snippet_parameter_assignment` validation (Tier 5b, deferred)
-- **Next**: Tier 5 diagnostics or mark feature complete
+- **Working**: 13/19 use cases — all basic snippets plus full parameter destructuring (object, array, defaults, rest, mixed)
+- **Missing**: 6 — parameter assignment validation, nested destructuring (2), rest/shadowing/export validation (3)
+- **Next**: nested destructuring or Tier 5 diagnostics
 - Last updated: 2026-04-02
 
 ## Source
@@ -11,7 +11,6 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 
 ## Use cases
 
-### Basic structure
 1. [x] No parameters: `{#snippet foo()}` → `($$anchor) => { ... }` (test: snippet_basic)
 2. [x] Simple identifier params: `{#snippet foo(a, b)}` → `($$anchor, a = $.noop, b = $.noop) => { ... }` (test: snippet_basic)
 3. [x] Hoisted snippet (top-level, no instance refs) → module-level declaration (test: snippet_basic)
@@ -19,25 +18,18 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 5. [x] Nested snippet (inside block/element) → local declaration (test: boundary_const_in_snippet)
 6. [x] Snippet as component prop → passed as named prop (test: component_snippet_prop)
 7. [x] Dev mode: `$.wrap_snippet(Name, function(...) { $.validate_snippet_args(...arguments); ... })` (test: tag_snippet_dev)
-
-### Parameter destructuring
 8. [x] Object destructuring: `{#snippet foo({ x, y })}` → `$$arg0` param + `let x = () => $$arg0?.().x` (test: snippet_object_destructure)
 9. [x] Object destructuring with defaults: `{#snippet foo({ x = 5 })}` → `$.derived_safe_equal(() => $.fallback(...))` (test: snippet_object_destructure)
 10. [x] Object rest: `{#snippet foo({ x, ...rest })}` → `$.exclude_from_object($$arg0?.(), ['x'])` (test: snippet_object_destructure)
 11. [x] Array destructuring: `{#snippet foo([a, b])}` → `$.to_array($$arg0?.(), 2)` + derived intermediary (test: snippet_array_destructure)
 12. [x] Array destructuring with rest: `{#snippet foo([a, ...rest])}` → `$.get($$array).slice(1)` (test: snippet_array_destructure)
 13. [x] Mixed params: `{#snippet foo(a, { x }, [b])}` → identifier + object + array in one signature (test: snippet_mixed_params)
-
-### Validation (Tier 5)
-14. [ ] `snippet_parameter_assignment` — error on assignment to snippet param (deferred to Tier 5b)
-
-### Deferred
+14. [ ] `snippet_parameter_assignment` — error on assignment to snippet param (Tier 5b)
 - [ ] Nested object destructuring in snippet params: `{#snippet foo({ a: { b } })}` (silently skipped, binding lost — codegen produces wrong output)
 - [ ] Nested array destructuring in snippet params: `{#snippet foo({ a: [x, y] })}` (same)
-- SSR snippet codegen
-- `snippet_invalid_rest_parameter` validation (rest params in snippet are an error in reference)
-- `snippet_shadowing_prop` / `snippet_conflict` validation (Tier 5)
-- `snippet_invalid_export` validation (Tier 5)
+- [ ] `snippet_invalid_rest_parameter` validation (rest params in snippet are an error in reference)
+- [ ] `snippet_shadowing_prop` / `snippet_conflict` validation
+- [ ] `snippet_invalid_export` validation
 
 ## Reference
 

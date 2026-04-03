@@ -2,8 +2,8 @@
 
 ## Current state
 - **Working**: 11/12 component-tag use cases
-- **Missing**: component-specific diagnostics/validation (deferred to Tier 5)
-- **Next**: feature complete for codegen. Diagnostics deferred.
+- **Missing**: component-specific diagnostics/validation (Tier 5)
+- **Next**: implement component-specific diagnostics
 - Last updated: 2026-04-03
 
 ## Source
