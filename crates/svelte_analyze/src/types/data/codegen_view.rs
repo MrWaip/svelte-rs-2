@@ -236,6 +236,12 @@ impl<'a> CodegenView<'a> {
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.data.element_flags.option_synthetic_value_expr(id)
     }
+    pub fn is_customizable_select(&self, id: NodeId) -> bool {
+        self.data.element_flags.is_customizable_select(id)
+    }
+    pub fn is_selectedcontent(&self, id: NodeId) -> bool {
+        self.data.element_flags.is_selectedcontent(id)
+    }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.data.render_tag_plan(id)
     }

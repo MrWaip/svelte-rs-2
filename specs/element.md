@@ -1,11 +1,11 @@
 # Element
 
 ## Current state
-- **Working**: 9/16 use cases
-- **Partial**: template validation — `element_invalid_self_closing_tag` warning and `textarea_invalid_content` error now emitted
-- **Missing**: 7 — customizable select, namespace edge cases, legacy slots, A11y, CSS-scoped metadata, remaining diagnostics
-- **Next**: port remaining validation diagnostics (node_invalid_placement, slot_attribute_invalid_placement), then customizable select
-- Last updated: 2026-04-02
+- **Working**: 12/16 use cases
+- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively)
+- **Missing**: 4 — namespace edge cases, legacy slots, A11y, CSS-scoped metadata
+- **Next**: legacy slots or A11y
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -52,15 +52,16 @@
   Existing tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`
 - `[~]` Regular-element directives and advanced attribute paths work, but coverage/spec ownership lives elsewhere
   See: `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
-- `[~]` Template validation for regular elements and element attributes
-  Working: `element_invalid_self_closing_tag` warning, `textarea_invalid_content` error now emitted from `ElementFlagsVisitor`.
-  Missing: `node_invalid_placement`, `slot_attribute_invalid_placement`, `component_name_lowercase`
+- `[x]` Template validation for regular elements and element attributes
+  Working: `element_invalid_self_closing_tag`, `textarea_invalid_content`, `slot_attribute_invalid_placement`.
+  Skipped (out of scope): `node_invalid_placement` (requires HTML content model table), `component_name_lowercase` (requires symbol ref-count access).
 - `[x]` `<textarea>` child-content lowering to a synthetic `value` attribute
   Implemented: `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (no constant folding). Test: `textarea_child_value_dynamic`.
 - `[x]` `<option>{expr}</option>` synthetic value handling
   Implemented: `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent. Test: `option_expr_child_value`.
-- `[ ]` Customizable select subtree handling
-  Missing behavior: `select` / `option` / `optgroup` rich-content paths and `<selectedcontent>` handling
+- `[x]` Customizable select subtree handling
+  Implemented: `is_customizable_select` flag in ElementFlags; `element_needs_var` updated; codegen emits `$.customizable_select(el, callback)` with separate hoisted template. `<selectedcontent>` emits `$.selectedcontent(el, setter)`.
+  Tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`.
 - `[x]` `autofocus` helper path on regular elements
   Implemented: `$.autofocus(el, expr)` emitted from `attributes.rs`. Test: `element_autofocus`.
 - `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching

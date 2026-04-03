@@ -2,3 +2,5 @@ interface:
   display_name: "QA"
   short_description: "Review diffs against project rules"
   default_prompt: "Use $qa to review the current diff against project rules and report PASS or FAIL."
+policy:
+  allow_implicit_invocation: false

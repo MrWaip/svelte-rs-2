@@ -104,6 +104,10 @@ pub struct ElementFlags {
     pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
     /// Component references that require `$.component()` wrapping (dotted names, non-normal bindings).
     pub(crate) is_dynamic_component: NodeBitSet,
+    /// `<select>`, `<optgroup>`, `<option>` elements with rich DOM content requiring `$.customizable_select`.
+    pub(crate) customizable_select: NodeBitSet,
+    /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
+    pub(crate) is_selectedcontent: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -129,6 +133,8 @@ impl ElementFlags {
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
             is_dynamic_component: NodeBitSet::new(node_count),
+            customizable_select: NodeBitSet::new(node_count),
+            is_selectedcontent: NodeBitSet::new(node_count),
         }
     }
 
@@ -207,5 +213,11 @@ impl ElementFlags {
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
         self.is_dynamic_component.contains(&id)
+    }
+    pub fn is_customizable_select(&self, id: NodeId) -> bool {
+        self.customizable_select.contains(&id)
+    }
+    pub fn is_selectedcontent(&self, id: NodeId) -> bool {
+        self.is_selectedcontent.contains(&id)
     }
 }
