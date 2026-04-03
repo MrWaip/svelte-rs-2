@@ -169,10 +169,9 @@ pub(crate) fn gen_component<'a>(
                         // set value($$value) { $.store_set(count, $$value); }
                         let base_name = &store_ref[1..]; // strip '$' prefix
                         let base_id: &str = ctx.b.alloc_str(base_name);
-                        let set_body = ctx.b.call_expr(
-                            "$.store_set",
-                            [Arg::Ident(base_id), Arg::Ident("$$value")],
-                        );
+                        let set_body = ctx
+                            .b
+                            .call_expr("$.store_set", [Arg::Ident(base_id), Arg::Ident("$$value")]);
                         items.push(PropOrSpread::Prop(ObjProp::Setter(
                             key,
                             "$$value",
@@ -337,9 +336,10 @@ pub(crate) fn gen_component<'a>(
         let intermediate_ref = ctx.b.alloc_str(&intermediate);
 
         // Inner call: registry_Widget($$anchor, props)
-        let inner_call =
-            ctx.b
-                .call_expr(intermediate_ref, [Arg::Ident("$$anchor"), Arg::Expr(props_expr)]);
+        let inner_call = ctx.b.call_expr(
+            intermediate_ref,
+            [Arg::Ident("$$anchor"), Arg::Expr(props_expr)],
+        );
 
         let inner_final = if let Some(bind_id) = bind_this_info {
             build_bind_this_call(ctx, id, bind_id, inner_call)
@@ -351,10 +351,9 @@ pub(crate) fn gen_component<'a>(
         inner_body.extend(memo_stmts);
         inner_body.push(ctx.b.expr_stmt(inner_final));
 
-        let inner_arrow = ctx.b.arrow_block_expr(
-            ctx.b.params(["$$anchor", intermediate_ref]),
-            inner_body,
-        );
+        let inner_arrow = ctx
+            .b
+            .arrow_block_expr(ctx.b.params(["$$anchor", intermediate_ref]), inner_body);
 
         // Thunk: () => registry.Widget — build as member expression chain
         let component_ref = build_dotted_member_expr(ctx, name);
@@ -601,7 +600,9 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
 /// Produces `registry.Widget` as `StaticMemberExpression(Identifier("registry"), "Widget")`.
 fn build_dotted_member_expr<'a>(ctx: &Ctx<'a>, dotted_name: &str) -> Expression<'a> {
     let mut parts = dotted_name.split('.');
-    let first = parts.next().expect("dotted name must have at least one part");
+    let first = parts
+        .next()
+        .expect("dotted name must have at least one part");
     let mut expr = ctx.b.rid_expr(first);
     for part in parts {
         expr = ctx.b.static_member_expr(expr, part);

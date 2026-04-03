@@ -199,7 +199,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     let expr_text = if b.shorthand {
                         None
                     } else {
-                        b.expression_span.map(|span| self.source_text(span).to_string())
+                        b.expression_span
+                            .map(|span| self.source_text(span).to_string())
                     };
 
                     let is_store = expr_text
@@ -221,8 +222,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                             .map(|sym| {
                                 if data.scoping.is_prop_source(sym) {
                                     ComponentBindMode::PropSource
-                                } else if data.scoping.is_rune(sym)
-                                    && data.scoping.is_mutated(sym)
+                                } else if data.scoping.is_rune(sym) && data.scoping.is_mutated(sym)
                                 {
                                     ComponentBindMode::Rune
                                 } else {

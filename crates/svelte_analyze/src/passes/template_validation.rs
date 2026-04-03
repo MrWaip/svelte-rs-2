@@ -108,13 +108,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
     // event_directive_deprecated, mixed_event_handler_syntaxes
-    fn visit_on_directive_legacy(
-        &mut self,
-        dir: &OnDirectiveLegacy,
-        ctx: &mut VisitContext<'_>,
-    ) {
-        let is_component =
-            ctx.parent().is_some_and(|p| p.kind == ParentKind::ComponentNode);
+    fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {
+        let is_component = ctx
+            .parent()
+            .is_some_and(|p| p.kind == ParentKind::ComponentNode);
 
         if !is_component {
             // Invalid modifier check
@@ -145,7 +142,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // Runes-mode deprecation — all non-component on: directives
         if ctx.runes && !is_component {
             ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::EventDirectiveDeprecated { name: dir.name.clone() },
+                DiagnosticKind::EventDirectiveDeprecated {
+                    name: dir.name.clone(),
+                },
                 dir.name_span,
             ));
         }
@@ -209,7 +208,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
             let start = block.span.start as usize;
             if ctx.source.as_bytes().get(start + 1) != Some(&b'#') {
                 ctx.warnings_mut().push(Diagnostic::error(
-                    DiagnosticKind::BlockUnexpectedCharacter { character: "#".to_string() },
+                    DiagnosticKind::BlockUnexpectedCharacter {
+                        character: "#".to_string(),
+                    },
                     Span::new(block.span.start, block.span.start + 5),
                 ));
             }
@@ -338,10 +339,8 @@ fn check_empty_fragment(fragment: &Fragment, ctx: &mut VisitContext<'_>) {
         let node_id = fragment.nodes[0];
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::BlockEmpty,
-                    text.span,
-                ));
+                ctx.warnings_mut()
+                    .push(Diagnostic::warning(DiagnosticKind::BlockEmpty, text.span));
             }
         }
     }

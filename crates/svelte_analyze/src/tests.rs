@@ -1417,6 +1417,54 @@ let x = $derived.by(fn1, fn2);
 }
 
 #[test]
+fn validate_derived_rune_invalid_usage_in_non_runes_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<script>
+let count = 1;
+let doubled = $derived(count * 2);
+</script>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_has_error(&diags, "rune_invalid_usage");
+}
+
+#[test]
+fn validate_derived_destructured_rune_invalid_usage_in_non_runes_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<script>
+let source = { value: 1 };
+let { value } = $derived(source);
+</script>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_has_error(&diags, "rune_invalid_usage");
+}
+
+#[test]
+fn validate_derived_rune_allowed_in_runes_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<script>
+let count = $state(0);
+let doubled = $derived(count * 2);
+</script>"#,
+        AnalyzeOptions {
+            runes: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "rune_invalid_usage"),
+        "unexpected rune_invalid_usage: {diags:?}"
+    );
+}
+
+#[test]
 fn validate_derived_invalid_export() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2371,9 +2419,8 @@ const props = $props();
 
 #[test]
 fn on_directive_invalid_modifier() {
-    let diags = analyze_with_diags(
-        "<script>function f(){}</script><div on:click|invalid={f}></div>",
-    );
+    let diags =
+        analyze_with_diags("<script>function f(){}</script><div on:click|invalid={f}></div>");
     assert_has_error(&diags, "event_handler_invalid_modifier");
 }
 

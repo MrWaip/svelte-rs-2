@@ -328,6 +328,9 @@ pub fn generate<'a>(
     if ctx.state.experimental_async {
         program_body.push(b.bare_import("svelte/internal/flags/async"));
     }
+    if !ctx.query.runes() {
+        program_body.push(b.bare_import("svelte/internal/flags/legacy"));
+    }
     if has_tracing || ctx.state.has_tracing {
         program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }

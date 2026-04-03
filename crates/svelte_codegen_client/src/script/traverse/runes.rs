@@ -3,6 +3,7 @@ use oxc_traverse::{Ancestor, TraverseCtx};
 use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
+use crate::script::AsyncDerivedMode;
 
 use super::super::{PropKind, ScriptTransformer};
 
@@ -42,7 +43,13 @@ impl<'a> ScriptTransformer<'_, 'a> {
                                     matches!(e, oxc_ast::ast::Expression::AwaitExpression(_))
                                 });
                             if is_async_init {
-                                self.async_derived_pending.insert(sym_id);
+                                let mode =
+                                    if self.strip_exports && self.function_info_stack.len() > 1 {
+                                        AsyncDerivedMode::Save
+                                    } else {
+                                        AsyncDerivedMode::Await
+                                    };
+                                self.async_derived_pending.insert(sym_id, mode);
                             }
                         }
                     }

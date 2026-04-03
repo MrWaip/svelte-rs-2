@@ -2,14 +2,16 @@
 
 ## Current state
 
-**Updated: 2026-04-01**
+**Updated: 2026-04-03**
 
-Core `$derived` and `$derived.by` are fully implemented for simple identifier bindings (sync and async), class fields, nested functions, and dev mode. 21 existing tests all pass.
+Core `$derived` and `$derived.by` are now fully implemented for simple identifier bindings (sync and async), destructuring, class fields, nested functions, dev mode, nested async save-path lowering, and non-runes invalid-usage validation.
 
-**Gaps found:**
-1. `$.save()` for nested async derived (`function_depth > 1`) — unknown, no test
+**Done this session:**
+1. Added compiler coverage for nested async `$derived(await ...)` and nested async destructured `$derived(await ...)`, matching the reference compiler's `$.save(...)` path for `function_depth > 1`
+2. Wired `config.json.runes` through the compiler test harness and added a passing compiler diagnostic case for non-runes `$derived` invalid usage
+3. Added analyzer coverage for `rune_invalid_usage` in both simple and destructured non-runes forms, confirmed the diagnostic stays gated off in runes mode, and kept compiler coverage for the `$derived` non-runes diagnostic path
 
-**Next:** investigate async nested derived save path and add focused parity tests.
+**Next:** feature complete for the current `$derived` / `$derived.by` scope
 
 ## Source
 
@@ -35,8 +37,8 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - [x] Sync destructured `$derived.by(fn)` (intermediate `$$d` var)
 - [x] `derived_invalid_export` diagnostic when `export`ing derived binding
 - [x] `state_referenced_locally` warning for derived bindings read at same function depth
-- [ ] `$.save()` for nested async derived (`function_depth > 1`)
-- [ ] `rune_invalid_usage` in non-runes mode
+- [x] `$.save()` for nested async derived (`function_depth > 1`)
+- [x] `rune_invalid_usage` in non-runes mode
 
 ## Reference
 
@@ -90,6 +92,12 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - `async_derived_basic`, `async_derived_destructured`
 - `async_derived_dev`, `async_derived_dev_ignored`, `async_derived_dev_ignored_destructured`
 - `async_const_derived_chain`
+- `async_derived_nested_function`
+- `async_derived_nested_function_destructured`
+- `derived_non_runes_invalid_usage`
+- `validate_derived_rune_invalid_usage_in_non_runes_mode`
+- `validate_derived_destructured_rune_invalid_usage_in_non_runes_mode`
+- `validate_derived_rune_allowed_in_runes_mode`
 
 ### Planned
 - `derived_destructured_object` — sync destructured `$derived` with object pattern
@@ -102,3 +110,7 @@ ROADMAP.md — `$derived` rune (core reactivity)
 - `derived_destructured_by`
 - `derived_invalid_export` analyzer diagnostic
 - `state_referenced_locally` warning for derived bindings
+- `async_derived_nested_function`
+- `async_derived_nested_function_destructured`
+- `derived_non_runes_invalid_usage`
+- `rune_invalid_usage` analyzer validation in non-runes mode

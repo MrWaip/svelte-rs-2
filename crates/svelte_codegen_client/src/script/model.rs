@@ -56,6 +56,12 @@ pub(super) struct FunctionInfo {
     pub(super) in_constructor: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum AsyncDerivedMode {
+    Await,
+    Save,
+}
+
 pub(super) struct ClassStateField {
     pub(super) public_name: Option<String>,
     pub(super) private_name: String,
@@ -77,8 +83,9 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) props_gen: Option<PropsGenInfo>,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
-    /// Used by `wrap_derived_thunks` to determine async thunk form after dev transforms run.
-    pub(super) async_derived_pending: FxHashSet<oxc_semantic::SymbolId>,
+    /// Used by `wrap_derived_thunks` to determine async thunk form and outer wrapping
+    /// after dev transforms run.
+    pub(super) async_derived_pending: FxHashMap<oxc_semantic::SymbolId, AsyncDerivedMode>,
     pub(super) strip_exports: bool,
     pub(super) dev: bool,
     pub(super) is_ts: bool,

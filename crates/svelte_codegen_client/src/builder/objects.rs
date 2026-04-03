@@ -98,9 +98,9 @@ impl<'a> Builder<'a> {
                 for s in stmts {
                     body_stmts.push(s);
                 }
-                let body =
-                    self.ast
-                        .alloc_function_body(SPAN, self.ast.vec(), body_stmts);
+                let body = self
+                    .ast
+                    .alloc_function_body(SPAN, self.ast.vec(), body_stmts);
                 let getter = self.ast.function(
                     SPAN,
                     FunctionType::FunctionExpression,

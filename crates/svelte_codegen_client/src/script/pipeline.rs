@@ -214,7 +214,7 @@ fn run_transform<'a>(
         scoping,
         props_gen,
         derived_pending: rustc_hash::FxHashSet::default(),
-        async_derived_pending: rustc_hash::FxHashSet::default(),
+        async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports,
         dev,
         is_ts,
@@ -242,13 +242,13 @@ fn run_transform<'a>(
             component_source,
             script_content_start,
             filename,
-            async_derived_pending: transformer.async_derived_pending,
             ignore_data: transformer.ignore_data,
         });
         super::traverse::wrap_derived_thunks(
             &b,
             &mut program,
             &transformer.derived_pending,
+            &transformer.async_derived_pending,
             dev_ctx.as_ref(),
         );
     }

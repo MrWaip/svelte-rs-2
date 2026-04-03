@@ -94,6 +94,7 @@ pub fn analyze_with_options<'a>(
     let source = &component.source;
 
     let mut data = AnalysisData::new_empty(component.node_count());
+    data.runes = options.runes;
     data.custom_element = options.custom_element;
     let execution_order = passes::resolve_default_execution_order()
         .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));
@@ -121,9 +122,13 @@ pub fn analyze_with_options<'a>(
                 data.scoping = ComponentScoping::new(script_scoping);
             }
             passes::PassKey::MarkRunes => {
-                passes::mark_runes::mark_script_runes(&mut data);
+                if runes {
+                    passes::mark_runes::mark_script_runes(&mut data);
+                    if let Some(program) = &parsed.program {
+                        passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
+                    }
+                }
                 if let Some(program) = &parsed.program {
-                    passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
                     if options.dev {
                         data.ignore_data.scan_program_comments(program, runes);
                     }
@@ -201,7 +206,9 @@ pub fn analyze_with_options<'a>(
             }
             passes::PassKey::JsAnalyzePostTemplate => {
                 passes::js_analyze::calculate_instance_blockers(&parsed, &mut data);
-                passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
+                if runes {
+                    passes::js_analyze::collect_script_rune_call_kinds(&parsed, &mut data);
+                }
                 passes::js_analyze::classify_pickled_awaits(&parsed, &mut data);
             }
             passes::PassKey::ClassifyNeedsContext => {
@@ -318,7 +325,7 @@ pub fn analyze_with_options<'a>(
                 );
             }
             passes::PassKey::Validate => {
-                validate::validate(&data, &parsed, &mut diags);
+                validate::validate(&data, &parsed, runes, &mut diags);
             }
         }
     }
@@ -353,7 +360,7 @@ pub fn analyze_module(
             let script_info = utils::script_info::extract_script_info(&program, 0, source);
             data.script = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
-            validate::validate_program(&data, &program, 0, &mut diags);
+            validate::validate_program(&data, &program, 0, true, &mut diags);
         }
         Err(errs) => diags.extend(errs),
     }
