@@ -7,7 +7,8 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_expression_statement, walk_function, walk_method_definition, walk_property_definition,
+    walk_expression_statement, walk_function, walk_member_expression, walk_method_definition,
+    walk_property_definition,
 };
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
@@ -730,29 +731,27 @@ struct RestPropAccessValidator<'a, 'b> {
 
 impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-        let MemberExpression::StaticMemberExpression(member) = expr else {
-            return;
-        };
-        let Expression::Identifier(obj) = &member.object else {
-            return;
-        };
-        if !member.property.name.starts_with("$$") {
-            return;
+        if let MemberExpression::StaticMemberExpression(member) = expr {
+            if let Expression::Identifier(obj) = &member.object {
+                if member.property.name.starts_with("$$") {
+                    if let Some(sym_id) = obj
+                        .reference_id
+                        .get()
+                        .and_then(|r| self.data.scoping.get_reference(r).symbol_id())
+                    {
+                        if self.data.scoping.is_rest_prop(sym_id) {
+                            self.diags.push(Diagnostic::error(
+                                DiagnosticKind::PropsIllegalName,
+                                Span::new(
+                                    member.property.span.start + self.offset,
+                                    member.property.span.end + self.offset,
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
         }
-        let Some(ref_id) = obj.reference_id.get() else {
-            return;
-        };
-        let Some(sym_id) = self.data.scoping.get_reference(ref_id).symbol_id() else {
-            return;
-        };
-        if self.data.scoping.is_rest_prop(sym_id) {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::PropsIllegalName,
-                Span::new(
-                    member.property.span.start + self.offset,
-                    member.property.span.end + self.offset,
-                ),
-            ));
-        }
+        walk_member_expression(self, expr);
     }
 }

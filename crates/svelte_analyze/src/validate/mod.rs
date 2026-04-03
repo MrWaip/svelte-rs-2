@@ -62,7 +62,7 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
                 .find(|d| d.is_rune == Some(RuneKind::Props))
                 .map(|d| d.span)
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| panic!("data.props exists but no $props() declaration in script info"));
 
     diags.push(Diagnostic::warning(
         DiagnosticKind::CustomElementPropsIdentifier,

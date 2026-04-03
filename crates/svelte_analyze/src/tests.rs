@@ -1307,6 +1307,15 @@ fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     );
 }
 
+fn assert_no_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
+        "unexpected warning '{code}': {diags:?}"
+    );
+}
+
 fn assert_no_errors(diags: &[svelte_diagnostics::Diagnostic]) {
     let errors: Vec<_> = diags
         .iter()
@@ -2318,11 +2327,7 @@ let { x, y } = $props();
             ..Default::default()
         },
     );
-    let ce_warns: Vec<_> = diags
-        .iter()
-        .filter(|d| d.kind.code() == "custom_element_props_identifier")
-        .collect();
-    assert!(ce_warns.is_empty(), "unexpected warning: {ce_warns:?}");
+    assert_no_warning(&diags, "custom_element_props_identifier");
 }
 
 #[test]
@@ -2338,9 +2343,5 @@ const props = $props();
             ..Default::default()
         },
     );
-    let ce_warns: Vec<_> = diags
-        .iter()
-        .filter(|d| d.kind.code() == "custom_element_props_identifier")
-        .collect();
-    assert!(ce_warns.is_empty(), "unexpected warning: {ce_warns:?}");
+    assert_no_warning(&diags, "custom_element_props_identifier");
 }
