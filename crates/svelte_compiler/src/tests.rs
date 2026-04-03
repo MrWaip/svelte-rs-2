@@ -119,3 +119,42 @@ fn compile_const_tag_invalid_expression() {
         result.diagnostics
     );
 }
+
+#[test]
+fn compile_props_id_invalid_placement() {
+    let result = compile(
+        r#"<script>
+function setup() {
+    const id = $props.id();
+}
+</script>"#,
+        &CompileOptions::default(),
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "props_id_invalid_placement"),
+        "expected props_id_invalid_placement, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn compile_props_id_duplicate_with_props() {
+    let result = compile(
+        r#"<script>
+let { a } = $props();
+const id = $props.id();
+</script>"#,
+        &CompileOptions::default(),
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "props_duplicate"),
+        "expected props_duplicate, got: {:?}",
+        result.diagnostics
+    );
+}

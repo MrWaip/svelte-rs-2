@@ -1,11 +1,8 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 10/15 use cases covered with passing compiler tests (added `props_renamed`, `props_renamed_bindable`)
-- **Partial**: 1/15 — `$props.id()` basic lowering works but placement/duplicate validation not yet focused-tested in compiler
-- **Validation complete**: `$bindable` placement/arity, `$props` placement/duplicate/arity, `$props.id` placement/duplicate/arity, props pattern validation, `props_illegal_name` MemberExpression check on rest_prop bindings, `custom_element_props_identifier` warning
-- **Remaining**: focused compiler case for `$props.id()` validation edge cases
-- **Next**: only `$props.id()` focused compiler cases remain; consider feature complete for current scope
+- **Complete** — all 15/15 use cases implemented and covered by tests
+- **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
 - Last updated: 2026-04-03
 
 ## Source
@@ -36,7 +33,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] Renamed/aliased props (`props_renamed`): `let { foo: local = 'default' } = $props()` uses prop key in `$.prop()` call
 - [x] Renamed + bindable props (`props_renamed_bindable`): `let { value: local = $bindable('fallback') } = $props()`
 - [x] `$props.id()` basic lowering (`props_id_basic`, `props_id_with_props`)
-- [~] `$props.id()` basic lowering works, but analyze still lacks focused placement/duplicate parity with reference `$props()` validation
+- [x] `$props.id()` validation edge cases covered by compiler-level pipeline tests
 - [x] `$bindable()` validation: `bindable_invalid_location` and argument-count checks
 - [x] `$props()` validation: `props_invalid_placement`, `props_duplicate`, and rune argument-count checks
 - [x] `$props.id()` validation: `props_id_invalid_placement`, duplicate detection with `$props()`, zero-argument enforcement
