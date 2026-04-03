@@ -274,6 +274,21 @@ impl<'a> Scanner<'a> {
             ));
         }
 
+        // Consume dotted component name segments: <registry.Widget />
+        while self.peek() == Some('.') {
+            let dot_pos = self.current;
+            self.advance(); // consume '.'
+            let seg_start = self.current;
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+                self.advance();
+            }
+            if self.current == seg_start {
+                // No identifier after dot — revert
+                self.current = dot_pos;
+                break;
+            }
+        }
+
         // Handle `svelte:*` special element names (e.g., svelte:options, svelte:head)
         if name == "svelte" && self.peek() == Some(':') {
             self.advance(); // consume ':'
@@ -731,6 +746,20 @@ impl<'a> Scanner<'a> {
             return Err(Diagnostic::invalid_tag_name(
                 self.span(name_start, self.current),
             ));
+        }
+
+        // Consume dotted component name segments: </registry.Widget>
+        while self.peek() == Some('.') {
+            let dot_pos = self.current;
+            self.advance();
+            let seg_start = self.current;
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+                self.advance();
+            }
+            if self.current == seg_start {
+                self.current = dot_pos;
+                break;
+            }
         }
 
         // Handle `svelte:*` special element names

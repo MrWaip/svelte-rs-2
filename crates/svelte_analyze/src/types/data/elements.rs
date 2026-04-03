@@ -53,6 +53,13 @@ pub enum ComponentPropKind {
     Attach {
         attr_id: NodeId,
     },
+    /// LEGACY(svelte4): `on:event` directive on component tags → `$$events`.
+    Event {
+        name: String,
+        attr_id: NodeId,
+        has_expression: bool,
+        has_once_modifier: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -95,6 +102,8 @@ pub struct ElementFlags {
     /// `<option>` with a single ExpressionTag child and no explicit `value` attribute.
     /// Maps option element NodeId → ExpressionTag NodeId for `__value` synthesis.
     pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
+    /// Component references that require `$.component()` wrapping (dotted names, non-normal bindings).
+    pub(crate) is_dynamic_component: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -119,6 +128,7 @@ impl ElementFlags {
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
+            is_dynamic_component: NodeBitSet::new(node_count),
         }
     }
 
@@ -194,5 +204,8 @@ impl ElementFlags {
     }
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.option_synthetic_value_expr.get(id).copied()
+    }
+    pub fn is_dynamic_component(&self, id: NodeId) -> bool {
+        self.is_dynamic_component.contains(&id)
     }
 }

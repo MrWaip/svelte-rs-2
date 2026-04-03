@@ -378,7 +378,6 @@ fn component_children() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn component_events() {
     assert_compiler("component_events");
 }
@@ -389,7 +388,6 @@ fn component_element_children() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn component_named_slot() {
     assert_compiler("component_named_slot");
 }
@@ -1405,7 +1403,6 @@ fn component_prop_has_call_mixed() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn component_dynamic_dotted() {
     assert_compiler("component_dynamic_dotted");
 }

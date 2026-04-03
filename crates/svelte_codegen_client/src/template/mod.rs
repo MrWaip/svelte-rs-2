@@ -487,7 +487,7 @@ fn emit_single_block<'a>(
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
             return;
         }
-        FragmentItem::ComponentNode(id) => {
+        FragmentItem::ComponentNode(id) if !ctx.is_dynamic_component(*id) => {
             if !is_root {
                 ctx.gen_ident("fragment");
             }
@@ -537,6 +537,9 @@ fn emit_single_block<'a>(
         }
         FragmentItem::RenderTag(id) => {
             gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
+        }
+        FragmentItem::ComponentNode(id) => {
+            gen_component(ctx, *id, ctx.b.rid_expr(&node), body);
         }
         _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }

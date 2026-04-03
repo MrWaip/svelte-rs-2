@@ -5,6 +5,9 @@ pub enum FragmentKey {
     Root,
     Element(NodeId),
     ComponentNode(NodeId),
+    /// Named slot within a component: (component_id, slot_element_id).
+    /// The slot name is recovered from the element's `slot="..."` attribute at codegen time.
+    NamedSlot(NodeId, NodeId),
     IfConsequent(NodeId),
     IfAlternate(NodeId),
     EachBody(NodeId),
@@ -32,6 +35,7 @@ impl FragmentKey {
                 | Self::EachFallback(_)
                 | Self::SnippetBody(_)
                 | Self::ComponentNode(_)
+                | Self::NamedSlot(_, _)
                 | Self::SvelteBoundaryBody(_)
         )
     }
@@ -41,6 +45,7 @@ impl FragmentKey {
             Self::Root => None,
             Self::Element(id)
             | Self::ComponentNode(id)
+            | Self::NamedSlot(id, _)
             | Self::IfConsequent(id)
             | Self::IfAlternate(id)
             | Self::EachBody(id)

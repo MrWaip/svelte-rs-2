@@ -34,6 +34,8 @@ pub(crate) fn gen_component<'a>(
     let mut bind_this_info: Option<NodeId> = None;
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
+    // LEGACY(svelte4): on:directive events → $$events prop
+    let mut events: Vec<(String, NodeId, bool, bool)> = Vec::new(); // (name, attr_id, has_expr, once)
 
     for (kind, is_dynamic) in prop_infos {
         match kind {
@@ -202,7 +204,48 @@ pub(crate) fn gen_component<'a>(
                 let spread_expr = if is_dynamic { ctx.b.thunk(expr) } else { expr };
                 items.push(PropOrSpread::Spread(spread_expr));
             }
+            ComponentPropKind::Event {
+                name,
+                attr_id,
+                has_expression,
+                has_once_modifier,
+            } => {
+                events.push((name, attr_id, has_expression, has_once_modifier));
+                continue;
+            }
         }
+    }
+
+    // LEGACY(svelte4): emit $$events prop from collected on: directives
+    if !events.is_empty() {
+        let event_props: Vec<ObjProp<'a>> = events
+            .into_iter()
+            .filter_map(|(name, attr_id, has_expression, has_once_modifier)| {
+                let key = ctx.b.alloc_str(&name);
+                if !has_expression {
+                    // Bubble event (no handler expression) — skip, not supported on components
+                    return None;
+                }
+                let is_shorthand = ctx.is_expression_shorthand(attr_id);
+                if is_shorthand && !has_once_modifier {
+                    // Consume the parsed expression to keep side table clean
+                    let _ = get_attr_expr(ctx, attr_id);
+                    Some(ObjProp::Shorthand(key))
+                } else {
+                    let handler = get_attr_expr(ctx, attr_id);
+                    let handler = if has_once_modifier {
+                        ctx.b.call_expr("$.once", [Arg::Expr(handler)])
+                    } else {
+                        handler
+                    };
+                    Some(ObjProp::KeyValue(key, handler))
+                }
+            })
+            .collect();
+        items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+            "$$events",
+            ctx.b.object_expr(event_props),
+        )));
     }
 
     // Named snippets declared inside this component's fragment
@@ -251,6 +294,33 @@ pub(crate) fn gen_component<'a>(
         slot_entries.push(ObjProp::KeyValue("default", ctx.b.bool_expr(true)));
     }
 
+    // Named slots: children with slot="name" attribute
+    let named_slots: Vec<_> = ctx.component_named_slots(id).to_vec();
+    for (slot_el_id, frag_key) in named_slots {
+        let slot_ct = ctx.content_type(&frag_key);
+        if slot_ct == ContentStrategy::Empty {
+            continue;
+        }
+
+        // Recover slot name from the element's slot="..." attribute
+        let slot_name = slot_name_from_element(ctx, slot_el_id);
+
+        let needs_next = matches!(
+            slot_ct,
+            ContentStrategy::Static(_) | ContentStrategy::DynamicText
+        );
+        let mut slot_body = Vec::new();
+        if needs_next {
+            slot_body.push(ctx.b.call_stmt("$.next", []));
+        }
+        slot_body.extend(gen_fragment(ctx, frag_key));
+
+        let params = ctx.b.params(["$$anchor", "$$slotProps"]);
+        let arrow = ctx.b.arrow_expr(params, slot_body);
+        let key = ctx.b.alloc_str(&slot_name);
+        slot_entries.push(ObjProp::KeyValue(key, arrow));
+    }
+
     if !slot_entries.is_empty() {
         items.push(PropOrSpread::Prop(ObjProp::KeyValue(
             "$$slots",
@@ -259,26 +329,75 @@ pub(crate) fn gen_component<'a>(
     }
 
     let props_expr = build_props_expr(ctx, items);
-    let component_call = ctx
-        .b
-        .call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
+    let is_dynamic = ctx.is_dynamic_component(id);
 
-    let final_expr = if let Some(bind_id) = bind_this_info {
-        build_bind_this_call(ctx, id, bind_id, component_call)
-    } else {
-        component_call
-    };
+    if is_dynamic {
+        // $.component(anchor, () => registry.Widget, ($$anchor, registry_Widget) => { ... })
+        let intermediate = name.replace('.', "_");
+        let intermediate_ref = ctx.b.alloc_str(&intermediate);
 
-    let has_snippets = !snippet_decls.is_empty();
-    if has_snippets {
-        snippet_decls.extend(memo_stmts);
-        snippet_decls.push(ctx.b.expr_stmt(final_expr));
-        init.push(ctx.b.block_stmt(snippet_decls));
-    } else if memo_stmts.is_empty() {
-        init.push(ctx.b.expr_stmt(final_expr));
+        // Inner call: registry_Widget($$anchor, props)
+        let inner_call =
+            ctx.b
+                .call_expr(intermediate_ref, [Arg::Ident("$$anchor"), Arg::Expr(props_expr)]);
+
+        let inner_final = if let Some(bind_id) = bind_this_info {
+            build_bind_this_call(ctx, id, bind_id, inner_call)
+        } else {
+            inner_call
+        };
+
+        let mut inner_body = Vec::new();
+        inner_body.extend(memo_stmts);
+        inner_body.push(ctx.b.expr_stmt(inner_final));
+
+        let inner_arrow = ctx.b.arrow_block_expr(
+            ctx.b.params(["$$anchor", intermediate_ref]),
+            inner_body,
+        );
+
+        // Thunk: () => registry.Widget — build as member expression chain
+        let component_ref = build_dotted_member_expr(ctx, name);
+        let component_thunk = ctx.b.thunk(component_ref);
+
+        let component_call = ctx.b.call_expr(
+            "$.component",
+            [
+                Arg::Expr(anchor),
+                Arg::Expr(component_thunk),
+                Arg::Expr(inner_arrow),
+            ],
+        );
+
+        let has_snippets = !snippet_decls.is_empty();
+        if has_snippets {
+            snippet_decls.push(ctx.b.expr_stmt(component_call));
+            init.push(ctx.b.block_stmt(snippet_decls));
+        } else {
+            init.push(ctx.b.expr_stmt(component_call));
+        }
     } else {
-        memo_stmts.push(ctx.b.expr_stmt(final_expr));
-        init.push(ctx.b.block_stmt(memo_stmts));
+        let component_call = ctx
+            .b
+            .call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
+
+        let final_expr = if let Some(bind_id) = bind_this_info {
+            build_bind_this_call(ctx, id, bind_id, component_call)
+        } else {
+            component_call
+        };
+
+        let has_snippets = !snippet_decls.is_empty();
+        if has_snippets {
+            snippet_decls.extend(memo_stmts);
+            snippet_decls.push(ctx.b.expr_stmt(final_expr));
+            init.push(ctx.b.block_stmt(snippet_decls));
+        } else if memo_stmts.is_empty() {
+            init.push(ctx.b.expr_stmt(final_expr));
+        } else {
+            memo_stmts.push(ctx.b.expr_stmt(final_expr));
+            init.push(ctx.b.block_stmt(memo_stmts));
+        }
     }
 }
 
@@ -476,4 +595,29 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
     }
 
     ctx.b.call_expr("$.spread_props", args)
+}
+
+/// Build a member expression chain from a dotted name like `"registry.Widget"`.
+/// Produces `registry.Widget` as `StaticMemberExpression(Identifier("registry"), "Widget")`.
+fn build_dotted_member_expr<'a>(ctx: &Ctx<'a>, dotted_name: &str) -> Expression<'a> {
+    let mut parts = dotted_name.split('.');
+    let first = parts.next().expect("dotted name must have at least one part");
+    let mut expr = ctx.b.rid_expr(first);
+    for part in parts {
+        expr = ctx.b.static_member_expr(expr, part);
+    }
+    expr
+}
+
+/// Recover the slot name from an element's `slot="..."` attribute.
+fn slot_name_from_element(ctx: &Ctx<'_>, el_id: NodeId) -> String {
+    let el = ctx.element(el_id);
+    for attr in &el.attributes {
+        if let Attribute::StringAttribute(sa) = attr {
+            if sa.name == "slot" {
+                return ctx.query.component.source_text(sa.value_span).to_string();
+            }
+        }
+    }
+    unreachable!("named slot element must have slot attribute")
 }
