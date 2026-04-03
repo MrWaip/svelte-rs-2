@@ -1,10 +1,9 @@
 # `$inspect` / `$inspect.trace`
 
 ## Current state
-- **Working**: 5/9 use cases
-- **Missing**: 4/9 use cases, all in analyzer validation
-- **Next**: extend rune detection and validation so `$inspect().with` and `$inspect.trace` match reference argument-count and placement rules
-- Last updated: 2026-04-01
+- **Working**: 9/9 use cases — feature complete
+- **Done**: added `InspectWith` and `InspectTrace` RuneKind variants; extended `detect_rune_from_call` to detect both; added placement + argument-count validation in `RuneValidator`; removed 5 pre-existing `#[ignore]` test attributes
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -25,10 +24,10 @@
 - [x] `$inspect(...)` is stripped in prod builds
 - [x] `$inspect.trace(label?)` rewrites the surrounding function body to `$.trace(...)`
 - [x] `$inspect.trace(label?)` works in async functions and template event handlers
-- [ ] `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
-- [ ] `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
-- [ ] `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
-- [ ] `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
+- [x] `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
+- [x] `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
+- [x] `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
+- [x] `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
 
 ## Reference
 

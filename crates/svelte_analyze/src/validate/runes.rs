@@ -46,6 +46,9 @@ pub(super) fn validate(
         in_constructor_body: false,
         in_this_assign_rhs: false,
         in_expression_statement_expr: false,
+        current_expr_stmt_span: None,
+        fn_body_first_stmt_span: None,
+        in_generator: false,
         function_depth: 0,
         has_props_rune: false,
         has_props_id: false,
@@ -70,6 +73,13 @@ struct RuneValidator<'a> {
     /// True only when we are visiting the direct expression of an ExpressionStatement.
     /// Reset to false whenever we descend into a nested call expression.
     in_expression_statement_expr: bool,
+    /// Span of the ExpressionStatement currently being visited, if any.
+    current_expr_stmt_span: Option<oxc_span::Span>,
+    /// Span of the first statement of the nearest enclosing function body.
+    /// None when not inside any function.
+    fn_body_first_stmt_span: Option<oxc_span::Span>,
+    /// True when currently inside a generator function.
+    in_generator: bool,
     /// 0 = top-level scope, incremented inside functions/arrows.
     function_depth: u32,
     /// Duplicate `$props()` detection.
@@ -453,8 +463,10 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
 impl<'a> Visit<'a> for RuneValidator<'_> {
     fn visit_expression_statement(&mut self, stmt: &ExpressionStatement<'a>) {
         let prev = std::mem::replace(&mut self.in_expression_statement_expr, true);
+        let prev_span = std::mem::replace(&mut self.current_expr_stmt_span, Some(stmt.span));
         walk_expression_statement(self, stmt);
         self.in_expression_statement_expr = prev;
+        self.current_expr_stmt_span = prev_span;
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
@@ -528,6 +540,60 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                 },
                 self.span(call.span),
             ));
+        }
+
+        // --- $inspect validation ---
+        if matches!(rune, RuneKind::Inspect) && call.arguments.is_empty() {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneInvalidArgumentsLength {
+                    rune: rune.display_name().into(),
+                    args: "one or more arguments".into(),
+                },
+                self.span(call.span),
+            ));
+        }
+
+        if matches!(rune, RuneKind::InspectWith) && call.arguments.len() != 1 {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneInvalidArgumentsLength {
+                    rune: rune.display_name().into(),
+                    args: "exactly one argument".into(),
+                },
+                self.span(call.span),
+            ));
+        }
+
+        if matches!(rune, RuneKind::InspectTrace) {
+            if call.arguments.len() > 1 {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidArgumentsLength {
+                        rune: rune.display_name().into(),
+                        args: "zero or one arguments".into(),
+                    },
+                    self.span(call.span),
+                ));
+            }
+
+            // Must be first statement of a direct function body block.
+            // Use `is_expr_stmt` (captured before the reset) not `self.in_expression_statement_expr`.
+            let is_valid_placement = is_expr_stmt
+                && self
+                    .fn_body_first_stmt_span
+                    .zip(self.current_expr_stmt_span)
+                    .is_some_and(|(first, current)| first == current);
+            if !is_valid_placement {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::InspectTraceInvalidPlacement,
+                    self.span(call.span),
+                ));
+            }
+
+            if self.in_generator {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::InspectTraceGenerator,
+                    self.span(call.span),
+                ));
+            }
         }
 
         // --- $bindable validation ---
@@ -663,8 +729,18 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     ) {
         self.function_depth += 1;
         let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
+        let prev_first = std::mem::replace(
+            &mut self.fn_body_first_stmt_span,
+            func.body
+                .as_ref()
+                .and_then(|b| b.statements.first())
+                .map(oxc_span::GetSpan::span),
+        );
+        let prev_generator = std::mem::replace(&mut self.in_generator, func.generator);
         walk_function(self, func, flags);
         self.in_props_destructure = prev_props;
+        self.fn_body_first_stmt_span = prev_first;
+        self.in_generator = prev_generator;
         self.function_depth -= 1;
     }
 
@@ -674,8 +750,18 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     ) {
         self.function_depth += 1;
         let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
+        // Arrow functions cannot be generators; expression-body arrows have no block.
+        let first_stmt = if arrow.expression {
+            None
+        } else {
+            arrow.body.statements.first().map(oxc_span::GetSpan::span)
+        };
+        let prev_first = std::mem::replace(&mut self.fn_body_first_stmt_span, first_stmt);
+        let prev_generator = std::mem::replace(&mut self.in_generator, false);
         walk_arrow_function_expression(self, arrow);
         self.in_props_destructure = prev_props;
+        self.fn_body_first_stmt_span = prev_first;
+        self.in_generator = prev_generator;
         self.function_depth -= 1;
     }
 
