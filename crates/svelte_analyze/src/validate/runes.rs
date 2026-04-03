@@ -2,12 +2,13 @@
 
 use oxc_ast::ast::{
     AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, MethodDefinitionKind,
-    ModuleExportName, PropertyDefinition, VariableDeclarator,
+    ExportNamedDeclaration, Expression, ExpressionStatement, MemberExpression,
+    MethodDefinitionKind, ModuleExportName, PropertyDefinition, VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_expression_statement, walk_function, walk_method_definition, walk_property_definition,
+    walk_expression_statement, walk_function, walk_member_expression, walk_method_definition,
+    walk_property_definition,
 };
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
@@ -52,6 +53,7 @@ pub(super) fn validate(
     validate_derived_invalid_export(data, program, offset, diags);
     validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
+    validate_rest_prop_illegal_access(data, program, offset, diags);
 }
 
 struct RuneValidator<'a> {
@@ -694,5 +696,62 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         } else {
             walk_assignment_expression(self, it);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RestPropAccessValidator — `rest.$$foo` on rest_prop bindings
+// ---------------------------------------------------------------------------
+
+fn validate_rest_prop_illegal_access(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Skip if no rest_prop binding exists.
+    if !data.scoping.has_rest_prop() {
+        return;
+    }
+    let mut v = RestPropAccessValidator {
+        data,
+        offset,
+        diags,
+        _phantom: std::marker::PhantomData,
+    };
+    v.visit_program(program);
+}
+
+struct RestPropAccessValidator<'a, 'b> {
+    data: &'b AnalysisData,
+    offset: u32,
+    diags: &'b mut Vec<Diagnostic>,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
+    fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+        if let MemberExpression::StaticMemberExpression(member) = expr {
+            if let Expression::Identifier(obj) = &member.object {
+                if member.property.name.starts_with("$$") {
+                    if let Some(sym_id) = obj
+                        .reference_id
+                        .get()
+                        .and_then(|r| self.data.scoping.get_reference(r).symbol_id())
+                    {
+                        if self.data.scoping.is_rest_prop(sym_id) {
+                            self.diags.push(Diagnostic::error(
+                                DiagnosticKind::PropsIllegalName,
+                                Span::new(
+                                    member.property.span.start + self.offset,
+                                    member.property.span.end + self.offset,
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        walk_member_expression(self, expr);
     }
 }

@@ -1,11 +1,11 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 8/15 use cases covered with passing compiler tests
-- **Partial**: 3/15 use cases have runtime/codegen support but incomplete analyzer parity or focused coverage
-- **Validation landed**: `$bindable` placement/arity, `$props` placement/duplicate/arity, `$props.id` placement/duplicate/arity, props pattern validation (computed keys, `$$` names, nested destructures) — all 7 analyzer unit tests passing
-- **Remaining**: `props_illegal_name` for MemberExpression rest prop access, `custom_element_props_identifier` warning, focused compiler cases for renamed props
-- **Next**: add `props_illegal_name` MemberExpression check (needs binding kind tracking), then add focused compiler cases for alias + fallback edge cases
+- **Working**: 10/15 use cases covered with passing compiler tests (added `props_renamed`, `props_renamed_bindable`)
+- **Partial**: 1/15 — `$props.id()` basic lowering works but placement/duplicate validation not yet focused-tested in compiler
+- **Validation complete**: `$bindable` placement/arity, `$props` placement/duplicate/arity, `$props.id` placement/duplicate/arity, props pattern validation, `props_illegal_name` MemberExpression check on rest_prop bindings, `custom_element_props_identifier` warning
+- **Remaining**: focused compiler case for `$props.id()` validation edge cases
+- **Next**: only `$props.id()` focused compiler cases remain; consider feature complete for current scope
 - Last updated: 2026-04-03
 
 ## Source
@@ -34,11 +34,11 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `$bindable()` defaults inside `$props()` destructuring (`props_bindable`, `props_mixed`)
 - [x] Proxy wrapping for bindable object/array defaults (`tag_bindable_proxy`)
 - [x] Bindable prop forwarding through component bindings (`component_bind_prop_forward`, `push_binding_group_order`)
+- [x] Renamed/aliased props (`props_renamed`): `let { foo: local = 'default' } = $props()` uses prop key in `$.prop()` call
+- [x] Renamed + bindable props (`props_renamed_bindable`): `let { value: local = $bindable('fallback') } = $props()`
 - [x] `$props.id()` basic lowering (`props_id_basic`, `props_id_with_props`)
 
 ### Partial
-- [~] Renamed props work structurally in `script_info` and codegen, but there is no focused compiler case for aliasing plus fallback/bindability
-- [~] Custom element `$props()` paths are covered for happy paths, but the warning-only branch for non-destructured/rest declarations without explicit `customElement.props` is untested
 - [~] `$props.id()` basic lowering works (`props_id_basic`, `props_id_with_props`), but analyze still lacks focused placement/duplicate parity with reference `$props()` validation
 
 ### Missing
@@ -50,9 +50,9 @@ ROADMAP.md — `$props` / `$bindable`
   `props_id_invalid_placement`, duplicate detection with `$props()`, and zero-argument enforcement — DONE
 - [x] `$props()` pattern validation in analyze:
   `props_invalid_pattern` and `props_invalid_identifier` — DONE
-- [ ] `props_illegal_name` for MemberExpression access on rest props (needs binding kind tracking)
-- [ ] Custom-element warning parity:
-  `custom_element_props_identifier` is defined but not emitted
+- [x] `props_illegal_name` for MemberExpression access on rest props — DONE
+- [x] Custom-element warning parity:
+  `custom_element_props_identifier` emitted for identifier/rest `$props()` in custom elements — DONE
 
 ### Deferred
 - `$$props` / `$$restProps` legacy compatibility is out of scope for this Svelte 5 rune audit
@@ -86,11 +86,12 @@ ROADMAP.md — `$props` / `$bindable`
 2. [x] Extend `validate/runes.rs` for `$props` arity, top-level placement, and duplicate detection across `$props()` and `$props.id()`
 3. [x] Extend `validate/runes.rs` for `$props.id` top-level identifier-only placement and zero-argument validation
 4. [x] Add props-pattern validation for computed keys, nested patterns, and `$$` names
-5. [ ] Add `custom_element_props_identifier` warning emission in the appropriate analyze pass
+5. [x] Add `custom_element_props_identifier` warning emission in `validate/mod.rs` — DONE
 
 ### tests
-6. [ ] Keep the new analyzer tests added by this audit and make them pass
-7. [ ] Add focused compiler cases for renamed props and custom-element warning behavior once validation parity lands
+6. [x] Analyzer unit tests for `props_illegal_name` MemberExpression check (3 tests) — DONE
+7. [x] Analyzer unit tests for `custom_element_props_identifier` warning (4 tests) — DONE
+8. [x] Focused compiler cases for renamed props (`props_renamed`, `props_renamed_bindable`) — DONE
 
 ## Implementation order
 
@@ -102,6 +103,8 @@ ROADMAP.md — `$props` / `$bindable`
 ## Discovered bugs
 
 - FIXED: `validate/runes.rs` now emits `$props`/`$bindable`/`$props.id` diagnostics (placement, arity, duplicate, pattern validation)
+- FIXED: `props_illegal_name` now emitted for `rest.$$foo` MemberExpression access via `RestPropAccessValidator`
+- FIXED: `custom_element_props_identifier` warning now emitted for identifier/rest `$props()` in custom elements
 
 ## Test cases
 
@@ -128,3 +131,7 @@ ROADMAP.md — `$props` / `$bindable`
 - analyze unit tests for `$props.id()` duplicate handling against `$props()`
 - analyze unit tests for `props_id_invalid_placement`
 - analyze unit tests for `props_invalid_pattern`
+- analyze unit tests for `props_illegal_name` MemberExpression on rest_prop (3 tests)
+- analyze unit tests for `custom_element_props_identifier` warning (4 tests)
+- compiler test: `props_renamed`
+- compiler test: `props_renamed_bindable`
