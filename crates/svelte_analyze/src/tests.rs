@@ -1355,7 +1355,6 @@ $state(1);
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_key_block_empty_warns() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1366,6 +1365,7 @@ let count = 1;
     );
     assert_has_warning(&diags, "block_empty");
 }
+
 
 #[test]
 fn validate_state_invalid_placement_fn_arg() {

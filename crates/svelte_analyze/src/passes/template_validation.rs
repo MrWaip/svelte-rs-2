@@ -11,8 +11,8 @@ use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, Node, NodeId,
-    OnDirectiveLegacy, SvelteElement, Text,
+    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, KeyBlock, Node,
+    NodeId, OnDirectiveLegacy, SvelteElement, Text,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -197,6 +197,33 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 DiagnosticKind::NodeInvalidPlacement { message },
                 tag.span,
             ));
+        }
+    }
+
+    // Use cases: block_empty, block_unexpected_character
+    fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {
+        // block_empty: exactly one whitespace-only text node in the fragment
+        if block.fragment.nodes.len() == 1 {
+            let node_id = block.fragment.nodes[0];
+            if let Node::Text(text) = ctx.store.get(node_id) {
+                if text.value(ctx.source).trim().is_empty() {
+                    ctx.warnings_mut().push(Diagnostic::warning(
+                        DiagnosticKind::BlockEmpty,
+                        text.span,
+                    ));
+                }
+            }
+        }
+
+        // block_unexpected_character: runes mode only — char after `{` must be `#`
+        if ctx.runes {
+            let start = block.span.start as usize;
+            if ctx.source.as_bytes().get(start + 1) != Some(&b'#') {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::BlockUnexpectedCharacter { character: "#".to_string() },
+                    Span::new(block.span.start, block.span.start + 5),
+                ));
+            }
         }
     }
 
