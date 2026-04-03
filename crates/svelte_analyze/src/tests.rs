@@ -2345,3 +2345,55 @@ const props = $props();
     );
     assert_no_warning(&diags, "custom_element_props_identifier");
 }
+
+// -----------------------------------------------------------------------
+// Event directive diagnostics
+// -----------------------------------------------------------------------
+
+#[test]
+fn on_directive_invalid_modifier() {
+    let diags = analyze_with_diags(
+        "<script>function f(){}</script><div on:click|invalid={f}></div>",
+    );
+    assert_has_error(&diags, "event_handler_invalid_modifier");
+}
+
+#[test]
+fn on_directive_passive_nonpassive_conflict() {
+    let diags = analyze_with_diags(
+        "<script>function f(){}</script><div on:touchmove|passive|nonpassive={f}></div>",
+    );
+    assert_has_error(&diags, "event_handler_invalid_modifier_combination");
+}
+
+#[test]
+fn on_directive_deprecated_in_runes_mode() {
+    let diags = analyze_with_options_diags(
+        "<script>function f(){}</script><div on:click={f}></div>",
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "event_directive_deprecated");
+}
+
+#[test]
+fn on_directive_not_deprecated_in_non_runes_mode() {
+    let diags = analyze_with_options_diags(
+        "<script>function f(){}</script><div on:click={f}></div>",
+        AnalyzeOptions {
+            runes: false,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "event_directive_deprecated");
+}
+
+#[test]
+fn on_directive_mixed_syntax() {
+    let diags = analyze_with_diags(
+        "<script>function f(){} function g(){}</script><div onclick={f} on:click={g}></div>",
+    );
+    assert_has_error(&diags, "mixed_event_handler_syntaxes");
+}
