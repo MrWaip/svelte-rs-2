@@ -2697,3 +2697,25 @@ fn slot_attribute_invalid_placement_root() {
     let diags = analyze_with_diags(r#"<script></script><div slot="foo">content</div>"#);
     assert_has_error(&diags, "slot_attribute_invalid_placement");
 }
+
+// ---------------------------------------------------------------------------
+// AwaitBlock diagnostics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn await_valid_then_catch_no_unexpected_character() {
+    // Well-formed {#await}{:then val}{:catch e}{/await} must not emit block_unexpected_character.
+    let diags = analyze_with_options_diags(
+        r#"{#await p}{:then val}ok{:catch e}err{/await}"#,
+        AnalyzeOptions {
+            runes: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "block_unexpected_character"),
+        "unexpected block_unexpected_character: {diags:?}"
+    );
+}

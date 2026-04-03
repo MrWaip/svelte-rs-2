@@ -11,9 +11,10 @@ use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    is_svg, AnimateDirective, Attribute, BindDirective, ComponentNode, ConcatPart, EachBlock,
-    Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock, Node, NodeId,
-    OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow, Text,
+    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
+    EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock, Node,
+    NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement,
+    SvelteWindow, Text,
 };
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -317,6 +318,31 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     },
                     Span::new(block.span.start, block.span.start + 5),
                 ));
+            }
+        }
+    }
+
+    // Use case: block_unexpected_character for {:then val} / {:catch err} with whitespace before `:`
+    fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_>) {
+        if !ctx.runes {
+            return;
+        }
+        for (span_opt, clause) in [
+            (block.value_span, ":then"),
+            (block.error_span, ":catch"),
+        ] {
+            if let Some(span) = span_opt {
+                let start = span.start as usize;
+                let win_start = start.saturating_sub(10);
+                let window = &ctx.source[win_start..start];
+                if has_whitespace_before_clause(window, clause) {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::BlockUnexpectedCharacter {
+                            character: ":".to_string(),
+                        },
+                        Span::new(win_start as u32, start as u32),
+                    ));
+                }
             }
         }
     }
@@ -1278,6 +1304,51 @@ impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
             return;
         }
         walk::walk_expression(self, expr);
+    }
+}
+
+/// Returns true when `window` (the source slice just before a binding pattern) contains
+/// whitespace between the opening `{` and the clause keyword (`:then` or `:catch`).
+/// Catches patterns like `{ :then val}` where a space precedes the colon.
+fn has_whitespace_before_clause(window: &str, clause: &str) -> bool {
+    if let Some(brace_pos) = window.rfind('{') {
+        let between = &window[brace_pos + 1..];
+        let ws_len = between.len() - between.trim_start().len();
+        let rest = &between[ws_len..];
+        rest.starts_with(clause) && ws_len > 0
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_whitespace_before_clause;
+
+    #[test]
+    fn no_whitespace_before_then() {
+        assert!(!has_whitespace_before_clause("{:then ", ":then"));
+    }
+
+    #[test]
+    fn whitespace_before_then() {
+        assert!(has_whitespace_before_clause("{ :then ", ":then"));
+    }
+
+    #[test]
+    fn multiple_spaces_before_catch() {
+        assert!(has_whitespace_before_clause("{  :catch ", ":catch"));
+    }
+
+    #[test]
+    fn no_brace_in_window() {
+        assert!(!has_whitespace_before_clause(":then val", ":then"));
+    }
+
+    #[test]
+    fn shorthand_then_form() {
+        // {#await expr then val} — no `{:then` pattern before binding
+        assert!(!has_whitespace_before_clause(" expr then ", ":then"));
     }
 }
 

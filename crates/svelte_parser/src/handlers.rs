@@ -2,7 +2,7 @@ use svelte_ast::{
     AwaitBlock, ComponentNode, EachBlock, Element, Fragment, IfBlock, KeyBlock, Node, NodeId,
     SnippetBlock,
 };
-use svelte_diagnostics::Diagnostic;
+use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::scanner::{self, token};
@@ -252,6 +252,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn handle_await_clause_tag(
         &mut self,
         clause_tag: &scanner::token::AwaitClauseTag,
+        span: Span,
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<NodeId>>,
     ) {
@@ -262,7 +263,30 @@ impl<'a> Parser<'a> {
             return;
         };
 
-        // Save current children to the appropriate phase
+        // Detect duplicate clauses before touching the children stack.
+        // Duplicate :then = a then clause was already started or completed.
+        // Duplicate :catch = a catch clause was already started.
+        let is_dup = match clause_tag.clause {
+            token::AwaitClause::Then => {
+                matches!(ab.phase, AwaitPhase::Then) || ab.then_children.is_some()
+            }
+            token::AwaitClause::Catch => matches!(ab.phase, AwaitPhase::Catch),
+        };
+        if is_dup {
+            let name = match clause_tag.clause {
+                token::AwaitClause::Then => "{:then}",
+                token::AwaitClause::Catch => "{:catch}",
+            };
+            self.recover(Diagnostic::error(
+                DiagnosticKind::BlockDuplicateClause {
+                    name: name.to_string(),
+                },
+                span,
+            ));
+            return;
+        }
+
+        // Save current children to the appropriate phase bucket.
         let current_children = pop_children(children_stack);
         match ab.phase {
             AwaitPhase::Pending => {
@@ -271,26 +295,25 @@ impl<'a> Parser<'a> {
             AwaitPhase::Then => {
                 ab.then_children = Some(current_children);
             }
+            // {:then} after {:catch} with no prior {:then} — out-of-order clauses.
+            // Save the catch content so handle_end_await_tag can still produce a catch fragment.
             AwaitPhase::Catch => {
-                // Shouldn't happen — {:catch} after {:catch}
-                self.recover(Diagnostic::unexpected_token(Span::new(0, 0)));
-                children_stack.push(vec![]);
-                return;
+                ab.catch_children = Some(current_children);
             }
         }
 
         match clause_tag.clause {
-            scanner::token::AwaitClause::Then => {
+            token::AwaitClause::Then => {
                 ab.value_span = clause_tag.binding_span;
                 ab.phase = AwaitPhase::Then;
             }
-            scanner::token::AwaitClause::Catch => {
+            token::AwaitClause::Catch => {
                 ab.error_span = clause_tag.binding_span;
                 ab.phase = AwaitPhase::Catch;
             }
         }
 
-        // Push new children list for the next phase
+        // Push new children list for the next phase.
         children_stack.push(vec![]);
     }
 
@@ -318,7 +341,9 @@ impl<'a> Parser<'a> {
             AwaitPhase::Pending => (Some(Fragment::new(current_children)), None, None),
             AwaitPhase::Then => {
                 let pending = ab.pending_children.map(Fragment::new);
-                (pending, Some(Fragment::new(current_children)), None)
+                // catch_children is Some when {:catch} preceded {:then} (out-of-order).
+                let catch = ab.catch_children.map(Fragment::new);
+                (pending, Some(Fragment::new(current_children)), catch)
             }
             AwaitPhase::Catch => {
                 let pending = ab.pending_children.map(Fragment::new);
@@ -483,7 +508,7 @@ impl<'a> Parser<'a> {
                     AwaitPhase::Then => (
                         ab.pending_children.map(Fragment::new),
                         Some(Fragment::new(current_children)),
-                        None,
+                        ab.catch_children.map(Fragment::new),
                     ),
                     AwaitPhase::Catch => (
                         ab.pending_children.map(Fragment::new),
