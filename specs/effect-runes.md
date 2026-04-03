@@ -1,8 +1,8 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 9/9 use cases — ALL complete
-- **Missing**: None
+- **Working**: 9/10 use cases
+- **Missing**: 1 (validation for `$effect.root`/`.tracking`/`.pending`)
 - **Completed (2026-04-02)**:
   - Added `EffectPre` and `EffectRoot` to `RuneKind`; wired into `detect_rune_from_call()`
   - Ported `$effect` / `$effect.pre` placement validation (`EffectInvalidPlacement`)
@@ -49,10 +49,7 @@
 - [x] `$effect.pre()` argument validation: exactly one argument required
   Tests: `validate_effect_pre_wrong_arg_count`
 
-### Deferred
-
-- SSR/server-transform parity for `$effect*` is out of scope for this spec. This roadmap item is client-side only.
-- Full validation coverage for related siblings (`$effect.root`, `$effect.tracking`, `$effect.pending`) should be handled in the same validator pass once `$effect` / `$effect.pre` are ported, but is not required to close the core roadmap item.
+- [ ] Full validation coverage for `$effect.root`, `$effect.tracking`, `$effect.pending` argument-count and placement rules
 
 ## Reference
 

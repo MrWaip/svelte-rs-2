@@ -37,13 +37,13 @@ Sections in fixed order. Most important first.
 
 ## Use cases
 
-### <Category>
 1. [x] <description> (covered, test: <test_name>)
 2. [ ] <description> (test: <test_name>, #[ignore], quick fix)
 3. [ ] <description> (test: <test_name>, #[ignore], needs infrastructure)
 
-### Deferred
-- [ ] <use case deferred out of current scope>
+## Out of scope
+
+- <item explicitly not in scope, e.g. SSR variant or removed feature>
 
 ## Reference
 - Svelte reference:
@@ -66,7 +66,8 @@ Sections in fixed order. Most important first.
 ## Scope rules
 - **Client-side only.** No SSR use cases.
 - `[ ]` = in scope, `[x]` = done with test, `[~]` = partial (describe what works)
-- "Deferred" = not in scope; keep each deferred case as its own unchecked checkbox in the spec
+- Use cases: flat list of checkboxes only — no `###` subsections
+- Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
 
 ## Effort markers for use cases
 - **quick fix** — one file, add match arm or call by analogy

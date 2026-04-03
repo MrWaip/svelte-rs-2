@@ -27,10 +27,6 @@
 - [ ] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`.
 - [ ] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax.
 
-Deferred:
-
-- SSR/server `{@debug}` output parity is out of scope for this spec because template specs stay client-side first.
-
 ## Reference
 
 - Reference docs: `reference/docs/03-template-syntax/11-@debug.md`
