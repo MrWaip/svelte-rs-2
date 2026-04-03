@@ -5,6 +5,6 @@ export default function App($$anchor) {
 		console.log("move");
 	}
 	var div = root();
-	$.event("touchmove", div, handleMove, false, false);
+	$.event("touchmove", div, handleMove, void 0, false);
 	$.append($$anchor, div);
 }

@@ -751,6 +751,8 @@ pub struct OnDirectiveLegacy {
     pub id: NodeId,
     /// Event name (e.g., "click" in `on:click`).
     pub name: String,
+    /// Span of the event name in source (e.g., "click" span in `on:click`).
+    pub name_span: Span,
     /// Span of the JS expression. None if no expression (bubble event).
     pub expression_span: Option<Span>,
     /// Modifiers like "preventDefault", "stopPropagation", "capture", etc.

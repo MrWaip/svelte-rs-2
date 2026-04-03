@@ -10,23 +10,49 @@
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
-use svelte_ast::{AnimateDirective, EachBlock, ExpressionTag, Node, NodeId, Text};
+use svelte_ast::{
+    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, Node, NodeId,
+    OnDirectiveLegacy, SvelteElement, Text,
+};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::scope::ComponentScoping;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 
+const EVENT_MODIFIERS: &[&str] = &[
+    "preventDefault",
+    "stopPropagation",
+    "stopImmediatePropagation",
+    "self",
+    "trusted",
+    "once",
+    "capture",
+    "passive",
+    "nonpassive",
+];
+
+/// Per-element state for detecting mixed event syntax (S5 attributes + legacy on:).
+#[derive(Default)]
+struct ElementEventState {
+    has_s5_events: bool,
+    /// Span and event name of the first `on:` directive seen on this element.
+    first_on_directive: Option<(Span, String)>,
+}
+
 pub(crate) struct TemplateValidationVisitor {
     /// Source-absolute start of the current expression being visited.
     /// Set by `visit_expression`, used in `visit_js_expression` to offset OXC sub-spans.
     current_expr_offset: u32,
+    /// Stack of per-element event state, pushed on `visit_element` and popped on `leave_element`.
+    element_event_state: Vec<ElementEventState>,
 }
 
 impl TemplateValidationVisitor {
     pub(crate) fn new() -> Self {
         Self {
             current_expr_offset: 0,
+            element_event_state: Vec::new(),
         }
     }
 
@@ -36,9 +62,104 @@ impl TemplateValidationVisitor {
             self.current_expr_offset + span.end,
         )
     }
+
+    fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_>) {
+        if let Some(state) = self.element_event_state.pop() {
+            if state.has_s5_events {
+                if let Some((span, name)) = state.first_on_directive {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::MixedEventHandlerSyntaxes { name },
+                        span,
+                    ));
+                }
+            }
+        }
+    }
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
+    fn visit_element(&mut self, _el: &Element, _ctx: &mut VisitContext<'_>) {
+        self.element_event_state.push(ElementEventState::default());
+    }
+
+    fn leave_element(&mut self, _el: &Element, ctx: &mut VisitContext<'_>) {
+        self.emit_mixed_syntax_if_needed(ctx);
+    }
+
+    fn visit_svelte_element(&mut self, _el: &SvelteElement, _ctx: &mut VisitContext<'_>) {
+        self.element_event_state.push(ElementEventState::default());
+    }
+
+    fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+        self.emit_mixed_syntax_if_needed(ctx);
+    }
+
+    fn visit_expression_attribute(
+        &mut self,
+        attr: &ExpressionAttribute,
+        _ctx: &mut VisitContext<'_>,
+    ) {
+        if attr.event_name.is_some() {
+            if let Some(state) = self.element_event_state.last_mut() {
+                state.has_s5_events = true;
+            }
+        }
+    }
+
+    // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
+    // event_directive_deprecated, mixed_event_handler_syntaxes
+    fn visit_on_directive_legacy(
+        &mut self,
+        dir: &OnDirectiveLegacy,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        let is_component =
+            ctx.parent().is_some_and(|p| p.kind == ParentKind::ComponentNode);
+
+        if !is_component {
+            // Invalid modifier check
+            let list = EVENT_MODIFIERS.join(", ");
+            for modifier in &dir.modifiers {
+                if !EVENT_MODIFIERS.contains(&modifier.as_str()) {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::EventHandlerInvalidModifier { list: list.clone() },
+                        dir.name_span,
+                    ));
+                }
+            }
+
+            // passive + nonpassive conflict
+            let has_passive = dir.modifiers.iter().any(|m| m == "passive");
+            let has_nonpassive = dir.modifiers.iter().any(|m| m == "nonpassive");
+            if has_passive && has_nonpassive {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::EventHandlerInvalidModifierCombination {
+                        modifier1: "passive".to_string(),
+                        modifier2: "nonpassive".to_string(),
+                    },
+                    dir.name_span,
+                ));
+            }
+        }
+
+        // Runes-mode deprecation — all non-component on: directives
+        if ctx.runes && !is_component {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::EventDirectiveDeprecated { name: dir.name.clone() },
+                dir.name_span,
+            ));
+        }
+
+        // Record first on: directive for mixed-syntax check (DOM elements only)
+        if !is_component {
+            if let Some(state) = self.element_event_state.last_mut() {
+                state
+                    .first_on_directive
+                    .get_or_insert((dir.name_span, dir.name.clone()));
+            }
+        }
+    }
+
     fn visit_text(&mut self, text: &Text, ctx: &mut VisitContext<'_>) {
         let value = text.value(ctx.source);
 

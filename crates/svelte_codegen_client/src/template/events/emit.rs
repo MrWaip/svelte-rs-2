@@ -48,7 +48,11 @@ pub(crate) fn gen_on_directive_legacy<'a>(
         Arg::Expr(wrapped),
     ];
     if mods.capture || mods.passive.is_some() {
-        args.push(Arg::Bool(mods.capture));
+        args.push(if mods.capture {
+            Arg::Bool(true)
+        } else {
+            Arg::Expr(ctx.b.void_zero_expr())
+        });
     }
     if let Some(p) = mods.passive {
         args.push(Arg::Bool(p));
@@ -98,7 +102,11 @@ pub(crate) fn gen_legacy_event_on<'a>(
         Arg::Expr(wrapped),
     ];
     if mods.capture || mods.passive.is_some() {
-        args.push(Arg::Bool(mods.capture));
+        args.push(if mods.capture {
+            Arg::Bool(true)
+        } else {
+            Arg::Expr(ctx.b.void_zero_expr())
+        });
     }
     if let Some(p) = mods.passive {
         args.push(Arg::Bool(p));

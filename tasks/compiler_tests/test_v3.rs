@@ -559,7 +559,6 @@ fn on_directive_modifiers() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn on_directive_nonpassive() {
     assert_compiler("on_directive_nonpassive");
 }
