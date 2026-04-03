@@ -107,6 +107,19 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .context_names
                 .insert(block.id, "$$item".to_string());
 
+            if let Some(parsed) = ctx.parsed() {
+                if let Some(stmt) = block
+                    .context_span
+                    .and_then(|cs| parsed.stmt_handle(cs.start))
+                    .and_then(|handle| parsed.stmt(handle))
+                {
+                    let mut rest_marker = EachRestMarker {
+                        scoping: &mut ctx.data.scoping,
+                    };
+                    rest_marker.visit_statement(stmt);
+                }
+            }
+
             // Default bindings use $.derived_safe_equal (signals), non-default use getters.
             if let Some(parsed) = ctx.parsed() {
                 if let Some(stmt) = block
@@ -293,5 +306,21 @@ impl<'a> Visit<'a> for DestructuredGetterMarker<'_> {
     fn visit_variable_declarator(&mut self, decl: &VariableDeclarator<'a>) {
         // Skip declarator init (the `= x` part) — only visit the pattern
         self.visit_binding_pattern(&decl.id);
+    }
+}
+
+struct EachRestMarker<'s> {
+    scoping: &'s mut ComponentScoping,
+}
+
+impl<'a> Visit<'a> for EachRestMarker<'_> {
+    fn visit_binding_rest_element(&mut self, it: &oxc_ast::ast::BindingRestElement<'a>) {
+        if let Some(sym_id) = it
+            .argument
+            .get_binding_identifier()
+            .and_then(|ident| ident.symbol_id.get())
+        {
+            self.scoping.mark_each_rest(sym_id);
+        }
     }
 }

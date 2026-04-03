@@ -51,12 +51,12 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 ## Bindings
 
 - Shared spec for all `bind:*` items: [specs/bind-directives.md](specs/bind-directives.md)
-- [ ] `bind:value` / `bind:checked` / `bind:group` / `bind:files` 
-- [ ] `bind:innerHTML` / `bind:innerText` / `bind:textContent`
-- [ ] `bind:clientWidth` / `bind:clientHeight` / `bind:offsetWidth` / `bind:offsetHeight`
-- [ ] `bind:this`
-- [ ] Media bindings
-- [ ] `bind:focused`
+- [x] `bind:value` / `bind:checked` / `bind:group` / `bind:files`
+- [x] `bind:innerHTML` / `bind:innerText` / `bind:textContent`
+- [x] `bind:clientWidth` / `bind:clientHeight` / `bind:offsetWidth` / `bind:offsetHeight`
+- [x] `bind:this`
+- [x] Media bindings
+- [x] `bind:focused`
 
 ## Directives
 

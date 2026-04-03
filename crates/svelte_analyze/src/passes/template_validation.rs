@@ -11,14 +11,17 @@ use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, Attribute, ComponentNode, EachBlock, Element, ExpressionAttribute,
-    ExpressionTag, Fragment, IfBlock, KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock,
-    SvelteElement, Text,
+    is_svg, AnimateDirective, Attribute, BindDirective, ComponentNode, ConcatPart, EachBlock,
+    Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock, Node, NodeId,
+    OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement, SvelteWindow, Text,
 };
+use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
+use crate::types::data::ExpressionKind;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 
 const EVENT_MODIFIERS: &[&str] = &[
@@ -32,6 +35,17 @@ const EVENT_MODIFIERS: &[&str] = &[
     "passive",
     "nonpassive",
 ];
+
+struct BindParentInfo {
+    name: String,
+    attrs: Vec<Attribute>,
+}
+
+enum BindExpressionShape {
+    IdentifierOrMember,
+    Sequence { len: usize, has_parens: bool },
+    Invalid,
+}
 
 /// Per-element state for detecting mixed event syntax (S5 attributes + legacy on:).
 #[derive(Default)]
@@ -111,6 +125,51 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 state.has_s5_events = true;
             }
         }
+    }
+
+    fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+        if let Some(parent) = current_bind_parent(ctx) {
+            validate_bind_name_and_target(dir, &parent, ctx);
+            validate_bind_parent_specifics(dir, &parent, ctx);
+        }
+
+        let is_identifier_target = if dir.shorthand {
+            true
+        } else {
+            ctx.data
+                .attr_expression(dir.id)
+                .is_some_and(|info| matches!(info.kind, ExpressionKind::Identifier(_)))
+        };
+
+        let Some(expr_shape) = bind_expression_shape(dir, ctx) else {
+            if is_identifier_target {
+                validate_bind_identifier_value(dir, ctx);
+            }
+            validate_bind_group_binding(dir, ctx);
+            return;
+        };
+
+        match expr_shape {
+            BindExpressionShape::Sequence { len, has_parens } => {
+                validate_bind_sequence_expression(dir, len, has_parens, ctx);
+                return;
+            }
+            BindExpressionShape::Invalid => {
+                emit_bind_error(
+                    ctx,
+                    dir.expression_span,
+                    DiagnosticKind::BindInvalidExpression,
+                );
+                return;
+            }
+            BindExpressionShape::IdentifierOrMember => {}
+        }
+
+        if is_identifier_target {
+            validate_bind_identifier_value(dir, ctx);
+        }
+
+        validate_bind_group_binding(dir, ctx);
     }
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,
@@ -352,6 +411,442 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
             _ => {}
         }
+    }
+}
+
+fn current_bind_parent(ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
+    let parent = ctx.parent()?;
+    match ctx.store.get(parent.id) {
+        Node::Element(el) => Some(BindParentInfo {
+            name: el.name.clone(),
+            attrs: el.attributes.clone(),
+        }),
+        Node::SvelteElement(el) => Some(BindParentInfo {
+            name: "svelte:element".to_string(),
+            attrs: el.attributes.clone(),
+        }),
+        Node::SvelteWindow(SvelteWindow { attributes, .. }) => Some(BindParentInfo {
+            name: "svelte:window".to_string(),
+            attrs: attributes.clone(),
+        }),
+        Node::SvelteDocument(SvelteDocument { attributes, .. }) => Some(BindParentInfo {
+            name: "svelte:document".to_string(),
+            attrs: attributes.clone(),
+        }),
+        Node::SvelteBody(SvelteBody { attributes, .. }) => Some(BindParentInfo {
+            name: "svelte:body".to_string(),
+            attrs: attributes.clone(),
+        }),
+        _ => None,
+    }
+}
+
+fn bind_expression_shape(
+    dir: &BindDirective,
+    ctx: &VisitContext<'_>,
+) -> Option<BindExpressionShape> {
+    bind_expression(dir, ctx).map(classify_bind_expression)
+}
+
+fn classify_bind_expression(expr: &Expression<'_>) -> BindExpressionShape {
+    match expr {
+        Expression::Identifier(_) => BindExpressionShape::IdentifierOrMember,
+        Expression::SequenceExpression(sequence) => BindExpressionShape::Sequence {
+            len: sequence.expressions.len(),
+            has_parens: false,
+        },
+        Expression::ParenthesizedExpression(expr) => match &expr.expression {
+            Expression::SequenceExpression(sequence) => BindExpressionShape::Sequence {
+                len: sequence.expressions.len(),
+                has_parens: true,
+            },
+            inner => classify_bind_expression(inner),
+        },
+        _ if expr.as_member_expression().is_some() => BindExpressionShape::IdentifierOrMember,
+        _ => BindExpressionShape::Invalid,
+    }
+}
+
+fn emit_bind_error(ctx: &mut VisitContext<'_>, span: Option<Span>, kind: DiagnosticKind) {
+    ctx.warnings_mut()
+        .push(Diagnostic::error(kind, span.unwrap_or(Span::new(0, 0))));
+}
+
+fn validate_bind_name_and_target(
+    dir: &BindDirective,
+    parent: &BindParentInfo,
+    ctx: &mut VisitContext<'_>,
+) {
+    let Some(property) = binding_property(dir.name.as_str()) else {
+        let explanation = fuzzymatch(dir.name.as_str(), BINDING_NAMES).and_then(|suggestion| {
+            binding_property(suggestion)
+                .is_some_and(|property| property.allows(&parent.name))
+                .then(|| format!("Did you mean '{suggestion}'?"))
+        });
+
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidName {
+                name: dir.name.clone(),
+                explanation,
+            },
+        );
+        return;
+    };
+
+    if !property.valid_elements.is_empty()
+        && !property.valid_elements.contains(&parent.name.as_str())
+    {
+        let elements = property
+            .valid_elements
+            .iter()
+            .map(|name| format!("`<{name}>`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidTarget {
+                name: dir.name.clone(),
+                elements,
+            },
+        );
+        return;
+    }
+
+    if property.invalid_elements.contains(&parent.name.as_str()) {
+        let mut valid_bindings = BINDING_NAMES
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                binding_property(candidate).is_some_and(|property| property.allows(&parent.name))
+            })
+            .collect::<Vec<_>>();
+        valid_bindings.sort_unstable();
+
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidName {
+                name: dir.name.clone(),
+                explanation: Some(format!(
+                    "Possible bindings for <{}> are {}",
+                    parent.name,
+                    valid_bindings.join(", ")
+                )),
+            },
+        );
+    }
+}
+
+fn validate_bind_parent_specifics(
+    dir: &BindDirective,
+    parent: &BindParentInfo,
+    ctx: &mut VisitContext<'_>,
+) {
+    if parent.name == "input" && dir.name != "this" {
+        validate_input_bindings(dir, &parent.attrs, ctx);
+    }
+
+    if parent.name == "select" && dir.name != "this" {
+        if let Some(multiple) = find_named_attr(&parent.attrs, "multiple") {
+            if !attr_is_text(multiple) && !matches!(multiple, Attribute::BooleanAttribute(_)) {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::AttributeInvalidMultiple,
+                    attr_value_span(multiple),
+                ));
+                return;
+            }
+        }
+    }
+
+    if dir.name == "offsetWidth" && is_svg(&parent.name) {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidTarget {
+                name: dir.name.clone(),
+                elements: "non-`<svg>` elements. Use `bind:clientWidth` for `<svg>` instead"
+                    .to_string(),
+            },
+        );
+        return;
+    }
+
+    if matches!(dir.name.as_str(), "innerHTML" | "innerText" | "textContent") {
+        match find_named_attr(&parent.attrs, "contenteditable") {
+            None => emit_bind_error(
+                ctx,
+                dir.expression_span,
+                DiagnosticKind::AttributeContenteditableMissing,
+            ),
+            Some(attr)
+                if !attr_is_text(attr) && !matches!(attr, Attribute::BooleanAttribute(_)) =>
+            {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::AttributeContenteditableDynamic,
+                    attr_value_span(attr),
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_input_bindings(dir: &BindDirective, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    let Some(type_attr) = find_named_attr(attrs, "type") else {
+        return;
+    };
+
+    if !attr_is_text(type_attr) {
+        if dir.name != "value" || matches!(type_attr, Attribute::BooleanAttribute(_)) {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::AttributeInvalidType,
+                attr_value_span(type_attr),
+            ));
+        }
+        return;
+    }
+
+    let type_value = static_text_attr_value(type_attr, ctx.source).unwrap_or_default();
+    if dir.name == "checked" && type_value != "checkbox" {
+        let elements = if type_value == "radio" {
+            "`<input type=\"checkbox\">` — for `<input type=\"radio\">`, use `bind:group`"
+                .to_string()
+        } else {
+            "`<input type=\"checkbox\">`".to_string()
+        };
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidTarget {
+                name: dir.name.clone(),
+                elements,
+            },
+        );
+    } else if dir.name == "files" && type_value != "file" {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidTarget {
+                name: dir.name.clone(),
+                elements: "`<input type=\"file\">`".to_string(),
+            },
+        );
+    }
+}
+
+fn validate_bind_sequence_expression(
+    dir: &BindDirective,
+    len: usize,
+    has_parens: bool,
+    ctx: &mut VisitContext<'_>,
+) {
+    if dir.name == "group" {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindGroupInvalidExpression,
+        );
+    }
+
+    if has_parens {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidParens {
+                name: dir.name.clone(),
+            },
+        );
+    }
+
+    if len != 2 {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindInvalidExpression,
+        );
+    }
+}
+
+fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+    if dir.name == "this" {
+        return;
+    }
+
+    let Some(sym_id) = bind_base_symbol(dir, ctx) else {
+        return;
+    };
+
+    let rune_kind = ctx.data.scoping.rune_kind(sym_id);
+    let valid = matches!(
+        rune_kind,
+        Some(crate::types::script::RuneKind::State | crate::types::script::RuneKind::StateRaw)
+    ) || ctx.data.scoping.is_prop_source(sym_id)
+        || ctx.data.scoping.prop_non_source_name(sym_id).is_some()
+        || ctx.data.scoping.is_each_block_var(sym_id)
+        || bind_targets_each_context(sym_id, ctx)
+        || ctx.data.scoping.is_store(sym_id)
+        || bind_target_updated_elsewhere(dir, sym_id, ctx);
+
+    if !valid {
+        emit_bind_error(ctx, dir.expression_span, DiagnosticKind::BindInvalidValue);
+    }
+}
+
+fn validate_bind_group_binding(dir: &BindDirective, ctx: &mut VisitContext<'_>) {
+    if dir.name != "group" {
+        return;
+    }
+
+    let Some(sym_id) = bind_base_symbol(dir, ctx) else {
+        return;
+    };
+
+    if ctx.data.scoping.is_snippet_param(sym_id) {
+        emit_bind_error(
+            ctx,
+            dir.expression_span,
+            DiagnosticKind::BindGroupInvalidSnippetParameter,
+        );
+        return;
+    }
+
+    if ctx.data.scoping.is_each_rest(sym_id) {
+        let name = ctx.data.scoping.symbol_name(sym_id).to_string();
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::BindInvalidEachRest { name },
+            dir.expression_span.unwrap_or(Span::new(0, 0)),
+        ));
+    }
+}
+
+fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate::scope::SymbolId> {
+    if dir.shorthand {
+        return ctx.data.shorthand_symbol(dir.id);
+    }
+
+    let info = ctx.data.attr_expression(dir.id)?;
+    match info.kind {
+        ExpressionKind::Identifier(_) | ExpressionKind::MemberExpression => {
+            info.ref_symbols.first().copied()
+        }
+        _ => None,
+    }
+}
+
+fn bind_target_updated_elsewhere(
+    dir: &BindDirective,
+    sym_id: crate::scope::SymbolId,
+    ctx: &VisitContext<'_>,
+) -> bool {
+    let Some(expr) = bind_expression(dir, ctx) else {
+        return false;
+    };
+    let expr = match expr {
+        Expression::ParenthesizedExpression(expr) => &expr.expression,
+        expr => expr,
+    };
+    let Expression::Identifier(ident) = expr else {
+        return false;
+    };
+    let Some(ref_id) = ident.reference_id.get() else {
+        return false;
+    };
+    ctx.data
+        .scoping
+        .has_write_reference_other_than(sym_id, ref_id)
+}
+
+fn bind_expression<'a>(
+    dir: &BindDirective,
+    ctx: &'a VisitContext<'a>,
+) -> Option<&'a Expression<'a>> {
+    let span = dir.expression_span?;
+    let parsed = ctx.parsed()?;
+    parsed
+        .expr_handle(span.start)
+        .and_then(|handle| parsed.expr(handle))
+}
+
+fn bind_targets_each_context(sym_id: crate::scope::SymbolId, ctx: &VisitContext<'_>) -> bool {
+    let sym_scope = ctx.data.scoping.symbol_scope_id(sym_id);
+    ctx.ancestors()
+        .filter(|parent| parent.kind == ParentKind::EachBlock)
+        .any(|parent| ctx.data.each_body_scope(parent.id, ctx.scope) == sym_scope)
+}
+
+fn find_named_attr<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attribute> {
+    attrs.iter().find(|attr| named_attr_matches(attr, name))
+}
+
+fn named_attr_matches(attr: &Attribute, name: &str) -> bool {
+    match attr {
+        Attribute::StringAttribute(attr) => attr.name == name,
+        Attribute::ExpressionAttribute(attr) => attr.name == name,
+        Attribute::BooleanAttribute(attr) => attr.name == name,
+        Attribute::ConcatenationAttribute(attr) => attr.name == name,
+        Attribute::BindDirective(attr) => attr.name == name,
+        Attribute::Shorthand(_)
+        | Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => false,
+    }
+}
+
+fn attr_is_text(attr: &Attribute) -> bool {
+    matches!(attr, Attribute::StringAttribute(_))
+}
+
+fn static_text_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<&'a str> {
+    match attr {
+        Attribute::StringAttribute(attr) => Some(attr.value_span.source_text(source)),
+        _ => None,
+    }
+}
+
+fn attr_value_span(attr: &Attribute) -> Span {
+    match attr {
+        Attribute::ExpressionAttribute(attr) => attr.expression_span,
+        Attribute::ConcatenationAttribute(attr) => attr
+            .parts
+            .iter()
+            .filter_map(|part| match part {
+                ConcatPart::Dynamic { span, .. } => Some(*span),
+                ConcatPart::Static(_) => None,
+            })
+            .reduce(|left, right| left.merge(&right))
+            .unwrap_or(Span::new(0, 0)),
+        Attribute::StringAttribute(attr) => attr.value_span,
+        Attribute::BooleanAttribute(_) => Span::new(0, 0),
+        Attribute::BindDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::Shorthand(attr) => attr.expression_span,
+        Attribute::SpreadAttribute(attr) => attr.expression_span,
+        Attribute::ClassDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::StyleDirective(attr) => match &attr.value {
+            svelte_ast::StyleDirectiveValue::Expression(span) => *span,
+            svelte_ast::StyleDirectiveValue::Concatenation(parts) => parts
+                .iter()
+                .filter_map(|part| match part {
+                    ConcatPart::Dynamic { span, .. } => Some(*span),
+                    ConcatPart::Static(_) => None,
+                })
+                .reduce(|left, right| left.merge(&right))
+                .unwrap_or(Span::new(0, 0)),
+            svelte_ast::StyleDirectiveValue::String(_)
+            | svelte_ast::StyleDirectiveValue::Shorthand => Span::new(0, 0),
+        },
+        Attribute::UseDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::OnDirectiveLegacy(attr) => attr.expression_span.unwrap_or(attr.name_span),
+        Attribute::TransitionDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::AnimateDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::AttachTag(attr) => attr.expression_span,
     }
 }
 

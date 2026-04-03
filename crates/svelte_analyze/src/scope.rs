@@ -36,6 +36,7 @@ pub struct ComponentScoping {
     snippet_param_syms: FxHashSet<SymbolId>,
     snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
+    each_rest_syms: FxHashSet<SymbolId>,
     /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization and
     /// unkeyed index vars).
     each_non_reactive_syms: FxHashSet<SymbolId>,
@@ -89,6 +90,7 @@ impl ComponentScoping {
             snippet_param_syms: FxHashSet::default(),
             snippet_name_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
+            each_rest_syms: FxHashSet::default(),
             each_non_reactive_syms: FxHashSet::default(),
             each_index_non_dynamic_syms: FxHashSet::default(),
             fragment_scopes: FxHashMap::default(),
@@ -243,6 +245,18 @@ impl ComponentScoping {
     /// Get a reference by ReferenceId.
     pub fn get_reference(&self, ref_id: ReferenceId) -> &OxcReference {
         self.scoping.get_reference(ref_id)
+    }
+
+    pub fn has_write_reference_other_than(
+        &self,
+        sym_id: SymbolId,
+        exclude_ref_id: ReferenceId,
+    ) -> bool {
+        let ref_ids = self.scoping.get_resolved_reference_ids(sym_id);
+        self.scoping
+            .get_resolved_references(sym_id)
+            .enumerate()
+            .any(|(idx, reference)| ref_ids[idx] != exclude_ref_id && reference.is_write())
     }
 
     // -- Convenience: SymbolId-based dynamism check --
@@ -414,6 +428,10 @@ impl ComponentScoping {
         self.each_block_syms.insert(sym_id);
     }
 
+    pub fn mark_each_rest(&mut self, sym_id: SymbolId) {
+        self.each_rest_syms.insert(sym_id);
+    }
+
     /// Mark each-block var as non-reactive (key_is_item optimization — no `$.get()` wrapping).
     pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
         self.each_non_reactive_syms.insert(sym_id);
@@ -479,6 +497,10 @@ impl ComponentScoping {
 
     pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
         self.each_block_syms.contains(&sym_id)
+    }
+
+    pub fn is_each_rest(&self, sym_id: SymbolId) -> bool {
+        self.each_rest_syms.contains(&sym_id)
     }
 
     /// Each-block var that does NOT need `$.get()` (key_is_item optimization in runes mode).
