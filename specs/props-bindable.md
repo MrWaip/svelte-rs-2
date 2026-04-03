@@ -1,11 +1,12 @@
 # $props / $bindable
 
 ## Current state
-- **Working**: 8/15 use cases covered with passing tests
+- **Working**: 8/15 use cases covered with passing compiler tests
 - **Partial**: 3/15 use cases have runtime/codegen support but incomplete analyzer parity or focused coverage
-- **Missing**: 4/15 use cases are reference diagnostics that are not implemented in analyze
-- **Next**: port `$props`/`$props.id`/`$bindable` validation from reference analyze, then add a small compiler-test pass for alias and fallback edge cases
-- Last updated: 2026-04-01
+- **Validation landed**: `$bindable` placement/arity, `$props` placement/duplicate/arity, `$props.id` placement/duplicate/arity, props pattern validation (computed keys, `$$` names, nested destructures) — all 7 analyzer unit tests passing
+- **Remaining**: `props_illegal_name` for MemberExpression rest prop access, `custom_element_props_identifier` warning, focused compiler cases for renamed props
+- **Next**: add `props_illegal_name` MemberExpression check (needs binding kind tracking), then add focused compiler cases for alias + fallback edge cases
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -41,14 +42,15 @@ ROADMAP.md — `$props` / `$bindable`
 - [~] `$props.id()` basic lowering works (`props_id_basic`, `props_id_with_props`), but analyze still lacks focused placement/duplicate parity with reference `$props()` validation
 
 ### Missing
-- [ ] `$bindable()` validation in analyze:
-  `bindable_invalid_location` and argument-count checks are defined in diagnostics/reference but not emitted by `validate/runes.rs`
-- [ ] `$props()` validation in analyze:
-  `props_invalid_placement`, `props_duplicate`, and rune argument-count checks are missing
-- [ ] `$props.id()` validation in analyze:
-  `props_id_invalid_placement`, duplicate detection with `$props()`, and zero-argument enforcement are missing
-- [ ] `$props()` pattern validation in analyze:
-  `props_invalid_pattern` and `props_illegal_name` are missing
+- [x] `$bindable()` validation in analyze:
+  `bindable_invalid_location` and argument-count checks — DONE
+- [x] `$props()` validation in analyze:
+  `props_invalid_placement`, `props_duplicate`, and rune argument-count checks — DONE
+- [x] `$props.id()` validation in analyze:
+  `props_id_invalid_placement`, duplicate detection with `$props()`, and zero-argument enforcement — DONE
+- [x] `$props()` pattern validation in analyze:
+  `props_invalid_pattern` and `props_invalid_identifier` — DONE
+- [ ] `props_illegal_name` for MemberExpression access on rest props (needs binding kind tracking)
 - [ ] Custom-element warning parity:
   `custom_element_props_identifier` is defined but not emitted
 
@@ -80,10 +82,10 @@ ROADMAP.md — `$props` / `$bindable`
 ## Tasks
 
 ### analyze
-1. [ ] Extend `validate/runes.rs` for `$bindable` arity and placement parity with reference `CallExpression.js`
-2. [ ] Extend `validate/runes.rs` for `$props` arity, top-level placement, and duplicate detection across `$props()` and `$props.id()`
-3. [ ] Extend `validate/runes.rs` for `$props.id` top-level identifier-only placement and zero-argument validation
-4. [ ] Add props-pattern validation for computed keys, nested patterns, and `$$` names
+1. [x] Extend `validate/runes.rs` for `$bindable` arity and placement parity with reference `CallExpression.js`
+2. [x] Extend `validate/runes.rs` for `$props` arity, top-level placement, and duplicate detection across `$props()` and `$props.id()`
+3. [x] Extend `validate/runes.rs` for `$props.id` top-level identifier-only placement and zero-argument validation
+4. [x] Add props-pattern validation for computed keys, nested patterns, and `$$` names
 5. [ ] Add `custom_element_props_identifier` warning emission in the appropriate analyze pass
 
 ### tests
@@ -99,7 +101,7 @@ ROADMAP.md — `$props` / `$bindable`
 
 ## Discovered bugs
 
-- OPEN: `validate/runes.rs` does not currently emit any `$props`-specific or `$bindable`-specific diagnostics even though the diagnostic kinds already exist
+- FIXED: `validate/runes.rs` now emits `$props`/`$bindable`/`$props.id` diagnostics (placement, arity, duplicate, pattern validation)
 
 ## Test cases
 

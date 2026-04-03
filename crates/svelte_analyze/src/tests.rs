@@ -1830,7 +1830,6 @@ class Outer {
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_bindable_invalid_location() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1841,7 +1840,16 @@ let value = $bindable();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
+fn validate_bindable_invalid_location_inside_arrow() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { x = () => $bindable() } = $props();
+</script>"#,
+    );
+    assert_has_error(&diags, "bindable_invalid_location");
+}
+
+#[test]
 fn validate_bindable_too_many_args() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1852,7 +1860,6 @@ let { value = $bindable(1, 2) } = $props();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_props_invalid_placement_inside_function() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1865,7 +1872,6 @@ function setup() {
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_props_duplicate() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1877,7 +1883,6 @@ let { b } = $props();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_props_duplicate_with_props_id() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1889,7 +1894,6 @@ const id = $props.id();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_props_invalid_pattern_computed_key() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1900,7 +1904,6 @@ let { [key]: value } = $props();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_props_id_invalid_placement_inside_function() {
     let diags = analyze_with_diags(
         r#"<script>
