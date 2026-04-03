@@ -742,6 +742,21 @@ fn bind_resize_observer() {
 }
 
 #[rstest]
+fn bind_resize_observer_border_box_size() {
+    assert_compiler("bind_resize_observer_border_box_size");
+}
+
+#[rstest]
+fn bind_resize_observer_device_pixel_content_box_size() {
+    assert_compiler("bind_resize_observer_device_pixel_content_box_size");
+}
+
+#[rstest]
+fn bind_textarea_value() {
+    assert_compiler("bind_textarea_value");
+}
+
+#[rstest]
 fn bind_media_rw() {
     assert_compiler("bind_media_rw");
 }

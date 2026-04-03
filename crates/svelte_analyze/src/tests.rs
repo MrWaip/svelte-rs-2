@@ -2304,7 +2304,6 @@ fn validate_each_item_invalid_assignment_nested_object_destructure() {
 }
 
 #[test]
-#[ignore = "missing: bind_invalid_name template validation"]
 fn validate_bind_invalid_name() {
     let diags = analyze_with_diags(
         r#"<script>let value = $state('');</script>
@@ -2314,7 +2313,6 @@ fn validate_bind_invalid_name() {
 }
 
 #[test]
-#[ignore = "missing: bind_invalid_expression template validation"]
 fn validate_bind_invalid_expression() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2327,7 +2325,6 @@ fn validate_bind_invalid_expression() {
 }
 
 #[test]
-#[ignore = "missing: bind_invalid_value template validation"]
 fn validate_bind_invalid_value() {
     let diags = analyze_with_diags(
         r#"<script>let value = '';</script>
@@ -2337,13 +2334,181 @@ fn validate_bind_invalid_value() {
 }
 
 #[test]
-#[ignore = "missing: attribute_contenteditable_missing template validation"]
 fn validate_attribute_contenteditable_missing() {
     let diags = analyze_with_diags(
         r#"<script>let html = $state('');</script>
 <div bind:innerHTML={html}></div>"#,
     );
     assert_has_error(&diags, "attribute_contenteditable_missing");
+}
+
+#[test]
+fn validate_bind_invalid_target() {
+    let diags = analyze_with_diags(
+        r#"<script>let value = $state('');</script>
+<div bind:value={value}></div>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_target");
+}
+
+#[test]
+fn validate_bind_invalid_name_with_special_element_candidates() {
+    let diags = analyze_with_diags(
+        r#"<script>let width = $state(0);</script>
+<svelte:window bind:innerHTML={width} />"#,
+    );
+    assert_has_error(&diags, "bind_invalid_name");
+}
+
+#[test]
+fn validate_bind_invalid_parens() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let value = $state('');
+</script>
+<input bind:value={( () => value, (next) => value = next )}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_parens");
+}
+
+#[test]
+fn validate_bind_getter_setter_without_parens() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let value = $state('');
+</script>
+<input bind:value={
+    () => value,
+    (next) => value = next
+}>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_bind_group_invalid_expression() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let selected = $state([]);
+</script>
+<input type="checkbox" bind:group={
+    () => selected,
+    (next) => selected = next
+}>"#,
+    );
+    assert_has_error(&diags, "bind_group_invalid_expression");
+}
+
+#[test]
+fn validate_bind_sequence_reports_all_relevant_errors() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let selected = $state([]);
+</script>
+<input type="checkbox" bind:group={(() => selected, (next) => selected = next, selected)}>"#,
+    );
+    assert_has_error(&diags, "bind_group_invalid_expression");
+    assert_has_error(&diags, "bind_invalid_parens");
+    assert_has_error(&diags, "bind_invalid_expression");
+}
+
+#[test]
+fn validate_bind_group_invalid_snippet_parameter() {
+    let diags = analyze_with_diags(
+        r#"{#snippet field(selected)}
+    <input type="checkbox" bind:group={selected} />
+{/snippet}"#,
+    );
+    assert_has_error(&diags, "bind_group_invalid_snippet_parameter");
+}
+
+#[test]
+fn validate_attribute_contenteditable_dynamic() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let html = $state('');
+    let editable = true;
+</script>
+<div contenteditable={editable} bind:innerHTML={html}></div>"#,
+    );
+    assert_has_error(&diags, "attribute_contenteditable_dynamic");
+}
+
+#[test]
+fn validate_attribute_invalid_type() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let checked = $state(false);
+    let input_type = 'checkbox';
+</script>
+<input type={input_type} bind:checked={checked}>"#,
+    );
+    assert_has_error(&diags, "attribute_invalid_type");
+}
+
+#[test]
+fn validate_attribute_invalid_multiple() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let value = $state('a');
+    let multiple = true;
+</script>
+<select multiple={multiple} bind:value={value}></select>"#,
+    );
+    assert_has_error(&diags, "attribute_invalid_multiple");
+}
+
+#[test]
+fn validate_bind_invalid_each_rest() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let items = $state([{ selected: [] }]);
+</script>
+{#each items as { ...rest }}
+    <input type="checkbox" bind:group={rest} value="x" />
+{/each}"#,
+    );
+    assert_has_warning(&diags, "bind_invalid_each_rest");
+}
+
+#[test]
+fn validate_bind_checked_radio_target() {
+    let diags = analyze_with_diags(
+        r#"<script>let checked = $state(false);</script>
+<input type="radio" bind:checked={checked}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_target");
+}
+
+#[test]
+fn validate_bind_files_wrong_input_type() {
+    let diags = analyze_with_diags(
+        r#"<script>let files = $state();</script>
+<input type="text" bind:files={files}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_target");
+}
+
+#[test]
+fn validate_bind_member_expression_no_error() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let state = $state({ value: '' });
+</script>
+<input bind:value={state.value}>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_bind_getter_setter_no_error() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    let value = $state('');
+</script>
+<input bind:value={() => value, (next) => value = next}>"#,
+    );
+    assert_no_errors(&diags);
 }
 
 #[test]

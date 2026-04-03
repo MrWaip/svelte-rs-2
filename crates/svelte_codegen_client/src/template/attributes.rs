@@ -214,6 +214,15 @@ pub(crate) fn process_attr<'a>(
             ));
         }
         Attribute::BindDirective(bind) => {
+            if bind.name == "value"
+                && tag_name == "textarea"
+                && !ctx.needs_textarea_value_lowering(el_id)
+            {
+                directive_init.push(
+                    ctx.b
+                        .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
+                );
+            }
             if let Some(placement) =
                 gen_bind_directive(ctx, bind, el_name, tag_name, has_use_directive)
             {
@@ -541,6 +550,15 @@ pub(crate) fn process_attrs_spread<'a>(
             }
             Attribute::BindDirective(bind) => {
                 let has_use = ctx.has_use_directive(el_id);
+                if bind.name == "value"
+                    && el_tag == "textarea"
+                    && !ctx.needs_textarea_value_lowering(el_id)
+                {
+                    init.push(
+                        ctx.b
+                            .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
+                    );
+                }
                 if let Some(placement) = gen_bind_directive(ctx, bind, el_name, el_tag, has_use) {
                     match placement {
                         BindPlacement::AfterUpdate(stmt) => after_update.push(stmt),

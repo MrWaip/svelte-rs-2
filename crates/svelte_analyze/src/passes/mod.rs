@@ -1,4 +1,5 @@
 pub(crate) mod bind_semantics;
+pub(crate) mod binding_properties;
 pub(crate) mod bundles;
 pub(crate) mod collect_symbols;
 pub(crate) mod content_types;
