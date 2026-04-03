@@ -168,7 +168,7 @@ pub(crate) fn process_element<'a>(
 
     // --- Children ---
     // Debug tags inside this element's fragment (before child DOM traversal)
-    super::debug_tag::emit_debug_tags(ctx, child_key.clone(), init);
+    super::debug_tag::emit_debug_tags(ctx, child_key, init);
 
     let prev_bound_contenteditable = ctx.bound_contenteditable;
     if ctx.is_bound_contenteditable(el_id) {

@@ -215,7 +215,7 @@ impl<'a> CodegenView<'a> {
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.data.snippets.component_snippets(id)
     }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(String, FragmentKey)] {
+    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
         self.data.snippets.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {

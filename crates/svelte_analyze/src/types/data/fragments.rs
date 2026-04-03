@@ -1,11 +1,13 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentKey {
     Root,
     Element(NodeId),
     ComponentNode(NodeId),
-    NamedSlot(NodeId, String),
+    /// Named slot within a component: (component_id, slot_element_id).
+    /// The slot name is recovered from the element's `slot="..."` attribute at codegen time.
+    NamedSlot(NodeId, NodeId),
     IfConsequent(NodeId),
     IfAlternate(NodeId),
     EachBody(NodeId),

@@ -242,6 +242,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 Attribute::OnDirectiveLegacy(a) => ComponentPropKind::Event {
                     name: a.name.clone(),
                     attr_id: a.id,
+                    has_expression: a.expression_span.is_some(),
                     has_once_modifier: a.modifiers.iter().any(|m| m == "once"),
                 },
                 _ => continue,

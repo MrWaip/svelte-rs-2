@@ -477,7 +477,7 @@ impl<'a> Ctx<'a> {
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.query.view.component_snippets(id)
     }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(String, FragmentKey)] {
+    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
         self.query.view.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {

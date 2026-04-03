@@ -57,6 +57,7 @@ pub enum ComponentPropKind {
     Event {
         name: String,
         attr_id: NodeId,
+        has_expression: bool,
         has_once_modifier: bool,
     },
 }

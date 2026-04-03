@@ -35,7 +35,7 @@ pub(crate) fn gen_component<'a>(
     let mut memo_counter: u32 = 0;
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
     // LEGACY(svelte4): on:directive events → $$events prop
-    let mut events: Vec<(String, NodeId, bool)> = Vec::new(); // (name, attr_id, once)
+    let mut events: Vec<(String, NodeId, bool, bool)> = Vec::new(); // (name, attr_id, has_expr, once)
 
     for (kind, is_dynamic) in prop_infos {
         match kind {
@@ -207,9 +207,10 @@ pub(crate) fn gen_component<'a>(
             ComponentPropKind::Event {
                 name,
                 attr_id,
+                has_expression,
                 has_once_modifier,
             } => {
-                events.push((name, attr_id, has_once_modifier));
+                events.push((name, attr_id, has_expression, has_once_modifier));
                 continue;
             }
         }
@@ -219,13 +220,17 @@ pub(crate) fn gen_component<'a>(
     if !events.is_empty() {
         let event_props: Vec<ObjProp<'a>> = events
             .into_iter()
-            .map(|(name, attr_id, has_once_modifier)| {
+            .filter_map(|(name, attr_id, has_expression, has_once_modifier)| {
                 let key = ctx.b.alloc_str(&name);
+                if !has_expression {
+                    // Bubble event (no handler expression) — skip, not supported on components
+                    return None;
+                }
                 let is_shorthand = ctx.is_expression_shorthand(attr_id);
                 if is_shorthand && !has_once_modifier {
                     // Consume the parsed expression to keep side table clean
                     let _ = get_attr_expr(ctx, attr_id);
-                    ObjProp::Shorthand(key)
+                    Some(ObjProp::Shorthand(key))
                 } else {
                     let handler = get_attr_expr(ctx, attr_id);
                     let handler = if has_once_modifier {
@@ -233,7 +238,7 @@ pub(crate) fn gen_component<'a>(
                     } else {
                         handler
                     };
-                    ObjProp::KeyValue(key, handler)
+                    Some(ObjProp::KeyValue(key, handler))
                 }
             })
             .collect();
@@ -291,11 +296,14 @@ pub(crate) fn gen_component<'a>(
 
     // Named slots: children with slot="name" attribute
     let named_slots: Vec<_> = ctx.component_named_slots(id).to_vec();
-    for (slot_name, frag_key) in named_slots {
+    for (slot_el_id, frag_key) in named_slots {
         let slot_ct = ctx.content_type(&frag_key);
         if slot_ct == ContentStrategy::Empty {
             continue;
         }
+
+        // Recover slot name from the element's slot="..." attribute
+        let slot_name = slot_name_from_element(ctx, slot_el_id);
 
         let needs_next = matches!(
             slot_ct,
@@ -348,8 +356,8 @@ pub(crate) fn gen_component<'a>(
             inner_body,
         );
 
-        // Thunk: () => registry.Widget
-        let component_ref = ctx.b.parse_expression(name);
+        // Thunk: () => registry.Widget — build as member expression chain
+        let component_ref = build_dotted_member_expr(ctx, name);
         let component_thunk = ctx.b.thunk(component_ref);
 
         let component_call = ctx.b.call_expr(
@@ -587,4 +595,29 @@ fn build_props_expr<'a>(ctx: &Ctx<'a>, items: Vec<PropOrSpread<'a>>) -> Expressi
     }
 
     ctx.b.call_expr("$.spread_props", args)
+}
+
+/// Build a member expression chain from a dotted name like `"registry.Widget"`.
+/// Produces `registry.Widget` as `StaticMemberExpression(Identifier("registry"), "Widget")`.
+fn build_dotted_member_expr<'a>(ctx: &Ctx<'a>, dotted_name: &str) -> Expression<'a> {
+    let mut parts = dotted_name.split('.');
+    let first = parts.next().expect("dotted name must have at least one part");
+    let mut expr = ctx.b.rid_expr(first);
+    for part in parts {
+        expr = ctx.b.static_member_expr(expr, part);
+    }
+    expr
+}
+
+/// Recover the slot name from an element's `slot="..."` attribute.
+fn slot_name_from_element(ctx: &Ctx<'_>, el_id: NodeId) -> String {
+    let el = ctx.element(el_id);
+    for attr in &el.attributes {
+        if let Attribute::StringAttribute(sa) = attr {
+            if sa.name == "slot" {
+                return ctx.query.component.source_text(sa.value_span).to_string();
+            }
+        }
+    }
+    unreachable!("named slot element must have slot attribute")
 }

@@ -41,8 +41,8 @@ impl TemplateSemanticsData {
 pub struct SnippetData {
     pub(crate) hoistable: NodeBitSet,
     pub(crate) component_snippets: NodeTable<Vec<NodeId>>,
-    /// Named slots for component children: maps component NodeId → vec of (slot_name, fragment_key).
-    pub(crate) component_named_slots: NodeTable<Vec<(String, FragmentKey)>>,
+    /// Named slots for component children: maps component NodeId → vec of (slot_element_id, fragment_key).
+    pub(crate) component_named_slots: NodeTable<Vec<(NodeId, FragmentKey)>>,
 }
 
 impl SnippetData {
@@ -62,7 +62,7 @@ impl SnippetData {
             .get(id)
             .map_or(&[], |v| v.as_slice())
     }
-    pub fn component_named_slots(&self, id: NodeId) -> &[(String, FragmentKey)] {
+    pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
         self.component_named_slots
             .get(id)
             .map_or(&[], |v| v.as_slice())

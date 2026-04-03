@@ -93,7 +93,7 @@ pub(crate) fn gen_if_block<'a>(
     let mut derived_names: Vec<Option<String>> = Vec::new();
 
     for (i, branch) in branches.iter().enumerate() {
-        let body = gen_fragment(ctx, branch.consequent_key.clone());
+        let body = gen_fragment(ctx, branch.consequent_key);
         let name = ctx.gen_ident("consequent");
         let arrow = ctx.b.arrow_block_expr(ctx.b.params(["$$anchor"]), body);
         stmts.push(ctx.b.var_stmt(&name, arrow));

@@ -191,8 +191,8 @@ pub fn gen_root_fragment<'a>(
     let mut hoisted = Vec::with_capacity(4);
     let mut body = Vec::with_capacity(8);
 
-    let async_const_run = gen_const_tags(ctx, key.clone(), &mut body);
-    emit_debug_tags(ctx, key.clone(), &mut body);
+    let async_const_run = gen_const_tags(ctx, key, &mut body);
+    emit_debug_tags(ctx, key, &mut body);
     if let Some(run_stmt) = async_const_run {
         body.push(run_stmt);
     }
@@ -245,14 +245,14 @@ pub(crate) fn gen_fragment<'a>(ctx: &mut Ctx<'a>, key: FragmentKey) -> Vec<State
 
     let mut body: Vec<Statement<'a>> = Vec::with_capacity(8);
 
-    let async_const_run = gen_const_tags(ctx, key.clone(), &mut body);
-    emit_debug_tags(ctx, key.clone(), &mut body);
+    let async_const_run = gen_const_tags(ctx, key, &mut body);
+    emit_debug_tags(ctx, key, &mut body);
     if let Some(run_stmt) = async_const_run {
         body.push(run_stmt);
     }
 
     let mut sub_hoisted = Vec::with_capacity(2);
-    emit_content_strategy(ctx, key.clone(), &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
+    emit_content_strategy(ctx, key, &ct, &tpl_name, false, &mut sub_hoisted, &mut body);
     ctx.state.module_hoisted.extend(sub_hoisted);
 
     // Title elements emit after DOM init but before $.append()
@@ -566,7 +566,7 @@ fn emit_mixed<'a>(
         body.push(ctx.b.call_stmt("$.next", []));
     }
 
-    let (html, import_node) = fragment_html(ctx, key.clone());
+    let (html, import_node) = fragment_html(ctx, key);
     let flags = if import_node { 3.0 } else { 1.0 };
     let from_fn = from_template_fn_for_items(ctx, &items);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
@@ -583,7 +583,7 @@ fn emit_mixed<'a>(
 
     if is_root {
         // Root: template BEFORE children (top-down)
-        hoisted.push(make_tpl_stmt(ctx, key.clone()));
+        hoisted.push(make_tpl_stmt(ctx, key));
     }
 
     let frag = ctx.gen_ident("fragment");

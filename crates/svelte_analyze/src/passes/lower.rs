@@ -10,17 +10,15 @@ use crate::types::data::{
 };
 
 /// Check if a node is an element with a static `slot="name"` attribute.
-/// Returns the slot name if found, matching the reference compiler's `determine_slot`.
-fn determine_slot(node: &Node, component: &Component) -> Option<String> {
+/// Returns the element's NodeId if a slot attribute is found, matching the
+/// reference compiler's `determine_slot`. The actual slot name is recovered
+/// from the AST at codegen time.
+fn determine_slot(node: &Node) -> Option<NodeId> {
     let el = node.as_element()?;
-    el.attributes.iter().find_map(|attr| {
-        if let Attribute::StringAttribute(sa) = attr {
-            if sa.name == "slot" {
-                return Some(component.source_text(sa.value_span).to_string());
-            }
-        }
-        None
-    })
+    let has_slot = el.attributes.iter().any(|attr| {
+        matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot")
+    });
+    has_slot.then_some(el.id)
 }
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
@@ -166,10 +164,10 @@ fn lower_fragment(
         }
 
         if let Some(ids) = debug_ids {
-            data.debug_tags.by_fragment.insert(key.clone(), ids);
+            data.debug_tags.by_fragment.insert(key, ids);
         }
         if let Some(ids) = title_ids {
-            data.title_elements.by_fragment.insert(key.clone(), ids);
+            data.title_elements.by_fragment.insert(key, ids);
         }
     }
 
@@ -193,7 +191,7 @@ fn lower_fragment(
         }
         if !blockers.is_empty() {
             blockers.sort_unstable();
-            data.fragments.fragment_blockers.insert(key.clone(), blockers);
+            data.fragments.fragment_blockers.insert(key, blockers);
         }
     }
 
@@ -244,14 +242,15 @@ fn lower_fragment(
 
                 // Partition children by slot="name" attribute
                 let mut default_nodes: Vec<NodeId> = Vec::new();
-                let mut named_groups: Vec<(String, Vec<NodeId>)> = Vec::new();
+                // Groups keyed by the slot element's NodeId
+                let mut named_groups: Vec<(NodeId, Vec<NodeId>)> = Vec::new();
 
                 for &child_id in &cn.fragment.nodes {
-                    if let Some(slot_name) = determine_slot(store.get(child_id), component) {
-                        if let Some(group) = named_groups.iter_mut().find(|(n, _)| n == &slot_name) {
+                    if let Some(slot_el_id) = determine_slot(store.get(child_id)) {
+                        if let Some(group) = named_groups.iter_mut().find(|(id, _)| *id == slot_el_id) {
                             group.1.push(child_id);
                         } else {
-                            named_groups.push((slot_name, vec![child_id]));
+                            named_groups.push((slot_el_id, vec![child_id]));
                         }
                     } else {
                         default_nodes.push(child_id);
@@ -270,19 +269,19 @@ fn lower_fragment(
                 );
 
                 // Lower each named slot group
-                let mut slot_mappings: Vec<(String, FragmentKey)> = Vec::new();
-                for (slot_name, slot_nodes) in named_groups {
-                    let frag_key = FragmentKey::NamedSlot(cn.id, slot_name.clone());
+                let mut slot_mappings: Vec<(NodeId, FragmentKey)> = Vec::new();
+                for (slot_el_id, slot_nodes) in named_groups {
+                    let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
                     let slot_frag = Fragment { nodes: slot_nodes };
                     lower_fragment(
                         &slot_frag,
-                        frag_key.clone(),
+                        frag_key,
                         component,
                         data,
                         store,
                         false,
                     );
-                    slot_mappings.push((slot_name, frag_key));
+                    slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
                     data.snippets.component_named_slots.insert(cn.id, slot_mappings);
@@ -299,7 +298,7 @@ fn lower_fragment(
                 );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
-                    lower_fragment(alt, alt_key.clone(), component, data, store, in_svg_non_text);
+                    lower_fragment(alt, alt_key, component, data, store, in_svg_non_text);
                     // Detect elseif: alternate has a single IfBlock child marked as elseif
                     let is_elseif = data.fragments.lowered.get(&alt_key).is_some_and(|lf| {
                         lf.items.len() == 1
