@@ -832,8 +832,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
         // Scan PropertyDefinitions for $state/$state.raw/$derived/$derived.by
         let mut body_public_names: FxHashSet<String> = FxHashSet::default();
+        let mut placeholder_public_names: FxHashSet<String> = FxHashSet::default();
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::PropertyDefinition(prop) = element {
+                if let oxc_ast::ast::PropertyKey::StaticIdentifier(id) = &prop.key {
+                    if !prop.computed && prop.value.is_none() {
+                        placeholder_public_names.insert(id.name.to_string());
+                    }
+                }
                 let Some(value) = &prop.value else { continue };
                 let Some(rune_kind) = self.rune_kind_from_expr(value) else {
                     continue;
@@ -867,10 +873,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
 
         // Scan constructor for `this.name = $state(...)` assignments.
-        // Only register a name in ctor_field_names if it has no body-level PropertyDefinition
-        // with a rune initializer — a name in both body and constructor is a Svelte error that
-        // the analyzer catches; we avoid double-lowering it in codegen.
-        let mut ctor_field_names = FxHashSet::default();
+        // Only synthesize a field once per public name. If the body already owns lowering for
+        // a rune field with that name, constructor assignments reuse that backing instead.
+        let mut ctor_synth_names = FxHashSet::default();
+        let mut ctor_placeholder_names = FxHashSet::default();
         for element in &body.body {
             if let oxc_ast::ast::ClassElement::MethodDefinition(method) = element {
                 if method.kind == oxc_ast::ast::MethodDefinitionKind::Constructor {
@@ -883,7 +889,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                             if let Expression::ThisExpression(_) = &member.object {
                                                 if let Some(rune_kind) = self.rune_kind_from_expr(&assign.right) {
                                                     let name = member.property.name.to_string();
-                                                    if body_public_names.contains(&name) {
+                                                    if body_public_names.contains(&name)
+                                                        || !ctor_synth_names.insert(name.clone())
+                                                    {
                                                         continue;
                                                     }
                                                     let mut backing = format!("#{}", name);
@@ -891,7 +899,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                                                         backing = format!("#_{}", backing.trim_start_matches('#'));
                                                     }
                                                     existing_private.insert(backing.trim_start_matches('#').to_string());
-                                                    ctor_field_names.insert(name.clone());
+                                                    if placeholder_public_names.contains(&name) {
+                                                        ctor_placeholder_names.insert(name.clone());
+                                                    }
                                                     fields.push(ClassStateField {
                                                         public_name: Some(name),
                                                         private_name: backing.trim_start_matches('#').to_string(),
@@ -909,7 +919,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             }
         }
 
-        ClassStateInfo { fields, ctor_field_names }
+        ClassStateInfo {
+            fields,
+            ctor_synth_names,
+            ctor_placeholder_names,
+        }
     }
 
     /// Rewrite class body: replace state fields with private backing + getter/setter.
@@ -947,7 +961,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         for field_info in info
             .fields
             .iter()
-            .filter(|f| f.public_name.as_deref().is_some_and(|n| info.ctor_field_names.contains(n)))
+            .filter(|f| f.public_name.as_deref().is_some_and(|n| info.ctor_synth_names.contains(n)))
         {
             let name = field_info.public_name.as_deref().unwrap();
             new_body.push(self.b.class_private_field(&field_info.private_name, None));
@@ -965,13 +979,13 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         // A bare field declaration (no initializer, i.e. `total;`) whose name
                         // matches a constructor-assigned rune field was already pre-emitted above.
                         // Fields with an initializer (`total = 1;`) are not placeholders and must
-                        // be kept even if the same name appears in ctor_field_names.
+                        // be kept even if the same name appears in constructor lowering.
                         let is_ctor_placeholder = prop.value.is_none()
                             && match &prop.key {
                                 oxc_ast::ast::PropertyKey::StaticIdentifier(id)
                                     if !prop.computed =>
                                 {
-                                    info.ctor_field_names.contains(id.name.as_str())
+                                    info.ctor_placeholder_names.contains(id.name.as_str())
                                 }
                                 _ => false,
                             };

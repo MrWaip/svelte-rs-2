@@ -64,9 +64,10 @@ pub(super) struct ClassStateField {
 
 pub(super) struct ClassStateInfo {
     pub(super) fields: Vec<ClassStateField>,
-    /// Public field names that are assigned in the constructor (`this.x = $rune(...)`),
-    /// not declared as body PropertyDefinitions. Used to emit their backing before body fields.
-    pub(super) ctor_field_names: FxHashSet<String>,
+    /// Public field names whose backing/getter/setter come from constructor rune assignments.
+    pub(super) ctor_synth_names: FxHashSet<String>,
+    /// Bare placeholder declarations (`field;`) that are replaced by constructor-owned lowering.
+    pub(super) ctor_placeholder_names: FxHashSet<String>,
 }
 
 pub(super) struct ScriptTransformer<'b, 'a> {
