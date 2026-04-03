@@ -339,6 +339,7 @@ impl<'a> Parser<'a> {
                 TokenType::AwaitClauseTag(clause_tag) => {
                     self.handle_await_clause_tag(
                         &clause_tag,
+                        token.span,
                         &mut entry_stack,
                         &mut children_stack,
                     );

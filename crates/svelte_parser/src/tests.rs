@@ -878,6 +878,35 @@ fn debug_tag_call_expression_error() {
     );
 }
 
+// --- AwaitBlock diagnostic tests ---
+
+#[test]
+fn await_duplicate_then_clause() {
+    let (_, diags) = parse_with_diagnostics("{#await p}{:then a}text{:then b}more{/await}");
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        "expected block_duplicate_clause, got: {diags:?}"
+    );
+}
+
+#[test]
+fn await_duplicate_catch_clause() {
+    let (_, diags) = parse_with_diagnostics("{#await p}{:catch e}err{:catch e2}err2{/await}");
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        "expected block_duplicate_clause, got: {diags:?}"
+    );
+}
+
+#[test]
+fn await_valid_then_catch_no_duplicate() {
+    let (_, diags) = parse_with_diagnostics("{#await p}{:then a}ok{:catch e}err{/await}");
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        "unexpected block_duplicate_clause: {diags:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // JS parsing tests (moved from svelte_types)
 // ---------------------------------------------------------------------------

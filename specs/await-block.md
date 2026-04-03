@@ -1,10 +1,9 @@
 # Await Block
 
 ## Current state
-- **Working**: 16/18 use cases
-- **Missing**: 2 diagnostics (`block_duplicate_clause`, `block_unexpected_character`)
-- **Next**: implement diagnostics
-- Last updated: 2026-04-01
+- **Complete**: all 25 use cases done (2026-04-03)
+- **Note**: `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace is structurally implemented in the analyzer but cannot be triggered: the scanner does not parse `{ :then val}` (whitespace between `{` and `:`) as an AwaitClauseTag. The check will fire when the scanner is made permissive.
+- Last updated: 2026-04-03
 
 ## Source
 Audit of existing implementation (2026-04-01)
@@ -34,8 +33,8 @@ Audit of existing implementation (2026-04-01)
 21. [x] Nested await (await inside await) (test: `await_nested_await`)
 22. [x] `$.async()` wrapping with blockers (test: `async_await_has_await`)
 23. [x] Pickled await in template (test: `async_pickled_await_template`)
-- [ ] `block_duplicate_clause` error for duplicate `:then`/`:catch`
-- [ ] `block_unexpected_character` validation for whitespace before `:then`/`:catch`
+- [x] `block_duplicate_clause` error for duplicate `:then`/`:catch`
+- [~] `block_unexpected_character` validation for whitespace before `:then`/`:catch` (analyzer check implemented; blocked on scanner not parsing `{ :then val}` — scanner gap)
 
 ## Reference
 
