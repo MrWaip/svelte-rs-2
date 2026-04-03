@@ -194,6 +194,9 @@ pub(crate) fn walk_template(
                 walk_template(&el.fragment, ctx, visitors);
                 ctx.scope = saved;
                 ctx.pop();
+                for v in visitors.iter_mut() {
+                    v.leave_svelte_element(el, ctx);
+                }
             }
             Node::SvelteWindow(w) => {
                 for v in visitors.iter_mut() {

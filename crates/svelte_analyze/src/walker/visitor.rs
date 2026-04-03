@@ -71,6 +71,7 @@ pub(crate) trait TemplateVisitor {
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {}
+    fn leave_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {}
     fn leave_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {}
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {}
     fn leave_concatenation_attribute(

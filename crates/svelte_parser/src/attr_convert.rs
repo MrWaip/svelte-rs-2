@@ -157,6 +157,7 @@ impl<'a> Parser<'a> {
                     attributes.push(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
                         id: self.reserve_id(),
                         name: od.name_span.source_text(self.source).to_string(),
+                        name_span: od.name_span,
                         expression_span,
                         modifiers: od
                             .modifiers
