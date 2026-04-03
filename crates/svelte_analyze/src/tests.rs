@@ -1840,6 +1840,16 @@ let value = $bindable();
 }
 
 #[test]
+fn validate_bindable_invalid_location_inside_arrow() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { x = () => $bindable() } = $props();
+</script>"#,
+    );
+    assert_has_error(&diags, "bindable_invalid_location");
+}
+
+#[test]
 fn validate_bindable_too_many_args() {
     let diags = analyze_with_diags(
         r#"<script>

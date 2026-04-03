@@ -530,7 +530,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if call.arguments.len() > 1 {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::RuneInvalidArgumentsLength {
-                        rune: "$bindable".into(),
+                        rune: rune.display_name().into(),
                         args: "zero or one arguments".into(),
                     },
                     self.span(call.span),
@@ -549,7 +549,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if self.has_props_rune || self.has_props_id {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::PropsDuplicate {
-                        rune: "$props".into(),
+                        rune: rune.display_name().into(),
                     },
                     self.span(call.span),
                 ));
@@ -567,7 +567,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if !call.arguments.is_empty() {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::RuneInvalidArguments {
-                        rune: "$props".into(),
+                        rune: rune.display_name().into(),
                     },
                     self.span(call.span),
                 ));
@@ -579,7 +579,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if self.has_props_id || self.has_props_rune {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::PropsDuplicate {
-                        rune: "$props.id".into(),
+                        rune: rune.display_name().into(),
                     },
                     self.span(call.span),
                 ));
@@ -597,7 +597,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if !call.arguments.is_empty() {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::RuneInvalidArguments {
-                        rune: "$props.id".into(),
+                        rune: rune.display_name().into(),
                     },
                     self.span(call.span),
                 ));
@@ -642,7 +642,9 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         flags: oxc_semantic::ScopeFlags,
     ) {
         self.function_depth += 1;
+        let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
         walk_function(self, func, flags);
+        self.in_props_destructure = prev_props;
         self.function_depth -= 1;
     }
 
@@ -651,7 +653,9 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
         arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
     ) {
         self.function_depth += 1;
+        let prev_props = std::mem::replace(&mut self.in_props_destructure, false);
         walk_arrow_function_expression(self, arrow);
+        self.in_props_destructure = prev_props;
         self.function_depth -= 1;
     }
 
