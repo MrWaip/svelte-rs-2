@@ -1,19 +1,20 @@
 //! Rune validation — placement, argument count, deprecated/removed runes.
 
 use oxc_ast::ast::{
-    AssignmentOperator, CallExpression, ExportDefaultDeclaration, ExportNamedDeclaration,
-    Expression, ExpressionStatement, MethodDefinitionKind, ModuleExportName, PropertyDefinition,
-    VariableDeclarator,
+    AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
+    ExportNamedDeclaration, Expression, ExpressionStatement, MethodDefinitionKind,
+    ModuleExportName, PropertyDefinition, VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
     walk_expression_statement, walk_function, walk_method_definition, walk_property_definition,
 };
 use oxc_ast_visit::Visit;
+use oxc_span::GetSpan;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::utils::script_info::detect_rune_from_call;
+use crate::utils::script_info::{detect_rune, detect_rune_from_call};
 use crate::{types::script::RuneKind, AnalysisData};
 
 /// Constructor assignments to `this` are valid rune placement targets,
@@ -42,6 +43,10 @@ pub(super) fn validate(
         in_constructor_body: false,
         in_this_assign_rhs: false,
         in_expression_statement_expr: false,
+        function_depth: 0,
+        has_props_rune: false,
+        has_props_id: false,
+        in_props_destructure: false,
     };
     v.visit_program(program);
     validate_derived_invalid_export(data, program, offset, diags);
@@ -60,11 +65,66 @@ struct RuneValidator<'a> {
     /// True only when we are visiting the direct expression of an ExpressionStatement.
     /// Reset to false whenever we descend into a nested call expression.
     in_expression_statement_expr: bool,
+    /// 0 = top-level scope, incremented inside functions/arrows.
+    function_depth: u32,
+    /// Duplicate `$props()` detection.
+    has_props_rune: bool,
+    /// Duplicate `$props.id()` detection.
+    has_props_id: bool,
+    /// True when visiting the binding pattern of a `$props()` destructure.
+    /// Used for `$bindable()` placement validation.
+    in_props_destructure: bool,
 }
 
 impl RuneValidator<'_> {
     fn span(&self, oxc: oxc_span::Span) -> Span {
         Span::new(oxc.start + self.offset, oxc.end + self.offset)
+    }
+
+    /// Validate the binding pattern of a `$props()` declaration.
+    /// Rejects computed keys, `$$`-prefixed names, and nested destructures.
+    fn validate_props_pattern(&mut self, pattern: &BindingPattern<'_>) {
+        let BindingPattern::ObjectPattern(obj) = pattern else {
+            if !matches!(pattern, BindingPattern::BindingIdentifier(_)) {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsInvalidIdentifier,
+                    self.span(pattern.span()),
+                ));
+            }
+            return;
+        };
+
+        for prop in &obj.properties {
+            if prop.computed {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsInvalidPattern,
+                    self.span(prop.span),
+                ));
+                continue;
+            }
+
+            // Reject `$$`-prefixed property names.
+            if let oxc_ast::ast::PropertyKey::StaticIdentifier(key) = &prop.key {
+                if key.name.starts_with("$$") {
+                    self.diags.push(Diagnostic::error(
+                        DiagnosticKind::PropsIllegalName,
+                        self.span(prop.span),
+                    ));
+                }
+            }
+
+            // The value (after stripping AssignmentPattern default) must be a plain identifier.
+            let value_pattern = match &prop.value {
+                BindingPattern::AssignmentPattern(assign) => &assign.left,
+                other => other,
+            };
+            if !matches!(value_pattern, BindingPattern::BindingIdentifier(_)) {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsInvalidPattern,
+                    self.span(prop.span),
+                ));
+            }
+        }
     }
 
     /// `detect_rune_from_call` only matches known rune names — deprecated forms like
@@ -465,17 +525,134 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             ));
         }
 
+        // --- $bindable validation ---
+        if matches!(rune, RuneKind::Bindable) {
+            if call.arguments.len() > 1 {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidArgumentsLength {
+                        rune: "$bindable".into(),
+                        args: "zero or one arguments".into(),
+                    },
+                    self.span(call.span),
+                ));
+            }
+            if !self.in_props_destructure {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::BindableInvalidLocation,
+                    self.span(call.span),
+                ));
+            }
+        }
+
+        // --- $props validation ---
+        if matches!(rune, RuneKind::Props) {
+            if self.has_props_rune || self.has_props_id {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsDuplicate {
+                        rune: "$props".into(),
+                    },
+                    self.span(call.span),
+                ));
+            } else {
+                self.has_props_rune = true;
+            }
+
+            if !self.in_var_declarator_init || self.function_depth > 0 {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsInvalidPlacement,
+                    self.span(call.span),
+                ));
+            }
+
+            if !call.arguments.is_empty() {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidArguments {
+                        rune: "$props".into(),
+                    },
+                    self.span(call.span),
+                ));
+            }
+        }
+
+        // --- $props.id validation ---
+        if matches!(rune, RuneKind::PropsId) {
+            if self.has_props_id || self.has_props_rune {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsDuplicate {
+                        rune: "$props.id".into(),
+                    },
+                    self.span(call.span),
+                ));
+            } else {
+                self.has_props_id = true;
+            }
+
+            if !self.in_var_declarator_init || self.function_depth > 0 {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::PropsIdInvalidPlacement,
+                    self.span(call.span),
+                ));
+            }
+
+            if !call.arguments.is_empty() {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidArguments {
+                        rune: "$props.id".into(),
+                    },
+                    self.span(call.span),
+                ));
+            }
+        }
+
         walk_call_expression(self, call);
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        let is_props_init = it
+            .init
+            .as_ref()
+            .and_then(|e| detect_rune(e))
+            .is_some_and(|r| matches!(r, RuneKind::Props));
+
+        if is_props_init {
+            self.validate_props_pattern(&it.id);
+        }
+
+        // Set flag so $bindable() calls inside the destructure pattern are valid.
+        let prev_props = self.in_props_destructure;
+        if is_props_init && matches!(&it.id, BindingPattern::ObjectPattern(_)) {
+            self.in_props_destructure = true;
+        }
+
         self.visit_binding_pattern(&it.id);
+
+        self.in_props_destructure = prev_props;
+
         if let Some(init) = &it.init {
             let prev = self.in_var_declarator_init;
             self.in_var_declarator_init = true;
             self.visit_expression(init);
             self.in_var_declarator_init = prev;
         }
+    }
+
+    fn visit_function(
+        &mut self,
+        func: &oxc_ast::ast::Function<'a>,
+        flags: oxc_semantic::ScopeFlags,
+    ) {
+        self.function_depth += 1;
+        walk_function(self, func, flags);
+        self.function_depth -= 1;
+    }
+
+    fn visit_arrow_function_expression(
+        &mut self,
+        arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
+    ) {
+        self.function_depth += 1;
+        walk_arrow_function_expression(self, arrow);
+        self.function_depth -= 1;
     }
 
     fn visit_property_definition(&mut self, it: &PropertyDefinition<'a>) {
