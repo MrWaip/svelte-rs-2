@@ -3,8 +3,8 @@
 ## Current state
 - **Working**: 4/6 client use cases
 - **Missing**: 2/6 client use cases
-- **Next**: wire `config.json.runes` through the compiler test harness, then fix non-runes client emission to match the reference compiler's `$.untrack(() => $.snapshot(...))` wrapping
-- Last updated: 2026-04-01
+- **Next**: fix non-runes client emission to match the reference compiler's `$.untrack(() => $.snapshot(...))` wrapping, then add the remaining runes-mode analyzer validation
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -44,21 +44,18 @@
 
 ## Tasks
 
-- [ ] Add compiler-test support for `config.json.runes` so non-runes snapshots can be executed by `just test-case`.
 - [ ] Add a focused compiler case for non-runes `{@debug}` output and keep it failing until the client emitter matches the reference.
 - [ ] Update client `{@debug}` emission to branch on runes mode and generate `$.untrack(() => $.snapshot(expr))` in non-runes mode.
 - [ ] Add analyzer validation for debug tags if the project wants parity with the reference `validate_opening_tag` checks in runes mode.
 
 ## Implementation order
 
-1. Test harness support for `config.json.runes`
-2. Focused non-runes compiler case
-3. Client codegen parity fix
-4. Optional analyzer validation parity
+1. Focused non-runes compiler case
+2. Client codegen parity fix
+3. Optional analyzer validation parity
 
 ## Discovered bugs
 
-- OPEN: `tasks/compiler_tests/test_v3.rs` ignores `config.json.runes`, so non-runes compiler cases compare a runes-true Rust compile against a runes-configured reference snapshot.
 - OPEN: `crates/svelte_codegen_client/src/template/debug_tag.rs` always emits `$.snapshot(...)` directly and never generates the reference compiler's non-runes `$.untrack(() => $.snapshot(...))` wrapper.
 
 ## Test cases

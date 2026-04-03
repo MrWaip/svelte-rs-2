@@ -34,11 +34,13 @@ pub(super) fn validate(
     data: &AnalysisData,
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
+    runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut v = RuneValidator {
         diags,
         offset,
+        runes,
         in_var_declarator_init: false,
         in_class_property_init: false,
         in_constructor_body: false,
@@ -59,6 +61,7 @@ pub(super) fn validate(
 struct RuneValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     offset: u32,
+    runes: bool,
     in_var_declarator_init: bool,
     in_class_property_init: bool,
     in_constructor_body: bool,
@@ -610,6 +613,21 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        if !self.runes {
+            if let Some(Expression::CallExpression(call)) = &it.init {
+                if let Expression::Identifier(ident) = &call.callee {
+                    if ident.name == "$derived" {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidUsage {
+                                rune: "$derived".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+            }
+        }
+
         let is_props_init = it
             .init
             .as_ref()

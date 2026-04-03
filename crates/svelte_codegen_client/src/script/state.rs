@@ -10,7 +10,8 @@ use svelte_analyze::RuneKind;
 use crate::builder::Arg;
 
 use super::{
-    compute_line_col, sanitize_location, ClassStateField, ClassStateInfo, ScriptTransformer,
+    compute_line_col, sanitize_location, AsyncDerivedMode, ClassStateField, ClassStateInfo,
+    ScriptTransformer,
 };
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
@@ -180,9 +181,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         }
                     })
             },
-            |this, _decl_kind, decl_span_start, mut declarator, _| {
+            |this, decl_kind, decl_span_start, mut declarator, _| {
                 let init = declarator.init.take().unwrap();
-                this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start)
+                this.gen_async_derived_destructuring(&declarator.id, init, decl_span_start, decl_kind)
             },
         );
     }
@@ -583,6 +584,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         pattern: &oxc_ast::ast::BindingPattern<'a>,
         init: Expression<'a>,
         decl_span_start: u32,
+        decl_kind: oxc_ast::ast::VariableDeclarationKind,
     ) -> Statement<'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async derived destructuring should be a call");
@@ -631,14 +633,50 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         }
 
         let async_derived = self.b.call_expr("$.async_derived", args);
-        let tmp_stmt = self
-            .b
-            .var_stmt(tmp_name_str, self.b.await_expr(async_derived));
+        let tmp_init = match self.async_derived_mode() {
+            AsyncDerivedMode::Await => self.b.await_expr(async_derived),
+            AsyncDerivedMode::Save => {
+                let saved = self.b.call_expr("$.save", [Arg::Expr(async_derived)]);
+                self.b
+                    .call_expr_callee(self.b.await_expr(saved), std::iter::empty::<Arg<'a, '_>>())
+            }
+        };
 
         let access_root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);
-        let mut block_stmts = vec![tmp_stmt];
-        self.gen_derived_destructure_assignments(pattern, access_root, &mut block_stmts);
-        self.b.block_stmt(block_stmts)
+        if self.function_info_stack.is_empty() {
+            let tmp_stmt = self.b.var_stmt(tmp_name_str, tmp_init);
+            let mut block_stmts = vec![tmp_stmt];
+            self.gen_derived_destructure_assignments(pattern, access_root, &mut block_stmts);
+            self.b.block_stmt(block_stmts)
+        } else {
+            let mut declarators = Vec::new();
+            let tmp_declarator = self.b.ast.variable_declarator(
+                oxc_span::SPAN,
+                decl_kind,
+                self.b.ast.binding_pattern_binding_identifier(
+                    oxc_span::SPAN,
+                    self.b.ast.atom(tmp_name_str),
+                ),
+                NONE,
+                Some(tmp_init),
+                false,
+            );
+            declarators.push(tmp_declarator);
+            self.gen_destructure_declarators(
+                pattern,
+                access_root,
+                RuneKind::Derived,
+                decl_kind,
+                &mut declarators,
+            );
+            let decl = self.b.ast.variable_declaration(
+                oxc_span::SPAN,
+                decl_kind,
+                self.b.ast.vec_from_iter(declarators),
+                false,
+            );
+            Statement::VariableDeclaration(self.b.alloc(decl))
+        }
     }
 
     fn gen_derived_destructure_assignments(
@@ -958,11 +996,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
         // Pre-emit constructor-assigned fields at the top of the class body so they sort
         // before body-declared fields (matches reference compiler output order).
-        for field_info in info
-            .fields
-            .iter()
-            .filter(|f| f.public_name.as_deref().is_some_and(|n| info.ctor_synth_names.contains(n)))
-        {
+        for field_info in info.fields.iter().filter(|f| {
+            f.public_name
+                .as_deref()
+                .is_some_and(|n| info.ctor_synth_names.contains(n))
+        }) {
             let name = field_info.public_name.as_deref().unwrap();
             new_body.push(self.b.class_private_field(&field_info.private_name, None));
             self.emit_getter_setter(&mut new_body, field_info, name);
@@ -1297,6 +1335,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         self.function_info_stack
             .last()
             .is_some_and(|f| f.in_constructor)
+    }
+
+    pub(super) fn async_derived_mode(&self) -> AsyncDerivedMode {
+        if self.strip_exports && self.function_info_stack.len() > 1 {
+            AsyncDerivedMode::Save
+        } else {
+            AsyncDerivedMode::Await
+        }
     }
 
     /// Build a dev-mode tag label like "ClassName.fieldName" or "[class].fieldName".

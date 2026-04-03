@@ -13,6 +13,9 @@ impl<'a> CodegenView<'a> {
     pub fn custom_element(&self) -> bool {
         self.data.custom_element
     }
+    pub fn runes(&self) -> bool {
+        self.data.runes
+    }
     pub fn runtime_plan(&self) -> RuntimePlan {
         self.data.runtime_plan
     }

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use svelte_ast::{
-    is_svg, is_whitespace_removable_parent, Attribute, AstStore, Component, Fragment, Node, NodeId,
+    is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment, Node, NodeId,
 };
 use svelte_span::Span;
 
@@ -15,9 +15,10 @@ use crate::types::data::{
 /// from the AST at codegen time.
 fn determine_slot(node: &Node) -> Option<NodeId> {
     let el = node.as_element()?;
-    let has_slot = el.attributes.iter().any(|attr| {
-        matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot")
-    });
+    let has_slot = el
+        .attributes
+        .iter()
+        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"));
     has_slot.then_some(el.id)
 }
 
@@ -247,7 +248,9 @@ fn lower_fragment(
 
                 for &child_id in &cn.fragment.nodes {
                     if let Some(slot_el_id) = determine_slot(store.get(child_id)) {
-                        if let Some(group) = named_groups.iter_mut().find(|(id, _)| *id == slot_el_id) {
+                        if let Some(group) =
+                            named_groups.iter_mut().find(|(id, _)| *id == slot_el_id)
+                        {
                             group.1.push(child_id);
                         } else {
                             named_groups.push((slot_el_id, vec![child_id]));
@@ -258,7 +261,9 @@ fn lower_fragment(
                 }
 
                 // Lower default children
-                let default_frag = Fragment { nodes: default_nodes };
+                let default_frag = Fragment {
+                    nodes: default_nodes,
+                };
                 lower_fragment(
                     &default_frag,
                     FragmentKey::ComponentNode(cn.id),
@@ -273,18 +278,13 @@ fn lower_fragment(
                 for (slot_el_id, slot_nodes) in named_groups {
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
                     let slot_frag = Fragment { nodes: slot_nodes };
-                    lower_fragment(
-                        &slot_frag,
-                        frag_key,
-                        component,
-                        data,
-                        store,
-                        false,
-                    );
+                    lower_fragment(&slot_frag, frag_key, component, data, store, false);
                     slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
-                    data.snippets.component_named_slots.insert(cn.id, slot_mappings);
+                    data.snippets
+                        .component_named_slots
+                        .insert(cn.id, slot_mappings);
                 }
             }
             Node::IfBlock(block) => {

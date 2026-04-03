@@ -8,7 +8,7 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions};
 
-fn assert_compiler(case: &str) {
+fn case_input_and_options(case: &str) -> (String, CompileOptions) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("cases2")
         .join(case)
@@ -27,6 +27,9 @@ fn assert_compiler(case: &str) {
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
+        if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
+            opts.runes = Some(runes);
+        }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
             opts.custom_element = ce;
         }
@@ -39,6 +42,16 @@ fn assert_compiler(case: &str) {
             }
         }
     }
+
+    (input, opts)
+}
+
+fn assert_compiler(case: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("cases2")
+        .join(case)
+        .join("case.svelte");
+    let (input, opts) = case_input_and_options(case);
     let result = compile(&input, &opts);
     let js = result
         .js
@@ -53,6 +66,16 @@ fn assert_compiler(case: &str) {
         .unwrap();
 
     assert_eq!(js, expected);
+}
+
+fn assert_compiler_error(case: &str, code: &str) {
+    let (input, opts) = case_input_and_options(case);
+    let result = compile(&input, &opts);
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == code),
+        "expected diagnostic '{code}', got: {:?}",
+        result.diagnostics
+    );
 }
 
 #[rstest]
@@ -1810,6 +1833,16 @@ fn debug_non_runes_untrack() {
     assert_compiler("debug_non_runes_untrack");
 }
 
+#[test]
+fn derived_non_runes_invalid_usage() {
+    assert_compiler_error("derived_non_runes_invalid_usage", "rune_invalid_usage");
+}
+
+#[rstest]
+fn non_runes_simple_snapshot() {
+    assert_compiler("non_runes_simple_snapshot");
+}
+
 #[rstest]
 fn animate_with_spread() {
     assert_compiler("animate_with_spread");
@@ -2061,6 +2094,16 @@ fn async_derived_dev_ignored() {
 #[rstest]
 fn async_derived_dev_ignored_destructured() {
     assert_compiler("async_derived_dev_ignored_destructured");
+}
+
+#[rstest]
+fn async_derived_nested_function() {
+    assert_compiler("async_derived_nested_function");
+}
+
+#[rstest]
+fn async_derived_nested_function_destructured() {
+    assert_compiler("async_derived_nested_function_destructured");
 }
 
 #[rstest]

@@ -279,7 +279,10 @@ impl<'a> Scanner<'a> {
             let dot_pos = self.current;
             self.advance(); // consume '.'
             let seg_start = self.current;
-            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+            while self
+                .peek()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            {
                 self.advance();
             }
             if self.current == seg_start {
@@ -753,7 +756,10 @@ impl<'a> Scanner<'a> {
             let dot_pos = self.current;
             self.advance();
             let seg_start = self.current;
-            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+            while self
+                .peek()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            {
                 self.advance();
             }
             if self.current == seg_start {

@@ -7,13 +7,18 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use crate::types::script::RuneKind;
 use crate::{types::data::ParserResult, AnalysisData};
 
-pub fn validate(data: &AnalysisData, parsed: &ParserResult, diags: &mut Vec<Diagnostic>) {
+pub fn validate(
+    data: &AnalysisData,
+    parsed: &ParserResult,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
     let Some(program) = &parsed.program else {
         return;
     };
     let offset = parsed.script_content_span.map_or(0, |s| s.start);
 
-    validate_program(data, program, offset, diags);
+    validate_program(data, program, offset, runes, diags);
     validate_custom_element_props(data, diags);
 }
 
@@ -21,9 +26,10 @@ pub fn validate_program(
     data: &AnalysisData,
     program: &Program<'_>,
     offset: u32,
+    runes: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
-    runes::validate(data, program, offset, diags);
+    runes::validate(data, program, offset, runes, diags);
     stores::validate(data, program, offset, diags);
 }
 
@@ -35,11 +41,7 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
     }
 
     // Explicit `customElement.props` config suppresses the warning.
-    if data
-        .ce_config
-        .as_ref()
-        .is_some_and(|c| !c.props.is_empty())
-    {
+    if data.ce_config.as_ref().is_some_and(|c| !c.props.is_empty()) {
         return;
     }
 
