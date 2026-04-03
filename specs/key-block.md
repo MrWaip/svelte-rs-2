@@ -1,11 +1,11 @@
 # Key Block
 
 ## Current state
-- **Working**: 3/6 use cases
-- **Missing**: 2 use cases
-- **Partial**: 1 use case
-- **Next**: add template validation for `block_empty` and runes-mode opening-tag diagnostics, then decide whether `KeyBlock` should be marked dynamic in analysis for stricter parity with the reference compiler
-- Last updated: 2026-04-01
+- **Working**: 4/6 use cases (`block_empty` warning now implemented and tested)
+- **Missing**: 1 use case (`dynamic_nodes` parity)
+- **Partial**: 1 use case (`block_unexpected_character` — implemented in analyzer but unreachable: our parser rejects malformed `{ #key ...}` at parse time, stricter than reference JS parser)
+- **Next**: decide whether `KeyBlock` ids should be added to `dynamic_nodes` to match reference analyzer behavior
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -25,8 +25,8 @@
 - `[x]` Generate client code for a basic reactive key expression with `$.key(...)`.
 - `[x]` Generate async client code for awaited key expressions via `$.async(...)` and `$.get($$key)`.
 - `[x]` Handle `{#key}` nested inside element children without breaking parent fragment traversal or DOM anchors.
-- `[ ]` Emit `block_empty` when the key block body contains only whitespace.
-- `[ ]` In runes mode, emit `block_unexpected_character` when the opening tag is malformed (reference `validate_opening_tag` parity).
+- `[x]` Emit `block_empty` when the key block body contains only whitespace.
+- `[~]` In runes mode, emit `block_unexpected_character` when the opening tag is malformed — implemented in analyzer but effectively dead code: our Rust parser rejects `{ #key ...}` (space after `{`) at parse time, stricter than the reference JS parser which accepts it in legacy mode.
 - `[~]` Reference analyzer marks key-block subtrees dynamic; this repo lowers and codegens `{#key}` correctly for audited cases, but does not explicitly insert `KeyBlock` ids into `dynamic_nodes`.
 
 ## Reference
@@ -52,8 +52,8 @@
 
 ## Tasks
 
-- `[ ]` quick fix: add template validation coverage for whitespace-only `{#key}` bodies (`block_empty`).
-- `[ ]` quick fix: add runes-mode opening-tag validation coverage for `{#key}`.
+- `[x]` quick fix: add template validation coverage for whitespace-only `{#key}` bodies (`block_empty`).
+- `[x]` quick fix: `block_unexpected_character` check implemented in analyzer; untestable because our parser is stricter than reference (rejects malformed `{` at parse time).
 - `[ ]` moderate: decide whether `ReactivityVisitor` should mark `KeyBlock` as dynamic to match reference analyzer behavior, then add the smallest test that proves the need.
 - `[ ]` quick fix: keep expanding `{#key}` coverage only with narrowly scoped cases; avoid broad refactors.
 

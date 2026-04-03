@@ -1355,7 +1355,6 @@ $state(1);
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_key_block_empty_warns() {
     let diags = analyze_with_diags(
         r#"<script>
