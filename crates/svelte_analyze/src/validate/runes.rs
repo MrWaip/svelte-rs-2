@@ -2,8 +2,8 @@
 
 use oxc_ast::ast::{
     AssignmentOperator, BindingPattern, CallExpression, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, MethodDefinitionKind,
-    ModuleExportName, PropertyDefinition, VariableDeclarator,
+    ExportNamedDeclaration, Expression, ExpressionStatement, MemberExpression,
+    MethodDefinitionKind, ModuleExportName, PropertyDefinition, VariableDeclarator,
 };
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
@@ -52,6 +52,7 @@ pub(super) fn validate(
     validate_derived_invalid_export(data, program, offset, diags);
     validate_state_invalid_export(data, program, offset, diags);
     validate_state_referenced_locally_derived(data, program, offset, diags);
+    validate_rest_prop_illegal_access(data, program, offset, diags);
 }
 
 struct RuneValidator<'a> {
@@ -693,6 +694,65 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             self.in_this_assign_rhs = prev;
         } else {
             walk_assignment_expression(self, it);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RestPropAccessValidator — `rest.$$foo` on rest_prop bindings
+// ---------------------------------------------------------------------------
+
+fn validate_rest_prop_illegal_access(
+    data: &AnalysisData,
+    program: &oxc_ast::ast::Program<'_>,
+    offset: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Skip if no rest_prop binding exists.
+    if !data.scoping.has_rest_prop() {
+        return;
+    }
+    let mut v = RestPropAccessValidator {
+        data,
+        offset,
+        diags,
+        _phantom: std::marker::PhantomData,
+    };
+    v.visit_program(program);
+}
+
+struct RestPropAccessValidator<'a, 'b> {
+    data: &'b AnalysisData,
+    offset: u32,
+    diags: &'b mut Vec<Diagnostic>,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
+    fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+        let MemberExpression::StaticMemberExpression(member) = expr else {
+            return;
+        };
+        let Expression::Identifier(obj) = &member.object else {
+            return;
+        };
+        if !member.property.name.starts_with("$$") {
+            return;
+        }
+        let Some(ref_id) = obj.reference_id.get() else {
+            return;
+        };
+        let Some(sym_id) = self.data.scoping.get_reference(ref_id).symbol_id() else {
+            return;
+        };
+        if self.data.scoping.is_rest_prop(sym_id) {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::PropsIllegalName,
+                Span::new(
+                    member.property.span.start + self.offset,
+                    member.property.span.end + self.offset,
+                ),
+            ));
         }
     }
 }

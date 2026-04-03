@@ -1277,6 +1277,20 @@ fn analyze_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
     diags
 }
 
+fn analyze_with_options_diags(
+    source: &str,
+    options: AnalyzeOptions,
+) -> Vec<svelte_diagnostics::Diagnostic> {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (_data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
+    diags
+}
+
 fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     assert!(
         diags.iter().any(|d| d.kind.code() == code),
@@ -2224,4 +2238,109 @@ let x = $state(0);
 </script>"#,
     );
     assert_has_warning(&diags, "store_rune_conflict");
+}
+
+#[test]
+fn validate_props_illegal_name_rest_member_access() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { x, ...rest } = $props();
+console.log(rest.$$slots);
+</script>"#,
+    );
+    assert_has_error(&diags, "props_illegal_name");
+}
+
+#[test]
+fn validate_props_illegal_name_identifier_pattern_member_access() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const props = $props();
+console.log(props.$$props);
+</script>"#,
+    );
+    assert_has_error(&diags, "props_illegal_name");
+}
+
+#[test]
+fn validate_props_normal_member_access_no_error() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let { x, ...rest } = $props();
+console.log(rest.normalProp);
+</script>"#,
+    );
+    assert_no_errors(&diags);
+}
+
+#[test]
+fn validate_custom_element_props_identifier_warns() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
+<script>
+const props = $props();
+</script>
+<p>{props.x}</p>"#,
+        AnalyzeOptions {
+            custom_element: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "custom_element_props_identifier");
+}
+
+#[test]
+fn validate_custom_element_props_rest_warns() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
+<script>
+let { x, ...rest } = $props();
+</script>
+<p>{x}</p>"#,
+        AnalyzeOptions {
+            custom_element: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "custom_element_props_identifier");
+}
+
+#[test]
+fn validate_custom_element_props_destructured_no_warn() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement={{ tag: 'x-foo' }} />
+<script>
+let { x, y } = $props();
+</script>
+<p>{x}{y}</p>"#,
+        AnalyzeOptions {
+            custom_element: true,
+            ..Default::default()
+        },
+    );
+    let ce_warns: Vec<_> = diags
+        .iter()
+        .filter(|d| d.kind.code() == "custom_element_props_identifier")
+        .collect();
+    assert!(ce_warns.is_empty(), "unexpected warning: {ce_warns:?}");
+}
+
+#[test]
+fn validate_custom_element_with_explicit_props_config_no_warn() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement={{ tag: 'x-foo', props: { x: { reflect: true, type: 'Number' } } }} />
+<script>
+const props = $props();
+</script>
+<p>{props.x}</p>"#,
+        AnalyzeOptions {
+            custom_element: true,
+            ..Default::default()
+        },
+    );
+    let ce_warns: Vec<_> = diags
+        .iter()
+        .filter(|d| d.kind.code() == "custom_element_props_identifier")
+        .collect();
+    assert!(ce_warns.is_empty(), "unexpected warning: {ce_warns:?}");
 }
