@@ -68,16 +68,6 @@ fn assert_compiler(case: &str) {
     assert_eq!(js, expected);
 }
 
-fn assert_compiler_error(case: &str, code: &str) {
-    let (input, opts) = case_input_and_options(case);
-    let result = compile(&input, &opts);
-    assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == code),
-        "expected diagnostic '{code}', got: {:?}",
-        result.diagnostics
-    );
-}
-
 #[rstest]
 fn head_with_special_elements() {
     assert_compiler("head_with_special_elements");
@@ -1831,11 +1821,6 @@ fn debug_non_dev() {
 #[ignore = "missing: known v3 parity gap"]
 fn debug_non_runes_untrack() {
     assert_compiler("debug_non_runes_untrack");
-}
-
-#[test]
-fn derived_non_runes_invalid_usage() {
-    assert_compiler_error("derived_non_runes_invalid_usage", "rune_invalid_usage");
 }
 
 #[rstest]

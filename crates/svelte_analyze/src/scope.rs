@@ -33,6 +33,7 @@ pub struct ComponentScoping {
     store_syms: FxHashSet<SymbolId>,
     known_values: FxHashMap<SymbolId, String>,
     getter_syms: FxHashSet<SymbolId>,
+    snippet_param_syms: FxHashSet<SymbolId>,
     snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
     /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization and
@@ -85,6 +86,7 @@ impl ComponentScoping {
             store_syms: FxHashSet::default(),
             known_values: FxHashMap::default(),
             getter_syms: FxHashSet::default(),
+            snippet_param_syms: FxHashSet::default(),
             snippet_name_syms: FxHashSet::default(),
             each_block_syms: FxHashSet::default(),
             each_non_reactive_syms: FxHashSet::default(),
@@ -400,6 +402,10 @@ impl ComponentScoping {
         self.getter_syms.insert(sym_id);
     }
 
+    pub fn mark_snippet_param(&mut self, sym_id: SymbolId) {
+        self.snippet_param_syms.insert(sym_id);
+    }
+
     pub fn mark_snippet_name(&mut self, sym_id: SymbolId) {
         self.snippet_name_syms.insert(sym_id);
     }
@@ -461,6 +467,10 @@ impl ComponentScoping {
 
     pub fn is_getter(&self, sym_id: SymbolId) -> bool {
         self.getter_syms.contains(&sym_id)
+    }
+
+    pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
+        self.snippet_param_syms.contains(&sym_id)
     }
 
     pub fn is_snippet_name(&self, sym_id: SymbolId) -> bool {

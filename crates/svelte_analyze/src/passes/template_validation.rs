@@ -11,8 +11,9 @@ use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SvelteElement, Text,
+    AnimateDirective, Attribute, ComponentNode, EachBlock, Element, ExpressionAttribute,
+    ExpressionTag, Fragment, IfBlock, KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock,
+    SvelteElement, Text,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -78,6 +79,12 @@ impl TemplateValidationVisitor {
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
+    fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+        validate_snippet_rest_params(block, ctx);
+        validate_snippet_shadowing_prop(block, ctx);
+        validate_snippet_children_conflict(block, ctx);
+    }
+
     fn visit_element(&mut self, _el: &Element, _ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
     }
@@ -312,6 +319,15 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         match expr {
             Expression::Identifier(ident)
+                if is_bind && is_snippet_param_ref(ident, &ctx.data.scoping) =>
+            {
+                let span = self.oxc_to_svelte(expr.span());
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SnippetParameterAssignment,
+                    span,
+                ));
+            }
+            Expression::Identifier(ident)
                 if is_bind && is_each_block_var_ref(ident, &ctx.data.scoping) =>
             {
                 let span = self.oxc_to_svelte(expr.span());
@@ -327,8 +343,87 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     span,
                 ));
             }
+            _ if !is_bind && contains_invalid_snippet_param_assignment(expr, &ctx.data.scoping) => {
+                let span = self.oxc_to_svelte(expr.span());
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::SnippetParameterAssignment,
+                    span,
+                ));
+            }
             _ => {}
         }
+    }
+}
+
+fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    let Some(parsed) = ctx.parsed() else {
+        return;
+    };
+    let Some(stmt) = parsed
+        .stmt_handle(block.expression_span.start)
+        .and_then(|handle| parsed.stmt(handle))
+    else {
+        return;
+    };
+    let Some(params) = extract_arrow_params(stmt) else {
+        return;
+    };
+
+    if let Some(rest) = &params.rest {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SnippetInvalidRestParameter,
+            block.expression_span,
+        ));
+        let _ = rest;
+    }
+}
+
+fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    let Some(parent) = ctx.parent() else {
+        return;
+    };
+    if parent.kind != ParentKind::ComponentNode {
+        return;
+    }
+
+    let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
+        return;
+    };
+    let snippet_name = block.name(ctx.source);
+    if component
+        .attributes
+        .iter()
+        .any(|attr| named_component_attr(attr, snippet_name))
+    {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SnippetShadowingProp {
+                prop: snippet_name.to_string(),
+            },
+            block.expression_span,
+        ));
+    }
+}
+
+fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
+    if block.name(ctx.source) != "children" {
+        return;
+    }
+
+    let Some(parent) = ctx.parent() else {
+        return;
+    };
+    if parent.kind != ParentKind::ComponentNode {
+        return;
+    }
+
+    let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
+        return;
+    };
+    if component_has_implicit_children(component, block.id, ctx) {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SnippetConflict,
+            block.expression_span,
+        ));
     }
 }
 
@@ -404,6 +499,66 @@ fn is_each_block_var_ref(
         .get()
         .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
         .is_some_and(|sym| scoping.is_each_block_var(sym))
+}
+
+fn is_snippet_param_ref(
+    ident: &oxc_ast::ast::IdentifierReference<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    ident
+        .reference_id
+        .get()
+        .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
+        .is_some_and(|sym| scoping.is_snippet_param(sym))
+}
+
+fn named_component_attr(attr: &Attribute, name: &str) -> bool {
+    match attr {
+        Attribute::StringAttribute(attr) => attr.name == name,
+        Attribute::ExpressionAttribute(attr) => attr.name == name,
+        Attribute::BooleanAttribute(attr) => attr.name == name,
+        Attribute::ConcatenationAttribute(attr) => attr.name == name,
+        Attribute::BindDirective(attr) => attr.name == name,
+        Attribute::Shorthand(_)
+        | Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => false,
+    }
+}
+
+fn component_has_implicit_children(
+    component: &ComponentNode,
+    current_snippet_id: NodeId,
+    ctx: &VisitContext<'_>,
+) -> bool {
+    component
+        .fragment
+        .nodes
+        .iter()
+        .any(|&node_id| match ctx.store.get(node_id) {
+            Node::SnippetBlock(snippet) => snippet.id != current_snippet_id && false,
+            Node::Comment(_) => false,
+            Node::Text(text) => contains_non_whitespace_text(text.value(ctx.source)),
+            _ => true,
+        })
+}
+
+fn extract_arrow_params<'s, 'a: 's>(
+    stmt: &'s oxc_ast::ast::Statement<'a>,
+) -> Option<&'s oxc_ast::ast::FormalParameters<'a>> {
+    let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else {
+        return None;
+    };
+    let declarator = decl.declarations.first()?;
+    let Some(Expression::ArrowFunctionExpression(arrow)) = &declarator.init else {
+        return None;
+    };
+    Some(&arrow.params)
 }
 
 struct EachBlockVarRefVisitor<'s> {
@@ -508,6 +663,118 @@ impl<'a> Visit<'a> for InvalidEachAssignmentVisitor<'_> {
 
 fn contains_invalid_each_assignment(expr: &Expression<'_>, scoping: &ComponentScoping) -> bool {
     let mut visitor = InvalidEachAssignmentVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_expression(expr);
+    visitor.found
+}
+
+struct SnippetParamRefVisitor<'s> {
+    scoping: &'s ComponentScoping,
+    found: bool,
+}
+
+impl<'a> Visit<'a> for SnippetParamRefVisitor<'_> {
+    fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+        if is_snippet_param_ref(ident, self.scoping) {
+            self.found = true;
+        }
+    }
+
+    fn visit_assignment_target_property_identifier(
+        &mut self,
+        it: &oxc_ast::ast::AssignmentTargetPropertyIdentifier<'a>,
+    ) {
+        if is_snippet_param_ref(&it.binding, self.scoping) {
+            self.found = true;
+        }
+        if let Some(init) = &it.init {
+            self.visit_expression(init);
+        }
+    }
+
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_expression(self, expr);
+    }
+
+    fn visit_assignment_target(&mut self, target: &AssignmentTarget<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_assignment_target(self, target);
+    }
+
+    fn visit_simple_assignment_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_simple_assignment_target(self, target);
+    }
+}
+
+fn contains_snippet_param_in_assignment_target(
+    target: &AssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    let mut visitor = SnippetParamRefVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_assignment_target(target);
+    visitor.found
+}
+
+fn contains_snippet_param_in_simple_target(
+    target: &SimpleAssignmentTarget<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    let mut visitor = SnippetParamRefVisitor {
+        scoping,
+        found: false,
+    };
+    visitor.visit_simple_assignment_target(target);
+    visitor.found
+}
+
+struct InvalidSnippetParamAssignmentVisitor<'s> {
+    scoping: &'s ComponentScoping,
+    found: bool,
+}
+
+impl<'a> Visit<'a> for InvalidSnippetParamAssignmentVisitor<'_> {
+    fn visit_assignment_expression(&mut self, expr: &oxc_ast::ast::AssignmentExpression<'a>) {
+        if contains_snippet_param_in_assignment_target(&expr.left, self.scoping) {
+            self.found = true;
+            return;
+        }
+        walk::walk_assignment_expression(self, expr);
+    }
+
+    fn visit_update_expression(&mut self, expr: &oxc_ast::ast::UpdateExpression<'a>) {
+        if contains_snippet_param_in_simple_target(&expr.argument, self.scoping) {
+            self.found = true;
+            return;
+        }
+        walk::walk_update_expression(self, expr);
+    }
+
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.found {
+            return;
+        }
+        walk::walk_expression(self, expr);
+    }
+}
+
+fn contains_invalid_snippet_param_assignment(
+    expr: &Expression<'_>,
+    scoping: &ComponentScoping,
+) -> bool {
+    let mut visitor = InvalidSnippetParamAssignmentVisitor {
         scoping,
         found: false,
     };
