@@ -64,6 +64,9 @@ pub(super) struct ClassStateField {
 
 pub(super) struct ClassStateInfo {
     pub(super) fields: Vec<ClassStateField>,
+    /// Public field names that are assigned in the constructor (`this.x = $rune(...)`),
+    /// not declared as body PropertyDefinitions. Used to emit their backing before body fields.
+    pub(super) ctor_field_names: FxHashSet<String>,
 }
 
 pub(super) struct ScriptTransformer<'b, 'a> {
