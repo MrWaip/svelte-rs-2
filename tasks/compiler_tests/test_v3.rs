@@ -1010,6 +1010,16 @@ fn derived_by_class_fields() {
 }
 
 #[rstest]
+fn derived_by_class_constructor_only() {
+    assert_compiler("derived_by_class_constructor_only");
+}
+
+#[rstest]
+fn derived_by_class_placeholder_preserves_plain_fields() {
+    assert_compiler("derived_by_class_placeholder_preserves_plain_fields");
+}
+
+#[rstest]
 fn state_class_field_constructor_assign() {
     assert_compiler("state_class_field_constructor_assign");
 }
