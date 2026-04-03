@@ -1,10 +1,10 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 13/19 use cases — all basic snippets plus full parameter destructuring (object, array, defaults, rest, mixed)
-- **Missing**: 6 — parameter assignment validation, nested destructuring (2), rest/shadowing/export validation (3)
-- **Next**: nested destructuring or Tier 5 diagnostics
-- Last updated: 2026-04-02
+- **Working**: 18/19 use cases — codegen now covers nested/computed destructuring and analyze validates snippet param assignment, invalid rest params, prop shadowing, and children conflicts
+- **Blocked**: `snippet_invalid_export` — reference-invalid cases require both `<script module>` and instance `<script>`, but the parser still accepts only one top-level script
+- **Next**: parser/analyze support for dual top-level scripts, then implement `snippet_invalid_export`
+- Last updated: 2026-04-03
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
@@ -24,12 +24,14 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 11. [x] Array destructuring: `{#snippet foo([a, b])}` → `$.to_array($$arg0?.(), 2)` + derived intermediary (test: snippet_array_destructure)
 12. [x] Array destructuring with rest: `{#snippet foo([a, ...rest])}` → `$.get($$array).slice(1)` (test: snippet_array_destructure)
 13. [x] Mixed params: `{#snippet foo(a, { x }, [b])}` → identifier + object + array in one signature (test: snippet_mixed_params)
-14. [ ] `snippet_parameter_assignment` — error on assignment to snippet param (Tier 5b)
-- [ ] Nested object destructuring in snippet params: `{#snippet foo({ a: { b } })}` (silently skipped, binding lost — codegen produces wrong output)
-- [ ] Nested array destructuring in snippet params: `{#snippet foo({ a: [x, y] })}` (same)
-- [ ] `snippet_invalid_rest_parameter` validation (rest params in snippet are an error in reference)
-- [ ] `snippet_shadowing_prop` / `snippet_conflict` validation
-- [ ] `snippet_invalid_export` validation
+14. [x] `snippet_parameter_assignment` — error on assignment to snippet param (Tier 5b) (tests: analyzer unit tests)
+15. [x] Nested object destructuring in snippet params: `{#snippet foo({ a: { b } })}` (test: `snippet_nested_destructure`)
+16. [x] Nested array destructuring in snippet params: `{#snippet foo({ a: [x, y] })}` (test: `snippet_nested_destructure`)
+17. [x] Computed key destructuring in snippet params: `{#snippet foo({ [key()]: value, ...rest })}` (test: `snippet_computed_key_destructure`)
+18. [x] `snippet_invalid_rest_parameter` validation (tests: analyzer unit tests)
+19. [x] `snippet_shadowing_prop` validation (tests: analyzer unit tests)
+20. [x] `snippet_conflict` validation (tests: analyzer unit tests)
+21. [ ] `snippet_invalid_export` validation
 
 ## Reference
 
@@ -41,28 +43,27 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - `reference/compiler/phases/2-analyze/visitors/SnippetBlock.js` — hoistability, validation
 
 ### Our code
-- `crates/svelte_codegen_client/src/template/snippet.rs` — `gen_snippet_block`, `build_snippet_params` (flat params only)
-- `crates/svelte_analyze/src/passes/template_side_tables.rs:148` — `SnippetParamMarker`, `SnippetParamNameCollector`
-- `crates/svelte_analyze/src/types/data/template_data.rs` — `SnippetData` (stores flat `Vec<String>` of leaf names)
-- `crates/svelte_parser/src/parse_js.rs:184` — `parse_snippet_decl_with_alloc` (OXC parses patterns correctly)
+- `crates/svelte_codegen_client/src/template/snippet.rs` — parsed-param-driven destructuring codegen, including nested object/array patterns and computed keys
+- `crates/svelte_analyze/src/passes/template_side_tables.rs` — `SnippetParamMarker` marks snippet-param symbols for downstream validation
+- `crates/svelte_analyze/src/passes/template_validation.rs` — snippet param assignment/rest/shadowing/conflict validation
+- `crates/svelte_analyze/src/tests.rs` — analyzer-level coverage for snippet diagnostics; `tasks/compiler_tests/test_v3.rs` remains snapshot-only
+- `crates/svelte_analyze/src/scope.rs` — `is_snippet_param` / `is_snippet_name` symbol classification
+- `crates/svelte_parser/src/lib.rs` — current blocker: only one top-level `<script>` is accepted
 
 ## Tasks
 
 ### Analysis
-- [ ] Preserve original parameter patterns in `SnippetData` — store `Vec<SnippetParam>` enum (Identifier / ObjectPattern / ArrayPattern) instead of flat `Vec<String>`. OXC already parses these; analyze just needs to preserve the shape info.
-- [ ] Alternative: skip shape info in analyze, use `parsed.stmts` directly in codegen (the arrow params are already parsed by OXC). Codegen can walk the `FormalParameters` from the parsed arrow to reconstruct declarations.
+- [x] Mark snippet parameter symbols explicitly in scoping so validation can reject writes by `SymbolId`, not by name
+- [x] Validate snippet parameter assignment in template JS, including nested assignment targets
+- [x] Validate snippet rest parameters, component-prop shadowing, and `children` snippet conflicts
+- [ ] Add `snippet_invalid_export` once parser/analyze can represent both module and instance scripts in the same component
 
 ### Codegen
-- [ ] Implement `extract_paths`-equivalent in `snippet.rs`: walk OXC `BindingPattern` recursively, producing `inserts` (array intermediaries → `$.derived(() => $.to_array(...))`) and `paths` (leaf bindings → `let name = ...` or `$.derived_safe_equal(...)`)
-- [ ] For `ObjectPattern` properties: generate `let name = () => $$argN?.().prop`
-- [ ] For `ObjectPattern` rest: generate `let rest = () => $.exclude_from_object($$argN?.(), [excluded_keys])`
-- [ ] For `ArrayPattern`: generate `var $$array = $.derived(() => $.to_array($$argN?.(), len))` + `let name = () => $.get($$array)[i]`
-- [ ] For `AssignmentPattern` (defaults): generate `$.derived_safe_equal(() => $.fallback(expr, default))` or `$.fallback(expr, default)` for simple defaults
-- [ ] For array rest: `let rest = () => $.get($$array).slice(i)`
-- [ ] Dev mode: after each destructured `let` declaration, emit eager evaluation statement
-- [ ] Update `build_snippet_params` to emit `$$argN` (plain identifier) for destructured params instead of flat `name = $.noop`
+- [x] Walk parsed `FormalParameters` directly from `parsed.stmts`
+- [x] Generate nested object/array destructuring declarations, defaults, rest bindings, and computed-key accessors
+- [x] Preserve dev-mode eager reads for destructured snippet bindings
 
 ## Implementation order
-1. Codegen first — walk parsed arrow params from `parsed.stmts`, generate declarations inline
-2. No analyze changes needed if codegen reads params directly from parsed arrow AST
-3. Tests verify output matches reference
+1. Land parsed-param codegen support for nested/computed destructuring
+2. Land analyzer validation for snippet writes/rest/shadowing/conflicts
+3. Unblock dual-script parsing, then finish `snippet_invalid_export`

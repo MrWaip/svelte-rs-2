@@ -2238,6 +2238,61 @@ let fallback = "script";
 }
 
 #[test]
+fn validate_snippet_parameter_assignment() {
+    let diags = analyze_with_diags(
+        r#"{#snippet view(value)}
+    {value = 1}
+{/snippet}"#,
+    );
+    assert_has_error(&diags, "snippet_parameter_assignment");
+}
+
+#[test]
+fn validate_snippet_parameter_assignment_in_nested_target() {
+    let diags = analyze_with_diags(
+        r#"{#snippet view(value)}
+    {({ current: value } = { current: 1 })}
+{/snippet}"#,
+    );
+    assert_has_error(&diags, "snippet_parameter_assignment");
+}
+
+#[test]
+fn validate_snippet_invalid_rest_parameter() {
+    let diags = analyze_with_diags(
+        r#"{#snippet view(...args)}
+    <p>{args.length}</p>
+{/snippet}"#,
+    );
+    assert_has_error(&diags, "snippet_invalid_rest_parameter");
+}
+
+#[test]
+fn validate_snippet_shadowing_prop() {
+    let diags = analyze_with_diags(
+        r#"<Widget title="hello">
+    {#snippet title()}
+        <p>shadowed</p>
+    {/snippet}
+</Widget>"#,
+    );
+    assert_has_error(&diags, "snippet_shadowing_prop");
+}
+
+#[test]
+fn validate_snippet_conflict() {
+    let diags = analyze_with_diags(
+        r#"<Widget>
+    before
+    {#snippet children()}
+        <p>inside</p>
+    {/snippet}
+</Widget>"#,
+    );
+    assert_has_error(&diags, "snippet_conflict");
+}
+
+#[test]
 fn validate_each_item_invalid_assignment_nested_object_destructure() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]); let value = { nested: { current: 1 } };</script>

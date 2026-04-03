@@ -238,8 +238,9 @@ struct SnippetParamMarker<'s> {
 
 impl<'a> Visit<'a> for SnippetParamMarker<'_> {
     fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-        if !self.in_default {
-            if let Some(sym_id) = ident.symbol_id.get() {
+        if let Some(sym_id) = ident.symbol_id.get() {
+            self.scoping.mark_snippet_param(sym_id);
+            if !self.in_default {
                 self.scoping.mark_getter(sym_id);
             }
         }
