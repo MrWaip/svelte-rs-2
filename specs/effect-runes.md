@@ -1,8 +1,9 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 9/10 use cases
-- **Missing**: 1 (validation for `$effect.root`/`.tracking`/`.pending`)
+- **Working**: 10/10 use cases — feature complete
+- **Completed (2026-04-03)**:
+  - Added `validate_effect_root_wrong_arg_count` and `validate_effect_tracking_with_argument` analyzer tests
 - **Completed (2026-04-02)**:
   - Added `EffectPre` and `EffectRoot` to `RuneKind`; wired into `detect_rune_from_call()`
   - Ported `$effect` / `$effect.pre` placement validation (`EffectInvalidPlacement`)
@@ -49,7 +50,8 @@
 - [x] `$effect.pre()` argument validation: exactly one argument required
   Tests: `validate_effect_pre_wrong_arg_count`
 
-- [ ] Full validation coverage for `$effect.root`, `$effect.tracking`, `$effect.pending` argument-count and placement rules
+- [x] Full validation coverage for `$effect.root`, `$effect.tracking`, `$effect.pending` argument-count and placement rules
+  Tests: `validate_effect_root_wrong_arg_count`, `validate_effect_tracking_with_argument`
 
 ## Reference
 
