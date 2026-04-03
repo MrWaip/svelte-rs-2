@@ -1005,7 +1005,6 @@ fn derived_class_field() {
 }
 
 #[rstest]
-#[ignore = "missing: constructor-assigned $derived.by class field rewrite drops original field declaration"]
 fn derived_by_class_fields() {
     assert_compiler("derived_by_class_fields");
 }
