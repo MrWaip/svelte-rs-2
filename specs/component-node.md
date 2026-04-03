@@ -1,10 +1,10 @@
 # ComponentNode
 
 ## Current state
-- **Working**: 8/12 component-tag use cases
-- **Missing**: component events via `$$events`, named-slot child grouping, and runes-mode dynamic component lowering for dotted/stateful component references
-- **Next**: port analyze metadata for dynamic component tags first, then fill component codegen gaps for `$$events` and slot grouping
-- Last updated: 2026-04-01
+- **Working**: 11/12 component-tag use cases
+- **Missing**: component-specific diagnostics/validation (deferred to Tier 5)
+- **Next**: feature complete for codegen. Diagnostics deferred.
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -31,9 +31,9 @@
 - [x] Default children lower to `children` prop plus `$$slots.default` (tests: `component_children`, `component_element_children`)
 - [x] Snippet children and snippet props lower correctly (tests: `component_snippet_prop`, `component_snippet_with_children`, `component_multiple_snippets`, `component_snippet_only`)
 - [x] Complex expression props memoize when needed (tests: `component_prop_has_call`, `component_prop_has_call_multi`, `component_prop_has_call_mixed`, `component_prop_memo_state`)
-- [ ] `on:` directives on components serialize into `$$events`
-- [ ] Child nodes with `slot="name"` serialize into named `$$slots.<name>` instead of default children
-- [ ] Runes-mode dotted or stateful component references lower through `$.component(...)`
+- [x] `on:` directives on components serialize into `$$events` (tests: `component_events`)
+- [x] Child nodes with `slot="name"` serialize into named `$$slots.<name>` instead of default children (tests: `component_named_slot`)
+- [x] Runes-mode dotted or stateful component references lower through `$.component(...)` (tests: `component_dynamic_dotted`)
 - [ ] Analyze emits component-specific validation/warnings for invalid directives and attribute edge cases
 
 ## Reference
@@ -71,9 +71,9 @@
 
 ## Discovered bugs
 
-- OPEN: component codegen ignores `Attribute::OnDirectiveLegacy`, so `<Component on:foo={...} />` currently drops component events entirely.
-- OPEN: component children are always lowered as default content; codegen does not partition children by `slot="name"`.
-- OPEN: `ComponentNode` has no dynamic-component metadata, so dotted/stateful component tags cannot switch to the reference compiler's `$.component(...)` path in runes mode.
+- FIXED: component codegen ignores `Attribute::OnDirectiveLegacy` — added `ComponentPropKind::Event` and `$$events` emission.
+- FIXED: component children always lowered as default content — added `FragmentKey::NamedSlot` and slot partitioning in lower.rs.
+- FIXED: `ComponentNode` has no dynamic-component metadata — added `is_dynamic_component` flag and `$.component()` wrapping.
 
 ## Test cases
 

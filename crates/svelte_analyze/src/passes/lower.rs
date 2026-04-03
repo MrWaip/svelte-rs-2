@@ -1,11 +1,25 @@
 use std::borrow::Cow;
 
-use svelte_ast::{is_svg, is_whitespace_removable_parent, AstStore, Component, Fragment, Node};
+use svelte_ast::{
+    is_svg, is_whitespace_removable_parent, Attribute, AstStore, Component, Fragment, Node, NodeId,
+};
 use svelte_span::Span;
 
 use crate::types::data::{
     AnalysisData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
 };
+
+/// Check if a node is an element with a static `slot="name"` attribute.
+/// Returns the element's NodeId if a slot attribute is found, matching the
+/// reference compiler's `determine_slot`. The actual slot name is recovered
+/// from the AST at codegen time.
+fn determine_slot(node: &Node) -> Option<NodeId> {
+    let el = node.as_element()?;
+    let has_slot = el.attributes.iter().any(|attr| {
+        matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot")
+    });
+    has_slot.then_some(el.id)
+}
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
     lower_fragment(
@@ -225,14 +239,53 @@ fn lower_fragment(
                 if !snippets.is_empty() {
                     data.snippets.component_snippets.insert(cn.id, snippets);
                 }
+
+                // Partition children by slot="name" attribute
+                let mut default_nodes: Vec<NodeId> = Vec::new();
+                // Groups keyed by the slot element's NodeId
+                let mut named_groups: Vec<(NodeId, Vec<NodeId>)> = Vec::new();
+
+                for &child_id in &cn.fragment.nodes {
+                    if let Some(slot_el_id) = determine_slot(store.get(child_id)) {
+                        if let Some(group) = named_groups.iter_mut().find(|(id, _)| *id == slot_el_id) {
+                            group.1.push(child_id);
+                        } else {
+                            named_groups.push((slot_el_id, vec![child_id]));
+                        }
+                    } else {
+                        default_nodes.push(child_id);
+                    }
+                }
+
+                // Lower default children
+                let default_frag = Fragment { nodes: default_nodes };
                 lower_fragment(
-                    &cn.fragment,
+                    &default_frag,
                     FragmentKey::ComponentNode(cn.id),
                     component,
                     data,
                     store,
                     false,
                 );
+
+                // Lower each named slot group
+                let mut slot_mappings: Vec<(NodeId, FragmentKey)> = Vec::new();
+                for (slot_el_id, slot_nodes) in named_groups {
+                    let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
+                    let slot_frag = Fragment { nodes: slot_nodes };
+                    lower_fragment(
+                        &slot_frag,
+                        frag_key,
+                        component,
+                        data,
+                        store,
+                        false,
+                    );
+                    slot_mappings.push((slot_el_id, frag_key));
+                }
+                if !slot_mappings.is_empty() {
+                    data.snippets.component_named_slots.insert(cn.id, slot_mappings);
+                }
             }
             Node::IfBlock(block) => {
                 lower_fragment(
