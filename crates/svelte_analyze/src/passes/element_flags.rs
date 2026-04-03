@@ -189,11 +189,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ComponentPropKind::BindThis { bind_id: b.id }
                 }
                 Attribute::BindDirective(b) => {
-                    // Determine the expression identifier for store-sub detection.
-                    // For shorthand `bind:count` the expression is `$count`;
-                    // for explicit `bind:value={$count}` it's the span text.
+                    // Store-sub detection: only possible with explicit expression
+                    // (`bind:value={$count}`). Shorthand `bind:count` binds to `count`,
+                    // never to `$count`, so it can't be a store sub.
                     let expr_text = if b.shorthand {
-                        Some(format!("${}", b.name))
+                        None
                     } else {
                         b.expression_span.map(|span| self.source_text(span).to_string())
                     };
