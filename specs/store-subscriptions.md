@@ -1,15 +1,14 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 10/15 client use cases (was 7)
+- **Working**: 13/16 client use cases
 - **Fixed this session**:
-  - Dev-mode `$.validate_store` in store thunk (sequence expression)
-  - Store cleanup ordering: `var $$pop = $.pop($$exports); $$cleanup(); return $$pop;`
-  - Each-block flags: `EACH_ITEM_IMMUTABLE` not set when collection depends on store; `EACH_ITEM_REACTIVE` set when `has_store_ref`
-  - Each-block collection thunk optimization: `b.thunk()` collapses `() => $items()` to `$items`
-- **Missing**: `$.store_unsub` (legacy-only, needs non-runes mode), `$.invalidate_store` (legacy each-block mutation), `$.mark_store_binding` (component store bindings), store-specific diagnostics, module compilation validation
-- **Next**: `$.mark_store_binding` for component bindings (runes-compatible), then legacy-mode features
-- Last updated: 2026-04-02
+  - `$.mark_store_binding()` in component bind getter for store-backed bindings
+  - `store_invalid_scoped_subscription` diagnostic for nested-scope store refs
+  - `store_rune_conflict` warning for `$name` that shadows a rune
+- **Missing**: `$.store_unsub` (legacy-only), `$.invalidate_store` (legacy-only), `$store` in `<script module>` / module compilation (needs dual-script AST and module compilation infrastructure)
+- **Next**: legacy-mode features when non-runes infrastructure is added; module-level diagnostics when dual-script AST is available
+- Last updated: 2026-04-03
 
 ## Source
 
@@ -44,8 +43,9 @@
 - [x] Each-block with store-backed collection sets correct flags (`EACH_ITEM_REACTIVE`, no `EACH_ITEM_IMMUTABLE`)
 - [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` (legacy-only)
 - [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` (legacy-only)
-- [ ] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding`
-- [ ] Analyzer rejects subscriptions to stores not declared at component top level
+- [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding`
+- [x] Analyzer rejects subscriptions to stores not declared at component top level
+- [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`)
 - [ ] Analyzer rejects `$store` reads inside `<script module>`
 - [ ] Module compilation rejects `$store` reads outside `.svelte` components
 
@@ -54,7 +54,8 @@
 - [ ] SSR store subscription codegen and cleanup parity
 - [ ] `$.store_unsub` — only fires in legacy (non-runes) mode when store variable is promoted to reactive state
 - [ ] `$.invalidate_store` — only fires in legacy (non-runes) mode for each-block item mutations
-- [ ] `$.mark_store_binding` — component binding getter injection for store-backed bindings
+- [ ] `store_invalid_subscription` — needs dual-script AST (`<script module>` + `<script>`)
+- [ ] `store_invalid_subscription_module` — needs module compilation path (`.svelte.js`)
 
 ## Reference
 
@@ -116,7 +117,7 @@
 - FIXED: client codegen sets up store subscriptions but never emits `$.validate_store` in dev mode.
 - FIXED: when stores coexist with `$.pop($$exports)`, generated cleanup is emitted after `return` and becomes unreachable.
 - OPEN: the analyzer validation entrypoint only runs rune validation today, so store-specific diagnostics are currently absent.
-- OPEN: no Rust codegen path currently emits `$.invalidate_store`, `$.mark_store_binding`, or `$.store_unsub` (legacy-only features).
+- OPEN: no Rust codegen path currently emits `$.invalidate_store` or `$.store_unsub` (legacy-only features).
 
 ## Test cases
 
@@ -131,6 +132,7 @@
   - `store_validate_dev` — dev-mode `$.validate_store` + correct `$$cleanup()` ordering
   - `store_reassign_unsub` — store variable reassignment in runes mode (no legacy state promotion)
   - `store_each_invalidate` — each block with store-backed collection, correct flags
-- Recommended next cases after implementation starts:
-  - `store_each_invalidate`
-  - analyzer/unit tests for `store_invalid_scoped_subscription`, `store_invalid_subscription`, `store_invalid_subscription_module`, `store_rune_conflict`
+  - `store_mark_binding` — `bind:value={$count}` on component with `$.mark_store_binding()` in getter
+- Analyzer unit tests:
+  - `validate_store_invalid_scoped_subscription` — `$count` where `count` declared in nested function
+  - `validate_store_rune_conflict` — local `state` binding + `$state()` call warns about ambiguity
