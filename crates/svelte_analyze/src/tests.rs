@@ -1695,6 +1695,26 @@ $effect.pre(a, b);
 }
 
 #[test]
+fn validate_effect_root_wrong_arg_count() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$effect.root();
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments_length");
+}
+
+#[test]
+fn validate_effect_tracking_with_argument() {
+    let diags = analyze_with_diags(
+        r#"<script>
+$effect.tracking(someFn);
+</script>"#,
+    );
+    assert_has_error(&diags, "rune_invalid_arguments");
+}
+
+#[test]
 #[ignore = "missing: rune validation parity"]
 fn validate_inspect_requires_arguments() {
     let diags = analyze_with_diags(
