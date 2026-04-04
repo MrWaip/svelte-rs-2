@@ -11,6 +11,23 @@ use svelte_span::Span;
 use crate::scanner::token;
 use crate::Parser;
 
+/// Records `key` in `seen` and emits `attribute_duplicate` if already present.
+/// When `exclude_this` is true, the `this` attribute is never added to `seen`
+/// (matches the reference compiler behaviour for the `Attribute`/`BindDirective` key space).
+fn track_duplicate<'s>(
+    seen: &mut FxHashSet<(&'s str, &'s str)>,
+    key: (&'s str, &'s str),
+    name_span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+    exclude_this: bool,
+) {
+    if seen.contains(&key) {
+        diagnostics.push(Diagnostic::error(DiagnosticKind::AttributeDuplicate, name_span));
+    } else if !exclude_this || key.1 != "this" {
+        seen.insert(key);
+    }
+}
+
 impl<'a> Parser<'a> {
     pub(crate) fn convert_attributes(
         &mut self,
@@ -52,16 +69,14 @@ impl<'a> Parser<'a> {
                         ));
                     }
 
-                    // attribute_duplicate: HTMLAttribute shares key space with BindDirective.
-                    let key = ("attr", name);
-                    if seen.contains(&key) {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeDuplicate,
-                            html_attr.name_span,
-                        ));
-                    } else if name != "this" {
-                        seen.insert(key);
-                    }
+                    // HTMLAttribute shares the "attr" key space with BindDirective.
+                    track_duplicate(
+                        &mut seen,
+                        ("attr", name),
+                        html_attr.name_span,
+                        &mut self.diagnostics,
+                        true,
+                    );
 
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
@@ -122,15 +137,13 @@ impl<'a> Parser<'a> {
                 }
                 token::Attribute::ClassDirective(cd) => {
                     let cd_name = cd.name_span.source_text(self.source);
-                    let key = ("class", cd_name);
-                    if seen.contains(&key) {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeDuplicate,
-                            cd.name_span,
-                        ));
-                    } else {
-                        seen.insert(key);
-                    }
+                    track_duplicate(
+                        &mut seen,
+                        ("class", cd_name),
+                        cd.name_span,
+                        &mut self.diagnostics,
+                        false,
+                    );
                     let expression_span = if cd.shorthand {
                         None
                     } else {
@@ -145,15 +158,13 @@ impl<'a> Parser<'a> {
                 }
                 token::Attribute::StyleDirective(sd) => {
                     let sd_name = sd.name_span.source_text(self.source);
-                    let key = ("style", sd_name);
-                    if seen.contains(&key) {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeDuplicate,
-                            sd.name_span,
-                        ));
-                    } else {
-                        seen.insert(key);
-                    }
+                    track_duplicate(
+                        &mut seen,
+                        ("style", sd_name),
+                        sd.name_span,
+                        &mut self.diagnostics,
+                        false,
+                    );
                     let value = if sd.shorthand {
                         StyleDirectiveValue::Shorthand
                     } else {
@@ -188,15 +199,13 @@ impl<'a> Parser<'a> {
                 token::Attribute::BindDirective(bd) => {
                     // BindDirective shares the "attr" key space with HTMLAttribute.
                     let bd_name = bd.name_span.source_text(self.source);
-                    let key = ("attr", bd_name);
-                    if seen.contains(&key) {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeDuplicate,
-                            bd.name_span,
-                        ));
-                    } else if bd_name != "this" {
-                        seen.insert(key);
-                    }
+                    track_duplicate(
+                        &mut seen,
+                        ("attr", bd_name),
+                        bd.name_span,
+                        &mut self.diagnostics,
+                        true,
+                    );
                     let expression_span = if bd.shorthand {
                         None
                     } else {
