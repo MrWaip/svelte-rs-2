@@ -22,6 +22,7 @@ struct WasmDiagnostic {
 #[derive(Serialize)]
 struct WasmCompileResult {
     js: Option<String>,
+    css: Option<String>,
     diagnostics: Vec<WasmDiagnostic>,
 }
 
@@ -54,6 +55,7 @@ fn to_wasm_result(result: CompileResult, source: &str) -> WasmCompileResult {
 
     WasmCompileResult {
         js: result.js,
+        css: result.css,
         diagnostics,
     }
 }
