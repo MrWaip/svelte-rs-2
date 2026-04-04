@@ -131,6 +131,31 @@ pub fn transform_module_script<'a>(
     )
 }
 
+pub fn transform_component_module_script<'a>(
+    allocator: &'a Allocator,
+    source: &'a str,
+    is_ts: bool,
+) -> ScriptOutput<'a> {
+    let empty_ignore = IgnoreData::new();
+    let empty_scoping = ComponentScoping::new(None);
+    transform_script_text(
+        allocator,
+        source,
+        is_ts,
+        &empty_scoping,
+        None,
+        false,
+        false,
+        source,
+        0,
+        "(unknown)",
+        None,
+        false,
+        false,
+        &empty_ignore,
+    )
+}
+
 /// Parse source text into a program and run the shared transform pipeline.
 fn transform_script_text<'a>(
     allocator: &'a Allocator,

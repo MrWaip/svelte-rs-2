@@ -7,7 +7,7 @@ mod template;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
-use oxc_span::Span;
+use oxc_span::{GetSpanMut, Span};
 
 use svelte_analyze::{AnalysisData, IdentGen, ParserResult};
 use svelte_ast::{Attribute, Component, Node};
@@ -51,9 +51,40 @@ pub fn generate<'a>(
     let script_imports = script_output.imports;
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
-    let script_comments = script_output.comments;
-    let script_source_text = script_output.source_text;
-    let script_span_end = script_output.program_span_end;
+    let mut script_comments = script_output.comments;
+    let mut script_source_text = script_output.source_text;
+    let mut script_span_end = script_output.program_span_end;
+
+    let mut module_imports: Vec<Statement<'_>> = Vec::new();
+    let mut module_body: Vec<Statement<'_>> = Vec::new();
+    if let Some(module_script) = component.module_script.as_ref() {
+        let module_source = component.source_text(module_script.content_span);
+        let is_ts = module_script.language == svelte_ast::ScriptLanguage::TypeScript;
+        let mut module_output =
+            script::transform_component_module_script(alloc, module_source, is_ts);
+
+        // Module script comments need to be preserved in the final top-level program even when
+        // there is no instance script to carry comment/source metadata.
+        if script_source_text.is_empty() {
+            script_comments = module_output.comments;
+            script_source_text = module_output.source_text;
+            script_span_end = module_output.program_span_end;
+            module_imports = module_output.imports;
+            module_body = module_output.body;
+        } else {
+            let module_offset = script_span_end + 1;
+            shift_statement_spans(&mut module_output.imports, module_offset);
+            shift_statement_spans(&mut module_output.body, module_offset);
+            shift_comments(&mut module_output.comments, module_offset);
+
+            let combined_source = alloc.alloc_str(&format!("{script_source_text}\n{module_source}"));
+            script_source_text = combined_source;
+            script_span_end = module_offset + module_output.program_span_end;
+            script_comments.extend(module_output.comments);
+            module_imports = module_output.imports;
+            module_body = module_output.body;
+        }
+    }
 
     // -----------------------------------------------------------------------
     // 2. Template generation (consumes "root" ident first)
@@ -343,8 +374,10 @@ pub fn generate<'a>(
         let right = b.str_expr(ctx.state.filename);
         program_body.push(b.assign_stmt(left, right));
     }
+    program_body.extend(module_imports);
     program_body.push(import_svelte);
     program_body.extend(script_imports);
+    program_body.extend(module_body);
     program_body.extend(all_hoisted);
     program_body.push(export_default);
     program_body.extend(delegate_stmts);
@@ -367,6 +400,22 @@ pub fn generate<'a>(
     );
 
     Codegen::default().build(&program).code
+}
+
+fn shift_statement_spans(stmts: &mut [Statement<'_>], offset: u32) {
+    for stmt in stmts {
+        let span = stmt.span_mut();
+        span.start += offset;
+        span.end += offset;
+    }
+}
+
+fn shift_comments(comments: &mut [oxc_ast::Comment], offset: u32) {
+    for comment in comments {
+        comment.span.start += offset;
+        comment.span.end += offset;
+        comment.attached_to += offset;
+    }
 }
 
 /// Split instance body into sync prefix + `var $$promises = $.run([thunks])`.

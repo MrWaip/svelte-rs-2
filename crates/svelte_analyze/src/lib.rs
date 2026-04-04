@@ -120,6 +120,23 @@ pub fn analyze_with_options<'a>(
                 let script_scoping = script_info
                     .and_then(|si| passes::js_analyze::analyze_script(&parsed, &mut data, si));
                 data.scoping = ComponentScoping::new(script_scoping);
+
+                if let Some(module_program) = parsed.module_program.as_ref() {
+                    if let Some(span) = parsed.module_script_content_span {
+                        let module_source = component.source_text(span);
+                        let module_info = utils::script_info::extract_script_info(
+                            module_program,
+                            span.start,
+                            module_source,
+                        );
+                        let module_sem = oxc_semantic::SemanticBuilder::new().build(module_program);
+                        data.needs_context |= passes::js_analyze::needs_context_for_program(
+                            module_program,
+                            module_sem.semantic.scoping(),
+                            &module_info,
+                        );
+                    }
+                }
             }
             passes::PassKey::MarkRunes => {
                 if runes {

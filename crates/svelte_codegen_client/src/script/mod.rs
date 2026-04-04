@@ -22,4 +22,4 @@ use model::{
     AsyncDerivedMode, ClassStateField, ClassStateInfo, FunctionInfo, PropKind, PropsGenInfo,
     ScriptTransformer,
 };
-pub use pipeline::{gen_script, transform_module_script};
+pub use pipeline::{gen_script, transform_component_module_script, transform_module_script};
