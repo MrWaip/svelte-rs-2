@@ -647,7 +647,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
         // --- $props validation ---
         if matches!(rune, RuneKind::Props) {
-            if self.has_props_rune || self.has_props_id {
+            if self.has_props_rune {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::PropsDuplicate {
                         rune: rune.display_name().into(),
@@ -677,7 +677,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
 
         // --- $props.id validation ---
         if matches!(rune, RuneKind::PropsId) {
-            if self.has_props_id || self.has_props_rune {
+            if self.has_props_id {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::PropsDuplicate {
                         rune: rune.display_name().into(),

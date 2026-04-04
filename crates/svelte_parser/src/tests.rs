@@ -1005,3 +1005,49 @@ mod js_parse_tests {
         assert!(!program.body.is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// attribute_duplicate
+// ---------------------------------------------------------------------------
+
+fn parse_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
+    Parser::new(source).parse().1
+}
+
+#[test]
+fn attribute_duplicate_same_name() {
+    let diags = parse_with_diags(r#"<div foo="a" foo="b"></div>"#);
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
+        "expected attribute_duplicate, got {diags:?}"
+    );
+}
+
+#[test]
+fn attribute_duplicate_bind_and_attr() {
+    // BindDirective and HTMLAttribute share the "attr" key space.
+    let diags = parse_with_diags(r#"<input bind:value={x} value="y" />"#);
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
+        "expected attribute_duplicate, got {diags:?}"
+    );
+}
+
+#[test]
+fn attribute_duplicate_this_excluded() {
+    // Two `this` attributes must NOT fire attribute_duplicate (excluded per reference).
+    let diags = parse_with_diags(r#"<svelte:element this="div" this="span"></svelte:element>"#);
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
+        "unexpected attribute_duplicate"
+    );
+}
+
+#[test]
+fn attribute_duplicate_style_directive() {
+    let diags = parse_with_diags(r#"<div style:color="red" style:color="blue"></div>"#);
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
+        "expected attribute_duplicate, got {diags:?}"
+    );
+}
