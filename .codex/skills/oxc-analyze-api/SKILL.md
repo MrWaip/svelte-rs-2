@@ -1,18 +1,15 @@
 ---
 name: oxc-analyze-api
-description: OXC visitor and semantic API reference for `svelte_analyze`. Use when writing or reviewing `Visit` or `VisitMut` code, scope or symbol-resolution logic, reference collection, write detection, or when you need exact OXC method signatures instead of guessing.
+description: OXC visitor and semantic API reference for `svelte_analyze` and `svelte_component_semantics`. Use when writing or reviewing `Visit` or `VisitMut` code, scope or symbol-resolution logic, reference collection, write detection, or when you need exact OXC method signatures instead of guessing.
 ---
 
 # OXC API For Analyze
 
-Load the bundled references before changing visitor or scoping code:
+Load the bundled visitor reference before changing visitor code:
 
 - `.codex/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.codex/skills/oxc-analyze-api/references/scoping-api.txt`
 
-Load this too for reference resolution, symbol tracking, or write detection:
-
-- `.codex/skills/oxc-analyze-api/references/semantic-builder-api.txt`
+**Note:** Scope/symbol/reference infrastructure now lives in `svelte_component_semantics`, not `oxc_semantic`. Read `crates/svelte_component_semantics/src/lib.rs` for the current API.
 
 ## Visitor rule
 
@@ -28,7 +25,7 @@ Avoid generic `visit_expression` plus manual variant dispatch unless there is a 
 
 ## Scoping rule
 
-Consult `scoping-api.txt` for exact methods. Typical operations include:
+Scoping API is in `svelte_component_semantics::ComponentSemantics`. `ComponentScoping` in `svelte_analyze` Deref's to it. Typical operations:
 
 - look up a binding by name inside a scope
 - get symbol names or flags by `SymbolId`
@@ -39,8 +36,6 @@ Consult `scoping-api.txt` for exact methods. Typical operations include:
 Use these only when the bundled references need a manual refresh:
 
 - `oxc_ast_visit/src/generated/visit.rs`
-- `oxc_semantic/src/scoping.rs`
-- `oxc_semantic/src/builder.rs`
 
 ## Working rule
 

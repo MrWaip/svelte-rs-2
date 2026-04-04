@@ -1,5 +1,7 @@
 # Codex Agent Guide
 
+**Goal: production-ready Svelte compiler in Rust, targeting large enterprise codebases.** Performance at scale matters.
+
 `AGENTS.md` is the concise Codex entrypoint. `CLAUDE.md` remains the detailed source of truth for architecture, workflow, spec lifecycle, blocking rules, and quality checks. If they ever diverge, follow `CLAUDE.md`.
 
 ## Mandatory pre-edit reads
@@ -16,7 +18,8 @@
 ## Hard architecture rules
 - Keep logic in the correct layer:
   - `svelte_parser`: parse + JS pre-parse, immutable AST only
-  - `svelte_analyze`: derived/classification data in `AnalysisData`
+  - `svelte_component_semantics`: scopes, symbols, references, per-symbol state bits — single source of truth for the entire component. Replaces `oxc_semantic::Scoping`/`SemanticBuilder`. OXC provides AST + Visit only.
+  - `svelte_analyze`: derived/classification data in `AnalysisData`. Svelte-specific classifications (runes, props, stores) in `ComponentScoping` which `Deref`s to `ComponentSemantics`.
   - `svelte_transform`: JS AST rewrites only; no semantic rediscovery
   - `svelte_codegen_client`: JS emission from AST + analysis data
 - Do not add string-based identifier classification where `SymbolId`/analysis accessors are required.
