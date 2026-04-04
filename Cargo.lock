@@ -1992,6 +1992,7 @@ dependencies = [
 name = "wasm_compiler"
 version = "0.1.0"
 dependencies = [
+ "lightningcss",
  "oxc_allocator",
  "oxc_codegen",
  "oxc_parser",

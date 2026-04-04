@@ -432,7 +432,8 @@
 
             function joinJsCss(js, css) {
                 if (!css) return js;
-                return js + "\n\n/* ---- CSS ---- */\n" + css;
+                const normalizedCss = compiler ? compiler.format_css(css) : css;
+                return js + "\n\n/* ---- CSS ---- */\n" + normalizedCss;
             }
 
             function compileRust() {
