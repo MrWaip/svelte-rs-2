@@ -40,7 +40,8 @@ pub(crate) fn emit_debug_tags<'a>(
                 let value = if ctx.query.runes() {
                     snapshot
                 } else {
-                    ctx.b.call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(snapshot))])
+                    ctx.b
+                        .call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(snapshot))])
                 };
                 ObjProp::KeyValue(name_alloc, value)
             })

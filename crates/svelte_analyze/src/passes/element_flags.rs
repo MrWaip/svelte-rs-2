@@ -1,6 +1,8 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{is_mathml, is_svg, is_void, AstStore, Attribute, ComponentNode, Element, Fragment, Node};
+use svelte_ast::{
+    is_mathml, is_svg, is_void, AstStore, Attribute, ComponentNode, Element, Fragment, Node,
+};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -280,7 +282,12 @@ fn is_customizable_select_element(el: &Element, store: &AstStore, source: &str) 
 /// Recursively walks a fragment looking for rich content under `parent_name`.
 /// Skips SnippetBlock, DebugTag, ConstTag, Comment, ExpressionTag.
 /// Recurses into control-flow blocks.
-fn find_rich_descendants(fragment: &Fragment, parent_name: &str, store: &AstStore, source: &str) -> bool {
+fn find_rich_descendants(
+    fragment: &Fragment,
+    parent_name: &str,
+    store: &AstStore,
+    source: &str,
+) -> bool {
     for &id in &fragment.nodes {
         match store.get(id) {
             // Non-content nodes — never rich
@@ -335,7 +342,9 @@ fn find_rich_descendants(fragment: &Fragment, parent_name: &str, store: &AstStor
             }
             // RegularElement: rich depending on what the parent allows
             Node::Element(child_el) => match parent_name {
-                "select" if child_el.name != "option" && child_el.name != "optgroup" => return true,
+                "select" if child_el.name != "option" && child_el.name != "optgroup" => {
+                    return true
+                }
                 "optgroup" if child_el.name != "option" => return true,
                 "option" => return true,
                 _ => {}

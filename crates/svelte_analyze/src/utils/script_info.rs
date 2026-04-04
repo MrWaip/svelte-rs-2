@@ -573,12 +573,27 @@ impl<'a> Visit<'a> for IdentCollector {
 
 /// Enrich ScriptInfo from OXC's unresolved references.
 /// Detects store candidates (`$count` etc.) from unresolved `$`-prefixed references.
-pub fn enrich_from_unresolved(scoping: &oxc_semantic::Scoping, info: &mut ScriptInfo) {
-    for key in scoping.root_unresolved_references().keys() {
-        let name = key.as_str();
+pub fn enrich_from_unresolved<'a>(
+    unresolved: impl Iterator<Item = &'a str>,
+    info: &mut ScriptInfo,
+) {
+    for name in unresolved {
         if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name)
         {
             info.store_candidates.push(CompactString::from(&name[1..]));
         }
     }
+}
+
+pub fn enrich_from_component_scoping(
+    scoping: &crate::scope::ComponentScoping,
+    info: &mut ScriptInfo,
+) {
+    enrich_from_unresolved(
+        scoping
+            .root_unresolved_references()
+            .keys()
+            .map(|name| name.as_str()),
+        info,
+    );
 }

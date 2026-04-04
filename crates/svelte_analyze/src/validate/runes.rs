@@ -276,10 +276,8 @@ fn validate_invalid_default_export(
     let oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(ident) = &export.declaration else {
         return;
     };
-    let Some(sym_id) = ident
-        .reference_id
-        .get()
-        .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
+    let Some(sym_id) =
+        resolve_root_identifier_symbol(data, ident.name.as_str(), ident.reference_id.get())
     else {
         return;
     };
@@ -317,10 +315,21 @@ fn export_specifier_symbol(
     let ModuleExportName::IdentifierReference(ident) = &spec.local else {
         return None;
     };
-    ident
-        .reference_id
-        .get()
-        .and_then(|ref_id| data.scoping.get_reference(ref_id).symbol_id())
+    resolve_root_identifier_symbol(data, ident.name.as_str(), ident.reference_id.get())
+}
+
+fn resolve_root_identifier_symbol(
+    data: &AnalysisData,
+    name: &str,
+    ref_id: Option<oxc_semantic::ReferenceId>,
+) -> Option<oxc_semantic::SymbolId> {
+    ref_id
+        .and_then(|ref_id| data.scoping.try_get_reference(ref_id))
+        .and_then(|reference| reference.symbol_id())
+        .or_else(|| {
+            data.scoping
+                .find_binding(data.scoping.root_scope_id(), name)
+        })
 }
 
 fn is_reassigned_state_export(data: &AnalysisData, sym_id: oxc_semantic::SymbolId) -> bool {
@@ -369,7 +378,9 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
         if self.data.scoping.is_template_reference(ref_id) {
             return;
         }
-        let reference = self.data.scoping.get_reference(ref_id);
+        let Some(reference) = self.data.scoping.try_get_reference(ref_id) else {
+            return;
+        };
         // Skip if not a read, or if it's a write context (UpdateExpression, compound assignment LHS).
         // Mirrors reference compiler: only warn for pure reads, not read-write operations.
         if !reference.is_read() || reference.is_write() {
@@ -860,7 +871,8 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
                     if let Some(sym_id) = obj
                         .reference_id
                         .get()
-                        .and_then(|r| self.data.scoping.get_reference(r).symbol_id())
+                        .and_then(|r| self.data.scoping.try_get_reference(r))
+                        .and_then(|reference| reference.symbol_id())
                     {
                         if self.data.scoping.is_rest_prop(sym_id) {
                             self.diags.push(Diagnostic::error(

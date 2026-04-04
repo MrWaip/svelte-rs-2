@@ -11,8 +11,9 @@ pub use types::data::{
     ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
     ConstTagData, ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode,
     ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentItem,
-    FragmentKey, IgnoreData, LoweredFragment, LoweredTextPart, ParserResult, PropAnalysis,
-    PropsAnalysis, RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData, StmtHandle,
+    FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart, ParserResult,
+    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData,
+    StmtHandle,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -25,10 +26,6 @@ pub use utils::{
 
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, Severity};
-use oxc_ast::ast::{BindingIdentifier, IdentifierReference, Program};
-use oxc_ast_visit::Visit;
-use oxc_semantic::{Reference as OxcReference, ReferenceId, SymbolId};
-use rustc_hash::FxHashMap;
 
 fn run_template_bundle<'a, const N: usize>(
     component: &Component,
@@ -58,112 +55,6 @@ fn run_parsed_template_bundle<'a, const N: usize>(
         walker::VisitContext::with_parsed(root, data, &component.store, parsed, source, runes);
     walker::walk_template(&component.fragment, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
-}
-
-fn resolve_inherited_instance_refs(
-    program: &Program<'_>,
-    scoping: &mut ComponentScoping,
-) {
-    struct Resolver<'s> {
-        scoping: &'s mut ComponentScoping,
-    }
-
-    impl<'a> Visit<'a> for Resolver<'_> {
-        fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-            let Some(ref_id) = ident.reference_id.get() else {
-                return;
-            };
-            if self.scoping.get_reference(ref_id).symbol_id().is_some() {
-                return;
-            }
-            let scope_id = self.scoping.get_reference(ref_id).scope_id();
-            let Some(sym_id) = self.scoping.find_binding(scope_id, ident.name.as_str()) else {
-                return;
-            };
-            self.scoping.get_reference_mut(ref_id).set_symbol_id(sym_id);
-            self.scoping.add_resolved_reference(sym_id, ref_id);
-            self.scoping
-                .delete_root_unresolved_reference(ident.name.as_str(), ref_id);
-        }
-    }
-
-    let mut resolver = Resolver { scoping };
-    resolver.visit_program(program);
-}
-
-fn rebind_module_program_to_component_scoping(
-    program: &Program<'_>,
-    module_scoping: &oxc_semantic::Scoping,
-    component_scoping: &mut ComponentScoping,
-    scope_map: &FxHashMap<oxc_semantic::ScopeId, oxc_semantic::ScopeId>,
-    symbol_map: &FxHashMap<SymbolId, SymbolId>,
-) {
-    struct Rebind<'s> {
-        module_scoping: &'s oxc_semantic::Scoping,
-        component_scoping: &'s mut ComponentScoping,
-        scope_map: &'s FxHashMap<oxc_semantic::ScopeId, oxc_semantic::ScopeId>,
-        symbol_map: &'s FxHashMap<SymbolId, SymbolId>,
-    }
-
-    impl Rebind<'_> {
-        fn remap_ref(&mut self, ref_id: ReferenceId) -> ReferenceId {
-            let reference = self.module_scoping.get_reference(ref_id);
-            let scope_id = self
-                .scope_map
-                .get(&reference.scope_id())
-                .copied()
-                .unwrap_or_else(|| reference.scope_id());
-            let new_ref = match reference
-                .symbol_id()
-                .and_then(|sym_id| self.symbol_map.get(&sym_id).copied())
-            {
-                Some(sym_id) => {
-                    let new_ref =
-                        OxcReference::new_with_symbol_id(
-                            reference.node_id(),
-                            sym_id,
-                            scope_id,
-                            reference.flags(),
-                        );
-                    let new_ref_id = self.component_scoping.create_reference(new_ref);
-                    self.component_scoping.add_resolved_reference(sym_id, new_ref_id);
-                    new_ref_id
-                }
-                None => self.component_scoping.create_reference(OxcReference::new(
-                    reference.node_id(),
-                    scope_id,
-                    reference.flags(),
-                )),
-            };
-            new_ref
-        }
-    }
-
-    impl<'a> Visit<'a> for Rebind<'_> {
-        fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
-            if let Some(sym_id) = ident
-                .symbol_id
-                .get()
-                .and_then(|sym_id| self.symbol_map.get(&sym_id).copied())
-            {
-                ident.set_symbol_id(sym_id);
-            }
-        }
-
-        fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-            if let Some(ref_id) = ident.reference_id.get() {
-                ident.set_reference_id(self.remap_ref(ref_id));
-            }
-        }
-    }
-
-    let mut rebind = Rebind {
-        module_scoping,
-        component_scoping,
-        scope_map,
-        symbol_map,
-    };
-    rebind.visit_program(program);
 }
 
 /// Options controlling analysis behavior.
@@ -227,59 +118,41 @@ pub fn analyze_with_options<'a>(
                         program, span.start, source,
                     ))
                 });
-                let script_scoping = script_info
-                    .and_then(|si| passes::js_analyze::analyze_script(&parsed, &mut data, si));
-                data.scoping = ComponentScoping::new(script_scoping);
-
-                if let Some(module_program) = parsed.module_program.as_ref() {
-                    if let Some(span) = parsed.module_script_content_span {
-                        let module_source = component.source_text(span);
-                        let mut module_info = utils::script_info::extract_script_info(
-                            module_program,
-                            span.start,
-                            module_source,
-                        );
-                        let module_sem = oxc_semantic::SemanticBuilder::new().build(module_program);
-                        utils::script_info::enrich_from_unresolved(
-                            module_sem.semantic.scoping(),
-                            &mut module_info,
-                        );
-                        let module_body = passes::js_analyze::analyze_script_body(
-                            module_program,
-                            &module_info,
-                        );
-                        data.needs_context |= passes::js_analyze::needs_context_for_program(
-                            module_program,
-                            module_sem.semantic.scoping(),
-                            &module_info,
-                        );
-                        let module_scope = data.scoping.ensure_module_scope();
-                        let (module_scope_map, module_symbol_map) = data
-                            .scoping
-                            .import_program_scoping(module_sem.semantic.scoping(), module_scope);
-                        rebind_module_program_to_component_scoping(
-                            module_program,
-                            module_sem.semantic.scoping(),
-                            &mut data.scoping,
-                            &module_scope_map,
-                            &module_symbol_map,
-                        );
-                        passes::mark_runes::mark_root_script_runes(
-                            &mut data.scoping,
-                            &module_info.declarations,
-                            &module_body.proxy_state_inits,
-                        );
-                        if let Some(program) = parsed.program.as_ref() {
-                            resolve_inherited_instance_refs(program, &mut data.scoping);
-                        }
-                    }
+                if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {
+                    passes::js_analyze::analyze_script(&mut data, script_info, program);
                 }
+            }
+            passes::PassKey::BuildComponentSemantics => {
+                passes::build_component_semantics::build(component, &parsed, &mut data);
             }
             passes::PassKey::MarkRunes => {
                 if runes {
                     passes::mark_runes::mark_script_runes(&mut data);
+                    if let Some(module_program) = &parsed.module_program {
+                        if let Some(span) = parsed.module_script_content_span {
+                            let module_source = component.source_text(span);
+                            let module_info = utils::script_info::extract_script_info(
+                                module_program,
+                                span.start,
+                                module_source,
+                            );
+                            let module_scope = data
+                                .scoping
+                                .module_scope_id()
+                                .unwrap_or_else(|| data.scoping.root_scope_id());
+                            passes::mark_runes::mark_root_script_runes_in_scope(
+                                &mut data.scoping,
+                                module_scope,
+                                &module_info.declarations,
+                                &rustc_hash::FxHashMap::default(),
+                            );
+                        }
+                    }
                     if let Some(program) = &parsed.program {
                         passes::mark_runes::mark_nested_runes(program, &mut data.scoping);
+                    }
+                    if let Some(module_program) = &parsed.module_program {
+                        passes::mark_runes::mark_nested_runes(module_program, &mut data.scoping);
                     }
                 }
                 if let Some(program) = &parsed.program {
@@ -317,16 +190,8 @@ pub fn analyze_with_options<'a>(
                     }
                 }
             }
-            passes::PassKey::TemplateScoping => {
-                passes::template_scoping::create_template_scopes(
-                    component,
-                    &mut data.scoping,
-                    &parsed,
-                );
-                data.import_syms = data.scoping.collect_import_syms();
-            }
-            passes::PassKey::TemplateSemanticAndSideTables => {
-                let mut bundle = passes::bundles::TemplateSemanticBundle::new(component);
+            passes::PassKey::TemplateSideTables => {
+                let mut bundle = passes::bundles::TemplateSideTablesBundle::new(component);
                 let mut visitors = bundle.visitors();
                 run_parsed_template_bundle(
                     component,
@@ -337,7 +202,6 @@ pub fn analyze_with_options<'a>(
                     &mut diags,
                     &mut visitors,
                 );
-                data.scoping.build_template_scope_set();
             }
             passes::PassKey::CollectSymbols => {
                 data.each_blocks.build_index_lookup();
@@ -509,11 +373,20 @@ pub fn analyze_module(
 
     let mut data = AnalysisData::new_empty(0);
     match svelte_parser::parse_module(alloc, source, is_ts) {
-        Ok((program, scoping)) => {
-            data.scoping = scope::ComponentScoping::new(Some(scoping));
-            let script_info = utils::script_info::extract_script_info(&program, 0, source);
+        Ok((program, _scoping)) => {
+            let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
+            builder.add_instance_program(&program);
+            let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
+            scoping.build_template_scope_set();
+
+            let mut script_info = utils::script_info::extract_script_info(&program, 0, source);
+            utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
+
+            data.scoping = scoping;
             data.script = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
+            passes::mark_runes::mark_nested_runes(&program, &mut data.scoping);
+            data.import_syms = data.scoping.collect_import_syms();
             validate::validate_program(&data, &program, 0, true, &mut diags);
         }
         Err(errs) => diags.extend(errs),

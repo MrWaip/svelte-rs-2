@@ -9,15 +9,15 @@ use crate::types::script::{RuneKind, ScriptInfo};
 /// component context. Matches reference MemberExpression.js, CallExpression.js,
 /// NewExpression.js + is_safe_identifier.
 pub(crate) struct NeedsContextVisitor<'a> {
-    scoping: &'a oxc_semantic::Scoping,
-    unsafe_prop_syms: rustc_hash::FxHashSet<oxc_semantic::SymbolId>,
+    scoping: &'a crate::scope::ComponentScoping,
+    unsafe_prop_syms: rustc_hash::FxHashSet<crate::scope::SymbolId>,
     needs_context: bool,
 }
 
 impl<'a> NeedsContextVisitor<'a> {
     pub(crate) fn check(
         program: &oxc_ast::ast::Program<'a>,
-        scoping: &'a oxc_semantic::Scoping,
+        scoping: &'a crate::scope::ComponentScoping,
         script_info: &ScriptInfo,
     ) -> bool {
         let root = scoping.root_scope_id();
@@ -52,7 +52,7 @@ impl<'a> NeedsContextVisitor<'a> {
     fn resolve_ref(
         &self,
         ident: &oxc_ast::ast::IdentifierReference<'_>,
-    ) -> Option<oxc_semantic::SymbolId> {
+    ) -> Option<crate::scope::SymbolId> {
         let ref_id = ident.reference_id.get()?;
         self.scoping.get_reference(ref_id).symbol_id()
     }
@@ -61,11 +61,7 @@ impl<'a> NeedsContextVisitor<'a> {
         let Some(sym_id) = self.resolve_ref(ident) else {
             return true;
         };
-        !self.unsafe_prop_syms.contains(&sym_id)
-            && !self
-                .scoping
-                .symbol_flags(sym_id)
-                .contains(oxc_semantic::SymbolFlags::Import)
+        !self.unsafe_prop_syms.contains(&sym_id) && !self.scoping.is_import(sym_id)
     }
 
     fn is_safe_expression_root(&self, expr: &Expression<'_>) -> bool {

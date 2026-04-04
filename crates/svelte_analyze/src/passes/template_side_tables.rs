@@ -1,15 +1,15 @@
 //! Template side tables and symbol marks.
 //!
-//! Scopes are created by `template_scoping`. Bindings are created by
-//! `TemplateSemanticVisitor` via OXC Visit. This pass populates side tables
-//! (each_blocks, const_tags) and applies symbol marks
+//! Scopes and bindings are created by `build_component_semantics` via the
+//! shared `svelte_component_semantics` storage. This pass only populates side
+//! tables (each_blocks, const_tags) and applies symbol marks
 //! (each_block_var, each_non_reactive, snippet_name).
 //!
 //! Only `$$item` (synthetic destructured-context binding) uses `add_binding`
-//! directly — all other bindings go through OXC.
+//! directly because it has no JS AST owner.
 //!
 //! Marks that depend on bindings (find_binding) go in leave_* hooks —
-//! by that time dispatch_stmt has already created the bindings via OXC Visit.
+//! by that time the component semantics pass has already created the bindings.
 
 use oxc_ast::ast::{
     ArrowFunctionExpression, BindingIdentifier, BindingPattern, Expression, Statement,

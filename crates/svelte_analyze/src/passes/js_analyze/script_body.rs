@@ -3,40 +3,29 @@ use oxc_ast::ast::Expression;
 use oxc_ast_visit::Visit;
 
 use crate::passes::js_analyze::expression_info::analyze_expression;
-use crate::types::data::{AnalysisData, ParserResult};
+use crate::scope::ComponentScoping;
+use crate::types::data::AnalysisData;
 use crate::types::script::{RuneKind, ScriptInfo};
 use crate::utils::script_info::detect_rune_from_call;
 
-/// Enrich pre-extracted ScriptInfo with semantic data and build Scoping.
-/// `script_info` comes from `JsParseResult` (extracted by parser).
-/// Returns the OXC Scoping for the script block.
 pub(crate) fn analyze_script(
-    parsed: &ParserResult<'_>,
     data: &mut AnalysisData,
     mut script_info: ScriptInfo,
-) -> Option<oxc_semantic::Scoping> {
-    let Some(ref program) = parsed.program else {
-        return None;
-    };
-
-    let sem = oxc_semantic::SemanticBuilder::new().build(program);
-    crate::utils::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
-
+    program: &oxc_ast::ast::Program<'_>,
+) {
     let body = analyze_script_body(program, &script_info);
     let has_class_state_fields = body.has_class_state_fields;
     data.has_store_member_mutations = body.has_store_member_mutations;
     data.proxy_state_inits = body.proxy_state_inits;
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = needs_context_for_program(program, sem.semantic.scoping(), &script_info);
     data.has_class_state_fields = has_class_state_fields;
     data.script = Some(script_info);
-    Some(sem.semantic.into_scoping())
 }
 
 pub(crate) fn needs_context_for_program(
     program: &oxc_ast::ast::Program<'_>,
-    scoping: &oxc_semantic::Scoping,
+    scoping: &ComponentScoping,
     script_info: &ScriptInfo,
 ) -> bool {
     let body = analyze_script_body(program, script_info);

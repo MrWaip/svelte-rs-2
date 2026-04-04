@@ -117,11 +117,12 @@ fn validate_snippet_exports(
             let name = ident.name.as_str();
             // Only fire if the name is NOT declared in module scope (matches reference compiler).
             // If bound in module scope, it's a valid export of a module-local binding.
-            if snippet_names.iter().any(|&s| s == name)
-                && !is_module_bound(module_program, name)
-            {
+            if snippet_names.iter().any(|&s| s == name) && !is_module_bound(module_program, name) {
                 let span = Span::new(specifier.span.start, specifier.span.end);
-                diags.push(Diagnostic::error(DiagnosticKind::SnippetInvalidExport, span));
+                diags.push(Diagnostic::error(
+                    DiagnosticKind::SnippetInvalidExport,
+                    span,
+                ));
             }
         }
     }
@@ -157,9 +158,7 @@ fn is_module_bound<'a>(program: &Program<'a>, name: &str) -> bool {
                 if let Some(specifiers) = &import.specifiers {
                     for spec in specifiers {
                         let local = match spec {
-                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
-                                s.local.name.as_str()
-                            }
+                            ImportDeclarationSpecifier::ImportSpecifier(s) => s.local.name.as_str(),
                             ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
                                 s.local.name.as_str()
                             }
@@ -205,7 +204,9 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
     match pattern {
         BindingPattern::BindingIdentifier(id) => id.name == name,
         BindingPattern::ObjectPattern(obj) => {
-            obj.properties.iter().any(|p| binding_contains(&p.value, name))
+            obj.properties
+                .iter()
+                .any(|p| binding_contains(&p.value, name))
                 || obj
                     .rest
                     .as_ref()

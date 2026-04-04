@@ -148,9 +148,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         // slot_attribute_invalid_placement: a slot="..." attribute on a regular element
         // is only valid when the element is a direct child of a component.
-        let has_slot_attr = el.attributes.iter().any(|a| {
-            matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot")
-        });
+        let has_slot_attr = el
+            .attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"));
         if has_slot_attr
             && !ctx
                 .parent()
@@ -385,10 +386,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if !ctx.runes {
             return;
         }
-        for (span_opt, clause) in [
-            (block.value_span, ":then"),
-            (block.error_span, ":catch"),
-        ] {
+        for (span_opt, clause) in [(block.value_span, ":then"), (block.error_span, ":catch")] {
             if let Some(span) = span_opt {
                 let start = span.start as usize;
                 let win_start = start.saturating_sub(10);

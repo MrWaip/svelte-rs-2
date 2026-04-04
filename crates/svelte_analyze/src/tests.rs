@@ -878,7 +878,9 @@ fn module_imports_are_visible_from_instance_scope() {
         ref_id: None,
     };
     finder.visit_program(instance_program);
-    let ref_id = finder.ref_id.expect("expected instance reference to shared");
+    let ref_id = finder
+        .ref_id
+        .expect("expected instance reference to shared");
     assert_eq!(
         data.scoping.get_reference(ref_id).symbol_id(),
         Some(shared_sym),
@@ -2147,8 +2149,7 @@ fn validate_const_tag_invalid_expression() {
 #[test]
 fn validate_const_tag_parenthesized_sequence_ok() {
     // `{@const a = (b, c)}` is valid — the sequence is inside parens.
-    let diags =
-        analyze_with_diags("{#each items as item}{@const a = (item.x, item.y)}{/each}");
+    let diags = analyze_with_diags("{#each items as item}{@const a = (item.x, item.y)}{/each}");
     assert_no_error(&diags, "const_tag_invalid_expression");
 }
 
@@ -2493,7 +2494,9 @@ fn validate_snippet_invalid_export_no_false_positive() {
 </script>"#,
     );
     assert!(
-        !diags.iter().any(|d| d.kind.code() == "snippet_invalid_export"),
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "snippet_invalid_export"),
         "should not fire snippet_invalid_export for a non-snippet export"
     );
 }
@@ -2513,7 +2516,9 @@ fn validate_snippet_invalid_export_module_bound_no_fire() {
 {/snippet}"#,
     );
     assert!(
-        !diags.iter().any(|d| d.kind.code() == "snippet_invalid_export"),
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "snippet_invalid_export"),
         "should not fire snippet_invalid_export when name is declared in module scope"
     );
 }

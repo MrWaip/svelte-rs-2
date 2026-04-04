@@ -1,5 +1,6 @@
 pub(crate) mod bind_semantics;
 pub(crate) mod binding_properties;
+pub(crate) mod build_component_semantics;
 pub(crate) mod bundles;
 pub(crate) mod collect_symbols;
 pub(crate) mod content_types;
@@ -10,8 +11,6 @@ pub(crate) mod lower;
 pub(crate) mod mark_runes;
 pub(crate) mod post_resolve;
 pub(crate) mod reactivity;
-pub(crate) mod template_scoping;
-pub(crate) mod template_semantic;
 pub(crate) mod template_side_tables;
 pub(crate) mod template_validation;
 
@@ -22,11 +21,11 @@ use std::collections::VecDeque;
 pub(crate) enum PassKey {
     ClassifyRenderTags,
     AnalyzeScript,
+    BuildComponentSemantics,
     MarkRunes,
     PrepareAwaitBindings,
     ExtractCeConfig,
-    TemplateScoping,
-    TemplateSemanticAndSideTables,
+    TemplateSideTables,
     CollectSymbols,
     ResolveScriptStores,
     JsAnalyzePostTemplate,
@@ -55,8 +54,8 @@ pub(crate) enum DataToken {
     RuneMarks,
     AwaitBindings,
     CeConfig,
-    TemplateScopes,
     TemplateSemantics,
+    TemplateSideTables,
     SymbolRefs,
     ScriptStoresResolved,
     JsAnalyzePostTemplate,
@@ -93,7 +92,12 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     PassDescriptor {
         key: PassKey::AnalyzeScript,
         requires: &[DataToken::ParsedExpressions],
-        produces: &[DataToken::ScriptInfo, DataToken::ScriptScoping],
+        produces: &[DataToken::ScriptInfo],
+    },
+    PassDescriptor {
+        key: PassKey::BuildComponentSemantics,
+        requires: &[DataToken::ParsedExpressions, DataToken::ScriptInfo],
+        produces: &[DataToken::ScriptScoping, DataToken::TemplateSemantics],
     },
     PassDescriptor {
         key: PassKey::MarkRunes,
@@ -111,18 +115,13 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::CeConfig],
     },
     PassDescriptor {
-        key: PassKey::TemplateScoping,
-        requires: &[DataToken::ScriptScoping],
-        produces: &[DataToken::TemplateScopes],
-    },
-    PassDescriptor {
-        key: PassKey::TemplateSemanticAndSideTables,
-        requires: &[DataToken::TemplateScopes],
-        produces: &[DataToken::TemplateSemantics],
+        key: PassKey::TemplateSideTables,
+        requires: &[DataToken::TemplateSemantics],
+        produces: &[DataToken::TemplateSideTables],
     },
     PassDescriptor {
         key: PassKey::CollectSymbols,
-        requires: &[DataToken::TemplateSemantics],
+        requires: &[DataToken::TemplateSideTables],
         produces: &[DataToken::SymbolRefs],
     },
     PassDescriptor {

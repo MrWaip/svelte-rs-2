@@ -155,6 +155,58 @@ pub fn is_whitespace_removable_parent(name: &str) -> bool {
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);
 
+/// Identifies which fragment within a template block owns a scope.
+///
+/// A single AST node (e.g. `IfBlock`) may produce multiple fragments
+/// (consequent + alternate), so the key includes the fragment role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FragmentKey {
+    Root,
+    Element(NodeId),
+    ComponentNode(NodeId),
+    /// Named slot within a component: (component_id, slot_element_id).
+    NamedSlot(NodeId, NodeId),
+    IfConsequent(NodeId),
+    IfAlternate(NodeId),
+    EachBody(NodeId),
+    EachFallback(NodeId),
+    SnippetBody(NodeId),
+    KeyBlockBody(NodeId),
+    SvelteHeadBody(NodeId),
+    SvelteElementBody(NodeId),
+    SvelteBoundaryBody(NodeId),
+    AwaitPending(NodeId),
+    AwaitThen(NodeId),
+    AwaitCatch(NodeId),
+}
+
+impl FragmentKey {
+    pub fn is_each_body(&self) -> bool {
+        matches!(self, Self::EachBody(_))
+    }
+
+    pub fn node_id(&self) -> Option<NodeId> {
+        match self {
+            Self::Root => None,
+            Self::Element(id)
+            | Self::ComponentNode(id)
+            | Self::NamedSlot(id, _)
+            | Self::IfConsequent(id)
+            | Self::IfAlternate(id)
+            | Self::EachBody(id)
+            | Self::EachFallback(id)
+            | Self::SnippetBody(id)
+            | Self::KeyBlockBody(id)
+            | Self::SvelteHeadBody(id)
+            | Self::SvelteElementBody(id)
+            | Self::SvelteBoundaryBody(id)
+            | Self::AwaitPending(id)
+            | Self::AwaitThen(id)
+            | Self::AwaitCatch(id) => Some(*id),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
