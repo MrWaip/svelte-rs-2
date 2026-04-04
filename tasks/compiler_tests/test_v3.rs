@@ -1138,6 +1138,21 @@ fn script_module_exports() {
 }
 
 #[rstest]
+fn script_module_export_specifiers() {
+    assert_compiler("script_module_export_specifiers");
+}
+
+#[rstest]
+fn script_module_imports() {
+    assert_compiler("script_module_imports");
+}
+
+#[rstest]
+fn script_module_empty() {
+    assert_compiler("script_module_empty");
+}
+
+#[rstest]
 #[ignore = "missing: module-level $state/$derived rune transforms (codegen)"]
 fn script_module_runes() {
     assert_compiler("script_module_runes");
