@@ -1,13 +1,13 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 3/10 use cases complete (`script_module_exports`, `script_module_only`, `script_module_with_instance`)
-- **Completed slice**: component module-script codegen merge now emits module imports/body before hoisted declarations and component export
-- **Why this slice landed cleanly**: component module scripts now use a passthrough transform path until analyzer-owned module semantics are wired, while `needs_context` also accounts for module-program analysis when runtime wrapping depends on it
+- **Working**: 5/10 use cases complete (`script_module_exports`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations)
+- **Completed slice**: module-to-instance scope chain now resolves module bindings from instance code and preserves plain module declarations at top level
+- **Why this slice landed cleanly**: component analysis/codegen already had the required module-binding path in place; the missing step was to verify it against the ignored e2e case and promote the slice to completed status
 - **Slice rule**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Remaining non-goals**: module runes, instance access to module bindings, export specifiers, empty-module cleanup, `module_illegal_default_export`, plain non-export module vars as a separately verified case
-- **Missing after this slice**: analyze still doesn't process module program for component scope parenting, export validation, or diagnostics beyond `needs_context`
-- **Next**: analyzer slice for module scope semantics and diagnostics, starting with module-level bindings visible to instance/template code
+- **Remaining non-goals**: module runes, export specifiers, empty-module cleanup, `module_illegal_default_export`
+- **Missing after this slice**: module-specific diagnostics and validation are still incomplete, and module runes still use the unimplemented path
+- **Next**: analyzer/validation slice for module diagnostics, starting with `module_illegal_default_export`
 - Last updated: 2026-04-04
 
 ## Source
@@ -27,14 +27,14 @@
 
 - [x] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
 - [ ] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`, #[ignore], needs infrastructure)
-- [ ] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`, #[ignore], moderate)
+- [x] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
 - [x] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
 - [x] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
 - [ ] Module-level export specifiers (`export { foo, bar }`) emit at top level (no test yet, moderate)
 - [ ] Module-level imports merge with runtime imports at top of output (covered by `script_module_with_instance`, moderate)
 - [ ] Empty module script produces no extra output (no test yet, quick fix)
 - [ ] `export default` in module script emits `module_illegal_default_export` diagnostic (no test yet, quick fix)
-- [ ] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`, moderate)
+- [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
 
 ## Out of scope
 
@@ -68,7 +68,7 @@
 ## Tasks
 
 ### Analysis
-- [ ] Run analysis passes over `module_program` in component context (scoping, rune detection)
+- [~] Run analysis passes over `module_program` in component context (binding visibility for component compilation is verified; rune detection and full validation remain)
 - [ ] Wire up `ast_type = 'module'` equivalent for module script visitors
 - [ ] Add `module_illegal_default_export` diagnostic for `export default` in module script
 
