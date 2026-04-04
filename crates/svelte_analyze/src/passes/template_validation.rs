@@ -237,8 +237,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         // Per-attribute warnings for plain (non-directive) attributes on regular elements.
+        // html_name() returns "" for directive/nameless variants, which matches nothing below.
         for attr in &el.attributes {
-            let Some(name) = attr.html_name() else { continue };
+            let name = attr.html_name();
 
             // attribute_avoid_is: the `is` attribute is not supported cross-browser.
             if name == "is" {

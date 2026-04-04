@@ -725,15 +725,16 @@ impl Attribute {
     }
 
     /// Name of this attribute if it is a plain HTML attribute (not a Svelte directive).
-    /// Returns `None` for all directive variants — use this when checking raw HTML attribute
-    /// names (e.g. `is`, colon presence, React-style names).
-    pub fn html_name(&self) -> Option<&str> {
+    /// Returns `""` for directive and nameless variants — use this when checking raw HTML
+    /// attribute names (e.g. `is`, colon presence, React-style names). The empty string
+    /// never matches any valid attribute name check.
+    pub fn html_name(&self) -> &str {
         match self {
-            Attribute::StringAttribute(a) => Some(&a.name),
-            Attribute::ExpressionAttribute(a) => Some(&a.name),
-            Attribute::BooleanAttribute(a) => Some(&a.name),
-            Attribute::ConcatenationAttribute(a) => Some(&a.name),
-            _ => None,
+            Attribute::StringAttribute(a) => &a.name,
+            Attribute::ExpressionAttribute(a) => &a.name,
+            Attribute::BooleanAttribute(a) => &a.name,
+            Attribute::ConcatenationAttribute(a) => &a.name,
+            _ => "",
         }
     }
 }
