@@ -101,6 +101,7 @@ Shared domain types в `types.rs`: `ScriptInfo`, `DeclarationInfo`, `Declaration
 
 **Ключевые типы** (`data.rs`):
 - `AnalysisData` — центральная side table, keyed by `NodeId`. Содержит sub-structs: `ElementFlags`, `FragmentData`, `SnippetData`, `ConstTagData`, `DebugTagData`, `EachBlockData`, `AwaitBindingData`, `BindSemanticsData`, `IgnoreData`
+- `ElementFlags` содержит `AttrIndex` per element — O(1) lookup атрибутов по имени через `data.element_flags.attr_index(el.id)`. Используй `idx.has("name")` и `idx.first(attrs, "name")` вместо итерации по `el.attributes` для точных проверок имён.
 - `ExpressionInfo` / `ExpressionKind` — per-expression analysis
 - `ParsedExprs<'a>` — OXC Expression ASTs (template exprs, attr exprs, concat parts, keys, etc.)
 - `FragmentKey` variants: Root, Element, ComponentNode, IfConsequent, IfAlternate, EachBody, EachFallback, SnippetBody, KeyBlockBody, SvelteHeadBody

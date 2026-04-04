@@ -403,6 +403,7 @@ impl<'a> Parser<'a> {
                             content_span: script_tag.content_span,
                             language,
                             context: ScriptContext::Module,
+                            context_deprecated: script_tag.context_deprecated,
                         });
                     } else {
                         if instance_script_data.is_some() {
@@ -417,6 +418,7 @@ impl<'a> Parser<'a> {
                             content_span: script_tag.content_span,
                             language,
                             context: ScriptContext::Default,
+                            context_deprecated: false,
                         });
                     }
                 }
@@ -446,6 +448,7 @@ impl<'a> Parser<'a> {
             content_span: sd.content_span,
             context: sd.context,
             language: sd.language,
+            context_deprecated: sd.context_deprecated,
         });
 
         let module_script = module_script_data.map(|sd| Script {
@@ -454,6 +457,7 @@ impl<'a> Parser<'a> {
             content_span: sd.content_span,
             context: sd.context,
             language: sd.language,
+            context_deprecated: sd.context_deprecated,
         });
 
         let css = css_data.map(|cd| RawBlock {
@@ -544,6 +548,7 @@ struct ScriptData {
     content_span: Span,
     language: ScriptLanguage,
     context: ScriptContext,
+    context_deprecated: bool,
 }
 
 struct CssData {
