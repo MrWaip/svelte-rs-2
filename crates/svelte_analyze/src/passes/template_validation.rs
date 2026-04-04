@@ -169,8 +169,25 @@ impl TemplateVisitor for TemplateValidationVisitor {
             tabindex_attr,
             has_autofocus,
             missing_attr_diag,
+            has_is_attr,
+            has_colon_attr,
+            invalid_prop_name,
         ) = {
             let idx = ctx.data.element_flags.attr_index(el.id);
+            let has_colon_attr = el.attributes.iter().any(|a| {
+                let n = a.html_name();
+                n.contains(':')
+                    && !n.starts_with("xml:")
+                    && !n.starts_with("xlink:")
+                    && !n.starts_with("xmlns:")
+            });
+            let invalid_prop_name = if idx.is_some_and(|i| i.has("className")) {
+                Some(("className", "class"))
+            } else if idx.is_some_and(|i| i.has("htmlFor")) {
+                Some(("htmlFor", "for"))
+            } else {
+                None
+            };
             (
                 idx.is_some_and(|i| i.has("slot")),
                 ctx.data.element_flags.has_spread(el.id),
@@ -182,6 +199,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 } else {
                     None
                 },
+                idx.is_some_and(|i| i.has("is")),
+                has_colon_attr,
+                invalid_prop_name,
             )
         };
 
@@ -236,42 +256,22 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 .push(Diagnostic::warning(DiagnosticKind::SlotElementDeprecated, el.span));
         }
 
-        // Per-attribute warnings for plain (non-directive) attributes on regular elements.
-        // html_name() returns "" for directive/nameless variants, which matches nothing below.
-        for attr in &el.attributes {
-            let name = attr.html_name();
-
-            // attribute_avoid_is: the `is` attribute is not supported cross-browser.
-            if name == "is" {
-                ctx.warnings_mut()
-                    .push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, el.span));
-            }
-
-            // attribute_illegal_colon: colon in attribute names conflicts with Svelte directives.
-            if name.contains(':')
-                && !name.starts_with("xml:")
-                && !name.starts_with("xlink:")
-                && !name.starts_with("xmlns:")
-            {
-                ctx.warnings_mut()
-                    .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, el.span));
-            }
-
-            // attribute_invalid_property_name: React-style prop names used instead of HTML ones.
-            let correct = match name {
-                "className" => Some("class"),
-                "htmlFor" => Some("for"),
-                _ => None,
-            };
-            if let Some(right) = correct {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::AttributeInvalidPropertyName {
-                        wrong: name.to_string(),
-                        right: right.to_string(),
-                    },
-                    el.span,
-                ));
-            }
+        if has_is_attr {
+            ctx.warnings_mut()
+                .push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, el.span));
+        }
+        if has_colon_attr {
+            ctx.warnings_mut()
+                .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, el.span));
+        }
+        if let Some((wrong, right)) = invalid_prop_name {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::AttributeInvalidPropertyName {
+                    wrong: wrong.to_string(),
+                    right: right.to_string(),
+                },
+                el.span,
+            ));
         }
 
         let _ = has_spread; // used only in pre-computation above
