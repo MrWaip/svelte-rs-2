@@ -1,7 +1,7 @@
 # $props / $bindable
 
 ## Current state
-- **Complete** — all 15/15 use cases implemented and covered by tests
+- **Complete**: 15/16 use cases — `$props()`/`$props.id()` in `<script module>` rejection not yet verified
 - **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
 - Last updated: 2026-04-03
 
@@ -36,6 +36,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `$props.id()` validation edge cases covered by compiler-level pipeline tests
 - [x] `$bindable()` validation: `bindable_invalid_location` and argument-count checks
 - [x] `$props()` validation: `props_invalid_placement`, `props_duplicate`, and rune argument-count checks
+- [ ] `$props()` and `$props.id()` rejected inside `<script module>` (`props_invalid_placement` / `props_id_invalid_placement`) — reference: `ast_type !== 'instance'` check in `CallExpression.js`
 - [x] `$props.id()` validation: `props_id_invalid_placement`, duplicate detection with `$props()`, zero-argument enforcement
 - [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
 - [x] `props_illegal_name` for MemberExpression access on rest props

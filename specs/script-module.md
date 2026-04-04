@@ -1,15 +1,8 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 10/10 use cases complete (`script_module_exports`, `script_module_export_specifiers`, `script_module_imports`, `script_module_empty`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations, `module_illegal_default_export`, `script_module_runes`)
-- **Completed slice**: client codegen passthrough coverage for non-rune module top-level forms now explicitly verifies `export { foo, bar }`, module import merging, and empty-module output
-- **Why this slice landed cleanly**: the component module-script codegen path was already reusing the shared script transform pipeline, so this session mostly needed focused e2e coverage rather than new analyzer infrastructure
-- **Slice rule**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Completed slice**: module rune metadata and codegen consumption in component module scripts
-- **Why this slice landed cleanly**: analyze now owns a real `module -> instance -> template` scope chain for component compilation, so module runes and cross-script reads/writes resolve through the same `ComponentScoping` model as the rest of the compiler
-- **Remaining non-goals**: re-export forms with `from`, `export *`
-- **Missing after this slice**: broader re-export forms remain uncovered and should be tracked as a later codegen slice if needed
-- **Next**: broaden module-script export coverage only if reference parity work finds a concrete need for `export *` / `export { foo } from`
+- **Status**: COMPLETE — 10/10 use cases done, ROADMAP item moved to Done
+- **`ast_type = 'module'` tracking**: split to owning specs — `$props`/`$props.id` in module → `props-bindable.md`; `$host` in module → `host-rune.md`; TLA and `$:` in module → out of scope here
 - Last updated: 2026-04-04
 
 ## Source
@@ -71,8 +64,8 @@
 
 ### Analysis
 - [x] Run analysis passes over `module_program` in component context, with module bindings merged into component scoping through a real parent scope chain
-- [ ] Wire up `ast_type = 'module'` equivalent for module script visitors
 - [x] Add `module_illegal_default_export` diagnostic for `export default` in module script
+- [~] `ast_type = 'module'` context tracking — split to owning specs: `props-bindable.md` (`$props`/`$props.id`) and `host-rune.md` (`$host`); TLA + `$:` in module are out of scope
 
 ### Codegen
 - [x] Emit component module scripts from `generate()` using a component-safe passthrough transform path

@@ -1,9 +1,9 @@
 # $host
 
 ## Current state
-- **Working**: 4/4 use cases
-- **Missing**: 0
-- **Next**: feature complete for current scope
+- **Working**: 4/5 use cases
+- **Missing**: `$host()` in `<script module>` rejection for custom elements (needs `ast_type` context)
+- **Next**: add module-script placement check to `$host()` validation
 - Last updated: 2026-04-04
 
 ## Source
@@ -28,6 +28,7 @@
   Evidence: `tasks/compiler_tests/cases2/host_basic`
 - [x] Reject `$host()` arguments with `rune_invalid_arguments`.
 - [x] Reject `$host()` outside custom element instance scripts with `host_invalid_placement`.
+- [ ] Reject `$host()` inside `<script module>` even in custom elements (`host_invalid_placement`) — reference: `ast_type === 'module'` check in `CallExpression.js`, distinct from the non-custom-element case
 - [x] `$host()` coexists with `$props()` in custom elements — rest props exclude `$$host`.
   Evidence: `tasks/compiler_tests/cases2/host_props_rest`
 
