@@ -162,32 +162,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // Pre-compute all attribute-based flags and refs inside a block so that
         // the ctx.data borrow through `idx` is released before ctx.warnings_mut().
         // &Attribute results borrow `el`, not `ctx`, so they outlive the block.
-        let (
-            has_slot,
-            has_spread,
-            accesskey_attr,
-            tabindex_attr,
-            has_autofocus,
-            missing_attr_diag,
-            has_is_attr,
-            has_colon_attr,
-            invalid_prop_name,
-        ) = {
+        let (has_slot, has_spread, accesskey_attr, tabindex_attr, has_autofocus, missing_attr_diag) =
+        {
             let idx = ctx.data.element_flags.attr_index(el.id);
-            let has_colon_attr = el.attributes.iter().any(|a| {
-                let n = a.html_name();
-                n.contains(':')
-                    && !n.starts_with("xml:")
-                    && !n.starts_with("xlink:")
-                    && !n.starts_with("xmlns:")
-            });
-            let invalid_prop_name = if idx.is_some_and(|i| i.has("className")) {
-                Some(("className", "class"))
-            } else if idx.is_some_and(|i| i.has("htmlFor")) {
-                Some(("htmlFor", "for"))
-            } else {
-                None
-            };
             (
                 idx.is_some_and(|i| i.has("slot")),
                 ctx.data.element_flags.has_spread(el.id),
@@ -199,9 +176,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 } else {
                     None
                 },
-                idx.is_some_and(|i| i.has("is")),
-                has_colon_attr,
-                invalid_prop_name,
             )
         };
 
@@ -256,23 +230,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 .push(Diagnostic::warning(DiagnosticKind::SlotElementDeprecated, el.span));
         }
 
-        if has_is_attr {
-            ctx.warnings_mut()
-                .push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, el.span));
-        }
-        if has_colon_attr {
-            ctx.warnings_mut()
-                .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, el.span));
-        }
-        if let Some((wrong, right)) = invalid_prop_name {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::AttributeInvalidPropertyName {
-                    wrong: wrong.to_string(),
-                    right: right.to_string(),
-                },
-                el.span,
-            ));
-        }
+        check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
 
         let _ = has_spread; // used only in pre-computation above
     }
@@ -284,8 +242,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.emit_mixed_syntax_if_needed(ctx);
     }
 
-    fn visit_svelte_element(&mut self, _el: &SvelteElement, _ctx: &mut VisitContext<'_>) {
+    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
+        check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
     }
 
     fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
@@ -1564,6 +1523,53 @@ fn contains_invalid_snippet_param_assignment(
 /// with the given `name`. Spread and directive attributes are not matched.
 fn el_has_attr(idx: Option<&crate::types::data::AttrIndex>, name: &str) -> bool {
     idx.is_some_and(|i| i.has(name))
+}
+
+/// Emit `attribute_avoid_is`, `attribute_illegal_colon`, and
+/// `attribute_invalid_property_name` warnings for plain HTML attributes on a
+/// `RegularElement` or `SvelteElement`.  The borrow of `ctx.data` is confined
+/// to the inner block so `ctx.warnings_mut()` can be called freely afterwards.
+fn check_plain_attr_warnings(
+    id: NodeId,
+    span: Span,
+    attrs: &[Attribute],
+    ctx: &mut VisitContext<'_>,
+) {
+    let (has_is, has_colon, invalid_prop) = {
+        let idx = ctx.data.element_flags.attr_index(id);
+        let has_colon = attrs.iter().any(|a| {
+            let n = a.html_name();
+            n.contains(':')
+                && !n.starts_with("xml:")
+                && !n.starts_with("xlink:")
+                && !n.starts_with("xmlns:")
+        });
+        let invalid_prop = if idx.is_some_and(|i| i.has("className")) {
+            Some(("className", "class"))
+        } else if idx.is_some_and(|i| i.has("htmlFor")) {
+            Some(("htmlFor", "for"))
+        } else {
+            None
+        };
+        (idx.is_some_and(|i| i.has("is")), has_colon, invalid_prop)
+    };
+
+    if has_is {
+        ctx.warnings_mut().push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, span));
+    }
+    if has_colon {
+        ctx.warnings_mut()
+            .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, span));
+    }
+    if let Some((wrong, right)) = invalid_prop {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::AttributeInvalidPropertyName {
+                wrong: wrong.to_string(),
+                right: right.to_string(),
+            },
+            span,
+        ));
+    }
 }
 
 

@@ -69,6 +69,35 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn warn_attr_avoid_is() {
+    assert_compiler("warn_attr_avoid_is");
+}
+
+#[rstest]
+#[ignore = "missing: parser errors on unknown directive prefix (data:foo), reference treats as plain attribute"]
+fn warn_attr_illegal_colon() {
+    assert_compiler("warn_attr_illegal_colon");
+}
+
+#[rstest]
+#[ignore = "missing: known v3 parity gap"]
+fn warn_attr_invalid_prop_name() {
+    assert_compiler("warn_attr_invalid_prop_name");
+}
+
+#[rstest]
+#[ignore = "missing: <slot> codegen not implemented ($.slot vs from_html)"]
+fn warn_slot_deprecated() {
+    assert_compiler("warn_slot_deprecated");
+}
+
+#[rstest]
+fn warn_script_context_deprecated() {
+    assert_compiler("warn_script_context_deprecated");
+}
+
+#[rstest]
 fn head_with_special_elements() {
     assert_compiler("head_with_special_elements");
 }

@@ -30,12 +30,12 @@ pub fn validate(
     }
     validate_snippet_exports(component, parsed, diags);
     validate_custom_element_props(data, diags);
-    validate_script_attributes(component, runes, diags);
+    validate_script_context(component, runes, diags);
 }
 
 /// Warn when `<script context="module">` is used in runes mode — the modern
 /// equivalent is `<script module>`.
-fn validate_script_attributes(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
+fn validate_script_context(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
     if !runes {
         return;
     }
