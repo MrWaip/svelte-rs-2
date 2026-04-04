@@ -158,3 +158,34 @@ const id = $props.id();
         result.diagnostics
     );
 }
+
+#[test]
+fn attribute_invalid_name_digit_start() {
+    let result = compile(r#"<div 1foo="x"></div>"#, &CompileOptions::default());
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_name"),
+        "expected attribute_invalid_name, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn attribute_invalid_name_dash_start() {
+    // Parser allows '-' in attr names including at start; analyze rejects via the illegal-char regex.
+    let result = compile(r#"<div -foo="x"></div>"#, &CompileOptions::default());
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_name"),
+        "expected attribute_invalid_name, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn attribute_invalid_event_handler_string_value() {
+    let result = compile(r#"<button onclick="doSomething()"></button>"#, &CompileOptions::default());
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_event_handler"),
+        "expected attribute_invalid_event_handler, got: {:?}",
+        result.diagnostics
+    );
+}

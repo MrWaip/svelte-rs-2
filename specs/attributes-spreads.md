@@ -1,10 +1,10 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 11/16 use cases
-- **Missing**: 5 — analyze-side attribute validation/warnings, form-element validation gaps, event/binding/A11y attribute diagnostics
-- **Next**: port analyze-owned generic attribute validation (`attribute_duplicate`, `attribute_invalid_name`, `attribute_unquoted_sequence`, `attribute_illegal_colon`, `attribute_quoted`, slot placement) before adding more codegen-side special cases
-- Last updated: 2026-04-02
+- **Working**: 13/18 use cases (added `attribute_invalid_name` and `attribute_invalid_event_handler` in analyze)
+- **Missing**: 5 remaining — `attribute_duplicate` (parser layer), `attribute_unquoted_sequence` (requires parser quoted-tracking), `attribute_quoted` (component-specific, needs visit_component), form-element validation, event/binding/A11y diagnostics
+- **Next**: `attribute_duplicate` (parser layer — `crates/svelte_parser/src/scanner/mod.rs` `attributes()` loop, mirrors reference `phases/1-parse/state/element.js:250`) or `attribute_quoted`/`attribute_unquoted_sequence` (need to investigate quoted-tracking in ConcatenationAttribute)
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -51,8 +51,13 @@
   Added during this audit: `spread_style_directive`
 - `[x]` Regular-element `autofocus` lowers through `$.autofocus(...)`
   Added during this audit: `element_autofocus`
-- `[ ]` Analyze-side attribute validation/warnings are mostly absent
-  Missing today: `attribute_duplicate`, `attribute_invalid_name`, `attribute_unquoted_sequence`, `attribute_illegal_colon`, `attribute_quoted`, `slot_attribute_invalid`, `slot_attribute_invalid_placement`
+- `[~]` Analyze-side attribute validation/warnings — partially implemented
+  - `[x]` `attribute_invalid_name` — error for names starting with digit/dash/dot or containing illegal chars
+  - `[x]` `attribute_invalid_event_handler` — error for `on*` attrs with string/concatenation values
+  - `[ ]` `attribute_duplicate` — parser layer (reference: `phases/1-parse/state/element.js:250`)
+  - `[ ]` `attribute_unquoted_sequence` — requires parser to record quoted/unquoted delimiter
+  - `[ ]` `attribute_quoted` — warning for single-expr on component; needs `visit_component`
+  - `[ ]` `slot_attribute_invalid` / `slot_attribute_invalid_placement` — partial (placement done, invalid-value not yet)
 - `[ ]` Form-element validation and remaining special handling are incomplete
   Missing today: `textarea_invalid_content`, customizable `select` / `optgroup` / `selectedcontent` paths, and the remaining bind-sensitive attribute validations tracked in `specs/bind-directives.md`
 
