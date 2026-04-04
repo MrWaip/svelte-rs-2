@@ -1571,46 +1571,6 @@ fn check_plain_attr_warnings(
         ));
     }
 
-    for attr in attrs {
-        let name = attr.html_name();
-        if name.is_empty() {
-            continue;
-        }
-        if is_invalid_attr_name(name) {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::AttributeInvalidName { name: name.to_string() },
-                span,
-            ));
-        }
-        // on* event handler attributes must be expression values, not plain strings.
-        if name.len() > 2
-            && name.starts_with("on")
-            && matches!(
-                attr,
-                Attribute::StringAttribute(_)
-                    | Attribute::ConcatenationAttribute(_)
-                    | Attribute::BooleanAttribute(_)
-            )
-        {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::AttributeInvalidEventHandler, span));
-        }
-    }
-}
-
-/// Returns `true` if `name` contains characters that make it an illegal HTML attribute name.
-///
-/// Matches the reference compiler's `regex_illegal_attribute_character`:
-/// `/(^[0-9-.])|[\^$@%&#?!|()\[\]{}^*+~;]/`
-fn is_invalid_attr_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    if let Some(first) = chars.next() {
-        if first.is_ascii_digit() || first == '-' || first == '.' {
-            return true;
-        }
-    }
-    name.chars()
-        .any(|c| matches!(c, '^' | '$' | '@' | '%' | '&' | '#' | '?' | '!' | '|' | '(' | ')' | '[' | ']' | '{' | '}' | '*' | '+' | '~' | ';'))
 }
 
 

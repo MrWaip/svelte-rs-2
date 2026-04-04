@@ -4,6 +4,7 @@ use svelte_ast::{
     StringAttribute, StyleDirective, StyleDirectiveValue, TransitionDirection, TransitionDirective,
     UseDirective,
 };
+use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::scanner::token;
@@ -19,16 +20,44 @@ impl<'a> Parser<'a> {
         for attr in token_attrs {
             match attr {
                 token::Attribute::HTMLAttribute(html_attr) => {
+                    // Extract name once; &'a str tied to the source lifetime, no allocation yet.
+                    let name = html_attr.name_span.source_text(self.source);
+
+                    // Our scanner accepts only alphanumeric, '-', and ':' in attribute names, so
+                    // the only cases that pass the scanner but violate the reference compiler's
+                    // `regex_illegal_attribute_character` are names starting with a digit or '-'.
+                    // Check the first byte — O(1), no scan of the rest of the name needed.
+                    if matches!(name.as_bytes().first(), Some(&b) if b.is_ascii_digit() || b == b'-')
+                    {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticKind::AttributeInvalidName { name: name.to_string() },
+                            html_attr.name_span,
+                        ));
+                    }
+
+                    // on* handler attributes must carry an expression value, not a plain string.
+                    // ExpressionTag is the only valid token value; String/Concatenation/Empty are
+                    // not. Two-byte prefix check via starts_with on bytes — O(1).
+                    if name.len() > 2
+                        && name.as_bytes().starts_with(b"on")
+                        && !matches!(html_attr.value, token::AttributeValue::ExpressionTag(_))
+                    {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticKind::AttributeInvalidEventHandler,
+                            html_attr.name_span,
+                        ));
+                    }
+
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
                             Attribute::StringAttribute(StringAttribute {
                                 id: self.reserve_id(),
-                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                name: name.to_string(),
                                 value_span: *span,
                             })
                         }
                         token::AttributeValue::ExpressionTag(expr_tag) => {
-                            let name = html_attr.name_span.source_text(self.source).to_string();
+                            let name = name.to_string();
                             let event_name = name.strip_prefix("on").map(|s| s.to_string());
                             Attribute::ExpressionAttribute(ExpressionAttribute {
                                 id: self.reserve_id(),
@@ -40,17 +69,16 @@ impl<'a> Parser<'a> {
                         }
                         token::AttributeValue::Concatenation(concat) => {
                             let parts = self.convert_concat_parts(&concat.parts);
-
                             Attribute::ConcatenationAttribute(ConcatenationAttribute {
                                 id: self.reserve_id(),
-                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                name: name.to_string(),
                                 parts,
                             })
                         }
                         token::AttributeValue::Empty => {
                             Attribute::BooleanAttribute(BooleanAttribute {
                                 id: self.reserve_id(),
-                                name: html_attr.name_span.source_text(self.source).to_string(),
+                                name: name.to_string(),
                             })
                         }
                     };
