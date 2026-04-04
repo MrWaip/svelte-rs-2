@@ -197,7 +197,8 @@ impl<'a> Parser<'a> {
 
         let mut children_stack: Vec<Vec<NodeId>> = vec![vec![]];
         let mut entry_stack: Vec<StackEntry> = vec![];
-        let mut script_data: Option<ScriptData> = None;
+        let mut instance_script_data: Option<ScriptData> = None;
+        let mut module_script_data: Option<ScriptData> = None;
         let mut css_data: Option<CssData> = None;
 
         for token in tokens {
@@ -383,29 +384,41 @@ impl<'a> Parser<'a> {
                     push_child(&mut children_stack, id);
                 }
                 TokenType::ScriptTag(script_tag) => {
-                    if script_data.is_some() {
-                        self.recover(Diagnostic::only_single_top_level_script(token.span));
-                        continue;
-                    }
-
                     let language = if script_tag.is_typescript {
                         ScriptLanguage::TypeScript
                     } else {
                         ScriptLanguage::JavaScript
                     };
 
-                    let context = if script_tag.is_module {
-                        ScriptContext::Module
+                    if script_tag.is_module {
+                        if module_script_data.is_some() {
+                            self.recover(Diagnostic::error(
+                                svelte_diagnostics::DiagnosticKind::ScriptDuplicate,
+                                token.span,
+                            ));
+                            continue;
+                        }
+                        module_script_data = Some(ScriptData {
+                            span: token.span,
+                            content_span: script_tag.content_span,
+                            language,
+                            context: ScriptContext::Module,
+                        });
                     } else {
-                        ScriptContext::Default
-                    };
-
-                    script_data = Some(ScriptData {
-                        span: token.span,
-                        content_span: script_tag.content_span,
-                        language,
-                        context,
-                    });
+                        if instance_script_data.is_some() {
+                            self.recover(Diagnostic::error(
+                                svelte_diagnostics::DiagnosticKind::ScriptDuplicate,
+                                token.span,
+                            ));
+                            continue;
+                        }
+                        instance_script_data = Some(ScriptData {
+                            span: token.span,
+                            content_span: script_tag.content_span,
+                            language,
+                            context: ScriptContext::Default,
+                        });
+                    }
                 }
                 TokenType::StyleTag(style_tag) => {
                     if css_data.is_some() {
@@ -427,7 +440,15 @@ impl<'a> Parser<'a> {
 
         let roots = pop_children(&mut children_stack);
 
-        let script = script_data.map(|sd| Script {
+        let instance_script = instance_script_data.map(|sd| Script {
+            id: self.reserve_id(),
+            span: sd.span,
+            content_span: sd.content_span,
+            context: sd.context,
+            language: sd.language,
+        });
+
+        let module_script = module_script_data.map(|sd| Script {
             id: self.reserve_id(),
             span: sd.span,
             content_span: sd.content_span,
@@ -445,7 +466,8 @@ impl<'a> Parser<'a> {
             self.source.to_string(),
             Fragment::new(roots),
             store,
-            script,
+            instance_script,
+            module_script,
             css,
         );
         // Extract <svelte:options> from fragment (must be top-level)

@@ -325,7 +325,7 @@ pub fn analyze_with_options<'a>(
                 );
             }
             passes::PassKey::Validate => {
-                validate::validate(&data, &parsed, runes, &mut diags);
+                validate::validate(component, &data, &parsed, runes, &mut diags);
             }
         }
     }
