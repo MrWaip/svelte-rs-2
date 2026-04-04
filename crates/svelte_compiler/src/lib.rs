@@ -8,6 +8,8 @@ use svelte_diagnostics::Diagnostic;
 #[derive(serde::Serialize)]
 pub struct CompileResult {
     pub js: Option<String>,
+    /// Transformed (scoped) CSS text, or `None` when the component has no `<style>` block.
+    pub css: Option<String>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -18,6 +20,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
+    let css_stylesheet = svelte_parser::parse_css_block(&js_alloc, &component);
 
     // Whether the parser already found errors — captured before the closure so it
     // can be used inside without borrowing `diagnostics` mutably at the same time.
@@ -35,14 +38,19 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     // `parsed` (invariant over its lifetime) stays inside the closure.
     // Analysis always runs; codegen is gated on the absence of error diagnostics.
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (analysis, mut parsed, analyze_diags) =
+        let (mut analysis, mut parsed, analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
+
+        if let Some(ss) = css_stylesheet {
+            svelte_analyze::analyze_css_pass(&js_alloc, &component, ss, &mut analysis);
+        }
+        let css = analysis.css.css_output.clone();
 
         let has_errors = has_parse_errors
             || analyze_diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
         if has_errors {
-            return (None, analyze_diags);
+            return (None, css, analyze_diags);
         }
 
         let mut ident_gen =
@@ -67,13 +75,13 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             &options.filename,
             options.experimental.async_,
         );
-        (Some(js), analyze_diags)
+        (Some(js), css, analyze_diags)
     }));
 
     match codegen_result {
-        Ok((js, analyze_diags)) => {
+        Ok((js, css, analyze_diags)) => {
             diagnostics.extend(analyze_diags);
-            CompileResult { js, diagnostics }
+            CompileResult { js, css, diagnostics }
         }
         Err(panic_payload) => {
             let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
@@ -84,7 +92,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 "unknown internal error".to_string()
             };
             diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult { js: None, diagnostics }
+            CompileResult { js: None, css: None, diagnostics }
         }
     }
 }
@@ -105,7 +113,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     if options.generate == GenerateMode::False
         || diagnostics.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error)
     {
-        return CompileResult { js: None, diagnostics };
+        return CompileResult { js: None, css: None, diagnostics };
     }
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -113,7 +121,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     }));
 
     match codegen_result {
-        Ok(js) => CompileResult { js: Some(js), diagnostics },
+        Ok(js) => CompileResult { js: Some(js), css: None, diagnostics },
         Err(panic_payload) => {
             let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
                 s.clone()
@@ -123,7 +131,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
                 "unknown internal error".to_string()
             };
             diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult { js: None, diagnostics }
+            CompileResult { js: None, css: None, diagnostics }
         }
     }
 }

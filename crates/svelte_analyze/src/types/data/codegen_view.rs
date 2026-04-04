@@ -320,4 +320,13 @@ impl<'a> CodegenView<'a> {
     pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
         self.data.html_tag_in_mathml(id)
     }
+    /// The scoping class for this component, e.g. `"svelte-1a7i8ec"`.
+    /// Returns an empty string when no `<style>` block is present.
+    pub fn css_hash(&self) -> &str {
+        &self.data.css.hash
+    }
+    /// Whether the element should receive the scoped CSS class.
+    pub fn is_css_scoped(&self, id: NodeId) -> bool {
+        self.data.css.scoped_elements.contains(&id)
+    }
 }
