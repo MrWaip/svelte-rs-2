@@ -112,12 +112,10 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## `<script module>` in Components — [spec](specs/script-module.md)
 
-Parser infrastructure is in place (`Component.instance_script` / `Component.module_script`, `ParserResult.module_program`). Missing: analyze and codegen for module script content.
-
-- [ ] Analyze pass: scoping, rune detection, exports collection for module script body
-- [ ] Codegen: emit module script body as module-level output (separate from component function)
-- [ ] `export_undefined` diagnostic for unresolved module export specifiers
-- [ ] Interaction with instance script: module-scope bindings visible to instance, not vice versa
+- [x] Analyze pass: scoping, rune detection, exports collection for module script body
+- [x] Codegen: emit module script body as module-level output (separate from component function)
+- [x] `export_undefined` diagnostic for unresolved module export specifiers
+- [x] Interaction with instance script: module-scope bindings visible to instance, not vice versa
 
 ## Legacy Svelte 4
 
