@@ -2075,14 +2075,16 @@ let { b } = $props();
 }
 
 #[test]
-fn validate_props_duplicate_with_props_id() {
+fn validate_props_and_props_id_coexist() {
+    // $props() and $props.id() are allowed to coexist — only duplicate calls of
+    // the SAME rune are errors (matching reference compiler behaviour).
     let diags = analyze_with_diags(
         r#"<script>
 let { a } = $props();
 const id = $props.id();
 </script>"#,
     );
-    assert_has_error(&diags, "props_duplicate");
+    assert!(!diags.iter().any(|d| d.kind.code() == "props_duplicate"), "unexpected props_duplicate");
 }
 
 #[test]
@@ -2557,11 +2559,23 @@ fn validate_bind_invalid_expression() {
 
 #[test]
 fn validate_bind_invalid_value() {
+    // bind_invalid_value fires when binding to a non-writable rune (e.g. $derived)
+    let diags = analyze_with_diags(
+        r#"<script>let value = $derived('');</script>
+<input bind:value={value}>"#,
+    );
+    assert_has_error(&diags, "bind_invalid_value");
+}
+
+#[test]
+fn validate_bind_plain_let_is_valid() {
+    // Plain let variables (non-rune) are bindable — the bind directive's setter writes to them.
     let diags = analyze_with_diags(
         r#"<script>let value = '';</script>
 <input bind:value={value}>"#,
     );
-    assert_has_error(&diags, "bind_invalid_value");
+    assert!(!diags.iter().any(|d| d.kind.code() == "bind_invalid_value"),
+        "plain let should not fire bind_invalid_value");
 }
 
 #[test]

@@ -9,6 +9,7 @@
 
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
+use svelte_component_semantics::SymbolFlags;
 use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
@@ -914,7 +915,13 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
         || ctx.data.scoping.is_each_block_var(sym_id)
         || bind_targets_each_context(sym_id, ctx)
         || ctx.data.scoping.is_store(sym_id)
-        || bind_target_updated_elsewhere(dir, sym_id, ctx);
+        || bind_target_updated_elsewhere(dir, sym_id, ctx)
+        // Plain mutable let/var (no rune) is bindable — the bind directive's setter writes to it.
+        || (rune_kind.is_none() && {
+            let flags = ctx.data.scoping.symbol_flags(sym_id);
+            flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
+                && !flags.contains(SymbolFlags::ConstVariable)
+        });
 
     if !valid {
         emit_bind_error(ctx, dir.expression_span, DiagnosticKind::BindInvalidValue);
