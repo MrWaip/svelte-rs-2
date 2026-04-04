@@ -2,7 +2,8 @@
 
 ## Current state
 - **Working**: 15/15 core client-side `{#each}` use cases implemented and passing.
-- Last updated: 2026-04-02
+- **Open gap**: When an each block's inner scope has a declaration that shadows an outer scope binding (e.g. `{@const a = ...}` shadowing a snippet named `a`), the reference compiler sets `collection_id` and emits `$$index, $$array` as extra render-callback params. The Rust codegen lacks this `collection_id` concept entirely — new use case added below.
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -39,6 +40,7 @@
 - `[x]` Diagnostic: `animate:` outside a keyed each or on a non-sole child should raise `animation_invalid_placement`.
 - `[x]` Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
 - `[x]` Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
+- `[ ]` Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318).
 
 ## Reference
 
