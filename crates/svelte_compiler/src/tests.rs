@@ -63,6 +63,28 @@ fn error_recovery_returns_diagnostics() {
 }
 
 #[test]
+fn analyze_runs_despite_parse_errors() {
+    // Analyze always runs even when the parser reports errors, so that both
+    // parse-layer and analyze-layer diagnostics surface in one pass.
+    // Codegen is skipped whenever any error diagnostic is present.
+    let result = compile(
+        r#"<script>
+const id = $props.id();
+const id2 = $props.id();
+</script><div"#, // unclosed tag → parse error; duplicate $props.id() → analyze error
+        &CompileOptions::default(),
+    );
+    assert!(result.js.is_none(), "codegen must be skipped when errors present");
+    // Both layers contribute diagnostics.
+    assert!(
+        result.diagnostics.iter().any(|d| d.kind.code() == "props_id_invalid_placement"
+            || d.kind.code() == "props_duplicate"),
+        "analyze diagnostics must surface alongside parse errors: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn module_generate_false_returns_no_js() {
     let opts = ModuleCompileOptions {
         generate: GenerateMode::False,

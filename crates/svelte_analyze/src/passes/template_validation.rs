@@ -915,8 +915,9 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
         || ctx.data.scoping.is_each_block_var(sym_id)
         || bind_targets_each_context(sym_id, ctx)
         || ctx.data.scoping.is_store(sym_id)
-        || bind_target_updated_elsewhere(dir, sym_id, ctx)
         // Plain mutable let/var (no rune) is bindable — the bind directive's setter writes to it.
+        // This matches the reference compiler: any bind target is marked as `binding.updated`
+        // by scope analysis, so the "not updated" guard never fires for plain let/var.
         || (rune_kind.is_none() && {
             let flags = ctx.data.scoping.symbol_flags(sym_id);
             flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::FunctionScopedVariable)
@@ -969,28 +970,6 @@ fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate
     }
 }
 
-fn bind_target_updated_elsewhere(
-    dir: &BindDirective,
-    sym_id: crate::scope::SymbolId,
-    ctx: &VisitContext<'_>,
-) -> bool {
-    let Some(expr) = bind_expression(dir, ctx) else {
-        return false;
-    };
-    let expr = match expr {
-        Expression::ParenthesizedExpression(expr) => &expr.expression,
-        expr => expr,
-    };
-    let Expression::Identifier(ident) = expr else {
-        return false;
-    };
-    let Some(ref_id) = ident.reference_id.get() else {
-        return false;
-    };
-    ctx.data
-        .scoping
-        .has_write_reference_other_than(sym_id, ref_id)
-}
 
 fn bind_expression<'a>(
     dir: &BindDirective,
