@@ -37,10 +37,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ));
         }
 
-        let has_value_attr = el.attributes.iter().any(|a| {
-            matches!(a, Attribute::StringAttribute(sa) if sa.name == "value")
-                || matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
-        });
+        let has_value_attr = {
+            let idx = ctx.data.element_flags.attr_index(el.id);
+            idx.is_some_and(|i| i.has("value"))
+        };
 
         // <textarea>: detect expression children
         if el.name == "textarea" && !el.fragment.nodes.is_empty() {
