@@ -103,6 +103,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 ## Compiler Infrastructure
 
 - [ ] Module compilation (`.svelte.js` / `.svelte.ts`)
+- [ ] `<script module>` compilation inside `.svelte` components (analyze + codegen separate from instance script)
 - [ ] WASM target
 - [ ] Custom elements
 - [ ] `discloseVersion` option
