@@ -89,10 +89,6 @@ impl SymbolTable {
         self.flags[id.index()]
     }
 
-    pub fn union_symbol_flags(&mut self, id: SymbolId, flags: SymbolFlags) {
-        self.flags[id.index()] |= flags;
-    }
-
     pub fn symbol_scope_id(&self, id: SymbolId) -> ScopeId {
         self.scope_ids[id.index()]
     }
@@ -132,10 +128,6 @@ impl SymbolTable {
 
     pub fn get_resolved_reference_ids(&self, id: SymbolId) -> &[ReferenceId] {
         &self.resolved_references[id.index()]
-    }
-
-    pub fn len(&self) -> usize {
-        self.names.len()
     }
 
     /// Iterate all symbol IDs.
@@ -178,7 +170,6 @@ mod tests {
         assert_eq!(t.symbol_scope_id(id), ScopeId::from_usize(0));
         assert!(!t.is_mutated(id));
         assert_eq!(t.symbol_owner(id), SymbolOwner::InstanceScript);
-        assert_eq!(t.len(), 1);
     }
 
     #[test]
@@ -222,12 +213,6 @@ mod tests {
             SymbolOwner::InstanceScript,
         );
         assert!(t.symbol_flags(id).contains(SymbolFlags::Import));
-
-        t.union_symbol_flags(id, SymbolFlags::FunctionScopedVariable);
-        assert!(t.symbol_flags(id).contains(SymbolFlags::Import));
-        assert!(t
-            .symbol_flags(id)
-            .contains(SymbolFlags::FunctionScopedVariable));
     }
 
     #[test]
