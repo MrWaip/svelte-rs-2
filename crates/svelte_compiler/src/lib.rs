@@ -19,6 +19,15 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let js_alloc = oxc_allocator::Allocator::default();
     let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
 
+    // Skip analysis and codegen if the parser produced any errors — the AST
+    // may be incomplete and downstream passes would produce misleading output.
+    if diagnostics.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error) {
+        return CompileResult {
+            js: None,
+            diagnostics,
+        };
+    }
+
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let analyze_opts = svelte_analyze::AnalyzeOptions {
             custom_element: options.custom_element,

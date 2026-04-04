@@ -230,6 +230,55 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ctx.warnings_mut().push(diag);
         }
 
+        // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
+        if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
+            ctx.warnings_mut()
+                .push(Diagnostic::warning(DiagnosticKind::SlotElementDeprecated, el.span));
+        }
+
+        // Per-attribute warnings for plain (non-directive) attributes on regular elements.
+        for attr in &el.attributes {
+            let name = match attr {
+                Attribute::StringAttribute(a) => a.name.as_str(),
+                Attribute::BooleanAttribute(a) => a.name.as_str(),
+                Attribute::ExpressionAttribute(a) => a.name.as_str(),
+                Attribute::ConcatenationAttribute(a) => a.name.as_str(),
+                _ => continue,
+            };
+
+            // attribute_avoid_is: the `is` attribute is not supported cross-browser.
+            if name == "is" {
+                ctx.warnings_mut()
+                    .push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, el.span));
+            }
+
+            // attribute_illegal_colon: colon in attribute names conflicts with Svelte directives.
+            if name.contains(':')
+                && !name.starts_with("xml:")
+                && !name.starts_with("xlink:")
+                && !name.starts_with("xmlns:")
+            {
+                ctx.warnings_mut()
+                    .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, el.span));
+            }
+
+            // attribute_invalid_property_name: React-style prop names used instead of HTML ones.
+            let correct = match name {
+                "className" => Some("class"),
+                "htmlFor" => Some("for"),
+                _ => None,
+            };
+            if let Some(right) = correct {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::AttributeInvalidPropertyName {
+                        wrong: name.to_string(),
+                        right: right.to_string(),
+                    },
+                    el.span,
+                ));
+            }
+        }
+
         let _ = has_spread; // used only in pre-computation above
     }
 

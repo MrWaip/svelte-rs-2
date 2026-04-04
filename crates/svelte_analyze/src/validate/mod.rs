@@ -30,6 +30,23 @@ pub fn validate(
     }
     validate_snippet_exports(component, parsed, diags);
     validate_custom_element_props(data, diags);
+    validate_script_attributes(component, runes, diags);
+}
+
+/// Warn when `<script context="module">` is used in runes mode — the modern
+/// equivalent is `<script module>`.
+fn validate_script_attributes(component: &Component, runes: bool, diags: &mut Vec<Diagnostic>) {
+    if !runes {
+        return;
+    }
+    if let Some(script) = &component.module_script {
+        if script.context_deprecated {
+            diags.push(Diagnostic::warning(
+                DiagnosticKind::ScriptContextDeprecated,
+                script.span,
+            ));
+        }
+    }
 }
 
 pub fn validate_program(

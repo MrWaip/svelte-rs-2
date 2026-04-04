@@ -959,6 +959,8 @@ pub struct Script {
     pub content_span: Span,
     pub context: ScriptContext,
     pub language: ScriptLanguage,
+    /// `true` when the legacy `context="module"` attribute was used instead of `module`.
+    pub context_deprecated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

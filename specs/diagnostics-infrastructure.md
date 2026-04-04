@@ -1,9 +1,10 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 14/18 use cases — all infrastructure complete
-- **Missing**: 4 (warning emission logic, A11y, CSS unused selector, early bail on parser errors)
-Last updated: 2026-03-29
+- **Working**: 18/22 use cases — infrastructure + first batch of warning emission
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`
+- **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
+Last updated: 2026-04-04
 
 ## Source
 ROADMAP Tier 5, item 5a
@@ -43,10 +44,15 @@ ROADMAP Tier 5, item 5a
 14. [x] `AnalyzeOptions` struct replacing `custom_element: bool` (test: compile)
 15. [x] `warning_filter` applied after analysis (test: unit)
 16. [x] `ctx.warn(node_id, kind, span)` API for visitors (test: integration)
-- [ ] Individual warning emission logic (5b–5g)
-- [ ] A11y checks (5f)
+- [x] Early bail on parser errors — skip analyze/codegen when parser produces errors
+- [x] `ScriptContextDeprecated` — warn when `context="module"` used in runes mode
+- [x] `SlotElementDeprecated` — warn when `<slot>` used in runes mode (non-custom-element)
+- [x] `AttributeAvoidIs` — warn when element has `is` attribute
+- [x] `AttributeIllegalColon` — warn when attribute name contains `:` (excluding xml/xlink/xmlns)
+- [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
+- [ ] Remaining non-A11y warnings: `NonReactiveUpdate`, `ComponentNameLowercase`, `AttributeGlobalEventReference`, `AttributeQuoted`, `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), options warnings, perf class warnings
+- [ ] A11y checks (5f) — ~26 missing variants (ARIA role/attribute validation)
 - [ ] CSS unused selector warning (depends on Tier 3)
-- [ ] Early bail on parser errors
 
 ## Tasks
 
