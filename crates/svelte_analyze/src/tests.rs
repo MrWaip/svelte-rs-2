@@ -2320,6 +2320,26 @@ fn validate_snippet_invalid_export_no_false_positive() {
 }
 
 #[test]
+fn validate_snippet_invalid_export_module_bound_no_fire() {
+    // If the exported name is declared in <script module>, it is NOT snippet_invalid_export
+    // (matches reference compiler: only fires when the name has no module-scope binding).
+    let diags = analyze_with_diags(
+        r#"<script module>
+    const greeting = () => "module fn";
+    export { greeting };
+</script>
+
+{#snippet greeting()}
+    <p>template snippet</p>
+{/snippet}"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "snippet_invalid_export"),
+        "should not fire snippet_invalid_export when name is declared in module scope"
+    );
+}
+
+#[test]
 fn validate_each_item_invalid_assignment_nested_object_destructure() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]); let value = { nested: { current: 1 } };</script>

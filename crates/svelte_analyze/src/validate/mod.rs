@@ -1,7 +1,7 @@
 mod runes;
 mod stores;
 
-use oxc_ast::ast::{Program, Statement};
+use oxc_ast::ast::{BindingPattern, Declaration, ImportDeclarationSpecifier, Program, Statement};
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -78,11 +78,113 @@ fn validate_snippet_exports(
                 continue;
             };
             let name = ident.name.as_str();
-            if snippet_names.iter().any(|&s| s == name) {
+            // Only fire if the name is NOT declared in module scope (matches reference compiler).
+            // If bound in module scope, it's a valid export of a module-local binding.
+            if snippet_names.iter().any(|&s| s == name)
+                && !is_module_bound(module_program, name)
+            {
                 let span = Span::new(specifier.span.start, specifier.span.end);
                 diags.push(Diagnostic::error(DiagnosticKind::SnippetInvalidExport, span));
             }
         }
+    }
+}
+
+/// Returns `true` if `name` is declared at the top level of the module program.
+///
+/// Mirrors `analysis.module.scope.get(name)` from the reference compiler: covers variable
+/// declarations, function/class declarations, and imports (including re-exported declarations).
+fn is_module_bound<'a>(program: &Program<'a>, name: &str) -> bool {
+    for stmt in &program.body {
+        match stmt {
+            Statement::VariableDeclaration(decl) => {
+                if decl
+                    .declarations
+                    .iter()
+                    .any(|d| binding_contains(&d.id, name))
+                {
+                    return true;
+                }
+            }
+            Statement::FunctionDeclaration(func) => {
+                if func.id.as_ref().is_some_and(|id| id.name == name) {
+                    return true;
+                }
+            }
+            Statement::ClassDeclaration(cls) => {
+                if cls.id.as_ref().is_some_and(|id| id.name == name) {
+                    return true;
+                }
+            }
+            Statement::ImportDeclaration(import) => {
+                if let Some(specifiers) = &import.specifiers {
+                    for spec in specifiers {
+                        let local = match spec {
+                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                                s.local.name.as_str()
+                            }
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
+                                s.local.name.as_str()
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
+                                s.local.name.as_str()
+                            }
+                        };
+                        if local == name {
+                            return true;
+                        }
+                    }
+                }
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                if let Some(decl) = &export.declaration {
+                    match decl {
+                        Declaration::VariableDeclaration(d) => {
+                            if d.declarations.iter().any(|v| binding_contains(&v.id, name)) {
+                                return true;
+                            }
+                        }
+                        Declaration::FunctionDeclaration(f) => {
+                            if f.id.as_ref().is_some_and(|id| id.name == name) {
+                                return true;
+                            }
+                        }
+                        Declaration::ClassDeclaration(c) => {
+                            if c.id.as_ref().is_some_and(|id| id.name == name) {
+                                return true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => id.name == name,
+        BindingPattern::ObjectPattern(obj) => {
+            obj.properties.iter().any(|p| binding_contains(&p.value, name))
+                || obj
+                    .rest
+                    .as_ref()
+                    .is_some_and(|r| binding_contains(&r.argument, name))
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            arr.elements
+                .iter()
+                .flatten()
+                .any(|e| binding_contains(e, name))
+                || arr
+                    .rest
+                    .as_ref()
+                    .is_some_and(|r| binding_contains(&r.argument, name))
+        }
+        BindingPattern::AssignmentPattern(assign) => binding_contains(&assign.left, name),
     }
 }
 
