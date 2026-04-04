@@ -1136,15 +1136,23 @@ impl<'a> Scanner<'a> {
             _ => false,
         });
 
-        let is_module = attributes.iter().any(|item| match item {
+        let context_deprecated = attributes.iter().any(|item| match item {
             Attribute::HTMLAttribute(attr) => {
                 let name = attr.name_span.source_text(self.source);
-                (name == "module" && attr.value == AttributeValue::Empty)
-                    || (name == "context"
-                        && matches!(attr.value, AttributeValue::String(span) if span.source_text(self.source) == "module"))
+                name == "context"
+                    && matches!(attr.value, AttributeValue::String(span) if span.source_text(self.source) == "module")
             }
             _ => false,
         });
+
+        let is_module = context_deprecated
+            || attributes.iter().any(|item| match item {
+                Attribute::HTMLAttribute(attr) => {
+                    let name = attr.name_span.source_text(self.source);
+                    name == "module" && attr.value == AttributeValue::Empty
+                }
+                _ => false,
+            });
 
         if self.is_at_end() {
             self.recover(Diagnostic::unexpected_end_of_file(Span::new(
@@ -1156,6 +1164,7 @@ impl<'a> Scanner<'a> {
                 content_span: self.span(start, self.current),
                 is_typescript,
                 is_module,
+                context_deprecated,
             }));
 
             return Ok(());
@@ -1174,6 +1183,7 @@ impl<'a> Scanner<'a> {
             content_span: self.span(start, end),
             is_typescript,
             is_module,
+            context_deprecated,
         }));
 
         Ok(())

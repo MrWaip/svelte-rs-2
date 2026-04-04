@@ -34,6 +34,8 @@ pub struct ScriptTag {
     pub content_span: Span,
     pub is_typescript: bool,
     pub is_module: bool,
+    /// `true` when `context="module"` was used instead of the modern `module` attribute.
+    pub context_deprecated: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]

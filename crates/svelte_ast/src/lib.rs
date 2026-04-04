@@ -723,6 +723,20 @@ impl Attribute {
             | Attribute::AttachTag(_) => None,
         }
     }
+
+    /// Name of this attribute if it is a plain HTML attribute (not a Svelte directive).
+    /// Returns `""` for directive and nameless variants — use this when checking raw HTML
+    /// attribute names (e.g. `is`, colon presence, React-style names). The empty string
+    /// never matches any valid attribute name check.
+    pub fn html_name(&self) -> &str {
+        match self {
+            Attribute::StringAttribute(a) => &a.name,
+            Attribute::ExpressionAttribute(a) => &a.name,
+            Attribute::BooleanAttribute(a) => &a.name,
+            Attribute::ConcatenationAttribute(a) => &a.name,
+            _ => "",
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -959,6 +973,8 @@ pub struct Script {
     pub content_span: Span,
     pub context: ScriptContext,
     pub language: ScriptLanguage,
+    /// `true` when the legacy `context="module"` attribute was used instead of `module`.
+    pub context_deprecated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
