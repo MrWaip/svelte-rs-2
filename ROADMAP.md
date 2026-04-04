@@ -15,6 +15,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [x] `$host` — [spec](specs/host-rune.md)
 - [x] `$store` subscriptions — [spec](specs/store-subscriptions.md)
 - [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
+- [x] `<script module>` — [spec](specs/script-module.md)
 
 ## Template
 
@@ -109,13 +110,6 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] `preserveComments` option
 - [ ] Source maps (JS + CSS)
 - [ ] HMR
-
-## `<script module>` in Components — [spec](specs/script-module.md)
-
-- [x] Analyze pass: scoping, rune detection, exports collection for module script body
-- [x] Codegen: emit module script body as module-level output (separate from component function)
-- [x] `export_undefined` diagnostic for unresolved module export specifiers
-- [x] Interaction with instance script: module-scope bindings visible to instance, not vice versa
 
 ## Legacy Svelte 4
 
