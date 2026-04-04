@@ -706,6 +706,16 @@ fn const_tag_key_block() {
 }
 
 #[rstest]
+fn const_tag_await() {
+    assert_compiler("const_tag_await");
+}
+
+#[rstest]
+fn const_tag_component() {
+    assert_compiler("const_tag_component");
+}
+
+#[rstest]
 fn class_array() {
     assert_compiler("class_array");
 }

@@ -4,9 +4,9 @@
 
 - **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`)
 - **Not working**: —
-- **Missing**: `<slot>` async (use case 26)
-- **Next**: All client-side async features complete. Remaining: destructured dev test blocked on Tier 6c `$.tag()`.
-- Last updated: 2026-03-31
+- **Missing**: `const_tag_invalid_reference` diagnostic in async mode (use case 37)
+- **Next**: Use case 37 — `is_template_declaration` tracking in analyze + identifier visitor scope check.
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -90,6 +90,7 @@ Audit of existing implementation (2026-03-28)
 34. [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
 35. [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
 36. [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
+37. [ ] `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding in async mode; requires `is_template_declaration` flag on `{@const}` symbols in `AnalysisData` + scope-aware check in the identifier visitor (`Identifier.js:162`)
 
 ## Out of scope
 
