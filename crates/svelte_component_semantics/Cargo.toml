@@ -1,0 +1,18 @@
+[package]
+name = "svelte_component_semantics"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+compact_str = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_ast_visit = { workspace = true }
+oxc_index = { workspace = true }
+oxc_span = { workspace = true }
+oxc_syntax = { workspace = true }
+rustc-hash = { workspace = true }
+svelte_ast = { workspace = true }
+
+[dev-dependencies]
+oxc_allocator = { workspace = true }
+oxc_parser = { workspace = true }
