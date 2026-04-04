@@ -3306,3 +3306,66 @@ function* gen() {
     );
     assert_has_error(&diags, "inspect_trace_generator");
 }
+
+// ---------------------------------------------------------------------------
+// textarea_invalid_content
+// ---------------------------------------------------------------------------
+
+#[test]
+fn textarea_invalid_content_fires() {
+    let diags = analyze_with_diags(r#"<textarea value="x">content</textarea>"#);
+    assert_has_error(&diags, "textarea_invalid_content");
+}
+
+#[test]
+fn textarea_no_conflict_without_value_attr() {
+    let diags = analyze_with_diags(r#"<textarea>content</textarea>"#);
+    assert!(!diags.iter().any(|d| d.kind.code() == "textarea_invalid_content"));
+}
+
+// ---------------------------------------------------------------------------
+// slot_attribute_invalid
+// ---------------------------------------------------------------------------
+
+#[test]
+fn slot_attribute_invalid_expression_value() {
+    let diags = analyze_with_diags(
+        r#"<script>let s = $state('foo');</script><Comp><div slot={s}></div></Comp>"#,
+    );
+    assert_has_error(&diags, "slot_attribute_invalid");
+}
+
+#[test]
+fn slot_attribute_static_value_ok() {
+    let diags = analyze_with_diags(r#"<Comp><div slot="header"></div></Comp>"#);
+    assert!(!diags.iter().any(|d| d.kind.code() == "slot_attribute_invalid"));
+}
+
+// ---------------------------------------------------------------------------
+// attribute_quoted
+// ---------------------------------------------------------------------------
+
+#[test]
+fn attribute_quoted_on_component() {
+    let diags = analyze_with_diags(
+        r#"<script>let x = $state('val');</script><Comp foo="{x}" />"#,
+    );
+    assert_has_warning(&diags, "attribute_quoted");
+}
+
+#[test]
+fn attribute_quoted_custom_element() {
+    let diags = analyze_with_diags(
+        r#"<script>let x = $state('val');</script><my-el foo="{x}"></my-el>"#,
+    );
+    assert_has_warning(&diags, "attribute_quoted");
+}
+
+#[test]
+fn attribute_quoted_regular_element_no_warn() {
+    // Non-custom regular elements must not get attribute_quoted.
+    let diags = analyze_with_diags(
+        r#"<script>let x = $state('val');</script><div foo="{x}"></div>"#,
+    );
+    assert!(!diags.iter().any(|d| d.kind.code() == "attribute_quoted"));
+}

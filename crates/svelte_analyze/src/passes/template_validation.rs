@@ -162,7 +162,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // Pre-compute all attribute-based flags and refs inside a block so that
         // the ctx.data borrow through `idx` is released before ctx.warnings_mut().
         // &Attribute results borrow `el`, not `ctx`, so they outlive the block.
-        let (has_slot, has_spread, accesskey_attr, tabindex_attr, has_autofocus, missing_attr_diag) =
+        let (has_slot, has_spread, accesskey_attr, tabindex_attr, has_autofocus, missing_attr_diag,
+             has_value_attr, slot_attr) =
         {
             let idx = ctx.data.element_flags.attr_index(el.id);
             (
@@ -176,16 +177,34 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 } else {
                     None
                 },
+                idx.is_some_and(|i| i.has("value")),
+                idx.and_then(|i| i.first(&el.attributes, "slot")),
             )
         };
 
-        // slot_attribute_invalid_placement: a slot="..." attribute on a regular element
-        // is only valid when the element is a direct child of a component.
+        // textarea_invalid_content: <textarea> may not have both a value attribute and children.
+        if el.name == "textarea" && has_value_attr && !el.fragment.nodes.is_empty() {
+            ctx.warnings_mut()
+                .push(Diagnostic::error(DiagnosticKind::TextareaInvalidContent, el.span));
+        }
+
+        // slot_attribute_invalid_placement / slot_attribute_invalid:
+        // - placement error when the element is NOT a direct child of a component.
+        // - value error when it IS a direct child but slot value is not a plain string.
         if has_slot && !ctx.parent().is_some_and(|p| p.kind == ParentKind::ComponentNode) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::SlotAttributeInvalidPlacement,
                 el.span,
             ));
+        } else if has_slot {
+            if let Some(attr) = slot_attr {
+                if !matches!(attr, Attribute::StringAttribute(_)) {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::SlotAttributeInvalid,
+                        attr_value_span(attr),
+                    ));
+                }
+            }
         }
 
         // a11y_distracting_elements: <marquee> and <blink> are harmful to accessibility.
@@ -232,6 +251,12 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
 
+        // attribute_quoted: custom elements (names containing '-') get the same warning
+        // as component attributes for quoted single-expression attrs in runes mode.
+        if el.name.contains('-') {
+            check_attribute_quoted(&el.attributes, ctx);
+        }
+
         let _ = has_spread; // used only in pre-computation above
     }
 
@@ -240,6 +265,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             self.dialog_depth -= 1;
         }
         self.emit_mixed_syntax_if_needed(ctx);
+    }
+
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+        check_attribute_quoted(&cn.attributes, ctx);
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
@@ -1573,6 +1602,25 @@ fn check_plain_attr_warnings(
 
 }
 
+
+/// `attribute_quoted` warning: fires in runes mode when a component or custom element
+/// receives an attribute whose value is a quoted single expression (e.g. `foo="{expr}"`).
+/// In the AST this appears as a `ConcatenationAttribute` with exactly one `Dynamic` part.
+fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    if !ctx.runes {
+        return;
+    }
+    for attr in attrs {
+        if let Attribute::ConcatenationAttribute(ca) = attr {
+            if ca.parts.len() == 1 && matches!(ca.parts[0], ConcatPart::Dynamic { .. }) {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::AttributeQuoted,
+                    attr_value_span(attr),
+                ));
+            }
+        }
+    }
+}
 
 fn warn_missing_attr(el: &Element, required: &[&str]) -> Diagnostic {
     let first = required[0];
