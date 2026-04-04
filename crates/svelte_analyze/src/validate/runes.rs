@@ -41,6 +41,7 @@ pub(super) fn validate(
         diags,
         offset,
         runes,
+        custom_element: data.custom_element,
         in_var_declarator_init: false,
         in_class_property_init: false,
         in_constructor_body: false,
@@ -89,6 +90,7 @@ struct RuneValidator<'a> {
     /// True when visiting the binding pattern of a `$props()` destructure.
     /// Used for `$bindable()` placement validation.
     in_props_destructure: bool,
+    custom_element: bool,
 }
 
 impl RuneValidator<'_> {
@@ -591,6 +593,23 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             if self.in_generator {
                 self.diags.push(Diagnostic::error(
                     DiagnosticKind::InspectTraceGenerator,
+                    self.span(call.span),
+                ));
+            }
+        }
+
+        // --- $host validation ---
+        if matches!(rune, RuneKind::Host) {
+            if !call.arguments.is_empty() {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidArguments {
+                        rune: rune.display_name().into(),
+                    },
+                    self.span(call.span),
+                ));
+            } else if !self.custom_element {
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::HostInvalidPlacement,
                     self.span(call.span),
                 ));
             }

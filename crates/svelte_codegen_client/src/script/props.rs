@@ -53,6 +53,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             "$$events".to_string(),
             "$$legacy".to_string(),
         ];
+        if self.custom_element {
+            seen_names.push("$$host".to_string());
+        }
 
         for (i, prop) in props_gen.props.iter().enumerate() {
             seen_names.push(prop.prop_name.clone());

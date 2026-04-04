@@ -6,6 +6,7 @@ export default function App($$anchor, $$props) {
 		"$$slots",
 		"$$events",
 		"$$legacy",
+		"$$host",
 		"answer"
 	]);
 	let host = $$props.$$host;
