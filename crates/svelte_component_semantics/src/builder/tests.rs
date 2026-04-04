@@ -9,8 +9,15 @@ use crate::OxcNodeId;
 
 /// Parse JS source and build semantics via our builder.
 fn build_instance(source: &str) -> crate::ComponentSemantics {
+    build_instance_with_type(source, SourceType::mjs())
+}
+
+fn build_instance_ts(source: &str) -> crate::ComponentSemantics {
+    build_instance_with_type(source, SourceType::ts())
+}
+
+fn build_instance_with_type(source: &str, source_type: SourceType) -> crate::ComponentSemantics {
     let alloc = Allocator::default();
-    let source_type = SourceType::mjs();
     let parsed = Parser::new(&alloc, source, source_type).parse();
     assert!(
         parsed.errors.is_empty(),
@@ -409,6 +416,22 @@ fn class_expression_name_in_own_scope() {
 }
 
 #[test]
+fn ts_enum_declaration_binding() {
+    let sem = build_instance_ts("enum Direction { Up, Down }");
+    let root = sem.root_scope_id();
+    let sym = sem.find_binding(root, "Direction").unwrap();
+    assert!(sem.symbol_flags(sym).contains(SymbolFlags::RegularEnum));
+}
+
+#[test]
+fn ts_const_enum_declaration_binding() {
+    let sem = build_instance_ts("const enum Status { Active, Inactive }");
+    let root = sem.root_scope_id();
+    let sym = sem.find_binding(root, "Status").unwrap();
+    assert!(sem.symbol_flags(sym).contains(SymbolFlags::ConstEnum));
+}
+
+#[test]
 fn unresolved_reference_tracked() {
     let sem = build_instance("console.log(x);");
     let unresolved = sem.root_unresolved_references();
@@ -577,6 +600,41 @@ fn template_shorthand_unresolved() {
     builder.add_template(&mut walker);
     // Should not panic — unresolved references are fine
     let _sem = builder.finish();
+}
+
+/// Template expression with a truly unresolved reference (e.g. `{console.log(x)}`)
+/// must record it in root_unresolved_references, not silently drop it.
+struct UnresolvedExprWalker<'a> {
+    alloc: &'a Allocator,
+}
+
+impl TemplateWalker for UnresolvedExprWalker<'_> {
+    fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_>) {
+        let parsed = Parser::new(self.alloc, "console.log(x)", SourceType::mjs())
+            .parse_expression()
+            .unwrap();
+        ctx.visit_js_expression(&parsed);
+    }
+}
+
+#[test]
+fn template_expression_unresolved_reference_tracked() {
+    let alloc = Allocator::default();
+
+    let mut builder = ComponentSemanticsBuilder::new();
+    let mut walker = UnresolvedExprWalker { alloc: &alloc };
+    builder.add_template(&mut walker);
+
+    let sem = builder.finish();
+    let unresolved = sem.root_unresolved_references();
+    assert!(
+        unresolved.contains_key("console"),
+        "unresolved 'console' in template expression must be tracked"
+    );
+    assert!(
+        unresolved.contains_key("x"),
+        "unresolved 'x' in template expression must be tracked"
+    );
 }
 
 // =========================================================

@@ -95,6 +95,7 @@ impl<'s> TemplateBuildContext<'s> {
         );
         visitor.set_template_mode(true);
         visitor.visit_expression(expr);
+        visitor.flush_unresolved();
         let max = visitor.max_node_id();
         if max >= self.next_synthetic_node_id {
             self.next_synthetic_node_id = max + 1;
@@ -114,6 +115,7 @@ impl<'s> TemplateBuildContext<'s> {
         );
         visitor.set_template_mode(true);
         visitor.visit_statement(stmt);
+        visitor.flush_unresolved();
         let max = visitor.max_node_id();
         if max >= self.next_synthetic_node_id {
             self.next_synthetic_node_id = max + 1;
@@ -134,6 +136,7 @@ impl<'s> TemplateBuildContext<'s> {
         visitor.set_template_mode(true);
         visitor.set_reference_flags(flags);
         visitor.visit_expression(expr);
+        visitor.flush_unresolved();
         let max = visitor.max_node_id();
         if max >= self.next_synthetic_node_id {
             self.next_synthetic_node_id = max + 1;

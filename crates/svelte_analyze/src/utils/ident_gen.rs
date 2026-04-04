@@ -31,10 +31,10 @@ impl IdentGen {
     }
 
     /// Create with a pre-populated set of names to avoid (e.g. all script-level identifiers).
-    pub fn with_conflicts(conflicts: FxHashSet<String>) -> Self {
+    pub fn with_conflicts(conflicts: FxHashSet<CompactString>) -> Self {
         Self {
             counters: FxHashMap::default(),
-            conflicts: conflicts.into_iter().map(CompactString::from).collect(),
+            conflicts,
         }
     }
 
