@@ -110,7 +110,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] Source maps (JS + CSS)
 - [ ] HMR
 
-## `<script module>` in Components
+## `<script module>` in Components — [spec](specs/script-module.md)
 
 Parser infrastructure is in place (`Component.instance_script` / `Component.module_script`, `ParserResult.module_program`). Missing: analyze and codegen for module script content.
 

@@ -1133,6 +1133,36 @@ fn module_compilation() {
 }
 
 #[rstest]
+#[ignore = "missing: module script codegen for components (codegen)"]
+fn script_module_exports() {
+    assert_compiler("script_module_exports");
+}
+
+#[rstest]
+#[ignore = "missing: module-level $state/$derived rune transforms (codegen)"]
+fn script_module_runes() {
+    assert_compiler("script_module_runes");
+}
+
+#[rstest]
+#[ignore = "missing: instance referencing module-level bindings (codegen)"]
+fn script_module_instance_ref() {
+    assert_compiler("script_module_instance_ref");
+}
+
+#[rstest]
+#[ignore = "missing: module script only without instance script (codegen)"]
+fn script_module_only() {
+    assert_compiler("script_module_only");
+}
+
+#[rstest]
+#[ignore = "missing: module + instance script together (codegen)"]
+fn script_module_with_instance() {
+    assert_compiler("script_module_with_instance");
+}
+
+#[rstest]
 fn svelte_options_basic() {
     assert_compiler("svelte_options_basic");
 }
