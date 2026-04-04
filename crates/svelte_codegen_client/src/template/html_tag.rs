@@ -1,7 +1,7 @@
 //! HtmlTag codegen — `{@html expr}`
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast::{Namespace, NodeId};
+use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -19,22 +19,8 @@ pub(crate) fn gen_html_tag<'a>(
     let needs_async = async_plan.needs_async();
 
     // Namespace flags only matter for non-controlled path (controlled inherits parent namespace)
-    let is_svg = !is_controlled
-        && ctx
-            .query
-            .component
-            .options
-            .as_ref()
-            .and_then(|o| o.namespace.as_ref())
-            == Some(&Namespace::Svg);
-    let is_mathml = !is_controlled
-        && ctx
-            .query
-            .component
-            .options
-            .as_ref()
-            .and_then(|o| o.namespace.as_ref())
-            == Some(&Namespace::Mathml);
+    let is_svg = !is_controlled && ctx.query.view.html_tag_in_svg(id);
+    let is_mathml = !is_controlled && ctx.query.view.html_tag_in_mathml(id);
 
     if needs_async {
         let expression = super::expression::get_node_expr(ctx, id);

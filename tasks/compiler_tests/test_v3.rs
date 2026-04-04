@@ -1687,7 +1687,6 @@ fn html_tag_svg() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn html_tag_nested_svg() {
     assert_compiler("html_tag_nested_svg");
 }

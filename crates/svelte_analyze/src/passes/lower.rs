@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use svelte_ast::{
-    is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment, Node, NodeId,
+    is_mathml, is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment,
+    Namespace, Node, NodeId,
 };
 use svelte_span::Span;
 
@@ -23,13 +24,25 @@ fn determine_slot(node: &Node) -> Option<NodeId> {
 }
 
 pub fn lower(component: &Component, data: &mut AnalysisData) {
+    let initial_in_svg = component
+        .options
+        .as_ref()
+        .and_then(|o| o.namespace.as_ref())
+        == Some(&Namespace::Svg);
+    let initial_in_mathml = component
+        .options
+        .as_ref()
+        .and_then(|o| o.namespace.as_ref())
+        == Some(&Namespace::Mathml);
     lower_fragment(
         &component.fragment,
         FragmentKey::Root,
         component,
         data,
         &component.store,
-        false,
+        initial_in_svg,
+        initial_in_svg,
+        initial_in_mathml,
     );
 }
 
@@ -141,7 +154,9 @@ fn lower_fragment(
     component: &Component,
     data: &mut AnalysisData,
     store: &AstStore,
-    in_svg_non_text: bool,
+    in_svg_non_text: bool, // whitespace removal: true inside SVG non-text and table-like elements
+    in_svg_ns: bool,       // actual SVG namespace: true only when inside a real SVG subtree
+    in_mathml: bool,
 ) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
@@ -215,6 +230,12 @@ fn lower_fragment(
                 } else {
                     is_whitespace_removable_parent(&el.name)
                 };
+                // SVG namespace propagates through all elements except foreignObject.
+                // Unlike whitespace tracking, <text> does NOT reset namespace.
+                let child_svg_ns = el.name != "foreignObject" && (is_svg(&el.name) || in_svg_ns);
+                // annotation-xml resets from MathML to HTML context
+                let child_mathml = is_mathml(&el.name)
+                    || (in_mathml && el.name != "annotation-xml");
                 lower_fragment(
                     &el.fragment,
                     FragmentKey::Element(el.id),
@@ -222,6 +243,8 @@ fn lower_fragment(
                     data,
                     store,
                     child_svg,
+                    child_svg_ns,
+                    child_mathml,
                 );
             }
             Node::ComponentNode(cn) => {
@@ -271,6 +294,8 @@ fn lower_fragment(
                     data,
                     store,
                     false,
+                    false,
+                    false,
                 );
 
                 // Lower each named slot group
@@ -278,7 +303,7 @@ fn lower_fragment(
                 for (slot_el_id, slot_nodes) in named_groups {
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
                     let slot_frag = Fragment { nodes: slot_nodes };
-                    lower_fragment(&slot_frag, frag_key, component, data, store, false);
+                    lower_fragment(&slot_frag, frag_key, component, data, store, false, false, false);
                     slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
@@ -295,10 +320,12 @@ fn lower_fragment(
                     data,
                     store,
                     in_svg_non_text,
+                    in_svg_ns,
+                    in_mathml,
                 );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
-                    lower_fragment(alt, alt_key, component, data, store, in_svg_non_text);
+                    lower_fragment(alt, alt_key, component, data, store, in_svg_non_text, in_svg_ns, in_mathml);
                     // Detect elseif: alternate has a single IfBlock child marked as elseif
                     let is_elseif = data.fragments.lowered.get(&alt_key).is_some_and(|lf| {
                         lf.items.len() == 1
@@ -318,6 +345,8 @@ fn lower_fragment(
                     data,
                     store,
                     in_svg_non_text,
+                    in_svg_ns,
+                    in_mathml,
                 );
                 if let Some(fb) = &block.fallback {
                     lower_fragment(
@@ -327,6 +356,8 @@ fn lower_fragment(
                         data,
                         store,
                         in_svg_non_text,
+                        in_svg_ns,
+                        in_mathml,
                     );
                 }
             }
@@ -338,6 +369,8 @@ fn lower_fragment(
                     data,
                     store,
                     false,
+                    false,
+                    false,
                 );
             }
             Node::KeyBlock(block) => {
@@ -348,6 +381,8 @@ fn lower_fragment(
                     data,
                     store,
                     in_svg_non_text,
+                    in_svg_ns,
+                    in_mathml,
                 );
             }
             Node::SvelteHead(head) => {
@@ -357,6 +392,8 @@ fn lower_fragment(
                     component,
                     data,
                     store,
+                    false,
+                    false,
                     false,
                 );
             }
@@ -368,6 +405,8 @@ fn lower_fragment(
                     data,
                     store,
                     in_svg_non_text,
+                    in_svg_ns,
+                    in_mathml,
                 );
             }
             Node::SvelteBoundary(b) => {
@@ -377,6 +416,8 @@ fn lower_fragment(
                     component,
                     data,
                     store,
+                    false,
+                    false,
                     false,
                 );
             }
@@ -389,6 +430,8 @@ fn lower_fragment(
                         data,
                         store,
                         in_svg_non_text,
+                        in_svg_ns,
+                        in_mathml,
                     );
                 }
                 if let Some(ref t) = block.then {
@@ -399,6 +442,8 @@ fn lower_fragment(
                         data,
                         store,
                         in_svg_non_text,
+                        in_svg_ns,
+                        in_mathml,
                     );
                 }
                 if let Some(ref c) = block.catch {
@@ -409,15 +454,23 @@ fn lower_fragment(
                         data,
                         store,
                         in_svg_non_text,
+                        in_svg_ns,
+                        in_mathml,
                     );
                 }
             }
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
+            Node::HtmlTag(tag) => {
+                if in_svg_ns {
+                    data.html_tag_in_svg.insert(tag.id);
+                } else if in_mathml {
+                    data.html_tag_in_mathml.insert(tag.id);
+                }
+            }
             Node::Text(_)
             | Node::Comment(_)
             | Node::ExpressionTag(_)
             | Node::RenderTag(_)
-            | Node::HtmlTag(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)
             | Node::Error(_) => {}
