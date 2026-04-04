@@ -1,14 +1,12 @@
 # $store subscriptions
 
 ## Current state
-- **Working**: 13/16 client use cases
-- **Fixed this session**:
-  - `$.mark_store_binding()` in component bind getter for store-backed bindings
-  - `store_invalid_scoped_subscription` diagnostic for nested-scope store refs
-  - `store_rune_conflict` warning for `$name` that shadows a rune
-- **Missing**: 3 — `$.store_unsub` (legacy-only), `$.invalidate_store` (legacy-only), `$store` in `<script module>` / module compilation
-- **Next**: legacy-mode features when non-runes infrastructure is added; module-level diagnostics when dual-script AST is available
-- Last updated: 2026-04-03
+- **Complete** for client-side runes-mode scope (ROADMAP item marked `[x]`)
+- **Working**: 14/16 use cases (all client/runes-mode cases done)
+- **Remaining (out of current scope)**:
+  - Use cases 44 & 45 (`$.store_unsub`, `$.invalidate_store`) — confirmed legacy-only; test outputs match reference in runes mode. Will be closed under Legacy Svelte 4 tier.
+  - Use case 50 (module compilation rejects `$store`) — blocked on `.svelte.js` compilation entry point; tracked under ROADMAP "Module compilation" item.
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -46,7 +44,7 @@
 - [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding`
 - [x] Analyzer rejects subscriptions to stores not declared at component top level
 - [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`)
-- [ ] Analyzer rejects `$store` reads inside `<script module>`
+- [x] Analyzer rejects `$store` reads inside `<script module>`
 - [ ] Module compilation rejects `$store` reads outside `.svelte` components
 
 ## Reference

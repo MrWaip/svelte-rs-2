@@ -13,7 +13,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
 - [x] `$host` — [spec](specs/host-rune.md)
-- [ ] `$store` subscriptions — [spec](specs/store-subscriptions.md)
+- [x] `$store` subscriptions — [spec](specs/store-subscriptions.md)
 - [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
 
 ## Template

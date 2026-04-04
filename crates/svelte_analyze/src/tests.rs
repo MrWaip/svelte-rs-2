@@ -2768,6 +2768,20 @@ let x = $state(0);
 }
 
 #[test]
+fn validate_store_invalid_subscription_in_module() {
+    let diags = analyze_with_diags(
+        r#"<script>
+import { writable } from 'svelte/store';
+const count = writable(0);
+</script>
+<script module>
+console.log($count);
+</script>"#,
+    );
+    assert_has_error(&diags, "store_invalid_subscription");
+}
+
+#[test]
 fn validate_props_illegal_name_rest_member_access() {
     let diags = analyze_with_diags(
         r#"<script>
