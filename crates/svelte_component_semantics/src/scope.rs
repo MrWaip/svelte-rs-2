@@ -71,15 +71,6 @@ impl ScopeTable {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.parent_ids.len()
-    }
-
-    pub fn iter_bindings(&self, scope: ScopeId) -> impl Iterator<Item = (&str, SymbolId)> {
-        self.bindings[scope.index()]
-            .iter()
-            .map(|(name, &sym)| (name.as_str(), sym))
-    }
 }
 
 #[cfg(test)]
