@@ -1,9 +1,13 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 0/10 use cases (parser ready, codegen/analyze not wired for components)
-- **Missing**: component codegen ignores module script entirely; analyze doesn't process module program
-- **Next**: add test cases, then implement codegen + analyze for module script in components
+- **Working**: 3/10 use cases complete (`script_module_exports`, `script_module_only`, `script_module_with_instance`)
+- **Completed slice**: component module-script codegen merge now emits module imports/body before hoisted declarations and component export
+- **Why this slice landed cleanly**: component module scripts now use a passthrough transform path until analyzer-owned module semantics are wired, while `needs_context` also accounts for module-program analysis when runtime wrapping depends on it
+- **Slice rule**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Remaining non-goals**: module runes, instance access to module bindings, export specifiers, empty-module cleanup, `module_illegal_default_export`, plain non-export module vars as a separately verified case
+- **Missing after this slice**: analyze still doesn't process module program for component scope parenting, export validation, or diagnostics beyond `needs_context`
+- **Next**: analyzer slice for module scope semantics and diagnostics, starting with module-level bindings visible to instance/template code
 - Last updated: 2026-04-04
 
 ## Source
@@ -21,11 +25,11 @@
 
 ## Use cases
 
-- [ ] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`, #[ignore], needs infrastructure)
+- [x] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
 - [ ] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`, #[ignore], needs infrastructure)
 - [ ] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`, #[ignore], moderate)
-- [ ] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`, #[ignore], moderate)
-- [ ] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`, #[ignore], moderate)
+- [x] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
+- [x] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
 - [ ] Module-level export specifiers (`export { foo, bar }`) emit at top level (no test yet, moderate)
 - [ ] Module-level imports merge with runtime imports at top of output (covered by `script_module_with_instance`, moderate)
 - [ ] Empty module script produces no extra output (no test yet, quick fix)
@@ -69,9 +73,9 @@
 - [ ] Add `module_illegal_default_export` diagnostic for `export default` in module script
 
 ### Codegen
-- [ ] Call `transform_module_script()` from `generate()` for component module scripts
-- [ ] Merge module body into output: imports lifted to top, non-import statements before component function
-- [ ] Ensure runtime import (`import * as $ from 'svelte/internal/client'`) merges correctly with module imports
+- [x] Emit component module scripts from `generate()` using a component-safe passthrough transform path
+- [x] Merge module body into output: imports lifted to top, non-import statements before component function
+- [x] Ensure runtime import (`import * as $ from 'svelte/internal/client'`) merges correctly with module imports
 
 ## Implementation order
 

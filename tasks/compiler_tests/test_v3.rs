@@ -1133,7 +1133,6 @@ fn module_compilation() {
 }
 
 #[rstest]
-#[ignore = "missing: module script codegen for components (codegen)"]
 fn script_module_exports() {
     assert_compiler("script_module_exports");
 }
@@ -1151,13 +1150,11 @@ fn script_module_instance_ref() {
 }
 
 #[rstest]
-#[ignore = "missing: module script only without instance script (codegen)"]
 fn script_module_only() {
     assert_compiler("script_module_only");
 }
 
 #[rstest]
-#[ignore = "missing: module + instance script together (codegen)"]
 fn script_module_with_instance() {
     assert_compiler("script_module_with_instance");
 }

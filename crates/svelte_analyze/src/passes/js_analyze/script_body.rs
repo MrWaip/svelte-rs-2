@@ -23,22 +23,26 @@ pub(crate) fn analyze_script(
     crate::utils::script_info::enrich_from_unresolved(&sem.semantic.scoping(), &mut script_info);
 
     let body = analyze_script_body(program, &script_info);
-    let has_effects = body.has_effects;
     let has_class_state_fields = body.has_class_state_fields;
     data.has_store_member_mutations = body.has_store_member_mutations;
     data.proxy_state_inits = body.proxy_state_inits;
 
     data.exports = std::mem::take(&mut script_info.exports);
-    data.needs_context = has_effects
-        || has_class_state_fields
-        || super::needs_context::NeedsContextVisitor::check(
-            program,
-            sem.semantic.scoping(),
-            &script_info,
-        );
+    data.needs_context = needs_context_for_program(program, sem.semantic.scoping(), &script_info);
     data.has_class_state_fields = has_class_state_fields;
     data.script = Some(script_info);
     Some(sem.semantic.into_scoping())
+}
+
+pub(crate) fn needs_context_for_program(
+    program: &oxc_ast::ast::Program<'_>,
+    scoping: &oxc_semantic::Scoping,
+    script_info: &ScriptInfo,
+) -> bool {
+    let body = analyze_script_body(program, script_info);
+    body.has_effects
+        || body.has_class_state_fields
+        || super::needs_context::NeedsContextVisitor::check(program, scoping, script_info)
 }
 
 fn analyze_script_body<'s>(
