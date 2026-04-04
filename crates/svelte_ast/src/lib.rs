@@ -701,6 +701,30 @@ impl_attr_enum! {
     AttachTag(AttachTag),
 }
 
+impl Attribute {
+    /// Returns the attribute name if it is stored as a `String` field.
+    /// Variants with `Span`-based names (`UseDirective`, `TransitionDirective`,
+    /// `AnimateDirective`) and nameless variants return `None`.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Attribute::StringAttribute(a) => Some(&a.name),
+            Attribute::ExpressionAttribute(a) => Some(&a.name),
+            Attribute::BooleanAttribute(a) => Some(&a.name),
+            Attribute::ConcatenationAttribute(a) => Some(&a.name),
+            Attribute::ClassDirective(a) => Some(&a.name),
+            Attribute::StyleDirective(a) => Some(&a.name),
+            Attribute::BindDirective(a) => Some(&a.name),
+            Attribute::OnDirectiveLegacy(a) => Some(&a.name),
+            Attribute::UseDirective(_)
+            | Attribute::TransitionDirective(_)
+            | Attribute::AnimateDirective(_)
+            | Attribute::Shorthand(_)
+            | Attribute::SpreadAttribute(_)
+            | Attribute::AttachTag(_) => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct StringAttribute {
     pub id: NodeId,

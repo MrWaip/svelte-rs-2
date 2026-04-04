@@ -158,6 +158,9 @@ impl<'a> CodegenView<'a> {
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
         self.data.fragments.has_dynamic_children(key)
     }
+    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
+        self.data.element_flags.attr_index(id)
+    }
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.data.element_flags.has_spread(id)
     }

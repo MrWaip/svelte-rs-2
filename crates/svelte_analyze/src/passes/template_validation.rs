@@ -13,8 +13,7 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
-    SvelteElement, SvelteWindow, Text,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
 };
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -24,6 +23,7 @@ use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
 use crate::types::data::ExpressionKind;
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
+
 
 const EVENT_MODIFIERS: &[&str] = &[
     "preventDefault",
@@ -38,6 +38,7 @@ const EVENT_MODIFIERS: &[&str] = &[
 ];
 
 struct BindParentInfo {
+    id: svelte_ast::NodeId,
     name: String,
     attrs: Vec<Attribute>,
 }
@@ -154,17 +155,39 @@ impl TemplateVisitor for TemplateValidationVisitor {
             self.dialog_depth += 1;
         }
 
+        // Copy source before borrowing ctx.data so the &str is available after
+        // the idx borrow is released (needed by check_a11y_missing_attribute).
+        let source = ctx.source;
+
+        // Pre-compute all attribute-based flags and refs inside a block so that
+        // the ctx.data borrow through `idx` is released before ctx.warnings_mut().
+        // &Attribute results borrow `el`, not `ctx`, so they outlive the block.
+        let (
+            has_slot,
+            has_spread,
+            accesskey_attr,
+            tabindex_attr,
+            has_autofocus,
+            missing_attr_diag,
+        ) = {
+            let idx = ctx.data.element_flags.attr_index(el.id);
+            (
+                idx.is_some_and(|i| i.has("slot")),
+                ctx.data.element_flags.has_spread(el.id),
+                idx.and_then(|i| i.first(&el.attributes, "accesskey")),
+                idx.and_then(|i| i.first(&el.attributes, "tabindex")),
+                idx.is_some_and(|i| i.has("autofocus")),
+                if !ctx.data.element_flags.has_spread(el.id) {
+                    check_a11y_missing_attribute(el, idx, source)
+                } else {
+                    None
+                },
+            )
+        };
+
         // slot_attribute_invalid_placement: a slot="..." attribute on a regular element
         // is only valid when the element is a direct child of a component.
-        let has_slot_attr = el
-            .attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"));
-        if has_slot_attr
-            && !ctx
-                .parent()
-                .is_some_and(|p| p.kind == ParentKind::ComponentNode)
-        {
+        if has_slot && !ctx.parent().is_some_and(|p| p.kind == ParentKind::ComponentNode) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::SlotAttributeInvalidPlacement,
                 el.span,
@@ -179,59 +202,35 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        // Attribute-level A11y checks. Also detect spread for missing-attribute suppression.
-        let mut has_spread = false;
-        for attr in &el.attributes {
-            if matches!(attr, Attribute::SpreadAttribute(_)) {
-                has_spread = true;
-                continue;
-            }
-            let attr_name = match attr {
-                Attribute::StringAttribute(a) => a.name.as_str(),
-                Attribute::BooleanAttribute(a) => a.name.as_str(),
-                Attribute::ExpressionAttribute(a) => a.name.as_str(),
-                Attribute::ConcatenationAttribute(a) => a.name.as_str(),
-                _ => continue,
-            };
-            match attr_name {
-                // a11y_accesskey: using accesskey harms keyboard-only navigation.
-                "accesskey" => {
-                    ctx.warnings_mut().push(Diagnostic::warning(
-                        DiagnosticKind::A11yAccesskey,
-                        attr_value_span(attr),
-                    ));
-                }
-                // a11y_positive_tabindex: tabindex > 0 disrupts natural tab order.
-                "tabindex" => {
-                    if let Some(text) = static_text_attr_value(attr, ctx.source) {
-                        if let Ok(n) = text.trim().parse::<i64>() {
-                            if n > 0 {
-                                ctx.warnings_mut().push(Diagnostic::warning(
-                                    DiagnosticKind::A11yPositiveTabindex,
-                                    attr_value_span(attr),
-                                ));
-                            }
-                        }
-                    }
-                }
-                // a11y_autofocus: autofocus is only legitimate on <dialog> and its descendants.
-                "autofocus" => {
-                    if el.name != "dialog" && self.dialog_depth == 0 {
+        // Attribute-level A11y checks.
+        if let Some(attr) = accesskey_attr {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yAccesskey,
+                attr_value_span(attr),
+            ));
+        }
+        if let Some(attr) = tabindex_attr {
+            if let Some(text) = static_text_attr_value(attr, source) {
+                if let Ok(n) = text.trim().parse::<i64>() {
+                    if n > 0 {
                         ctx.warnings_mut().push(Diagnostic::warning(
-                            DiagnosticKind::A11yAutofocus,
-                            el.span,
+                            DiagnosticKind::A11yPositiveTabindex,
+                            attr_value_span(attr),
                         ));
                     }
                 }
-                _ => {}
             }
+        }
+        if has_autofocus && el.name != "dialog" && self.dialog_depth == 0 {
+            ctx.warnings_mut().push(Diagnostic::warning(DiagnosticKind::A11yAutofocus, el.span));
         }
 
         // a11y_missing_attribute: certain elements require specific attributes.
-        // Suppressed when a spread attribute is present (it may supply the missing attr).
-        if !has_spread {
-            check_a11y_missing_attribute(el, ctx);
+        if let Some(diag) = missing_attr_diag {
+            ctx.warnings_mut().push(diag);
         }
+
+        let _ = has_spread; // used only in pre-computation above
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
@@ -589,24 +588,29 @@ fn current_bind_parent(ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
     let parent = ctx.parent()?;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
+            id: el.id,
             name: el.name.clone(),
             attrs: el.attributes.clone(),
         }),
         Node::SvelteElement(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:element".to_string(),
             attrs: el.attributes.clone(),
         }),
-        Node::SvelteWindow(SvelteWindow { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteWindow(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:window".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
-        Node::SvelteDocument(SvelteDocument { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteDocument(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:document".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
-        Node::SvelteBody(SvelteBody { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteBody(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:body".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
         _ => None,
     }
@@ -717,15 +721,20 @@ fn validate_bind_parent_specifics(
     ctx: &mut VisitContext<'_>,
 ) {
     if parent.name == "input" && dir.name != "this" {
-        validate_input_bindings(dir, &parent.attrs, ctx);
+        validate_input_bindings(dir, parent, ctx);
     }
 
     if parent.name == "select" && dir.name != "this" {
-        if let Some(multiple) = find_named_attr(&parent.attrs, "multiple") {
-            if !attr_is_text(multiple) && !matches!(multiple, Attribute::BooleanAttribute(_)) {
+        let multiple = ctx
+            .data
+            .element_flags
+            .attr_index(parent.id)
+            .and_then(|i| i.first(&parent.attrs, "multiple"));
+        if let Some(a) = multiple {
+            if !attr_is_text(a) && !matches!(a, Attribute::BooleanAttribute(_)) {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::AttributeInvalidMultiple,
-                    attr_value_span(multiple),
+                    attr_value_span(a),
                 ));
                 return;
             }
@@ -746,7 +755,12 @@ fn validate_bind_parent_specifics(
     }
 
     if matches!(dir.name.as_str(), "innerHTML" | "innerText" | "textContent") {
-        match find_named_attr(&parent.attrs, "contenteditable") {
+        let contenteditable = ctx
+            .data
+            .element_flags
+            .attr_index(parent.id)
+            .and_then(|i| i.first(&parent.attrs, "contenteditable"));
+        match contenteditable {
             None => emit_bind_error(
                 ctx,
                 dir.expression_span,
@@ -765,8 +779,17 @@ fn validate_bind_parent_specifics(
     }
 }
 
-fn validate_input_bindings(dir: &BindDirective, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
-    let Some(type_attr) = find_named_attr(attrs, "type") else {
+fn validate_input_bindings(
+    dir: &BindDirective,
+    parent: &BindParentInfo,
+    ctx: &mut VisitContext<'_>,
+) {
+    let Some(type_attr) = ctx
+        .data
+        .element_flags
+        .attr_index(parent.id)
+        .and_then(|i| i.first(&parent.attrs, "type"))
+    else {
         return;
     };
 
@@ -948,28 +971,6 @@ fn bind_targets_each_context(sym_id: crate::scope::SymbolId, ctx: &VisitContext<
         .any(|parent| ctx.data.each_body_scope(parent.id, ctx.scope) == sym_scope)
 }
 
-fn find_named_attr<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attribute> {
-    attrs.iter().find(|attr| named_attr_matches(attr, name))
-}
-
-fn named_attr_matches(attr: &Attribute, name: &str) -> bool {
-    match attr {
-        Attribute::StringAttribute(attr) => attr.name == name,
-        Attribute::ExpressionAttribute(attr) => attr.name == name,
-        Attribute::BooleanAttribute(attr) => attr.name == name,
-        Attribute::ConcatenationAttribute(attr) => attr.name == name,
-        Attribute::BindDirective(attr) => attr.name == name,
-        Attribute::Shorthand(_)
-        | Attribute::SpreadAttribute(_)
-        | Attribute::ClassDirective(_)
-        | Attribute::StyleDirective(_)
-        | Attribute::UseDirective(_)
-        | Attribute::OnDirectiveLegacy(_)
-        | Attribute::TransitionDirective(_)
-        | Attribute::AnimateDirective(_)
-        | Attribute::AttachTag(_) => false,
-    }
-}
 
 fn attr_is_text(attr: &Attribute) -> bool {
     matches!(attr, Attribute::StringAttribute(_))
@@ -1517,30 +1518,12 @@ fn contains_invalid_snippet_param_assignment(
 
 /// Returns `true` if `el` has a named attribute (string, boolean, expression, or concatenation)
 /// with the given `name`. Spread and directive attributes are not matched.
-fn el_has_attr(el: &Element, name: &str) -> bool {
-    el.attributes.iter().any(|a| match a {
-        Attribute::StringAttribute(a) => a.name == name,
-        Attribute::BooleanAttribute(a) => a.name == name,
-        Attribute::ExpressionAttribute(a) => a.name == name,
-        Attribute::ConcatenationAttribute(a) => a.name == name,
-        _ => false,
-    })
+fn el_has_attr(idx: Option<&crate::types::data::AttrIndex>, name: &str) -> bool {
+    idx.is_some_and(|i| i.has(name))
 }
 
-/// Returns the static string value of a `StringAttribute` named `name`, if present.
-fn el_static_attr_value<'a>(el: &Element, name: &str, source: &'a str) -> Option<&'a str> {
-    el.attributes.iter().find_map(|a| {
-        if let Attribute::StringAttribute(sa) = a {
-            if sa.name == name {
-                return Some(sa.value_span.source_text(source));
-            }
-        }
-        None
-    })
-}
 
-/// Emit `a11y_missing_attribute` for `el` when none of `required` attrs are present.
-fn warn_missing_attr(el: &Element, required: &[&str], ctx: &mut VisitContext<'_>) {
+fn warn_missing_attr(el: &Element, required: &[&str]) -> Diagnostic {
     let first = required[0];
     // "href" and vowel-starting names take "an"; everything else takes "a".
     let article = if first == "href" || first.starts_with(['a', 'e', 'i', 'o', 'u']) {
@@ -1554,64 +1537,66 @@ fn warn_missing_attr(el: &Element, required: &[&str], ctx: &mut VisitContext<'_>
         let (last, rest) = required.split_last().unwrap();
         format!("{} or {last}", rest.join(", "))
     };
-    ctx.warnings_mut().push(Diagnostic::warning(
+    Diagnostic::warning(
         DiagnosticKind::A11yMissingAttribute {
             name: el.name.clone(),
             article: article.to_string(),
             sequence,
         },
         el.span,
-    ));
+    )
 }
 
 /// Check `a11y_missing_attribute` for elements that require specific attributes.
 /// Only called when no spread attribute is present on `el`.
-fn check_a11y_missing_attribute(el: &Element, ctx: &mut VisitContext<'_>) {
+/// Returns a diagnostic to emit, or `None` if the element is valid.
+fn check_a11y_missing_attribute(
+    el: &Element,
+    idx: Option<&crate::types::data::AttrIndex>,
+    source: &str,
+) -> Option<Diagnostic> {
     match el.name.as_str() {
         // img needs alt
-        "img" => {
-            if !el_has_attr(el, "alt") {
-                warn_missing_attr(el, &["alt"], ctx);
-            }
-        }
+        "img" => (!el_has_attr(idx, "alt")).then(|| warn_missing_attr(el, &["alt"])),
         // area needs alt, aria-label, or aria-labelledby
         "area" => {
-            if !el_has_attr(el, "alt")
-                && !el_has_attr(el, "aria-label")
-                && !el_has_attr(el, "aria-labelledby")
-            {
-                warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"], ctx);
-            }
+            (!el_has_attr(idx, "alt")
+                && !el_has_attr(idx, "aria-label")
+                && !el_has_attr(idx, "aria-labelledby"))
+            .then(|| warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"]))
         }
         // iframe needs title
-        "iframe" => {
-            if !el_has_attr(el, "title") {
-                warn_missing_attr(el, &["title"], ctx);
-            }
-        }
+        "iframe" => (!el_has_attr(idx, "title")).then(|| warn_missing_attr(el, &["title"])),
         // object needs title, aria-label, or aria-labelledby
         "object" => {
-            if !el_has_attr(el, "title")
-                && !el_has_attr(el, "aria-label")
-                && !el_has_attr(el, "aria-labelledby")
-            {
-                warn_missing_attr(el, &["title", "aria-label", "aria-labelledby"], ctx);
-            }
+            (!el_has_attr(idx, "title")
+                && !el_has_attr(idx, "aria-label")
+                && !el_has_attr(idx, "aria-labelledby"))
+            .then(|| warn_missing_attr(el, &["title", "aria-label", "aria-labelledby"]))
         }
         // <a> without href is only valid as a named anchor (id/name) or disabled link
         "a" => {
-            if el_has_attr(el, "href") || el_has_attr(el, "xlink:href") {
-                return;
+            if el_has_attr(idx, "href") || el_has_attr(idx, "xlink:href") {
+                return None;
             }
             // Named anchors and aria-disabled links don't require href.
-            if el_has_attr(el, "id") || el_has_attr(el, "name") {
-                return;
+            if el_has_attr(idx, "id") || el_has_attr(idx, "name") {
+                return None;
             }
-            if el_static_attr_value(el, "aria-disabled", ctx.source) == Some("true") {
-                return;
+            if idx
+                .and_then(|i| i.first(&el.attributes, "aria-disabled"))
+                .is_some_and(|a| {
+                    if let Attribute::StringAttribute(sa) = a {
+                        sa.value_span.source_text(source) == "true"
+                    } else {
+                        false
+                    }
+                })
+            {
+                return None;
             }
-            warn_missing_attr(el, &["href"], ctx);
+            Some(warn_missing_attr(el, &["href"]))
         }
-        _ => {}
+        _ => None,
     }
 }

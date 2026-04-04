@@ -12,6 +12,7 @@ pub use svelte_parser::{ExprHandle, ParserResult, StmtHandle};
 
 mod analysis;
 mod async_data;
+pub(crate) mod attr_index;
 mod codegen_view;
 mod elements;
 mod expr;
@@ -25,6 +26,7 @@ mod template_data;
 pub use analysis::AnalysisData;
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use codegen_view::CodegenView;
+pub use attr_index::AttrIndex;
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
     EventHandlerMode,

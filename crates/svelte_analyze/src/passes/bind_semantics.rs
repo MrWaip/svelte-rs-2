@@ -1,7 +1,6 @@
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue,
 };
-
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
@@ -109,21 +108,16 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+        let idx = ctx.data.element_flags.attr_indices.get(el.id);
         // Detect bind:group → mark element and find value attribute
-        let bind_group = el.attributes.iter().find_map(|a| {
-            if let Attribute::BindDirective(bd) = a {
-                if bd.name == "group" {
-                    return Some(bd);
-                }
-            }
-            None
-        });
+        let bind_group = idx
+            .and_then(|i| i.first(&el.attributes, "group"))
+            .and_then(|a| if let Attribute::BindDirective(bd) = a { Some(bd) } else { None });
         if let Some(bg) = bind_group {
             ctx.data.bind_semantics.has_bind_group.insert(el.id);
-            if let Some(val_attr) = el
-                .attributes
-                .iter()
-                .find(|a| matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value"))
+            if let Some(val_attr) = idx
+                .and_then(|i| i.first(&el.attributes, "value"))
+                .filter(|a| matches!(a, Attribute::ExpressionAttribute(_)))
             {
                 ctx.data
                     .bind_semantics
@@ -175,22 +169,28 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         }
 
         // Detect contenteditable + bind:innerHTML|innerText|textContent
-        let has_contenteditable = el.attributes.iter().any(|a| match a {
-            Attribute::BooleanAttribute(ba) => ba.name == "contenteditable",
-            Attribute::StringAttribute(sa) if sa.name == "contenteditable" => {
-                let val =
-                    self.source[sa.value_span.start as usize..sa.value_span.end as usize].trim();
-                val == "true"
-            }
-            _ => false,
-        });
+        let has_contenteditable = idx
+            .and_then(|i| i.first(&el.attributes, "contenteditable"))
+            .is_some_and(|a| match a {
+                Attribute::BooleanAttribute(_) => true,
+                Attribute::StringAttribute(sa) => {
+                    let val = self.source
+                        [sa.value_span.start as usize..sa.value_span.end as usize]
+                        .trim();
+                    val == "true"
+                }
+                _ => false,
+            });
         if !has_contenteditable {
             return;
         }
 
-        let has_content_bind = el.attributes.iter().any(|a| {
-            matches!(a, Attribute::BindDirective(bd) if matches!(bd.name.as_str(), "innerHTML" | "innerText" | "textContent"))
-        });
+        let has_content_bind = ["innerHTML", "innerText", "textContent"]
+            .iter()
+            .any(|name| {
+                idx.and_then(|i| i.first(&el.attributes, name))
+                    .is_some_and(|a| matches!(a, Attribute::BindDirective(_)))
+            });
         if has_content_bind {
             ctx.data.element_flags.bound_contenteditable.insert(el.id);
         }
