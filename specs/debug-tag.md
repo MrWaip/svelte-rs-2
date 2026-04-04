@@ -1,10 +1,8 @@
 # `{@debug}`
 
 ## Current state
-- **Working**: 5/6 client use cases
-- **Missing**: 1/6 client use cases
-- **Next**: add runes-mode analyzer validation for `{@debug}` opening-tag syntax
-- Last updated: 2026-04-04
+- **Working**: 6/6 client use cases — feature complete
+- **Last updated**: 2026-04-04
 
 ## Source
 
@@ -25,7 +23,7 @@
 - [x] Reject non-identifier arguments with `debug_tag_invalid_arguments`.
 - [x] Emit client debug effects in top-level and nested fragments, including each-block context values.
 - [x] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`.
-- [ ] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax.
+- [x] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax.
 
 ## Reference
 

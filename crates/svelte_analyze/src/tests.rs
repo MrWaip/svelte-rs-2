@@ -2766,6 +2766,46 @@ fn await_valid_then_catch_no_unexpected_character() {
 }
 
 // ---------------------------------------------------------------------------
+// DebugTag diagnostics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn debug_tag_valid_runes_no_unexpected_character() {
+    // Well-formed {@debug x} in runes mode must not emit block_unexpected_character.
+    let diags = analyze_with_options_diags(
+        r#"{@debug x}"#,
+        AnalyzeOptions {
+            runes: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "block_unexpected_character"),
+        "unexpected block_unexpected_character for valid debug tag: {diags:?}"
+    );
+}
+
+#[test]
+fn debug_tag_non_runes_skips_opening_tag_check() {
+    // The validate_opening_tag check is runes-only; non-runes mode must not fire it.
+    let diags = analyze_with_options_diags(
+        r#"{@debug x}"#,
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "block_unexpected_character"),
+        "unexpected block_unexpected_character in non-runes mode: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // $inspect / $inspect().with / $inspect.trace validation
 // ---------------------------------------------------------------------------
 

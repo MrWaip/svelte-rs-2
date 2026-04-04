@@ -12,8 +12,8 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock, Node,
-    NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement,
+    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
+    Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement,
     SvelteWindow, Text,
 };
 use svelte_diagnostics::codes::fuzzymatch;
@@ -279,6 +279,21 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 DiagnosticKind::NodeInvalidPlacement { message },
                 tag.span,
             ));
+        }
+    }
+
+    // Use case: block_unexpected_character — runes mode only, char after `{` must be `@`
+    fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_>) {
+        if ctx.runes {
+            let start = tag.span.start as usize;
+            if ctx.source.as_bytes().get(start + 1) != Some(&b'@') {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::BlockUnexpectedCharacter {
+                        character: "@".to_string(),
+                    },
+                    Span::new(tag.span.start, tag.span.start + 5),
+                ));
+            }
         }
     }
 
