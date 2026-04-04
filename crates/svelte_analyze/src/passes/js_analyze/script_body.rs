@@ -45,7 +45,7 @@ pub(crate) fn needs_context_for_program(
         || super::needs_context::NeedsContextVisitor::check(program, scoping, script_info)
 }
 
-fn analyze_script_body<'s>(
+pub(crate) fn analyze_script_body<'s>(
     program: &oxc_ast::ast::Program<'_>,
     script_info: &'s ScriptInfo,
 ) -> ScriptBodyAnalyzer<'s> {
@@ -60,11 +60,11 @@ fn analyze_script_body<'s>(
     analyzer
 }
 
-struct ScriptBodyAnalyzer<'s> {
-    has_effects: bool,
-    has_class_state_fields: bool,
-    has_store_member_mutations: bool,
-    proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
+pub(crate) struct ScriptBodyAnalyzer<'s> {
+    pub(crate) has_effects: bool,
+    pub(crate) has_class_state_fields: bool,
+    pub(crate) has_store_member_mutations: bool,
+    pub(crate) proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
     script_info: &'s ScriptInfo,
 }
 

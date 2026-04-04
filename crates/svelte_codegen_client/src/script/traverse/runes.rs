@@ -303,7 +303,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
         let Some(ref_id) = id.reference_id.get() else {
             return;
         };
-        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else {
+        let Some(sym_id) = self.component_scoping.get_reference(ref_id).symbol_id() else {
             return;
         };
         let Some(kind) = self.component_scoping.rune_kind(sym_id) else {

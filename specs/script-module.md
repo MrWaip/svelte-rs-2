@@ -1,13 +1,15 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 9/10 use cases complete (`script_module_exports`, `script_module_export_specifiers`, `script_module_imports`, `script_module_empty`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations, `module_illegal_default_export`)
+- **Working**: 10/10 use cases complete (`script_module_exports`, `script_module_export_specifiers`, `script_module_imports`, `script_module_empty`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations, `module_illegal_default_export`, `script_module_runes`)
 - **Completed slice**: client codegen passthrough coverage for non-rune module top-level forms now explicitly verifies `export { foo, bar }`, module import merging, and empty-module output
 - **Why this slice landed cleanly**: the component module-script codegen path was already reusing the shared script transform pipeline, so this session mostly needed focused e2e coverage rather than new analyzer infrastructure
 - **Slice rule**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Remaining non-goals**: module runes, re-export forms with `from`, `export *`
-- **Missing after this slice**: module runes still use the unimplemented path; broader re-export forms remain uncovered and should be tracked as a later codegen slice if needed
-- **Next**: module-level rune transforms in component `<script module>` using the shared module-script transform path
+- **Completed slice**: module rune metadata and codegen consumption in component module scripts
+- **Why this slice landed cleanly**: analyze now owns a real `module -> instance -> template` scope chain for component compilation, so module runes and cross-script reads/writes resolve through the same `ComponentScoping` model as the rest of the compiler
+- **Remaining non-goals**: re-export forms with `from`, `export *`
+- **Missing after this slice**: broader re-export forms remain uncovered and should be tracked as a later codegen slice if needed
+- **Next**: broaden module-script export coverage only if reference parity work finds a concrete need for `export *` / `export { foo } from`
 - Last updated: 2026-04-04
 
 ## Source
@@ -26,7 +28,7 @@
 ## Use cases
 
 - [x] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
-- [ ] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`, #[ignore], needs infrastructure)
+- [x] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`)
 - [x] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
 - [x] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
 - [x] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
@@ -68,7 +70,7 @@
 ## Tasks
 
 ### Analysis
-- [~] Run analysis passes over `module_program` in component context (binding visibility for component compilation is verified; rune detection and full validation remain)
+- [x] Run analysis passes over `module_program` in component context, with module bindings merged into component scoping through a real parent scope chain
 - [ ] Wire up `ast_type = 'module'` equivalent for module script visitors
 - [x] Add `module_illegal_default_export` diagnostic for `export default` in module script
 

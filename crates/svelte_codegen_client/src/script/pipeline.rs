@@ -2,7 +2,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Program, Statement};
 use oxc_ast::Comment;
 use oxc_parser::Parser as OxcParser;
-use oxc_semantic::{Scoping, SemanticBuilder};
+use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::traverse_mut;
 use rustc_hash::FxHashMap;
@@ -80,6 +80,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             ctx.state.experimental_async,
             ctx.query.view.custom_element(),
             ignore_data,
+            false,
         );
     }
 
@@ -103,6 +104,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         ctx.state.experimental_async,
         ctx.query.view.custom_element(),
         ignore_data,
+        true,
     )
 }
 
@@ -128,6 +130,7 @@ pub fn transform_module_script<'a>(
         false,
         false,
         &empty_ignore,
+        true,
     )
 }
 
@@ -153,6 +156,33 @@ pub fn transform_component_module_script<'a>(
         false,
         false,
         &empty_ignore,
+        true,
+    )
+}
+
+pub fn transform_component_module_program<'a>(
+    allocator: &'a Allocator,
+    program: Program<'a>,
+    component_scoping: &ComponentScoping,
+    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+) -> ScriptOutput<'a> {
+    let empty_ignore = IgnoreData::new();
+    run_transform(
+        allocator,
+        program,
+        component_scoping,
+        None,
+        Vec::new(),
+        script_rune_call_kinds,
+        false,
+        false,
+        "",
+        0,
+        "(unknown)",
+        false,
+        false,
+        &empty_ignore,
+        false,
     )
 }
 
@@ -172,6 +202,7 @@ fn transform_script_text<'a>(
     experimental_async: bool,
     custom_element: bool,
     ignore_data: &IgnoreData,
+    prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
         SourceType::default()
@@ -213,6 +244,7 @@ fn transform_script_text<'a>(
         experimental_async,
         custom_element,
         ignore_data,
+        prepare_semantic,
     )
 }
 
@@ -232,17 +264,18 @@ fn run_transform<'a>(
     experimental_async: bool,
     custom_element: bool,
     ignore_data: &IgnoreData,
+    prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
     let is_ts = program.source_type.is_typescript();
-    let sem = SemanticBuilder::new().build(&program);
-    let scoping = sem.semantic.into_scoping();
+    if prepare_semantic {
+        let _ = SemanticBuilder::new().build(&program);
+    }
     let props_gen = props.map(PropsGenInfo::from_analysis);
 
     let mut transformer = ScriptTransformer {
         b: &b,
         component_scoping,
-        scoping,
         props_gen,
         derived_pending: rustc_hash::FxHashSet::default(),
         async_derived_pending: rustc_hash::FxHashMap::default(),
@@ -266,7 +299,7 @@ fn run_transform<'a>(
         enclosing_stmt_start: Vec::new(),
     };
 
-    let empty_scoping = Scoping::default();
+    let empty_scoping = oxc_semantic::Scoping::default();
     traverse_mut(&mut transformer, allocator, &mut program, empty_scoping, ());
 
     if !transformer.derived_pending.is_empty() {

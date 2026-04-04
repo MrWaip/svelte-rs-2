@@ -1,11 +1,15 @@
 import * as $ from "svelte/internal/client";
-var root = $.from_html(`<button></button>`);
+let shared = $.state(0);
+let doubled = $.derived(() => $.get(shared) * 2);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	function increment() {
-		shared++;
+		$.update(shared);
 	}
 	var button = root();
-	button.textContent = doubled;
+	var text = $.child(button, true);
+	$.reset(button);
+	$.template_effect(() => $.set_text(text, $.get(doubled)));
 	$.delegated("click", button, increment);
 	$.append($$anchor, button);
 }

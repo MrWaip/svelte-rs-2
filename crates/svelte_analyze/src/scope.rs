@@ -24,6 +24,7 @@ pub struct Rune {
 /// bindings (each-block context/index) are added via `add_scope` / `add_binding`.
 pub struct ComponentScoping {
     scoping: Scoping,
+    module_scope_id: Option<ScopeId>,
     template_reference_ids: FxHashSet<ReferenceId>,
     runes: FxHashMap<SymbolId, Rune>,
     // SymbolId-keyed classification fields (single source of truth for semantic decisions)
@@ -80,6 +81,7 @@ impl ComponentScoping {
         });
         Self {
             scoping,
+            module_scope_id: None,
             template_reference_ids: FxHashSet::default(),
             runes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
@@ -110,8 +112,68 @@ impl ComponentScoping {
     }
 
     pub fn add_child_scope(&mut self, parent: ScopeId) -> ScopeId {
+        self.add_scope(Some(parent), ScopeFlags::empty())
+    }
+
+    pub fn add_scope(&mut self, parent: Option<ScopeId>, flags: ScopeFlags) -> ScopeId {
         self.scoping
-            .add_scope(Some(parent), OxcNodeId::DUMMY, ScopeFlags::empty())
+            .add_scope(parent, OxcNodeId::DUMMY, flags)
+    }
+
+    pub fn module_scope_id(&self) -> Option<ScopeId> {
+        self.module_scope_id
+    }
+
+    pub fn ensure_module_scope(&mut self) -> ScopeId {
+        if let Some(scope_id) = self.module_scope_id {
+            return scope_id;
+        }
+
+        let root = self.root_scope_id();
+        let previous_parent = self.scoping.scope_parent_id(root);
+        let module_scope = self.add_scope(previous_parent, ScopeFlags::empty());
+        self.scoping.change_scope_parent_id(root, Some(module_scope));
+        self.module_scope_id = Some(module_scope);
+        module_scope
+    }
+
+    pub fn import_program_scoping(
+        &mut self,
+        source: &oxc_semantic::Scoping,
+        target_root: ScopeId,
+    ) -> (FxHashMap<ScopeId, ScopeId>, FxHashMap<SymbolId, SymbolId>) {
+        let mut scope_map = FxHashMap::default();
+        let mut symbol_map = FxHashMap::default();
+
+        scope_map.insert(source.root_scope_id(), target_root);
+
+        for scope_id in source.scope_descendants_from_root().skip(1) {
+            let parent = source
+                .scope_parent_id(scope_id)
+                .and_then(|parent_id| scope_map.get(&parent_id).copied())
+                .unwrap_or(target_root);
+            let mapped_scope = self.add_scope(Some(parent), source.scope_flags(scope_id));
+            scope_map.insert(scope_id, mapped_scope);
+        }
+
+        for scope_id in source.scope_descendants_from_root() {
+            let target_scope = scope_map[&scope_id];
+            for symbol_id in source.iter_bindings_in(scope_id) {
+                let name = source.symbol_name(symbol_id);
+                let mapped_symbol = self.scoping.create_symbol(
+                    source.symbol_span(symbol_id),
+                    name.into(),
+                    source.symbol_flags(symbol_id),
+                    target_scope,
+                    source.symbol_declaration(symbol_id),
+                );
+                self.scoping
+                    .add_binding(target_scope, name.into(), mapped_symbol);
+                symbol_map.insert(symbol_id, mapped_symbol);
+            }
+        }
+
+        (scope_map, symbol_map)
     }
 
     // -- Symbol management --
@@ -148,6 +210,14 @@ impl ComponentScoping {
     /// Get the declared name of a symbol.
     pub fn symbol_name(&self, id: SymbolId) -> &str {
         self.scoping.symbol_name(id)
+    }
+
+    pub fn is_component_top_level_scope(&self, scope_id: ScopeId) -> bool {
+        scope_id == self.root_scope_id() || self.module_scope_id == Some(scope_id)
+    }
+
+    pub fn is_component_top_level_symbol(&self, sym_id: SymbolId) -> bool {
+        self.is_component_top_level_scope(self.symbol_scope_id(sym_id))
     }
 
     pub fn function_depth(&self, mut scope: ScopeId) -> usize {
@@ -242,9 +312,19 @@ impl ComponentScoping {
         self.scoping.add_resolved_reference(sym_id, ref_id);
     }
 
+    pub fn delete_root_unresolved_reference(&mut self, name: &str, ref_id: ReferenceId) {
+        self.scoping
+            .delete_root_unresolved_reference(name.into(), ref_id);
+    }
+
     /// Get a reference by ReferenceId.
     pub fn get_reference(&self, ref_id: ReferenceId) -> &OxcReference {
         self.scoping.get_reference(ref_id)
+    }
+
+    /// Mutate an existing reference by ReferenceId.
+    pub fn get_reference_mut(&mut self, ref_id: ReferenceId) -> &mut OxcReference {
+        self.scoping.get_reference_mut(ref_id)
     }
 
     pub fn has_write_reference_other_than(
@@ -269,12 +349,12 @@ impl ComponentScoping {
             if cache.contains(&sym_id) {
                 return true;
             }
-            // Non-rune symbol: dynamic iff declared in non-root scope AND not a non-dynamic each index
+            // Non-rune symbol: dynamic iff declared outside component top-level and not a plain each index
             if !self.runes.contains_key(&sym_id) {
                 if self.each_index_non_dynamic_syms.contains(&sym_id) {
                     return false;
                 }
-                return self.symbol_scope_id(sym_id) != self.root_scope_id();
+                return !self.is_component_top_level_symbol(sym_id);
             }
             return false;
         }
@@ -306,8 +386,7 @@ impl ComponentScoping {
         if self.each_index_non_dynamic_syms.contains(&sym_id) {
             return false;
         }
-        // Non-root-scope binding (each block context/index) is always dynamic
-        self.symbol_scope_id(sym_id) != self.root_scope_id()
+        !self.is_component_top_level_symbol(sym_id)
     }
 
     /// Pre-compute dynamic status for all rune symbols with memoization.
@@ -388,7 +467,7 @@ impl ComponentScoping {
                 true
             }
         } else {
-            self.symbol_scope_id(sym_id) != self.root_scope_id()
+            !self.is_component_top_level_symbol(sym_id)
         };
         memo.insert(sym_id, result);
         result
@@ -547,7 +626,7 @@ impl ComponentScoping {
     /// Derived: non-root scope that isn't a template-introduced scope.
     pub fn is_expr_local(&self, sym_id: SymbolId) -> bool {
         let scope = self.symbol_scope_id(sym_id);
-        scope != self.root_scope_id() && !self.template_scope_set.contains(&scope)
+        !self.is_component_top_level_scope(scope) && !self.template_scope_set.contains(&scope)
     }
 
     /// Build the template_scope_set from fragment_scopes. Must be called after build_scoping.
@@ -561,12 +640,11 @@ impl ComponentScoping {
             .contains(SymbolFlags::Import)
     }
 
-    /// Collect all import-flagged SymbolIds from root scope.
+    /// Collect all import-flagged SymbolIds from script scopes.
     /// Used to pre-compute the set once during analysis rather than per-lookup in codegen.
     pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
-        let root = self.root_scope_id();
         self.scoping
-            .iter_bindings_in(root)
+            .symbol_ids()
             .filter(|&sym_id| {
                 self.scoping
                     .symbol_flags(sym_id)
