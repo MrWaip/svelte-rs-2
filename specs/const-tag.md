@@ -1,13 +1,14 @@
 # Const Tag
 
 ## Current state
-- **Working**: 7/11 use cases
+- **Working**: 9/11 use cases
 - **Partial**: 1/11 use cases
-- **Missing**: 3/11 use cases
-- **Next**: use `/port specs/const-tag.md` to add template-side validation (`const_tag_invalid_placement`, `const_tag_invalid_expression`, `const_tag_invalid_reference`) and then expand allowed-parent coverage beyond the now-audited `{#key}` success path.
-- **Confirmed gaps**:
-- The analyze pipeline does not currently emit any `const_tag_*` diagnostics even though the diagnostic kinds already exist.
-- Last updated: 2026-04-01
+- **Missing**: 1/11 use cases
+- **Next slice**: `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding; requires snippet scope analysis.
+- **Completed this session**:
+  - `const_tag_invalid_placement`: `TemplateValidationVisitor::visit_const_tag` now emits the error for root-level and element-child placements; valid parents: `IfBlock | EachBlock | SnippetBlock | ComponentNode | AwaitBlock | SvelteBoundary | KeyBlock | Element(slot) | SvelteElement(slot)`.
+  - `const_tag_invalid_expression`: fires when OXC parses the wrapped declaration as >1 declarators (unparenthesized sequence expression).
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -40,8 +41,8 @@
 - `[x]` `{@const}` inside `{#key}` blocks.
 - `[x]` `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path.
 - `[~]` Allowed-parent coverage is broader in the AST/analyze/codegen paths than in tests, but `{#await}` branches, `<Component>`, and slotted fragments have not been audited with focused cases yet.
-- `[ ]` Invalid placement should report `const_tag_invalid_placement`.
-- `[ ]` Invalid declaration shapes should report `const_tag_invalid_expression`.
+- `[x]` Invalid placement should report `const_tag_invalid_placement`.
+- `[x]` Invalid declaration shapes should report `const_tag_invalid_expression`.
 - `[ ]` Snippets that reference an out-of-scope `{@const}` binding should report `const_tag_invalid_reference`.
 
 ## Reference
@@ -96,7 +97,7 @@
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_analyze/src/validate/mod.rs` only runs rune validation today; no template validation path reaches the existing `const_tag_*` diagnostics.
+- FIXED: `crates/svelte_analyze/src/validate/mod.rs` only ran rune validation; no template validation path reached the existing `const_tag_*` diagnostics. Fixed by adding `visit_const_tag` to `TemplateValidationVisitor` in `template_validation.rs`.
 
 ## Test cases
 
