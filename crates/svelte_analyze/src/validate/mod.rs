@@ -24,6 +24,10 @@ pub fn validate(
     }
 
     validate_module_program(parsed, diags);
+    if let Some(module_program) = &parsed.module_program {
+        let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
+        stores::validate_module(data, module_program, offset, diags);
+    }
     validate_snippet_exports(component, parsed, diags);
     validate_custom_element_props(data, diags);
 }
