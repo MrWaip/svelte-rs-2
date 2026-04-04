@@ -1,11 +1,11 @@
 # Element
 
 ## Current state
-- **Working**: 12/16 use cases
-- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively)
-- **Missing**: 4 — namespace edge cases, legacy slots, A11y, CSS-scoped metadata
-- **Next**: legacy slots or A11y
-- Last updated: 2026-04-03
+- **Working**: 13/16 use cases
+- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: first 3 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`); remaining checks (missing attributes, autofocus, ARIA roles, event handler A11y) deferred to next A11y slice.
+- **Missing**: 3 — namespace edge cases, legacy slots, CSS-scoped metadata
+- **Next**: legacy slots or remaining A11y checks
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -68,7 +68,10 @@
   Current coverage proves common cases only
 
 - `[ ]` Legacy `<slot>` semantics and slot elements
-- `[ ]` A11y warnings for regular elements
+- `[~]` A11y warnings for regular elements
+  Implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey` (accesskey attribute), `a11y_positive_tabindex` (tabindex > 0).
+  Tests: `a11y_distracting_elements_marquee`, `a11y_distracting_elements_blink`, `a11y_accesskey_warns`, `a11y_positive_tabindex_warns`, `a11y_tabindex_zero_no_warning`, `a11y_tabindex_negative_no_warning`, `a11y_tabindex_dynamic_no_warning`.
+  Remaining: `a11y_missing_attribute` (img alt, anchor label), `a11y_autofocus` (context-sensitive), ARIA role checks, event handler A11y checks.
 - `[ ]` CSS-scoped element metadata and pruning
 
 ## Reference

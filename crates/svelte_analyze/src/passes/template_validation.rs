@@ -162,6 +162,48 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 el.span,
             ));
         }
+
+        // a11y_distracting_elements: <marquee> and <blink> are harmful to accessibility.
+        if matches!(el.name.as_str(), "marquee" | "blink") {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yDistractingElements { name: el.name.clone() },
+                el.span,
+            ));
+        }
+
+        // Attribute-level A11y checks that only need the attribute name or a static value.
+        for attr in &el.attributes {
+            let attr_name = match attr {
+                Attribute::StringAttribute(a) => a.name.as_str(),
+                Attribute::BooleanAttribute(a) => a.name.as_str(),
+                Attribute::ExpressionAttribute(a) => a.name.as_str(),
+                Attribute::ConcatenationAttribute(a) => a.name.as_str(),
+                _ => continue,
+            };
+            match attr_name {
+                // a11y_accesskey: using accesskey harms keyboard-only navigation.
+                "accesskey" => {
+                    ctx.warnings_mut().push(Diagnostic::warning(
+                        DiagnosticKind::A11yAccesskey,
+                        attr_value_span(attr),
+                    ));
+                }
+                // a11y_positive_tabindex: tabindex > 0 disrupts natural tab order.
+                "tabindex" => {
+                    if let Some(text) = static_text_attr_value(attr, ctx.source) {
+                        if let Ok(n) = text.trim().parse::<i64>() {
+                            if n > 0 {
+                                ctx.warnings_mut().push(Diagnostic::warning(
+                                    DiagnosticKind::A11yPositiveTabindex,
+                                    attr_value_span(attr),
+                                ));
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn leave_element(&mut self, _el: &Element, ctx: &mut VisitContext<'_>) {

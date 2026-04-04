@@ -2944,6 +2944,52 @@ fn slot_attribute_invalid_placement_root() {
 }
 
 // ---------------------------------------------------------------------------
+// A11y diagnostics
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a11y_distracting_elements_marquee() {
+    let diags = analyze_with_diags(r#"<marquee>scroll</marquee>"#);
+    assert_has_warning(&diags, "a11y_distracting_elements");
+}
+
+#[test]
+fn a11y_distracting_elements_blink() {
+    let diags = analyze_with_diags(r#"<blink>flash</blink>"#);
+    assert_has_warning(&diags, "a11y_distracting_elements");
+}
+
+#[test]
+fn a11y_accesskey_warns() {
+    let diags = analyze_with_diags(r#"<div accesskey="a">content</div>"#);
+    assert_has_warning(&diags, "a11y_accesskey");
+}
+
+#[test]
+fn a11y_positive_tabindex_warns() {
+    let diags = analyze_with_diags(r#"<div tabindex="2">content</div>"#);
+    assert_has_warning(&diags, "a11y_positive_tabindex");
+}
+
+#[test]
+fn a11y_tabindex_zero_no_warning() {
+    let diags = analyze_with_diags(r#"<div tabindex="0">content</div>"#);
+    assert_no_warning(&diags, "a11y_positive_tabindex");
+}
+
+#[test]
+fn a11y_tabindex_negative_no_warning() {
+    let diags = analyze_with_diags(r#"<div tabindex="-1">content</div>"#);
+    assert_no_warning(&diags, "a11y_positive_tabindex");
+}
+
+#[test]
+fn a11y_tabindex_dynamic_no_warning() {
+    let diags = analyze_with_diags(r#"<script>let n = $state(0);</script><div tabindex={n}>content</div>"#);
+    assert_no_warning(&diags, "a11y_positive_tabindex");
+}
+
+// ---------------------------------------------------------------------------
 // AwaitBlock diagnostics
 // ---------------------------------------------------------------------------
 
