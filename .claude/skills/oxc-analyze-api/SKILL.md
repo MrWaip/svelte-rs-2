@@ -1,22 +1,20 @@
 ---
 name: oxc-analyze-api
-description: MUST consult before writing or modifying any OXC Visit/VisitMut visitor or scoping code in svelte_analyze. Contains the exact method signatures for all visit_* methods, scoping API (get_binding, symbol_name, symbol_flags), and SemanticBuilder API. Use this skill whenever implementing a new analysis visitor, adding scope/symbol resolution logic, working with reference detection, or unsure which visit_* method to use for a specific AST node type. Using wrong method signatures causes silent bugs.
+description: MUST consult before writing or modifying any OXC Visit/VisitMut visitor or scoping code in svelte_analyze or svelte_component_semantics. Contains the exact method signatures for all visit_* methods and scoping API. Scope/symbol/reference infrastructure now lives in `svelte_component_semantics` (not oxc_semantic). Use this skill whenever implementing a new analysis visitor, adding scope/symbol resolution logic, working with reference detection, or unsure which visit_* method to use for a specific AST node type. Using wrong method signatures causes silent bugs.
 paths:
   - "crates/svelte_analyze/**/*.rs"
+  - "crates/svelte_component_semantics/**/*.rs"
 ---
 
 # OXC API for Analyze
 
 ## Setup
 
-Before any code changes or review, use the Read tool to load these references:
+Before any code changes or review, use the Read tool to load:
 
     Read .claude/skills/oxc-analyze-api/references/visit-methods.txt
-    Read .claude/skills/oxc-analyze-api/references/scoping-api.txt
 
-For reference resolution and write detection work, also load:
-
-    Read .claude/skills/oxc-analyze-api/references/semantic-builder-api.txt
+**Note:** Scope/symbol/reference infrastructure now lives in `svelte_component_semantics`, not `oxc_semantic`. Read `crates/svelte_component_semantics/src/lib.rs` for the current API.
 
 ## Visitor methods
 
@@ -38,7 +36,7 @@ fn visit_expression(&mut self, expr: &Expression<'a>) {
 
 ## Scoping — common operations
 
-Consult scoping-api.txt for the full API.
+Scoping API is in `svelte_component_semantics::ComponentSemantics`. `ComponentScoping` in `svelte_analyze` Deref's to it.
 
 ```rust
 // Get binding by name in a scope

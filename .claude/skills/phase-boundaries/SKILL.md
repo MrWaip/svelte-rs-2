@@ -1,10 +1,11 @@
 ---
 name: phase-boundaries
-description: MUST consult before adding or modifying code in svelte_codegen_client, svelte_analyze, or svelte_transform crates. Contains strict rules about what logic belongs in which compiler phase, red flags to avoid in codegen, OXC visitor requirements, and AnalysisData access patterns. Use this skill whenever deciding where to put new logic (parser vs analyze vs codegen), when adding a new field or accessor to AnalysisData, when writing any OXC expression traversal, or when reviewing code for boundary violations. Putting code in the wrong phase is the most common and costly mistake in this codebase.
+description: MUST consult before adding or modifying code in svelte_codegen_client, svelte_analyze, svelte_component_semantics, or svelte_transform crates. Contains strict rules about what logic belongs in which compiler phase, red flags to avoid in codegen, OXC visitor requirements, and AnalysisData access patterns. Use this skill whenever deciding where to put new logic (parser vs analyze vs semantics vs codegen), when adding a new field or accessor to AnalysisData, when writing any OXC expression traversal, or when reviewing code for boundary violations. Putting code in the wrong phase is the most common and costly mistake in this codebase.
 paths:
   - "crates/svelte_codegen_client/**/*.rs"
   - "crates/svelte_analyze/**/*.rs"
   - "crates/svelte_transform/**/*.rs"
+  - "crates/svelte_component_semantics/**/*.rs"
 ---
 
 # Phase Boundaries: Fat Analyze, Dumb Codegen
@@ -14,8 +15,11 @@ Each compiler phase has a strict responsibility.
 ## Parser (`svelte_parser`)
 Returns structured data. If a new AST node contains JS, the parser must deliver it parsed (via `parse_js`), not as a raw Span for downstream re-parsing.
 
+## Component Semantics (`svelte_component_semantics`)
+Single source of truth for scopes, symbols, references, and per-symbol state across the entire `.svelte` component. Replaces `oxc_semantic::Scoping`/`SemanticBuilder` — OXC provides AST + Visit trait only. Template integration via `TemplateWalker` trait (implemented in `svelte_analyze`). Does not depend on Svelte AST types.
+
 ## Analyze (`svelte_analyze`)
-Answers semantic questions. If codegen needs to decide between output modes based on 2+ flags, analyze should pre-compute that decision and expose it as an enum or accessor. Codegen should never dig deeper than one method call into `AnalysisData`.
+Answers semantic questions. If codegen needs to decide between output modes based on 2+ flags, analyze should pre-compute that decision and expose it as an enum or accessor. Codegen should never dig deeper than one method call into `AnalysisData`. Svelte-specific symbol classifications (runes, props, stores, etc.) live in `ComponentScoping` which `Deref`s to `ComponentSemantics`.
 
 ## Codegen (`svelte_codegen_client`)
 Flat mapper. Match on enums, format output. Zero decision logic.

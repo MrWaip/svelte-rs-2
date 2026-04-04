@@ -39,7 +39,7 @@ For a given feature:
 Before analyzing codegen or transform code, read:
 - `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
 - `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+- `crates/svelte_component_semantics/src/lib.rs` (scoping API)
 
 ## Output format
 

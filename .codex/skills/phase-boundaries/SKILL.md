@@ -59,9 +59,8 @@ Allowed exceptions:
 If you need method signatures, load:
 
 - `.codex/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.codex/skills/oxc-analyze-api/references/scoping-api.txt`
-- `.codex/skills/oxc-analyze-api/references/semantic-builder-api.txt`
 - `.codex/skills/oxc-codegen-api/references/traverse-methods.txt`
+- `crates/svelte_component_semantics/src/lib.rs` (scoping API)
 
 ## Additional rules
 

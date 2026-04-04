@@ -21,7 +21,7 @@ Read every changed file in full to understand the context around each change.
 Read the OXC API references:
 - `.claude/skills/oxc-codegen-api/references/traverse-methods.txt`
 - `.claude/skills/oxc-analyze-api/references/visit-methods.txt`
-- `.claude/skills/oxc-analyze-api/references/scoping-api.txt`
+- `crates/svelte_component_semantics/src/lib.rs` (scoping API)
 
 ## Rules to check
 

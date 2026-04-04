@@ -1,5 +1,7 @@
 # Project Instructions
 
+**Goal: production-ready Svelte compiler in Rust, targeting large enterprise codebases.** Performance at scale (thousands of components per build) is a first-class concern — every per-symbol allocation and lookup matters.
+
 Detailed crate API and type reference: `CODEBASE_MAP.md` (read when you need type signatures or module structure).
 Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` (read when adding a new feature or debugging unexpected output).
 
@@ -64,7 +66,8 @@ Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` 
 
 Layers:
 - `svelte_parser` — produces immutable AST. Owns shared domain types and JS expression pre-parsing (`parse_js` -> `JsParseResult`).
-- `svelte_analyze` — multi-pass pipeline. Owns ALL derived data, classifications, flags, precomputation -> `AnalysisData` side tables (keyed by `NodeId`). Also owns expression analysis types (`ExpressionInfo`, `Reference`, `ReferenceFlags`, `ExpressionKind`).
+- `svelte_component_semantics` — **single source of truth** for scopes, symbols, references, and per-symbol state across module script + instance script + template. Owns its own builder (`ComponentSemanticsBuilder`) that traverses JS AST via OXC `Visit` and template via `TemplateWalker` trait. Replaces `oxc_semantic::Scoping` / `SemanticBuilder` entirely — OXC provides AST + Visit trait only. Does **not** depend on Svelte AST for template traversal.
+- `svelte_analyze` — multi-pass pipeline. Owns ALL derived data, classifications, flags, precomputation -> `AnalysisData` side tables (keyed by `NodeId`). Also owns expression analysis types (`ExpressionInfo`, `Reference`, `ReferenceFlags`, `ExpressionKind`). Svelte-specific symbol classifications (runes, props, stores, etc.) live in `ComponentScoping` which wraps `ComponentSemantics` via `Deref`.
 - `svelte_codegen_client` — consumes AST + AnalysisData + ParsedExprs to produce JS output. Owns only JS output construction logic.
 
 Boundary rules:
