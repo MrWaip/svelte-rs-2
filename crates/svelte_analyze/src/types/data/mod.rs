@@ -14,6 +14,7 @@ mod analysis;
 mod async_data;
 pub(crate) mod attr_index;
 mod codegen_view;
+mod css;
 mod elements;
 mod expr;
 mod fragments;
@@ -24,6 +25,7 @@ mod runtime;
 mod template_data;
 
 pub use analysis::AnalysisData;
+pub use css::CssAnalysis;
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use codegen_view::CodegenView;
 pub use attr_index::AttrIndex;

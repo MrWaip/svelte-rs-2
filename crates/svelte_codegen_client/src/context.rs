@@ -623,4 +623,17 @@ impl<'a> Ctx<'a> {
     pub fn add_delegated_event(&mut self, event_name: String) {
         self.state.add_delegated_event(event_name);
     }
+
+    // -- CSS scoping --
+
+    /// Scoping class for this component, e.g. `"svelte-1a7i8ec"`.
+    /// Returns an empty string when no `<style>` block is present.
+    pub fn css_hash(&self) -> &str {
+        self.query.view.css_hash()
+    }
+
+    /// Whether this element should receive the scoped CSS class attribute.
+    pub fn is_css_scoped(&self, id: NodeId) -> bool {
+        self.query.view.is_css_scoped(id)
+    }
 }

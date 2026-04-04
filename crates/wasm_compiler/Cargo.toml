@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 svelte_compiler = { workspace = true }
+lightningcss = { version = "1.0.0-alpha.71", features = ["visitor"] }
 svelte_diagnostics = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_codegen = { workspace = true }

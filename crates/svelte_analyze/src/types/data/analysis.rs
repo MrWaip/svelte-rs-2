@@ -38,6 +38,8 @@ pub struct AnalysisData {
     pub(crate) script_rune_call_kinds: FxHashMap<u32, crate::types::script::RuneKind>,
     pub(crate) pickled_await_offsets: FxHashSet<u32>,
     pub ignore_data: IgnoreData,
+    /// CSS-scoping metadata: hash, scoped elements, transformed stylesheet.
+    pub css: CssAnalysis,
 }
 
 impl AnalysisData {
@@ -80,6 +82,7 @@ impl AnalysisData {
             script_rune_call_kinds: FxHashMap::default(),
             pickled_await_offsets: FxHashSet::default(),
             ignore_data: IgnoreData::new(),
+            css: CssAnalysis::empty(node_count),
         }
     }
 }

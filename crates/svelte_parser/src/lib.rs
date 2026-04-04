@@ -1,3 +1,5 @@
+use lightningcss::stylesheet::{ParserOptions, StyleSheet};
+pub use lightningcss::stylesheet::StyleSheet as CssStyleSheet;
 use scanner::{token::TokenType, Scanner};
 use svelte_span::Span;
 
@@ -55,7 +57,24 @@ pub fn parse_with_js<'a>(
     let (component, mut diagnostics) = Parser::new(source).parse();
     let mut result = crate::types::ParserResult::new();
     walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
+
     (component, result, diagnostics)
+}
+
+/// Parse the CSS from a component's top-level `<style>` block.
+///
+/// The CSS source text is copied into `alloc` so the returned `StyleSheet`
+/// has the same lifetime `'a` as all other `ParserResult` data.
+/// Returns `None` when the component has no `<style>` block or the CSS is
+/// syntactically invalid.
+pub fn parse_css_block<'a>(
+    alloc: &'a oxc_allocator::Allocator,
+    component: &svelte_ast::Component,
+) -> Option<CssStyleSheet<'a, 'a>> {
+    let css_block = component.css.as_ref()?;
+    let css_text = component.source_text(css_block.content_span);
+    let css_src: &'a str = alloc.alloc_str(css_text);
+    StyleSheet::parse(css_src, ParserOptions::default()).ok()
 }
 
 // ---------------------------------------------------------------------------

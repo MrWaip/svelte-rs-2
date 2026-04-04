@@ -1,4 +1,7 @@
+pub(crate) mod css;
 pub(crate) mod passes;
+
+pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
 pub mod types;
 pub(crate) mod utils;
@@ -9,11 +12,11 @@ pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
     ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ConstTagData, ContentStrategy, DebugTagData, DestructureKind, ElementFlags, EventHandlerMode,
-    ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentItem,
-    FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart, ParserResult,
-    PropAnalysis, PropsAnalysis, RenderTagCalleeMode, RenderTagPlan, RuntimePlan, SnippetData,
-    StmtHandle,
+    ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind, ElementFlags,
+    EventHandlerMode, ExprDeps, ExprHandle, ExprSite, ExpressionInfo, ExpressionKind, FragmentData,
+    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart,
+    ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode, RenderTagPlan, RuntimePlan,
+    SnippetData, StmtHandle,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
