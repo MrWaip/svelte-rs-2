@@ -153,8 +153,7 @@ pub fn generate<'a>(
             .query
             .scoping()
             .store_symbol_ids()
-            .iter()
-            .map(|&sym| ctx.query.scoping().symbol_name(sym))
+            .map(|sym| ctx.query.scoping().symbol_name(sym))
             .collect();
         store_names.sort();
 

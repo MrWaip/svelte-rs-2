@@ -366,7 +366,7 @@ struct StateRefLocallyValidator<'a, 'b> {
     /// Incremented when entering `$derived`/`$derived.by` call arguments.
     /// Mirrors the reference compiler's `function_depth += 1` for `$derived` calls:
     /// references inside `$derived(...)` are semantically deeper and should not warn.
-    derived_call_depth: usize,
+    derived_call_depth: u32,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 

@@ -506,7 +506,7 @@ fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
 fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
     let has_exports = !data.exports.is_empty();
     let has_bindable = data.props.as_ref().is_some_and(|p| p.has_bindable);
-    let has_stores = !data.scoping.store_symbol_ids().is_empty();
+    let has_stores = data.scoping.has_stores();
     let has_ce_props =
         data.custom_element && data.props.as_ref().is_some_and(|p| !p.props.is_empty());
     let needs_push = has_bindable || has_exports || has_ce_props || data.needs_context || dev;

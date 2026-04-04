@@ -71,7 +71,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .fragment_scope(&FragmentKey::EachBody(block.id))
                 .expect("EachBody scope must exist");
             // $$item is synthetic — no OXC AST node for it
-            let ctx_sym = ctx.data.scoping.add_binding(child_scope, "$$item");
+            let ctx_sym = ctx.data.scoping.add_synthetic_binding(child_scope, "$$item");
             ctx.data.scoping.mark_each_block_var(ctx_sym);
             ctx.data.each_blocks.is_destructured.insert(block.id);
         }
