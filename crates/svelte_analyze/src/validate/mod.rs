@@ -1,7 +1,9 @@
 mod runes;
 mod stores;
 
-use oxc_ast::ast::{BindingPattern, Declaration, ImportDeclarationSpecifier, Program, Statement};
+use oxc_ast::ast::{
+    BindingPattern, Declaration, ImportDeclarationSpecifier, ModuleExportName, Program, Statement,
+};
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -21,6 +23,7 @@ pub fn validate(
         validate_program(data, program, offset, runes, diags);
     }
 
+    validate_module_program(parsed, diags);
     validate_snippet_exports(component, parsed, diags);
     validate_custom_element_props(data, diags);
 }
@@ -34,6 +37,40 @@ pub fn validate_program(
 ) {
     runes::validate(data, program, offset, runes, diags);
     stores::validate(data, program, offset, diags);
+}
+
+fn validate_module_program(parsed: &ParserResult, diags: &mut Vec<Diagnostic>) {
+    let Some(module_program) = &parsed.module_program else {
+        return;
+    };
+
+    for stmt in &module_program.body {
+        match stmt {
+            Statement::ExportDefaultDeclaration(export) => {
+                diags.push(Diagnostic::error(
+                    DiagnosticKind::ModuleIllegalDefaultExport,
+                    Span::new(export.span.start, export.span.end),
+                ));
+            }
+            Statement::ExportNamedDeclaration(export)
+                if export.specifiers.iter().any(export_specifier_is_default) =>
+            {
+                diags.push(Diagnostic::error(
+                    DiagnosticKind::ModuleIllegalDefaultExport,
+                    Span::new(export.span.start, export.span.end),
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn export_specifier_is_default(specifier: &oxc_ast::ast::ExportSpecifier<'_>) -> bool {
+    match &specifier.exported {
+        ModuleExportName::IdentifierName(name) => name.name == "default",
+        ModuleExportName::IdentifierReference(name) => name.name == "default",
+        ModuleExportName::StringLiteral(name) => name.value == "default",
+    }
 }
 
 /// Error when `<script module>` exports a name that is a template snippet.
