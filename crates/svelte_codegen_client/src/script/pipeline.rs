@@ -24,7 +24,7 @@ pub struct ScriptOutput<'a> {
 }
 
 pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
-    if ctx.query.component.script.is_none() {
+    if ctx.query.component.instance_script.is_none() {
         return ScriptOutput {
             imports: vec![],
             body: vec![],
@@ -40,7 +40,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
     let script_content_start = ctx
         .query
         .component
-        .script
+        .instance_script
         .as_ref()
         .unwrap()
         .content_span
@@ -84,7 +84,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
 
     let component_scoping = ctx.query.scoping();
     let props = ctx.query.props();
-    let script = ctx.query.component.script.as_ref().unwrap();
+    let script = ctx.query.component.instance_script.as_ref().unwrap();
     let is_ts = script.language == ScriptLanguage::TypeScript;
     let script_text = ctx.query.component.source_text(script.content_span);
     transform_script_text(

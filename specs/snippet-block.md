@@ -1,10 +1,9 @@
 # SnippetBlock
 
 ## Current state
-- **Working**: 18/19 use cases — codegen now covers nested/computed destructuring and analyze validates snippet param assignment, invalid rest params, prop shadowing, and children conflicts
-- **Blocked**: `snippet_invalid_export` — reference-invalid cases require both `<script module>` and instance `<script>`, but the parser still accepts only one top-level script
-- **Next**: parser/analyze support for dual top-level scripts, then implement `snippet_invalid_export`
-- Last updated: 2026-04-03
+- **Complete**: 19/19 use cases — all implemented and covered
+- `snippet_invalid_export` landed: dual top-level script parsing (`instance_script` + `module_script`) added to AST/parser; validation fires when `<script module>` exports a template snippet name
+- Last updated: 2026-04-04
 
 ## Source
 ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
@@ -31,7 +30,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 18. [x] `snippet_invalid_rest_parameter` validation (tests: analyzer unit tests)
 19. [x] `snippet_shadowing_prop` validation (tests: analyzer unit tests)
 20. [x] `snippet_conflict` validation (tests: analyzer unit tests)
-21. [ ] `snippet_invalid_export` validation
+21. [x] `snippet_invalid_export` validation (tests: analyzer unit tests)
 
 ## Reference
 
@@ -46,9 +45,12 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - `crates/svelte_codegen_client/src/template/snippet.rs` — parsed-param-driven destructuring codegen, including nested object/array patterns and computed keys
 - `crates/svelte_analyze/src/passes/template_side_tables.rs` — `SnippetParamMarker` marks snippet-param symbols for downstream validation
 - `crates/svelte_analyze/src/passes/template_validation.rs` — snippet param assignment/rest/shadowing/conflict validation
+- `crates/svelte_analyze/src/validate/mod.rs` — `validate_snippet_exports` fires `snippet_invalid_export` when module script exports a snippet name
 - `crates/svelte_analyze/src/tests.rs` — analyzer-level coverage for snippet diagnostics; `tasks/compiler_tests/test_v3.rs` remains snapshot-only
 - `crates/svelte_analyze/src/scope.rs` — `is_snippet_param` / `is_snippet_name` symbol classification
-- `crates/svelte_parser/src/lib.rs` — current blocker: only one top-level `<script>` is accepted
+- `crates/svelte_parser/src/lib.rs` — dual `<script>` + `<script module>` now accepted; each stored in `Component.instance_script` / `Component.module_script`
+- `crates/svelte_ast/src/lib.rs` — `Component.instance_script` + `Component.module_script` (replaces single `script` field)
+- `crates/svelte_parser/src/types.rs` — `ParserResult.module_program` + `module_script_content_span`
 
 ## Tasks
 
@@ -56,7 +58,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] Mark snippet parameter symbols explicitly in scoping so validation can reject writes by `SymbolId`, not by name
 - [x] Validate snippet parameter assignment in template JS, including nested assignment targets
 - [x] Validate snippet rest parameters, component-prop shadowing, and `children` snippet conflicts
-- [ ] Add `snippet_invalid_export` once parser/analyze can represent both module and instance scripts in the same component
+- [x] Add `snippet_invalid_export` — parser now supports dual scripts; validation fires from `validate_snippet_exports`
 
 ### Codegen
 - [x] Walk parsed `FormalParameters` directly from `parsed.stmts`

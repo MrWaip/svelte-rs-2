@@ -796,7 +796,7 @@ mod tests {
     fn make_component(source: &str, nodes: Vec<Node>) -> Component {
         let mut store = AstStore::new();
         let ids: Vec<NodeId> = nodes.into_iter().map(|n| store.push(n)).collect();
-        Component::new(source.to_string(), Fragment::new(ids), store, None, None)
+        Component::new(source.to_string(), Fragment::new(ids), store, None, None, None)
     }
 
     fn collect_text_parts(items: &[FragmentItem], source: &str) -> Vec<String> {

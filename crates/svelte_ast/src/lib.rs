@@ -162,7 +162,10 @@ pub struct NodeId(pub u32);
 pub struct Component {
     pub fragment: Fragment,
     pub store: AstStore,
-    pub script: Option<Script>,
+    /// Instance-level `<script>` block (runs once per component instance).
+    pub instance_script: Option<Script>,
+    /// Module-level `<script module>` block (runs once when the module loads).
+    pub module_script: Option<Script>,
     pub css: Option<RawBlock>,
     pub options: Option<SvelteOptions>,
     /// Full source text of the .svelte file.
@@ -174,13 +177,15 @@ impl Component {
         source: String,
         fragment: Fragment,
         store: AstStore,
-        script: Option<Script>,
+        instance_script: Option<Script>,
+        module_script: Option<Script>,
         css: Option<RawBlock>,
     ) -> Self {
         Self {
             fragment,
             store,
-            script,
+            instance_script,
+            module_script,
             css,
             options: None,
             source,

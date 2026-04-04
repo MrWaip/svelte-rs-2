@@ -10,7 +10,10 @@ pub struct ExprHandle(pub u32);
 pub struct StmtHandle(pub u32);
 
 pub struct ParserResult<'a> {
+    /// Parsed program for the instance `<script>` block.
     pub program: Option<oxc_ast::ast::Program<'a>>,
+    /// Parsed program for the `<script module>` block.
+    pub module_program: Option<oxc_ast::ast::Program<'a>>,
     exprs: FxHashMap<ExprHandle, Expression<'a>>,
     stmts: FxHashMap<StmtHandle, Statement<'a>>,
     expr_by_offset: FxHashMap<u32, ExprHandle>,
@@ -18,6 +21,7 @@ pub struct ParserResult<'a> {
     next_expr: u32,
     next_stmt: u32,
     pub script_content_span: Option<Span>,
+    pub module_script_content_span: Option<Span>,
     pub typescript: bool,
 }
 
@@ -25,6 +29,7 @@ impl<'a> ParserResult<'a> {
     pub fn new() -> Self {
         Self {
             program: None,
+            module_program: None,
             exprs: FxHashMap::default(),
             stmts: FxHashMap::default(),
             expr_by_offset: FxHashMap::default(),
@@ -32,6 +37,7 @@ impl<'a> ParserResult<'a> {
             next_expr: 0,
             next_stmt: 0,
             script_content_span: None,
+            module_script_content_span: None,
             typescript: false,
         }
     }

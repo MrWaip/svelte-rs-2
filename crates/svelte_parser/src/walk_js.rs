@@ -19,12 +19,15 @@ pub(crate) fn parse_js<'a>(
     result: &mut ParserResult<'a>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let typescript = component
-        .script
+    // Template expressions use TS parsing if either script is TypeScript.
+    let template_typescript = component
+        .instance_script
         .as_ref()
+        .or(component.module_script.as_ref())
         .is_some_and(|s| matches!(s.language, ScriptLanguage::TypeScript));
 
-    if let Some(script) = &component.script {
+    if let Some(script) = &component.instance_script {
+        let typescript = matches!(script.language, ScriptLanguage::TypeScript);
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
         match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
@@ -37,12 +40,25 @@ pub(crate) fn parse_js<'a>(
         result.typescript = typescript;
     }
 
+    if let Some(script) = &component.module_script {
+        let typescript = matches!(script.language, ScriptLanguage::TypeScript);
+        let source = component.source_text(script.content_span);
+        let arena_source: &'a str = alloc.alloc_str(source);
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
+            Ok(program) => {
+                result.module_program = Some(program);
+                result.module_script_content_span = Some(script.content_span);
+            }
+            Err(errs) => diags.extend(errs),
+        }
+    }
+
     walk_fragment(
         alloc,
         &component.fragment,
         &component.store,
         component,
-        typescript,
+        template_typescript,
         result,
         diags,
     );
@@ -54,7 +70,7 @@ pub(crate) fn parse_js<'a>(
         .as_ref()
         .and_then(|o| o.custom_element.as_ref())
     {
-        parse_span(alloc, component, *span, typescript, result, diags);
+        parse_span(alloc, component, *span, template_typescript, result, diags);
     }
 }
 
