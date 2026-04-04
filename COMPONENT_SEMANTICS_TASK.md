@@ -57,40 +57,33 @@ Design a new component-wide semantics storage and builder API that becomes the r
 - JS node lookup
 - ownership boundaries between module script, instance script, template, and synthetic nodes
 
-The new design should let us eventually stop using `oxc_semantic::Scoping` as the primary semantic storage.
+The new design **replaces** `oxc_semantic::Scoping` and `oxc_semantic::SemanticBuilder` entirely. We stop calling OXC semantic analysis and do all scope/symbol/reference work ourselves.
 
 ## Important design direction
 
-We do want to reuse or fork the useful semantic machinery from OXC:
+We **fork** the useful semantic algorithms from OXC:
 
-- AST traversal patterns
-- scope creation rules
-- binding registration
-- reference creation
-- `Read` / `Write` / `ReadWrite` propagation
-- lexical name resolution
+- scope creation rules (which JS constructs open scopes)
+- binding registration (which nodes create symbols)
+- reference creation and resolution
+- `Read` / `Write` / `ReadWrite` flag propagation
+- lexical name resolution through parent scopes
 
-But we do **not** want to keep OXC's storage model or its assumption that semantics belong to a single `Program`.
+We **own** the storage, the builder, and the traversal. OXC provides the AST and the `Visit` trait — nothing else.
 
-In other words:
-
-- fork algorithms where useful
-- own the storage ourselves
-- extend the model for Svelte component needs
+The main cost we accept: when OXC adds new JS/TS syntax, we add corresponding scope/binding/reference rules to our builder. This is an acceptable trade-off for full control over the semantic model.
 
 ## Crate boundary
 
-Assume this should most likely become a separate crate rather than remain an internal `svelte_analyze` module.
+**Decision: separate crate from day one.**
 
-Recommended crate name:
-
-- `svelte_component_semantics`
+Crate name: `svelte_component_semantics`
 
 Reasoning:
 
 - this is infrastructure with its own ids, storage, builder, and query API
 - it is larger than a local refactor of `scope.rs`
-- it should be testable independently from the rest of analyze
+- it should be testable independently from the rest of analyze with its own unit tests
 - it should not inherit accidental responsibilities from `svelte_analyze`
 
 Expected ownership of the new crate:
@@ -112,7 +105,9 @@ Things that should probably stay in `svelte_analyze`:
 - codegen-oriented side tables
 - diagnostics policy
 
-I want you to explicitly evaluate whether the crate boundary above is the right one. If you disagree, explain why and propose a better boundary.
+Evaluate whether the crate boundary above is the right one. If you disagree, explain why and propose a better boundary.
+
+Note: classification maps like `each_block_syms`, `snippet_param_syms`, `fragment_scopes` sit near the boundary. The design should explicitly state for each whether it belongs in the semantics crate (because it's part of scope/symbol construction) or in `svelte_analyze` (because it's Svelte-specific classification policy).
 
 ## Specific design requirements
 
@@ -171,32 +166,43 @@ We need both domains:
 
 These should be connected by explicit mappings in the new storage.
 
-### 4. Use `oxc::NodeId` for JS lookup
+### 4. Use `oxc::NodeId` as a unified JS node counter
 
-We want `oxc::NodeId` to become the primary bridge for JS-node lookup.
+**Decision: `OxcNodeId` is a single flat counter across the entire component.**
 
-This means:
+Mechanism:
 
-- every JS AST node we care about should have an `OxcNodeId`
-- module, instance, and template JS nodes should live in one component-wide `OxcNodeId` space if feasible
-- JS-related lookup should stop depending on span keys as the canonical mechanism
+- instance script: `OxcNodeId` values used as-is from OXC parser (starting from 0)
+- module script: after parsing, all `OxcNodeId` values are offset by `last_instance_node_id + 1` (remapping pass over module AST)
+- template JS nodes: allocated from a counter continuing after the module offset
+
+This means `OxcNodeId` no longer strictly means "a node id assigned by OXC parser" — it becomes "a unique JS node id within this component". This is an accepted trade-off for flat `OxcNodeId → T` lookups without composite keys.
 
 Important:
 
 - `OxcNodeId` is for JS AST domain only
 - it should not replace `svelte_ast::NodeId`
-- semantic identity should still use our own ids for `ScopeId`, `SymbolId`, `ReferenceId`, and possibly `SemanticNodeId`
+- semantic identity should still use our own ids for `ScopeId`, `SymbolId`, `ReferenceId`
 
-### 5. Incremental registration
+### 5. Self-contained builder with internal traversal
 
-The builder must allow incremental registration of semantic inputs:
+**Decision: the builder traverses all AST inputs itself.** The caller does not orchestrate phases.
 
-- register module program
-- register instance program
-- later attach template expressions/statements
-- later attach synthetic symbols/references if needed
+Entry point:
 
-This is one of the main reasons the current OXC storage is not sufficient.
+```rust
+ComponentSemanticsBuilder::build(
+    module_program: Option<&Program>,
+    instance_program: Option<&Program>,
+    template: &Component,  // or the template fragment
+) -> ComponentSemantics
+```
+
+Internally the builder decides the order: module first, then instance, then template. References are resolved immediately during traversal (not deferred), which requires that dependencies (module before instance, scripts before template) are processed in order.
+
+The builder uses OXC `Visit` trait to traverse script AST and our own template walker for template nodes.
+
+Synthetic symbols/references can be added after `build()` via mutation methods on `ComponentSemantics` if needed by later analyze passes.
 
 ### 6. JS semantics to support
 
@@ -223,7 +229,8 @@ Please also address explicitly:
 - class declaration behavior
 - import bindings
 - whether unresolved references are stored as first-class records
-- whether mutation/reassignment tracking belongs in the core storage or in `svelte_analyze`
+
+**Decision: mutation tracking is eager and lives in the core storage.** When a write-reference is added to a symbol, the symbol's `MUTATED` flag is set immediately (bitwise OR). This is a hot path in codegen (`is_mutated` is checked for every state rune and bind directive), so eager is the right choice. This matches OXC's current behavior.
 
 It is acceptable to scope the first implementation to the semantic features currently required by this compiler. It does not need to reimplement every OXC feature on day one.
 
@@ -293,34 +300,33 @@ Also propose the minimal public API surface of the crate itself. For example:
 
 ### C. `NodeId` strategy
 
-Think carefully about whether we can and should synchronize `oxc::NodeId` across:
+**Decision: component-wide `OxcNodeId` via offset remapping.**
 
-- module script
-- instance script
-- template expressions/statements
+The design must address:
 
-I want an explicit recommendation:
+- the remapping mechanism: how to walk module AST and shift all `NodeId` values
+- the template id allocator: how to assign ids to template JS nodes from the same counter
+- completeness: which AST node locations store `NodeId` and must be remapped (node_id cells, scope_id cells, symbol cells, reference node_id fields)
+- risks: what happens if a remapping location is missed (silent wrong lookup)
+- testing: how to verify no id collisions exist after remapping
 
-- can we make `OxcNodeId` unique component-wide?
-- what are the risks?
-- what assumptions in OXC might make this hard?
-- if component-wide `OxcNodeId` turns out unsafe, what is the fallback design?
+### D. What semantic logic to fork from OXC
 
-### D. What semantic core to fork from OXC
+We fork **algorithms** (which JS constructs create scopes, how bindings are registered, how flags propagate). We do **not** depend on `oxc_semantic` crate at runtime — only on `oxc_ast` and `oxc_ast_visit`.
 
 List which parts of OXC semantic machinery should be copied or adapted:
 
-- traversal rules
-- scope-enter/scope-exit logic
-- binding registration
-- resolution
-- reference flag propagation
+- which AST nodes open scopes (and what `ScopeFlags`)
+- binding registration rules per declaration kind
+- reference flag propagation (Read/Write/ReadWrite) for assignments, updates, member expressions
+- lexical resolution algorithm
 
-Also list what **should not** be copied wholesale:
+Also list what **should not** be copied:
 
-- storage assumptions
-- program-local assumptions
-- any parts that would overfit us to OXC internals
+- `Scoping` storage (we own our tables)
+- `SemanticBuilder` orchestration (we have our own builder)
+- program-local assumptions (single root scope, etc.)
+- any OXC-internal id types beyond `OxcNodeId`
 
 ### E. Dependency model
 
@@ -357,12 +363,7 @@ It should explicitly cover:
 4. keeping the codebase working during migration
 5. deleting old OXC-backed source-of-truth plumbing at the end
 
-The migration plan should also say whether to:
-
-- create the crate immediately and move code into it from day one
-- or first prototype inside `svelte_analyze` and extract afterward
-
-I want an explicit recommendation here.
+**Decision: create the crate immediately.** No prototyping inside `svelte_analyze` — the new crate is created from day one with its own tests.
 
 Also include a compatibility map from current `ComponentScoping` consumers to the new API. I want to know which existing responsibilities should have direct replacements, for example:
 
@@ -396,13 +397,16 @@ I want the response structured like this:
 
 Concrete Rust-like type sketches and API signatures are strongly preferred.
 
-## Additional note
+## Decided direction
 
-We already suspect the right direction is:
+The following decisions are final (not open for re-evaluation):
 
-- our own semantic storage
-- OXC algorithms reused where useful
-- component-wide `OxcNodeId` space for JS nodes if technically safe
-- explicit bridges between JS nodes and Svelte nodes
+- **Own semantic storage** — we do not use `oxc_semantic::Scoping` or `oxc_semantic::SemanticBuilder`
+- **Own builder with self-contained traversal** — `ComponentSemanticsBuilder::build()` takes AST inputs and returns `ComponentSemantics`; caller does not orchestrate phases
+- **Separate crate from day one** — `svelte_component_semantics`
+- **Component-wide `OxcNodeId`** — single flat counter via offset remapping (instance as-is, module offset, template continues)
+- **Eager mutation tracking** — `MUTATED` flag set on symbol when write-reference is added
+- **Immediate resolution** — references resolved during traversal, not deferred
+- **OXC provides AST + Visit trait only** — all semantic logic is ours
 
-But I want a rigorous design, not validation of that instinct.
+The design document should produce a rigorous, implementable design within these constraints.
