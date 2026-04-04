@@ -1570,6 +1570,7 @@ fn check_plain_attr_warnings(
             span,
         ));
     }
+
 }
 
 
