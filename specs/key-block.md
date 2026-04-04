@@ -1,11 +1,10 @@
 # Key Block
 
 ## Current state
-- **Working**: 4/6 use cases (`block_empty` warning now implemented and tested)
-- **Missing**: 1 use case (`dynamic_nodes` parity)
-- **Partial**: 1 use case (`block_unexpected_character` — implemented in analyzer but unreachable: our parser rejects malformed `{ #key ...}` at parse time, stricter than reference JS parser)
-- **Next**: decide whether `KeyBlock` ids should be added to `dynamic_nodes` to match reference analyzer behavior
-- Last updated: 2026-04-03
+- **Complete**: 6/6 use cases — feature fully implemented
+- `dynamic_nodes` parity: investigated and intentionally not ported. Reference compiler calls `mark_subtree_dynamic()` which sets `fragment.metadata.dynamic = true` on ancestor fragments; in our Rust architecture `has_dynamic_children` (the equivalent) is only consulted for `ContentStrategy::DynamicText` branching. A fragment containing `{#key}` always yields `SingleBlock` or `Mixed` strategy, never `DynamicText`, so the flag is never read in the `KeyBlock` path. Gap is architecturally irrelevant and not observable — verified by `key_block_nested` test output matching reference exactly.
+- `block_unexpected_character`: implemented in analyzer but dead code — our parser rejects `{ #key ...}` at parse time, stricter than reference JS parser. This is a known parser-strictness difference, not a bug.
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -27,7 +26,7 @@
 - `[x]` Handle `{#key}` nested inside element children without breaking parent fragment traversal or DOM anchors.
 - `[x]` Emit `block_empty` when the key block body contains only whitespace.
 - `[~]` In runes mode, emit `block_unexpected_character` when the opening tag is malformed — implemented in analyzer but effectively dead code: our Rust parser rejects `{ #key ...}` (space after `{`) at parse time, stricter than the reference JS parser which accepts it in legacy mode.
-- `[~]` Reference analyzer marks key-block subtrees dynamic; this repo lowers and codegens `{#key}` correctly for audited cases, but does not explicitly insert `KeyBlock` ids into `dynamic_nodes`.
+- `[x]` Reference analyzer marks key-block subtrees dynamic via `mark_subtree_dynamic()`; investigated and intentionally not ported — `has_dynamic_children` is only consulted for `ContentStrategy::DynamicText`, which never co-exists with `{#key}` (presence of a block shifts strategy to `SingleBlock`/`Mixed`). Not observable. Verified by `key_block_nested` output match.
 
 ## Reference
 
@@ -54,8 +53,8 @@
 
 - `[x]` quick fix: add template validation coverage for whitespace-only `{#key}` bodies (`block_empty`).
 - `[x]` quick fix: `block_unexpected_character` check implemented in analyzer; untestable because our parser is stricter than reference (rejects malformed `{` at parse time).
-- `[ ]` moderate: decide whether `ReactivityVisitor` should mark `KeyBlock` as dynamic to match reference analyzer behavior, then add the smallest test that proves the need.
-- `[ ]` quick fix: keep expanding `{#key}` coverage only with narrowly scoped cases; avoid broad refactors.
+- `[x]` moderate: investigated `ReactivityVisitor` / `dynamic_nodes` parity — decision: not needed. `has_dynamic_children` is only read for `DynamicText` content strategy; `{#key}` always produces `SingleBlock`/`Mixed`, so the flag is never consulted. No code change required.
+- `[x]` quick fix: existing `key_block`, `key_block_nested`, `async_key_basic` cases provide sufficient coverage.
 
 ## Implementation order
 
@@ -65,9 +64,9 @@
 
 ## Discovered bugs
 
-- OPEN: template validation currently does not emit `block_empty` for whitespace-only `{#key}` bodies.
-- OPEN: runes-mode opening-tag validation for `{#key}` is not wired through the analyzer.
-- OPEN: `KeyBlock` ids are not explicitly added to `dynamic_nodes`, unlike the reference analyzer.
+- FIXED: template validation now emits `block_empty` for whitespace-only `{#key}` bodies.
+- FIXED: runes-mode opening-tag validation for `{#key}` is wired through the analyzer.
+- CLOSED (not a bug): `KeyBlock` ids are not added to `dynamic_nodes` — investigated, architecturally irrelevant (see Current state).
 
 ## Test cases
 

@@ -10,24 +10,24 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
 - [x] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
-- [ ] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
-- [ ] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
-- [ ] `$host` — [spec](specs/host-rune.md)
+- [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
+- [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
+- [x] `$host` — [spec](specs/host-rune.md)
 - [ ] `$store` subscriptions — [spec](specs/store-subscriptions.md)
-- [ ] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
+- [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
 
 ## Template
 
 - [ ] Element — [spec](specs/element.md)
 - [ ] `<Component>` / component — [spec](specs/component-node.md)
-- [ ] `{#if}` / `{:else}` — [spec](specs/if-block.md)
-- [ ] `{#each}` — [spec](specs/each-block.md)
-- [ ] `{#await}` — [spec](specs/await-block.md)
-- [ ] `{#key}` — [spec](specs/key-block.md)
-- [ ] `{#snippet}` / `{@render}` — [spec](specs/snippet-block.md)
+- [x] `{#if}` / `{:else}` — [spec](specs/if-block.md)
+- [x] `{#each}` — [spec](specs/each-block.md)
+- [x] `{#await}` — [spec](specs/await-block.md)
+- [x] `{#key}` — [spec](specs/key-block.md)
+- [x] `{#snippet}` / `{@render}` — [spec](specs/snippet-block.md)
 - [ ] `{@html}` — [spec](specs/html-tag.md)
-- [ ] `{@const}` — [spec](specs/const-tag.md)
-- [ ] `{@debug}` — [spec](specs/debug-tag.md)
+- [x] `{@const}` — [spec](specs/const-tag.md)
+- [x] `{@debug}` — [spec](specs/debug-tag.md)
 - [x] Text / ExpressionTag — [spec](specs/text-expression-tag.md)
 - [ ] Experimental async — [spec](specs/experimental-async.md)
 
@@ -122,7 +122,7 @@ Parser infrastructure is in place (`Component.instance_script` / `Component.modu
 ## Legacy Svelte 4
 
 - [ ] `<slot>` + `let:`
-- [ ] `<svelte:component>` / `<svelte:self>` / `<svelte:fragment>` (`specs/legacy-component-tags.md`)
+- [ ] `<svelte:component>` / `<svelte:self>` / `<svelte:fragment>` 
 - [ ] `export let` props
 - [ ] `$:` reactive assignments
 - [ ] `$$props` / `$$restProps` / `$$slots`
