@@ -78,6 +78,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             script_content_start,
             filename,
             ctx.state.experimental_async,
+            ctx.query.view.custom_element(),
             ignore_data,
         );
     }
@@ -100,6 +101,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         filename,
         None,
         ctx.state.experimental_async,
+        ctx.query.view.custom_element(),
         ignore_data,
     )
 }
@@ -124,6 +126,7 @@ pub fn transform_module_script<'a>(
         "(unknown)",
         None,
         false,
+        false,
         &empty_ignore,
     )
 }
@@ -142,6 +145,7 @@ fn transform_script_text<'a>(
     filename: &str,
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
     experimental_async: bool,
+    custom_element: bool,
     ignore_data: &IgnoreData,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
@@ -182,6 +186,7 @@ fn transform_script_text<'a>(
         script_content_start,
         filename,
         experimental_async,
+        custom_element,
         ignore_data,
     )
 }
@@ -200,6 +205,7 @@ fn run_transform<'a>(
     script_content_start: u32,
     filename: &str,
     experimental_async: bool,
+    custom_element: bool,
     ignore_data: &IgnoreData,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
@@ -230,6 +236,7 @@ fn run_transform<'a>(
         prop_default_exprs,
         script_rune_call_kinds,
         experimental_async,
+        custom_element,
         ignore_data,
         enclosing_stmt_start: Vec::new(),
     };

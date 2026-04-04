@@ -1853,7 +1853,6 @@ class Foo {
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_host_invalid_placement_without_custom_element() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -1864,7 +1863,6 @@ let host = $host();
 }
 
 #[test]
-#[ignore = "missing: rune validation parity"]
 fn validate_host_invalid_arguments() {
     let diags = analyze_with_diags(
         r#"<script>

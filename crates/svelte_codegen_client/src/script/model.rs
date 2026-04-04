@@ -101,6 +101,7 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
     pub(super) experimental_async: bool,
+    pub(super) custom_element: bool,
     /// Svelte-ignore directives (populated in analyze, includes span-based JS comment lookups).
     pub(super) ignore_data: &'b IgnoreData,
     /// Stack of enclosing statement start positions for ignore lookups.

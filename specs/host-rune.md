@@ -1,10 +1,10 @@
 # $host
 
 ## Current state
-- **Working**: 1/4 use cases
-- **Missing**: 3/4 use cases
-- **Next**: implement analyzer validation for `$host()` and exclude `$$host` from `$props()` rest props in custom elements
-- Last updated: 2026-04-01
+- **Working**: 4/5 use cases
+- **Missing**: 1 (module script placement check)
+- **Next**: add rune validation pass for module script
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -26,10 +26,12 @@
 
 - [x] Basic client transform for `$host()` inside a custom element instance script.
   Evidence: `tasks/compiler_tests/cases2/host_basic`
-- [ ] Reject `$host()` arguments with `rune_invalid_arguments`.
-- [ ] Reject `$host()` outside custom element instance scripts with `host_invalid_placement`.
-- [~] `$host()` coexists with `$props()` in custom elements.
-  Current status: direct `$host()` rewrites work, but rest props do not exclude `$$host`, so `let { a, ...rest } = $props()` can expose the host handle in `rest`.
+- [x] Reject `$host()` arguments with `rune_invalid_arguments`.
+- [x] Reject `$host()` outside custom element instance scripts with `host_invalid_placement`.
+- [x] `$host()` coexists with `$props()` in custom elements — rest props exclude `$$host`.
+  Evidence: `tasks/compiler_tests/cases2/host_props_rest`
+- [ ] Reject `$host()` inside `<script module>` with `host_invalid_placement`.
+  Note: `runes::validate` currently only runs on the instance script; module script needs a separate pass.
 
 ## Reference
 
@@ -48,11 +50,11 @@
 
 ## Tasks
 
-- [ ] Analyze: add `$host()` validation in the rune call validation path.
-  Files: `crates/svelte_analyze/src/...` validation pass, `crates/svelte_analyze/src/tests.rs`
-- [ ] Codegen: include `$$host` in the excluded names passed to `$.rest_props(...)` for custom elements.
-  Files: `crates/svelte_codegen_client/src/script/props.rs`
-- [ ] Tests: unignore added parity tests once the analyzer/codegen gaps are fixed.
+- [x] Analyze: add `$host()` validation in the rune call validation path.
+  Files: `crates/svelte_analyze/src/validate/runes.rs`, `crates/svelte_analyze/src/tests.rs`
+- [x] Codegen: include `$$host` in the excluded names passed to `$.rest_props(...)` for custom elements.
+  Files: `crates/svelte_codegen_client/src/script/props.rs`, `crates/svelte_codegen_client/src/script/pipeline.rs`, `crates/svelte_codegen_client/src/script/model.rs`
+- [x] Tests: unignore added parity tests.
   Files: `crates/svelte_analyze/src/tests.rs`, `tasks/compiler_tests/test_v3.rs`
 
 ## Implementation order
@@ -63,8 +65,8 @@
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_codegen_client/src/script/props.rs` does not exclude `$$host` from `$props()` rest props in custom elements, unlike the reference compiler.
-- OPEN: analyzer test coverage shows no `$host()` validation parity yet, even though `HostInvalidPlacement` diagnostics already exist.
+- FIXED: `crates/svelte_codegen_client/src/script/props.rs` did not exclude `$$host` from `$props()` rest props in custom elements.
+- FIXED: analyzer had no `$host()` validation despite `HostInvalidPlacement` diagnostic existing.
 
 ## Test cases
 

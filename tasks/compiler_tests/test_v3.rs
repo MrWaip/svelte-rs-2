@@ -496,7 +496,6 @@ fn host_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: $host rest props should exclude $$host"]
 fn host_props_rest() {
     assert_compiler("host_props_rest");
 }
