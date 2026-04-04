@@ -1,3 +1,4 @@
+use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatPart,
     ConcatenationAttribute, ExpressionAttribute, OnDirectiveLegacy, Shorthand, SpreadAttribute,
@@ -10,12 +11,32 @@ use svelte_span::Span;
 use crate::scanner::token;
 use crate::Parser;
 
+/// Records `key` in `seen` and emits `attribute_duplicate` if already present.
+/// When `exclude_this` is true, the `this` attribute is never added to `seen`
+/// (matches the reference compiler behaviour for the `Attribute`/`BindDirective` key space).
+fn track_duplicate<'s>(
+    seen: &mut FxHashSet<(&'s str, &'s str)>,
+    key: (&'s str, &'s str),
+    name_span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+    exclude_this: bool,
+) {
+    if seen.contains(&key) {
+        diagnostics.push(Diagnostic::error(DiagnosticKind::AttributeDuplicate, name_span));
+    } else if !exclude_this || key.1 != "this" {
+        seen.insert(key);
+    }
+}
+
 impl<'a> Parser<'a> {
     pub(crate) fn convert_attributes(
         &mut self,
         token_attrs: &[token::Attribute],
     ) -> Vec<Attribute> {
         let mut attributes = Vec::new();
+        // Tracks (type_key, name) pairs to detect duplicates.
+        // HTMLAttribute and BindDirective share the "attr" key space (per reference compiler).
+        let mut seen: FxHashSet<(&str, &str)> = FxHashSet::default();
 
         for attr in token_attrs {
             match attr {
@@ -47,6 +68,15 @@ impl<'a> Parser<'a> {
                             html_attr.name_span,
                         ));
                     }
+
+                    // HTMLAttribute shares the "attr" key space with BindDirective.
+                    track_duplicate(
+                        &mut seen,
+                        ("attr", name),
+                        html_attr.name_span,
+                        &mut self.diagnostics,
+                        true,
+                    );
 
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
@@ -106,6 +136,14 @@ impl<'a> Parser<'a> {
                     }
                 }
                 token::Attribute::ClassDirective(cd) => {
+                    let cd_name = cd.name_span.source_text(self.source);
+                    track_duplicate(
+                        &mut seen,
+                        ("class", cd_name),
+                        cd.name_span,
+                        &mut self.diagnostics,
+                        false,
+                    );
                     let expression_span = if cd.shorthand {
                         None
                     } else {
@@ -113,12 +151,20 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::ClassDirective(ClassDirective {
                         id: self.reserve_id(),
-                        name: cd.name_span.source_text(self.source).to_string(),
+                        name: cd_name.to_string(),
                         expression_span,
                         shorthand: cd.shorthand,
                     }));
                 }
                 token::Attribute::StyleDirective(sd) => {
+                    let sd_name = sd.name_span.source_text(self.source);
+                    track_duplicate(
+                        &mut seen,
+                        ("style", sd_name),
+                        sd.name_span,
+                        &mut self.diagnostics,
+                        false,
+                    );
                     let value = if sd.shorthand {
                         StyleDirectiveValue::Shorthand
                     } else {
@@ -145,12 +191,21 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::StyleDirective(StyleDirective {
                         id: self.reserve_id(),
-                        name: sd.name_span.source_text(self.source).to_string(),
+                        name: sd_name.to_string(),
                         value,
                         important: sd.important,
                     }));
                 }
                 token::Attribute::BindDirective(bd) => {
+                    // BindDirective shares the "attr" key space with HTMLAttribute.
+                    let bd_name = bd.name_span.source_text(self.source);
+                    track_duplicate(
+                        &mut seen,
+                        ("attr", bd_name),
+                        bd.name_span,
+                        &mut self.diagnostics,
+                        true,
+                    );
                     let expression_span = if bd.shorthand {
                         None
                     } else {
@@ -158,7 +213,7 @@ impl<'a> Parser<'a> {
                     };
                     attributes.push(Attribute::BindDirective(BindDirective {
                         id: self.reserve_id(),
-                        name: bd.name_span.source_text(self.source).to_string(),
+                        name: bd_name.to_string(),
                         expression_span,
                         shorthand: bd.shorthand,
                     }));

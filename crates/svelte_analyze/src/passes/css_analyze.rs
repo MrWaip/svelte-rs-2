@@ -1,6 +1,6 @@
 use lightningcss::error::PrinterError;
 use lightningcss::rules::CssRule;
-use lightningcss::selector::{Component, Selector};
+use lightningcss::selector::{Component, PseudoClass, Selector};
 use lightningcss::stylesheet::{PrinterOptions, StyleSheet};
 use lightningcss::values::ident::Ident;
 use lightningcss::{visit_types, visitor::{Visit, Visitor, VisitTypes}};
@@ -14,9 +14,10 @@ use crate::types::node_table::NodeBitSet;
 
 /// Run the CSS analysis pass: compute hash, mark scoped elements, emit scoped CSS.
 ///
-/// Called from `compile()` after `analyze_with_options` returns, so it receives
-/// the already-created `AnalysisData` mutably.
+/// `alloc` is the same OXC allocator used for the stylesheet — the hash string is
+/// allocated into it so it shares lifetime `'a` with the selector components.
 pub fn analyze_css_pass<'a>(
+    alloc: &'a oxc_allocator::Allocator,
     component: &SvelteComponent,
     mut stylesheet: StyleSheet<'a, 'a>,
     data: &mut AnalysisData,
@@ -31,8 +32,10 @@ pub fn analyze_css_pass<'a>(
     let selected_tags = collect_type_selectors(&stylesheet);
 
     // Phase 2: transform stylesheet — append `.hash` to each scoped TypeSelector.
-    let hash_static: &'static str = Box::leak(hash.clone().into_boxed_str());
-    let mut scoper = ScopeSelectors { hash_class: hash_static };
+    // The hash string is allocated into the same arena as the stylesheet source so
+    // that injected Ident<'a> components have the correct lifetime — no Box::leak needed.
+    let hash_str: &'a str = alloc.alloc_str(&hash);
+    let mut scoper = ScopeSelectors { hash_class: hash_str };
     let css_output = if stylesheet.visit(&mut scoper).is_ok() {
         stylesheet
             .to_css(PrinterOptions::default())
@@ -44,7 +47,6 @@ pub fn analyze_css_pass<'a>(
 
     // Phase 3: walk template, mark elements whose tag name is in selected_tags.
     let node_count = component.node_count();
-    // node_count is u32 per the Component API
     let mut scoped = NodeBitSet::new(node_count);
     mark_scoped_elements(&component.fragment, &component.store, &selected_tags, &mut scoped);
 
@@ -64,9 +66,7 @@ fn collect_type_selectors(stylesheet: &StyleSheet<'_, '_>) -> FxHashSet<String> 
     for rule in stylesheet.rules.0.iter() {
         if let CssRule::Style(style_rule) = rule {
             for selector in style_rule.selectors.0.iter() {
-                // Skip selectors containing :global (handled in later slices).
-                let has_global = has_global_component(selector);
-                if has_global {
+                if has_global_component(selector) {
                     continue;
                 }
                 for component in selector.iter_raw_match_order() {
@@ -84,13 +84,13 @@ fn collect_type_selectors(stylesheet: &StyleSheet<'_, '_>) -> FxHashSet<String> 
 // Scope selectors (mutating visitor)
 // ---------------------------------------------------------------------------
 
-struct ScopeSelectors {
+struct ScopeSelectors<'h> {
     /// The scoping class name, e.g. `"svelte-1a7i8ec"` (without the dot).
-    /// `'static` allows the ident to coerce to any `Ident<'i>` via lifetime covariance.
-    hash_class: &'static str,
+    /// Allocated into the stylesheet arena so `Ident<'h>` satisfies `'h: 'i`.
+    hash_class: &'h str,
 }
 
-impl<'i> Visitor<'i> for ScopeSelectors {
+impl<'i, 'h: 'i> Visitor<'i> for ScopeSelectors<'h> {
     type Error = PrinterError;
 
     fn visit_types(&self) -> VisitTypes {
@@ -106,7 +106,6 @@ impl<'i> Visitor<'i> for ScopeSelectors {
             return Ok(());
         }
 
-        // Leave :global selectors untouched (later slice).
         if has_global_component(selector) {
             return Ok(());
         }
@@ -116,8 +115,8 @@ impl<'i> Visitor<'i> for ScopeSelectors {
             let is_local = matches!(component, Component::LocalName(_));
             result.push(component);
             if is_local {
-                // Ident<'static> coerces to Ident<'i> because `'static: 'i`.
-                let class_ident: Ident<'static> = Ident::from(self.hash_class);
+                // Ident<'h> coerces to Ident<'i> because 'h: 'i and Ident is covariant.
+                let class_ident: Ident<'h> = Ident::from(self.hash_class);
                 result.push(Component::Class(class_ident));
             }
         }
@@ -132,10 +131,15 @@ impl<'i> Visitor<'i> for ScopeSelectors {
 // ---------------------------------------------------------------------------
 
 fn has_global_component(selector: &Selector<'_>) -> bool {
-    selector.iter_raw_match_order().any(|c| {
-        // :global pseudo-class debug output contains "global"
-        let dbg = format!("{c:?}");
-        dbg.contains("global") || dbg.contains("Global")
+    selector.iter_raw_match_order().any(|c| match c {
+        // CSS Modules :global() — only when ParserOptions::css_modules is set
+        Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
+        // Bare :global or :global(...) parsed as unknown pseudo-class without CSS modules
+        Component::NonTSPseudoClass(PseudoClass::Custom { name }) => name.as_ref() == "global",
+        Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
+            name.as_ref() == "global"
+        }
+        _ => false,
     })
 }
 

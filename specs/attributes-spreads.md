@@ -1,9 +1,10 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 13/18 use cases (added `attribute_invalid_name` and `attribute_invalid_event_handler` in analyze)
-- **Missing**: 5 remaining — `attribute_duplicate` (parser layer), `attribute_unquoted_sequence` (requires parser quoted-tracking), `attribute_quoted` (component-specific, needs visit_component), form-element validation, event/binding/A11y diagnostics
-- **Next**: `attribute_duplicate` (parser layer — `crates/svelte_parser/src/scanner/mod.rs` `attributes()` loop, mirrors reference `phases/1-parse/state/element.js:250`) or `attribute_quoted`/`attribute_unquoted_sequence` (need to investigate quoted-tracking in ConcatenationAttribute)
+- **Working**: 17/18 use cases
+- **Added this session**: `attribute_duplicate` (parser layer, `attr_convert.rs`), `attribute_quoted` (analyze, `template_validation.rs` — component + custom elements, runes mode), `slot_attribute_invalid` (analyze, value-not-static check when parent is ComponentNode), `textarea_invalid_content` (analyze, textarea with both `value` attr and children)
+- **Missing**: 1 remaining — `attribute_unquoted_sequence` (requires scanner to parse unquoted concatenation values; our scanner captures `foo=bar{expr}` as a plain string and never produces `ConcatenationAttribute` for unquoted input — significant parser work needed)
+- **Next**: form-element validation, event/binding/A11y diagnostics (tracked as separate unchecked items below)
 - Last updated: 2026-04-04
 
 ## Source
@@ -51,13 +52,13 @@
   Added during this audit: `spread_style_directive`
 - `[x]` Regular-element `autofocus` lowers through `$.autofocus(...)`
   Added during this audit: `element_autofocus`
-- `[~]` Analyze-side attribute validation/warnings — partially implemented
+- `[x]` Analyze-side attribute validation/warnings — implemented
   - `[x]` `attribute_invalid_name` — error for names starting with digit/dash/dot or containing illegal chars
   - `[x]` `attribute_invalid_event_handler` — error for `on*` attrs with string/concatenation values
-  - `[ ]` `attribute_duplicate` — parser layer (reference: `phases/1-parse/state/element.js:250`)
-  - `[ ]` `attribute_unquoted_sequence` — requires parser to record quoted/unquoted delimiter
-  - `[ ]` `attribute_quoted` — warning for single-expr on component; needs `visit_component`
-  - `[ ]` `slot_attribute_invalid` / `slot_attribute_invalid_placement` — partial (placement done, invalid-value not yet)
+  - `[x]` `attribute_duplicate` — parser layer (`attr_convert.rs`); HTMLAttribute + BindDirective share key space; `this` excluded
+  - `[ ]` `attribute_unquoted_sequence` — requires scanner to produce `ConcatenationAttribute` from unquoted input; not currently feasible
+  - `[x]` `attribute_quoted` — warning for quoted single-expr on component or custom element (runes mode); `visit_component_node` added
+  - `[x]` `slot_attribute_invalid` — placement done; value check (non-StringAttribute when parent is ComponentNode) done
 - `[ ]` Form-element validation and remaining special handling are incomplete
   Missing today: `textarea_invalid_content`, customizable `select` / `optgroup` / `selectedcontent` paths, and the remaining bind-sensitive attribute validations tracked in `specs/bind-directives.md`
 
@@ -91,10 +92,10 @@
 
 ## Tasks
 
-1. `[ ]` Port analyze-owned generic attribute validation and warnings
-   Files: `crates/svelte_analyze/src/validate/mod.rs` plus new template validation modules
-   Scope: duplicate/invalid/unquoted/quoted/slot-placement validation and warnings
-   Effort: needs infrastructure
+1. `[x]` Port analyze-owned generic attribute validation and warnings
+   Files: `crates/svelte_parser/src/attr_convert.rs`, `crates/svelte_analyze/src/passes/template_validation.rs`
+   Scope: duplicate/invalid/quoted/slot-placement/textarea validation — done; `attribute_unquoted_sequence` deferred (scanner limitation)
+   Effort: done
 2. `[x]` Align spread + `class` / `style` composition with reference `$.attribute_effect(...)`
    Files: `crates/svelte_codegen_client/src/template/attributes.rs`, `crates/svelte_codegen_client/src/template/element.rs`, `crates/svelte_codegen_client/src/template/svelte_element.rs`
    Effort: moderate
