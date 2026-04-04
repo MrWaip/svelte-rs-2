@@ -1298,6 +1298,13 @@ fn assert_has_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     );
 }
 
+fn assert_no_error(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == code),
+        "unexpected error '{code}': {diags:?}"
+    );
+}
+
 fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
     assert!(
         diags
@@ -1999,10 +2006,50 @@ function setup() {
 }
 
 #[test]
-#[ignore = "missing: const_tag_invalid_placement template validation"]
 fn validate_const_tag_invalid_placement_root() {
     let diags = analyze_with_diags("{@const doubled = count * 2}");
     assert_has_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+fn validate_const_tag_invalid_placement_inside_element() {
+    // {@const} directly inside a regular element (without slot attr) is invalid.
+    let diags = analyze_with_diags("<div>{@const x = 1}</div>");
+    assert_has_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+fn validate_const_tag_valid_placement_each() {
+    let diags = analyze_with_diags("{#each items as item}{@const x = item.value}<p>{x}</p>{/each}");
+    assert_no_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+fn validate_const_tag_valid_placement_if() {
+    let diags = analyze_with_diags("{#if cond}{@const x = 1}<p>{x}</p>{/if}");
+    assert_no_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+fn validate_const_tag_valid_placement_key() {
+    let diags = analyze_with_diags("{#key val}{@const x = 1}<p>{x}</p>{/key}");
+    assert_no_error(&diags, "const_tag_invalid_placement");
+}
+
+#[test]
+fn validate_const_tag_invalid_expression() {
+    // `{@const a = b, c = d}` has an unparenthesized sequence expression as init.
+    // OXC parses `const a = b, c = d;` as two declarators, triggering the error.
+    let diags = analyze_with_diags("{#each items as item}{@const a = item.x, b = item.y}{/each}");
+    assert_has_error(&diags, "const_tag_invalid_expression");
+}
+
+#[test]
+fn validate_const_tag_parenthesized_sequence_ok() {
+    // `{@const a = (b, c)}` is valid — the sequence is inside parens.
+    let diags =
+        analyze_with_diags("{#each items as item}{@const a = (item.x, item.y)}{/each}");
+    assert_no_error(&diags, "const_tag_invalid_expression");
 }
 
 #[test]

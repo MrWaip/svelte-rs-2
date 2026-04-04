@@ -12,9 +12,9 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
-    Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument, SvelteElement,
-    SvelteWindow, Text,
+    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
+    SvelteElement, SvelteWindow, Text,
 };
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -23,7 +23,7 @@ use svelte_span::Span;
 use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
 use crate::types::data::ExpressionKind;
-use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
+use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 
 const EVENT_MODIFIERS: &[&str] = &[
     "preventDefault",
@@ -98,6 +98,49 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_snippet_rest_params(block, ctx);
         validate_snippet_shadowing_prop(block, ctx);
         validate_snippet_children_conflict(block, ctx);
+    }
+
+    fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
+        // const_tag_invalid_expression: an unparenthesized sequence expression in the init
+        // (e.g. `{@const a = b, c = d}`) produces two declarators when OXC parses the
+        // wrapped `const a = b, c = d;` form. Parenthesised sequences are fine.
+        if let Some(parsed) = ctx.parsed() {
+            if let Some(handle) = parsed.stmt_handle(tag.expression_span.start) {
+                if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) =
+                    parsed.stmt(handle)
+                {
+                    if decl.declarations.len() > 1 {
+                        ctx.warnings_mut().push(Diagnostic::error(
+                            DiagnosticKind::ConstTagInvalidExpression,
+                            tag.span,
+                        ));
+                    }
+                }
+            }
+        }
+
+        // const_tag_invalid_placement: {@const} must be a direct child of an allowed block.
+        // In our walker ctx.parent() is the block that pushed itself before walking the
+        // fragment containing this tag — equivalent to grand_parent in the reference compiler.
+        let is_valid_parent = ctx.parent().is_some_and(|p| {
+            matches!(
+                p.kind,
+                ParentKind::IfBlock
+                    | ParentKind::EachBlock
+                    | ParentKind::SnippetBlock
+                    | ParentKind::ComponentNode
+                    | ParentKind::AwaitBlock
+                    | ParentKind::SvelteBoundary
+                    | ParentKind::KeyBlock
+            ) || element_has_slot_attr(p, ctx)
+        });
+
+        if !is_valid_parent {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::ConstTagInvalidPlacement,
+                tag.span,
+            ));
+        }
     }
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
@@ -991,6 +1034,24 @@ fn check_empty_fragment(fragment: &Fragment, ctx: &mut VisitContext<'_>) {
             }
         }
     }
+}
+
+/// Returns true when `parent` is a `RegularElement` or `SvelteElement` with a `slot="..."` attr.
+///
+/// Used by const_tag_invalid_placement to allow `{@const}` inside slotted elements,
+/// matching the reference compiler's allowed-parent matrix.
+fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_>) -> bool {
+    if !matches!(parent.kind, ParentKind::Element | ParentKind::SvelteElement) {
+        return false;
+    }
+    let attrs = match ctx.store.get(parent.id) {
+        Node::Element(el) => &el.attributes,
+        Node::SvelteElement(el) => &el.attributes,
+        _ => return false,
+    };
+    attrs
+        .iter()
+        .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"))
 }
 
 /// Trivial nodes are invisible non-content nodes that don't count as "children"
