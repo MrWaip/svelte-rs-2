@@ -103,13 +103,21 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 ## Compiler Infrastructure
 
 - [ ] Module compilation (`.svelte.js` / `.svelte.ts`)
-- [ ] `<script module>` compilation inside `.svelte` components (analyze + codegen separate from instance script)
 - [ ] WASM target
 - [ ] Custom elements
 - [ ] `discloseVersion` option
 - [ ] `preserveComments` option
 - [ ] Source maps (JS + CSS)
 - [ ] HMR
+
+## `<script module>` in Components
+
+Parser infrastructure is in place (`Component.instance_script` / `Component.module_script`, `ParserResult.module_program`). Missing: analyze and codegen for module script content.
+
+- [ ] Analyze pass: scoping, rune detection, exports collection for module script body
+- [ ] Codegen: emit module script body as module-level output (separate from component function)
+- [ ] `export_undefined` diagnostic for unresolved module export specifiers
+- [ ] Interaction with instance script: module-scope bindings visible to instance, not vice versa
 
 ## Legacy Svelte 4
 
