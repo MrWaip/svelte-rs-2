@@ -96,7 +96,13 @@ fn walk(
                 }
             }
             Node::Element(el) => walk(&el.fragment, scoping, current_scope, parsed, store),
-            Node::ComponentNode(cn) => walk(&cn.fragment, scoping, current_scope, parsed, store),
+            Node::ComponentNode(cn) => {
+                // Children share the parent scope, but we register it so that
+                // mark_const_tag_bindings can find the scope via FragmentKey::ComponentNode
+                // and correctly mark {@const} bindings as RuneKind::Derived.
+                scoping.set_fragment_scope(FragmentKey::ComponentNode(cn.id), current_scope);
+                walk(&cn.fragment, scoping, current_scope, parsed, store);
+            }
             Node::ConstTag(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)

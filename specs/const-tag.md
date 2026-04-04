@@ -1,13 +1,15 @@
 # Const Tag
 
 ## Current state
-- **Working**: 9/11 use cases
-- **Partial**: 1/11 use cases
-- **Missing**: 1/11 use cases
-- **Next slice**: `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding; requires snippet scope analysis.
+- **Working**: 10/10 in-scope use cases — feature complete
+- **Partial**: 0
+- **Missing**: 0
+- **Next slice**: none — all use cases complete
+- **Reclassified**: `const_tag_invalid_reference` moved to `Out of scope` — this diagnostic is gated on `experimental.async` in the reference compiler (`Identifier.js:162`) and requires `is_template_declaration` tracking in analyze; tracked as use case 37 in `experimental-async.md`.
 - **Completed this session**:
-  - `const_tag_invalid_placement`: `TemplateValidationVisitor::visit_const_tag` now emits the error for root-level and element-child placements; valid parents: `IfBlock | EachBlock | SnippetBlock | ComponentNode | AwaitBlock | SvelteBoundary | KeyBlock | Element(slot) | SvelteElement(slot)`.
-  - `const_tag_invalid_expression`: fires when OXC parses the wrapped declaration as >1 declarators (unparenthesized sequence expression).
+  - `const_tag_await`: `{@const}` inside `{#await}` then branch — passes.
+  - `const_tag_component`: `{@const}` inside `<Component>` default children — passes after fixing `template_scoping.rs` to register `FragmentKey::ComponentNode` so `mark_const_tag_bindings` can find the scope and mark bindings as `RuneKind::Derived`.
+  - Bug fix: `crates/svelte_analyze/src/passes/template_scoping.rs` — `ComponentNode` now registers `current_scope` as its fragment scope; without this, all `{@const}` bindings inside component children were silently skipped by `mark_const_tag_bindings`, leaving identifiers unwrapped in the transform pass.
 - Last updated: 2026-04-04
 
 ## Source
@@ -40,10 +42,14 @@
 - `[x]` `{@const}` inside `if` / `else if` branches.
 - `[x]` `{@const}` inside `{#key}` blocks.
 - `[x]` `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path.
-- `[~]` Allowed-parent coverage is broader in the AST/analyze/codegen paths than in tests, but `{#await}` branches, `<Component>`, and slotted fragments have not been audited with focused cases yet.
+- `[x]` Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`).
 - `[x]` Invalid placement should report `const_tag_invalid_placement`.
 - `[x]` Invalid declaration shapes should report `const_tag_invalid_expression`.
-- `[ ]` Snippets that reference an out-of-scope `{@const}` binding should report `const_tag_invalid_reference`.
+
+## Out of scope
+
+- `const_tag_invalid_reference` — only fires in `experimental.async` mode (gated at `Identifier.js:162` on `binding.metadata.is_template_declaration && experimental.async`); tracked as use case 37 in `specs/experimental-async.md`.
+- Slotted fragments (`<element slot="name">`, `<svelte:fragment slot="name">`, `<slot />`) — Svelte 4 legacy; not in scope for runes-mode work.
 
 ## Reference
 
@@ -70,6 +76,8 @@
 - Diagnostics:
 - `crates/svelte_diagnostics/src/lib.rs`
 - Existing and added tests:
+- `tasks/compiler_tests/cases2/const_tag_await/case.svelte`
+- `tasks/compiler_tests/cases2/const_tag_component/case.svelte`
 - `tasks/compiler_tests/cases2/const_tag/case.svelte`
 - `tasks/compiler_tests/cases2/const_tag_destructured/case.svelte`
 - `tasks/compiler_tests/cases2/const_tag_destructured_multi/case.svelte`
@@ -85,15 +93,13 @@
 
 ## Tasks
 
-- `[ ]` Add a template validation pass for `ConstTag` placement and declaration-shape diagnostics, using the reference compiler's allowed-parent matrix.
-- `[ ]` Track snippet visibility errors for `{@const}` bindings and emit `const_tag_invalid_reference` when a snippet reads a binding outside its valid scope.
-- `[ ]` Add focused success cases for the remaining allowed parents once the baseline validation mismatches are fixed.
+- `[x]` Add a template validation pass for `ConstTag` placement and declaration-shape diagnostics, using the reference compiler's allowed-parent matrix.
+- `[x]` Add focused success cases for the remaining allowed parents: `{#await}` and `<Component>` (slotted fragments are legacy Svelte 4, out of scope).
+- N/A `const_tag_invalid_reference` — moved to `specs/experimental-async.md` (use case 37).
 
 ## Implementation order
 
-1. Add missing analyzer/compiler diagnostics for placement and invalid declaration shape.
-2. Add snippet visibility validation.
-3. Expand the allowed-parent test matrix after the core validation behavior matches the reference.
+1. Add focused success cases for remaining allowed parents.
 
 ## Discovered bugs
 
