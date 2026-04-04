@@ -24,7 +24,7 @@ fn assert_node(c: &Component, index: usize, expected: &str) {
 }
 
 fn assert_script(c: &Component, expected: &str) {
-    let script = c.script.as_ref().expect("expected script");
+    let script = c.instance_script.as_ref().expect("expected instance script");
     assert_eq!(c.source_text(script.content_span), expected);
 }
 
@@ -99,7 +99,7 @@ fn script_tag() {
 #[test]
 fn script_tag_lang_ts() {
     let c = parse(r#"<script lang="ts">const i: number = 10;</script>"#);
-    let script = c.script.as_ref().expect("expected script");
+    let script = c.instance_script.as_ref().expect("expected instance script");
     assert_eq!(script.language, ScriptLanguage::TypeScript);
 }
 
@@ -147,21 +147,21 @@ fn multiple_roots() {
 #[test]
 fn script_context_default() {
     let c = parse("<script>let x = 1;</script>");
-    let script = c.script.as_ref().expect("expected script");
+    let script = c.instance_script.as_ref().expect("expected instance script");
     assert_eq!(script.context, ScriptContext::Default);
 }
 
 #[test]
 fn script_context_module_attribute() {
     let c = parse("<script module>let x = 1;</script>");
-    let script = c.script.as_ref().expect("expected script");
+    let script = c.module_script.as_ref().expect("expected module script");
     assert_eq!(script.context, ScriptContext::Module);
 }
 
 #[test]
 fn script_context_module_context_attribute() {
     let c = parse(r#"<script context="module">let x = 1;</script>"#);
-    let script = c.script.as_ref().expect("expected script");
+    let script = c.module_script.as_ref().expect("expected module script");
     assert_eq!(script.context, ScriptContext::Module);
 }
 
@@ -504,15 +504,45 @@ fn recovery_close_tag_no_matching_open() {
 }
 
 #[test]
+fn dual_scripts_instance_and_module() {
+    let c = parse("<script module>export let x = 1;</script><script>let y = 2;</script>");
+    assert!(c.module_script.is_some());
+    assert!(c.instance_script.is_some());
+    let ms = c.module_script.as_ref().unwrap();
+    assert_eq!(ms.context, ScriptContext::Module);
+    let is_ = c.instance_script.as_ref().unwrap();
+    assert_eq!(is_.context, ScriptContext::Default);
+}
+
+#[test]
+fn dual_scripts_module_then_instance() {
+    // Order does not matter — module goes to module_script, instance to instance_script.
+    let c = parse("<script>let a = 1;</script><script module>export let b = 2;</script>");
+    assert!(c.instance_script.is_some());
+    assert!(c.module_script.is_some());
+}
+
+#[test]
 fn recovery_duplicate_script_continues() {
     let (c, diags) = parse_with_diagnostics(
         "<script>let a = 1;</script><script>let b = 2;</script><div>ok</div>",
     );
     assert!(!diags.is_empty());
-    // First script is kept, second is skipped, div is parsed
-    assert!(c.script.is_some());
+    // First instance script is kept, second is skipped, div is parsed
+    assert!(c.instance_script.is_some());
     assert_eq!(c.fragment.nodes.len(), 1);
     assert!(c.store.get(c.fragment.nodes[0]).is_element());
+}
+
+#[test]
+fn recovery_duplicate_module_script_continues() {
+    let (c, diags) = parse_with_diagnostics(
+        "<script module>let a = 1;</script><script module>let b = 2;</script><div>ok</div>",
+    );
+    assert!(!diags.is_empty());
+    assert!(c.module_script.is_some());
+    assert!(c.instance_script.is_none());
+    assert_eq!(c.fragment.nodes.len(), 1);
 }
 
 #[test]

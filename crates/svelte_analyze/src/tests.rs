@@ -2288,6 +2288,38 @@ fn validate_snippet_conflict() {
 }
 
 #[test]
+fn validate_snippet_invalid_export() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+    export { greeting };
+</script>
+
+<script>
+    let message = 'hello';
+</script>
+
+{#snippet greeting(name)}
+    <p>{message} {name}!</p>
+{/snippet}"#,
+    );
+    assert_has_error(&diags, "snippet_invalid_export");
+}
+
+#[test]
+fn validate_snippet_invalid_export_no_false_positive() {
+    // Exporting a non-snippet name from module script is not a snippet_invalid_export.
+    let diags = analyze_with_diags(
+        r#"<script module>
+    export const PI = 3.14;
+</script>"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.kind.code() == "snippet_invalid_export"),
+        "should not fire snippet_invalid_export for a non-snippet export"
+    );
+}
+
+#[test]
 fn validate_each_item_invalid_assignment_nested_object_destructure() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]); let value = { nested: { current: 1 } };</script>

@@ -20,11 +20,12 @@ pub(crate) fn parse_js<'a>(
     diags: &mut Vec<Diagnostic>,
 ) {
     let typescript = component
-        .script
+        .instance_script
         .as_ref()
+        .or(component.module_script.as_ref())
         .is_some_and(|s| matches!(s.language, ScriptLanguage::TypeScript));
 
-    if let Some(script) = &component.script {
+    if let Some(script) = &component.instance_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
         match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
@@ -35,6 +36,18 @@ pub(crate) fn parse_js<'a>(
             Err(errs) => diags.extend(errs),
         }
         result.typescript = typescript;
+    }
+
+    if let Some(script) = &component.module_script {
+        let source = component.source_text(script.content_span);
+        let arena_source: &'a str = alloc.alloc_str(source);
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, typescript) {
+            Ok(program) => {
+                result.module_program = Some(program);
+                result.module_script_content_span = Some(script.content_span);
+            }
+            Err(errs) => diags.extend(errs),
+        }
     }
 
     walk_fragment(
