@@ -1,9 +1,9 @@
 # $host
 
 ## Current state
-- **Working**: 4/5 use cases
-- **Missing**: 1 (module script placement check)
-- **Next**: add rune validation pass for module script
+- **Working**: 4/4 use cases
+- **Missing**: 0
+- **Next**: feature complete for current scope
 - Last updated: 2026-04-04
 
 ## Source
@@ -30,8 +30,6 @@
 - [x] Reject `$host()` outside custom element instance scripts with `host_invalid_placement`.
 - [x] `$host()` coexists with `$props()` in custom elements — rest props exclude `$$host`.
   Evidence: `tasks/compiler_tests/cases2/host_props_rest`
-- [ ] Reject `$host()` inside `<script module>` with `host_invalid_placement`.
-  Note: `runes::validate` currently only runs on the instance script; module script needs a separate pass.
 
 ## Reference
 
