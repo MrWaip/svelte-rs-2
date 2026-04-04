@@ -6,44 +6,52 @@
 //! - `mark_nested_runes` — non-root runes found via OXC Visit
 
 use oxc_ast_visit::Visit;
+use rustc_hash::FxHashMap;
 
 use crate::scope::{ComponentScoping, ScopeId, SymbolId};
 use crate::types::data::AnalysisData;
-use crate::types::script::{DeclarationKind, RuneKind};
+use crate::types::script::{DeclarationInfo, DeclarationKind, RuneKind};
 
 /// Mark runes declared at the root scope from ScriptInfo.
 pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
     let Some(script_info) = &data.script else {
         return;
     };
-    let root = data.scoping.root_scope_id();
-    for decl in &script_info.declarations {
+    mark_root_script_runes(
+        &mut data.scoping,
+        &script_info.declarations,
+        &data.proxy_state_inits,
+    );
+}
+
+pub(crate) fn mark_root_script_runes(
+    scoping: &mut ComponentScoping,
+    declarations: &[DeclarationInfo],
+    proxy_state_inits: &FxHashMap<compact_str::CompactString, bool>,
+) {
+    let root = scoping.root_scope_id();
+    for decl in declarations {
         let Some(rune_kind) = decl.is_rune else {
             continue;
         };
-        let Some(sym_id) = data.scoping.find_binding(root, &decl.name) else {
+        let Some(sym_id) = scoping.find_binding(root, &decl.name) else {
             continue;
         };
-        let is_proxy = data
-            .proxy_state_inits
-            .get(&decl.name)
-            .copied()
-            .unwrap_or(false);
-        data.scoping
-            .mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
+        let is_proxy = proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
+        scoping.mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
         if decl.kind == DeclarationKind::Var
             && matches!(rune_kind, RuneKind::State | RuneKind::StateRaw)
         {
-            data.scoping.mark_var_state(sym_id);
+            scoping.mark_var_state(sym_id);
         }
         if rune_kind.is_derived() && !decl.rune_init_refs.is_empty() {
             let deps: Vec<SymbolId> = decl
                 .rune_init_refs
                 .iter()
-                .filter_map(|name| data.scoping.find_binding(root, name))
+                .filter_map(|name| scoping.find_binding(root, name))
                 .collect();
             if !deps.is_empty() {
-                data.scoping.set_derived_deps(sym_id, deps);
+                scoping.set_derived_deps(sym_id, deps);
             }
         }
     }

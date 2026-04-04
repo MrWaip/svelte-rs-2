@@ -794,6 +794,106 @@ fn rune_kind_state_eager() {
     assert_rune_kind(&data, "count", RuneKind::StateEager);
 }
 
+#[test]
+fn module_rune_kinds_and_cross_script_refs() {
+    let (component, data) = analyze_source(
+        r#"<script module>
+    let shared = $state(0);
+    let doubled = $derived(shared * 2);
+</script>
+
+<script>
+    function increment() {
+        shared++;
+    }
+</script>
+
+<button>{doubled}</button>"#,
+    );
+
+    assert_rune_kind(&data, "shared", RuneKind::State);
+    assert_rune_kind(&data, "doubled", RuneKind::Derived);
+    assert_rune_is_mutated(&data, "shared");
+
+    let expr_id = find_expr_tag(&component.fragment, &component, "doubled")
+        .expect("expected template expression for doubled");
+    let root = data.scoping.root_scope_id();
+    let doubled_sym = data
+        .scoping
+        .find_binding(root, "doubled")
+        .expect("expected doubled binding");
+    let expr = data.expression(expr_id).expect("expected expression info");
+    assert!(
+        expr.ref_symbols.contains(&doubled_sym),
+        "template expression should resolve to the module-scoped doubled binding"
+    );
+}
+
+#[test]
+fn module_imports_are_visible_from_instance_scope() {
+    use oxc_ast_visit::Visit;
+
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"<script module>
+    import { onMount as shared } from 'svelte';
+</script>
+
+<script>
+    const alias = shared;
+</script>
+
+<button>{shared}</button>"#;
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
+    assert!(parse_diags.is_empty());
+
+    let (data, parsed, diags) = analyze(&component, js_result);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let root = data.scoping.root_scope_id();
+    let shared_sym = data
+        .scoping
+        .find_binding(root, "shared")
+        .expect("expected module import binding");
+    assert!(
+        data.scoping.is_import(shared_sym),
+        "expected cross-script binding to preserve import flags"
+    );
+
+    struct RefFinder<'n> {
+        target: &'n str,
+        ref_id: Option<oxc_semantic::ReferenceId>,
+    }
+
+    impl<'a> Visit<'a> for RefFinder<'_> {
+        fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+            if ident.name == self.target {
+                self.ref_id = ident.reference_id.get();
+            }
+        }
+    }
+
+    let instance_program = parsed.program.as_ref().expect("expected instance program");
+    let mut finder = RefFinder {
+        target: "shared",
+        ref_id: None,
+    };
+    finder.visit_program(instance_program);
+    let ref_id = finder.ref_id.expect("expected instance reference to shared");
+    assert_eq!(
+        data.scoping.get_reference(ref_id).symbol_id(),
+        Some(shared_sym),
+        "instance-script reference should resolve through the module parent scope"
+    );
+
+    let expr_id = find_expr_tag(&component.fragment, &component, "shared")
+        .expect("expected template expression for shared");
+    let expr = data.expression(expr_id).expect("expected expression info");
+    assert!(
+        expr.ref_symbols.contains(&shared_sym),
+        "template expression should resolve to the module import binding"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Rune mutation tests
 // ---------------------------------------------------------------------------

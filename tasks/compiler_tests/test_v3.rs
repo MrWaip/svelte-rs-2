@@ -1153,7 +1153,6 @@ fn script_module_empty() {
 }
 
 #[rstest]
-#[ignore = "missing: module-level $state/$derived rune transforms (codegen)"]
 fn script_module_runes() {
     assert_compiler("script_module_runes");
 }

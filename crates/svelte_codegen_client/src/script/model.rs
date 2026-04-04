@@ -1,5 +1,4 @@
 use oxc_ast::ast::Expression;
-use oxc_semantic::Scoping;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use svelte_analyze::{ComponentScoping, IgnoreData, PropsAnalysis, RuneKind};
@@ -79,7 +78,6 @@ pub(super) struct ClassStateInfo {
 pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) b: &'b Builder<'a>,
     pub(super) component_scoping: &'b ComponentScoping,
-    pub(super) scoping: Scoping,
     pub(super) props_gen: Option<PropsGenInfo>,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
@@ -129,8 +127,10 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         &self,
         id: &oxc_ast::ast::IdentifierReference<'a>,
     ) -> Option<(RuneKind, bool)> {
-        let ref_id = id.reference_id.get()?;
-        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
+        let sym_id = id
+            .reference_id
+            .get()
+            .and_then(|ref_id| self.component_scoping.get_reference(ref_id).symbol_id())?;
         let kind = self.component_scoping.rune_kind(sym_id)?;
         Some((kind, self.component_scoping.is_mutated(sym_id)))
     }
@@ -140,8 +140,9 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         id: &oxc_ast::ast::IdentifierReference<'a>,
     ) -> Option<PropKind> {
         let ref_id = id.reference_id.get()?;
-        let sym_id = self.scoping.get_reference(ref_id).symbol_id()?;
-        if self.scoping.symbol_scope_id(sym_id) != self.scoping.root_scope_id() {
+        let sym_id = self.component_scoping.get_reference(ref_id).symbol_id()?;
+        if self.component_scoping.symbol_scope_id(sym_id) != self.component_scoping.root_scope_id()
+        {
             return None;
         }
         if self.component_scoping.is_prop_source(sym_id) {
@@ -157,7 +158,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         let Some(ref_id) = id.reference_id.get() else {
             return false;
         };
-        let Some(sym_id) = self.scoping.get_reference(ref_id).symbol_id() else {
+        let Some(sym_id) = self.component_scoping.get_reference(ref_id).symbol_id() else {
             return false;
         };
         self.component_scoping.is_rest_prop(sym_id)

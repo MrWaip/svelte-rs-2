@@ -59,9 +59,17 @@ pub fn generate<'a>(
     let mut module_body: Vec<Statement<'_>> = Vec::new();
     if let Some(module_script) = component.module_script.as_ref() {
         let module_source = component.source_text(module_script.content_span);
-        let is_ts = module_script.language == svelte_ast::ScriptLanguage::TypeScript;
-        let mut module_output =
-            script::transform_component_module_script(alloc, module_source, is_ts);
+        let mut module_output = if let Some(program) = ctx.state.parsed.module_program.take() {
+            script::transform_component_module_program(
+                alloc,
+                program,
+                &analysis.scoping,
+                Some(analysis.script_rune_call_kinds()),
+            )
+        } else {
+            let is_ts = module_script.language == svelte_ast::ScriptLanguage::TypeScript;
+            script::transform_component_module_script(alloc, module_source, is_ts)
+        };
 
         // Module script comments need to be preserved in the final top-level program even when
         // there is no instance script to carry comment/source metadata.

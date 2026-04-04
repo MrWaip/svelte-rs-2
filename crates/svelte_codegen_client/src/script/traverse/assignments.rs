@@ -64,7 +64,7 @@ impl<'a> ScriptTransformer<'_, 'a> {
                     let is_var_state = id
                         .reference_id
                         .get()
-                        .and_then(|r| self.scoping.get_reference(r).symbol_id())
+                        .and_then(|r| self.component_scoping.get_reference(r).symbol_id())
                         .is_some_and(|s| self.component_scoping.is_var_declared_state(s));
                     let right = self.b.move_expr(&mut assign.right);
 
