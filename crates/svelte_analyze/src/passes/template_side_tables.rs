@@ -16,7 +16,10 @@ use oxc_ast::ast::{
     VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
-use svelte_ast::{Attribute, ComponentNode, ConstTag, EachBlock, Element, Node, SnippetBlock};
+use svelte_ast::{
+    Attribute, ComponentNode, ConstTag, EachBlock, Element, Node, SnippetBlock, SvelteBody,
+    SvelteDocument, SvelteElement, SvelteBoundary, SvelteWindow,
+};
 
 use crate::scope::ComponentScoping;
 use crate::types::data::{AttrIndex, FragmentKey, StmtHandle};
@@ -266,6 +269,41 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         {
             ctx.data.element_flags.has_spread.insert(cn.id);
         }
+    }
+
+    fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+    }
+
+    fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+    }
+
+    fn visit_svelte_document(&mut self, el: &SvelteDocument, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+    }
+
+    fn visit_svelte_body(&mut self, el: &SvelteBody, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+    }
+
+    fn visit_svelte_boundary(&mut self, el: &SvelteBoundary, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
     }
 }
 

@@ -13,8 +13,7 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteBody, SvelteDocument,
-    SvelteElement, SvelteWindow, Text,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
 };
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -39,6 +38,7 @@ const EVENT_MODIFIERS: &[&str] = &[
 ];
 
 struct BindParentInfo {
+    id: svelte_ast::NodeId,
     name: String,
     attrs: Vec<Attribute>,
 }
@@ -588,24 +588,29 @@ fn current_bind_parent(ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
     let parent = ctx.parent()?;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
+            id: el.id,
             name: el.name.clone(),
             attrs: el.attributes.clone(),
         }),
         Node::SvelteElement(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:element".to_string(),
             attrs: el.attributes.clone(),
         }),
-        Node::SvelteWindow(SvelteWindow { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteWindow(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:window".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
-        Node::SvelteDocument(SvelteDocument { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteDocument(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:document".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
-        Node::SvelteBody(SvelteBody { attributes, .. }) => Some(BindParentInfo {
+        Node::SvelteBody(el) => Some(BindParentInfo {
+            id: el.id,
             name: "svelte:body".to_string(),
-            attrs: attributes.clone(),
+            attrs: el.attributes.clone(),
         }),
         _ => None,
     }
@@ -716,15 +721,20 @@ fn validate_bind_parent_specifics(
     ctx: &mut VisitContext<'_>,
 ) {
     if parent.name == "input" && dir.name != "this" {
-        validate_input_bindings(dir, &parent.attrs, ctx);
+        validate_input_bindings(dir, parent, ctx);
     }
 
     if parent.name == "select" && dir.name != "this" {
-        if let Some(multiple) = find_named_attr(&parent.attrs, "multiple") {
-            if !attr_is_text(multiple) && !matches!(multiple, Attribute::BooleanAttribute(_)) {
+        let multiple = ctx
+            .data
+            .element_flags
+            .attr_index(parent.id)
+            .and_then(|i| i.first(&parent.attrs, "multiple"));
+        if let Some(a) = multiple {
+            if !attr_is_text(a) && !matches!(a, Attribute::BooleanAttribute(_)) {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::AttributeInvalidMultiple,
-                    attr_value_span(multiple),
+                    attr_value_span(a),
                 ));
                 return;
             }
@@ -745,7 +755,12 @@ fn validate_bind_parent_specifics(
     }
 
     if matches!(dir.name.as_str(), "innerHTML" | "innerText" | "textContent") {
-        match find_named_attr(&parent.attrs, "contenteditable") {
+        let contenteditable = ctx
+            .data
+            .element_flags
+            .attr_index(parent.id)
+            .and_then(|i| i.first(&parent.attrs, "contenteditable"));
+        match contenteditable {
             None => emit_bind_error(
                 ctx,
                 dir.expression_span,
@@ -764,8 +779,17 @@ fn validate_bind_parent_specifics(
     }
 }
 
-fn validate_input_bindings(dir: &BindDirective, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
-    let Some(type_attr) = find_named_attr(attrs, "type") else {
+fn validate_input_bindings(
+    dir: &BindDirective,
+    parent: &BindParentInfo,
+    ctx: &mut VisitContext<'_>,
+) {
+    let Some(type_attr) = ctx
+        .data
+        .element_flags
+        .attr_index(parent.id)
+        .and_then(|i| i.first(&parent.attrs, "type"))
+    else {
         return;
     };
 
@@ -947,28 +971,6 @@ fn bind_targets_each_context(sym_id: crate::scope::SymbolId, ctx: &VisitContext<
         .any(|parent| ctx.data.each_body_scope(parent.id, ctx.scope) == sym_scope)
 }
 
-fn find_named_attr<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attribute> {
-    attrs.iter().find(|attr| named_attr_matches(attr, name))
-}
-
-fn named_attr_matches(attr: &Attribute, name: &str) -> bool {
-    match attr {
-        Attribute::StringAttribute(attr) => attr.name == name,
-        Attribute::ExpressionAttribute(attr) => attr.name == name,
-        Attribute::BooleanAttribute(attr) => attr.name == name,
-        Attribute::ConcatenationAttribute(attr) => attr.name == name,
-        Attribute::BindDirective(attr) => attr.name == name,
-        Attribute::Shorthand(_)
-        | Attribute::SpreadAttribute(_)
-        | Attribute::ClassDirective(_)
-        | Attribute::StyleDirective(_)
-        | Attribute::UseDirective(_)
-        | Attribute::OnDirectiveLegacy(_)
-        | Attribute::TransitionDirective(_)
-        | Attribute::AnimateDirective(_)
-        | Attribute::AttachTag(_) => false,
-    }
-}
 
 fn attr_is_text(attr: &Attribute) -> bool {
     matches!(attr, Attribute::StringAttribute(_))
@@ -1520,17 +1522,6 @@ fn el_has_attr(idx: Option<&crate::types::data::AttrIndex>, name: &str) -> bool 
     idx.is_some_and(|i| i.has(name))
 }
 
-/// Returns the static string value of a `StringAttribute` named `name`, if present.
-fn el_static_attr_value<'a>(el: &Element, name: &str, source: &'a str) -> Option<&'a str> {
-    el.attributes.iter().find_map(|a| {
-        if let Attribute::StringAttribute(sa) = a {
-            if sa.name == name {
-                return Some(sa.value_span.source_text(source));
-            }
-        }
-        None
-    })
-}
 
 fn warn_missing_attr(el: &Element, required: &[&str]) -> Diagnostic {
     let first = required[0];
@@ -1592,7 +1583,16 @@ fn check_a11y_missing_attribute(
             if el_has_attr(idx, "id") || el_has_attr(idx, "name") {
                 return None;
             }
-            if el_static_attr_value(el, "aria-disabled", source) == Some("true") {
+            if idx
+                .and_then(|i| i.first(&el.attributes, "aria-disabled"))
+                .is_some_and(|a| {
+                    if let Attribute::StringAttribute(sa) = a {
+                        sa.value_span.source_text(source) == "true"
+                    } else {
+                        false
+                    }
+                })
+            {
                 return None;
             }
             Some(warn_missing_attr(el, &["href"]))
