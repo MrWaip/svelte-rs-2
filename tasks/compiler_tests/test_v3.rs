@@ -8,6 +8,16 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions};
 
+/// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
+/// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
+fn normalize_css(s: &str) -> String {
+    s.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn case_input_and_options(case: &str) -> (String, CompileOptions) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("cases2")
@@ -58,14 +68,31 @@ fn assert_compiler(case: &str) {
         .unwrap_or_else(|| panic!("[{case}] compile produced no JS"));
 
     let dir = path.parent().unwrap();
-    let expected = read_to_string(dir.join("case-svelte.js")).unwrap();
+    let expected_js = read_to_string(dir.join("case-svelte.js")).unwrap();
 
     File::create(dir.join("case-rust.js"))
         .unwrap()
         .write_all(js.as_bytes())
         .unwrap();
 
-    assert_eq!(js, expected);
+    assert_eq!(js, expected_js, "[{case}] JS mismatch");
+
+    // Compare CSS output when a reference file exists.
+    // Normalize whitespace (indent style varies between lightningcss and JS reference).
+    let expected_css_path = dir.join("case-svelte.css");
+    if expected_css_path.exists() {
+        let expected_css = read_to_string(&expected_css_path).unwrap();
+        let actual_css = result.css.unwrap_or_default();
+        File::create(dir.join("case-rust.css"))
+            .unwrap()
+            .write_all(actual_css.as_bytes())
+            .unwrap();
+        assert_eq!(
+            normalize_css(&actual_css),
+            normalize_css(&expected_css),
+            "[{case}] CSS mismatch"
+        );
+    }
 }
 
 #[rstest]
@@ -113,7 +140,6 @@ fn push_binding_group_order() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn css_scoped_basic() {
     assert_compiler("css_scoped_basic");
 }

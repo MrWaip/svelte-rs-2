@@ -8,6 +8,8 @@ use svelte_diagnostics::Diagnostic;
 #[derive(serde::Serialize)]
 pub struct CompileResult {
     pub js: Option<String>,
+    /// Transformed (scoped) CSS text, or `None` when the component has no `<style>` block.
+    pub css: Option<String>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -18,12 +20,14 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
+    let css_stylesheet = svelte_parser::parse_css_block(&js_alloc, &component);
 
     // Skip analysis and codegen if the parser produced any errors — the AST
     // may be incomplete and downstream passes would produce misleading output.
     if diagnostics.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error) {
         return CompileResult {
             js: None,
+            css: None,
             diagnostics,
         };
     }
@@ -35,8 +39,12 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             dev: options.dev,
             warning_filter: None,
         };
-        let (analysis, mut parsed, analyze_diags) =
+        let (mut analysis, mut parsed, analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
+        if let Some(ss) = css_stylesheet {
+            svelte_analyze::analyze_css_pass(&component, ss, &mut analysis);
+        }
+        let css = analysis.css.css_output.clone();
         let mut ident_gen =
             svelte_analyze::IdentGen::with_conflicts(analysis.scoping.collect_all_symbol_names());
         let transform_data = svelte_transform::transform_component(
@@ -59,14 +67,15 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             &options.filename,
             options.experimental.async_,
         );
-        (js, analyze_diags)
+        (js, css, analyze_diags)
     }));
 
     match codegen_result {
-        Ok((js, analyze_diags)) => {
+        Ok((js, css, analyze_diags)) => {
             diagnostics.extend(analyze_diags);
             CompileResult {
                 js: Some(js),
+                css,
                 diagnostics,
             }
         }
@@ -81,6 +90,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             diagnostics.push(Diagnostic::internal_error(message));
             CompileResult {
                 js: None,
+                css: None,
                 diagnostics,
             }
         }
@@ -100,6 +110,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         let (_, diagnostics) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
         return CompileResult {
             js: None,
+            css: None,
             diagnostics,
         };
     }
@@ -114,6 +125,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     match codegen_result {
         Ok((js, diagnostics)) => CompileResult {
             js: Some(js),
+            css: None,
             diagnostics,
         },
         Err(panic_payload) => {
@@ -126,6 +138,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
             };
             CompileResult {
                 js: None,
+                css: None,
                 diagnostics: vec![Diagnostic::internal_error(message)],
             }
         }

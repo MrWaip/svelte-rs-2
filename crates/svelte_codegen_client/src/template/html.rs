@@ -57,18 +57,36 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     let has_spread = ctx.has_spread(el.id);
     let has_class_directives = ctx.has_class_directives(el.id);
     let has_class_attribute = ctx.has_class_attribute(el.id);
+    let is_scoped = ctx.is_css_scoped(el.id);
+    let css_hash = ctx.css_hash();
 
     let mut html = String::new();
     let mut import_node = el.name == "video";
     write!(html, "<{}", el.name).unwrap();
+
+    // Track whether we emitted a class attribute so we know to add one later.
+    let mut wrote_class_attr = false;
 
     // When spread attrs are present, skip all attributes from HTML template
     if !has_spread {
         for attr in &el.attributes {
             match attr {
                 Attribute::StringAttribute(a) => {
-                    // Skip class attr when class directives or class expression present — set_class handles it
-                    if a.name == "class" && (has_class_directives || has_class_attribute) {
+                    if a.name == "class" {
+                        // Skip class attr when class directives or class expression present —
+                        // set_class handles it. Scoped-hash injection for that path is a
+                        // later slice; dynamic-class + scoped is excluded for now.
+                        if has_class_directives || has_class_attribute {
+                            continue;
+                        }
+                        // Static class: bake scoped hash directly into the template.
+                        let val = ctx.query.component.source_text(a.value_span);
+                        if is_scoped {
+                            write!(html, " class=\"{val} {css_hash}\"").unwrap();
+                        } else {
+                            write!(html, " class=\"{val}\"").unwrap();
+                        }
+                        wrote_class_attr = true;
                         continue;
                     }
                     // bind:group uses __value pattern — value attr is set in JS, not template
@@ -88,6 +106,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                 }
                 _ => {}
             }
+        }
+        // No existing class attribute: inject the scoped class now.
+        if is_scoped && !wrote_class_attr {
+            write!(html, " class=\"{css_hash}\"").unwrap();
         }
     }
 

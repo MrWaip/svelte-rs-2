@@ -39,19 +39,30 @@ fn main() {
         panic!("node generate.mjs failed:\n{stderr}");
     }
 
-    let results: HashMap<String, String> =
+    let results: HashMap<String, serde_json::Value> =
         serde_json::from_slice(&output.stdout).expect("Failed to parse node output");
 
-    for (path, source) in &results {
-        let p = Path::new(path).parent().unwrap().join("case-svelte.js");
-        let mut file = File::create(&p).unwrap();
+    for (path, case) in &results {
+        let dir = Path::new(path).parent().unwrap();
 
+        // Write case-svelte.js (formatted via OXC)
+        let js_src = case["js"].as_str().expect("js field missing");
+        let js_path = dir.join("case-svelte.js");
+        let mut js_file = File::create(&js_path).unwrap();
         let allocator = Allocator::default();
-        let parser = Parser::new(&allocator, source, SourceType::default());
-        let result = parser.parse();
+        let parser = Parser::new(&allocator, js_src, SourceType::default());
+        let parsed = parser.parse();
         let codegen = Codegen::new();
-        let result = codegen.build(&result.program);
+        let result = codegen.build(&parsed.program);
+        js_file.write_all(result.code.as_bytes()).unwrap();
 
-        file.write_all(result.code.as_bytes()).unwrap();
+        // Write case-svelte.css when the component has a <style> block
+        if let Some(css) = case["css"].as_str() {
+            let css_path = dir.join("case-svelte.css");
+            File::create(&css_path)
+                .unwrap()
+                .write_all(css.as_bytes())
+                .unwrap();
+        }
     }
 }
