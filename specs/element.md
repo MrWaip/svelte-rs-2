@@ -2,9 +2,9 @@
 
 ## Current state
 - **Working**: 13/16 use cases
-- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: first 3 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`); remaining checks (missing attributes, autofocus, ARIA roles, event handler A11y) deferred to next A11y slice.
+- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: 5 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus`, `a11y_missing_attribute` for img/area/iframe/object/a); remaining (ARIA roles, event handler A11y, html[lang], input type=image) deferred.
 - **Missing**: 3 — namespace edge cases, legacy slots, CSS-scoped metadata
-- **Next**: legacy slots or remaining A11y checks
+- **Next**: ARIA role/attribute checks or remaining A11y (html[lang], missing_content, event handler pair checks)
 - Last updated: 2026-04-04
 
 ## Source
@@ -69,9 +69,13 @@
 
 - `[ ]` Legacy `<slot>` semantics and slot elements
 - `[~]` A11y warnings for regular elements
-  Implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey` (accesskey attribute), `a11y_positive_tabindex` (tabindex > 0).
-  Tests: `a11y_distracting_elements_marquee`, `a11y_distracting_elements_blink`, `a11y_accesskey_warns`, `a11y_positive_tabindex_warns`, `a11y_tabindex_zero_no_warning`, `a11y_tabindex_negative_no_warning`, `a11y_tabindex_dynamic_no_warning`.
-  Remaining: `a11y_missing_attribute` (img alt, anchor label), `a11y_autofocus` (context-sensitive), ARIA role checks, event handler A11y checks.
+  Implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions).
+  Tests: `a11y_distracting_elements_marquee`, `a11y_distracting_elements_blink`, `a11y_accesskey_warns`, `a11y_positive_tabindex_warns`, `a11y_tabindex_zero_no_warning`, `a11y_tabindex_negative_no_warning`, `a11y_tabindex_dynamic_no_warning`, `a11y_autofocus_warns`, `a11y_autofocus_on_dialog_no_warning`, `a11y_autofocus_inside_dialog_no_warning`, `a11y_missing_attribute_img_no_alt`, `a11y_missing_attribute_img_with_alt_no_warning`, `a11y_missing_attribute_img_spread_no_warning`, `a11y_missing_attribute_area_no_alt`, `a11y_missing_attribute_area_with_aria_label_no_warning`, `a11y_missing_attribute_iframe_no_title`, `a11y_missing_attribute_iframe_with_title_no_warning`, `a11y_missing_attribute_object_no_title`, `a11y_missing_attribute_object_with_aria_labelledby_no_warning`, `a11y_missing_attribute_anchor_no_href`, `a11y_missing_attribute_anchor_with_href_no_warning`, `a11y_missing_attribute_anchor_with_id_no_warning`, `a11y_missing_attribute_anchor_with_name_no_warning`, `a11y_missing_attribute_anchor_aria_disabled_no_warning`, `a11y_missing_attribute_anchor_spread_no_warning`.
+- `[ ]` A11y: `html[lang]` — root element, needs separate treatment
+- `[ ]` A11y: `input[type=image]` alt — needs static type attribute value inspection
+- `[ ]` A11y: ARIA role checks (`a11y_unknown_role`, `a11y_no_abstract_role`, `a11y_role_has_required_aria_props`, etc.)
+- `[ ]` A11y: event handler pair checks (`a11y_click_events_have_key_events`, `a11y_mouse_events_have_key_events`)
+- `[ ]` A11y: `a11y_missing_content` for headings, buttons, anchors
 - `[ ]` CSS-scoped element metadata and pruning
 
 ## Reference

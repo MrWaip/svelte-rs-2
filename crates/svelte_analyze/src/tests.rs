@@ -2989,6 +2989,121 @@ fn a11y_tabindex_dynamic_no_warning() {
     assert_no_warning(&diags, "a11y_positive_tabindex");
 }
 
+#[test]
+fn a11y_autofocus_warns() {
+    let diags = analyze_with_diags(r#"<input autofocus />"#);
+    assert_has_warning(&diags, "a11y_autofocus");
+}
+
+#[test]
+fn a11y_autofocus_on_dialog_no_warning() {
+    // autofocus is legitimate on a <dialog> element itself
+    let diags = analyze_with_diags(r#"<dialog autofocus>content</dialog>"#);
+    assert_no_warning(&diags, "a11y_autofocus");
+}
+
+#[test]
+fn a11y_autofocus_inside_dialog_no_warning() {
+    // autofocus is legitimate on elements nested inside a <dialog>
+    let diags = analyze_with_diags(r#"<dialog><input autofocus /></dialog>"#);
+    assert_no_warning(&diags, "a11y_autofocus");
+}
+
+#[test]
+fn a11y_missing_attribute_img_no_alt() {
+    let diags = analyze_with_diags(r#"<img src="cat.jpg" />"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_img_with_alt_no_warning() {
+    let diags = analyze_with_diags(r#"<img src="cat.jpg" alt="a cat" />"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_img_spread_no_warning() {
+    // spread may include alt — don't warn
+    let diags = analyze_with_diags(r#"<script>let p = $state({});</script><img {...p} />"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_area_no_alt() {
+    let diags = analyze_with_diags(r#"<map name="m"><area /></map>"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_area_with_aria_label_no_warning() {
+    let diags = analyze_with_diags(r#"<map name="m"><area aria-label="region" /></map>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_iframe_no_title() {
+    let diags = analyze_with_diags(r#"<iframe src="page.html"></iframe>"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_iframe_with_title_no_warning() {
+    let diags = analyze_with_diags(r#"<iframe src="page.html" title="page"></iframe>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_object_no_title() {
+    let diags = analyze_with_diags(r#"<object data="file.swf"></object>"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_object_with_aria_labelledby_no_warning() {
+    let diags =
+        analyze_with_diags(r#"<object data="file.swf" aria-labelledby="desc"></object>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_no_href() {
+    // <a> without href, id, name, or aria-disabled=true should warn
+    let diags = analyze_with_diags(r#"<a>link text</a>"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_with_href_no_warning() {
+    let diags = analyze_with_diags(r#"<a href="/page">link</a>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_with_id_no_warning() {
+    // <a id="..."> is a named anchor — href not required
+    let diags = analyze_with_diags(r#"<a id="anchor">anchor</a>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_with_name_no_warning() {
+    let diags = analyze_with_diags(r#"<a name="anchor">anchor</a>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_aria_disabled_no_warning() {
+    // aria-disabled="true" suppresses the href requirement
+    let diags = analyze_with_diags(r#"<a aria-disabled="true">disabled link</a>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_anchor_spread_no_warning() {
+    let diags = analyze_with_diags(r#"<script>let p = $state({});</script><a {...p}>link</a>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
 // ---------------------------------------------------------------------------
 // AwaitBlock diagnostics
 // ---------------------------------------------------------------------------
