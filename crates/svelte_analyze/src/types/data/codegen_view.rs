@@ -311,4 +311,10 @@ impl<'a> CodegenView<'a> {
     pub fn known_value(&self, name: &str) -> Option<&str> {
         self.data.known_value(name)
     }
+    pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
+        self.data.html_tag_in_svg(id)
+    }
+    pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
+        self.data.html_tag_in_mathml(id)
+    }
 }

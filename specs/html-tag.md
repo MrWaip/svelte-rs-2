@@ -1,11 +1,11 @@
 # `{@html}`
 
 ## Current state
-- **Working**: 6/9 use cases
-- **Missing**: 3 use cases
+- **Working**: 7/9 use cases
+- **Missing**: 2 use cases
 - **Unknown**: 0 use cases
-- **Next**: fix non-controlled namespace propagation for nested `svg`/`mathml`, then decide whether hydration-ignore and diagnostics work belong here or stays under diagnostics/hydration tracks
-- Last updated: 2026-04-01
+- **Next**: hydration-ignore argument (`svelte-ignore hydration_html_changed`), then diagnostics
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -28,8 +28,7 @@
 - [x] Emit async `{@html await expr}` through the async wrapper path
 - [x] Emit top-level `svg` namespace `{@html}` via `<svelte:options namespace="svg" />`
 - [x] Emit top-level `mathml` namespace `{@html}` via `<svelte:options namespace="mathml" />`
-- [~] Namespace propagation for non-controlled nested `svg` / `mathml`
-  Current code only checks component options in client codegen, so nested namespace switches are not represented on the `$.html(...)` call.
+- [x] Namespace propagation for non-controlled nested `svg` / `mathml`
 - [ ] Preserve reference behavior for non-repaired hydration mismatches / `svelte-ignore hydration_html_changed`
 
 - [ ] Runes-mode invalid-opening-tag diagnostics
@@ -64,8 +63,8 @@
 
 ## Tasks
 
-- [ ] Analyze: expose the effective runtime namespace for each `HtmlTag` in analysis data, or otherwise make current namespace available to client codegen without rediscovery.
-- [ ] Client codegen: switch `gen_html_tag` namespace flags from component-level options to the effective namespace of the tag site.
+- [x] Analyze: expose the effective runtime namespace for each `HtmlTag` in analysis data (`html_tag_in_svg` / `html_tag_in_mathml` NodeBitSets in `AnalysisData`, populated in `lower.rs`).
+- [x] Client codegen: switch `gen_html_tag` namespace flags from component-level options to the effective namespace of the tag site.
 - [ ] Client codegen: support the extra hydration-ignore argument used by the reference compiler when `hydration_html_changed` is ignored.
 - [ ] Tests: keep the existing standalone / controlled / async / root-svg coverage and add nested namespace coverage.
 - [ ] Diagnostics follow-up: decide whether `validate_opening_tag` parity belongs in this spec or in the broader diagnostics roadmap item.
@@ -79,7 +78,7 @@
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_codegen_client/src/template/html_tag.rs` derives non-controlled `svg` / `mathml` flags from component options, not from the current template namespace. This should break `{@html}` inside nested namespace transitions such as `<svg>...{@html ...}</svg>` in an otherwise HTML component.
+- FIXED: `crates/svelte_codegen_client/src/template/html_tag.rs` now reads per-node flags from `AnalysisData` instead of component-level options.
 
 ## Test cases
 

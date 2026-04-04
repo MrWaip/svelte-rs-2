@@ -23,6 +23,8 @@ pub struct AnalysisData {
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     pub(crate) render_tag_is_chain: NodeBitSet,
     pub render_tag_plans: NodeTable<RenderTagPlan>,
+    pub(crate) html_tag_in_svg: NodeBitSet,
+    pub(crate) html_tag_in_mathml: NodeBitSet,
     pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
     pub import_syms: FxHashSet<SymbolId>,
@@ -63,6 +65,8 @@ impl AnalysisData {
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
             render_tag_plans: NodeTable::new(node_count),
+            html_tag_in_svg: NodeBitSet::new(node_count),
+            html_tag_in_mathml: NodeBitSet::new(node_count),
             await_bindings: AwaitBindingData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
             import_syms: FxHashSet::default(),
@@ -81,6 +85,12 @@ impl AnalysisData {
 }
 
 impl AnalysisData {
+    pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
+        self.html_tag_in_svg.contains(&id)
+    }
+    pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
+        self.html_tag_in_mathml.contains(&id)
+    }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.blocker_data
     }
