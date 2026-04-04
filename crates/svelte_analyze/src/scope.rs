@@ -1,11 +1,8 @@
-use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::ops::{Deref, DerefMut};
 use svelte_ast::NodeId;
-use svelte_component_semantics::{
-    ComponentSemantics, OxcNodeId, Reference, ReferenceId, ScopeFlags, SymbolFlags, SymbolOwner,
-};
+use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolFlags, SymbolOwner};
 
-use crate::types::data::FragmentKey;
 use crate::types::script::RuneKind;
 
 pub use svelte_component_semantics::{ScopeId, SymbolId};
@@ -19,29 +16,47 @@ pub struct Rune {
     pub is_proxy_init: bool,
 }
 
-/// Compatibility shim over `svelte_component_semantics::ComponentSemantics`.
+/// Per-symbol classification bits stored in `ComponentSemantics::state`.
+/// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
+mod sym_class {
+    pub const PROP_SOURCE: u32 = 1 << 8;
+    pub const STORE: u32 = 1 << 9;
+    pub const GETTER: u32 = 1 << 10;
+    pub const SNIPPET_PARAM: u32 = 1 << 11;
+    pub const SNIPPET_NAME: u32 = 1 << 12;
+    pub const EACH_BLOCK_VAR: u32 = 1 << 13;
+    pub const EACH_REST: u32 = 1 << 14;
+    pub const EACH_NON_REACTIVE: u32 = 1 << 15;
+    pub const EACH_INDEX_NON_DYNAMIC: u32 = 1 << 16;
+    pub const VAR_STATE: u32 = 1 << 17;
+}
+
+/// Svelte component scoping — wraps `ComponentSemantics` with Svelte-specific
+/// classification (runes, props, stores, etc.).
 ///
-/// This keeps the existing analyze/codegen query surface while the new
-/// component-wide semantics storage becomes the single source of truth.
+/// All `ComponentSemantics` methods are available via `Deref`/`DerefMut`.
 pub struct ComponentScoping {
     semantics: ComponentSemantics,
     runes: FxHashMap<SymbolId, Rune>,
-    prop_source_syms: FxHashSet<SymbolId>,
     prop_non_source_names: FxHashMap<SymbolId, String>,
-    store_syms: FxHashSet<SymbolId>,
     known_values: FxHashMap<SymbolId, String>,
-    getter_syms: FxHashSet<SymbolId>,
-    snippet_param_syms: FxHashSet<SymbolId>,
-    snippet_name_syms: FxHashSet<SymbolId>,
-    each_block_syms: FxHashSet<SymbolId>,
-    each_rest_syms: FxHashSet<SymbolId>,
-    each_non_reactive_syms: FxHashSet<SymbolId>,
-    each_index_non_dynamic_syms: FxHashSet<SymbolId>,
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
     rest_prop_sym: Option<SymbolId>,
     rest_prop_excluded: FxHashSet<String>,
-    var_state_syms: FxHashSet<SymbolId>,
+}
+
+impl Deref for ComponentScoping {
+    type Target = ComponentSemantics;
+    fn deref(&self) -> &ComponentSemantics {
+        &self.semantics
+    }
+}
+
+impl DerefMut for ComponentScoping {
+    fn deref_mut(&mut self) -> &mut ComponentSemantics {
+        &mut self.semantics
+    }
 }
 
 impl ComponentScoping {
@@ -53,22 +68,12 @@ impl ComponentScoping {
         Self {
             semantics,
             runes: FxHashMap::default(),
-            prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
-            store_syms: FxHashSet::default(),
             known_values: FxHashMap::default(),
-            getter_syms: FxHashSet::default(),
-            snippet_param_syms: FxHashSet::default(),
-            snippet_name_syms: FxHashSet::default(),
-            each_block_syms: FxHashSet::default(),
-            each_rest_syms: FxHashSet::default(),
-            each_non_reactive_syms: FxHashSet::default(),
-            each_index_non_dynamic_syms: FxHashSet::default(),
             const_alias_tags: FxHashMap::default(),
             dynamic_sym_cache: None,
             rest_prop_sym: None,
             rest_prop_excluded: FxHashSet::default(),
-            var_state_syms: FxHashSet::default(),
         }
     }
 
@@ -84,39 +89,8 @@ impl ComponentScoping {
         &mut self.semantics
     }
 
-    // -- Scope management --
-
-    pub fn root_scope_id(&self) -> ScopeId {
-        self.semantics.root_scope_id()
-    }
-
-    pub fn add_child_scope(&mut self, parent: ScopeId) -> ScopeId {
-        self.semantics.add_child_scope(parent)
-    }
-
-    pub fn add_scope(&mut self, parent: Option<ScopeId>, flags: ScopeFlags) -> ScopeId {
-        match parent {
-            Some(parent) => self.semantics.add_scope(parent, flags),
-            None => panic!("ComponentScoping::add_scope requires a parent scope"),
-        }
-    }
-
-    pub fn module_scope_id(&self) -> Option<ScopeId> {
-        self.semantics.module_scope_id()
-    }
-
-    pub fn scope_parent_id(&self, id: ScopeId) -> Option<ScopeId> {
-        self.semantics.scope_parent_id(id)
-    }
-
-    pub fn scope_flags(&self, id: ScopeId) -> ScopeFlags {
-        self.semantics.scope_flags(id)
-    }
-
-    // -- Symbol management --
-
-    /// Synthetic binding helper used by some template side-table passes.
-    pub fn add_binding(&mut self, scope: ScopeId, name: &str) -> SymbolId {
+    /// Synthetic binding helper used by template side-table passes.
+    pub fn add_synthetic_binding(&mut self, scope: ScopeId, name: &str) -> SymbolId {
         self.semantics.add_binding(
             scope,
             name,
@@ -127,86 +101,10 @@ impl ComponentScoping {
         )
     }
 
-    pub fn find_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
-        self.semantics.find_binding(scope, name)
-    }
-
-    pub fn get_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
-        self.semantics.get_binding(scope, name)
-    }
-
-    pub fn is_mutated(&self, id: SymbolId) -> bool {
-        self.semantics.is_mutated(id)
-    }
-
-    pub fn symbol_scope_id(&self, id: SymbolId) -> ScopeId {
-        self.semantics.symbol_scope_id(id)
-    }
-
-    pub fn symbol_name(&self, id: SymbolId) -> &str {
-        self.semantics.symbol_name(id)
-    }
-
-    pub fn symbol_declaration(&self, id: SymbolId) -> OxcNodeId {
-        self.semantics.symbol_declaration(id)
-    }
-
-    pub fn symbol_flags(&self, id: SymbolId) -> SymbolFlags {
-        self.semantics.symbol_flags(id)
-    }
-
-    pub fn is_component_top_level_scope(&self, scope_id: ScopeId) -> bool {
-        self.semantics.is_component_top_level_scope(scope_id)
-    }
-
-    pub fn is_component_top_level_symbol(&self, sym_id: SymbolId) -> bool {
-        self.semantics.is_component_top_level_symbol(sym_id)
-    }
-
-    pub fn function_depth(&self, scope: ScopeId) -> usize {
-        self.semantics.function_depth(scope) as usize
-    }
-
-    pub fn is_template_reference(&self, ref_id: ReferenceId) -> bool {
-        self.semantics.is_template_reference(ref_id)
-    }
-
-    pub fn create_reference(&mut self, reference: Reference) -> ReferenceId {
-        self.semantics.create_reference(reference)
-    }
-
-    pub fn create_template_reference(&mut self, reference: Reference) -> ReferenceId {
-        self.semantics.create_template_reference(reference)
-    }
-
-    pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
-        self.semantics.add_resolved_reference(sym_id, ref_id);
-    }
-
-    pub fn get_reference(&self, ref_id: ReferenceId) -> &Reference {
-        self.semantics.get_reference(ref_id)
-    }
-
-    pub fn try_get_reference(&self, ref_id: ReferenceId) -> Option<&Reference> {
-        self.semantics.try_get_reference(ref_id)
-    }
-
-    pub fn get_reference_mut(&mut self, ref_id: ReferenceId) -> &mut Reference {
-        self.semantics.get_reference_mut(ref_id)
-    }
-
-    pub fn has_write_reference_other_than(
-        &self,
-        sym_id: SymbolId,
-        exclude_ref_id: ReferenceId,
-    ) -> bool {
+    pub fn is_import(&self, sym_id: SymbolId) -> bool {
         self.semantics
-            .get_resolved_reference_ids(sym_id)
-            .iter()
-            .copied()
-            .any(|ref_id| {
-                ref_id != exclude_ref_id && self.semantics.get_reference(ref_id).is_write()
-            })
+            .symbol_flags(sym_id)
+            .contains(SymbolFlags::Import)
     }
 
     // -- Rune tracking --
@@ -251,15 +149,171 @@ impl ComponentScoping {
         self.runes.get(&id).is_some_and(|r| r.is_proxy_init)
     }
 
+    // -- State-bit classifications --
+
     pub fn mark_var_state(&mut self, id: SymbolId) {
-        self.var_state_syms.insert(id);
+        self.semantics.set_symbol_state(id, sym_class::VAR_STATE);
     }
 
     pub fn is_var_declared_state(&self, id: SymbolId) -> bool {
-        self.var_state_syms.contains(&id)
+        self.semantics.has_symbol_state(id, sym_class::VAR_STATE)
     }
 
-    // -- Convenience: SymbolId-based dynamism check --
+    pub fn mark_prop_source(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::PROP_SOURCE);
+    }
+
+    pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::PROP_SOURCE)
+    }
+
+    pub fn mark_prop_non_source(&mut self, sym_id: SymbolId, prop_name: String) {
+        self.prop_non_source_names.insert(sym_id, prop_name);
+    }
+
+    pub fn prop_non_source_name(&self, sym_id: SymbolId) -> Option<&str> {
+        self.prop_non_source_names.get(&sym_id).map(|s| s.as_str())
+    }
+
+    pub fn mark_store(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::STORE);
+    }
+
+    pub fn is_store(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::STORE)
+    }
+
+    pub fn has_stores(&self) -> bool {
+        self.semantics.symbols_with_state(sym_class::STORE).next().is_some()
+    }
+
+    pub fn store_symbol_ids(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.semantics.symbols_with_state(sym_class::STORE)
+    }
+
+    pub fn set_known_value(&mut self, sym_id: SymbolId, value: String) {
+        self.known_values.insert(sym_id, value);
+    }
+
+    pub fn known_value_by_sym(&self, sym_id: SymbolId) -> Option<&str> {
+        self.known_values.get(&sym_id).map(|s| s.as_str())
+    }
+
+    pub fn mark_getter(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::GETTER);
+    }
+
+    pub fn is_getter(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::GETTER)
+    }
+
+    pub fn mark_snippet_param(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::SNIPPET_PARAM);
+    }
+
+    pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::SNIPPET_PARAM)
+    }
+
+    pub fn mark_snippet_name(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::SNIPPET_NAME);
+    }
+
+    pub fn is_snippet_name(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::SNIPPET_NAME)
+    }
+
+    pub fn mark_each_block_var(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR);
+    }
+
+    pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR)
+    }
+
+    pub fn mark_each_rest(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::EACH_REST);
+    }
+
+    pub fn is_each_rest(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::EACH_REST)
+    }
+
+    pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE);
+    }
+
+    pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE)
+    }
+
+    pub fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
+        self.semantics.set_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC);
+    }
+
+    pub fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
+        self.semantics.has_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC)
+    }
+
+    pub fn mark_rest_prop(&mut self, sym_id: SymbolId, excluded: FxHashSet<String>) {
+        self.rest_prop_sym = Some(sym_id);
+        self.rest_prop_excluded = excluded;
+    }
+
+    pub fn has_rest_prop(&self) -> bool {
+        self.rest_prop_sym.is_some()
+    }
+
+    pub fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
+        self.rest_prop_sym == Some(sym_id)
+    }
+
+    pub fn is_rest_prop_excluded(&self, name: &str) -> bool {
+        self.rest_prop_excluded.contains(name)
+    }
+
+    pub fn is_normal_binding(&self, sym_id: SymbolId) -> bool {
+        !self.is_rune(sym_id)
+            && !self.is_prop_source(sym_id)
+            && self.prop_non_source_name(sym_id).is_none()
+            && !self.is_getter(sym_id)
+            && !self.is_each_block_var(sym_id)
+            && !self.is_store(sym_id)
+    }
+
+    pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
+        self.const_alias_tags.insert(sym_id, tag_id);
+    }
+
+    pub fn const_alias_tag(&self, sym_id: SymbolId) -> Option<NodeId> {
+        self.const_alias_tags.get(&sym_id).copied()
+    }
+
+    // -- Convenience --
+
+    pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
+        self.semantics.find_symbol_by_name(name)
+    }
+
+    pub fn is_store_ref(&self, name: &str) -> bool {
+        self.store_base_name(name).is_some()
+    }
+
+    pub fn store_base_name<'n>(&self, name: &'n str) -> Option<&'n str> {
+        if name.starts_with('$') && name.len() > 1 {
+            let base = &name[1..];
+            let root = self.root_scope_id();
+            if self
+                .find_binding(root, base)
+                .is_some_and(|sym| self.is_store(sym))
+            {
+                return Some(base);
+            }
+        }
+        None
+    }
+
+    // -- Dynamism --
 
     pub fn is_dynamic_by_id(&self, sym_id: SymbolId) -> bool {
         if let Some(cache) = &self.dynamic_sym_cache {
@@ -267,7 +321,7 @@ impl ComponentScoping {
                 return true;
             }
             if !self.runes.contains_key(&sym_id) {
-                if self.each_index_non_dynamic_syms.contains(&sym_id) {
+                if self.is_each_index_non_dynamic(sym_id) {
                     return false;
                 }
                 return !self.is_component_top_level_symbol(sym_id);
@@ -296,7 +350,7 @@ impl ComponentScoping {
             }
             return true;
         }
-        if self.each_index_non_dynamic_syms.contains(&sym_id) {
+        if self.is_each_index_non_dynamic(sym_id) {
             return false;
         }
         !self.is_component_top_level_symbol(sym_id)
@@ -378,191 +432,5 @@ impl ComponentScoping {
         };
         memo.insert(sym_id, result);
         result
-    }
-
-    // -- SymbolId-keyed classification: write --
-
-    pub fn mark_prop_source(&mut self, sym_id: SymbolId) {
-        self.prop_source_syms.insert(sym_id);
-    }
-
-    pub fn mark_prop_non_source(&mut self, sym_id: SymbolId, prop_name: String) {
-        self.prop_non_source_names.insert(sym_id, prop_name);
-    }
-
-    pub fn mark_store(&mut self, sym_id: SymbolId) {
-        self.store_syms.insert(sym_id);
-    }
-
-    pub fn set_known_value(&mut self, sym_id: SymbolId, value: String) {
-        self.known_values.insert(sym_id, value);
-    }
-
-    pub fn mark_getter(&mut self, sym_id: SymbolId) {
-        self.getter_syms.insert(sym_id);
-    }
-
-    pub fn mark_snippet_param(&mut self, sym_id: SymbolId) {
-        self.snippet_param_syms.insert(sym_id);
-    }
-
-    pub fn mark_snippet_name(&mut self, sym_id: SymbolId) {
-        self.snippet_name_syms.insert(sym_id);
-    }
-
-    pub fn mark_each_block_var(&mut self, sym_id: SymbolId) {
-        self.each_block_syms.insert(sym_id);
-    }
-
-    pub fn mark_each_rest(&mut self, sym_id: SymbolId) {
-        self.each_rest_syms.insert(sym_id);
-    }
-
-    pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
-        self.each_non_reactive_syms.insert(sym_id);
-    }
-
-    pub fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
-        self.each_index_non_dynamic_syms.insert(sym_id);
-    }
-
-    pub fn mark_rest_prop(&mut self, sym_id: SymbolId, excluded: FxHashSet<String>) {
-        self.rest_prop_sym = Some(sym_id);
-        self.rest_prop_excluded = excluded;
-    }
-
-    // -- SymbolId-keyed classification: read --
-
-    pub fn has_rest_prop(&self) -> bool {
-        self.rest_prop_sym.is_some()
-    }
-
-    pub fn is_rest_prop(&self, sym_id: SymbolId) -> bool {
-        self.rest_prop_sym == Some(sym_id)
-    }
-
-    pub fn is_rest_prop_excluded(&self, name: &str) -> bool {
-        self.rest_prop_excluded.contains(name)
-    }
-
-    pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
-        self.prop_source_syms.contains(&sym_id)
-    }
-
-    pub fn prop_non_source_name(&self, sym_id: SymbolId) -> Option<&str> {
-        self.prop_non_source_names.get(&sym_id).map(|s| s.as_str())
-    }
-
-    pub fn is_store(&self, sym_id: SymbolId) -> bool {
-        self.store_syms.contains(&sym_id)
-    }
-
-    pub fn store_symbol_ids(&self) -> &FxHashSet<SymbolId> {
-        &self.store_syms
-    }
-
-    pub fn known_value_by_sym(&self, sym_id: SymbolId) -> Option<&str> {
-        self.known_values.get(&sym_id).map(|s| s.as_str())
-    }
-
-    pub fn is_getter(&self, sym_id: SymbolId) -> bool {
-        self.getter_syms.contains(&sym_id)
-    }
-
-    pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
-        self.snippet_param_syms.contains(&sym_id)
-    }
-
-    pub fn is_snippet_name(&self, sym_id: SymbolId) -> bool {
-        self.snippet_name_syms.contains(&sym_id)
-    }
-
-    pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
-        self.each_block_syms.contains(&sym_id)
-    }
-
-    pub fn is_each_rest(&self, sym_id: SymbolId) -> bool {
-        self.each_rest_syms.contains(&sym_id)
-    }
-
-    pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
-        self.each_non_reactive_syms.contains(&sym_id)
-    }
-
-    pub fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
-        self.each_index_non_dynamic_syms.contains(&sym_id)
-    }
-
-    pub fn is_normal_binding(&self, sym_id: SymbolId) -> bool {
-        !self.is_rune(sym_id)
-            && !self.is_prop_source(sym_id)
-            && self.prop_non_source_name(sym_id).is_none()
-            && !self.is_getter(sym_id)
-            && !self.is_each_block_var(sym_id)
-            && !self.is_store(sym_id)
-    }
-
-    pub fn fragment_scope(&self, key: &FragmentKey) -> Option<ScopeId> {
-        self.semantics.fragment_scope(key)
-    }
-
-    pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
-        self.const_alias_tags.insert(sym_id, tag_id);
-    }
-
-    pub fn const_alias_tag(&self, sym_id: SymbolId) -> Option<NodeId> {
-        self.const_alias_tags.get(&sym_id).copied()
-    }
-
-    pub fn is_expr_local(&self, sym_id: SymbolId) -> bool {
-        self.semantics.is_expr_local(sym_id)
-    }
-
-    pub(crate) fn build_template_scope_set(&mut self) {
-        self.semantics.build_template_scope_set();
-    }
-
-    pub fn is_import(&self, sym_id: SymbolId) -> bool {
-        self.semantics
-            .symbol_flags(sym_id)
-            .contains(SymbolFlags::Import)
-    }
-
-    pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
-        self.semantics.collect_import_syms()
-    }
-
-    pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
-        self.semantics.collect_all_symbol_names()
-    }
-
-    pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
-        self.semantics
-            .symbol_ids()
-            .find(|&id| self.semantics.symbol_name(id) == name)
-    }
-
-    pub fn is_store_ref(&self, name: &str) -> bool {
-        self.store_base_name(name).is_some()
-    }
-
-    pub fn store_base_name<'n>(&self, name: &'n str) -> Option<&'n str> {
-        if name.starts_with('$') && name.len() > 1 {
-            let base = &name[1..];
-            let root = self.root_scope_id();
-            if self
-                .find_binding(root, base)
-                .is_some_and(|sym| self.is_store(sym))
-            {
-                return Some(base);
-            }
-        }
-        None
-    }
-
-    pub fn root_unresolved_references(
-        &self,
-    ) -> &FxHashMap<compact_str::CompactString, Vec<ReferenceId>> {
-        self.semantics.root_unresolved_references()
     }
 }

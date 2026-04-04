@@ -138,6 +138,35 @@ impl ComponentSemantics {
         self.symbols.is_mutated(id)
     }
 
+    /// Check if a symbol has a specific state bit set.
+    pub fn has_symbol_state(&self, id: SymbolId, bit: u32) -> bool {
+        self.symbols.has_state(id, bit)
+    }
+
+    /// Set a state bit on a symbol (bitwise OR).
+    pub fn set_symbol_state(&mut self, id: SymbolId, bit: u32) {
+        self.symbols.set_state(id, bit);
+    }
+
+    /// Iterate symbols that have a given state bit set.
+    pub fn symbols_with_state(&self, bit: u32) -> impl Iterator<Item = SymbolId> + '_ {
+        self.symbols
+            .symbol_ids()
+            .filter(move |&id| self.symbols.has_state(id, bit))
+    }
+
+    /// True if the symbol has any write reference other than `exclude_ref_id`.
+    pub fn has_write_reference_other_than(
+        &self,
+        sym_id: SymbolId,
+        exclude_ref_id: ReferenceId,
+    ) -> bool {
+        self.get_resolved_reference_ids(sym_id)
+            .iter()
+            .copied()
+            .any(|ref_id| ref_id != exclude_ref_id && self.references.get(ref_id).is_write())
+    }
+
     // -- Reference queries --
 
     pub fn create_reference(&mut self, reference: Reference) -> ReferenceId {
@@ -239,6 +268,11 @@ impl ComponentSemantics {
             .symbol_ids()
             .filter(|&id| self.symbols.symbol_flags(id).contains(SymbolFlags::Import))
             .collect()
+    }
+
+    /// O(1) lookup: find any symbol with this name regardless of scope.
+    pub fn find_symbol_by_name(&self, name: &str) -> Option<SymbolId> {
+        self.symbols.find_by_name(name)
     }
 
     /// Collect all symbol names (for IdentGen conflict detection).

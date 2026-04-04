@@ -92,6 +92,7 @@ pub use builder::{
 pub use reference::Reference;
 pub use storage::ComponentSemantics;
 pub use svelte_ast::FragmentKey;
+pub use symbol::state as sym_state;
 pub use symbol::SymbolOwner;
 
 // Re-export OXC types used in our public API.

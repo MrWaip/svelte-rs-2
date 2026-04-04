@@ -5,10 +5,12 @@ use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 
-/// Component-level symbol state flags (separate from OXC's `SymbolFlags`).
-/// Stored as `u8` bitmask — one byte per symbol, set via bitwise OR.
-pub(crate) mod state {
-    pub const MUTATED: u8 = 1 << 0;
+/// Component-level per-symbol state bits (separate from OXC's `SymbolFlags`).
+///
+/// Bits 0–7 are reserved for core semantics (MUTATED, etc.).
+/// Bits 8+ are available for consumers (svelte_analyze classifications).
+pub mod state {
+    pub const MUTATED: u32 = 1 << 0;
 }
 
 /// Which source region of a `.svelte` component owns a symbol.
@@ -32,8 +34,10 @@ pub(crate) struct SymbolTable {
     scope_ids: Vec<ScopeId>,
     declaration_node_ids: Vec<OxcNodeId>,
     resolved_references: Vec<Vec<ReferenceId>>,
-    state: Vec<u8>,
+    state: Vec<u32>,
     owners: Vec<SymbolOwner>,
+    /// Reverse index: name → first symbol with that name.
+    name_index: rustc_hash::FxHashMap<CompactString, SymbolId>,
 }
 
 impl SymbolTable {
@@ -47,6 +51,7 @@ impl SymbolTable {
             resolved_references: Vec::new(),
             state: Vec::new(),
             owners: Vec::new(),
+            name_index: rustc_hash::FxHashMap::default(),
         }
     }
 
@@ -60,6 +65,7 @@ impl SymbolTable {
         owner: SymbolOwner,
     ) -> SymbolId {
         let id = SymbolId::from_usize(self.names.len());
+        self.name_index.entry(name.clone()).or_insert(id);
         self.names.push(name);
         self.spans.push(span);
         self.flags.push(flags);
@@ -103,6 +109,14 @@ impl SymbolTable {
         self.state[id.index()] & state::MUTATED != 0
     }
 
+    pub fn has_state(&self, id: SymbolId, bit: u32) -> bool {
+        self.state[id.index()] & bit != 0
+    }
+
+    pub fn set_state(&mut self, id: SymbolId, bit: u32) {
+        self.state[id.index()] |= bit;
+    }
+
     /// Record a resolved reference to this symbol. Sets mutated flag if write.
     pub fn add_resolved_reference(
         &mut self,
@@ -132,6 +146,11 @@ impl SymbolTable {
     /// Iterate all symbol names (parallel with symbol_ids).
     pub fn symbol_names(&self) -> impl Iterator<Item = &str> {
         self.names.iter().map(|n| n.as_str())
+    }
+
+    /// O(1) lookup: find any symbol with this name (first declared wins).
+    pub fn find_by_name(&self, name: &str) -> Option<SymbolId> {
+        self.name_index.get(name).copied()
     }
 }
 
