@@ -140,7 +140,7 @@ pub fn transform_component_module_script<'a>(
     is_ts: bool,
 ) -> ScriptOutput<'a> {
     let empty_ignore = IgnoreData::new();
-    let empty_scoping = ComponentScoping::new(None);
+    let empty_scoping = ComponentScoping::new_empty();
     transform_script_text(
         allocator,
         source,

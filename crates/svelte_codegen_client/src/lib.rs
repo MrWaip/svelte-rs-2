@@ -85,7 +85,8 @@ pub fn generate<'a>(
             shift_statement_spans(&mut module_output.body, module_offset);
             shift_comments(&mut module_output.comments, module_offset);
 
-            let combined_source = alloc.alloc_str(&format!("{script_source_text}\n{module_source}"));
+            let combined_source =
+                alloc.alloc_str(&format!("{script_source_text}\n{module_source}"));
             script_source_text = combined_source;
             script_span_end = module_offset + module_output.program_span_end;
             script_comments.extend(module_output.comments);

@@ -1,13 +1,13 @@
-use oxc_semantic::{
-    NodeId as OxcNodeId, Reference as OxcReference, ReferenceId, ScopeFlags, Scoping, SymbolFlags,
-};
-pub use oxc_semantic::{ScopeId, SymbolId};
 use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::types::script::RuneKind;
 use svelte_ast::NodeId;
+use svelte_component_semantics::{
+    ComponentSemantics, OxcNodeId, Reference, ReferenceId, ScopeFlags, SymbolFlags, SymbolOwner,
+};
 
 use crate::types::data::FragmentKey;
+use crate::types::script::RuneKind;
+
+pub use svelte_component_semantics::{ScopeId, SymbolId};
 
 pub struct Rune {
     pub kind: RuneKind,
@@ -18,19 +18,15 @@ pub struct Rune {
     pub is_proxy_init: bool,
 }
 
-/// Unified scope tree for script + template, wrapping `oxc_semantic::Scoping`.
+/// Compatibility shim over `svelte_component_semantics::ComponentSemantics`.
 ///
-/// Script declarations come from OXC's `SemanticBuilder`. Template-introduced
-/// bindings (each-block context/index) are added via `add_scope` / `add_binding`.
+/// This keeps the existing analyze/codegen query surface while the new
+/// component-wide semantics storage becomes the single source of truth.
 pub struct ComponentScoping {
-    scoping: Scoping,
-    module_scope_id: Option<ScopeId>,
-    template_reference_ids: FxHashSet<ReferenceId>,
+    semantics: ComponentSemantics,
     runes: FxHashMap<SymbolId, Rune>,
-    // SymbolId-keyed classification fields (single source of truth for semantic decisions)
     prop_source_syms: FxHashSet<SymbolId>,
     prop_non_source_names: FxHashMap<SymbolId, String>,
-    /// sym_id → base_name (e.g. SymbolId of "count" → "count")
     store_syms: FxHashSet<SymbolId>,
     known_values: FxHashMap<SymbolId, String>,
     getter_syms: FxHashSet<SymbolId>,
@@ -38,51 +34,23 @@ pub struct ComponentScoping {
     snippet_name_syms: FxHashSet<SymbolId>,
     each_block_syms: FxHashSet<SymbolId>,
     each_rest_syms: FxHashSet<SymbolId>,
-    /// Each-block vars that do NOT need `$.get()` wrapping (key_is_item optimization and
-    /// unkeyed index vars).
     each_non_reactive_syms: FxHashSet<SymbolId>,
-    /// Unkeyed each index vars: plain iteration counters that are non-reactive AND non-dynamic.
-    /// Distinct from `each_non_reactive_syms` (which includes key_is_item context vars that
-    /// are still dynamic due to proxy-based property reads).
     each_index_non_dynamic_syms: FxHashSet<SymbolId>,
-    /// Unified scope index: FragmentKey → ScopeId for all template-introduced scopes
-    /// (EachBody, SnippetBody, IfConsequent, IfAlternate, AwaitThen, AwaitCatch, etc.)
-    fragment_scopes: FxHashMap<FragmentKey, ScopeId>,
-    /// Derived from fragment_scopes — O(1) membership check for template scopes.
-    /// Built by `build_template_scope_set()` after `build_scoping`.
-    template_scope_set: FxHashSet<ScopeId>,
-    /// SymbolId → parent ConstTag NodeId for destructured const bindings
     const_alias_tags: FxHashMap<SymbolId, NodeId>,
-    /// Pre-computed set of dynamic rune symbols (populated by `precompute_dynamic_cache`).
-    /// When `Some`, `is_dynamic_by_id` uses O(1) lookup instead of recursive walk.
     dynamic_sym_cache: Option<FxHashSet<SymbolId>>,
-    /// SymbolId of the rest variable from `let { ...props } = $props()`
     rest_prop_sym: Option<SymbolId>,
-    /// Prop names explicitly destructured before the rest element (excluded from rewriting)
     rest_prop_excluded: FxHashSet<String>,
-    /// Symbols declared with `var` (as opposed to `let`/`const`) that are state runes.
-    /// `var`-declared state must use `$.safe_get` instead of `$.get` because `var` hoisting
-    /// means the binding may be read before its initializer runs.
     var_state_syms: FxHashSet<SymbolId>,
 }
 
 impl ComponentScoping {
-    /// Create ComponentScoping from an optional OXC Scoping.
-    ///
-    /// - `Some(scoping)` — script block was parsed, use its scope tree (already has a root scope).
-    /// - `None` — no script block; creates a minimal Scoping with just a root scope.
-    pub fn new(scoping: Option<Scoping>) -> Self {
-        let scoping = scoping.unwrap_or_else(|| {
-            let mut s = Scoping::default();
-            // Scoping::default() has no scopes, but root_scope_id() returns ScopeId(0).
-            // Add a root scope so ScopeId(0) exists and child scopes get a valid parent.
-            s.add_scope(None, OxcNodeId::DUMMY, ScopeFlags::empty());
-            s
-        });
+    pub fn new_empty() -> Self {
+        Self::from_semantics(ComponentSemantics::new())
+    }
+
+    pub fn from_semantics(semantics: ComponentSemantics) -> Self {
         Self {
-            scoping,
-            module_scope_id: None,
-            template_reference_ids: FxHashSet::default(),
+            semantics,
             runes: FxHashMap::default(),
             prop_source_syms: FxHashSet::default(),
             prop_non_source_names: FxHashMap::default(),
@@ -95,8 +63,6 @@ impl ComponentScoping {
             each_rest_syms: FxHashSet::default(),
             each_non_reactive_syms: FxHashSet::default(),
             each_index_non_dynamic_syms: FxHashSet::default(),
-            fragment_scopes: FxHashMap::default(),
-            template_scope_set: FxHashSet::default(),
             const_alias_tags: FxHashMap::default(),
             dynamic_sym_cache: None,
             rest_prop_sym: None,
@@ -105,137 +71,141 @@ impl ComponentScoping {
         }
     }
 
+    pub fn into_semantics(self) -> ComponentSemantics {
+        self.semantics
+    }
+
+    pub fn semantics(&self) -> &ComponentSemantics {
+        &self.semantics
+    }
+
+    pub fn semantics_mut(&mut self) -> &mut ComponentSemantics {
+        &mut self.semantics
+    }
+
     // -- Scope management --
 
     pub fn root_scope_id(&self) -> ScopeId {
-        self.scoping.root_scope_id()
+        self.semantics.root_scope_id()
     }
 
     pub fn add_child_scope(&mut self, parent: ScopeId) -> ScopeId {
-        self.add_scope(Some(parent), ScopeFlags::empty())
+        self.semantics.add_child_scope(parent)
     }
 
     pub fn add_scope(&mut self, parent: Option<ScopeId>, flags: ScopeFlags) -> ScopeId {
-        self.scoping
-            .add_scope(parent, OxcNodeId::DUMMY, flags)
+        match parent {
+            Some(parent) => self.semantics.add_scope(parent, flags),
+            None => panic!("ComponentScoping::add_scope requires a parent scope"),
+        }
     }
 
     pub fn module_scope_id(&self) -> Option<ScopeId> {
-        self.module_scope_id
+        self.semantics.module_scope_id()
     }
 
-    pub fn ensure_module_scope(&mut self) -> ScopeId {
-        if let Some(scope_id) = self.module_scope_id {
-            return scope_id;
-        }
-
-        let root = self.root_scope_id();
-        let previous_parent = self.scoping.scope_parent_id(root);
-        let module_scope = self.add_scope(previous_parent, ScopeFlags::empty());
-        self.scoping.change_scope_parent_id(root, Some(module_scope));
-        self.module_scope_id = Some(module_scope);
-        module_scope
+    pub fn scope_parent_id(&self, id: ScopeId) -> Option<ScopeId> {
+        self.semantics.scope_parent_id(id)
     }
 
-    pub fn import_program_scoping(
-        &mut self,
-        source: &oxc_semantic::Scoping,
-        target_root: ScopeId,
-    ) -> (FxHashMap<ScopeId, ScopeId>, FxHashMap<SymbolId, SymbolId>) {
-        let mut scope_map = FxHashMap::default();
-        let mut symbol_map = FxHashMap::default();
-
-        scope_map.insert(source.root_scope_id(), target_root);
-
-        for scope_id in source.scope_descendants_from_root().skip(1) {
-            let parent = source
-                .scope_parent_id(scope_id)
-                .and_then(|parent_id| scope_map.get(&parent_id).copied())
-                .unwrap_or(target_root);
-            let mapped_scope = self.add_scope(Some(parent), source.scope_flags(scope_id));
-            scope_map.insert(scope_id, mapped_scope);
-        }
-
-        for scope_id in source.scope_descendants_from_root() {
-            let target_scope = scope_map[&scope_id];
-            for symbol_id in source.iter_bindings_in(scope_id) {
-                let name = source.symbol_name(symbol_id);
-                let mapped_symbol = self.scoping.create_symbol(
-                    source.symbol_span(symbol_id),
-                    name.into(),
-                    source.symbol_flags(symbol_id),
-                    target_scope,
-                    source.symbol_declaration(symbol_id),
-                );
-                self.scoping
-                    .add_binding(target_scope, name.into(), mapped_symbol);
-                symbol_map.insert(symbol_id, mapped_symbol);
-            }
-        }
-
-        (scope_map, symbol_map)
+    pub fn scope_flags(&self, id: ScopeId) -> ScopeFlags {
+        self.semantics.scope_flags(id)
     }
 
     // -- Symbol management --
 
-    /// Declare a new binding in a scope. Creates symbol + adds binding.
+    /// Synthetic binding helper used by some template side-table passes.
     pub fn add_binding(&mut self, scope: ScopeId, name: &str) -> SymbolId {
-        let ident: oxc_span::Ident<'_> = name.into();
-        let symbol_id = self.scoping.create_symbol(
-            oxc_span::SPAN,
-            ident,
-            SymbolFlags::empty(),
+        self.semantics.add_binding(
             scope,
+            name,
+            oxc_span::SPAN,
+            SymbolFlags::empty(),
             OxcNodeId::DUMMY,
-        );
-        self.scoping.add_binding(scope, name.into(), symbol_id);
-        symbol_id
+            SymbolOwner::Synthetic,
+        )
     }
 
-    /// Find a binding by name, walking up parent scopes.
     pub fn find_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
-        self.scoping.find_binding(scope, name.into())
+        self.semantics.find_binding(scope, name)
     }
 
-    /// Check if a symbol has any mutation (script + template, all via OXC references).
+    pub fn get_binding(&self, scope: ScopeId, name: &str) -> Option<SymbolId> {
+        self.semantics.get_binding(scope, name)
+    }
+
     pub fn is_mutated(&self, id: SymbolId) -> bool {
-        self.scoping.symbol_is_mutated(id)
+        self.semantics.is_mutated(id)
     }
 
-    /// Get the scope a symbol was declared in.
     pub fn symbol_scope_id(&self, id: SymbolId) -> ScopeId {
-        self.scoping.symbol_scope_id(id)
+        self.semantics.symbol_scope_id(id)
     }
 
-    /// Get the declared name of a symbol.
     pub fn symbol_name(&self, id: SymbolId) -> &str {
-        self.scoping.symbol_name(id)
+        self.semantics.symbol_name(id)
+    }
+
+    pub fn symbol_declaration(&self, id: SymbolId) -> OxcNodeId {
+        self.semantics.symbol_declaration(id)
+    }
+
+    pub fn symbol_flags(&self, id: SymbolId) -> SymbolFlags {
+        self.semantics.symbol_flags(id)
     }
 
     pub fn is_component_top_level_scope(&self, scope_id: ScopeId) -> bool {
-        scope_id == self.root_scope_id() || self.module_scope_id == Some(scope_id)
+        self.semantics.is_component_top_level_scope(scope_id)
     }
 
     pub fn is_component_top_level_symbol(&self, sym_id: SymbolId) -> bool {
-        self.is_component_top_level_scope(self.symbol_scope_id(sym_id))
+        self.semantics.is_component_top_level_symbol(sym_id)
     }
 
-    pub fn function_depth(&self, mut scope: ScopeId) -> usize {
-        let mut depth = 0usize;
-        loop {
-            if self.scoping.scope_flags(scope).is_function() {
-                depth += 1;
-            }
-            let Some(parent) = self.scoping.scope_parent_id(scope) else {
-                break;
-            };
-            scope = parent;
-        }
-        depth
+    pub fn function_depth(&self, scope: ScopeId) -> usize {
+        self.semantics.function_depth(scope) as usize
     }
 
     pub fn is_template_reference(&self, ref_id: ReferenceId) -> bool {
-        self.template_reference_ids.contains(&ref_id)
+        self.semantics.is_template_reference(ref_id)
+    }
+
+    pub fn create_reference(&mut self, reference: Reference) -> ReferenceId {
+        self.semantics.create_reference(reference)
+    }
+
+    pub fn create_template_reference(&mut self, reference: Reference) -> ReferenceId {
+        self.semantics.create_template_reference(reference)
+    }
+
+    pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
+        self.semantics.add_resolved_reference(sym_id, ref_id);
+    }
+
+    pub fn get_reference(&self, ref_id: ReferenceId) -> &Reference {
+        self.semantics.get_reference(ref_id)
+    }
+
+    pub fn try_get_reference(&self, ref_id: ReferenceId) -> Option<&Reference> {
+        self.semantics.try_get_reference(ref_id)
+    }
+
+    pub fn get_reference_mut(&mut self, ref_id: ReferenceId) -> &mut Reference {
+        self.semantics.get_reference_mut(ref_id)
+    }
+
+    pub fn has_write_reference_other_than(
+        &self,
+        sym_id: SymbolId,
+        exclude_ref_id: ReferenceId,
+    ) -> bool {
+        self.semantics
+            .get_resolved_reference_ids(sym_id)
+            .iter()
+            .copied()
+            .any(|ref_id| {
+                ref_id != exclude_ref_id && self.semantics.get_reference(ref_id).is_write()
+            })
     }
 
     // -- Rune tracking --
@@ -276,80 +246,25 @@ impl ComponentScoping {
         self.runes.contains_key(&id)
     }
 
-    /// True when a `$state`/`$state.raw` init argument is non-primitive (proxy candidate).
-    /// Proxy-candidate state is still reactive through property mutations even without reassignment.
     pub fn is_proxy_init_state(&self, id: SymbolId) -> bool {
         self.runes.get(&id).is_some_and(|r| r.is_proxy_init)
     }
 
-    /// Mark a state rune symbol as `var`-declared.
-    /// `var`-declared state requires `$.safe_get` instead of `$.get` because var hoisting means
-    /// the binding may be read before its initializer has run.
     pub fn mark_var_state(&mut self, id: SymbolId) {
         self.var_state_syms.insert(id);
     }
 
-    /// True when the symbol is a state rune declared with `var`.
     pub fn is_var_declared_state(&self, id: SymbolId) -> bool {
         self.var_state_syms.contains(&id)
     }
 
-    /// Store a Reference object and return its ReferenceId.
-    pub fn create_reference(&mut self, reference: OxcReference) -> ReferenceId {
-        self.scoping.create_reference(reference)
-    }
-
-    /// Template references are synthesized by template visitors and do not map
-    /// to script AST nodes in OXC's semantic node table.
-    pub fn create_template_reference(&mut self, reference: OxcReference) -> ReferenceId {
-        let ref_id = self.scoping.create_reference(reference);
-        self.template_reference_ids.insert(ref_id);
-        ref_id
-    }
-
-    /// Record that a ReferenceId resolves to a SymbolId.
-    pub fn add_resolved_reference(&mut self, sym_id: SymbolId, ref_id: ReferenceId) {
-        self.scoping.add_resolved_reference(sym_id, ref_id);
-    }
-
-    pub fn delete_root_unresolved_reference(&mut self, name: &str, ref_id: ReferenceId) {
-        self.scoping
-            .delete_root_unresolved_reference(name.into(), ref_id);
-    }
-
-    /// Get a reference by ReferenceId.
-    pub fn get_reference(&self, ref_id: ReferenceId) -> &OxcReference {
-        self.scoping.get_reference(ref_id)
-    }
-
-    /// Mutate an existing reference by ReferenceId.
-    pub fn get_reference_mut(&mut self, ref_id: ReferenceId) -> &mut OxcReference {
-        self.scoping.get_reference_mut(ref_id)
-    }
-
-    pub fn has_write_reference_other_than(
-        &self,
-        sym_id: SymbolId,
-        exclude_ref_id: ReferenceId,
-    ) -> bool {
-        let ref_ids = self.scoping.get_resolved_reference_ids(sym_id);
-        self.scoping
-            .get_resolved_references(sym_id)
-            .enumerate()
-            .any(|(idx, reference)| ref_ids[idx] != exclude_ref_id && reference.is_write())
-    }
-
     // -- Convenience: SymbolId-based dynamism check --
 
-    /// Check if a symbol is dynamic (by SymbolId, without name resolution).
-    /// After `precompute_dynamic_cache()`, rune checks are O(1) set lookups.
     pub fn is_dynamic_by_id(&self, sym_id: SymbolId) -> bool {
         if let Some(cache) = &self.dynamic_sym_cache {
-            // Cached path: rune dynamism pre-computed, scope check is O(1)
             if cache.contains(&sym_id) {
                 return true;
             }
-            // Non-rune symbol: dynamic iff declared outside component top-level and not a plain each index
             if !self.runes.contains_key(&sym_id) {
                 if self.each_index_non_dynamic_syms.contains(&sym_id) {
                     return false;
@@ -366,14 +281,12 @@ impl ComponentScoping {
             return true;
         }
         if let Some(rune) = self.runes.get(&sym_id) {
-            // Unmutated primitive $state is a compile-time constant (not dynamic).
-            // Unmutated proxy-candidate $state (array/object) is still reactive via proxy.
             if rune.kind == RuneKind::State && !self.is_mutated(sym_id) && !rune.is_proxy_init {
                 return false;
             }
             if rune.kind.is_derived() {
                 if rune.derived_deps.is_empty() {
-                    return true; // deps unknown (e.g. $derived.by) — assume dynamic
+                    return true;
                 }
                 return rune
                     .derived_deps
@@ -382,15 +295,12 @@ impl ComponentScoping {
             }
             return true;
         }
-        // Unkeyed each index var: plain iteration counter, not a signal — not dynamic.
         if self.each_index_non_dynamic_syms.contains(&sym_id) {
             return false;
         }
         !self.is_component_top_level_symbol(sym_id)
     }
 
-    /// Pre-compute dynamic status for all rune symbols with memoization.
-    /// After this call, `is_dynamic_by_id` uses O(1) lookups for runes.
     pub fn precompute_dynamic_cache(&mut self) {
         let mut memo: FxHashMap<SymbolId, bool> = FxHashMap::default();
         let rune_ids: Vec<SymbolId> = self.runes.keys().copied().collect();
@@ -405,11 +315,9 @@ impl ComponentScoping {
         self.dynamic_sym_cache = Some(dynamic_set);
     }
 
-    /// Add blocked symbols to the dynamic cache and propagate to derived symbols.
-    /// Blocked symbols change when their async promise resolves, so they are reactive.
     pub fn mark_blocked_symbols_dynamic(
         &mut self,
-        symbol_blockers: &rustc_hash::FxHashMap<oxc_semantic::SymbolId, u32>,
+        symbol_blockers: &rustc_hash::FxHashMap<SymbolId, u32>,
     ) {
         let Some(cache) = &mut self.dynamic_sym_cache else {
             return;
@@ -417,7 +325,6 @@ impl ComponentScoping {
         for &sym in symbol_blockers.keys() {
             cache.insert(sym);
         }
-        // Chains like a→b→c require iterating until stable — a single pass misses transitive deps.
         let rune_ids: Vec<(SymbolId, Vec<SymbolId>)> = self
             .runes
             .iter()
@@ -458,7 +365,6 @@ impl ComponentScoping {
                 if rune.derived_deps.is_empty() {
                     true
                 } else {
-                    // Collect deps to avoid borrow conflict with &self
                     let deps: Vec<SymbolId> = rune.derived_deps.clone();
                     deps.iter()
                         .any(|&dep| self.compute_dynamic_memoized(dep, memo, depth + 1))
@@ -511,13 +417,10 @@ impl ComponentScoping {
         self.each_rest_syms.insert(sym_id);
     }
 
-    /// Mark each-block var as non-reactive (key_is_item optimization — no `$.get()` wrapping).
     pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
         self.each_non_reactive_syms.insert(sym_id);
     }
 
-    /// Mark an unkeyed each index var as non-dynamic (plain iteration counter — no `$.template_effect`).
-    /// These vars are non-reactive AND non-dynamic: reads produce a plain identifier, no wrapping.
     pub fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
         self.each_index_non_dynamic_syms.insert(sym_id);
     }
@@ -553,7 +456,6 @@ impl ComponentScoping {
         self.store_syms.contains(&sym_id)
     }
 
-    /// Returns store SymbolIds for codegen iteration.
     pub fn store_symbol_ids(&self) -> &FxHashSet<SymbolId> {
         &self.store_syms
     }
@@ -582,18 +484,14 @@ impl ComponentScoping {
         self.each_rest_syms.contains(&sym_id)
     }
 
-    /// Each-block var that does NOT need `$.get()` (key_is_item optimization in runes mode).
     pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
         self.each_non_reactive_syms.contains(&sym_id)
     }
 
-    /// Unkeyed each index var: plain iteration counter — no `$.get()` AND no `$.template_effect`.
     pub fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
         self.each_index_non_dynamic_syms.contains(&sym_id)
     }
 
-    /// A binding is "normal" if it's a regular const/let/function — not a rune, prop,
-    /// snippet param, each var, or store subscription.
     pub fn is_normal_binding(&self, sym_id: SymbolId) -> bool {
         !self.is_rune(sym_id)
             && !self.is_prop_source(sym_id)
@@ -603,12 +501,8 @@ impl ComponentScoping {
             && !self.is_store(sym_id)
     }
 
-    pub(crate) fn set_fragment_scope(&mut self, key: FragmentKey, scope_id: ScopeId) {
-        self.fragment_scopes.insert(key, scope_id);
-    }
-
     pub fn fragment_scope(&self, key: &FragmentKey) -> Option<ScopeId> {
-        self.fragment_scopes.get(key).copied()
+        self.semantics.fragment_scope(key)
     }
 
     pub(crate) fn mark_const_alias(&mut self, sym_id: SymbolId, tag_id: NodeId) {
@@ -619,59 +513,38 @@ impl ComponentScoping {
         self.const_alias_tags.get(&sym_id).copied()
     }
 
-    /// True if this symbol was declared inside a template expression
-    /// (arrow/function param, for-loop var, block-scoped var, catch param).
-    /// True if this symbol was declared inside a JS construct in a template expression
-    /// (arrow/function param, for-loop var, block-scoped var, catch param).
-    /// Derived: non-root scope that isn't a template-introduced scope.
     pub fn is_expr_local(&self, sym_id: SymbolId) -> bool {
-        let scope = self.symbol_scope_id(sym_id);
-        !self.is_component_top_level_scope(scope) && !self.template_scope_set.contains(&scope)
+        self.semantics.is_expr_local(sym_id)
     }
 
-    /// Build the template_scope_set from fragment_scopes. Must be called after build_scoping.
     pub(crate) fn build_template_scope_set(&mut self) {
-        self.template_scope_set = self.fragment_scopes.values().copied().collect();
+        self.semantics.build_template_scope_set();
     }
 
     pub fn is_import(&self, sym_id: SymbolId) -> bool {
-        self.scoping
+        self.semantics
             .symbol_flags(sym_id)
             .contains(SymbolFlags::Import)
     }
 
-    /// Collect all import-flagged SymbolIds from script scopes.
-    /// Used to pre-compute the set once during analysis rather than per-lookup in codegen.
     pub fn collect_import_syms(&self) -> FxHashSet<SymbolId> {
-        self.scoping
-            .symbol_ids()
-            .filter(|&sym_id| {
-                self.scoping
-                    .symbol_flags(sym_id)
-                    .contains(SymbolFlags::Import)
-            })
-            .collect()
+        self.semantics.collect_import_syms()
     }
 
-    /// Collect all symbol names from all scopes (for IdentGen conflict detection).
     pub fn collect_all_symbol_names(&self) -> FxHashSet<String> {
-        self.scoping.symbol_names().map(|s| s.to_string()).collect()
+        self.semantics.collect_all_symbol_names()
     }
 
-    /// Check if a name exists as a symbol in any scope (not just root).
-    /// Used for `store_invalid_scoped_subscription` to detect nested declarations.
     pub fn find_binding_in_any_scope(&self, name: &str) -> Option<SymbolId> {
-        self.scoping
+        self.semantics
             .symbol_ids()
-            .find(|&id| self.scoping.symbol_name(id) == name)
+            .find(|&id| self.semantics.symbol_name(id) == name)
     }
 
-    /// Check if a name is a store subscription (`$X` where `X` is marked as store in root scope).
     pub fn is_store_ref(&self, name: &str) -> bool {
         self.store_base_name(name).is_some()
     }
 
-    /// Returns the base name (without `$` prefix) if this is a store reference.
     pub fn store_base_name<'n>(&self, name: &'n str) -> Option<&'n str> {
         if name.starts_with('$') && name.len() > 1 {
             let base = &name[1..];
@@ -684,5 +557,11 @@ impl ComponentScoping {
             }
         }
         None
+    }
+
+    pub fn root_unresolved_references(
+        &self,
+    ) -> &FxHashMap<compact_str::CompactString, Vec<ReferenceId>> {
+        self.semantics.root_unresolved_references()
     }
 }

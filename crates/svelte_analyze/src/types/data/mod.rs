@@ -33,7 +33,8 @@ pub use expr::{
     AwaitBindingInfo, DestructureKind, ExprDeps, ExprSite, ExpressionInfo, ExpressionKind,
 };
 pub use fragments::{
-    ContentStrategy, FragmentData, FragmentItem, FragmentKey, LoweredFragment, LoweredTextPart,
+    ContentStrategy, FragmentData, FragmentItem, FragmentKey, FragmentKeyExt, LoweredFragment,
+    LoweredTextPart,
 };
 pub use ignore::IgnoreData;
 pub use props::{PropAnalysis, PropsAnalysis};

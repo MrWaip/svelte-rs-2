@@ -234,8 +234,8 @@ fn lower_fragment(
                 // Unlike whitespace tracking, <text> does NOT reset namespace.
                 let child_svg_ns = el.name != "foreignObject" && (is_svg(&el.name) || in_svg_ns);
                 // annotation-xml resets from MathML to HTML context
-                let child_mathml = is_mathml(&el.name)
-                    || (in_mathml && el.name != "annotation-xml");
+                let child_mathml =
+                    is_mathml(&el.name) || (in_mathml && el.name != "annotation-xml");
                 lower_fragment(
                     &el.fragment,
                     FragmentKey::Element(el.id),
@@ -303,7 +303,9 @@ fn lower_fragment(
                 for (slot_el_id, slot_nodes) in named_groups {
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
                     let slot_frag = Fragment { nodes: slot_nodes };
-                    lower_fragment(&slot_frag, frag_key, component, data, store, false, false, false);
+                    lower_fragment(
+                        &slot_frag, frag_key, component, data, store, false, false, false,
+                    );
                     slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
@@ -325,7 +327,16 @@ fn lower_fragment(
                 );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
-                    lower_fragment(alt, alt_key, component, data, store, in_svg_non_text, in_svg_ns, in_mathml);
+                    lower_fragment(
+                        alt,
+                        alt_key,
+                        component,
+                        data,
+                        store,
+                        in_svg_non_text,
+                        in_svg_ns,
+                        in_mathml,
+                    );
                     // Detect elseif: alternate has a single IfBlock child marked as elseif
                     let is_elseif = data.fragments.lowered.get(&alt_key).is_some_and(|lf| {
                         lf.items.len() == 1
@@ -849,7 +860,14 @@ mod tests {
     fn make_component(source: &str, nodes: Vec<Node>) -> Component {
         let mut store = AstStore::new();
         let ids: Vec<NodeId> = nodes.into_iter().map(|n| store.push(n)).collect();
-        Component::new(source.to_string(), Fragment::new(ids), store, None, None, None)
+        Component::new(
+            source.to_string(),
+            Fragment::new(ids),
+            store,
+            None,
+            None,
+            None,
+        )
     }
 
     fn collect_text_parts(items: &[FragmentItem], source: &str) -> Vec<String> {

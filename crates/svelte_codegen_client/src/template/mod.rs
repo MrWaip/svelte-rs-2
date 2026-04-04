@@ -29,7 +29,7 @@ pub(crate) mod traverse;
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt};
 use svelte_ast::{Node, NodeId};
 
 use crate::builder::Arg;

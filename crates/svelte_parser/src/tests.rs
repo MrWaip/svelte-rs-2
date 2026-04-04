@@ -24,7 +24,10 @@ fn assert_node(c: &Component, index: usize, expected: &str) {
 }
 
 fn assert_script(c: &Component, expected: &str) {
-    let script = c.instance_script.as_ref().expect("expected instance script");
+    let script = c
+        .instance_script
+        .as_ref()
+        .expect("expected instance script");
     assert_eq!(c.source_text(script.content_span), expected);
 }
 
@@ -99,7 +102,10 @@ fn script_tag() {
 #[test]
 fn script_tag_lang_ts() {
     let c = parse(r#"<script lang="ts">const i: number = 10;</script>"#);
-    let script = c.instance_script.as_ref().expect("expected instance script");
+    let script = c
+        .instance_script
+        .as_ref()
+        .expect("expected instance script");
     assert_eq!(script.language, ScriptLanguage::TypeScript);
 }
 
@@ -147,7 +153,10 @@ fn multiple_roots() {
 #[test]
 fn script_context_default() {
     let c = parse("<script>let x = 1;</script>");
-    let script = c.instance_script.as_ref().expect("expected instance script");
+    let script = c
+        .instance_script
+        .as_ref()
+        .expect("expected instance script");
     assert_eq!(script.context, ScriptContext::Default);
 }
 
@@ -914,7 +923,9 @@ fn debug_tag_call_expression_error() {
 fn await_duplicate_then_clause() {
     let (_, diags) = parse_with_diagnostics("{#await p}{:then a}text{:then b}more{/await}");
     assert!(
-        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        diags
+            .iter()
+            .any(|d| d.kind.code() == "block_duplicate_clause"),
         "expected block_duplicate_clause, got: {diags:?}"
     );
 }
@@ -923,7 +934,9 @@ fn await_duplicate_then_clause() {
 fn await_duplicate_catch_clause() {
     let (_, diags) = parse_with_diagnostics("{#await p}{:catch e}err{:catch e2}err2{/await}");
     assert!(
-        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        diags
+            .iter()
+            .any(|d| d.kind.code() == "block_duplicate_clause"),
         "expected block_duplicate_clause, got: {diags:?}"
     );
 }
@@ -932,7 +945,9 @@ fn await_duplicate_catch_clause() {
 fn await_valid_then_catch_no_duplicate() {
     let (_, diags) = parse_with_diagnostics("{#await p}{:then a}ok{:catch e}err{/await}");
     assert!(
-        !diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "block_duplicate_clause"),
         "unexpected block_duplicate_clause: {diags:?}"
     );
 }
@@ -943,7 +958,9 @@ fn await_duplicate_then_after_catch_then() {
     let (_, diags) =
         parse_with_diagnostics("{#await p}{:then a}t{:catch e}err{:then b}more{/await}");
     assert!(
-        diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        diags
+            .iter()
+            .any(|d| d.kind.code() == "block_duplicate_clause"),
         "expected block_duplicate_clause, got: {diags:?}"
     );
 }
@@ -953,7 +970,9 @@ fn await_catch_before_then_no_panic() {
     // {:catch} before {:then} with no prior {:then} must not panic
     let (_, diags) = parse_with_diagnostics("{#await p}{:catch e}err{:then a}ok{/await}");
     assert!(
-        !diags.iter().any(|d| d.kind.code() == "block_duplicate_clause"),
+        !diags
+            .iter()
+            .any(|d| d.kind.code() == "block_duplicate_clause"),
         "unexpected block_duplicate_clause for out-of-order catch/then: {diags:?}"
     );
 }

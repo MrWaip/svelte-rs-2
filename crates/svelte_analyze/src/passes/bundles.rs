@@ -3,7 +3,7 @@ use svelte_ast::{Component, Node, NodeId};
 
 use crate::passes::{
     bind_semantics, collect_symbols, content_types, element_flags, hoistable, js_analyze,
-    reactivity, template_semantic, template_side_tables, template_validation,
+    reactivity, template_side_tables, template_validation,
 };
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
@@ -25,21 +25,19 @@ impl AwaitBindingBundle {
     }
 }
 
-pub(crate) struct TemplateSemanticBundle<'c> {
-    semantic: template_semantic::TemplateSemanticVisitor,
+pub(crate) struct TemplateSideTablesBundle<'c> {
     side_tables: template_side_tables::TemplateSideTablesVisitor<'c>,
 }
 
-impl<'c> TemplateSemanticBundle<'c> {
+impl<'c> TemplateSideTablesBundle<'c> {
     pub(crate) fn new(component: &'c Component) -> Self {
         Self {
-            semantic: template_semantic::TemplateSemanticVisitor,
             side_tables: template_side_tables::TemplateSideTablesVisitor { component },
         }
     }
 
-    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 2] {
-        [&mut self.semantic, &mut self.side_tables]
+    pub(crate) fn visitors(&mut self) -> [&mut dyn TemplateVisitor; 1] {
+        [&mut self.side_tables]
     }
 }
 

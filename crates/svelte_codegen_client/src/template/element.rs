@@ -22,9 +22,9 @@ use super::expression::{
     emit_template_effect_with_memo, emit_trailing_next, get_node_expr, item_has_local_blockers,
     text_content_needs_memo, MemoAttr,
 };
+use super::from_template_fn_for_element;
 use super::html::fragment_html;
 use super::html_tag::gen_html_tag;
-use super::from_template_fn_for_element;
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -184,163 +184,164 @@ pub(crate) fn process_element<'a>(
     if ctx.is_customizable_select(el_id) {
         emit_customizable_select(ctx, el_name, &child_key, init, hoisted);
     } else {
-    match ct {
-        ContentStrategy::Empty | ContentStrategy::Static(_) => {}
+        match ct {
+            ContentStrategy::Empty | ContentStrategy::Static(_) => {}
 
-        ContentStrategy::DynamicText if !has_state => {
-            let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
+            ContentStrategy::DynamicText if !has_state => {
+                let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
 
-            if ctx.needs_textarea_value_lowering(el_id) {
-                // <textarea> with expression children: remove static child, set value property.
-                // Use the raw expression (bypasses build_concat constant folding) so the variable
-                // reference is preserved — $.set_value must receive the live binding, not a literal.
-                init.push(
-                    ctx.b
-                        .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
-                );
-                let expr = extract_single_raw_expr_or_concat(ctx, &items[0]);
-                init.push(
-                    ctx.b
-                        .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]),
-                );
-            } else if !item_has_local_blockers(&items[0], ctx) {
-                // textContent shortcut
-                let expr = build_concat(ctx, &items[0]);
-                init.push(ctx.b.assign_stmt(
-                    crate::builder::AssignLeft::StaticMember(
-                        ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
-                    ),
-                    expr,
-                ));
-                // <option> with expression child and no explicit value attr: synthesize __value.
-                // Uses the raw expression (bypasses constant folding) so the variable reference
-                // is preserved for select-binding value comparisons at runtime.
-                if let Some(expr_id) = ctx.option_synthetic_value_expr(el_id) {
-                    let raw_expr = get_node_expr(ctx, expr_id);
+                if ctx.needs_textarea_value_lowering(el_id) {
+                    // <textarea> with expression children: remove static child, set value property.
+                    // Use the raw expression (bypasses build_concat constant folding) so the variable
+                    // reference is preserved — $.set_value must receive the live binding, not a literal.
+                    init.push(
+                        ctx.b
+                            .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
+                    );
+                    let expr = extract_single_raw_expr_or_concat(ctx, &items[0]);
+                    init.push(
+                        ctx.b
+                            .call_stmt("$.set_value", [Arg::Ident(el_name), Arg::Expr(expr)]),
+                    );
+                } else if !item_has_local_blockers(&items[0], ctx) {
+                    // textContent shortcut
+                    let expr = build_concat(ctx, &items[0]);
                     init.push(ctx.b.assign_stmt(
                         crate::builder::AssignLeft::StaticMember(
-                            ctx.b.static_member(ctx.b.rid_expr(el_name), "__value"),
+                            ctx.b.static_member(ctx.b.rid_expr(el_name), "textContent"),
                         ),
-                        raw_expr,
+                        expr,
                     ));
-                }
-            } else {
-                let text_name = ctx.gen_ident("text");
-                let child_call = ctx
-                    .b
-                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
-                init.push(ctx.b.var_stmt(&text_name, child_call));
-                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-                let expr = build_concat(ctx, &items[0]);
-                update.push(
-                    ctx.b
-                        .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
-                );
-            }
-        }
-
-        ContentStrategy::DynamicText => {
-            let text_name = ctx.gen_ident("text");
-            let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
-            // is_text only for standalone {expression} (single Expr part, no surrounding text)
-            let is_text = items.first().is_some_and(|item| item.is_standalone_expr());
-            let child_call = if is_text {
-                ctx.b
-                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
-            } else {
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
-            };
-            init.push(ctx.b.var_stmt(&text_name, child_call));
-
-            if ctx.bound_contenteditable {
-                let expr = build_concat(ctx, &items[0]);
-                // bound_contenteditable: nodeValue= in init instead of $.set_text() in update
-                init.push(ctx.b.assign_stmt(
-                    crate::builder::AssignLeft::StaticMember(
-                        ctx.b.static_member(ctx.b.rid_expr(&text_name), "nodeValue"),
-                    ),
-                    expr,
-                ));
-                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-            } else {
-                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-                // Check if the expression needs call memoization (has_call + reactive refs)
-                let has_call = text_content_needs_memo(&items[0], ctx);
-                let has_async_value = if let FragmentItem::TextConcat { parts, .. } = &items[0] {
-                    parts.iter().any(|part| matches!(part, svelte_analyze::LoweredTextPart::Expr(id) if ctx.expr_has_await(*id)))
-                } else {
-                    false
-                };
-                if has_call || has_async_value {
-                    // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
-                    emit_memoized_text_effect(ctx, &items[0], &text_name, init);
-                } else {
-                    let expr = build_concat(ctx, &items[0]);
-                    if let FragmentItem::TextConcat { parts, .. } = &items[0] {
-                        for part in parts {
-                            if let svelte_analyze::LoweredTextPart::Expr(id) = part {
-                                let exprs = ctx.const_tag_blocker_exprs(*id);
-                                ctx.pending_const_blockers.extend(exprs);
-                            }
-                        }
+                    // <option> with expression child and no explicit value attr: synthesize __value.
+                    // Uses the raw expression (bypasses constant folding) so the variable reference
+                    // is preserved for select-binding value comparisons at runtime.
+                    if let Some(expr_id) = ctx.option_synthetic_value_expr(el_id) {
+                        let raw_expr = get_node_expr(ctx, expr_id);
+                        init.push(ctx.b.assign_stmt(
+                            crate::builder::AssignLeft::StaticMember(
+                                ctx.b.static_member(ctx.b.rid_expr(el_name), "__value"),
+                            ),
+                            raw_expr,
+                        ));
                     }
+                } else {
+                    let text_name = ctx.gen_ident("text");
+                    let child_call = ctx
+                        .b
+                        .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)]);
+                    init.push(ctx.b.var_stmt(&text_name, child_call));
+                    init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                    let expr = build_concat(ctx, &items[0]);
                     update.push(
                         ctx.b
                             .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
                     );
                 }
             }
-        }
 
-        ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
-            // Controlled each block: element itself is the anchor, no $.child() traversal
-            gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
-            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-        }
+            ContentStrategy::DynamicText => {
+                let text_name = ctx.gen_ident("text");
+                let items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
+                // is_text only for standalone {expression} (single Expr part, no surrounding text)
+                let is_text = items.first().is_some_and(|item| item.is_standalone_expr());
+                let child_call = if is_text {
+                    ctx.b
+                        .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+                } else {
+                    ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
+                };
+                init.push(ctx.b.var_stmt(&text_name, child_call));
 
-        ContentStrategy::SingleBlock(FragmentItem::HtmlTag(id)) => {
-            // Controlled html tag: element itself is the anchor
-            gen_html_tag(ctx, id, ctx.b.rid_expr(el_name), true, init);
-            init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
-        }
-
-        ContentStrategy::SingleElement(_)
-        | ContentStrategy::SingleBlock(_)
-        | ContentStrategy::Mixed { .. } => {
-            // Clone needed: traverse_items borrows ctx mutably
-            let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
-
-            let first_is_text = child_items
-                .first()
-                .is_some_and(|item| item.is_standalone_expr());
-            let first_child = if first_is_text {
-                ctx.b
-                    .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
-            } else {
-                ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
-            };
-            let mut child_init = Vec::new();
-            let mut child_update = Vec::new();
-            let trailing = traverse_items(
-                ctx,
-                &child_items,
-                first_child,
-                &mut child_init,
-                &mut child_update,
-                hoisted,
-                after_update,
-                memo_attrs,
-            );
-
-            emit_trailing_next(ctx, trailing, &mut child_init);
-            if !child_init.is_empty() {
-                child_init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                if ctx.bound_contenteditable {
+                    let expr = build_concat(ctx, &items[0]);
+                    // bound_contenteditable: nodeValue= in init instead of $.set_text() in update
+                    init.push(ctx.b.assign_stmt(
+                        crate::builder::AssignLeft::StaticMember(
+                            ctx.b.static_member(ctx.b.rid_expr(&text_name), "nodeValue"),
+                        ),
+                        expr,
+                    ));
+                    init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                } else {
+                    init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                    // Check if the expression needs call memoization (has_call + reactive refs)
+                    let has_call = text_content_needs_memo(&items[0], ctx);
+                    let has_async_value = if let FragmentItem::TextConcat { parts, .. } = &items[0]
+                    {
+                        parts.iter().any(|part| matches!(part, svelte_analyze::LoweredTextPart::Expr(id) if ctx.expr_has_await(*id)))
+                    } else {
+                        false
+                    };
+                    if has_call || has_async_value {
+                        // Memoized form: $.template_effect(($0) => $.set_text(text, $0), [() => expr])
+                        emit_memoized_text_effect(ctx, &items[0], &text_name, init);
+                    } else {
+                        let expr = build_concat(ctx, &items[0]);
+                        if let FragmentItem::TextConcat { parts, .. } = &items[0] {
+                            for part in parts {
+                                if let svelte_analyze::LoweredTextPart::Expr(id) = part {
+                                    let exprs = ctx.const_tag_blocker_exprs(*id);
+                                    ctx.pending_const_blockers.extend(exprs);
+                                }
+                            }
+                        }
+                        update.push(
+                            ctx.b
+                                .call_stmt("$.set_text", [Arg::Ident(&text_name), Arg::Expr(expr)]),
+                        );
+                    }
+                }
             }
 
-            init.extend(child_init);
-            update.extend(child_update);
+            ContentStrategy::SingleBlock(FragmentItem::EachBlock(id)) => {
+                // Controlled each block: element itself is the anchor, no $.child() traversal
+                gen_each_block(ctx, id, ctx.b.rid_expr(el_name), true, init);
+                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+            }
+
+            ContentStrategy::SingleBlock(FragmentItem::HtmlTag(id)) => {
+                // Controlled html tag: element itself is the anchor
+                gen_html_tag(ctx, id, ctx.b.rid_expr(el_name), true, init);
+                init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+            }
+
+            ContentStrategy::SingleElement(_)
+            | ContentStrategy::SingleBlock(_)
+            | ContentStrategy::Mixed { .. } => {
+                // Clone needed: traverse_items borrows ctx mutably
+                let child_items: Vec<_> = ctx.lowered_fragment(&child_key).items.clone();
+
+                let first_is_text = child_items
+                    .first()
+                    .is_some_and(|item| item.is_standalone_expr());
+                let first_child = if first_is_text {
+                    ctx.b
+                        .call_expr("$.child", [Arg::Ident(el_name), Arg::Bool(true)])
+                } else {
+                    ctx.b.call_expr("$.child", [Arg::Ident(el_name)])
+                };
+                let mut child_init = Vec::new();
+                let mut child_update = Vec::new();
+                let trailing = traverse_items(
+                    ctx,
+                    &child_items,
+                    first_child,
+                    &mut child_init,
+                    &mut child_update,
+                    hoisted,
+                    after_update,
+                    memo_attrs,
+                );
+
+                emit_trailing_next(ctx, trailing, &mut child_init);
+                if !child_init.is_empty() {
+                    child_init.push(ctx.b.call_stmt("$.reset", [Arg::Ident(el_name)]));
+                }
+
+                init.extend(child_init);
+                update.extend(child_update);
+            }
         }
-    }
     } // end else (non-customizable-select child path)
 
     ctx.bound_contenteditable = prev_bound_contenteditable;
@@ -348,17 +349,17 @@ pub(crate) fn process_element<'a>(
     // <selectedcontent>: after children are processed, register a node-setter so the runtime
     // can swap in the cloned option content element.
     if is_selectedcontent {
-        let assign = ctx
+        let assign = ctx.b.assign_expr(
+            AssignLeft::Ident(el_name.to_string()),
+            ctx.b.rid_expr("$$element"),
+        );
+        let setter = ctx
             .b
-            .assign_expr(AssignLeft::Ident(el_name.to_string()), ctx.b.rid_expr("$$element"));
-        let setter = ctx.b.arrow_expr(
-            ctx.b.params(["$$element"]),
-            [ctx.b.expr_stmt(assign)],
-        );
-        init.push(
-            ctx.b
-                .call_stmt("$.selectedcontent", [Arg::Ident(el_name), Arg::Expr(setter)]),
-        );
+            .arrow_expr(ctx.b.params(["$$element"]), [ctx.b.expr_stmt(assign)]);
+        init.push(ctx.b.call_stmt(
+            "$.selectedcontent",
+            [Arg::Ident(el_name), Arg::Expr(setter)],
+        ));
     }
 
     // --- Merge directive statements after children (matching Svelte's element_state merge) ---
@@ -418,7 +419,10 @@ fn emit_customizable_select<'a>(
     let from_fn = from_template_fn_for_element(ctx, el_name);
     let tpl = ctx.b.call_expr(
         from_fn,
-        [Arg::Expr(ctx.b.template_str_expr(&children_html)), Arg::Num(flags)],
+        [
+            Arg::Expr(ctx.b.template_str_expr(&children_html)),
+            Arg::Num(flags),
+        ],
     );
     let tpl_name = ctx.gen_ident(&format!("{el_name}_content"));
     hoisted.push(ctx.b.var_stmt(&tpl_name, tpl));
@@ -477,5 +481,4 @@ fn emit_customizable_select<'a>(
         "$.customizable_select",
         [Arg::Ident(el_name), Arg::Expr(callback)],
     ));
-
 }

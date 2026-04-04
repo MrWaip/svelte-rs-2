@@ -42,7 +42,10 @@ fn is_dynamic_template(
         if scoping.is_dynamic_by_id(sym_id) {
             return true;
         }
-        if has_class_state_fields && scoping.is_component_top_level_symbol(sym_id) && !scoping.is_rune(sym_id) {
+        if has_class_state_fields
+            && scoping.is_component_top_level_symbol(sym_id)
+            && !scoping.is_rune(sym_id)
+        {
             return true;
         }
         false
@@ -56,7 +59,7 @@ fn is_dynamic_element_attr(
     if info.has_await {
         return true;
     }
-    info.ref_symbols.iter().any(|&sym_id| {
+    attr_symbols(info, scoping).any(|sym_id| {
         scoping.prop_non_source_name(sym_id).is_some() || scoping.is_dynamic_by_id(sym_id)
     })
 }
@@ -68,7 +71,23 @@ fn has_state_component_attr(
     if info.has_await {
         return true;
     }
+    attr_symbols(info, scoping)
+        .any(|sym_id| !scoping.is_component_top_level_symbol(sym_id) || scoping.is_rune(sym_id))
+}
+
+fn attr_symbols<'a>(
+    info: &'a ExpressionInfo,
+    scoping: &'a crate::scope::ComponentScoping,
+) -> impl Iterator<Item = crate::scope::SymbolId> + 'a {
+    let fallback = match (&info.kind, info.ref_symbols.is_empty()) {
+        (ExpressionKind::Identifier(name), true) => {
+            scoping.find_binding(scoping.root_scope_id(), name.as_str())
+        }
+        _ => None,
+    };
+
     info.ref_symbols
         .iter()
-        .any(|&sym_id| !scoping.is_component_top_level_symbol(sym_id) || scoping.is_rune(sym_id))
+        .copied()
+        .chain(fallback)
 }

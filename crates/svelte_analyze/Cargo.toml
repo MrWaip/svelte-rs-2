@@ -8,6 +8,7 @@ doctest = false
 
 [dependencies]
 svelte_ast = { path = "../svelte_ast" }
+svelte_component_semantics = { path = "../svelte_component_semantics" }
 svelte_parser = { path = "../svelte_parser" }
 svelte_diagnostics = { path = "../svelte_diagnostics" }
 svelte_span = { path = "../svelte_span" }

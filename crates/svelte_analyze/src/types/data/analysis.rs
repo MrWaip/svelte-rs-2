@@ -46,7 +46,7 @@ impl AnalysisData {
             expressions: NodeTable::new(node_count),
             attr_expressions: NodeTable::new(node_count),
             script: None,
-            scoping: ComponentScoping::new(None),
+            scoping: ComponentScoping::new_empty(),
             dynamic_nodes: NodeBitSet::new(node_count),
             alt_is_elseif: NodeBitSet::new(node_count),
             props: None,
@@ -190,10 +190,18 @@ impl AnalysisData {
             .or_else(|| self.shorthand_symbol(id))
     }
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
-        self.attr_expressions
-            .get(attr_id)
-            .and_then(|info| info.ref_symbols.first())
-            .is_some_and(|&sym| self.import_syms.contains(&sym))
+        self.attr_expressions.get(attr_id).is_some_and(|info| {
+            info.ref_symbols
+                .first()
+                .copied()
+                .or_else(|| match &info.kind {
+                    ExpressionKind::Identifier(name) => self
+                        .scoping
+                        .find_binding(self.scoping.root_scope_id(), name.as_str()),
+                    _ => None,
+                })
+                .is_some_and(|sym| self.import_syms.contains(&sym))
+        })
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.render_tag_plans.get(id)

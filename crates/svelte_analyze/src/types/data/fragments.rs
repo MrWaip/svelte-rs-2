@@ -1,33 +1,15 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FragmentKey {
-    Root,
-    Element(NodeId),
-    ComponentNode(NodeId),
-    /// Named slot within a component: (component_id, slot_element_id).
-    /// The slot name is recovered from the element's `slot="..."` attribute at codegen time.
-    NamedSlot(NodeId, NodeId),
-    IfConsequent(NodeId),
-    IfAlternate(NodeId),
-    EachBody(NodeId),
-    EachFallback(NodeId),
-    SnippetBody(NodeId),
-    KeyBlockBody(NodeId),
-    SvelteHeadBody(NodeId),
-    SvelteElementBody(NodeId),
-    SvelteBoundaryBody(NodeId),
-    AwaitPending(NodeId),
-    AwaitThen(NodeId),
-    AwaitCatch(NodeId),
+// Re-export from svelte_ast — the canonical definition.
+pub use svelte_ast::FragmentKey;
+
+/// Extension methods on FragmentKey used only by analyze/codegen.
+pub trait FragmentKeyExt {
+    fn needs_text_first_next(&self) -> bool;
 }
 
-impl FragmentKey {
-    pub fn is_each_body(&self) -> bool {
-        matches!(self, Self::EachBody(_))
-    }
-
-    pub fn needs_text_first_next(&self) -> bool {
+impl FragmentKeyExt for FragmentKey {
+    fn needs_text_first_next(&self) -> bool {
         matches!(
             self,
             Self::Root
@@ -38,27 +20,6 @@ impl FragmentKey {
                 | Self::NamedSlot(_, _)
                 | Self::SvelteBoundaryBody(_)
         )
-    }
-
-    pub fn node_id(&self) -> Option<NodeId> {
-        match self {
-            Self::Root => None,
-            Self::Element(id)
-            | Self::ComponentNode(id)
-            | Self::NamedSlot(id, _)
-            | Self::IfConsequent(id)
-            | Self::IfAlternate(id)
-            | Self::EachBody(id)
-            | Self::EachFallback(id)
-            | Self::SnippetBody(id)
-            | Self::KeyBlockBody(id)
-            | Self::SvelteHeadBody(id)
-            | Self::SvelteElementBody(id)
-            | Self::SvelteBoundaryBody(id)
-            | Self::AwaitPending(id)
-            | Self::AwaitThen(id)
-            | Self::AwaitCatch(id) => Some(*id),
-        }
     }
 }
 

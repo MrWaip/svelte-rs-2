@@ -17,24 +17,26 @@ pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
     let Some(script_info) = &data.script else {
         return;
     };
-    mark_root_script_runes(
+    let root = data.scoping.root_scope_id();
+    mark_root_script_runes_in_scope(
         &mut data.scoping,
+        root,
         &script_info.declarations,
         &data.proxy_state_inits,
     );
 }
 
-pub(crate) fn mark_root_script_runes(
+pub(crate) fn mark_root_script_runes_in_scope(
     scoping: &mut ComponentScoping,
+    scope: ScopeId,
     declarations: &[DeclarationInfo],
     proxy_state_inits: &FxHashMap<compact_str::CompactString, bool>,
 ) {
-    let root = scoping.root_scope_id();
     for decl in declarations {
         let Some(rune_kind) = decl.is_rune else {
             continue;
         };
-        let Some(sym_id) = scoping.find_binding(root, &decl.name) else {
+        let Some(sym_id) = scoping.find_binding(scope, &decl.name) else {
             continue;
         };
         let is_proxy = proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
@@ -48,7 +50,7 @@ pub(crate) fn mark_root_script_runes(
             let deps: Vec<SymbolId> = decl
                 .rune_init_refs
                 .iter()
-                .filter_map(|name| scoping.find_binding(root, name))
+                .filter_map(|name| scoping.find_binding(scope, name))
                 .collect();
             if !deps.is_empty() {
                 scoping.set_derived_deps(sym_id, deps);
