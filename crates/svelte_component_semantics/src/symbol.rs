@@ -5,6 +5,12 @@ use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 
+/// Component-level symbol state flags (separate from OXC's `SymbolFlags`).
+/// Stored as `u8` bitmask — one byte per symbol, set via bitwise OR.
+pub(crate) mod state {
+    pub const MUTATED: u8 = 1 << 0;
+}
+
 /// Which source region of a `.svelte` component owns a symbol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolOwner {
@@ -26,7 +32,7 @@ pub(crate) struct SymbolTable {
     scope_ids: Vec<ScopeId>,
     declaration_node_ids: Vec<OxcNodeId>,
     resolved_references: Vec<Vec<ReferenceId>>,
-    mutated: Vec<bool>,
+    state: Vec<u8>,
     owners: Vec<SymbolOwner>,
 }
 
@@ -39,7 +45,7 @@ impl SymbolTable {
             scope_ids: Vec::new(),
             declaration_node_ids: Vec::new(),
             resolved_references: Vec::new(),
-            mutated: Vec::new(),
+            state: Vec::new(),
             owners: Vec::new(),
         }
     }
@@ -60,7 +66,7 @@ impl SymbolTable {
         self.scope_ids.push(scope_id);
         self.declaration_node_ids.push(node_id);
         self.resolved_references.push(Vec::new());
-        self.mutated.push(false);
+        self.state.push(0);
         self.owners.push(owner);
         id
     }
@@ -94,7 +100,7 @@ impl SymbolTable {
     }
 
     pub fn is_mutated(&self, id: SymbolId) -> bool {
-        self.mutated[id.index()]
+        self.state[id.index()] & state::MUTATED != 0
     }
 
     /// Record a resolved reference to this symbol. Sets mutated flag if write.
@@ -106,7 +112,7 @@ impl SymbolTable {
     ) {
         self.resolved_references[symbol_id.index()].push(reference_id);
         if is_write {
-            self.mutated[symbol_id.index()] = true;
+            self.state[symbol_id.index()] |= state::MUTATED;
         }
     }
 

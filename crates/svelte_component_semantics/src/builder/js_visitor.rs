@@ -261,28 +261,10 @@ impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
     }
 
     fn visit_arrow_function_expression(&mut self, expr: &ArrowFunctionExpression<'a>) {
-        let parent = self.scope;
-        if self.template_mode {
-            if let Some(existing) = expr.scope_id.get() {
-                self.scope = existing;
-                self.unresolved_stack.push(Vec::new());
-            } else {
-                self.scope = self
-                    .semantics
-                    .add_scope(parent, ScopeFlags::Arrow | ScopeFlags::Function);
-                self.unresolved_stack.push(Vec::new());
-                expr.scope_id.set(Some(self.scope));
-            }
-        } else {
-            self.scope = self
-                .semantics
-                .add_scope(parent, ScopeFlags::Arrow | ScopeFlags::Function);
-            self.unresolved_stack.push(Vec::new());
-            expr.scope_id.set(Some(self.scope));
-        }
+        let parent = self.enter_scope(ScopeFlags::Arrow | ScopeFlags::Function);
+        expr.scope_id.set(Some(self.scope));
         walk::walk_arrow_function_expression(self, expr);
-        self.resolve_references_for_current_scope();
-        self.scope = parent;
+        self.leave_scope(parent);
     }
 
     fn visit_class(&mut self, class: &Class<'a>) {
@@ -400,6 +382,18 @@ impl<'a> Visit<'a> for JsSemanticVisitor<'_> {
         decl.scope_id.set(Some(self.scope));
         walk::walk_ts_global_declaration(self, decl);
         self.leave_scope(parent);
+    }
+
+    fn visit_ts_enum_declaration(&mut self, decl: &TSEnumDeclaration<'a>) {
+        let flags = if decl.r#const {
+            SymbolFlags::ConstEnum
+        } else {
+            SymbolFlags::RegularEnum
+        };
+        self.binding_flags = Some((self.scope, flags));
+        self.visit_binding_identifier(&decl.id);
+        self.binding_flags = None;
+        walk::walk_ts_enum_declaration(self, decl);
     }
 
     fn visit_ts_enum_body(&mut self, body: &TSEnumBody<'a>) {

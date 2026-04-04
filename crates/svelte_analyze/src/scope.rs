@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::NodeId;
 use svelte_component_semantics::{
@@ -531,7 +532,7 @@ impl ComponentScoping {
         self.semantics.collect_import_syms()
     }
 
-    pub fn collect_all_symbol_names(&self) -> FxHashSet<String> {
+    pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
         self.semantics.collect_all_symbol_names()
     }
 

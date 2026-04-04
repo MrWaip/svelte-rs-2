@@ -101,16 +101,16 @@ impl ComponentSemantics {
         node_id: OxcNodeId,
         owner: SymbolOwner,
     ) -> SymbolId {
+        let compact_name = CompactString::from(name);
         let sym = self.symbols.create_symbol(
-            CompactString::from(name),
+            compact_name.clone(),
             span,
             flags,
             scope,
             node_id,
             owner,
         );
-        self.scopes
-            .add_binding(scope, CompactString::from(name), sym);
+        self.scopes.add_binding(scope, compact_name, sym);
         sym
     }
 
@@ -242,8 +242,11 @@ impl ComponentSemantics {
     }
 
     /// Collect all symbol names (for IdentGen conflict detection).
-    pub fn collect_all_symbol_names(&self) -> FxHashSet<String> {
-        self.symbols.symbol_names().map(|s| s.to_string()).collect()
+    pub fn collect_all_symbol_names(&self) -> FxHashSet<CompactString> {
+        self.symbols
+            .symbol_names()
+            .map(|s| CompactString::from(s))
+            .collect()
     }
 
     // -- Fragment scopes --

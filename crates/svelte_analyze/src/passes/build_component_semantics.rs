@@ -155,8 +155,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 Node::SnippetBlock(block) => {
                     // The snippet name is declared in the surrounding template scope; only the
                     // params/body live in the snippet's child scope.
-                    let scope = ctx.enter_fragment_scope(FragmentKey::SnippetBody(block.id));
-                    ctx.leave_scope();
+                    let mut arrow_scope = None;
                     if let Some(stmt) = self
                         .parsed
                         .stmt_handle(block.expression_span.start)
@@ -168,11 +167,19 @@ impl AnalyzeTemplateWalker<'_, '_> {
                                 .stmt_handle(block.expression_span.start)
                                 .unwrap(),
                         );
-                        if let Some(arrow) = extract_arrow_from_const(stmt) {
-                            arrow.scope_id.set(Some(scope));
-                        }
                         ctx.visit_js_statement(stmt);
+                        // The arrow visitor created its own scope — read it back
+                        if let Some(arrow) = extract_arrow_from_const(stmt) {
+                            arrow_scope = arrow.scope_id.get();
+                        }
                     }
+                    let scope = arrow_scope.unwrap_or_else(|| {
+                        let s = ctx.enter_child_scope();
+                        ctx.leave_scope();
+                        s
+                    });
+                    ctx.semantics_mut()
+                        .set_fragment_scope(FragmentKey::SnippetBody(block.id), scope);
                     ctx.enter_scope(scope);
                     self.walk_fragment(&block.body, ctx);
                     ctx.leave_scope();
