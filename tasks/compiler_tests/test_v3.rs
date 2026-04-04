@@ -1144,7 +1144,6 @@ fn script_module_runes() {
 }
 
 #[rstest]
-#[ignore = "missing: instance referencing module-level bindings (codegen)"]
 fn script_module_instance_ref() {
     assert_compiler("script_module_instance_ref");
 }
