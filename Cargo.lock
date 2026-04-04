@@ -550,7 +550,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_data_structures",
- "oxc_index",
+ "oxc_index 4.1.0",
  "oxc_semantic",
  "oxc_sourcemap",
  "oxc_span",
@@ -601,6 +601,12 @@ dependencies = [
  "itoa",
  "oxc_data_structures",
 ]
+
+[[package]]
+name = "oxc_index"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eca5d9726cd0a6e433debe003b7bc88b2ecad0bb6109f0cef7c55e692139a34"
 
 [[package]]
 name = "oxc_index"
@@ -665,7 +671,7 @@ dependencies = [
  "oxc_data_structures",
  "oxc_diagnostics",
  "oxc_ecmascript",
- "oxc_index",
+ "oxc_index 4.1.0",
  "oxc_span",
  "oxc_syntax",
  "rustc-hash",
@@ -727,7 +733,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_estree",
- "oxc_index",
+ "oxc_index 4.1.0",
  "oxc_span",
  "phf",
  "serde",
@@ -1085,6 +1091,7 @@ dependencies = [
  "rustc-hash",
  "smallvec",
  "svelte_ast",
+ "svelte_component_semantics",
  "svelte_diagnostics",
  "svelte_parser",
  "svelte_span",
@@ -1130,6 +1137,22 @@ dependencies = [
  "svelte_diagnostics",
  "svelte_parser",
  "svelte_transform",
+]
+
+[[package]]
+name = "svelte_component_semantics"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_index 2.0.0",
+ "oxc_parser",
+ "oxc_span",
+ "oxc_syntax",
+ "rustc-hash",
+ "svelte_ast",
 ]
 
 [[package]]
