@@ -80,7 +80,8 @@ struct NodeId(pub u32)  // уникальный id каждого узла
 
 struct Component {
     fragment: Fragment,
-    script: Option<Script>,
+    instance_script: Option<Script>,  // <script> block (default context)
+    module_script: Option<Script>,    // <script module> block
     css: Option<RawBlock>,
     source: String,
 }
@@ -166,10 +167,12 @@ struct DeclarationInfo { name, span, kind: DeclarationKind, init_span?, is_rune:
 enum DeclarationKind { Let, Const, Var, Function }
 enum RuneKind { State, StateRaw, Derived, DerivedBy, Effect, EffectTracking, Props, Bindable, StateEager, EffectPending, Inspect, Host, PropsId }
 struct ParserResult<'a> {
-    program: Option<Program<'a>>,          // script block OXC AST
+    program: Option<Program<'a>>,          // instance script OXC AST
+    module_program: Option<Program<'a>>,   // module script OXC AST (<script module>)
     exprs: FxHashMap<u32, Expression<'a>>, // template expressions, keyed by span.start offset
     stmts: FxHashMap<u32, Statement<'a>>,  // template statements (ConstTag, SnippetBlock, EachBlock context), keyed by span.start
     script_content_span: Option<Span>,
+    module_script_content_span: Option<Span>,
     typescript: bool,
 }
 ```
@@ -286,7 +289,7 @@ enum FragmentItem {
 // item.is_standalone_expr() -> bool
 // item.node_id() -> NodeId  (panic on TextConcat)
 
-enum LoweredTextPart { Text(String), Expr(NodeId) }  // NB: другой тип чем ConcatPart в svelte_ast!
+enum LoweredTextPart { TextSpan(Span), TextOwned(String), Expr(NodeId) }  // NB: другой тип чем ConcatPart в svelte_ast! TextSpan — source slice, TextOwned — декодированный текст (HTML entities)
 
 enum ContentStrategy {
     Empty, Static(String), SingleElement(NodeId), SingleBlock(FragmentItem),

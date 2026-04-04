@@ -145,9 +145,10 @@ codegen            reads: component, data.*, parsed.*
 ### 3. Two unrelated concat-part types
 
 ```rust
-svelte_ast::ConcatPart          { Static(String), Dynamic(Span) }  // in Attribute
-svelte_analyze::LoweredTextPart { Text(String), Expr(NodeId) }     // in LoweredFragment
+svelte_ast::ConcatPart          { Static(String), Dynamic(Span) }                 // in Attribute
+svelte_analyze::LoweredTextPart { TextSpan(Span), TextOwned(String), Expr(NodeId) } // in LoweredFragment
 ```
+`TextSpan` — source slice (raw text), `TextOwned` — decoded HTML entities (when `Text::value()` differs from source).
 Different names now, but be aware they serve analogous roles in different phases.
 
 ### 4. Hoisting order in codegen is bottom-up
