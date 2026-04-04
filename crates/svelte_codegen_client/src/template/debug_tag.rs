@@ -35,7 +35,14 @@ pub(crate) fn emit_debug_tags<'a>(
                     .and_then(|handle| ctx.state.parsed.take_expr(handle))
                     .unwrap_or_else(|| ctx.b.rid_expr(name_alloc));
                 let snapshot = ctx.b.call_expr("$.snapshot", [Arg::Expr(ident_expr)]);
-                ObjProp::KeyValue(name_alloc, snapshot)
+                // Non-runes mode: snapshot runs inside an effect but stores are tracked;
+                // $.untrack prevents reactive reads from registering as effect dependencies.
+                let value = if ctx.query.runes() {
+                    snapshot
+                } else {
+                    ctx.b.call_expr("$.untrack", [Arg::Expr(ctx.b.thunk(snapshot))])
+                };
+                ObjProp::KeyValue(name_alloc, value)
             })
             .collect();
 

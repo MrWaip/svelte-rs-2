@@ -1847,7 +1847,6 @@ fn debug_non_dev() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn debug_non_runes_untrack() {
     assert_compiler("debug_non_runes_untrack");
 }
