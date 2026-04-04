@@ -7,8 +7,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{
-    AttrIndex, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    EventHandlerMode,
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -28,11 +27,6 @@ impl<'src> ElementFlagsVisitor<'src> {
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
-        ctx.data
-            .element_flags
-            .attr_indices
-            .insert(el.id, AttrIndex::build(&el.attributes));
-
         // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
         if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
             ctx.warnings_mut().push(Diagnostic::warning(
@@ -43,10 +37,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ));
         }
 
-        let has_value_attr = el.attributes.iter().any(|a| {
-            matches!(a, Attribute::StringAttribute(sa) if sa.name == "value")
-                || matches!(a, Attribute::ExpressionAttribute(ea) if ea.name == "value")
-        });
+        let has_value_attr = {
+            let idx = ctx.data.element_flags.attr_index(el.id);
+            idx.is_some_and(|i| i.has("value"))
+        };
 
         // <textarea>: detect expression children
         if el.name == "textarea" && !el.fragment.nodes.is_empty() {
@@ -169,11 +163,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
-        ctx.data
-            .element_flags
-            .attr_indices
-            .insert(cn.id, AttrIndex::build(&cn.attributes));
-
         let data = &mut *ctx.data;
         // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
         if cn.name.contains('.') {

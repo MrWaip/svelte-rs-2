@@ -16,10 +16,10 @@ use oxc_ast::ast::{
     VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
-use svelte_ast::{Attribute, ConstTag, EachBlock, Node, SnippetBlock};
+use svelte_ast::{Attribute, ComponentNode, ConstTag, EachBlock, Element, Node, SnippetBlock};
 
 use crate::scope::ComponentScoping;
-use crate::types::data::{FragmentKey, StmtHandle};
+use crate::types::data::{AttrIndex, FragmentKey, StmtHandle};
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -237,6 +237,34 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                     ctx.data.const_tags.names.insert(tag.id, name_strings);
                 }
             }
+        }
+    }
+
+    fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+        if el
+            .attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::SpreadAttribute(_)))
+        {
+            ctx.data.element_flags.has_spread.insert(el.id);
+        }
+    }
+
+    fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(cn.id, AttrIndex::build(&cn.attributes));
+        if cn
+            .attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::SpreadAttribute(_)))
+        {
+            ctx.data.element_flags.has_spread.insert(cn.id);
         }
     }
 }
