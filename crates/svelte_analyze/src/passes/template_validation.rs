@@ -238,13 +238,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         // Per-attribute warnings for plain (non-directive) attributes on regular elements.
         for attr in &el.attributes {
-            let name = match attr {
-                Attribute::StringAttribute(a) => a.name.as_str(),
-                Attribute::BooleanAttribute(a) => a.name.as_str(),
-                Attribute::ExpressionAttribute(a) => a.name.as_str(),
-                Attribute::ConcatenationAttribute(a) => a.name.as_str(),
-                _ => continue,
-            };
+            let Some(name) = attr.html_name() else { continue };
 
             // attribute_avoid_is: the `is` attribute is not supported cross-browser.
             if name == "is" {

@@ -723,6 +723,19 @@ impl Attribute {
             | Attribute::AttachTag(_) => None,
         }
     }
+
+    /// Name of this attribute if it is a plain HTML attribute (not a Svelte directive).
+    /// Returns `None` for all directive variants — use this when checking raw HTML attribute
+    /// names (e.g. `is`, colon presence, React-style names).
+    pub fn html_name(&self) -> Option<&str> {
+        match self {
+            Attribute::StringAttribute(a) => Some(&a.name),
+            Attribute::ExpressionAttribute(a) => Some(&a.name),
+            Attribute::BooleanAttribute(a) => Some(&a.name),
+            Attribute::ConcatenationAttribute(a) => Some(&a.name),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]
