@@ -1,10 +1,10 @@
 # `{@debug}`
 
 ## Current state
-- **Working**: 4/6 client use cases
-- **Missing**: 2/6 client use cases
-- **Next**: fix non-runes client emission to match the reference compiler's `$.untrack(() => $.snapshot(...))` wrapping, then add the remaining runes-mode analyzer validation
-- Last updated: 2026-04-03
+- **Working**: 5/6 client use cases
+- **Missing**: 1/6 client use cases
+- **Next**: add runes-mode analyzer validation for `{@debug}` opening-tag syntax
+- Last updated: 2026-04-04
 
 ## Source
 
@@ -24,7 +24,7 @@
 - [x] Parse one or more comma-separated identifiers.
 - [x] Reject non-identifier arguments with `debug_tag_invalid_arguments`.
 - [x] Emit client debug effects in top-level and nested fragments, including each-block context values.
-- [ ] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`.
+- [x] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`.
 - [ ] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax.
 
 ## Reference
@@ -56,7 +56,7 @@
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_codegen_client/src/template/debug_tag.rs` always emits `$.snapshot(...)` directly and never generates the reference compiler's non-runes `$.untrack(() => $.snapshot(...))` wrapper.
+- FIXED: `crates/svelte_codegen_client/src/template/debug_tag.rs` always emits `$.snapshot(...)` directly and never generates the reference compiler's non-runes `$.untrack(() => $.snapshot(...))` wrapper.
 
 ## Test cases
 
