@@ -3053,6 +3053,19 @@ fn a11y_missing_attribute_iframe_with_title_no_warning() {
 }
 
 #[test]
+fn a11y_missing_attribute_object_no_title() {
+    let diags = analyze_with_diags(r#"<object data="file.swf"></object>"#);
+    assert_has_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
+fn a11y_missing_attribute_object_with_aria_labelledby_no_warning() {
+    let diags =
+        analyze_with_diags(r#"<object data="file.swf" aria-labelledby="desc"></object>"#);
+    assert_no_warning(&diags, "a11y_missing_attribute");
+}
+
+#[test]
 fn a11y_missing_attribute_anchor_no_href() {
     // <a> without href, id, name, or aria-disabled=true should warn
     let diags = analyze_with_diags(r#"<a>link text</a>"#);
