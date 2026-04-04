@@ -1,13 +1,13 @@
 # `<script module>` in Components
 
 ## Current state
-- **Working**: 5/10 use cases complete (`script_module_exports`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations)
-- **Completed slice**: module-to-instance scope chain now resolves module bindings from instance code and preserves plain module declarations at top level
-- **Why this slice landed cleanly**: component analysis/codegen already had the required module-binding path in place; the missing step was to verify it against the ignored e2e case and promote the slice to completed status
+- **Working**: 6/10 use cases complete (`script_module_exports`, `script_module_instance_ref`, `script_module_only`, `script_module_with_instance`, module-level plain declarations, `module_illegal_default_export`)
+- **Completed slice**: module default-export diagnostics now reject `export default ...` and `export { foo as default }` inside component `<script module>`
+- **Why this slice landed cleanly**: module-program validation already had a dedicated analyzer entry point, so the diagnostic fit as a small validation extension with unit coverage and no parser/codegen changes
 - **Slice rule**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Remaining non-goals**: module runes, export specifiers, empty-module cleanup, `module_illegal_default_export`
-- **Missing after this slice**: module-specific diagnostics and validation are still incomplete, and module runes still use the unimplemented path
-- **Next**: analyzer/validation slice for module diagnostics, starting with `module_illegal_default_export`
+- **Remaining non-goals**: module runes, export specifier codegen, empty-module cleanup
+- **Missing after this slice**: module export specifiers still lack explicit coverage/verification, and module runes still use the unimplemented path
+- **Next**: codegen/coverage slice for module export specifiers and remaining top-level module export forms
 - Last updated: 2026-04-04
 
 ## Source
@@ -33,7 +33,7 @@
 - [ ] Module-level export specifiers (`export { foo, bar }`) emit at top level (no test yet, moderate)
 - [ ] Module-level imports merge with runtime imports at top of output (covered by `script_module_with_instance`, moderate)
 - [ ] Empty module script produces no extra output (no test yet, quick fix)
-- [ ] `export default` in module script emits `module_illegal_default_export` diagnostic (no test yet, quick fix)
+- [x] `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
 - [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
 
 ## Out of scope
@@ -70,7 +70,7 @@
 ### Analysis
 - [~] Run analysis passes over `module_program` in component context (binding visibility for component compilation is verified; rune detection and full validation remain)
 - [ ] Wire up `ast_type = 'module'` equivalent for module script visitors
-- [ ] Add `module_illegal_default_export` diagnostic for `export default` in module script
+- [x] Add `module_illegal_default_export` diagnostic for `export default` in module script
 
 ### Codegen
 - [x] Emit component module scripts from `generate()` using a component-safe passthrough transform path

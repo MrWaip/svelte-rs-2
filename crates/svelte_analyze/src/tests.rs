@@ -2351,6 +2351,40 @@ fn validate_snippet_invalid_export() {
 }
 
 #[test]
+fn validate_module_illegal_default_export() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+    const value = 1;
+    export default value;
+</script>"#,
+    );
+    assert_has_error(&diags, "module_illegal_default_export");
+}
+
+#[test]
+fn validate_module_illegal_default_export_function() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+    export default function value() {
+        return 1;
+    }
+</script>"#,
+    );
+    assert_has_error(&diags, "module_illegal_default_export");
+}
+
+#[test]
+fn validate_module_illegal_default_export_specifier() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+    const value = 1;
+    export { value as default };
+</script>"#,
+    );
+    assert_has_error(&diags, "module_illegal_default_export");
+}
+
+#[test]
 fn validate_snippet_invalid_export_no_false_positive() {
     // Exporting a non-snippet name from module script is not a snippet_invalid_export.
     let diags = analyze_with_diags(
