@@ -7,7 +7,8 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{
-    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode,
+    AttrIndex, ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    EventHandlerMode,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -27,6 +28,11 @@ impl<'src> ElementFlagsVisitor<'src> {
 
 impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(el.id, AttrIndex::build(&el.attributes));
+
         // Warn for non-void, non-SVG, non-MathML elements written as self-closing.
         if el.self_closing && !is_void(&el.name) && !is_svg(&el.name) && !is_mathml(&el.name) {
             ctx.warnings_mut().push(Diagnostic::warning(
@@ -163,6 +169,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+        ctx.data
+            .element_flags
+            .attr_indices
+            .insert(cn.id, AttrIndex::build(&cn.attributes));
+
         let data = &mut *ctx.data;
         // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
         if cn.name.contains('.') {

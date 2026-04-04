@@ -1,4 +1,5 @@
 use super::*;
+use super::attr_index::AttrIndex;
 
 pub struct ClassDirectiveInfo {
     pub id: NodeId,
@@ -108,6 +109,7 @@ pub struct ElementFlags {
     pub(crate) customizable_select: NodeBitSet,
     /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
     pub(crate) is_selectedcontent: NodeBitSet,
+    pub(crate) attr_indices: NodeTable<AttrIndex>,
 }
 
 impl ElementFlags {
@@ -135,6 +137,7 @@ impl ElementFlags {
             is_dynamic_component: NodeBitSet::new(node_count),
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
+            attr_indices: NodeTable::new(node_count),
         }
     }
 
@@ -219,5 +222,8 @@ impl ElementFlags {
     }
     pub fn is_selectedcontent(&self, id: NodeId) -> bool {
         self.is_selectedcontent.contains(&id)
+    }
+    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
+        self.attr_indices.get(id)
     }
 }
