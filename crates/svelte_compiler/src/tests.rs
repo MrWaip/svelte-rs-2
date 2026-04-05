@@ -201,6 +201,24 @@ fn attribute_invalid_name_dash_start() {
 }
 
 #[test]
+fn css_injected_via_compile_options() {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        css: CssMode::Injected,
+        ..Default::default()
+    };
+    let result = compile(
+        "<style>p { color: red; }</style><p>hello</p>",
+        &opts,
+    );
+    let js = result.js.unwrap_or_else(|| panic!("compile produced no JS"));
+    // inject path: CSS must be absent from CompileResult.css and present in JS output
+    assert!(result.css.is_none(), "css should be None for injected mode");
+    assert!(js.contains("$$css"), "expected $$css const in JS output");
+    assert!(js.contains("$.append_styles"), "expected $.append_styles call in JS output");
+}
+
+#[test]
 fn attribute_invalid_event_handler_string_value() {
     let result = compile(r#"<button onclick="doSomething()"></button>"#, &CompileOptions::default());
     assert!(

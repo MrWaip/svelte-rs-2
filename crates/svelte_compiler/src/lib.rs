@@ -41,10 +41,27 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let (mut analysis, mut parsed, analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
 
+        let mut css_text: Option<String> = None;
         if let Some(ss) = css_stylesheet {
-            svelte_analyze::analyze_css_pass(&js_alloc, &component, ss, &mut analysis);
+            // css:"injected" can come from compile options OR from <svelte:options css="injected">
+            let inject_styles = options.css == CssMode::Injected
+                || component.options.as_ref().and_then(|o| o.css) == Some(svelte_ast::CssMode::Injected);
+            svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis);
+            let hash_str: &str = js_alloc.alloc_str(&analysis.css.hash);
+            let raw_css = svelte_transform_css::transform_css(hash_str, ss);
+            css_text = if inject_styles {
+                raw_css.map(|s| svelte_transform_css::compact_css_for_injection(&s))
+            } else {
+                raw_css
+            };
         }
-        let css = analysis.css.css_output.clone();
+        // External CSS is returned in CompileResult.css; injected CSS goes into the JS output.
+        // css_text is passed to codegen only for the injected path — external mode doesn't need it there.
+        let (css, injected_css_text) = if analysis.css.inject_styles {
+            (None, css_text)
+        } else {
+            (css_text, None)
+        };
 
         let has_errors = has_parse_errors
             || analyze_diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error);
@@ -69,6 +86,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             &mut parsed,
             &mut ident_gen,
             transform_data,
+            injected_css_text.as_deref(),
             &name,
             options.dev,
             source,

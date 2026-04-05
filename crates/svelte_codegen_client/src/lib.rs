@@ -24,6 +24,7 @@ pub fn generate<'a>(
     parsed: &'a mut ParserResult<'a>,
     ident_gen: &'a mut IdentGen,
     transform_data: TransformData,
+    css_text: Option<&str>,
     name: &str,
     dev: bool,
     source: &'a str,
@@ -37,6 +38,7 @@ pub fn generate<'a>(
         parsed,
         ident_gen,
         transform_data,
+        css_text,
         name,
         dev,
         source,
@@ -114,6 +116,17 @@ pub fn generate<'a>(
     let runtime = ctx.runtime_plan();
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
+
+    // CSS injection — $.append_styles() must be the very first statement in the function body
+    // so the styles are available before any DOM nodes are created.
+    if ctx.query.view.inject_styles() && ctx.state.css_text.is_some() {
+        fn_body.push(
+            ctx.b.expr_stmt(ctx.b.call_expr(
+                "$.append_styles",
+                [Arg::Ident("$$anchor"), Arg::Ident("$$css")],
+            )),
+        );
+    }
 
     // $props.id() → must be first statement for hydration correctness
     if let Some(props_id_name) = ctx.query.props_id() {
@@ -387,6 +400,18 @@ pub fn generate<'a>(
     program_body.extend(script_imports);
     program_body.extend(module_body);
     program_body.extend(all_hoisted);
+    // const $$css = { hash: "svelte-HASH", code: "scoped CSS" } — placed after template
+    // vars so it appears between `var root = ...` and the component function, matching
+    // the reference compiler's output order.
+    if let Some(code) = ctx.state.css_text {
+        let hash: &str = b.alloc_str(ctx.query.view.css_hash());
+        let code: &str = b.alloc_str(code);
+        let css_obj = b.object_expr([
+            ObjProp::KeyValue("hash", b.str_expr(hash)),
+            ObjProp::KeyValue("code", b.str_expr(code)),
+        ]);
+        program_body.push(b.const_stmt("$$css", css_obj));
+    }
     program_body.push(export_default);
     program_body.extend(delegate_stmts);
 

@@ -1,9 +1,6 @@
-use lightningcss::error::PrinterError;
 use lightningcss::rules::CssRule;
 use lightningcss::selector::{Component, PseudoClass, Selector};
-use lightningcss::stylesheet::{PrinterOptions, StyleSheet};
-use lightningcss::values::ident::Ident;
-use lightningcss::{visit_types, visitor::{Visit, Visitor, VisitTypes}};
+use lightningcss::stylesheet::StyleSheet;
 use rustc_hash::FxHashSet;
 
 use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
@@ -12,14 +9,13 @@ use crate::css::css_component_hash;
 use crate::types::data::{AnalysisData, CssAnalysis};
 use crate::types::node_table::NodeBitSet;
 
-/// Run the CSS analysis pass: compute hash, mark scoped elements, emit scoped CSS.
+/// Classify the CSS block: compute hash, mark scoped template elements, set inject flag.
 ///
-/// `alloc` is the same OXC allocator used for the stylesheet — the hash string is
-/// allocated into it so it shares lifetime `'a` with the selector components.
-pub fn analyze_css_pass<'a>(
-    alloc: &'a oxc_allocator::Allocator,
+/// Does NOT transform or serialize CSS — call `svelte_transform_css::transform_css` for that.
+pub fn analyze_css_pass(
     component: &SvelteComponent,
-    mut stylesheet: StyleSheet<'a, 'a>,
+    stylesheet: &StyleSheet<'_, '_>,
+    inject_styles: bool,
     data: &mut AnalysisData,
 ) {
     let Some(css_block) = &component.css else {
@@ -29,23 +25,9 @@ pub fn analyze_css_pass<'a>(
     let hash = css_component_hash(css_text);
 
     // Phase 1: collect HTML tag names selected by CSS rules (read-only).
-    let selected_tags = collect_type_selectors(&stylesheet);
+    let selected_tags = collect_type_selectors(stylesheet);
 
-    // Phase 2: transform stylesheet — append `.hash` to each scoped TypeSelector.
-    // The hash string is allocated into the same arena as the stylesheet source so
-    // that injected Ident<'a> components have the correct lifetime — no Box::leak needed.
-    let hash_str: &'a str = alloc.alloc_str(&hash);
-    let mut scoper = ScopeSelectors { hash_class: hash_str };
-    let css_output = if stylesheet.visit(&mut scoper).is_ok() {
-        stylesheet
-            .to_css(PrinterOptions::default())
-            .ok()
-            .map(|r| r.code)
-    } else {
-        None
-    };
-
-    // Phase 3: walk template, mark elements whose tag name is in selected_tags.
+    // Phase 2: walk template, mark elements whose tag name is in selected_tags.
     let node_count = component.node_count();
     let mut scoped = NodeBitSet::new(node_count);
     mark_scoped_elements(&component.fragment, &component.store, &selected_tags, &mut scoped);
@@ -53,7 +35,7 @@ pub fn analyze_css_pass<'a>(
     data.css = CssAnalysis {
         hash,
         scoped_elements: scoped,
-        css_output,
+        inject_styles,
     };
 }
 
@@ -81,60 +63,12 @@ fn collect_type_selectors(stylesheet: &StyleSheet<'_, '_>) -> FxHashSet<String> 
 }
 
 // ---------------------------------------------------------------------------
-// Scope selectors (mutating visitor)
-// ---------------------------------------------------------------------------
-
-struct ScopeSelectors<'h> {
-    /// The scoping class name, e.g. `"svelte-1a7i8ec"` (without the dot).
-    /// Allocated into the stylesheet arena so `Ident<'h>` satisfies `'h: 'i`.
-    hash_class: &'h str,
-}
-
-impl<'i, 'h: 'i> Visitor<'i> for ScopeSelectors<'h> {
-    type Error = PrinterError;
-
-    fn visit_types(&self) -> VisitTypes {
-        visit_types!(SELECTORS)
-    }
-
-    fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
-        let components: Vec<Component<'i>> =
-            selector.iter_raw_match_order().cloned().collect();
-
-        let has_local_name = components.iter().any(|c| matches!(c, Component::LocalName(_)));
-        if !has_local_name {
-            return Ok(());
-        }
-
-        if has_global_component(selector) {
-            return Ok(());
-        }
-
-        let mut result: Vec<Component<'i>> = Vec::with_capacity(components.len() + 1);
-        for component in components {
-            let is_local = matches!(component, Component::LocalName(_));
-            result.push(component);
-            if is_local {
-                // Ident<'h> coerces to Ident<'i> because 'h: 'i and Ident is covariant.
-                let class_ident: Ident<'h> = Ident::from(self.hash_class);
-                result.push(Component::Class(class_ident));
-            }
-        }
-
-        *selector = Selector::from(result);
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 fn has_global_component(selector: &Selector<'_>) -> bool {
     selector.iter_raw_match_order().any(|c| match c {
-        // CSS Modules :global() — only when ParserOptions::css_modules is set
         Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
-        // Bare :global or :global(...) parsed as unknown pseudo-class without CSS modules
         Component::NonTSPseudoClass(PseudoClass::Custom { name }) => name.as_ref() == "global",
         Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
             name.as_ref() == "global"

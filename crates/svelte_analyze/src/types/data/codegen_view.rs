@@ -329,4 +329,8 @@ impl<'a> CodegenView<'a> {
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
         self.data.css.scoped_elements.contains(&id)
     }
+    /// Whether CSS should be injected at runtime via `$.append_styles()`.
+    pub fn inject_styles(&self) -> bool {
+        self.data.css.inject_styles
+    }
 }

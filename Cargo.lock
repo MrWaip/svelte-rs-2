@@ -1672,10 +1672,12 @@ dependencies = [
  "serde",
  "serde_json",
  "svelte_analyze",
+ "svelte_ast",
  "svelte_codegen_client",
  "svelte_diagnostics",
  "svelte_parser",
  "svelte_transform",
+ "svelte_transform_css",
 ]
 
 [[package]]
@@ -1743,6 +1745,13 @@ dependencies = [
  "svelte_ast",
  "svelte_parser",
  "svelte_span",
+]
+
+[[package]]
+name = "svelte_transform_css"
+version = "0.1.0"
+dependencies = [
+ "lightningcss",
 ]
 
 [[package]]
