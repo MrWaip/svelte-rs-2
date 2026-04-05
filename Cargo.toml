@@ -14,6 +14,7 @@ svelte_transform = { path = "crates/svelte_transform" }
 svelte_compiler = { path = "crates/svelte_compiler" }
 svelte_component_semantics = { path = "crates/svelte_component_semantics" }
 svelte_transform_css = { path = "crates/svelte_transform_css" }
+svelte_css = { path = "crates/svelte_css" }
 
 compact_str = "0.9.0"
 glob = "0.3.2"
