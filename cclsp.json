@@ -1,0 +1,13 @@
+{
+  "servers": [
+    {
+      "extensions": [
+        "rs"
+      ],
+      "command": [
+        "rust-analyzer"
+      ],
+      "rootDir": "."
+    }
+  ]
+}

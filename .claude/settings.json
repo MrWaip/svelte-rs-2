@@ -1,7 +1,4 @@
 {
-  "env": {
-    "ENABLE_LSP_TOOL": "1"
-  },
   "permissions": {
     "allow": [
       "Bash(cargo doc*)",
@@ -22,7 +19,19 @@
       "Bash(sed *)",
       "Bash(sort *)",
       "Bash(uniq *)",
-      "Bash(diff *)"
+      "Bash(diff *)",
+        "mcp__cclsp__find_workspace_symbols",
+        "mcp__cclsp__get_hover",
+        "mcp__cclsp__find_implementation",
+        "mcp__cclsp__find_definition",
+        "mcp__cclsp__find_references",
+        "mcp__cclsp__get_diagnostics",
+        "mcp__cclsp__prepare_call_hierarchy",
+        "mcp__cclsp__get_incoming_calls",
+        "mcp__cclsp__get_outgoing_calls",
+        "mcp__cclsp__rename_symbol",
+        "mcp__cclsp__rename_symbol_strict"
+
     ]
   },
   "ignorePatterns": [

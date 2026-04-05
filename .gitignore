@@ -2,3 +2,5 @@
 docs/compiler/
 node_modules/
 REVIEW.md
+.claude/plans/
+*.bak
