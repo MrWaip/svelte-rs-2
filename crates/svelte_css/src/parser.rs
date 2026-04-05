@@ -421,9 +421,13 @@ impl<'src> Parser<'src> {
                     }
                 }
             } else if Self::is_ident_char(b) {
-                self.pos += 1;
-            } else if b >= 0x80 {
-                self.advance_char();
+                // Non-ASCII (≥0x80) is handled by is_ident_char but needs
+                // multi-byte stepping; ASCII ident chars are single-byte.
+                if b >= 0x80 {
+                    self.advance_char();
+                } else {
+                    self.pos += 1;
+                }
             } else {
                 break;
             }
@@ -667,12 +671,9 @@ impl<'src> Parser<'src> {
             && self.pos < self.bytes.len()
             && is_css_ws(self.bytes[self.pos])
         {
-            self.pos = saved;
-            self.skip_whitespace();
-            self.eat_str("of");
-            if self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
-                self.pos += 1;
-            }
+            // Consume the whitespace after "of" so the Nth span
+            // covers "2n+1 of " — the selector after it is separate.
+            self.pos += 1;
             return Some(self.span_from(start));
         }
         self.pos = saved;
@@ -963,8 +964,8 @@ impl<'src> Parser<'src> {
                 });
             } else if self.eat2(b':', b':') {
                 let (_, name) = self.parse_ident_with_name()?;
-                if self.eat(b'(') {
-                    self.parse_selector_list(true)?;
+                let args = if self.eat(b'(') {
+                    let sel_list = self.parse_selector_list(true)?;
                     if !self.eat(b')') {
                         self.recover(
                             DiagnosticKind::CssExpectedToken {
@@ -974,11 +975,15 @@ impl<'src> Parser<'src> {
                         );
                         return None;
                     }
-                }
+                    Some(Box::new(sel_list))
+                } else {
+                    None
+                };
                 rel.selectors
                     .push(SimpleSelector::PseudoElement(PseudoElementSelector {
                         span: self.span_from(start),
                         name,
+                        args,
                     }));
             } else if self.eat(b':') {
                 let (_, name) = self.parse_ident_with_name()?;

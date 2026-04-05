@@ -214,6 +214,11 @@ impl Printer {
             SimpleSelector::PseudoElement(pe) => {
                 self.output.push_str("::");
                 self.output.push_str(&pe.name);
+                if let Some(args) = &pe.args {
+                    self.output.push('(');
+                    self.print_selector_list(args.as_ref(), source);
+                    self.output.push(')');
+                }
             }
             SimpleSelector::Attribute(attr) => {
                 self.output.push('[');

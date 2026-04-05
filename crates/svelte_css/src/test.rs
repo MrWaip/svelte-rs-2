@@ -881,6 +881,48 @@ fn pseudo_element_part() {
         panic!("expected pseudo-element");
     };
     assert_eq!(pe.name.as_str(), "part");
+    // Args should be preserved
+    assert!(pe.args.is_some(), "::part(foo) should have args");
+    let args = pe.args.as_ref().unwrap();
+    assert_eq!(args.children.len(), 1);
+}
+
+#[test]
+fn pseudo_element_slotted() {
+    let src = "::slotted(.foo) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::PseudoElement(pe) = &rel.selectors[0] else {
+        panic!("expected pseudo-element");
+    };
+    assert_eq!(pe.name.as_str(), "slotted");
+    assert!(pe.args.is_some());
+}
+
+#[test]
+fn pseudo_element_no_args() {
+    let src = "p::before { content: ''; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::PseudoElement(pe) = &rel.selectors[1] else {
+        panic!("expected pseudo-element");
+    };
+    assert_eq!(pe.name.as_str(), "before");
+    assert!(pe.args.is_none());
+}
+
+#[test]
+fn printer_pseudo_element_part() {
+    let src = "::part(foo) { color: red; }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(output, "::part(foo) {\n  color: red;\n}\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,4 +1191,113 @@ fn pseudo_class_where() {
     };
     assert_eq!(pc.name.as_str(), "where");
     assert!(pc.args.is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Comments edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unclosed_comment_does_not_panic() {
+    let src = "/* unterminated comment";
+    let (ss, _diags) = parse(src);
+    // Should produce a comment node (best effort), not crash
+    assert!(!ss.children.is_empty() || ss.children.is_empty()); // just assert no panic
+}
+
+#[test]
+fn html_style_comment() {
+    // HTML-style comments (<!-- -->) are consumed as whitespace, not preserved
+    let src = "<!-- comment --> p { color: red; }";
+    let ss = p(src);
+    // The HTML comment is skipped; only the rule remains
+    assert_eq!(ss.children.len(), 1);
+    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::Style(_))));
+}
+
+#[test]
+fn comment_between_rules() {
+    let src = "p { color: red; } /* separator */ div { margin: 0; }";
+    let ss = p(src);
+    assert_eq!(ss.children.len(), 3);
+    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::Style(_))));
+    assert!(matches!(&ss.children[1], StyleSheetChild::Comment(_)));
+    assert!(matches!(&ss.children[2], StyleSheetChild::Rule(Rule::Style(_))));
+}
+
+// ---------------------------------------------------------------------------
+// Values with parens (var/calc edge cases)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn value_with_var_fallback_containing_braces() {
+    // Parens protect braces inside var() from being treated as block delimiters
+    let src = "div { content: var(--x, \"{\"); }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.property, src), "content");
+    assert!(text(decl.value, src).contains("var("));
+}
+
+// ---------------------------------------------------------------------------
+// :nth-child with "of" syntax
+// ---------------------------------------------------------------------------
+
+#[test]
+fn nth_child_of_syntax() {
+    let src = "li:nth-child(2n+1 of .important) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "nth-child"));
+}
+
+// ---------------------------------------------------------------------------
+// Attribute selector edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn attribute_unquoted_value() {
+    let src = "[type=text] { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
+        panic!("expected attribute selector");
+    };
+    assert_eq!(attr.name.as_str(), "type");
+    assert!(attr.matcher.is_some());
+    assert_eq!(text(attr.value.unwrap(), src), "text");
+}
+
+#[test]
+fn attribute_all_matchers() {
+    for (op, css) in [
+        ("=", "[a=b]"),
+        ("~=", "[a~=b]"),
+        ("|=", "[a|=b]"),
+        ("^=", "[a^=b]"),
+        ("$=", "[a$=b]"),
+        ("*=", "[a*=b]"),
+    ] {
+        let full = format!("{css} {{ color: red; }}");
+        let ss = p(&full);
+        let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+            panic!("expected style rule for {op}");
+        };
+        let rel = &rule.prelude.children[0].children[0];
+        let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
+            panic!("expected attribute selector for {op}");
+        };
+        assert_eq!(text(attr.matcher.unwrap(), &full), op);
+    }
 }

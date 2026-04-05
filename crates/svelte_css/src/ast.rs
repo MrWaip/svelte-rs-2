@@ -160,6 +160,8 @@ pub struct PseudoClassSelector {
 pub struct PseudoElementSelector {
     pub span: Span,
     pub name: CompactString,
+    /// Arguments for functional pseudo-elements like `::part(foo)`, `::slotted(.foo)`.
+    pub args: Option<Box<SelectorList>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
