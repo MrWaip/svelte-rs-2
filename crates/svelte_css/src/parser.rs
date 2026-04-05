@@ -1269,6 +1269,8 @@ impl<'src> Parser<'src> {
     fn parse_declaration(&mut self) -> Option<Declaration> {
         let start = self.pos;
 
+        // CSS property names are ASCII-only; non-ASCII bytes (≥0x80) never
+        // match the break conditions so single-byte stepping is safe here.
         let prop_start = self.pos;
         while self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
