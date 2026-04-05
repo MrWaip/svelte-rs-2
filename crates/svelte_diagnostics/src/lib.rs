@@ -158,6 +158,10 @@ pub enum DiagnosticKind {
     // --- CSS errors ---
     CssEmptyDeclaration,
     CssExpectedIdentifier,
+    CssExpectedToken {
+        token: String,
+    },
+    CssUnclosedBlock,
     CssGlobalBlockInvalidCombinator {
         name: String,
     },
@@ -651,6 +655,8 @@ impl DiagnosticKind {
             Self::TypescriptInvalidFeature { .. } => "typescript_invalid_feature",
             Self::CssEmptyDeclaration => "css_empty_declaration",
             Self::CssExpectedIdentifier => "css_expected_identifier",
+            Self::CssExpectedToken { .. } => "css_expected_token",
+            Self::CssUnclosedBlock => "css_unclosed_block",
             Self::CssGlobalBlockInvalidCombinator { .. } => "css_global_block_invalid_combinator",
             Self::CssGlobalBlockInvalidDeclaration => "css_global_block_invalid_declaration",
             Self::CssGlobalBlockInvalidList => "css_global_block_invalid_list",
@@ -974,6 +980,8 @@ impl DiagnosticKind {
             Self::TypescriptInvalidFeature { feature } => format!("TypeScript language features like {feature} are not natively supported, and their use is generally discouraged. Outside of `<script>` tags, these features are not supported. For use within `<script>` tags, you will need to use a preprocessor to convert it to JavaScript before it gets passed to the Svelte compiler. If you are using `vitePreprocess`, make sure to specifically enable preprocessing script tags (`vitePreprocess({{ script: true }})`)"),
             Self::CssEmptyDeclaration => "Declaration cannot be empty".into(),
             Self::CssExpectedIdentifier => "Expected a valid CSS identifier".into(),
+            Self::CssExpectedToken { token } => format!("Expected `{token}`"),
+            Self::CssUnclosedBlock => "Unclosed block".into(),
             Self::CssGlobalBlockInvalidCombinator { name } => format!("A `:global` selector cannot follow a `{name}` combinator"),
             Self::CssGlobalBlockInvalidDeclaration => "A top-level `:global {{...}}` block can only contain rules, not declarations".into(),
             Self::CssGlobalBlockInvalidList => "A `:global` selector cannot be part of a selector list with entries that don't contain `:global`".into(),

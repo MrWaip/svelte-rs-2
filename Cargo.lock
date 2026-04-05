@@ -1697,6 +1697,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "svelte_css"
+version = "0.0.0"
+dependencies = [
+ "compact_str",
+ "pretty_assertions",
+ "smallvec",
+ "svelte_diagnostics",
+ "svelte_span",
+]
+
+[[package]]
 name = "svelte_diagnostics"
 version = "0.1.0"
 dependencies = [
