@@ -681,3 +681,59 @@ fn error_node_span_covers_skipped_content() {
     // Should cover the entire skipped rule including its block
     assert!(error_text.contains("!bad"), "error span should cover '!bad', got: {error_text:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Regression tests for specific bugs
+// ---------------------------------------------------------------------------
+
+#[test]
+fn nested_pseudo_class_rule() {
+    // `a:hover { color: red; }` inside a block must be parsed as a nested rule,
+    // not as a declaration with property `a` and value `hover { color: red; }`.
+    let src = ".parent { a:hover { color: red; } }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Rule(Rule::Style(nested)) = &rule.block.children[0] else {
+        panic!("expected nested style rule, got: {:?}", rule.block.children[0]);
+    };
+    // The nested rule should have `a:hover` as selector
+    let rel = &nested.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "a"));
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "hover"));
+}
+
+#[test]
+fn nested_declaration_with_colon_value() {
+    // Regular declarations inside a block still work
+    let src = ".parent { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.property, src), "color");
+    assert_eq!(text(decl.value, src), "red");
+}
+
+#[test]
+fn no_infinite_loop_on_unexpected_char() {
+    // `)` in selector position should not cause infinite loop
+    let src = ") { color: red; } p { color: blue; }";
+    let (ss, diags) = parse(src);
+    assert!(!diags.is_empty());
+    // Should recover and parse the valid rule
+    let has_p_rule = ss.children.iter().any(|child| {
+        matches!(child, StyleSheetChild::Rule(Rule::Style(rule))
+            if rule.prelude.children.first().is_some_and(|c|
+                c.children.first().is_some_and(|r|
+                    matches!(&r.selectors[..], [SimpleSelector::Type { name, .. }] if name == "p")
+                )
+            )
+        )
+    });
+    assert!(has_p_rule, "valid rule after unexpected char should be parsed");
+}

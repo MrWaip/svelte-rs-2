@@ -488,9 +488,10 @@ impl<'src> Parser<'src> {
 
             if quote == 0 && b == b'(' && self.pos >= 3 {
                 let p = self.pos;
-                if self.bytes[p - 3] == b'u'
+                if self.bytes[p - 1] == b'l'
                     && self.bytes[p - 2] == b'r'
-                    && self.bytes[p - 1] == b'l'
+                    && self.bytes[p - 3] == b'u'
+                    && (p < 4 || !Self::is_ident_char(self.bytes[p - 4]))
                 {
                     in_url = true;
                 }
@@ -556,10 +557,14 @@ impl<'src> Parser<'src> {
 
     // -- block item lookahead -----------------------------------------------
 
+    /// Lookahead: is the current block item a nested rule (`{`) or a declaration (`;`/`}`)?
+    /// Scans to first unquoted, non-paren-nested `{`, `}`, or `;`.
+    /// Does NOT use `:` — pseudo-classes like `a:hover {}` contain `:` but are rules.
     fn block_item_is_rule(&self) -> bool {
         let mut i = self.pos;
         let mut escaped = false;
         let mut quote: u8 = 0;
+        let mut paren_depth: u32 = 0;
         let len = self.bytes.len();
 
         while i < len {
@@ -599,9 +604,10 @@ impl<'src> Parser<'src> {
 
             if quote == 0 {
                 match b {
-                    b'{' => return true,
-                    b':' => return false,
-                    b';' | b'}' => return false,
+                    b'(' => paren_depth += 1,
+                    b')' => paren_depth = paren_depth.saturating_sub(1),
+                    b'{' if paren_depth == 0 => return true,
+                    b';' | b'}' if paren_depth == 0 => return false,
                     _ => {}
                 }
             }
@@ -781,11 +787,18 @@ impl<'src> Parser<'src> {
                 if let Some(at) = self.parse_at_rule() {
                     children.push(StyleSheetChild::Rule(Rule::AtRule(at)));
                 } else {
+                    // Ensure forward progress after failed parse
+                    if self.pos == start {
+                        self.advance_char();
+                    }
                     children.push(StyleSheetChild::Error(self.span_from(start)));
                 }
             } else if let Some(rule) = self.parse_style_rule() {
                 children.push(StyleSheetChild::Rule(Rule::Style(Box::new(rule))));
             } else {
+                if self.pos == start {
+                    self.advance_char();
+                }
                 children.push(StyleSheetChild::Error(self.span_from(start)));
             }
         }
@@ -1057,6 +1070,13 @@ impl<'src> Parser<'src> {
                     );
                     return None;
                 }
+            } else if self.pos == start {
+                // Nothing matched and pos didn't advance — bail to prevent infinite loop
+                self.recover(
+                    DiagnosticKind::CssSelectorInvalid,
+                    self.span_from(list_start),
+                );
+                return None;
             }
         }
     }
@@ -1197,6 +1217,9 @@ impl<'src> Parser<'src> {
             if let Some(at) = self.parse_at_rule() {
                 children.push(BlockChild::Rule(Rule::AtRule(at)));
             } else {
+                if self.pos == start {
+                    self.advance_char();
+                }
                 children.push(BlockChild::Error(self.span_from(start)));
             }
             return;
@@ -1206,12 +1229,18 @@ impl<'src> Parser<'src> {
             if let Some(rule) = self.parse_style_rule() {
                 children.push(BlockChild::Rule(Rule::Style(Box::new(rule))));
             } else {
+                if self.pos == start {
+                    self.advance_char();
+                }
                 children.push(BlockChild::Error(self.span_from(start)));
             }
         } else {
             match self.parse_declaration() {
                 Some(decl) => children.push(BlockChild::Declaration(decl)),
                 None => {
+                    if self.pos == start {
+                        self.advance_char();
+                    }
                     children.push(BlockChild::Error(self.span_from(start)));
                 }
             }
