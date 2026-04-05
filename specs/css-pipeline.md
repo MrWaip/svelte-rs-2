@@ -1,11 +1,12 @@
 # CSS
 
 ## Current state
-- **Working**: parser extracts a single top-level `<style>` block into `Component.css`, preserves its raw source span, parses `css="injected"` from `<svelte:options>`, and reports duplicate top-level `<style>` tags
+- **Working**: scoped CSS pipeline for top-level `<style>` is complete — hash generation, selector scoping via lightningcss, element marking, class injection in HTML template, and `CompileResult.css` plumbing. Test `css_scoped_basic` passes.
 - **Partial**: nested `<style>` elements likely work as ordinary DOM elements, but there is no focused compiler coverage proving parity with the reference "insert as-is, unscoped" behavior
-- **Missing**: there is no Rust CSS subsystem matching Svelte's parse/analyze/prune/transform pipeline; no scoped class injection, no selector analysis, no keyframe scoping, no unused-selector warnings, no CSS output, and `CompileOptions.css` is currently unused by `compile()`
-- **Next**: establish the first end-to-end scoped CSS path before deeper selector parity, starting with stylesheet parsing/representation, deterministic hash generation, scoped element marking, and CSS output plumbing
-- Last updated: 2026-04-01
+- **Missing**: `css:"injected"` mode (runtime `$.append_styles()` path), `:global()` validation, `@keyframes` scoping, unused-selector warnings, CSS custom properties
+- **Done**: css:injected mode complete. `CompileOptions.css == Injected` and `<svelte:options css="injected">` both activate injection path.
+- **Next slice**: `:global()` selector validation and transform
+- Last updated: 2026-04-05
 
 ## Source
 
@@ -32,14 +33,14 @@ ROADMAP.md — CSS
   Existing test: parser `duplicate_style_tag_returns_diagnostic`
 - `[x]` Parse `<svelte:options css="injected">`
   Existing parser test already covers `options.css`
-- `[ ]` Scoped CSS pipeline for top-level `<style>`
-  Missing: CSS AST, selector analysis, pruning, scoped class injection, keyframe scoping, stylesheet rendering
-- `[ ]` Compile result CSS plumbing
-  Missing: `CompileResult` has no CSS field, and `CompileOptions.css` is not consumed by `compile()`
+- `[x]` Scoped CSS pipeline for top-level `<style>`
+  Implemented: hash, selector scoping, element marking, class injection, CSS output. Test: `css_scoped_basic`
+- `[x]` Compile result CSS plumbing
+  Implemented: `CompileResult.css` field, `analyze_css_pass()` integrated into `compile()`
 - `[ ]` `css: "external"` output
-  Missing: extracted stylesheet result and filename/hash handling
-- `[ ]` `css: "injected"` output
-  Missing: runtime style injection path and generated JS hooks
+  Missing: explicit mode enforcement (currently works by default, mode flag not checked)
+- `[x]` `css: "injected"` output
+  Implemented: `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body. Test: `css_injected`
 - `[ ]` `:global(...)` and `:global { ... }` validation and transform
   Missing: parser/analyzer/transform parity for global selector forms and their diagnostics
 - `[ ]` Scoped `@keyframes` plus `-global-*` escape
@@ -73,11 +74,11 @@ ROADMAP.md — CSS
 
 ## Tasks
 
-1. `[ ]` Introduce a dedicated CSS subsystem and choose the CSS AST/parser strategy
-   This is the roadmap's first blocker before any selector-level parity work
-2. `[ ]` Add compile-time CSS result plumbing
-   Extend `CompileResult` and thread `CompileOptions.css` through compile/analyze/transform
-3. `[ ]` Implement the minimal scoped CSS happy path
+1. `[x]` Introduce a dedicated CSS subsystem and choose the CSS AST/parser strategy
+   Uses lightningcss for parsing/scoping/rendering
+2. `[x]` Add compile-time CSS result plumbing
+   `CompileResult.css`, `analyze_css_pass()`, `inject_styles` threading
+3. `[x]` Implement the minimal scoped CSS happy path
    Top-level stylesheet parse, deterministic hash, scoped element marking, stylesheet emission, JS injection/external output
 4. `[ ]` Port CSS analysis/validation
    `:global(...)`, `:global {}`, nesting, keyframes, invalid selector diagnostics
@@ -96,9 +97,10 @@ ROADMAP.md — CSS
 
 ## Discovered bugs
 
-- OPEN: `CompileOptions.css` exists, but `compile()` currently returns only JS and diagnostics, so CSS mode is effectively a dead option
-- OPEN: there is no Rust equivalent of reference `phases/2-analyze/css/*` or `phases/3-transform/css/index.js`
-- OPEN: no focused compiler coverage exists for top-level scoped CSS, nested `<style>` elements, or CSS custom properties
+- FIXED: `CompileOptions.css` is now consumed by `compile()` — Injected mode activates `$.append_styles()` path
+- FIXED: there is now a Rust CSS analysis pass and codegen path for scoped + injected CSS
+- OPEN: no focused compiler coverage exists for nested `<style>` elements or CSS custom properties
+- OPEN: `css: "external"` mode flag is not explicitly enforced — external is the default behavior, mode check exists but external has no special handling vs no-css
 
 ## Test cases
 
@@ -108,3 +110,5 @@ ROADMAP.md — CSS
   `style_attr_dynamic`, `style_attr_object`, `style_directive`, `style_directive_concat`, `style_directive_important`, `style_directive_string`, `svelte_element_style_directive`
 - Added in this audit:
   `css_scoped_basic` compiler case to pin missing top-level scoped CSS behavior
+- Added in css:injected slice:
+  `css_injected` compiler case for `<svelte:options css="injected">` path

@@ -7,9 +7,9 @@ pub struct CssAnalysis {
     pub hash: String,
     /// Template element NodeIds that should receive the scoped class attribute.
     pub scoped_elements: NodeBitSet,
-    /// Transformed CSS text with scoped selectors, ready for `CompileResult.css`.
-    /// `None` when the component has no `<style>` block.
-    pub css_output: Option<String>,
+    /// Whether CSS should be injected at runtime via `$.append_styles()` instead of
+    /// returned in `CompileResult.css`. Set when `css:"injected"` is active.
+    pub inject_styles: bool,
 }
 
 impl CssAnalysis {
@@ -17,7 +17,7 @@ impl CssAnalysis {
         Self {
             hash: String::new(),
             scoped_elements: NodeBitSet::new(node_count),
-            css_output: None,
+            inject_styles: false,
         }
     }
 }

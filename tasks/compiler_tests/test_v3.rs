@@ -145,6 +145,11 @@ fn css_scoped_basic() {
 }
 
 #[rstest]
+fn css_injected() {
+    assert_compiler("css_injected");
+}
+
+#[rstest]
 fn head_position_with_body() {
     assert_compiler("head_position_with_body");
 }

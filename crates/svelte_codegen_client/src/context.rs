@@ -153,6 +153,9 @@ pub struct CodegenState<'a> {
     pub delegated_events: Vec<String>,
     delegated_events_set: FxHashSet<String>,
 
+    /// Transformed and serialized CSS text for injected mode (`$$css.code`).
+    /// `Some` when `css:"injected"` is active and the stylesheet was successfully transformed.
+    pub css_text: Option<&'a str>,
     /// Whether any $inspect.trace() was found in template expressions (triggers tracing import).
     pub has_tracing: bool,
     /// Const-tag blocker propagation (experimental.async).
@@ -176,6 +179,7 @@ impl<'a> CodegenState<'a> {
         parsed: &'a mut ParserResult<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
+        css_text: Option<&'a str>,
     ) -> Self {
         Self {
             b: Builder::new(allocator),
@@ -193,6 +197,7 @@ impl<'a> CodegenState<'a> {
             bound_contenteditable: false,
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
+            css_text,
             has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
             pending_const_blockers: Vec::new(),
@@ -243,6 +248,7 @@ impl<'a> Ctx<'a> {
         parsed: &'a mut ParserResult<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
+        css_text: Option<&str>,
         name: &str,
         dev: bool,
         source: &'a str,
@@ -251,6 +257,7 @@ impl<'a> Ctx<'a> {
     ) -> Self {
         let name = allocator.alloc_str(name);
         let filename = allocator.alloc_str(filename);
+        let css_text = css_text.map(|t| allocator.alloc_str(t) as &str);
 
         Self {
             query: CodegenQuery::new(component, analysis),
@@ -264,6 +271,7 @@ impl<'a> Ctx<'a> {
                 parsed,
                 ident_gen,
                 transform_data,
+                css_text,
             ),
         }
     }
