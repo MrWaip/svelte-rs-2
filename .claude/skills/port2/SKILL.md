@@ -29,8 +29,6 @@ Derive the slice from the existing spec structure in this order:
 
 1. explicit slice notes in `Current state`
 2. unchecked or partial items in `Use cases`
-3. concrete file or layer groupings in `Tasks`
-4. `Implementation order`, if present
 
 Treat optional headings such as `Execution slices`, `Next slice`, or `Non-goals` as hints when they exist, not as required structure.
 
@@ -46,7 +44,7 @@ A slice must satisfy all of these rules:
 - introduces at most 1 new infrastructural concept
 - has clear non-goals for the current run
 
-If the spec does not already define slices explicitly, derive one from the existing `Use cases` and `Tasks` before coding.
+If the spec does not already define slices explicitly, derive one from the existing `Use cases` before coding.
 
 ## Approach
 
@@ -114,8 +112,6 @@ Update `Current state` with:
 - current slice name
 - why this slice comes next
 - non-goals for this run
-
-Do not reshape the spec template just to use this skill. Prefer updating `Current state`, `Use cases`, and `Tasks`.
 
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 

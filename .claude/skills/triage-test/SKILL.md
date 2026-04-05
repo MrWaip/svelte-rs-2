@@ -68,7 +68,7 @@ Research two things:
 1. how the reference compiler handles this specific case
 2. where the corresponding behavior lives in our compiler and what data is missing
 
-If the test is tracked in a spec, read that spec's `Current state`, `Use cases`, and `Tasks`.
+If the test is tracked in a spec, read that spec's `Current state` and `Use cases`.
 
 ### Step 4: Classify The Task
 

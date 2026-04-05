@@ -3,6 +3,7 @@
 ## Current state
 - **Working**: 9/9 use cases — feature complete
 - **Done**: added `InspectWith` and `InspectTrace` RuneKind variants; extended `detect_rune_from_call` to detect both; added placement + argument-count validation in `RuneValidator`; removed 5 pre-existing `#[ignore]` test attributes
+- **Next**: no action needed; monitor for regressions in future rune-detection or validation changes
 - Last updated: 2026-04-03
 
 ## Source
@@ -19,15 +20,15 @@
 
 ## Use cases
 
-- [x] `$inspect(...)` in dev rewrites to `$.inspect(...)` with `console.log`
-- [x] `$inspect(...).with(callback)` in dev rewrites to `$.inspect(...)` with the provided callback
-- [x] `$inspect(...)` is stripped in prod builds
-- [x] `$inspect.trace(label?)` rewrites the surrounding function body to `$.trace(...)`
-- [x] `$inspect.trace(label?)` works in async functions and template event handlers
-- [x] `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
-- [x] `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
-- [x] `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
-- [x] `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
+- `[x]` `$inspect(...)` in dev rewrites to `$.inspect(...)` with `console.log`
+- `[x]` `$inspect(...).with(callback)` in dev rewrites to `$.inspect(...)` with the provided callback
+- `[x]` `$inspect(...)` is stripped in prod builds
+- `[x]` `$inspect.trace(label?)` rewrites the surrounding function body to `$.trace(...)`
+- `[x]` `$inspect.trace(label?)` works in async functions and template event handlers
+- `[x]` `$inspect(...)` reports `rune_invalid_arguments_length` when called with zero arguments
+- `[x]` `$inspect(...).with(callback)` reports `rune_invalid_arguments_length` unless exactly one callback argument is provided
+- `[x]` `$inspect.trace(...)` reports `rune_invalid_arguments_length` when called with more than one argument
+- `[x]` `$inspect.trace(...)` reports `inspect_trace_invalid_placement` unless it is the first statement of a function body, and reports `inspect_trace_generator` inside generator functions
 
 ## Reference
 
@@ -49,40 +50,13 @@
   - `tasks/compiler_tests/cases2/inspect_trace_basic/`
   - `tasks/compiler_tests/cases2/inspect_trace_contexts/`
 
-## Tasks
-
-1. `svelte_analyze`: teach rune detection to distinguish `$inspect`, `$inspect().with`, and `$inspect.trace` from `CallExpression` shape instead of only bare identifier/static-member cases.
-2. `svelte_analyze`: port reference validation for inspect runes:
-   - `$inspect` requires one or more arguments
-   - `$inspect().with` requires exactly one argument
-   - `$inspect.trace` allows zero or one arguments
-   - `$inspect.trace` must be the first statement of a function body
-   - `$inspect.trace` is invalid inside generator functions
-3. Tests:
-   - keep existing compiler snapshot coverage for dev/prod transforms
-   - add focused analyzer tests for the missing diagnostics
-   - keep one focused compiler test for docs-level tracing inside `$effect` / `$derived.by`
-
-## Implementation order
-
-1. Add the missing analyzer tests first.
-2. Extend inspect rune detection in analyze.
-3. Port inspect validation rules.
-4. Re-run targeted analyzer and compiler tests.
-
-## Discovered bugs
-
-- OPEN: `svelte_analyze` currently recognizes bare `$inspect(...)` but does not validate `$inspect().with(...)` or `$inspect.trace(...)`, so reference diagnostics are silently missing.
-
 ## Test cases
 
-- Existing:
-  - `inspect_basic`
-  - `inspect_with_callback`
-  - `inspect_prod_strip`
-  - `inspect_trace_basic`
-  - `inspect_trace_contexts`
-  - `inspect_trace_prod_strip`
-- Added during this audit:
-  - analyzer unit tests for missing inspect validation
-  - `inspect_trace_reactive_contexts`
+- `[x]` `inspect_basic`
+- `[x]` `inspect_with_callback`
+- `[x]` `inspect_prod_strip`
+- `[x]` `inspect_trace_basic`
+- `[x]` `inspect_trace_contexts`
+- `[x]` `inspect_trace_prod_strip`
+- `[x]` `inspect_trace_reactive_contexts`
+- `[x]` analyzer unit tests for inspect validation

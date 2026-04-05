@@ -4,15 +4,64 @@
 - **Working**: 41/43 use cases
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
 - **Completed (2026-04-02)**:
-  - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads ✅
-  - #38 `state_invalid_export` error for exported reassigned state ✅
-  - #39 Dev-mode `$.assign_*` transforms for non-statement member assignments ✅
-  - #40 `$.safe_get` for `var`-declared state ✅
+  - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads
+  - #38 `state_invalid_export` error for exported reassigned state
+  - #39 Dev-mode `$.assign_*` transforms for non-statement member assignments
+  - #40 `$.safe_get` for `var`-declared state
 - **Missing**: #41 `$.deep_read_state()` (legacy, Tier 7); #32 ObjectPattern dev labels
 - Last updated: 2026-04-02
 
 ## Source
 Audit of existing implementation
+
+## Use cases
+
+- [x] `$state(value)` — basic reactive state (covered, test: hello_state)
+- [x] `$state()` — no initial value, defaults to undefined (covered, test: state_runes)
+- [x] `$state.raw(value)` — shallow reactive, no proxy (covered, test: state_raw)
+- [x] `$state.snapshot(value)` → `$.snapshot(value)` (covered, tests: state_snapshot_*)
+- [x] `$state.eager(expr)` → `$.eager(() => expr)` (covered, tests: state_eager_*)
+- [x] Multiple rune types in same script (covered, test: state_runes)
+- [x] Objects/arrays wrapped in `$.proxy()` for `$state` (covered, test: hello_state)
+- [x] Primitives NOT wrapped in `$.proxy()` (covered, test: mutated_state_rune)
+- [x] `$state.raw` never proxied (covered, test: state_raw)
+- [x] Mutated `$state` → `$.state(value)` wrapper (covered, test: mutated_state_rune)
+- [x] Unmutated primitive `$state` → no `$.state()` wrapper (covered, test: unmutated_state_optimization)
+- [x] `+=`, `-=`, `++`, `--` mutation patterns (covered, test: mutated_state_rune)
+- [x] `$.get(name)` for reads (covered, test: hello_state)
+- [x] `$.set(name, value)` for writes (covered, test: mutated_state_rune)
+- [x] `$.update(name)` / `$.update_pre(name)` for inc/dec (covered, test: mutated_state_rune)
+- [x] Object destructuring: `let {a,b} = $state({...})` (covered, test: state_destructure)
+- [x] Array destructuring: `let [x,y] = $state([...])` (covered, test: state_destructure)
+- [x] `$state.raw` object destructuring (covered, test: state_raw_destructure_object)
+- [x] `$state.raw` array destructuring (covered, test: state_raw_destructure_array)
+- [x] Public field: `count = $state(0)` → private backing + getter/setter (covered, test: state_class_field)
+- [x] Private field: `#count = $state(0)` (covered, test: state_private_class_field)
+- [x] Constructor assignment: `this.count = $state(0)` (covered, test: state_class_constructor)
+- [x] Multiple state fields in class (covered, test: state_class_multiple)
+- [x] `$state.raw` class field (covered, test: state_raw_class_field)
+- [x] Class field getter → `$.get(this.#field)` (covered, test: state_class_field)
+- [x] Class field setter → `$.set(this.#field, value, true)` (covered, test: state_class_field)
+- [x] `$state` inside exported function (covered, test: state_inside_function)
+- [x] Interaction with memoized props (covered, test: component_prop_memo_state)
+- [x] State in render tag context (covered, test: render_tag_dynamic_state)
+- [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
+- [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
+- [~] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` implemented, ObjectPattern `[$state object]` requires intermediate `$.derived` restructuring
+- [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
+- [x] `$state.is` → error: rune removed (validate/runes.rs)
+- [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)
+- [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
+- [x] `state_referenced_locally` warning — reading state/derived at same function depth captures initial value (covered by analyzer tests: `validate_state_referenced_locally_*`)
+- [x] `state_invalid_export` error — cannot export reassigned state from module (covered by analyzer tests: `validate_state_invalid_export_*`)
+- [x] Dev-mode `$.assign_*` transforms — `(obj.x ??= []).push(v)` → `$.assign_nullish(obj, 'x', [])` (covered, test: state_assign_dev)
+- [x] `$.safe_get` for `var`-declared state — `var x = $state(0); x` → `$.safe_get(x)` (covered, test: state_var_safe_get)
+- [x] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (test: state_snapshot_ignored)
+- [x] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (test: state_constructor_read_v, state_constructor_read_derived)
+
+## Out of scope
+
+- `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4, Tier 7)
 
 ## Reference
 - Svelte reference:
@@ -34,87 +83,30 @@ Audit of existing implementation
   - `crates/svelte_codegen_client/src/script/traverse.rs` — variable declaration transforms
   - `crates/svelte_transform/src/rune_refs.rs` — should_proxy(), runtime helper builders
 
-## Use cases
+## Test cases
 
-1. [x] `$state(value)` — basic reactive state (covered, test: hello_state)
-2. [x] `$state()` — no initial value, defaults to undefined (covered, test: state_runes)
-3. [x] `$state.raw(value)` — shallow reactive, no proxy (covered, test: state_raw)
-4. [x] `$state.snapshot(value)` → `$.snapshot(value)` (covered, tests: state_snapshot_*)
-5. [x] `$state.eager(expr)` → `$.eager(() => expr)` (covered, tests: state_eager_*)
-6. [x] Multiple rune types in same script (covered, test: state_runes)
-7. [x] Objects/arrays wrapped in `$.proxy()` for `$state` (covered, test: hello_state)
-8. [x] Primitives NOT wrapped in `$.proxy()` (covered, test: mutated_state_rune)
-9. [x] `$state.raw` never proxied (covered, test: state_raw)
-10. [x] Mutated `$state` → `$.state(value)` wrapper (covered, test: mutated_state_rune)
-11. [x] Unmutated primitive `$state` → no `$.state()` wrapper (covered, test: unmutated_state_optimization)
-12. [x] `+=`, `-=`, `++`, `--` mutation patterns (covered, test: mutated_state_rune)
-13. [x] `$.get(name)` for reads (covered, test: hello_state)
-14. [x] `$.set(name, value)` for writes (covered, test: mutated_state_rune)
-15. [x] `$.update(name)` / `$.update_pre(name)` for inc/dec (covered, test: mutated_state_rune)
-16. [x] Object destructuring: `let {a,b} = $state({...})` (covered, test: state_destructure)
-17. [x] Array destructuring: `let [x,y] = $state([...])` (covered, test: state_destructure)
-18. [x] `$state.raw` object destructuring (covered, test: state_raw_destructure_object)
-19. [x] `$state.raw` array destructuring (covered, test: state_raw_destructure_array)
-20. [x] Public field: `count = $state(0)` → private backing + getter/setter (covered, test: state_class_field)
-21. [x] Private field: `#count = $state(0)` (covered, test: state_private_class_field)
-22. [x] Constructor assignment: `this.count = $state(0)` (covered, test: state_class_constructor)
-23. [x] Multiple state fields in class (covered, test: state_class_multiple)
-24. [x] `$state.raw` class field (covered, test: state_raw_class_field)
-25. [x] Class field getter → `$.get(this.#field)` (covered, test: state_class_field)
-26. [x] Class field setter → `$.set(this.#field, value, true)` (covered, test: state_class_field)
-27. [x] `$state` inside exported function (covered, test: state_inside_function)
-28. [x] Interaction with memoized props (covered, test: component_prop_memo_state)
-29. [x] State in render tag context (covered, test: render_tag_dynamic_state)
-30. [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
-31. [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
-32. [~] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` implemented, ObjectPattern `[$state object]` requires intermediate `$.derived` restructuring
-33. [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
-34. [x] `$state.is` → error: rune removed (validate/runes.rs)
-35. [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)
-36. [x] Argument count validation: 0-1 args for `$state`/`$state.raw` (validate/runes.rs)
-37. [x] `state_referenced_locally` warning — reading state/derived at same function depth captures initial value (covered by analyzer tests: `validate_state_referenced_locally_*`)
-38. [x] `state_invalid_export` error — cannot export reassigned state from module (covered by analyzer tests: `validate_state_invalid_export_*`)
-39. [x] Dev-mode `$.assign_*` transforms — `(obj.x ??= []).push(v)` → `$.assign_nullish(obj, 'x', [])` (covered, test: state_assign_dev)
-40. [x] `$.safe_get` for `var`-declared state — `var x = $state(0); x` → `$.safe_get(x)` (covered, test: state_var_safe_get)
-41. [x] `$state.snapshot` with `is_ignored` flag (2nd arg `true` when warning ignored) (test: state_snapshot_ignored)
-42. [x] Constructor member expression: `this.#field.v` inside constructor vs `$.get(this.#field)` outside (test: state_constructor_read_v, state_constructor_read_derived)
-
-## Out of scope
-
-- `$.deep_read_state()` for legacy `$:` reactive statements (Svelte 4, Tier 7)
-
-## Tasks (по слоям)
-
-### analyze
-1. [x] Add diagnostic: `$state.frozen` → suggest `$state.raw`
-2. [x] Add diagnostic: `$state.is` → rune removed
-3. [x] Add placement validation for `$state`/`$state.raw` (variable decl, class prop, constructor only)
-4. [x] Add argument count validation (0-1 for `$state`/`$state.raw`)
-5. [x] Emit `state_referenced_locally` warning in validation pass
-6. [x] Emit `state_invalid_export` error in export validation
-
-### codegen
-7. [x] `$.tag_proxy()` in dev mode when proxying a prop initializer (already implemented)
-8. [ ] `$.deep_read_state()` for legacy reactive statements (Tier 7)
-9. [x] `$state.snapshot` — pass `is_ignored` flag as 2nd argument
-10. [x] Constructor `this.#field.v` for `$state`/`$state.raw` inside constructor
-11. [x] `$.safe_get` for `var`-declared state reads
-12. [x] Dev-mode `$.assign_*` transforms for non-statement member assignment
-
-### tests
-13. [x] `$.tag_proxy` dev mode — already covered by existing tag_* tests
-14. [~] Destructured $state dev labels — ArrayPattern covered, ObjectPattern deferred
-15. [x] Constructor member expression: state_constructor_read_v, state_constructor_read_derived
-16. [x] Snapshot ignored: state_snapshot_ignored, state_snapshot_not_ignored
-
-## Discovered bugs (from new tests)
-
-### BUG-1: ~~Private class field method `this.#field += 1` not rewritten to `$.set()`~~ FIXED
-- **Test**: `state_constructor_private_read` — PASSING
-- **Fix**: added private state field assignment handling in `exit_expression()` (`traverse.rs`)
-
-### BUG-2: ~~`$state.snapshot()` not rewritten in template expressions~~ FIXED
-- **Test**: `state_snapshot_in_template` — PASSING
-
-### BUG-3: ~~Constructor `$state([])` missing `$.proxy()` wrapping~~ FIXED
-- **Test**: `state_class_constructor_proxy` — PASSING
+- [x] `hello_state`
+- [x] `state_runes`
+- [x] `state_raw`
+- [x] `state_snapshot_ignored`
+- [x] `state_snapshot_not_ignored`
+- [x] `state_eager_basic`
+- [x] `mutated_state_rune`
+- [x] `unmutated_state_optimization`
+- [x] `state_destructure`
+- [x] `state_raw_destructure_object`
+- [x] `state_raw_destructure_array`
+- [x] `state_class_field`
+- [x] `state_private_class_field`
+- [x] `state_class_constructor`
+- [x] `state_class_multiple`
+- [x] `state_raw_class_field`
+- [x] `state_inside_function`
+- [x] `component_prop_memo_state`
+- [x] `render_tag_dynamic_state`
+- [x] `state_assign_dev`
+- [x] `state_var_safe_get`
+- [x] `state_constructor_read_v`
+- [x] `state_constructor_read_derived`
+- [x] `validate_state_referenced_locally_basic`
+- [x] `validate_state_invalid_export_basic`

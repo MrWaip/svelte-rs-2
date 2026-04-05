@@ -199,7 +199,7 @@ If a test fails after 3 attempts, stop and report what you tried. Do NOT fix oth
 **If implementation failed and cannot be completed:** run `git stash` to save partial work, report what was done and what remains. Do not leave a broken state on the branch.
 
 **Update tracking:**
-- Update `specs/<feature>.md`: mark completed tasks, update Current state section
+- Update `specs/<feature>.md`: mark completed use cases, update Current state section
 - Move completed feature to **Done ✅** in `ROADMAP.md`
 - Add any newly discovered items to the spec `Use cases` as unchecked checkboxes
 

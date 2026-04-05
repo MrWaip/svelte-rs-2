@@ -70,8 +70,7 @@ If a matching spec exists:
 
 1. read `Current state`
 2. read `Use cases`
-3. read `Tasks`
-4. decide whether the mismatch is already represented there
+3. decide whether the mismatch is already represented there
 
 If no matching spec exists, classify as `needs-audit` unless the failure is clearly a bounded local bug in an already implemented path.
 

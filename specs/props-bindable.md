@@ -3,6 +3,7 @@
 ## Current state
 - **Complete**: 15/16 use cases — `$props()`/`$props.id()` in `<script module>` rejection not yet verified
 - **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
+- **Next**: Verify and add coverage for `$props()` and `$props.id()` rejection inside `<script module>` (`ast_type !== 'instance'` check in reference `CallExpression.js`).
 - Last updated: 2026-04-03
 
 ## Source
@@ -22,21 +23,21 @@ ROADMAP.md — `$props` / `$bindable`
 
 ## Use cases
 
-- [x] Basic destructured props source: `let { x, y = 10 } = $props()` (`props_basic`)
-- [x] Rest props lowering: `let { x, ...rest } = $props()` (`props_rest`)
-- [x] Identifier pattern: `const props = $props()` (`props_identifier_basic`, `props_identifier_await_expression`)
-- [x] Non-bindable fallback values including lazy defaults (`props_lazy_default`)
-- [x] Local mutation of a prop source produces updatable local state (`props_mutated`)
-- [x] `$bindable()` defaults inside `$props()` destructuring (`props_bindable`, `props_mixed`)
-- [x] Proxy wrapping for bindable object/array defaults (`tag_bindable_proxy`)
-- [x] Bindable prop forwarding through component bindings (`component_bind_prop_forward`, `push_binding_group_order`)
-- [x] Renamed/aliased props (`props_renamed`): `let { foo: local = 'default' } = $props()` uses prop key in `$.prop()` call
-- [x] Renamed + bindable props (`props_renamed_bindable`): `let { value: local = $bindable('fallback') } = $props()`
-- [x] `$props.id()` basic lowering (`props_id_basic`, `props_id_with_props`)
+- [x] Basic destructured props source: `let { x, y = 10 } = $props()` (test: `props_basic`)
+- [x] Rest props lowering: `let { x, ...rest } = $props()` (test: `props_rest`)
+- [x] Identifier pattern: `const props = $props()` (tests: `props_identifier_basic`, `props_identifier_await_expression`)
+- [x] Non-bindable fallback values including lazy defaults (test: `props_lazy_default`)
+- [x] Local mutation of a prop source produces updatable local state (test: `props_mutated`)
+- [x] `$bindable()` defaults inside `$props()` destructuring (tests: `props_bindable`, `props_mixed`)
+- [x] Proxy wrapping for bindable object/array defaults (test: `tag_bindable_proxy`)
+- [x] Bindable prop forwarding through component bindings (tests: `component_bind_prop_forward`, `push_binding_group_order`)
+- [x] Renamed/aliased props (test: `props_renamed`): `let { foo: local = 'default' } = $props()` uses prop key in `$.prop()` call
+- [x] Renamed + bindable props (test: `props_renamed_bindable`): `let { value: local = $bindable('fallback') } = $props()`
+- [x] `$props.id()` basic lowering (tests: `props_id_basic`, `props_id_with_props`)
 - [x] `$props.id()` validation edge cases covered by compiler-level pipeline tests
 - [x] `$bindable()` validation: `bindable_invalid_location` and argument-count checks
 - [x] `$props()` validation: `props_invalid_placement`, `props_duplicate`, and rune argument-count checks
-- [ ] `$props()` and `$props.id()` rejected inside `<script module>` (`props_invalid_placement` / `props_id_invalid_placement`) — reference: `ast_type !== 'instance'` check in `CallExpression.js`
+- [ ] `$props()` and `$props.id()` rejected inside `<script module>` — reference: `ast_type !== 'instance'` check in `CallExpression.js`
 - [x] `$props.id()` validation: `props_id_invalid_placement`, duplicate detection with `$props()`, zero-argument enforcement
 - [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
 - [x] `props_illegal_name` for MemberExpression access on rest props
@@ -45,7 +46,6 @@ ROADMAP.md — `$props` / `$bindable`
 
 ## Reference
 
-### Reference compiler files
 - `reference/docs/02-runes/05-$props.md`
 - `reference/docs/02-runes/06-$bindable.md`
 - `reference/compiler/phases/2-analyze/visitors/CallExpression.js` — `$props`, `$props.id`, `$bindable` placement and arity validation
@@ -54,8 +54,6 @@ ROADMAP.md — `$props` / `$bindable`
 - `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
 - `reference/compiler/phases/3-transform/client/transform-client.js`
 - `reference/compiler/phases/3-transform/client/utils.js`
-
-### Our files
 - `crates/svelte_analyze/src/utils/script_info.rs` — structural extraction of props declarations/defaults
 - `crates/svelte_analyze/src/passes/post_resolve.rs` — `PropsAnalysis` construction and bindable/runtime-plan flags
 - `crates/svelte_analyze/src/passes/js_analyze/needs_context.rs` — marks props/rest access as context-sensitive
@@ -64,59 +62,29 @@ ROADMAP.md — `$props` / `$bindable`
 - `crates/svelte_codegen_client/src/script/traverse/statement_passes.rs` — props declaration replacement/removal
 - `crates/svelte_diagnostics/src/lib.rs` — already contains the missing `$props`/`$bindable` diagnostics and warning codes
 
-## Tasks
-
-### analyze
-1. [x] Extend `validate/runes.rs` for `$bindable` arity and placement parity with reference `CallExpression.js`
-2. [x] Extend `validate/runes.rs` for `$props` arity, top-level placement, and duplicate detection across `$props()` and `$props.id()`
-3. [x] Extend `validate/runes.rs` for `$props.id` top-level identifier-only placement and zero-argument validation
-4. [x] Add props-pattern validation for computed keys, nested patterns, and `$$` names
-5. [x] Add `custom_element_props_identifier` warning emission in `validate/mod.rs` — DONE
-
-### tests
-6. [x] Analyzer unit tests for `props_illegal_name` MemberExpression check (3 tests) — DONE
-7. [x] Analyzer unit tests for `custom_element_props_identifier` warning (4 tests) — DONE
-8. [x] Focused compiler cases for renamed props (`props_renamed`, `props_renamed_bindable`) — DONE
-
-## Implementation order
-
-1. Port `$bindable` validation first because it is local and isolated
-2. Port `$props` placement/duplicate checks next because they gate all remaining patterns
-3. Port props-pattern/custom-element warning logic from `VariableDeclarator.js`
-4. Add or refresh compiler cases after analyzer validation is correct
-
-## Discovered bugs
-
-- FIXED: `validate/runes.rs` now emits `$props`/`$bindable`/`$props.id` diagnostics (placement, arity, duplicate, pattern validation)
-- FIXED: `props_illegal_name` now emitted for `rest.$$foo` MemberExpression access via `RestPropAccessValidator`
-- FIXED: `custom_element_props_identifier` warning now emitted for identifier/rest `$props()` in custom elements
-
 ## Test cases
 
-### Existing passing coverage
-- `props_basic`
-- `props_rest`
-- `props_identifier_basic`
-- `props_identifier_await_expression`
-- `props_lazy_default`
-- `props_mutated`
-- `props_bindable`
-- `props_mixed`
-- `tag_bindable_proxy`
-- `component_bind_prop_forward`
-- `push_binding_group_order`
-- `props_id_basic`
-- `props_id_with_props`
-
-### Added by this audit
-- analyze unit tests for `bindable_invalid_location`
-- analyze unit tests for `rune_invalid_arguments_length` on `$bindable`
-- analyze unit tests for `props_invalid_placement`
-- analyze unit tests for `props_duplicate`
-- analyze unit tests for `$props.id()` duplicate handling against `$props()`
-- analyze unit tests for `props_id_invalid_placement`
-- analyze unit tests for `props_invalid_pattern`
-- analyze unit tests for `props_illegal_name` MemberExpression on rest_prop (3 tests)
-- analyze unit tests for `custom_element_props_identifier` warning (4 tests)
-- compiler test: `props_renamed`
-- compiler test: `props_renamed_bindable`
+- [x] `props_basic`
+- [x] `props_rest`
+- [x] `props_identifier_basic`
+- [x] `props_identifier_await_expression`
+- [x] `props_lazy_default`
+- [x] `props_mutated`
+- [x] `props_bindable`
+- [x] `props_mixed`
+- [x] `tag_bindable_proxy`
+- [x] `component_bind_prop_forward`
+- [x] `push_binding_group_order`
+- [x] `props_id_basic`
+- [x] `props_id_with_props`
+- [x] `props_renamed`
+- [x] `props_renamed_bindable`
+- [x] analyze unit: `bindable_invalid_location`
+- [x] analyze unit: `rune_invalid_arguments_length` on `$bindable`
+- [x] analyze unit: `props_invalid_placement`
+- [x] analyze unit: `props_duplicate`
+- [x] analyze unit: `$props.id()` duplicate handling against `$props()`
+- [x] analyze unit: `props_id_invalid_placement`
+- [x] analyze unit: `props_invalid_pattern`
+- [x] analyze unit: `props_illegal_name` MemberExpression on rest_prop (3 tests)
+- [x] analyze unit: `custom_element_props_identifier` warning (4 tests)

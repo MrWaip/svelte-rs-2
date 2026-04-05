@@ -2,8 +2,7 @@
 
 ## Current state
 - **Working**: 11/12 component-tag use cases
-- **Missing**: component-specific diagnostics/validation (Tier 5)
-- **Next**: implement component-specific diagnostics
+- **Next:** implement component-specific validation/warnings for invalid directives and attribute edge cases in `svelte_analyze`
 - Last updated: 2026-04-03
 
 ## Source
@@ -54,44 +53,19 @@
   - `crates/svelte_diagnostics/src/lib.rs`
   - `tasks/compiler_tests/cases2/component_*`
 
-## Tasks
-
-- [ ] Analyze: add component dynamicity metadata so runes-mode dotted/stateful component references choose the dynamic `$.component(...)` path
-- [ ] Analyze: validate component directives/attribute edge cases and emit existing diagnostics instead of silently ignoring them
-- [ ] Client codegen: collect `on:` directives on component tags into `$$events`
-- [ ] Client codegen: group child nodes by `slot="name"` and emit named `$$slots` entries instead of always lowering everything into `children`
-- [ ] Tests: keep the audit bounded to one focused case per missing behavior
-
-## Implementation order
-
-1. Dynamic component metadata in analyze.
-2. `$$events` serialization for component `on:` directives.
-3. Named slot child grouping in component codegen.
-4. Component-specific diagnostics once behavior parity is in place.
-
-## Discovered bugs
-
-- FIXED: component codegen ignores `Attribute::OnDirectiveLegacy` — added `ComponentPropKind::Event` and `$$events` emission.
-- FIXED: component children always lowered as default content — added `FragmentKey::NamedSlot` and slot partitioning in lower.rs.
-- FIXED: `ComponentNode` has no dynamic-component metadata — added `is_dynamic_component` flag and `$.component()` wrapping.
-
 ## Test cases
 
-- Existing covered compiler cases:
-  - `component_basic`
-  - `component_non_self_closing`
-  - `component_props`
-  - `component_children`
-  - `component_element_children`
-  - `component_bind_this`
-  - `component_bind_prop_forward`
-  - `component_snippet_prop`
-  - `component_snippet_with_children`
-  - `component_multiple_snippets`
-  - `component_spread_props`
-- Added during this audit:
-  - `component_events`
-  - `component_named_slot`
-  - `component_dynamic_dotted`
-- Recommended next command:
-  - `port specs/component-node.md`
+- [x] `component_basic`
+- [x] `component_non_self_closing`
+- [x] `component_props`
+- [x] `component_children`
+- [x] `component_element_children`
+- [x] `component_bind_this`
+- [x] `component_bind_prop_forward`
+- [x] `component_snippet_prop`
+- [x] `component_snippet_with_children`
+- [x] `component_multiple_snippets`
+- [x] `component_spread_props`
+- [x] `component_events`
+- [x] `component_named_slot`
+- [x] `component_dynamic_dotted`

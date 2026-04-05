@@ -35,7 +35,6 @@
 - [x] Legacy `nonpassive` modifier preserves an undefined capture slot and passes explicit passive `false` (`on_directive_nonpassive`)
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
 - [~] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` remains open in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
-
 - [ ] Dev-mode `$.apply()` + event handler naming
 
 ## Reference
@@ -64,50 +63,25 @@
   - `crates/svelte_codegen_client/src/template/svelte_body.rs`
   - `crates/svelte_diagnostics/src/lib.rs`
 
-## Tasks
-
-- [x] Analyze: add DOM-event validation/warning coverage for legacy modifiers and mixed syntax, matching the reference compiler's DOM-element-only behavior
-- [x] Analyze: track whether a component/template uses event attributes versus legacy `on:` so `mixed_event_handler_syntaxes` can be emitted at the correct node
-- [x] Analyze: warn on legacy `on:` directives in runes mode for DOM elements, keep component `on:` warnings suppressed
-- [x] Tests: add focused analyzer unit tests for `event_handler_invalid_modifier`, passive conflict errors, mixed syntax, and `event_directive_deprecated`
-- [ ] Follow-up separately in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md): component `on:` forwarding into `$$events`
-
-## Implementation order
-
-1. Add the missing analyze-time event validation/warning pass or extend the existing template validation path.
-2. Cover the new diagnostics with bounded tests before changing any client-output behavior.
-3. Keep component `$$events` work separate and continue it via `specs/component-node.md`.
-
-## Discovered bugs
-
-- FIXED: `crates/svelte_analyze` now emits `EventDirectiveDeprecated`, `MixedEventHandlerSyntaxes`, legacy modifier validation errors, and passive-conflict errors for DOM event handling.
-- FIXED: `crates/svelte_codegen_client/src/template/events/emit.rs` now emits `$.event("touchmove", el, handler, void 0, false)` for `on:touchmove|nonpassive`.
-- OPEN: `<Component on:done={handler} />` still drops `$$events` in client codegen; this is tracked in `specs/component-node.md` and reproduced by `component_events`.
-
 ## Test cases
 
-- Existing covered compiler cases:
-  - `event_attr_capture`
-  - `event_attr_capture_non_deleg`
-  - `event_attr_gotpointercapture`
-  - `event_attr_has_call`
-  - `event_attr_import_handler`
-  - `event_attr_member_handler`
-  - `event_attr_non_delegatable`
-  - `event_attr_passive`
-  - `event_attr_passive_window`
-  - `event_mixed_delegation`
-  - `on_directive`
-  - `on_directive_modifiers`
-  - `svelte_body_event_attr`
-  - `svelte_body_event_legacy`
-  - `svelte_document_bubble`
-  - `svelte_document_events`
-  - `svelte_window_event_attr`
-  - `svelte_window_event_legacy`
-- Added during this audit:
-  - `on_directive_nonpassive`
-- Related failing case in another spec:
-  - `component_events`
-- Recommended next command:
-  - `fix-test on_directive_nonpassive`
+- [x] `event_attr_capture`
+- [x] `event_attr_capture_non_deleg`
+- [x] `event_attr_gotpointercapture`
+- [x] `event_attr_has_call`
+- [x] `event_attr_import_handler`
+- [x] `event_attr_member_handler`
+- [x] `event_attr_non_delegatable`
+- [x] `event_attr_passive`
+- [x] `event_attr_passive_window`
+- [x] `event_mixed_delegation`
+- [x] `on_directive`
+- [x] `on_directive_modifiers`
+- [x] `svelte_body_event_attr`
+- [x] `svelte_body_event_legacy`
+- [x] `svelte_document_bubble`
+- [x] `svelte_document_events`
+- [x] `svelte_window_event_attr`
+- [x] `svelte_window_event_legacy`
+- [x] `on_directive_nonpassive`
+- [ ] `component_events`

@@ -3,6 +3,7 @@
 ## Current state
 - **Status**: COMPLETE — 10/10 use cases done, ROADMAP item moved to Done
 - **`ast_type = 'module'` tracking**: split to owning specs — `$props`/`$props.id` in module → `props-bindable.md`; `$host` in module → `host-rune.md`; TLA and `$:` in module → out of scope here
+- **Next**: no action needed; `ast_type = 'module'` placement checks for `$host` tracked in `host-rune.md`
 - Last updated: 2026-04-04
 
 ## Source
@@ -20,16 +21,16 @@
 
 ## Use cases
 
-- [x] Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
-- [x] Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`)
-- [x] Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
-- [x] Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
-- [x] Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
-- [x] Module-level export specifiers (`export { foo, bar }`) emit at top level (test: `script_module_export_specifiers`)
-- [x] Module-level imports merge with runtime imports at top of output (test: `script_module_imports`)
-- [x] Empty module script produces no extra output (test: `script_module_empty`)
-- [x] `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
-- [x] Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
+- `[x]` Module-level named exports pass through as-is (`export const`, `export function`) (test: `script_module_exports`)
+- `[x]` Module-level `$state` / `$derived` runes transform to `$.state()` / `$.derived()` at module level (test: `script_module_runes`)
+- `[x]` Instance code can reference module-level variables (scope chain: instance parent = module) (test: `script_module_instance_ref`)
+- `[x]` Module script only (no instance script) — component function still emitted, module code at top level (test: `script_module_only`)
+- `[x]` Both module + instance scripts — module body before component function, instance body inside (test: `script_module_with_instance`)
+- `[x]` Module-level export specifiers (`export { foo, bar }`) emit at top level (test: `script_module_export_specifiers`)
+- `[x]` Module-level imports merge with runtime imports at top of output (test: `script_module_imports`)
+- `[x]` Empty module script produces no extra output (test: `script_module_empty`)
+- `[x]` `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
+- `[x]` Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
 
 ## Out of scope
 
@@ -60,21 +61,13 @@
   - `crates/svelte_codegen_client/src/script/pipeline.rs` — `transform_module_script()` (exists but not called from `generate()`)
   - `crates/svelte_analyze/src/validate/mod.rs` — only snippet-export validation on module_program
 
-## Tasks
+## Test cases
 
-### Analysis
-- [x] Run analysis passes over `module_program` in component context, with module bindings merged into component scoping through a real parent scope chain
-- [x] Add `module_illegal_default_export` diagnostic for `export default` in module script
-- [~] `ast_type = 'module'` context tracking — split to owning specs: `props-bindable.md` (`$props`/`$props.id`) and `host-rune.md` (`$host`); TLA + `$:` in module are out of scope
-
-### Codegen
-- [x] Emit component module scripts from `generate()` using a component-safe passthrough transform path
-- [x] Merge module body into output: imports lifted to top, non-import statements before component function
-- [x] Ensure runtime import (`import * as $ from 'svelte/internal/client'`) merges correctly with module imports
-- [x] Add explicit e2e coverage for module export specifiers and empty-module output
-
-## Implementation order
-
-1. Codegen first — `transform_module_script()` already exists, wire it into `generate()` and merge output
-2. Analysis — add module program processing for diagnostics and scoping
-3. Diagnostics — `module_illegal_default_export` and related validations
+- `[x]` `script_module_exports`
+- `[x]` `script_module_runes`
+- `[x]` `script_module_instance_ref`
+- `[x]` `script_module_only`
+- `[x]` `script_module_with_instance`
+- `[x]` `script_module_export_specifiers`
+- `[x]` `script_module_imports`
+- `[x]` `script_module_empty`
