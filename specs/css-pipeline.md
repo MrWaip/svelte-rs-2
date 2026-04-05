@@ -1,11 +1,12 @@
 # CSS
 
 ## Current state
-- **Working**: scoped CSS pipeline for top-level `<style>` is complete — hash generation, selector scoping via lightningcss, element marking, class injection in HTML template, and `CompileResult.css` plumbing. Test `css_scoped_basic` passes.
-- **Partial**: nested `<style>` elements likely work as ordinary DOM elements, but there is no focused compiler coverage proving parity with the reference "insert as-is, unscoped" behavior
-- **Missing**: `css:"injected"` mode (runtime `$.append_styles()` path), `:global()` validation, `@keyframes` scoping, unused-selector warnings, CSS custom properties
-- **Done**: css:injected mode complete. `CompileOptions.css == Injected` and `<svelte:options css="injected">` both activate injection path.
-- **Next slice**: `:global()` selector validation and transform
+- **Working**: scoped CSS pipeline complete — hash, selector scoping, element marking, class injection, `CompileResult.css`. Both `css:"external"` (default) and `css:"injected"` modes work. Tests: `css_scoped_basic`, `css_injected`, `css_injected_via_compile_options`.
+- **Architecture**: `svelte_transform_css` crate owns CSS AST → CSS string transform (scoping, serialization, injection compaction). `svelte_analyze::analyze_css_pass` is read-only classifier (hash, scoped elements, inject flag). `svelte_compiler` orchestrates and owns mode-specific post-processing.
+- **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
+- **Missing**: `:global()` validation and transform, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
+- **Next slice**: `:global()` selector validation and transform (Task 4)
+- **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when Task 4 makes the function non-trivial.
 - Last updated: 2026-04-05
 
 ## Source
@@ -69,8 +70,9 @@ ROADMAP.md — CSS
 - `crates/svelte_parser/src/lib.rs` — top-level style extraction into `RawBlock`
 - `crates/svelte_parser/src/tests.rs` — current style parser coverage
 - `crates/svelte_parser/src/svelte_elements.rs` — `<svelte:options css="injected">`
+- `crates/svelte_transform_css/src/lib.rs` — CSS AST transform: scoping, serialization, injection compaction
 - `crates/svelte_compiler/src/options.rs` — `CssMode`
-- `crates/svelte_compiler/src/lib.rs` — current compile output shape, currently JS-only
+- `crates/svelte_compiler/src/lib.rs` — compile() orchestration, CSS mode dispatch
 
 ## Tasks
 
@@ -111,4 +113,5 @@ ROADMAP.md — CSS
 - Added in this audit:
   `css_scoped_basic` compiler case to pin missing top-level scoped CSS behavior
 - Added in css:injected slice:
-  `css_injected` compiler case for `<svelte:options css="injected">` path
+  `css_injected` — `<svelte:options css="injected">` path
+  `css_injected_via_compile_options` — `CompileOptions.css == Injected` path (unit test in `svelte_compiler/src/tests.rs`)
