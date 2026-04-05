@@ -7,6 +7,6 @@ pub mod visit;
 mod test;
 
 pub use ast::*;
-pub use parser::{parse, ParseError};
+pub use parser::parse;
 pub use printer::Printer;
 pub use visit::{Visit, VisitMut};

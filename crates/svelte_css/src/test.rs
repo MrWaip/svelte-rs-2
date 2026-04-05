@@ -5,11 +5,15 @@ use crate::parser::parse;
 use crate::printer::Printer;
 
 // ---------------------------------------------------------------------------
-// Helper: parse and unwrap
+// Helper: parse expecting no diagnostics
 // ---------------------------------------------------------------------------
 
 fn p(src: &str) -> StyleSheet {
-    parse(src).unwrap_or_else(|e| panic!("parse failed: {e}"))
+    let (ss, diags) = parse(src);
+    if !diags.is_empty() {
+        panic!("unexpected diagnostics: {diags:?}");
+    }
+    ss
 }
 
 fn text<'a>(span: svelte_span::Span, src: &'a str) -> &'a str {
@@ -202,8 +206,6 @@ fn global_function() {
 
 #[test]
 fn global_block() {
-    // :global { p { color: red; } } — parsed as a rule with :global selector
-    // and nested rules in the block
     let src = ":global { p { color: red; } }";
     let ss = p(src);
     let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
@@ -216,7 +218,6 @@ fn global_block() {
     assert_eq!(pc.name.as_str(), "global");
     assert!(pc.args.is_none());
 
-    // The block should contain a nested rule
     assert_eq!(rule.block.children.len(), 1);
     assert!(matches!(&rule.block.children[0], BlockChild::Rule(Rule::Style(_))));
 }
@@ -562,7 +563,6 @@ fn whitespace_only() {
 
 #[test]
 fn declaration_with_semicolons_in_value() {
-    // Values with nested functions shouldn't terminate early
     let src = "div { grid-template: 'a' 1fr / auto; }";
     let ss = p(src);
     let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
@@ -572,4 +572,89 @@ fn declaration_with_semicolons_in_value() {
         panic!("expected declaration");
     };
     assert_eq!(text(decl.property, src), "grid-template");
+}
+
+// ---------------------------------------------------------------------------
+// Error recovery
+// ---------------------------------------------------------------------------
+
+#[test]
+fn recovery_bad_selector_skips_rule() {
+    // Invalid selector: `{` after `>` with no following selector.
+    // The bad rule should be skipped, the next rule should parse fine.
+    let src = "!invalid { color: red; } p { color: blue; }";
+    let (ss, diags) = parse(src);
+    assert!(!diags.is_empty(), "expected diagnostics for bad selector");
+    // The valid rule after the bad one should be present
+    let has_p_rule = ss.children.iter().any(|child| {
+        matches!(child, StyleSheetChild::Rule(Rule::Style(rule))
+            if rule.prelude.children.first().is_some_and(|c|
+                c.children.first().is_some_and(|r|
+                    matches!(&r.selectors[..], [SimpleSelector::Type { name, .. }] if name == "p")
+                )
+            )
+        )
+    });
+    assert!(has_p_rule, "valid rule after bad rule should be parsed");
+}
+
+#[test]
+fn recovery_bad_declaration_continues_block() {
+    // Missing colon in first declaration — should skip it and parse the next one
+    let src = "p { color; font-size: 16px; }";
+    let (ss, diags) = parse(src);
+    assert!(!diags.is_empty(), "expected diagnostic for bad declaration");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    // The valid declaration should be present
+    let has_font_size = rule.block.children.iter().any(|child| {
+        matches!(child, BlockChild::Declaration(d) if d.property.source_text(src) == "font-size")
+    });
+    assert!(has_font_size, "valid declaration after bad one should be parsed");
+}
+
+#[test]
+fn recovery_unclosed_block() {
+    // Unclosed block — should produce diagnostic but not panic
+    let src = "p { color: red;";
+    let (ss, diags) = parse(src);
+    assert!(!diags.is_empty(), "expected diagnostic for unclosed block");
+    // Should still produce the rule with what it could parse
+    assert!(!ss.children.is_empty());
+}
+
+#[test]
+fn recovery_multiple_errors() {
+    // Multiple errors — parser should recover from each
+    let src = "!bad { x: 1; } p { color: red; } !worse { y: 2; }";
+    let (ss, diags) = parse(src);
+    assert!(diags.len() >= 2, "expected at least 2 diagnostics, got {}", diags.len());
+    // The valid middle rule should survive
+    let has_p_rule = ss.children.iter().any(|child| {
+        matches!(child, StyleSheetChild::Rule(Rule::Style(rule))
+            if rule.prelude.children.first().is_some_and(|c|
+                c.children.first().is_some_and(|r|
+                    matches!(&r.selectors[..], [SimpleSelector::Type { name, .. }] if name == "p")
+                )
+            )
+        )
+    });
+    assert!(has_p_rule, "valid rule between bad rules should be parsed");
+}
+
+#[test]
+fn recovery_empty_declaration_value() {
+    // Non-custom-property with empty value
+    let src = "p { color: ; font-size: 16px; }";
+    let (ss, diags) = parse(src);
+    assert!(!diags.is_empty(), "expected diagnostic for empty value");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    // font-size declaration should still be parsed
+    let has_font_size = rule.block.children.iter().any(|child| {
+        matches!(child, BlockChild::Declaration(d) if d.property.source_text(src) == "font-size")
+    });
+    assert!(has_font_size);
 }
