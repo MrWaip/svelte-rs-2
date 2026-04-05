@@ -1,4 +1,14 @@
+use smallvec::SmallVec;
 use svelte_span::{GetSpan, Span};
+
+/// Inline capacity for selector lists (most rules have 1-2 selectors).
+pub type SelectorVec<T> = SmallVec<[T; 2]>;
+
+/// Inline capacity for simple selectors within a relative selector (usually 1-3).
+pub type SimpleSelectorVec = SmallVec<[SimpleSelector; 4]>;
+
+/// Inline capacity for relative selectors within a complex selector (usually 1-2).
+pub type RelativeSelectorVec = SmallVec<[RelativeSelector; 2]>;
 
 // ---------------------------------------------------------------------------
 // Top-level
@@ -32,7 +42,7 @@ pub struct Comment {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Rule {
-    Style(StyleRule),
+    Style(Box<StyleRule>),
     AtRule(AtRule),
 }
 
@@ -67,23 +77,23 @@ pub struct AtRule {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectorList {
     pub span: Span,
-    pub children: Vec<ComplexSelector>,
+    pub children: SelectorVec<ComplexSelector>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComplexSelector {
     pub span: Span,
-    pub children: Vec<RelativeSelector>,
+    pub children: RelativeSelectorVec,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RelativeSelector {
     pub span: Span,
     pub combinator: Option<Combinator>,
-    pub selectors: Vec<SimpleSelector>,
+    pub selectors: SimpleSelectorVec,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Combinator {
     pub span: Span,
     pub kind: CombinatorKind,
@@ -129,7 +139,8 @@ pub enum SimpleSelector {
 pub struct PseudoClassSelector {
     pub span: Span,
     pub name: Span,
-    pub args: Option<SelectorList>,
+    /// Boxed to break the recursive type cycle (SelectorList → SimpleSelector → PseudoClassSelector).
+    pub args: Option<Box<SelectorList>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -202,7 +213,7 @@ impl GetSpan for Comment {
 impl GetSpan for Rule {
     fn span(&self) -> Span {
         match self {
-            Self::Style(r) => r.span,
+            Self::Style(r) => r.as_ref().span,
             Self::AtRule(r) => r.span,
         }
     }

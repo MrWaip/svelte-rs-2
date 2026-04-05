@@ -1701,6 +1701,7 @@ name = "svelte_css"
 version = "0.0.0"
 dependencies = [
  "pretty_assertions",
+ "smallvec",
  "svelte_span",
 ]
 

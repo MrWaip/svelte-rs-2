@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use svelte_span::Span;
 
 use crate::ast::*;
@@ -50,26 +51,31 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // -- helpers ------------------------------------------------------------
+    // -- helpers (hot path — all #[inline]) ---------------------------------
 
+    #[inline(always)]
     fn at_end(&self) -> bool {
         self.pos >= self.bytes.len()
     }
 
+    #[inline(always)]
     fn peek(&self) -> Option<u8> {
         self.bytes.get(self.pos).copied()
     }
 
+    #[inline(always)]
     fn peek_at(&self, offset: usize) -> Option<u8> {
         self.bytes.get(self.pos + offset).copied()
     }
 
-    fn current_char(&self) -> Option<char> {
-        self.src[self.pos..].chars().next()
+    #[inline(always)]
+    fn matches(&self, ch: u8) -> bool {
+        self.peek() == Some(ch)
     }
 
+    #[inline(always)]
     fn eat(&mut self, ch: u8) -> bool {
-        if self.peek() == Some(ch) {
+        if self.pos < self.bytes.len() && self.bytes[self.pos] == ch {
             self.pos += 1;
             true
         } else {
@@ -77,8 +83,32 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Eat a 2-byte sequence by direct byte comparison.
+    #[inline(always)]
+    fn eat2(&mut self, a: u8, b: u8) -> bool {
+        if self.pos + 1 < self.bytes.len()
+            && self.bytes[self.pos] == a
+            && self.bytes[self.pos + 1] == b
+        {
+            self.pos += 2;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if source at `pos` starts with the given string (for longer patterns).
+    #[inline]
+    fn matches_str(&self, s: &str) -> bool {
+        self.bytes
+            .get(self.pos..self.pos + s.len())
+            .is_some_and(|slice| slice == s.as_bytes())
+    }
+
+    /// Eat a string if it matches at current position.
+    #[inline]
     fn eat_str(&mut self, s: &str) -> bool {
-        if self.src[self.pos..].starts_with(s) {
+        if self.matches_str(s) {
             self.pos += s.len();
             true
         } else {
@@ -86,6 +116,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    #[inline]
     fn expect(&mut self, ch: u8) -> Result<()> {
         if self.eat(ch) {
             Ok(())
@@ -94,18 +125,12 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn matches(&self, ch: u8) -> bool {
-        self.peek() == Some(ch)
-    }
-
-    fn matches_str(&self, s: &str) -> bool {
-        self.src[self.pos..].starts_with(s)
-    }
-
+    #[inline(always)]
     fn span_from(&self, start: usize) -> Span {
         Span::new(start as u32, self.pos as u32)
     }
 
+    #[cold]
     fn error(&self, message: String) -> ParseError {
         ParseError {
             message,
@@ -115,6 +140,7 @@ impl<'src> Parser<'src> {
 
     // -- whitespace & comments ----------------------------------------------
 
+    #[inline]
     fn skip_whitespace(&mut self) {
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
             self.pos += 1;
@@ -124,51 +150,80 @@ impl<'src> Parser<'src> {
     /// Skip whitespace and comments (discarding comments).
     /// Used inside selectors and combinators.
     fn skip_whitespace_and_comments(&mut self) {
-        self.skip_whitespace();
-        while self.matches_str("/*") || self.matches_str("<!--") {
-            if self.eat_str("/*") {
-                self.read_until_str("*/");
-                self.eat_str("*/");
-            }
-            if self.eat_str("<!--") {
-                self.read_until_str("-->");
-                self.eat_str("-->");
-            }
+        loop {
             self.skip_whitespace();
+            if self.eat2(b'/', b'*') {
+                self.scan_to_comment_end();
+            } else if self.eat_str("<!--") {
+                self.scan_to_html_comment_end();
+            } else {
+                break;
+            }
         }
     }
 
-    /// Skip whitespace and collect `/* ... */` comments as AST nodes.
-    /// Used in stylesheet body and block children.
-    fn collect_comments(&mut self, out: &mut Vec<Comment>) {
-        self.skip_whitespace();
-        while self.matches_str("/*") || self.matches_str("<!--") {
-            if self.matches_str("/*") {
+    /// Skip whitespace and collect `/* ... */` comments as AST nodes directly
+    /// into `out`. Used in stylesheet body and block children.
+    fn skip_whitespace_and_collect_comments<T>(
+        &mut self,
+        out: &mut Vec<T>,
+        wrap: fn(Comment) -> T,
+    ) {
+        loop {
+            self.skip_whitespace();
+            if self.pos + 1 < self.bytes.len()
+                && self.bytes[self.pos] == b'/'
+                && self.bytes[self.pos + 1] == b'*'
+            {
                 let start = self.pos;
-                self.pos += 2; // skip /*
-                self.read_until_str("*/");
-                self.eat_str("*/");
-                out.push(Comment {
+                self.pos += 2;
+                self.scan_to_comment_end();
+                out.push(wrap(Comment {
                     span: self.span_from(start),
-                });
+                }));
+            } else if self.eat_str("<!--") {
+                self.scan_to_html_comment_end();
+            } else {
+                break;
             }
-            if self.eat_str("<!--") {
-                self.read_until_str("-->");
-                self.eat_str("-->");
-            }
-            self.skip_whitespace();
         }
     }
 
-    /// Advance until `needle` is found (or EOF). Does NOT consume `needle`.
-    fn read_until_str(&mut self, needle: &str) {
-        while self.pos < self.bytes.len() && !self.src[self.pos..].starts_with(needle) {
+    /// Advance past `*/`. Assumes `/*` was already consumed.
+    #[inline]
+    fn scan_to_comment_end(&mut self) {
+        // Search for '*' then check next byte for '/'
+        while self.pos < self.bytes.len() {
+            if self.bytes[self.pos] == b'*'
+                && self.pos + 1 < self.bytes.len()
+                && self.bytes[self.pos + 1] == b'/'
+            {
+                self.pos += 2;
+                return;
+            }
+            self.pos += 1;
+        }
+    }
+
+    /// Advance past `-->`. Assumes `<!--` was already consumed.
+    #[inline]
+    fn scan_to_html_comment_end(&mut self) {
+        while self.pos < self.bytes.len() {
+            if self.bytes[self.pos] == b'-'
+                && self.pos + 2 < self.bytes.len()
+                && self.bytes[self.pos + 1] == b'-'
+                && self.bytes[self.pos + 2] == b'>'
+            {
+                self.pos += 3;
+                return;
+            }
             self.pos += 1;
         }
     }
 
     // -- identifiers --------------------------------------------------------
 
+    #[inline(always)]
     fn is_ident_char(ch: u8) -> bool {
         ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-'
     }
@@ -176,8 +231,6 @@ impl<'src> Parser<'src> {
     fn parse_ident(&mut self) -> Result<Span> {
         let start = self.pos;
 
-        // First char: must not start with digit (but leading hyphen is ok for
-        // custom properties like --foo, and ident-start chars)
         if self.at_end() {
             return Err(self.error("expected identifier".into()));
         }
@@ -185,10 +238,8 @@ impl<'src> Parser<'src> {
         while self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
             if b == b'\\' {
-                // Escape sequence: skip \ + next char (simplified)
                 self.pos += 1;
                 if self.pos < self.bytes.len() {
-                    // Check for unicode escape: \XXXXXX
                     if self.bytes[self.pos].is_ascii_hexdigit() {
                         let hex_start = self.pos;
                         while self.pos < self.bytes.len()
@@ -197,7 +248,6 @@ impl<'src> Parser<'src> {
                         {
                             self.pos += 1;
                         }
-                        // Optional trailing whitespace after unicode escape
                         if self.pos < self.bytes.len()
                             && self.bytes[self.pos].is_ascii_whitespace()
                         {
@@ -210,12 +260,8 @@ impl<'src> Parser<'src> {
             } else if Self::is_ident_char(b) {
                 self.pos += 1;
             } else if b >= 0x80 {
-                // Non-ASCII: advance by full UTF-8 char
-                if let Some(ch) = self.current_char() {
-                    self.pos += ch.len_utf8();
-                } else {
-                    break;
-                }
+                // Non-ASCII: advance by UTF-8 char length via byte pattern
+                self.pos += utf8_char_len(b);
             } else {
                 break;
             }
@@ -231,12 +277,12 @@ impl<'src> Parser<'src> {
     // -- value reading (raw text spans) -------------------------------------
 
     /// Read raw CSS value text until `;`, `{`, or `}` (outside strings/escapes).
-    /// Returns the span of the value, trimmed.
+    /// Returns the span of the value, trimmed of trailing whitespace.
     fn read_value(&mut self) -> Span {
         let start = self.pos;
         let mut escaped = false;
         let mut in_url = false;
-        let mut quote: Option<u8> = None;
+        let mut quote: u8 = 0; // 0 = not in quote
         let mut last_non_ws = self.pos;
 
         while self.pos < self.bytes.len() {
@@ -255,8 +301,8 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            if Some(b) == quote {
-                quote = None;
+            if b == quote {
+                quote = 0;
                 self.pos += 1;
                 last_non_ws = self.pos;
                 continue;
@@ -266,24 +312,25 @@ impl<'src> Parser<'src> {
                 in_url = false;
             }
 
-            if quote.is_none() && (b == b'"' || b == b'\'') {
-                quote = Some(b);
+            if quote == 0 && (b == b'"' || b == b'\'') {
+                quote = b;
                 self.pos += 1;
                 last_non_ws = self.pos;
                 continue;
             }
 
-            // Detect url(
-            if quote.is_none()
-                && b == b'('
-                && self.pos >= 3
-                && &self.src[self.pos - 3..self.pos] == "url"
-            {
-                in_url = true;
+            // Detect url( — check 3 preceding bytes directly
+            if quote == 0 && b == b'(' && self.pos >= 3 {
+                let p = self.pos;
+                if self.bytes[p - 3] == b'u'
+                    && self.bytes[p - 2] == b'r'
+                    && self.bytes[p - 1] == b'l'
+                {
+                    in_url = true;
+                }
             }
 
-            if !in_url && quote.is_none() && (b == b';' || b == b'{' || b == b'}') {
-                // Trim trailing whitespace
+            if !in_url && quote == 0 && (b == b';' || b == b'{' || b == b'}') {
                 return Span::new(start as u32, last_non_ws as u32);
             }
 
@@ -299,11 +346,11 @@ impl<'src> Parser<'src> {
     /// Read an attribute value — quoted or unquoted — inside `[...]`.
     fn read_attribute_value(&mut self) -> Result<Span> {
         let quote = if self.eat(b'"') {
-            Some(b'"')
+            b'"'
         } else if self.eat(b'\'') {
-            Some(b'\'')
+            b'\''
         } else {
-            None
+            0
         };
 
         let start = self.pos;
@@ -322,8 +369,8 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            if let Some(q) = quote {
-                if b == q {
+            if quote != 0 {
+                if b == quote {
                     let span = self.span_from(start);
                     self.pos += 1; // eat closing quote
                     return Ok(span);
@@ -345,7 +392,6 @@ impl<'src> Parser<'src> {
     fn try_parse_nth(&mut self) -> Option<Span> {
         let start = self.pos;
 
-        // Try: even | odd
         if self.eat_str("even") {
             if self.is_nth_terminator() {
                 return Some(self.span_from(start));
@@ -361,19 +407,15 @@ impl<'src> Parser<'src> {
             return None;
         }
 
-        // Try: [+|-]?\d*n?(\s*[+-]\s*\d+)?
-        // Optional leading sign
+        // [+|-]?\d*n?(\s*[+-]\s*\d+)?
         if self.matches(b'+') || self.matches(b'-') {
             self.pos += 1;
         }
 
-        // Digits
         self.eat_digits();
 
-        // Optional 'n'
         if self.eat(b'n') {
             self.skip_whitespace();
-            // Optional [+-] digits
             if self.matches(b'+') || self.matches(b'-') {
                 self.pos += 1;
                 self.skip_whitespace();
@@ -388,13 +430,13 @@ impl<'src> Parser<'src> {
         // Check for "of" keyword or terminator
         let saved = self.pos;
         self.skip_whitespace();
-        if self.eat_str("of") && self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
-            // "of" keyword — include it
-            // The span goes up to after "of" + space consumed by read_selector
+        if self.eat_str("of")
+            && self.pos < self.bytes.len()
+            && self.bytes[self.pos].is_ascii_whitespace()
+        {
             self.pos = saved;
             self.skip_whitespace();
             self.eat_str("of");
-            // include trailing whitespace
             if self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
                 self.pos += 1;
             }
@@ -410,11 +452,15 @@ impl<'src> Parser<'src> {
         None
     }
 
+    #[inline(always)]
     fn is_nth_terminator(&self) -> bool {
-        matches!(self.peek(), Some(b')' | b',') | None)
-            || self.peek().is_some_and(|b| b.is_ascii_whitespace())
+        match self.peek() {
+            None | Some(b')' | b',') => true,
+            Some(b) => b.is_ascii_whitespace(),
+        }
     }
 
+    #[inline]
     fn eat_digits(&mut self) {
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
             self.pos += 1;
@@ -444,8 +490,8 @@ impl<'src> Parser<'src> {
 
         let index = self.pos;
 
-        // Explicit combinators: +, ~, >, ||
-        if self.eat_str("||") {
+        // Explicit combinators: ||, +, ~, >
+        if self.eat2(b'|', b'|') {
             return Some(Combinator {
                 span: Span::new(index as u32, self.pos as u32),
                 kind: CombinatorKind::Column,
@@ -467,7 +513,7 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // Descendant combinator: whitespace only (position moved from start)
+        // Descendant combinator: whitespace consumed
         if self.pos != start {
             return Some(Combinator {
                 span: Span::new(start as u32, self.pos as u32),
@@ -495,10 +541,7 @@ impl<'src> Parser<'src> {
         let mut children = Vec::new();
 
         loop {
-            // Collect comments at this level
-            let mut comments = Vec::new();
-            self.collect_comments(&mut comments);
-            children.extend(comments.into_iter().map(StyleSheetChild::Comment));
+            self.skip_whitespace_and_collect_comments(&mut children, StyleSheetChild::Comment);
 
             if self.at_end() {
                 break;
@@ -507,7 +550,7 @@ impl<'src> Parser<'src> {
             let rule = if self.matches(b'@') {
                 Rule::AtRule(self.parse_at_rule()?)
             } else {
-                Rule::Style(self.parse_style_rule()?)
+                Rule::Style(Box::new(self.parse_style_rule()?))
             };
             children.push(StyleSheetChild::Rule(rule));
         }
@@ -553,7 +596,7 @@ impl<'src> Parser<'src> {
     // -- selectors ----------------------------------------------------------
 
     fn parse_selector_list(&mut self, inside_pseudo: bool) -> Result<SelectorList> {
-        let mut children = Vec::new();
+        let mut children = SmallVec::new();
 
         self.skip_whitespace_and_comments();
         let start = self.pos;
@@ -583,12 +626,12 @@ impl<'src> Parser<'src> {
 
     fn parse_complex_selector(&mut self, inside_pseudo: bool) -> Result<ComplexSelector> {
         let list_start = self.pos;
-        let mut children = Vec::new();
+        let mut children: RelativeSelectorVec = SmallVec::new();
 
         let mut rel = RelativeSelector {
             span: Span::new(self.pos as u32, 0),
             combinator: None,
-            selectors: Vec::new(),
+            selectors: SmallVec::new(),
         };
 
         loop {
@@ -602,7 +645,6 @@ impl<'src> Parser<'src> {
                 rel.selectors
                     .push(SimpleSelector::Nesting(self.span_from(start)));
             } else if self.eat(b'*') {
-                // Possible namespace: *|ident
                 if self.eat(b'|') {
                     self.parse_ident()?;
                 }
@@ -616,10 +658,9 @@ impl<'src> Parser<'src> {
                 self.parse_ident()?;
                 rel.selectors
                     .push(SimpleSelector::Class(self.span_from(start)));
-            } else if self.eat_str("::") {
+            } else if self.eat2(b':', b':') {
                 self.parse_ident()?;
                 let pseudo_span = self.span_from(start);
-                // Read inner selectors of pseudo-element (discard)
                 if self.eat(b'(') {
                     self.parse_selector_list(true)?;
                     self.expect(b')')?;
@@ -636,7 +677,7 @@ impl<'src> Parser<'src> {
                 let args = if self.eat(b'(') {
                     let sel_list = self.parse_selector_list(true)?;
                     self.expect(b')')?;
-                    Some(sel_list)
+                    Some(Box::new(sel_list))
                 } else {
                     None
                 };
@@ -675,13 +716,11 @@ impl<'src> Parser<'src> {
                         flags,
                     }));
             } else if inside_pseudo {
-                // Try nth pattern before combinator (to avoid + collision)
                 if let Some(nth) = self.try_parse_nth() {
                     rel.selectors.push(SimpleSelector::Nth(nth));
                 } else if let Some(pct) = self.try_parse_percentage() {
                     rel.selectors.push(SimpleSelector::Percentage(pct));
                 } else if !self.is_combinator_start() {
-                    // Type selector
                     let mut _name = self.parse_ident()?;
                     if self.eat(b'|') {
                         _name = self.parse_ident()?;
@@ -692,7 +731,6 @@ impl<'src> Parser<'src> {
             } else if let Some(pct) = self.try_parse_percentage() {
                 rel.selectors.push(SimpleSelector::Percentage(pct));
             } else if !self.is_combinator_start() {
-                // Type selector
                 let mut _name = self.parse_ident()?;
                 if self.eat(b'|') {
                     _name = self.parse_ident()?;
@@ -707,7 +745,6 @@ impl<'src> Parser<'src> {
 
             let terminator = if inside_pseudo { b')' } else { b'{' };
             if self.matches(b',') || self.matches(terminator) {
-                // Rewind — let the selector_list handler see the terminator
                 self.pos = index;
                 rel.span.end = index as u32;
                 children.push(rel);
@@ -729,12 +766,11 @@ impl<'src> Parser<'src> {
                 rel = RelativeSelector {
                     span: Span::new(combinator.span.start, 0),
                     combinator: Some(combinator),
-                    selectors: Vec::new(),
+                    selectors: SmallVec::new(),
                 };
 
                 self.skip_whitespace();
 
-                // After combinator, check we're not at a terminator
                 if self.matches(b',') || self.matches(terminator) {
                     return Err(self.error("invalid selector".into()));
                 }
@@ -742,22 +778,24 @@ impl<'src> Parser<'src> {
         }
     }
 
+    #[inline(always)]
     fn is_combinator_start(&self) -> bool {
-        matches!(self.peek(), Some(b'+' | b'~' | b'>'))
-            || (self.peek() == Some(b'|') && self.peek_at(1) == Some(b'|'))
+        match self.peek() {
+            Some(b'+' | b'~' | b'>') => true,
+            Some(b'|') => self.peek_at(1) == Some(b'|'),
+            _ => false,
+        }
     }
 
     fn try_parse_attr_matcher(&mut self) -> Option<Span> {
         let start = self.pos;
 
-        // Optional prefix: ~, ^, $, *, |
         match self.peek() {
             Some(b'~' | b'^' | b'$' | b'*' | b'|') => {
                 self.pos += 1;
                 if self.eat(b'=') {
                     return Some(self.span_from(start));
                 }
-                // '|' without '=' is namespace, not matcher — rewind
                 self.pos = start;
             }
             Some(b'=') => {
@@ -791,9 +829,7 @@ impl<'src> Parser<'src> {
         let mut children = Vec::new();
 
         loop {
-            let mut comments = Vec::new();
-            self.collect_comments(&mut comments);
-            children.extend(comments.into_iter().map(BlockChild::Comment));
+            self.skip_whitespace_and_collect_comments(&mut children, BlockChild::Comment);
 
             if self.matches(b'}') {
                 break;
@@ -825,7 +861,7 @@ impl<'src> Parser<'src> {
         self.pos = saved;
 
         if is_rule {
-            Ok(BlockChild::Rule(Rule::Style(self.parse_style_rule()?)))
+            Ok(BlockChild::Rule(Rule::Style(Box::new(self.parse_style_rule()?))))
         } else {
             Ok(BlockChild::Declaration(self.parse_declaration()?))
         }
@@ -873,5 +909,23 @@ impl<'src> Parser<'src> {
             property,
             value,
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UTF-8 helpers
+// ---------------------------------------------------------------------------
+
+/// Get the byte length of a UTF-8 character from its leading byte.
+#[inline(always)]
+fn utf8_char_len(lead: u8) -> usize {
+    if lead < 0x80 {
+        1
+    } else if lead < 0xE0 {
+        2
+    } else if lead < 0xF0 {
+        3
+    } else {
+        4
     }
 }

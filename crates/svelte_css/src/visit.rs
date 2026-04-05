@@ -45,7 +45,7 @@ pub fn walk_stylesheet<V: Visit + ?Sized>(v: &mut V, node: &StyleSheet) {
 
 pub fn walk_rule<V: Visit + ?Sized>(v: &mut V, node: &Rule) {
     match node {
-        Rule::Style(r) => v.visit_style_rule(r),
+        Rule::Style(r) => v.visit_style_rule(r.as_ref()),
         Rule::AtRule(r) => v.visit_at_rule(r),
     }
 }
@@ -134,7 +134,7 @@ pub fn walk_stylesheet_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut StyleShee
 
 pub fn walk_rule_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut Rule) {
     match node {
-        Rule::Style(r) => v.visit_style_rule_mut(r),
+        Rule::Style(r) => v.visit_style_rule_mut(r.as_mut()),
         Rule::AtRule(r) => v.visit_at_rule_mut(r),
     }
 }
@@ -189,7 +189,7 @@ pub fn walk_simple_selector_args<V: Visit + ?Sized>(v: &mut V, node: &SimpleSele
     if let SimpleSelector::PseudoClass(pc) = node
         && let Some(args) = &pc.args
     {
-        v.visit_selector_list(args);
+        v.visit_selector_list(args.as_ref());
     }
 }
 
@@ -201,6 +201,6 @@ pub fn walk_simple_selector_args_mut<V: VisitMut + ?Sized>(
     if let SimpleSelector::PseudoClass(pc) = node
         && let Some(args) = &mut pc.args
     {
-        v.visit_selector_list_mut(args);
+        v.visit_selector_list_mut(args.as_mut());
     }
 }

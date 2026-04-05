@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 svelte_span = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

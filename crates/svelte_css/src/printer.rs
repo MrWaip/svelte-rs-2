@@ -10,6 +10,18 @@ pub struct Printer {
     minify: bool,
 }
 
+/// Pre-computed indentation strings to avoid per-indent allocation.
+const INDENTS: [&str; 8] = [
+    "",
+    "  ",
+    "    ",
+    "      ",
+    "        ",
+    "          ",
+    "            ",
+    "              ",
+];
+
 impl Printer {
     pub fn new() -> Self {
         Self {
@@ -27,29 +39,39 @@ impl Printer {
         }
     }
 
-    /// Convenience: parse + print in one call.
+    /// Convenience: print stylesheet to string.
     pub fn print(stylesheet: &StyleSheet, source: &str) -> String {
-        let mut p = Printer::new();
+        // Pre-allocate ~same size as source (CSS output is similar length)
+        let mut p = Printer {
+            output: String::with_capacity(source.len()),
+            indent: 0,
+            minify: false,
+        };
         p.print_stylesheet(stylesheet, source);
         p.output
     }
 
     pub fn print_stylesheet(&mut self, node: &StyleSheet, source: &str) -> &str {
+        if self.output.capacity() == 0 {
+            self.output.reserve(128);
+        }
         let mut first = true;
         for child in &node.children {
             match child {
                 StyleSheetChild::Comment(c) => {
                     if !first && !self.minify {
-                        self.newline();
+                        self.output.push('\n');
                     }
                     first = false;
                     self.write_indent();
                     self.push_span(c.span, source);
-                    self.newline();
+                    if !self.minify {
+                        self.output.push('\n');
+                    }
                 }
                 StyleSheetChild::Rule(rule) => {
                     if !first && !self.minify {
-                        self.newline();
+                        self.output.push('\n');
                     }
                     first = false;
                     self.print_rule(rule, source);
@@ -61,7 +83,7 @@ impl Printer {
 
     fn print_rule(&mut self, rule: &Rule, source: &str) {
         match rule {
-            Rule::Style(r) => self.print_style_rule(r, source),
+            Rule::Style(r) => self.print_style_rule(r.as_ref(), source),
             Rule::AtRule(r) => self.print_at_rule(r, source),
         }
     }
@@ -69,34 +91,42 @@ impl Printer {
     fn print_style_rule(&mut self, rule: &StyleRule, source: &str) {
         self.write_indent();
         self.print_selector_list(&rule.prelude, source);
-        self.push_str(if self.minify { "{" } else { " {\n" });
+        if self.minify {
+            self.output.push('{');
+        } else {
+            self.output.push_str(" {\n");
+        }
         self.indent += 1;
         self.print_block_children(&rule.block, source);
         self.indent -= 1;
         self.write_indent();
-        self.push_str("}\n");
+        self.output.push_str("}\n");
     }
 
     fn print_at_rule(&mut self, rule: &AtRule, source: &str) {
         self.write_indent();
-        self.push_str("@");
+        self.output.push('@');
         self.push_span(rule.name, source);
 
         let prelude_text = rule.prelude.source_text(source).trim();
         if !prelude_text.is_empty() {
-            self.push_str(" ");
-            self.push_str(prelude_text);
+            self.output.push(' ');
+            self.output.push_str(prelude_text);
         }
 
         if let Some(block) = &rule.block {
-            self.push_str(if self.minify { "{" } else { " {\n" });
+            if self.minify {
+                self.output.push('{');
+            } else {
+                self.output.push_str(" {\n");
+            }
             self.indent += 1;
             self.print_block_children(block, source);
             self.indent -= 1;
             self.write_indent();
-            self.push_str("}\n");
+            self.output.push_str("}\n");
         } else {
-            self.push_str(";\n");
+            self.output.push_str(";\n");
         }
     }
 
@@ -108,7 +138,9 @@ impl Printer {
                 BlockChild::Comment(c) => {
                     self.write_indent();
                     self.push_span(c.span, source);
-                    self.newline();
+                    if !self.minify {
+                        self.output.push('\n');
+                    }
                 }
             }
         }
@@ -117,15 +149,23 @@ impl Printer {
     fn print_declaration(&mut self, decl: &Declaration, source: &str) {
         self.write_indent();
         self.push_span(decl.property, source);
-        self.push_str(if self.minify { ":" } else { ": " });
+        if self.minify {
+            self.output.push(':');
+        } else {
+            self.output.push_str(": ");
+        }
         self.push_span(decl.value, source);
-        self.push_str(";\n");
+        self.output.push_str(";\n");
     }
 
     fn print_selector_list(&mut self, list: &SelectorList, source: &str) {
         for (i, complex) in list.children.iter().enumerate() {
             if i > 0 {
-                self.push_str(if self.minify { "," } else { ", " });
+                if self.minify {
+                    self.output.push(',');
+                } else {
+                    self.output.push_str(", ");
+                }
             }
             self.print_complex_selector(complex, source);
         }
@@ -137,11 +177,11 @@ impl Printer {
                 && (i > 0 || combinator.kind != CombinatorKind::Descendant)
             {
                 match combinator.kind {
-                    CombinatorKind::Descendant => self.push_str(" "),
-                    CombinatorKind::Child => self.push_str(" > "),
-                    CombinatorKind::NextSibling => self.push_str(" + "),
-                    CombinatorKind::SubsequentSibling => self.push_str(" ~ "),
-                    CombinatorKind::Column => self.push_str(" || "),
+                    CombinatorKind::Descendant => self.output.push(' '),
+                    CombinatorKind::Child => self.output.push_str(" > "),
+                    CombinatorKind::NextSibling => self.output.push_str(" + "),
+                    CombinatorKind::SubsequentSibling => self.output.push_str(" ~ "),
+                    CombinatorKind::Column => self.output.push_str(" || "),
                 }
             }
             for simple in &rel.selectors {
@@ -161,59 +201,55 @@ impl Printer {
                 self.push_span(*span, source);
             }
             SimpleSelector::PseudoClass(pc) => {
-                self.push_str(":");
+                self.output.push(':');
                 self.push_span(pc.name, source);
                 if let Some(args) = &pc.args {
-                    self.push_str("(");
-                    self.print_selector_list(args, source);
-                    self.push_str(")");
+                    self.output.push('(');
+                    self.print_selector_list(args.as_ref(), source);
+                    self.output.push(')');
                 }
             }
             SimpleSelector::PseudoElement(pe) => {
-                self.push_str("::");
+                self.output.push_str("::");
                 self.push_span(pe.name, source);
             }
             SimpleSelector::Attribute(attr) => {
-                self.push_str("[");
+                self.output.push('[');
                 self.push_span(attr.name, source);
                 if let Some(matcher) = attr.matcher {
                     self.push_span(matcher, source);
                     if let Some(value) = attr.value {
-                        self.push_str("\"");
+                        self.output.push('"');
                         self.push_span(value, source);
-                        self.push_str("\"");
+                        self.output.push('"');
                     }
                 }
                 if let Some(flags) = attr.flags {
-                    self.push_str(" ");
+                    self.output.push(' ');
                     self.push_span(flags, source);
                 }
-                self.push_str("]");
+                self.output.push(']');
             }
         }
     }
 
     // -- output helpers -----------------------------------------------------
 
-    fn push_str(&mut self, s: &str) {
-        self.output.push_str(s);
-    }
-
+    #[inline]
     fn push_span(&mut self, span: svelte_span::Span, source: &str) {
         self.output.push_str(span.source_text(source));
     }
 
+    #[inline]
     fn write_indent(&mut self) {
         if !self.minify {
-            for _ in 0..self.indent {
-                self.output.push_str("  ");
+            if self.indent < INDENTS.len() {
+                self.output.push_str(INDENTS[self.indent]);
+            } else {
+                for _ in 0..self.indent {
+                    self.output.push_str("  ");
+                }
             }
-        }
-    }
-
-    fn newline(&mut self) {
-        if !self.minify {
-            self.output.push('\n');
         }
     }
 }
