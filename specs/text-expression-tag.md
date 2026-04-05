@@ -2,7 +2,6 @@
 
 ## Current state
 - **Working**: 7/7 use cases
-- **Missing**: 0 use cases
 - **Next**: feature complete for current client-side scope; keep parity checks in `/qa` and follow-up audits
 - Last updated: 2026-04-02
 
@@ -22,13 +21,13 @@
 
 ## Use cases
 
-- [x] Standalone static text nodes compile to static DOM text
-- [x] Standalone expression tags compile at root and inside elements
-- [x] Mixed text and expression sequences compile for root, regular elements, and `<title>`
-- [x] SVG whitespace handling works for ignorable inter-element whitespace and `<text>` content
-- [x] Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
-- [x] Template validation rejects invalid text / expression placement with `node_invalid_placement`
-- [x] Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
+- `[x]` Standalone static text nodes compile to static DOM text
+- `[x]` Standalone expression tags compile at root and inside elements
+- `[x]` Mixed text and expression sequences compile for root, regular elements, and `<title>`
+- `[x]` SVG whitespace handling works for ignorable inter-element whitespace and `<text>` content
+- `[x]` Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
+- `[x]` Template validation rejects invalid text / expression placement with `node_invalid_placement`
+- `[x]` Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
 
 ## Reference
 
@@ -51,41 +50,20 @@
 - `crates/svelte_codegen_client/src/template/title_element.rs`
 - `tasks/compiler_tests/test_v3.rs`
 
-## Tasks
-
-- [x] Parse and store decoded text-node values so runtime text concatenation matches reference semantics for HTML entities
-- [x] Thread decoded text through lowering/content classification without breaking whitespace-trimming rules
-- [x] Add template validation for invalid text / expression placement using analyzer-side parent-context checks
-- [x] Add bidirectional control character warnings for text nodes, including `svelte-ignore` handling
-- [x] Expand compiler coverage for decoded text and diagnostics once behavior is implemented
-
-## Implementation order
-
-- 1. Fix decoded text semantics and make `text_entity_decoding` pass
-- 2. Port analyzer diagnostics for text / expression placement
-- 3. Port bidirectional control character warnings and add focused analyzer coverage
-
-## Discovered bugs
-
-- FIXED: text participating in runtime concatenation now uses parser-decoded text payloads, so `&amp;` and similar entities emit decoded characters in runtime strings
-
 ## Test cases
 
-- Existing:
-- `single_text_node`
-- `single_interpolation`
-- `static_interpolation`
-- `inline_await_text_concat`
-- `title_variants`
-- `svg_inner_whitespace_trimming`
-- `svg_text_preserves_whitespace`
-- `ts_strip_expression_tag`
-- Added in this audit:
-- `text_entity_decoding`
-- `text_entity_decoding_root`
-- `title_entity_decoding`
-- Analyzer unit coverage:
-- `validate_text_invalid_placement`
-- `validate_expression_tag_invalid_placement`
-- `validate_text_bidirectional_control_warning`
-- `validate_text_bidirectional_control_warning_ignored`
+- `[x]` `single_text_node`
+- `[x]` `single_interpolation`
+- `[x]` `static_interpolation`
+- `[x]` `inline_await_text_concat`
+- `[x]` `title_variants`
+- `[x]` `svg_inner_whitespace_trimming`
+- `[x]` `svg_text_preserves_whitespace`
+- `[x]` `ts_strip_expression_tag`
+- `[x]` `text_entity_decoding`
+- `[x]` `text_entity_decoding_root`
+- `[x]` `title_entity_decoding`
+- `[x]` `validate_text_invalid_placement` (analyzer)
+- `[x]` `validate_expression_tag_invalid_placement` (analyzer)
+- `[x]` `validate_text_bidirectional_control_warning` (analyzer)
+- `[x]` `validate_text_bidirectional_control_warning_ignored` (analyzer)

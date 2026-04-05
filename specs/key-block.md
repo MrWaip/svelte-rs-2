@@ -4,6 +4,7 @@
 - **Complete**: 6/6 use cases — feature fully implemented
 - `dynamic_nodes` parity: investigated and intentionally not ported. Reference compiler calls `mark_subtree_dynamic()` which sets `fragment.metadata.dynamic = true` on ancestor fragments; in our Rust architecture `has_dynamic_children` (the equivalent) is only consulted for `ContentStrategy::DynamicText` branching. A fragment containing `{#key}` always yields `SingleBlock` or `Mixed` strategy, never `DynamicText`, so the flag is never read in the `KeyBlock` path. Gap is architecturally irrelevant and not observable — verified by `key_block_nested` test output matching reference exactly.
 - `block_unexpected_character`: implemented in analyzer but dead code — our parser rejects `{ #key ...}` at parse time, stricter than reference JS parser. This is a known parser-strictness difference, not a bug.
+- **Next**: no action needed; monitor for regressions in future parser or content-strategy changes
 - Last updated: 2026-04-04
 
 ## Source
@@ -49,31 +50,11 @@
 - `tasks/compiler_tests/cases2/async_key_basic/case.svelte`
 - `tasks/compiler_tests/cases2/key_block_nested/case.svelte`
 
-## Tasks
-
-- `[x]` quick fix: add template validation coverage for whitespace-only `{#key}` bodies (`block_empty`).
-- `[x]` quick fix: `block_unexpected_character` check implemented in analyzer; untestable because our parser is stricter than reference (rejects malformed `{` at parse time).
-- `[x]` moderate: investigated `ReactivityVisitor` / `dynamic_nodes` parity — decision: not needed. `has_dynamic_children` is only read for `DynamicText` content strategy; `{#key}` always produces `SingleBlock`/`Mixed`, so the flag is never consulted. No code change required.
-- `[x]` quick fix: existing `key_block`, `key_block_nested`, `async_key_basic` cases provide sufficient coverage.
-
-## Implementation order
-
-1. Add analyzer tests for `block_empty` and opening-tag diagnostics.
-2. Implement the missing template validation path in the analyzer.
-3. Re-check whether any remaining parity gap around `dynamic_nodes` is externally observable; only then change reactivity/content analysis.
-
-## Discovered bugs
-
-- FIXED: template validation now emits `block_empty` for whitespace-only `{#key}` bodies.
-- FIXED: runes-mode opening-tag validation for `{#key}` is wired through the analyzer.
-- CLOSED (not a bug): `KeyBlock` ids are not added to `dynamic_nodes` — investigated, architecturally irrelevant (see Current state).
-
 ## Test cases
 
-- Existing:
-- `key_block`
-- `async_key_basic`
-- Parser: `key_block_basic`, `key_block_complex_expr`
-- Added during this audit:
-- `key_block_nested`
-- Analyzer: `validate_key_block_empty_warns`
+- `[x]` `key_block`
+- `[x]` `async_key_basic`
+- `[x]` `key_block_nested`
+- `[x]` `key_block_basic` (parser)
+- `[x]` `key_block_complex_expr` (parser)
+- `[x]` `validate_key_block_empty_warns` (analyzer)

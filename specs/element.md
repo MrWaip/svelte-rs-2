@@ -4,7 +4,7 @@
 - **Working**: 13/18 use cases
 - **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: 5 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus`, `a11y_missing_attribute` for img/area/iframe/object/a); remaining (ARIA roles, event handler A11y, html[lang], input type=image) deferred.
 - **Missing**: 5 — ConcatenationAttribute+class bug, literal constant folding, namespace edge cases, legacy slots, CSS-scoped metadata
-- **Next**: Fix `ConcatenationAttribute` for `class` → `$.set_class` (bounded local bug in element_flags.rs + attributes.rs)
+- **Next**: Fix `ConcatenationAttribute` for `class` → `$.set_class` in `element_flags.rs` and `attributes.rs` — `class_attr_id` only registers `ExpressionAttribute` so the concat path falls through to `$.set_attribute`
 - Last updated: 2026-04-04
 
 ## Source
@@ -38,43 +38,23 @@
 
 ## Use cases
 
-- `[x]` Basic regular elements parse and compile as DOM nodes
-  Existing tests: `single_element`, `nested_elements`, `elements_childs`, `mixed_html_elements`
-- `[x]` Static and simple dynamic attributes compile on regular elements
-  Existing tests: `element_attributes`, `spread_attribute`
-- `[ ]` `ConcatenationAttribute` for `class` (e.g. `class="static {expr}"`) compiles via `$.set_class`, not `$.set_attribute`
-  Bug: `class_attr_id` in `element_flags.rs` only registers `ExpressionAttribute`, so the ConcatenationAttribute path falls through to `$.set_attribute`
-- `[ ]` Constant folding for all-literal `ConcatenationAttribute` parts (e.g. `class="1231 {1231}"` → `"1231 1231"`, not a template literal)
-  Reference compiler evaluates constant numeric/string literal dynamic parts at compile time and collapses them into a plain string
-- `[x]` Root namespace options and basic inline SVG/MathML paths compile
-  Existing tests: `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`
-- `[x]` Non-void self-closing tags lower to explicit open/close HTML
-  Existing tests: `non_void_self_closing`, `mixed_html_elements`
-- `[x]` `<noscript>` content is stripped from the static template payload
-  Existing tests: `smoke`, `smoke_all`
-- `[x]` Child fragment lowering respects SVG whitespace rules
-  Existing tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`
-- `[~]` Regular-element directives and advanced attribute paths work, but coverage/spec ownership lives elsewhere
-  See: `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
-- `[x]` Template validation for regular elements and element attributes
-  Working: `element_invalid_self_closing_tag`, `textarea_invalid_content`, `slot_attribute_invalid_placement`.
-  Skipped (out of scope): `node_invalid_placement` (requires HTML content model table), `component_name_lowercase` (requires symbol ref-count access).
-- `[x]` `<textarea>` child-content lowering to a synthetic `value` attribute
-  Implemented: `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (no constant folding). Test: `textarea_child_value_dynamic`.
-- `[x]` `<option>{expr}</option>` synthetic value handling
-  Implemented: `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent. Test: `option_expr_child_value`.
-- `[x]` Customizable select subtree handling
-  Implemented: `is_customizable_select` flag in ElementFlags; `element_needs_var` updated; codegen emits `$.customizable_select(el, callback)` with separate hoisted template. `<selectedcontent>` emits `$.selectedcontent(el, setter)`.
-  Tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`.
-- `[x]` `autofocus` helper path on regular elements
-  Implemented: `$.autofocus(el, expr)` emitted from `attributes.rs`. Test: `element_autofocus`.
-- `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching
-  Current coverage proves common cases only
-
+- `[x]` Basic regular elements parse and compile as DOM nodes (tests: `single_element`, `nested_elements`, `elements_childs`, `mixed_html_elements`)
+- `[x]` Static and simple dynamic attributes compile on regular elements (tests: `element_attributes`, `spread_attribute`)
+- `[ ]` `ConcatenationAttribute` for `class` (e.g. `class="static {expr}"`) compiles via `$.set_class`, not `$.set_attribute` — `class_attr_id` in `element_flags.rs` only registers `ExpressionAttribute`, so the ConcatenationAttribute path falls through to `$.set_attribute`
+- `[ ]` Constant folding for all-literal `ConcatenationAttribute` parts (e.g. `class="1231 {1231}"` → `"1231 1231"`, not a template literal) — reference compiler evaluates constant numeric/string literal dynamic parts at compile time and collapses them into a plain string
+- `[x]` Root namespace options and basic inline SVG/MathML paths compile (tests: `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`)
+- `[x]` Non-void self-closing tags lower to explicit open/close HTML (tests: `non_void_self_closing`, `mixed_html_elements`)
+- `[x]` `<noscript>` content is stripped from the static template payload (tests: `smoke`, `smoke_all`)
+- `[x]` Child fragment lowering respects SVG whitespace rules (tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`)
+- `[~]` Regular-element directives and advanced attribute paths work, but coverage/spec ownership lives elsewhere — see `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
+- `[x]` Template validation for regular elements and element attributes — working: `element_invalid_self_closing_tag`, `textarea_invalid_content`, `slot_attribute_invalid_placement`; skipped (out of scope): `node_invalid_placement` (requires HTML content model table), `component_name_lowercase` (requires symbol ref-count access)
+- `[x]` `<textarea>` child-content lowering to a synthetic `value` attribute — `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (test: `textarea_child_value_dynamic`)
+- `[x]` `<option>{expr}</option>` synthetic value handling — `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent (test: `option_expr_child_value`)
+- `[x]` Customizable select subtree handling — `is_customizable_select` flag in ElementFlags; codegen emits `$.customizable_select(el, callback)` with separate hoisted template; `<selectedcontent>` emits `$.selectedcontent(el, setter)` (tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`)
+- `[x]` `autofocus` helper path on regular elements — `$.autofocus(el, expr)` emitted from `attributes.rs` (test: `element_autofocus`)
+- `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching — current coverage proves common cases only
 - `[ ]` Legacy `<slot>` semantics and slot elements
-- `[~]` A11y warnings for regular elements
-  Implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions).
-  Tests: `a11y_distracting_elements_marquee`, `a11y_distracting_elements_blink`, `a11y_accesskey_warns`, `a11y_positive_tabindex_warns`, `a11y_tabindex_zero_no_warning`, `a11y_tabindex_negative_no_warning`, `a11y_tabindex_dynamic_no_warning`, `a11y_autofocus_warns`, `a11y_autofocus_on_dialog_no_warning`, `a11y_autofocus_inside_dialog_no_warning`, `a11y_missing_attribute_img_no_alt`, `a11y_missing_attribute_img_with_alt_no_warning`, `a11y_missing_attribute_img_spread_no_warning`, `a11y_missing_attribute_area_no_alt`, `a11y_missing_attribute_area_with_aria_label_no_warning`, `a11y_missing_attribute_iframe_no_title`, `a11y_missing_attribute_iframe_with_title_no_warning`, `a11y_missing_attribute_object_no_title`, `a11y_missing_attribute_object_with_aria_labelledby_no_warning`, `a11y_missing_attribute_anchor_no_href`, `a11y_missing_attribute_anchor_with_href_no_warning`, `a11y_missing_attribute_anchor_with_id_no_warning`, `a11y_missing_attribute_anchor_with_name_no_warning`, `a11y_missing_attribute_anchor_aria_disabled_no_warning`, `a11y_missing_attribute_anchor_spread_no_warning`.
+- `[~]` A11y warnings for regular elements — implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions)
 - `[ ]` A11y: `html[lang]` — root element, needs separate treatment
 - `[ ]` A11y: `input[type=image]` alt — needs static type attribute value inspection
 - `[ ]` A11y: ARIA role checks (`a11y_unknown_role`, `a11y_no_abstract_role`, `a11y_role_has_required_aria_props`, etc.)
@@ -104,41 +84,51 @@
   - `crates/svelte_codegen_client/src/template/attributes.rs`
   - `crates/svelte_codegen_client/src/template/html.rs`
 
-## Tasks
-
-1. `[x]` Add `element_invalid_self_closing_tag` warning + `textarea_invalid_content` error in `ElementFlagsVisitor::visit_element`
-   Files: `crates/svelte_analyze/src/passes/element_flags.rs`
-2. `[x]` Port `<textarea>` dynamic child-content lowering into analyze-side metadata + codegen
-   Files: `crates/svelte_analyze/src/types/data/elements.rs`, `element_flags.rs`, `codegen_view.rs`, `context.rs`, `crates/svelte_codegen_client/src/template/element.rs`
-3. `[x]` Port `<option>{expr}</option>` synthetic value handling
-   Files: same as above
-4. `[x]` Port regular-element runtime special case `autofocus`
-   Files: `crates/svelte_codegen_client/src/template/attributes.rs`
-5. `[ ]` Port remaining template validation: `node_invalid_placement`, `slot_attribute_invalid_placement`, `component_name_lowercase`
-   Effort: moderate (needs component ancestor walk for slot, HTML tree validity table for placement)
-6. `[ ]` Port customizable select / selectedcontent behavior
-   Files: analyze metadata + regular element codegen + maybe lowered fragment handling
-   Effort: needs infrastructure
-7. `[ ]` Expand namespace edge-case coverage
-   Effort: moderate
-
-## Implementation order
-
-1. Add validation plumbing in `svelte_analyze` so missing element diagnostics stop being silently accepted.
-2. Add analyze-owned metadata for textarea/option/select special cases rather than re-deriving in codegen.
-3. Port regular-element codegen consumers for that metadata.
-4. Finish with namespace edge cases and additional focused tests.
-
-## Discovered bugs
-
-- OPEN: `crates/svelte_analyze/src/validate/mod.rs` currently validates only rune usage; regular template validation is absent.
-- OPEN: regular-element analyze/codegen path has no equivalent for reference `textarea` child lowering, synthetic `option` value metadata, or customizable select handling.
-- OPEN: regular-element codegen has no dedicated `autofocus` helper path.
-
 ## Test cases
 
-- Existing compiler coverage:
-  `single_element`, `nested_elements`, `elements_childs`, `element_attributes`, `spread_attribute`, `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`, `non_void_self_closing`, `mixed_html_elements`, `smoke`, `smoke_all`
-- Added during this audit:
-  - `textarea_child_value_dynamic`
-  - `option_expr_child_value`
+- `[x]` `single_element`
+- `[x]` `nested_elements`
+- `[x]` `elements_childs`
+- `[x]` `element_attributes`
+- `[x]` `spread_attribute`
+- `[x]` `namespace_svg`
+- `[x]` `namespace_mathml`
+- `[x]` `svg_inner_template_from_svg`
+- `[x]` `html_tag_svg`
+- `[x]` `non_void_self_closing`
+- `[x]` `mixed_html_elements`
+- `[x]` `smoke`
+- `[x]` `smoke_all`
+- `[x]` `textarea_child_value_dynamic`
+- `[x]` `option_expr_child_value`
+- `[x]` `customizable_select_option_el`
+- `[x]` `customizable_select_select_div`
+- `[x]` `selectedcontent_basic`
+- `[x]` `element_autofocus`
+- `[x]` `svg_inner_whitespace_trimming`
+- `[x]` `svg_text_preserves_whitespace`
+- `[x]` `a11y_distracting_elements_marquee`
+- `[x]` `a11y_distracting_elements_blink`
+- `[x]` `a11y_accesskey_warns`
+- `[x]` `a11y_positive_tabindex_warns`
+- `[x]` `a11y_tabindex_zero_no_warning`
+- `[x]` `a11y_tabindex_negative_no_warning`
+- `[x]` `a11y_tabindex_dynamic_no_warning`
+- `[x]` `a11y_autofocus_warns`
+- `[x]` `a11y_autofocus_on_dialog_no_warning`
+- `[x]` `a11y_autofocus_inside_dialog_no_warning`
+- `[x]` `a11y_missing_attribute_img_no_alt`
+- `[x]` `a11y_missing_attribute_img_with_alt_no_warning`
+- `[x]` `a11y_missing_attribute_img_spread_no_warning`
+- `[x]` `a11y_missing_attribute_area_no_alt`
+- `[x]` `a11y_missing_attribute_area_with_aria_label_no_warning`
+- `[x]` `a11y_missing_attribute_iframe_no_title`
+- `[x]` `a11y_missing_attribute_iframe_with_title_no_warning`
+- `[x]` `a11y_missing_attribute_object_no_title`
+- `[x]` `a11y_missing_attribute_object_with_aria_labelledby_no_warning`
+- `[x]` `a11y_missing_attribute_anchor_no_href`
+- `[x]` `a11y_missing_attribute_anchor_with_href_no_warning`
+- `[x]` `a11y_missing_attribute_anchor_with_id_no_warning`
+- `[x]` `a11y_missing_attribute_anchor_with_name_no_warning`
+- `[x]` `a11y_missing_attribute_anchor_aria_disabled_no_warning`
+- `[x]` `a11y_missing_attribute_anchor_spread_no_warning`

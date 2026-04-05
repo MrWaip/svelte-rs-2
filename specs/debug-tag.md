@@ -3,6 +3,7 @@
 ## Current state
 - **Working**: 6/6 client use cases — feature complete
 - **Last updated**: 2026-04-04
+- **Next**: No remaining work — all use cases complete
 
 ## Source
 
@@ -18,12 +19,12 @@
 
 ## Use cases
 
-- [x] Parse empty `{@debug}` tags and preserve the empty identifier list.
-- [x] Parse one or more comma-separated identifiers.
-- [x] Reject non-identifier arguments with `debug_tag_invalid_arguments`.
-- [x] Emit client debug effects in top-level and nested fragments, including each-block context values.
-- [x] Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`.
-- [x] Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax.
+- `[x]` Parse empty `{@debug}` tags and preserve the empty identifier list
+- `[x]` Parse one or more comma-separated identifiers
+- `[x]` Reject non-identifier arguments with `debug_tag_invalid_arguments`
+- `[x]` Emit client debug effects in top-level and nested fragments, including each-block context values
+- `[x]` Match reference non-runes client output by wrapping each `$.snapshot(...)` in `$.untrack(() => ...)`
+- `[x]` Match reference runes-mode analyzer validation for `{@debug}` opening-tag syntax
 
 ## Reference
 
@@ -40,23 +41,9 @@
 - Rust client codegen: `crates/svelte_codegen_client/src/template/debug_tag.rs`
 - Compiler tests: `tasks/compiler_tests/test_v3.rs`
 
-## Tasks
-
-- [ ] Add a focused compiler case for non-runes `{@debug}` output and keep it failing until the client emitter matches the reference.
-- [ ] Update client `{@debug}` emission to branch on runes mode and generate `$.untrack(() => $.snapshot(expr))` in non-runes mode.
-- [ ] Add analyzer validation for debug tags if the project wants parity with the reference `validate_opening_tag` checks in runes mode.
-
-## Implementation order
-
-1. Focused non-runes compiler case
-2. Client codegen parity fix
-3. Optional analyzer validation parity
-
-## Discovered bugs
-
-- FIXED: `crates/svelte_codegen_client/src/template/debug_tag.rs` always emits `$.snapshot(...)` directly and never generates the reference compiler's non-runes `$.untrack(() => $.snapshot(...))` wrapper.
-
 ## Test cases
 
-- Existing: `debug_basic`, `debug_in_blocks`, `debug_non_dev`
-- Added by this audit: `debug_non_runes_untrack`
+- `[x]` `debug_basic`
+- `[x]` `debug_in_blocks`
+- `[x]` `debug_non_dev`
+- `[x]` `debug_non_runes_untrack`

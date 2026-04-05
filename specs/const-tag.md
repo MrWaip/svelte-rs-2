@@ -4,12 +4,7 @@
 - **Working**: 10/10 in-scope use cases — feature complete
 - **Partial**: 0
 - **Missing**: 0
-- **Next slice**: none — all use cases complete
-- **Reclassified**: `const_tag_invalid_reference` moved to `Out of scope` — this diagnostic is gated on `experimental.async` in the reference compiler (`Identifier.js:162`) and requires `is_template_declaration` tracking in analyze; tracked as use case 37 in `experimental-async.md`.
-- **Completed this session**:
-  - `const_tag_await`: `{@const}` inside `{#await}` then branch — passes.
-  - `const_tag_component`: `{@const}` inside `<Component>` default children — passes after fixing `template_scoping.rs` to register `FragmentKey::ComponentNode` so `mark_const_tag_bindings` can find the scope and mark bindings as `RuneKind::Derived`.
-  - Bug fix: `crates/svelte_analyze/src/passes/template_scoping.rs` — `ComponentNode` now registers `current_scope` as its fragment scope; without this, all `{@const}` bindings inside component children were silently skipped by `mark_const_tag_bindings`, leaving identifiers unwrapped in the transform pass.
+- **Next**: No remaining work — all use cases complete; `const_tag_invalid_reference` moved to `specs/experimental-async.md` (use case 37)
 - Last updated: 2026-04-04
 
 ## Source
@@ -35,16 +30,16 @@
 
 ## Use cases
 
-- `[x]` Simple identifier binding inside an allowed block parent such as `{#each}` or `{#if}`.
-- `[x]` Destructured binding patterns (`{ x, y }`) with derived reads through the generated temp binding.
-- `[x]` Multiple independent `{@const}` tags in one fragment.
-- `[x]` TypeScript annotations on `{@const}` declarations are stripped before client codegen.
-- `[x]` `{@const}` inside `if` / `else if` branches.
-- `[x]` `{@const}` inside `{#key}` blocks.
-- `[x]` `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path.
-- `[x]` Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`).
-- `[x]` Invalid placement should report `const_tag_invalid_placement`.
-- `[x]` Invalid declaration shapes should report `const_tag_invalid_expression`.
+- `[x]` Simple identifier binding inside an allowed block parent such as `{#each}` or `{#if}`
+- `[x]` Destructured binding patterns (`{ x, y }`) with derived reads through the generated temp binding
+- `[x]` Multiple independent `{@const}` tags in one fragment
+- `[x]` TypeScript annotations on `{@const}` declarations are stripped before client codegen
+- `[x]` `{@const}` inside `if` / `else if` branches
+- `[x]` `{@const}` inside `{#key}` blocks
+- `[x]` `<svelte:boundary>` snippets can read boundary-local `{@const}` bindings in the currently covered success path
+- `[x]` Allowed-parent coverage confirmed with focused cases: `{#await}` (`const_tag_await`) and `<Component>` (`const_tag_component`)
+- `[x]` Invalid placement should report `const_tag_invalid_placement`
+- `[x]` Invalid declaration shapes should report `const_tag_invalid_expression`
 
 ## Out of scope
 
@@ -75,7 +70,7 @@
 - `crates/svelte_codegen_client/src/template/svelte_boundary.rs`
 - Diagnostics:
 - `crates/svelte_diagnostics/src/lib.rs`
-- Existing and added tests:
+- Tests:
 - `tasks/compiler_tests/cases2/const_tag_await/case.svelte`
 - `tasks/compiler_tests/cases2/const_tag_component/case.svelte`
 - `tasks/compiler_tests/cases2/const_tag/case.svelte`
@@ -91,38 +86,23 @@
 - `crates/svelte_compiler/src/tests.rs`
 - `crates/svelte_analyze/src/tests.rs`
 
-## Tasks
-
-- `[x]` Add a template validation pass for `ConstTag` placement and declaration-shape diagnostics, using the reference compiler's allowed-parent matrix.
-- `[x]` Add focused success cases for the remaining allowed parents: `{#await}` and `<Component>` (slotted fragments are legacy Svelte 4, out of scope).
-- N/A `const_tag_invalid_reference` — moved to `specs/experimental-async.md` (use case 37).
-
-## Implementation order
-
-1. Add focused success cases for remaining allowed parents.
-
-## Discovered bugs
-
-- FIXED: `crates/svelte_analyze/src/validate/mod.rs` only ran rune validation; no template validation path reached the existing `const_tag_*` diagnostics. Fixed by adding `visit_const_tag` to `TemplateValidationVisitor` in `template_validation.rs`.
-
 ## Test cases
 
-- Existing:
-- `const_tag`
-- `const_tag_destructured`
-- `const_tag_destructured_multi`
-- `const_tag_destructured_if`
-- `const_tag_dev`
-- `ts_strip_const_tag`
-- `const_tag_key_block`
-- `boundary_const_tag`
-- `boundary_const_in_snippet`
-- `if_else_chain_with_const`
+- `[x]` `const_tag`
+- `[x]` `const_tag_destructured`
+- `[x]` `const_tag_destructured_multi`
+- `[x]` `const_tag_destructured_if`
+- `[x]` `const_tag_dev`
+- `[x]` `ts_strip_const_tag`
+- `[x]` `const_tag_key_block`
+- `[x]` `boundary_const_tag`
+- `[x]` `boundary_const_in_snippet`
+- `[x]` `if_else_chain_with_const`
+- `[x]` `const_tag_await`
+- `[x]` `const_tag_component`
+- `[ ]` `validate_const_tag_invalid_placement_root` (ignored — missing template validation)
+- `[ ]` `compile_const_tag_invalid_expression` (ignored — missing const-tag declaration validation)
 - Covered by `experimental-async` spec:
-- `async_const_tag`
-- `async_const_derived_chain`
-- `async_boundary_const`
-- Added during this audit:
-- `const_tag_key_block`
-- `validate_const_tag_invalid_placement_root` (`#[ignore]`, missing template validation)
-- `compile_const_tag_invalid_expression` (`#[ignore]`, missing const-tag declaration validation)
+  - `async_const_tag`
+  - `async_const_derived_chain`
+  - `async_boundary_const`

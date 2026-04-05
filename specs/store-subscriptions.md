@@ -4,8 +4,9 @@
 - **Complete** for client-side runes-mode scope (ROADMAP item marked `[x]`)
 - **Working**: 14/16 use cases (all client/runes-mode cases done)
 - **Remaining (out of current scope)**:
-  - Use cases 44 & 45 (`$.store_unsub`, `$.invalidate_store`) — confirmed legacy-only; test outputs match reference in runes mode. Will be closed under Legacy Svelte 4 tier.
-  - Use case 50 (module compilation rejects `$store`) — blocked on `.svelte.js` compilation entry point; tracked under ROADMAP "Module compilation" item.
+  - Use cases for `$.store_unsub` and `$.invalidate_store` — confirmed legacy-only; test outputs match reference in runes mode. Will be closed under Legacy Svelte 4 tier.
+  - Module compilation rejects `$store` — blocked on `.svelte.js` compilation entry point; tracked under ROADMAP "Module compilation" item.
+- **Next**: Implement analyzer diagnostics for store misuse (scoped subscriptions, module-context reads, rune conflicts) — the validation entrypoint currently only runs rune validation, so store-specific diagnostics are absent.
 - Last updated: 2026-04-04
 
 ## Source
@@ -29,23 +30,24 @@
 
 ## Use cases
 
-- [x] Basic top-level store subscription in template and script reads
-- [x] Direct writable store assignment rewrites to `$.store_set`
-- [x] Compound writable store assignment rewrites to `$.store_set(current op value)`
-- [x] Update-expression rewrites to `$.update_store` / `$.update_pre_store`
-- [x] Deep member assignment rewrites to `$.store_mutate`
-- [x] Deep member update rewrites to `$.store_mutate`
+- [x] Basic top-level store subscription in template and script reads (test: `store_basic`)
+- [x] Direct writable store assignment rewrites to `$.store_set` (test: `store_write`)
+- [x] Compound writable store assignment rewrites to `$.store_set(current op value)` (test: `store_compound_template`)
+- [x] Update-expression rewrites to `$.update_store` / `$.update_pre_store` (test: `store_update_template`)
+- [x] Deep member assignment rewrites to `$.store_mutate` (test: `store_deep_mutation`)
+- [x] Deep member update rewrites to `$.store_mutate` (test: `store_deep_update`)
 - [x] Runtime plan marks store setup without forcing component context by default
-- [x] Dev-mode store setup validates the underlying store with `$.validate_store`
-- [x] Store cleanup runs after `$.pop(...)` without becoming unreachable when stores and component return values coexist
-- [x] Each-block with store-backed collection sets correct flags (`EACH_ITEM_REACTIVE`, no `EACH_ITEM_IMMUTABLE`)
-- [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` (legacy-only)
-- [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` (legacy-only)
-- [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding`
-- [x] Analyzer rejects subscriptions to stores not declared at component top level
-- [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`)
+- [x] Dev-mode store setup validates the underlying store with `$.validate_store` (test: `store_validate_dev`)
+- [x] Store cleanup runs after `$.pop(...)` without becoming unreachable when stores and component return values coexist (test: `store_validate_dev`)
+- [x] Each-block with store-backed collection sets correct flags (`EACH_ITEM_REACTIVE`, no `EACH_ITEM_IMMUTABLE`) (test: `store_each_invalidate`)
+- [ ] Reassigning a store binding unsubscribes the prior subscription with `$.store_unsub` — legacy-only (test: `store_reassign_unsub`)
+- [ ] `{#each $items as item}` mutations invalidate the backing store with `$.invalidate_store` — legacy-only (test: `store_each_invalidate`)
+- [x] Component/store binding codegen marks store-backed bindings with `$.mark_store_binding` (test: `store_mark_binding`)
+- [x] Analyzer rejects subscriptions to stores not declared at component top level (test: `validate_store_invalid_scoped_subscription`)
+- [x] Analyzer warns when `$name` shadows a rune (`store_rune_conflict`) (test: `validate_store_rune_conflict`)
 - [x] Analyzer rejects `$store` reads inside `<script module>`
 - [ ] Module compilation rejects `$store` reads outside `.svelte` components
+- [ ] Analyzer emits store-specific diagnostics (`StoreInvalidScopedSubscription`, `StoreInvalidSubscription`, `StoreInvalidSubscriptionModule`, `StoreRuneConflict`)
 
 ## Reference
 
@@ -81,48 +83,18 @@
   - `crates/svelte_diagnostics/src/lib.rs`
   - `tasks/compiler_tests/cases2/store_*`
 
-## Tasks
-
-- [ ] Analyze: add a dedicated store validation pass after scoping resolves store candidates
-  - Emit `StoreInvalidScopedSubscription`, `StoreInvalidSubscription`, `StoreInvalidSubscriptionModule`, and `StoreRuneConflict`
-  - Decide whether module-context enforcement belongs in `analyze` vs `analyze_module`, but keep diagnostics sourced from analysis data rather than codegen heuristics
-- [ ] Analyze: preserve enough dependency metadata for template codegen to know when an each block or component binding depends on a store subscription
-- [ ] Client codegen: emit `$.validate_store` in dev-mode store setup
-- [ ] Client codegen: preserve store cleanup when `$.pop` must return exports in dev/custom-element-style paths
-- [ ] Client codegen: emit `$.store_unsub` when a subscribed store binding is reassigned
-- [ ] Client codegen: emit `$.invalidate_store` for each blocks whose collection depends on a store subscription
-- [ ] Client codegen: emit `$.mark_store_binding` for component/attribute binding paths that reference store subscriptions
-- [ ] Tests: keep existing happy-path store snapshots, add focused missing snapshots for each missing client behavior, and cover diagnostics in analyzer/unit tests if compiler snapshots cannot express them cleanly
-
-## Implementation order
-
-1. Add analyzer diagnostics for scoped/module misuse and rune ambiguity.
-2. Port dev-mode `validate_store` because it is isolated and already captured by a focused failing compiler case.
-3. Port reassignment teardown and each-block invalidation because both need explicit codegen ownership over store lifetimes.
-4. Port component binding marking once component/binding paths are stable enough to compare with reference output.
-5. Add module-analysis coverage for non-component store usage.
-
-## Discovered bugs
-
-- FIXED: client codegen sets up store subscriptions but never emits `$.validate_store` in dev mode.
-- FIXED: when stores coexist with `$.pop($$exports)`, generated cleanup is emitted after `return` and becomes unreachable.
-- OPEN: the analyzer validation entrypoint only runs rune validation today, so store-specific diagnostics are currently absent.
-- OPEN: no Rust codegen path currently emits `$.invalidate_store` or `$.store_unsub` (legacy-only features).
-
 ## Test cases
 
-- Existing covered compiler cases:
-  - `store_basic`
-  - `store_write`
-  - `store_assign_template`
-  - `store_compound_template`
-  - `store_update_template`
-  - `store_deep_mutation`
-  - `store_deep_update`
-  - `store_validate_dev` — dev-mode `$.validate_store` + correct `$$cleanup()` ordering
-  - `store_reassign_unsub` — store variable reassignment in runes mode (no legacy state promotion)
-  - `store_each_invalidate` — each block with store-backed collection, correct flags
-  - `store_mark_binding` — `bind:value={$count}` on component with `$.mark_store_binding()` in getter
-- Analyzer unit tests:
-  - `validate_store_invalid_scoped_subscription` — `$count` where `count` declared in nested function
-  - `validate_store_rune_conflict` — local `state` binding + `$state()` call warns about ambiguity
+- [x] `store_basic`
+- [x] `store_write`
+- [x] `store_assign_template`
+- [x] `store_compound_template`
+- [x] `store_update_template`
+- [x] `store_deep_mutation`
+- [x] `store_deep_update`
+- [x] `store_validate_dev`
+- [x] `store_reassign_unsub`
+- [x] `store_each_invalidate`
+- [x] `store_mark_binding`
+- [x] `validate_store_invalid_scoped_subscription` (analyzer unit test)
+- [x] `validate_store_rune_conflict` (analyzer unit test)
