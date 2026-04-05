@@ -1,0 +1,11 @@
+[package]
+name = "svelte_css"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+svelte_span = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
