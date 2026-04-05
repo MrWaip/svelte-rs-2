@@ -25,6 +25,28 @@ impl std::error::Error for ParseError {}
 type Result<T> = std::result::Result<T, ParseError>;
 
 // ---------------------------------------------------------------------------
+// CSS whitespace lookup (space, tab, newline, carriage return, form feed)
+// ---------------------------------------------------------------------------
+
+/// Lookup table: `true` for bytes that are CSS whitespace.
+/// CSS defines whitespace as: U+0020 (space), U+0009 (tab), U+000A (LF),
+/// U+000D (CR), U+000C (FF).
+static CSS_WS: [bool; 256] = {
+    let mut t = [false; 256];
+    t[0x20] = true; // space
+    t[0x09] = true; // tab
+    t[0x0A] = true; // LF
+    t[0x0D] = true; // CR
+    t[0x0C] = true; // FF
+    t
+};
+
+#[inline(always)]
+fn is_css_ws(b: u8) -> bool {
+    CSS_WS[b as usize]
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -137,10 +159,12 @@ impl<'src> Parser<'src> {
         Span::new(start as u32, self.pos as u32)
     }
 
-    /// Extract source text for a span as CompactString.
+    /// Build CompactString directly from byte range — no intermediate &str slice.
     #[inline]
-    fn text(&self, span: Span) -> CompactString {
-        CompactString::new(span.source_text(self.src))
+    fn compact_str(&self, start: usize, end: usize) -> CompactString {
+        // Safety: `self.src` is valid UTF-8, and `start..end` are always on
+        // character boundaries (ensured by `advance_char` for non-ASCII).
+        CompactString::new(&self.src[start..end])
     }
 
     #[cold]
@@ -151,11 +175,26 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Advance `pos` by one UTF-8 character. Caller must ensure `!at_end()`.
+    #[inline(always)]
+    fn advance_char(&mut self) {
+        let b = self.bytes[self.pos];
+        if b < 0x80 {
+            self.pos += 1;
+        } else if b < 0xE0 {
+            self.pos += 2;
+        } else if b < 0xF0 {
+            self.pos += 3;
+        } else {
+            self.pos += 4;
+        }
+    }
+
     // -- whitespace & comments ----------------------------------------------
 
     #[inline]
     fn skip_whitespace(&mut self) {
-        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
+        while self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
             self.pos += 1;
         }
     }
@@ -200,23 +239,25 @@ impl<'src> Parser<'src> {
 
     #[inline]
     fn scan_to_comment_end(&mut self) {
-        while self.pos < self.bytes.len() {
-            if self.bytes[self.pos] == b'*'
-                && self.pos + 1 < self.bytes.len()
-                && self.bytes[self.pos + 1] == b'/'
-            {
+        // All delimiters are ASCII — `*` and `/` never appear as
+        // continuation bytes in valid UTF-8, so byte-level scan is safe.
+        while self.pos + 1 < self.bytes.len() {
+            if self.bytes[self.pos] == b'*' && self.bytes[self.pos + 1] == b'/' {
                 self.pos += 2;
                 return;
             }
+            self.pos += 1;
+        }
+        // Consume trailing byte if we ran out of pairs
+        if self.pos < self.bytes.len() {
             self.pos += 1;
         }
     }
 
     #[inline]
     fn scan_to_html_comment_end(&mut self) {
-        while self.pos < self.bytes.len() {
+        while self.pos + 2 < self.bytes.len() {
             if self.bytes[self.pos] == b'-'
-                && self.pos + 2 < self.bytes.len()
                 && self.bytes[self.pos + 1] == b'-'
                 && self.bytes[self.pos + 2] == b'>'
             {
@@ -225,6 +266,7 @@ impl<'src> Parser<'src> {
             }
             self.pos += 1;
         }
+        self.pos = self.bytes.len();
     }
 
     // -- identifiers --------------------------------------------------------
@@ -234,7 +276,6 @@ impl<'src> Parser<'src> {
         ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-'
     }
 
-    /// Parse a CSS identifier, returning its Span. Use `self.text(span)` to get CompactString.
     fn parse_ident(&mut self) -> Result<Span> {
         let start = self.pos;
 
@@ -245,6 +286,7 @@ impl<'src> Parser<'src> {
         while self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
             if b == b'\\' {
+                // CSS escape sequence
                 self.pos += 1;
                 if self.pos < self.bytes.len() {
                     if self.bytes[self.pos].is_ascii_hexdigit() {
@@ -255,19 +297,18 @@ impl<'src> Parser<'src> {
                         {
                             self.pos += 1;
                         }
-                        if self.pos < self.bytes.len()
-                            && self.bytes[self.pos].is_ascii_whitespace()
-                        {
+                        // Optional single trailing whitespace after hex escape
+                        if self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
                             self.pos += 1;
                         }
                     } else {
-                        self.pos += 1;
+                        self.advance_char();
                     }
                 }
             } else if Self::is_ident_char(b) {
                 self.pos += 1;
             } else if b >= 0x80 {
-                self.pos += utf8_char_len(b);
+                self.advance_char();
             } else {
                 break;
             }
@@ -284,12 +325,14 @@ impl<'src> Parser<'src> {
     #[inline]
     fn parse_ident_with_name(&mut self) -> Result<(Span, CompactString)> {
         let span = self.parse_ident()?;
-        let name = self.text(span);
+        let name = self.compact_str(span.start as usize, span.end as usize);
         Ok((span, name))
     }
 
     // -- value reading (raw text spans) -------------------------------------
 
+    /// Scan a CSS value, respecting quotes, escapes, and url() context.
+    /// Stops at unquoted `;`, `{`, or `}`. Returns span trimmed of trailing whitespace.
     fn read_value(&mut self) -> Span {
         let start = self.pos;
         let mut escaped = false;
@@ -302,7 +345,7 @@ impl<'src> Parser<'src> {
 
             if escaped {
                 escaped = false;
-                self.pos += 1;
+                self.advance_char();
                 last_non_ws = self.pos;
                 continue;
             }
@@ -345,8 +388,8 @@ impl<'src> Parser<'src> {
                 return Span::new(start as u32, last_non_ws as u32);
             }
 
-            self.pos += 1;
-            if !b.is_ascii_whitespace() {
+            self.advance_char();
+            if !is_css_ws(b) {
                 last_non_ws = self.pos;
             }
         }
@@ -370,7 +413,7 @@ impl<'src> Parser<'src> {
             let b = self.bytes[self.pos];
             if escaped {
                 escaped = false;
-                self.pos += 1;
+                self.advance_char();
                 continue;
             }
             if b == b'\\' {
@@ -385,14 +428,84 @@ impl<'src> Parser<'src> {
                     self.pos += 1;
                     return Ok(span);
                 }
-            } else if b.is_ascii_whitespace() || b == b']' {
+            } else if is_css_ws(b) || b == b']' {
                 return Ok(self.span_from(start));
             }
 
-            self.pos += 1;
+            self.advance_char();
         }
 
         Err(self.error("unexpected end of input in attribute value".into()))
+    }
+
+    // -- block item lookahead -----------------------------------------------
+
+    /// Single-pass lookahead: scan to the first unquoted `:` or `{` to
+    /// determine whether a block item is a declaration (`:`) or nested rule (`{`).
+    /// Does NOT advance `self.pos`.
+    fn block_item_is_rule(&self) -> bool {
+        let mut i = self.pos;
+        let mut escaped = false;
+        let mut quote: u8 = 0;
+        let len = self.bytes.len();
+
+        while i < len {
+            let b = self.bytes[i];
+
+            if escaped {
+                escaped = false;
+                // advance past escaped char (UTF-8 aware)
+                if b < 0x80 {
+                    i += 1;
+                } else if b < 0xE0 {
+                    i += 2;
+                } else if b < 0xF0 {
+                    i += 3;
+                } else {
+                    i += 4;
+                }
+                continue;
+            }
+
+            if b == b'\\' {
+                escaped = true;
+                i += 1;
+                continue;
+            }
+
+            if b == quote {
+                quote = 0;
+                i += 1;
+                continue;
+            }
+
+            if quote == 0 && (b == b'"' || b == b'\'') {
+                quote = b;
+                i += 1;
+                continue;
+            }
+
+            if quote == 0 {
+                match b {
+                    b'{' => return true,
+                    b':' => return false,
+                    b';' | b'}' => return false,
+                    _ => {}
+                }
+            }
+
+            if b < 0x80 {
+                i += 1;
+            } else if b < 0xE0 {
+                i += 2;
+            } else if b < 0xF0 {
+                i += 3;
+            } else {
+                i += 4;
+            }
+        }
+
+        false
     }
 
     // -- nth patterns -------------------------------------------------------
@@ -438,12 +551,12 @@ impl<'src> Parser<'src> {
         self.skip_whitespace();
         if self.eat_str("of")
             && self.pos < self.bytes.len()
-            && self.bytes[self.pos].is_ascii_whitespace()
+            && is_css_ws(self.bytes[self.pos])
         {
             self.pos = saved;
             self.skip_whitespace();
             self.eat_str("of");
-            if self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
+            if self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
                 self.pos += 1;
             }
             return Some(self.span_from(start));
@@ -462,7 +575,7 @@ impl<'src> Parser<'src> {
     fn is_nth_terminator(&self) -> bool {
         match self.peek() {
             None | Some(b')' | b',') => true,
-            Some(b) => b.is_ascii_whitespace(),
+            Some(b) => is_css_ws(b),
         }
     }
 
@@ -647,25 +760,27 @@ impl<'src> Parser<'src> {
                 rel.selectors
                     .push(SimpleSelector::Nesting(self.span_from(start)));
             } else if self.eat(b'*') {
-                let mut name_span = self.span_from(start);
+                let mut name_end = self.pos;
                 if self.eat(b'|') {
-                    name_span = self.parse_ident()?;
+                    let ident = self.parse_ident()?;
+                    name_end = ident.end as usize;
                 }
+                let full_span = self.span_from(start);
                 rel.selectors.push(SimpleSelector::Type {
-                    span: self.span_from(start),
-                    name: self.text(name_span),
+                    span: full_span,
+                    name: self.compact_str(start, name_end),
                 });
             } else if self.eat(b'#') {
-                let ident_span = self.parse_ident()?;
+                let ident = self.parse_ident()?;
                 rel.selectors.push(SimpleSelector::Id {
                     span: self.span_from(start),
-                    name: self.text(ident_span),
+                    name: self.compact_str(ident.start as usize, ident.end as usize),
                 });
             } else if self.eat(b'.') {
-                let ident_span = self.parse_ident()?;
+                let ident = self.parse_ident()?;
                 rel.selectors.push(SimpleSelector::Class {
                     span: self.span_from(start),
-                    name: self.text(ident_span),
+                    name: self.compact_str(ident.start as usize, ident.end as usize),
                 });
             } else if self.eat2(b':', b':') {
                 let (_, name) = self.parse_ident_with_name()?;
@@ -728,25 +843,31 @@ impl<'src> Parser<'src> {
                 } else if let Some(pct) = self.try_parse_percentage() {
                     rel.selectors.push(SimpleSelector::Percentage(pct));
                 } else if !self.is_combinator_start() {
-                    let mut ident_span = self.parse_ident()?;
+                    let ident_start = self.pos;
+                    self.parse_ident()?;
+                    let mut ident_end = self.pos;
                     if self.eat(b'|') {
-                        ident_span = self.parse_ident()?;
+                        self.parse_ident()?;
+                        ident_end = self.pos;
                     }
                     rel.selectors.push(SimpleSelector::Type {
                         span: self.span_from(start),
-                        name: self.text(ident_span),
+                        name: self.compact_str(ident_start, ident_end),
                     });
                 }
             } else if let Some(pct) = self.try_parse_percentage() {
                 rel.selectors.push(SimpleSelector::Percentage(pct));
             } else if !self.is_combinator_start() {
-                let mut ident_span = self.parse_ident()?;
+                let ident_start = self.pos;
+                self.parse_ident()?;
+                let mut ident_end = self.pos;
                 if self.eat(b'|') {
-                    ident_span = self.parse_ident()?;
+                    self.parse_ident()?;
+                    ident_end = self.pos;
                 }
                 rel.selectors.push(SimpleSelector::Type {
                     span: self.span_from(start),
-                    name: self.text(ident_span),
+                    name: self.compact_str(ident_start, ident_end),
                 });
             }
 
@@ -875,12 +996,9 @@ impl<'src> Parser<'src> {
             return Ok(BlockChild::Rule(Rule::AtRule(self.parse_at_rule()?)));
         }
 
-        let saved = self.pos;
-        self.read_value();
-        let is_rule = self.matches(b'{');
-        self.pos = saved;
-
-        if is_rule {
+        // Single-pass lookahead: scan to first unquoted `:` or `{`
+        // without advancing parser position.
+        if self.block_item_is_rule() {
             Ok(BlockChild::Rule(Rule::Style(Box::new(
                 self.parse_style_rule()?,
             ))))
@@ -892,12 +1010,14 @@ impl<'src> Parser<'src> {
     fn parse_declaration(&mut self) -> Result<Declaration> {
         let start = self.pos;
 
+        // Property name: scan ASCII bytes until whitespace or `:`
         let prop_start = self.pos;
         while self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
-            if b.is_ascii_whitespace() || b == b':' {
+            if is_css_ws(b) || b == b':' {
                 break;
             }
+            // Property names are ASCII (including `--custom-prop`)
             self.pos += 1;
         }
         let property = self.span_from(prop_start);
@@ -929,22 +1049,5 @@ impl<'src> Parser<'src> {
             property,
             value,
         })
-    }
-}
-
-// ---------------------------------------------------------------------------
-// UTF-8 helpers
-// ---------------------------------------------------------------------------
-
-#[inline(always)]
-fn utf8_char_len(lead: u8) -> usize {
-    if lead < 0x80 {
-        1
-    } else if lead < 0xE0 {
-        2
-    } else if lead < 0xF0 {
-        3
-    } else {
-        4
     }
 }
