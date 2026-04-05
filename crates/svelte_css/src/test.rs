@@ -737,3 +737,416 @@ fn no_infinite_loop_on_unexpected_char() {
     });
     assert!(has_p_rule, "valid rule after unexpected char should be parsed");
 }
+
+// ---------------------------------------------------------------------------
+// CSS escapes in selectors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn escaped_class_selector() {
+    // `\.foo` escapes the dot — treated as class named `foo` with escape
+    let src = r".\31 23 { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Class { .. }));
+}
+
+#[test]
+fn escaped_id_selector() {
+    let src = r"#\61 bc { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Id { .. }));
+}
+
+// ---------------------------------------------------------------------------
+// Namespace selectors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn namespace_type_selector() {
+    let src = "svg|rect { fill: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    // Should parse as Type selector with name "svg" (pipe-separated)
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { .. }));
+}
+
+#[test]
+fn universal_namespace_selector() {
+    let src = "*|div { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { .. }));
+}
+
+// ---------------------------------------------------------------------------
+// Multiple pseudo-classes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn multiple_pseudo_classes() {
+    let src = "a:hover:focus { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 3);
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "a"));
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "hover"));
+    assert!(matches!(&rel.selectors[2], SimpleSelector::PseudoClass(pc) if pc.name == "focus"));
+}
+
+#[test]
+fn pseudo_class_chain_with_not() {
+    let src = "input:not(:disabled):focus { outline: none; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 3);
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "not"));
+    assert!(matches!(&rel.selectors[2], SimpleSelector::PseudoClass(pc) if pc.name == "focus"));
+}
+
+// ---------------------------------------------------------------------------
+// Deeply nested blocks
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deeply_nested_rules() {
+    let src = ".a { .b { .c { color: red; } } }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(a)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Rule(Rule::Style(b)) = &a.block.children[0] else {
+        panic!("expected nested rule .b");
+    };
+    let BlockChild::Rule(Rule::Style(c)) = &b.block.children[0] else {
+        panic!("expected nested rule .c");
+    };
+    let BlockChild::Declaration(decl) = &c.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.property, src), "color");
+    assert_eq!(text(decl.value, src), "red");
+}
+
+// ---------------------------------------------------------------------------
+// At-rule inside nested block
+// ---------------------------------------------------------------------------
+
+#[test]
+fn at_rule_inside_nested_block() {
+    let src = ".parent { @media (max-width: 600px) { color: red; } }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Rule(Rule::AtRule(at)) = &rule.block.children[0] else {
+        panic!("expected nested at-rule");
+    };
+    assert_eq!(at.name.as_str(), "media");
+    assert!(at.block.is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Pseudo-element with function (::part, ::slotted)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pseudo_element_part() {
+    let src = "::part(foo) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::PseudoElement(pe) = &rel.selectors[0] else {
+        panic!("expected pseudo-element");
+    };
+    assert_eq!(pe.name.as_str(), "part");
+}
+
+// ---------------------------------------------------------------------------
+// Data attributes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn data_attribute_presence() {
+    let src = "[data-testid] { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
+        panic!("expected attribute selector");
+    };
+    assert_eq!(attr.name.as_str(), "data-testid");
+    assert!(attr.matcher.is_none());
+}
+
+#[test]
+fn data_attribute_with_value() {
+    let src = r#"[data-foo-bar="baz"] { color: red; }"#;
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
+        panic!("expected attribute selector");
+    };
+    assert_eq!(attr.name.as_str(), "data-foo-bar");
+    assert_eq!(text(attr.value.unwrap(), src), "baz");
+}
+
+// ---------------------------------------------------------------------------
+// Values with parentheses (var(), calc())
+// ---------------------------------------------------------------------------
+
+#[test]
+fn value_with_var() {
+    let src = "div { color: var(--my-color); }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.value, src), "var(--my-color)");
+}
+
+#[test]
+fn value_with_nested_parens() {
+    let src = "div { width: calc(100% - var(--gap)); }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.value, src), "calc(100% - var(--gap))");
+}
+
+// ---------------------------------------------------------------------------
+// :nth-child variants
+// ---------------------------------------------------------------------------
+
+#[test]
+fn nth_child_2n_plus_1() {
+    let src = "li:nth-child(2n+1) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "nth-child"));
+}
+
+#[test]
+fn nth_child_even() {
+    let src = "tr:nth-child(even) { background: gray; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "nth-child"));
+}
+
+// ---------------------------------------------------------------------------
+// Multiple at-rules
+// ---------------------------------------------------------------------------
+
+#[test]
+fn multiple_at_rules() {
+    let src = "@import 'a.css'; @import 'b.css'; p { color: red; }";
+    let ss = p(src);
+    assert_eq!(ss.children.len(), 3);
+    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::AtRule(_))));
+    assert!(matches!(&ss.children[1], StyleSheetChild::Rule(Rule::AtRule(_))));
+    assert!(matches!(&ss.children[2], StyleSheetChild::Rule(Rule::Style(_))));
+}
+
+// ---------------------------------------------------------------------------
+// Unicode identifiers
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unicode_class_name() {
+    let src = ".café { color: brown; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Class { name, .. } if name == "café"));
+}
+
+#[test]
+fn unicode_type_selector() {
+    let src = "日本語 { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "日本語"));
+}
+
+// ---------------------------------------------------------------------------
+// Complex selectors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compound_selector_type_class_pseudo() {
+    let src = "div.active:hover { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 3);
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "div"));
+    assert!(matches!(&rel.selectors[1], SimpleSelector::Class { name, .. } if name == "active"));
+    assert!(matches!(&rel.selectors[2], SimpleSelector::PseudoClass(pc) if pc.name == "hover"));
+}
+
+#[test]
+fn complex_multi_combinator() {
+    let src = "main > article p > span { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let complex = &rule.prelude.children[0];
+    assert_eq!(complex.children.len(), 4);
+    assert!(matches!(complex.children[1].combinator, Some(Combinator { kind: CombinatorKind::Child, .. })));
+    assert!(matches!(complex.children[2].combinator, Some(Combinator { kind: CombinatorKind::Descendant, .. })));
+    assert!(matches!(complex.children[3].combinator, Some(Combinator { kind: CombinatorKind::Child, .. })));
+}
+
+// ---------------------------------------------------------------------------
+// Printer edge cases
+// ---------------------------------------------------------------------------
+
+#[test]
+fn printer_import() {
+    let src = "@import 'reset.css';";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(output, "@import 'reset.css';\n");
+}
+
+#[test]
+fn printer_nested_at_rule() {
+    let src = ".parent { @media (max-width: 600px) { color: red; } }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(
+        output,
+        ".parent {\n  @media (max-width: 600px) {\n    color: red;\n  }\n}\n"
+    );
+}
+
+#[test]
+fn printer_deeply_nested() {
+    let src = ".a { .b { .c { color: red; } } }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(
+        output,
+        ".a {\n  .b {\n    .c {\n      color: red;\n    }\n  }\n}\n"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Keyframes with percentage selectors
+// ---------------------------------------------------------------------------
+
+#[test]
+fn keyframes_percentages() {
+    let src = "@keyframes slide { 0% { left: 0; } 100% { left: 100px; } }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::AtRule(at)) = &ss.children[0] else {
+        panic!("expected at-rule");
+    };
+    assert_eq!(at.name.as_str(), "keyframes");
+    let block = at.block.as_ref().unwrap();
+    assert_eq!(block.children.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Custom properties
+// ---------------------------------------------------------------------------
+
+#[test]
+fn custom_property_with_complex_value() {
+    let src = "div { --gradient: linear-gradient(90deg, red, blue); }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let BlockChild::Declaration(decl) = &rule.block.children[0] else {
+        panic!("expected declaration");
+    };
+    assert_eq!(text(decl.property, src), "--gradient");
+    assert_eq!(
+        text(decl.value, src),
+        "linear-gradient(90deg, red, blue)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// :is() and :where()
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pseudo_class_is() {
+    let src = ":is(h1, h2, h3) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
+        panic!("expected pseudo-class");
+    };
+    assert_eq!(pc.name.as_str(), "is");
+    let args = pc.args.as_ref().unwrap();
+    assert_eq!(args.children.len(), 3);
+}
+
+#[test]
+fn pseudo_class_where() {
+    let src = ":where(.a, .b) { color: red; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
+        panic!("expected pseudo-class");
+    };
+    assert_eq!(pc.name.as_str(), "where");
+    assert!(pc.args.is_some());
+}

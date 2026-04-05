@@ -384,9 +384,11 @@ impl<'src> Parser<'src> {
 
     // -- identifiers --------------------------------------------------------
 
+    /// CSS identifier continuation character: ASCII alphanumeric, `_`, `-`, or non-ASCII (≥0x80).
+    /// Non-ASCII bytes are always valid in CSS identifiers per the spec.
     #[inline(always)]
     fn is_ident_char(ch: u8) -> bool {
-        ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-'
+        ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-' || ch >= 0x80
     }
 
     /// Parse a CSS identifier. Returns `None` on failure (emits diagnostic).
@@ -448,8 +450,8 @@ impl<'src> Parser<'src> {
     fn read_value(&mut self) -> Span {
         let start = self.pos;
         let mut escaped = false;
-        let mut in_url = false;
         let mut quote: u8 = 0;
+        let mut paren_depth: u32 = 0;
         let mut last_non_ws = self.pos;
 
         while self.pos < self.bytes.len() {
@@ -475,10 +477,6 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            if b == b')' {
-                in_url = false;
-            }
-
             if quote == 0 && (b == b'"' || b == b'\'') {
                 quote = b;
                 self.pos += 1;
@@ -486,19 +484,15 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            if quote == 0 && b == b'(' && self.pos >= 3 {
-                let p = self.pos;
-                if self.bytes[p - 1] == b'l'
-                    && self.bytes[p - 2] == b'r'
-                    && self.bytes[p - 3] == b'u'
-                    && (p < 4 || !Self::is_ident_char(self.bytes[p - 4]))
-                {
-                    in_url = true;
+            if quote == 0 {
+                match b {
+                    b'(' => paren_depth += 1,
+                    b')' => paren_depth = paren_depth.saturating_sub(1),
+                    b';' | b'{' | b'}' if paren_depth == 0 => {
+                        return Span::new(start as u32, last_non_ws as u32);
+                    }
+                    _ => {}
                 }
-            }
-
-            if !in_url && quote == 0 && (b == b';' || b == b'{' || b == b'}') {
-                return Span::new(start as u32, last_non_ws as u32);
             }
 
             self.advance_char();
@@ -549,7 +543,9 @@ impl<'src> Parser<'src> {
         }
 
         self.recover(
-            DiagnosticKind::CssSelectorInvalid,
+            DiagnosticKind::CssExpectedToken {
+                token: "]".into(),
+            },
             self.span_from(start),
         );
         None
@@ -821,7 +817,12 @@ impl<'src> Parser<'src> {
             Some(self.parse_block())
         } else if !self.eat(b';') {
             // Missing semicolon — recover
-            self.recover(DiagnosticKind::CssSelectorInvalid, self.span_from(start));
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: ";".into(),
+                },
+                self.span_from(start),
+            );
             self.skip_to_semicolon_or_block_end();
             None
         } else {
@@ -850,7 +851,12 @@ impl<'src> Parser<'src> {
         };
 
         if !self.matches(b'{') {
-            self.recover(DiagnosticKind::CssSelectorInvalid, self.span_from(start));
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: "{".into(),
+                },
+                self.span_from(start),
+            );
             self.skip_rule();
             return None;
         }
@@ -961,7 +967,9 @@ impl<'src> Parser<'src> {
                     self.parse_selector_list(true)?;
                     if !self.eat(b')') {
                         self.recover(
-                            DiagnosticKind::CssSelectorInvalid,
+                            DiagnosticKind::CssExpectedToken {
+                                token: ")".into(),
+                            },
                             self.span_from(start),
                         );
                         return None;
@@ -979,7 +987,9 @@ impl<'src> Parser<'src> {
                     let sel_list = self.parse_selector_list(true)?;
                     if !self.eat(b')') {
                         self.recover(
-                            DiagnosticKind::CssSelectorInvalid,
+                            DiagnosticKind::CssExpectedToken {
+                                token: ")".into(),
+                            },
                             self.span_from(start),
                         );
                         return None;
@@ -1102,7 +1112,9 @@ impl<'src> Parser<'src> {
 
         if !self.eat(b']') {
             self.recover(
-                DiagnosticKind::CssSelectorInvalid,
+                DiagnosticKind::CssExpectedToken {
+                    token: "]".into(),
+                },
                 self.span_from(start),
             );
             return None;
@@ -1178,7 +1190,12 @@ impl<'src> Parser<'src> {
         let start = self.pos;
 
         if !self.eat(b'{') {
-            self.recover(DiagnosticKind::CssSelectorInvalid, self.span_at());
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: "{".into(),
+                },
+                self.span_at(),
+            );
             return Block {
                 span: self.span_from(start),
                 children: Vec::new(),
@@ -1194,10 +1211,7 @@ impl<'src> Parser<'src> {
                 break;
             }
             if self.at_end() {
-                self.recover(
-                    DiagnosticKind::CssSelectorInvalid,
-                    self.span_from(start),
-                );
+                self.recover(DiagnosticKind::CssUnclosedBlock, self.span_from(start));
                 break;
             }
 
@@ -1269,7 +1283,12 @@ impl<'src> Parser<'src> {
         self.skip_whitespace();
 
         if !self.eat(b':') {
-            self.recover(DiagnosticKind::CssSelectorInvalid, self.span_from(start));
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: ":".into(),
+                },
+                self.span_from(start),
+            );
             self.skip_to_semicolon_or_block_end();
             return None;
         }
@@ -1293,7 +1312,12 @@ impl<'src> Parser<'src> {
         if !self.matches(b'}')
             && !self.eat(b';')
         {
-            self.recover(DiagnosticKind::CssSelectorInvalid, self.span_from(start));
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: ";".into(),
+                },
+                self.span_from(start),
+            );
             self.skip_to_semicolon_or_block_end();
             return None;
         }
