@@ -39,6 +39,7 @@ pub fn walk_stylesheet<V: Visit + ?Sized>(v: &mut V, node: &StyleSheet) {
         match child {
             StyleSheetChild::Rule(rule) => v.visit_rule(rule),
             StyleSheetChild::Comment(comment) => v.visit_comment(comment),
+            StyleSheetChild::Error(_) => {}
         }
     }
 }
@@ -85,6 +86,7 @@ pub fn walk_block<V: Visit + ?Sized>(v: &mut V, node: &Block) {
             BlockChild::Declaration(d) => v.visit_declaration(d),
             BlockChild::Rule(r) => v.visit_rule(r),
             BlockChild::Comment(c) => v.visit_comment(c),
+            BlockChild::Error(_) => {}
         }
     }
 }
@@ -128,6 +130,7 @@ pub fn walk_stylesheet_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut StyleShee
         match child {
             StyleSheetChild::Rule(rule) => v.visit_rule_mut(rule),
             StyleSheetChild::Comment(comment) => v.visit_comment_mut(comment),
+            StyleSheetChild::Error(_) => {}
         }
     }
 }
@@ -174,6 +177,7 @@ pub fn walk_block_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut Block) {
             BlockChild::Declaration(d) => v.visit_declaration_mut(d),
             BlockChild::Rule(r) => v.visit_rule_mut(r),
             BlockChild::Comment(c) => v.visit_comment_mut(c),
+            BlockChild::Error(_) => {}
         }
     }
 }

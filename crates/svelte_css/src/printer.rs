@@ -76,6 +76,7 @@ impl Printer {
                     first = false;
                     self.print_rule(rule, source);
                 }
+                StyleSheetChild::Error(_) => {}
             }
         }
         &self.output
@@ -142,6 +143,7 @@ impl Printer {
                         self.output.push('\n');
                     }
                 }
+                BlockChild::Error(_) => {}
             }
         }
     }

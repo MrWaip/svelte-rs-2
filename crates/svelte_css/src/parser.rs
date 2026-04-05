@@ -776,12 +776,17 @@ impl<'src> Parser<'src> {
                 break;
             }
 
+            let start = self.pos;
             if self.matches(b'@') {
                 if let Some(at) = self.parse_at_rule() {
                     children.push(StyleSheetChild::Rule(Rule::AtRule(at)));
+                } else {
+                    children.push(StyleSheetChild::Error(self.span_from(start)));
                 }
             } else if let Some(rule) = self.parse_style_rule() {
                 children.push(StyleSheetChild::Rule(Rule::Style(Box::new(rule))));
+            } else {
+                children.push(StyleSheetChild::Error(self.span_from(start)));
             }
         }
 
@@ -1186,9 +1191,13 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_block_item(&mut self, children: &mut Vec<BlockChild>) {
+        let start = self.pos;
+
         if self.matches(b'@') {
             if let Some(at) = self.parse_at_rule() {
                 children.push(BlockChild::Rule(Rule::AtRule(at)));
+            } else {
+                children.push(BlockChild::Error(self.span_from(start)));
             }
             return;
         }
@@ -1196,12 +1205,14 @@ impl<'src> Parser<'src> {
         if self.block_item_is_rule() {
             if let Some(rule) = self.parse_style_rule() {
                 children.push(BlockChild::Rule(Rule::Style(Box::new(rule))));
+            } else {
+                children.push(BlockChild::Error(self.span_from(start)));
             }
         } else {
             match self.parse_declaration() {
                 Some(decl) => children.push(BlockChild::Declaration(decl)),
                 None => {
-                    // Recovery already happened inside parse_declaration
+                    children.push(BlockChild::Error(self.span_from(start)));
                 }
             }
         }

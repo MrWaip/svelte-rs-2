@@ -580,11 +580,14 @@ fn declaration_with_semicolons_in_value() {
 
 #[test]
 fn recovery_bad_selector_skips_rule() {
-    // Invalid selector: `{` after `>` with no following selector.
-    // The bad rule should be skipped, the next rule should parse fine.
     let src = "!invalid { color: red; } p { color: blue; }";
     let (ss, diags) = parse(src);
     assert!(!diags.is_empty(), "expected diagnostics for bad selector");
+
+    // Error node should be present for the skipped rule
+    let has_error = ss.children.iter().any(|child| matches!(child, StyleSheetChild::Error(_)));
+    assert!(has_error, "expected Error node for bad rule");
+
     // The valid rule after the bad one should be present
     let has_p_rule = ss.children.iter().any(|child| {
         matches!(child, StyleSheetChild::Rule(Rule::Style(rule))
@@ -600,13 +603,17 @@ fn recovery_bad_selector_skips_rule() {
 
 #[test]
 fn recovery_bad_declaration_continues_block() {
-    // Missing colon in first declaration — should skip it and parse the next one
     let src = "p { color; font-size: 16px; }";
     let (ss, diags) = parse(src);
     assert!(!diags.is_empty(), "expected diagnostic for bad declaration");
     let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
         panic!("expected style rule");
     };
+
+    // Error node for the bad declaration
+    let has_error = rule.block.children.iter().any(|child| matches!(child, BlockChild::Error(_)));
+    assert!(has_error, "expected Error node for bad declaration");
+
     // The valid declaration should be present
     let has_font_size = rule.block.children.iter().any(|child| {
         matches!(child, BlockChild::Declaration(d) if d.property.source_text(src) == "font-size")
@@ -645,16 +652,32 @@ fn recovery_multiple_errors() {
 
 #[test]
 fn recovery_empty_declaration_value() {
-    // Non-custom-property with empty value
     let src = "p { color: ; font-size: 16px; }";
     let (ss, diags) = parse(src);
     assert!(!diags.is_empty(), "expected diagnostic for empty value");
     let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
         panic!("expected style rule");
     };
+
+    // Error node for the empty-value declaration
+    let has_error = rule.block.children.iter().any(|child| matches!(child, BlockChild::Error(_)));
+    assert!(has_error, "expected Error node for empty value declaration");
+
     // font-size declaration should still be parsed
     let has_font_size = rule.block.children.iter().any(|child| {
         matches!(child, BlockChild::Declaration(d) if d.property.source_text(src) == "font-size")
     });
     assert!(has_font_size);
+}
+
+#[test]
+fn error_node_span_covers_skipped_content() {
+    let src = "!bad { x: 1; } p { color: red; }";
+    let (ss, _) = parse(src);
+    let StyleSheetChild::Error(span) = &ss.children[0] else {
+        panic!("expected Error node first");
+    };
+    let error_text = span.source_text(src);
+    // Should cover the entire skipped rule including its block
+    assert!(error_text.contains("!bad"), "error span should cover '!bad', got: {error_text:?}");
 }

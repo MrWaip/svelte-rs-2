@@ -41,6 +41,8 @@ pub struct StyleSheet {
 pub enum StyleSheetChild {
     Rule(Rule),
     Comment(Comment),
+    /// Skipped invalid CSS (parse error recovery).
+    Error(Span),
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +189,8 @@ pub enum BlockChild {
     Declaration(Declaration),
     Rule(Rule),
     Comment(Comment),
+    /// Skipped invalid CSS (parse error recovery).
+    Error(Span),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -211,6 +215,7 @@ impl GetSpan for StyleSheetChild {
         match self {
             Self::Rule(r) => r.span(),
             Self::Comment(c) => c.span,
+            Self::Error(s) => *s,
         }
     }
 }
@@ -312,6 +317,7 @@ impl GetSpan for BlockChild {
             Self::Declaration(d) => d.span,
             Self::Rule(r) => r.span(),
             Self::Comment(c) => c.span,
+            Self::Error(s) => *s,
         }
     }
 }
