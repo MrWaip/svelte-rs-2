@@ -74,7 +74,16 @@ pub fn parse_css_block<'a>(
     let css_block = component.css.as_ref()?;
     let css_text = component.source_text(css_block.content_span);
     let css_src: &'a str = alloc.alloc_str(css_text);
-    StyleSheet::parse(css_src, ParserOptions::default()).ok()
+    StyleSheet::parse(
+        css_src,
+        ParserOptions {
+            // Enables PseudoClass::Global { selector } for :global(...) so the transform
+            // pass can expand it at the AST level instead of working with raw tokens.
+            css_modules: Some(lightningcss::css_modules::Config::default()),
+            ..ParserOptions::default()
+        },
+    )
+    .ok()
 }
 
 // ---------------------------------------------------------------------------

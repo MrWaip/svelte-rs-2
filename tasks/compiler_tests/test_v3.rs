@@ -150,6 +150,11 @@ fn css_injected() {
 }
 
 #[rstest]
+fn css_global_basic() {
+    assert_compiler("css_global_basic");
+}
+
+#[rstest]
 fn head_position_with_body() {
     assert_compiler("head_position_with_body");
 }

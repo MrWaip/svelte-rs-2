@@ -1,6 +1,8 @@
 use lightningcss::error::PrinterError;
+use lightningcss::printer::{Printer, PrinterOptions};
 use lightningcss::selector::{Component, PseudoClass, Selector};
-use lightningcss::stylesheet::{PrinterOptions, StyleSheet};
+use lightningcss::stylesheet::StyleSheet;
+use lightningcss::traits::ToCss;
 use lightningcss::values::ident::Ident;
 use lightningcss::{visit_types, visitor::{Visit, Visitor, VisitTypes}};
 
@@ -18,7 +20,15 @@ pub fn transform_css<'a>(
     if stylesheet.visit(&mut scoper).is_err() {
         return None;
     }
-    stylesheet.to_css(PrinterOptions::default()).ok().map(|r| r.code)
+
+    // Serialize directly through Printer with no CSS module context so that
+    // class names are not renamed (stylesheet.to_css() would enable renaming
+    // because the stylesheet was parsed with css_modules enabled).
+    let mut dest = String::new();
+    let mut printer = Printer::new(&mut dest, PrinterOptions::default());
+    stylesheet.rules.to_css(&mut printer).ok()?;
+    printer.newline().ok()?;
+    Some(dest)
 }
 
 struct ScopeSelectors<'h> {
@@ -35,42 +45,68 @@ impl<'i, 'h: 'i> Visitor<'i> for ScopeSelectors<'h> {
     }
 
     fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
+        // iter_raw_match_order() returns components in right-to-left (match) order at the
+        // compound level: rightmost compound first, leftmost last. Within a single compound,
+        // components are in parse (left-to-right) order. Selector::from() expects left-to-right
+        // input. We split on combinators, then process compounds from highest index (leftmost in
+        // CSS) down to 0 (rightmost), which produces the correct left-to-right sequence for
+        // Selector::from(). Components within each compound are already in parse order and need
+        // no reversal.
         let components: Vec<Component<'i>> =
             selector.iter_raw_match_order().cloned().collect();
 
         let has_local_name = components.iter().any(|c| matches!(c, Component::LocalName(_)));
-        if !has_local_name {
+        let has_global = components.iter().any(|c| {
+            matches!(c, Component::NonTSPseudoClass(PseudoClass::Global { .. }))
+        });
+
+        if !has_local_name && !has_global {
             return Ok(());
         }
 
-        if has_global_component(selector) {
-            return Ok(());
-        }
+        // Split components into compound selectors (separated by combinators).
+        // The resulting compounds are in right-to-left order (match order).
+        let compounds: Vec<&[Component<'i>]> = components
+            .as_slice()
+            .split(|c| c.is_combinator())
+            .collect();
+
+        // Combinators in right-to-left order: combinators[k] is between compounds[k] and compounds[k+1].
+        let combinators: Vec<Component<'i>> = components
+            .iter()
+            .filter(|c| c.is_combinator())
+            .cloned()
+            .collect();
 
         let mut result: Vec<Component<'i>> = Vec::with_capacity(components.len() + 1);
-        for component in components {
-            let is_local = matches!(component, Component::LocalName(_));
-            result.push(component);
-            if is_local {
-                let class_ident: Ident<'h> = Ident::from(self.hash_class);
-                result.push(Component::Class(class_ident));
+
+        // Iterate compounds from last index (leftmost in CSS) to 0 (rightmost in CSS).
+        // Between compound[i] and compound[i-1] the combinator is combinators[i-1].
+        for i in (0..compounds.len()).rev() {
+            for component in compounds[i] {
+                match component {
+                    Component::NonTSPseudoClass(PseudoClass::Global { selector }) => {
+                        // Expand the inner selector's components inline, without a scope class —
+                        // content of :global() is intentionally unscoped.
+                        // iter_raw_match_order() returns components within a compound in parse
+                        // (left-to-right) order, so no reversal is needed here.
+                        result.extend(selector.iter_raw_match_order().cloned());
+                    }
+                    Component::LocalName(_) => {
+                        result.push(component.clone());
+                        result.push(Component::Class(Ident::from(self.hash_class)));
+                    }
+                    _ => result.push(component.clone()),
+                }
+            }
+            if i > 0 {
+                result.push(combinators[i - 1].clone());
             }
         }
 
         *selector = Selector::from(result);
         Ok(())
     }
-}
-
-fn has_global_component(selector: &Selector<'_>) -> bool {
-    selector.iter_raw_match_order().any(|c| match c {
-        Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
-        Component::NonTSPseudoClass(PseudoClass::Custom { name }) => name.as_ref() == "global",
-        Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
-            name.as_ref() == "global"
-        }
-        _ => false,
-    })
 }
 
 /// Compact formatted CSS into a single-line string matching the reference compiler's

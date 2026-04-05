@@ -3,9 +3,10 @@
 ## Current state
 - **Working**: scoped CSS pipeline complete — hash, selector scoping, element marking, class injection, `CompileResult.css`. Both `css:"external"` (default) and `css:"injected"` modes work. Tests: `css_scoped_basic`, `css_injected`, `css_injected_via_compile_options`.
 - **Architecture**: `svelte_transform_css` crate owns CSS AST → CSS string transform (scoping, serialization, injection compaction). `svelte_analyze::analyze_css_pass` is read-only classifier (hash, scoped elements, inject flag). `svelte_compiler` orchestrates and owns mode-specific post-processing.
+- **Working**: `:global(.foo)` functional form — AST-level stripping of pseudo-class wrapper, mixed selectors (`p :global(.bar)`) scope outer LocalName correctly. Test: `css_global_basic`. CSS modules parsing enabled in `svelte_parser::parse_css_block` so lightningcss produces `PseudoClass::Global { selector }` (structured AST); transform expands inline; serialized via `stylesheet.rules.to_css()` directly to avoid CSS module class renaming.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global()` validation and transform, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
-- **Next**: Port `:global(...)` and `:global { ... }` selector validation and transform — add parse/analyze/transform parity and diagnostics for global selector forms.
+- **Missing**: `:global { ... }` block form transform, `:global()` validation diagnostics, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
+- **Next**: Port `:global { ... }` block form — Rule-level visitor to hoist inner rules out of the `:global { }` wrapper.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
 - Last updated: 2026-04-05
 
@@ -35,8 +36,12 @@ ROADMAP.md — CSS
 - [x] Compile result CSS plumbing — `CompileResult.css` field, `analyze_css_pass()` integrated into `compile()`
 - [ ] `css: "external"` output — mode flag not explicitly enforced; external is current default behavior with no special handling
 - [x] `css: "injected"` output — `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body (tests: `css_injected`, `css_injected_via_compile_options`)
-- [ ] `:global(...)` and `:global { ... }` validation and transform
+- [x] `:global(.foo)` functional form — strip wrapper, scope outer LocalName (test: `css_global_basic`)
+- [ ] `:global { ... }` block form transform
+- [ ] `:global()` inside `:not()`, `:is()`, `:where()` — currently unvisited (visitor declares SELECTORS only, not PSEUDO_CLASSES; nested selectors inside functional pseudo-classes silently pass through)
+- [ ] `:global()` validation diagnostics
 - [ ] Scoped `@keyframes` plus `-global-*` escape
+- [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
 - [ ] Unused selector warning (`css_unused_selector`)
 - [ ] CSS custom properties on components — `<svelte-css-wrapper>` / `<g>` wrapper lowering for `--prop=...`
 - [~] Nested `<style>` elements inside markup — likely compile as plain elements today, no focused compiler case for "unscoped, inserted as-is" parity

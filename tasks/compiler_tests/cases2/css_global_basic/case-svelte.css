@@ -1,0 +1,22 @@
+
+	.red {
+		color: red;
+	}
+	p.svelte-r1lfc1 .child {
+		margin: 0;
+	}
+	p.svelte-r1lfc1.active {
+		font-weight: bold;
+	}
+	h2 {
+		font-size: 1.5em;
+	}
+	.wrapper .item {
+		display: flex;
+	}
+	h2.featured {
+		font-style: italic;
+	}
+	p.svelte-r1lfc1 {
+		color: green;
+	}
