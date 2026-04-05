@@ -1703,6 +1703,7 @@ dependencies = [
  "compact_str",
  "pretty_assertions",
  "smallvec",
+ "svelte_diagnostics",
  "svelte_span",
 ]
 
