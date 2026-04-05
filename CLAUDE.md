@@ -5,60 +5,70 @@
 Detailed crate API and type reference: `CODEBASE_MAP.md` (read when you need type signatures or module structure).
 Gotchas, data flow per pass, node-type checklist, output examples: `GOTCHAS.md` (read when adding a new feature or debugging unexpected output).
 
-## Tool Priority: LSP FIRST FOR RUST CODE
+## Tool Priority: LSP FIRST
 
-**When navigating rust code, ALWAYS use LSP before grep, glob, bash, or Read-and-scan.** LSP is faster, more accurate, and cheaper on tokens. Only fall back to grep/glob for non-code text search or regex patterns. This is a hard rule, not a suggestion.
+**When navigating rust code, ALWAYS use the cclsp MCP tools before grep, glob, bash, or Read-and-scan.** They are faster, more accurate, and cheaper on tokens. If a cclsp tool fails or times out, retry it at least once before falling back — and only fall back for that specific failed operation, not for the entire task. Use grep/glob only for non-code text search or when the cclsp equivalent consistently fails. This is a hard rule, not a suggestion.
+
+Available cclsp MCP tools (`mcp__cclsp__*`):
+- `find_workspace_symbols` — find a symbol by name across the entire workspace
+- `find_definition` — go to definition
+- `find_references` — all use-sites of a symbol across the workspace
+- `find_implementation` — trait/interface implementations
+- `prepare_call_hierarchy` + `get_incoming_calls`/`get_outgoing_calls` — call graph for a function
+- `rename_symbol` / `rename_symbol_strict` — rename across the entire workspace (supports dry_run)
+- `get_diagnostics` — errors and warnings for a file
+- `get_hover` — type and signature of a symbol (may time out on a cold rust-analyzer)
 
 
 ## Spec files
 
-Спека — рабочий документ фичи. Создаётся при первом контакте с задачей, живёт до завершения реализации. Читается сверху вниз: статус → scope → детали.
+A spec is a working document for a feature. Created on first contact with the task, lives until the implementation is complete. Read top to bottom: status → scope → details.
 
-### Когда создавать
-- Задача затрагивает 2+ слоя (parser + analyze + codegen)
-- Или задача не помещается в одну сессию
-- Мелкие фиксы (один файл, одна сессия) — спека не нужна
+### When to create
+- Task spans 2+ layers (parser + analyze + codegen)
+- Or task doesn't fit in a single session
+- Small fixes (one file, one session) — no spec needed
 
-### Нейминг
-Имя файла = имя фичи в kebab-case: `state-rune.md`, `each-block.md`, `diagnostics-infrastructure.md`.
-Для ROADMAP tier items: `<tier-id>-<short-name>.md` (e.g. `5a-diagnostics-infrastructure.md`).
-Если фича в ROADMAP не имеет tier — просто `<feature-name>.md`.
+### Naming
+File name = feature name in kebab-case: `state-rune.md`, `each-block.md`, `diagnostics-infrastructure.md`.
+For ROADMAP tier items: `<tier-id>-<short-name>.md` (e.g. `5a-diagnostics-infrastructure.md`).
+If the feature has no tier in ROADMAP — just `<feature-name>.md`.
 
-### Структура
+### Structure
 
-Порядок секций фиксирован. Самое важное — наверху.
+Section order is fixed. Most important things go at the top.
 
-| Секция | Назначение | Обязательность |
-|--------|-----------|----------------|
-| Current state | **Первое что видит человек.** Что сделано, что следующее, блокеры. Дата обновления. | Обязательно |
-| Source | Привязка к ROADMAP item или запросу | Обязательно |
-| Syntax variants | Все синтаксические формы фичи (из доков и парсера reference compiler) | Обязательно |
-| Use cases | Плоский список чекбоксов: `[ ]`, `[x]`, `[~]` — без подразделов | Обязательно |
-| Out of scope | Список (без чекбоксов) того что явно не делаем: SSR, удалённые фичи, future tiers | Опционально |
-| Reference | Файлы reference compiler + наши файлы — чтобы следующая сессия не искала заново | Обязательно |
-| Tasks | Implementation plan по слоям, с конкретными файлами и функциями | Обязательно |
-| Implementation order | Порядок выполнения Tasks (зависимости между слоями) | Опционально |
-| Discovered bugs | Баги найденные во время работы (с пометкой FIXED/OPEN) | По факту |
-| Test cases | Список тестов: существующие + планируемые | Опционально |
+| Section | Purpose | Required |
+|---------|---------|----------|
+| Current state | **First thing a reader sees.** What's done, what's next, blockers. Date updated. | Required |
+| Source | Link to ROADMAP item or request | Required |
+| Syntax variants | All syntactic forms of the feature (from docs and reference compiler parser) | Required |
+| Use cases | Flat checklist: `[ ]`, `[x]`, `[~]` — no subsections | Required |
+| Out of scope | Plain list of things explicitly excluded: SSR, removed features, future tiers | Optional |
+| Reference | Reference compiler files + our files — so the next session doesn't have to search | Required |
+| Tasks | Implementation plan per layer, with specific files and functions | Required |
+| Implementation order | Execution order of Tasks (inter-layer dependencies) | Optional |
+| Discovered bugs | Bugs found during work (marked FIXED/OPEN) | As needed |
+| Test cases | List of tests: existing + planned | Optional |
 
-### Scope правила
-- **Только client-side.** SSR use cases НЕ включать — SSR будет отдельным этапом после завершения client.
-- Use case с пометкой `[ ]` = в scope текущей работы
-- Use case с пометкой `[x]` = реализован и покрыт тестом
-- Use case с пометкой `[~]` = частично (описать что работает, что нет)
-- `Use cases` — плоский список чекбоксов, без `###` подразделов
-- `Out of scope` — plain list для явно исключённых вещей (SSR, removed features, future tiers)
+### Scope rules
+- **Client-side only.** Do NOT include SSR use cases — SSR is a separate phase after client is complete.
+- Use case marked `[ ]` = in scope for current work
+- Use case marked `[x]` = implemented and covered by a test
+- Use case marked `[~]` = partial (describe what works, what doesn't)
+- `Use cases` — flat checklist, no `###` subsections
+- `Out of scope` — plain list for explicitly excluded things (SSR, removed features, future tiers)
 
-### Жизненный цикл
-1. Создаётся: `/port` step 3 или `/audit` step 3 (шаблон: `spec-template` skill)
-2. Обновляется: после каждой сессии — секция Current state (наверху!)
-3. Завершается: когда все Use cases `[x]` → фича в ROADMAP Done
-4. Не удаляется — остаётся как reference
+### Lifecycle
+1. Created: `/port` step 3 or `/audit` step 3 (template: `spec-template` skill)
+2. Updated: after each session — Current state section (at the top!)
+3. Completed: when all Use cases are `[x]` → feature is Done in ROADMAP
+4. Not deleted — kept as reference
 
-### Правила
-- Перед реализацией: `Glob("specs/*.md")` — проверить есть ли спека
-- Если есть — читать Current state (первая секция) и продолжить
-- Если нет — создать во время планирования
+### Rules
+- Before implementing: `Glob("specs/*.md")` — check if a spec exists
+- If it exists — read Current state (first section) and continue
+- If not — create one during planning
 
 ## Architecture boundaries — STRICT ENFORCEMENT
 

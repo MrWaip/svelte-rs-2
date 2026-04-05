@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cclsp": {
+      "command": "cclsp",
+      "env": {
+        "CCLSP_CONFIG_PATH": "cclsp.json"
+      }
+    }
+  }
+}
