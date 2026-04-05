@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_span::Span;
 
@@ -40,6 +41,7 @@ struct Parser<'src> {
     src: &'src str,
     bytes: &'src [u8],
     pos: usize,
+    next_id: u32,
 }
 
 impl<'src> Parser<'src> {
@@ -48,7 +50,15 @@ impl<'src> Parser<'src> {
             src,
             bytes: src.as_bytes(),
             pos: 0,
+            next_id: 0,
         }
+    }
+
+    #[inline(always)]
+    fn alloc_id(&mut self) -> CssNodeId {
+        let id = CssNodeId(self.next_id);
+        self.next_id += 1;
+        id
     }
 
     // -- helpers (hot path — all #[inline]) ---------------------------------
@@ -83,7 +93,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Eat a 2-byte sequence by direct byte comparison.
     #[inline(always)]
     fn eat2(&mut self, a: u8, b: u8) -> bool {
         if self.pos + 1 < self.bytes.len()
@@ -97,7 +106,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Check if source at `pos` starts with the given string (for longer patterns).
     #[inline]
     fn matches_str(&self, s: &str) -> bool {
         self.bytes
@@ -105,7 +113,6 @@ impl<'src> Parser<'src> {
             .is_some_and(|slice| slice == s.as_bytes())
     }
 
-    /// Eat a string if it matches at current position.
     #[inline]
     fn eat_str(&mut self, s: &str) -> bool {
         if self.matches_str(s) {
@@ -130,6 +137,12 @@ impl<'src> Parser<'src> {
         Span::new(start as u32, self.pos as u32)
     }
 
+    /// Extract source text for a span as CompactString.
+    #[inline]
+    fn text(&self, span: Span) -> CompactString {
+        CompactString::new(span.source_text(self.src))
+    }
+
     #[cold]
     fn error(&self, message: String) -> ParseError {
         ParseError {
@@ -147,8 +160,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Skip whitespace and comments (discarding comments).
-    /// Used inside selectors and combinators.
     fn skip_whitespace_and_comments(&mut self) {
         loop {
             self.skip_whitespace();
@@ -162,8 +173,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Skip whitespace and collect `/* ... */` comments as AST nodes directly
-    /// into `out`. Used in stylesheet body and block children.
     fn skip_whitespace_and_collect_comments<T>(
         &mut self,
         out: &mut Vec<T>,
@@ -189,10 +198,8 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Advance past `*/`. Assumes `/*` was already consumed.
     #[inline]
     fn scan_to_comment_end(&mut self) {
-        // Search for '*' then check next byte for '/'
         while self.pos < self.bytes.len() {
             if self.bytes[self.pos] == b'*'
                 && self.pos + 1 < self.bytes.len()
@@ -205,7 +212,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Advance past `-->`. Assumes `<!--` was already consumed.
     #[inline]
     fn scan_to_html_comment_end(&mut self) {
         while self.pos < self.bytes.len() {
@@ -228,6 +234,7 @@ impl<'src> Parser<'src> {
         ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-'
     }
 
+    /// Parse a CSS identifier, returning its Span. Use `self.text(span)` to get CompactString.
     fn parse_ident(&mut self) -> Result<Span> {
         let start = self.pos;
 
@@ -260,7 +267,6 @@ impl<'src> Parser<'src> {
             } else if Self::is_ident_char(b) {
                 self.pos += 1;
             } else if b >= 0x80 {
-                // Non-ASCII: advance by UTF-8 char length via byte pattern
                 self.pos += utf8_char_len(b);
             } else {
                 break;
@@ -274,15 +280,21 @@ impl<'src> Parser<'src> {
         Ok(self.span_from(start))
     }
 
+    /// Parse identifier and return (span, name) pair.
+    #[inline]
+    fn parse_ident_with_name(&mut self) -> Result<(Span, CompactString)> {
+        let span = self.parse_ident()?;
+        let name = self.text(span);
+        Ok((span, name))
+    }
+
     // -- value reading (raw text spans) -------------------------------------
 
-    /// Read raw CSS value text until `;`, `{`, or `}` (outside strings/escapes).
-    /// Returns the span of the value, trimmed of trailing whitespace.
     fn read_value(&mut self) -> Span {
         let start = self.pos;
         let mut escaped = false;
         let mut in_url = false;
-        let mut quote: u8 = 0; // 0 = not in quote
+        let mut quote: u8 = 0;
         let mut last_non_ws = self.pos;
 
         while self.pos < self.bytes.len() {
@@ -319,7 +331,6 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            // Detect url( — check 3 preceding bytes directly
             if quote == 0 && b == b'(' && self.pos >= 3 {
                 let p = self.pos;
                 if self.bytes[p - 3] == b'u'
@@ -343,7 +354,6 @@ impl<'src> Parser<'src> {
         Span::new(start as u32, last_non_ws as u32)
     }
 
-    /// Read an attribute value — quoted or unquoted — inside `[...]`.
     fn read_attribute_value(&mut self) -> Result<Span> {
         let quote = if self.eat(b'"') {
             b'"'
@@ -372,7 +382,7 @@ impl<'src> Parser<'src> {
             if quote != 0 {
                 if b == quote {
                     let span = self.span_from(start);
-                    self.pos += 1; // eat closing quote
+                    self.pos += 1;
                     return Ok(span);
                 }
             } else if b.is_ascii_whitespace() || b == b']' {
@@ -387,8 +397,6 @@ impl<'src> Parser<'src> {
 
     // -- nth patterns -------------------------------------------------------
 
-    /// Try to parse an An+B / nth pattern (even, odd, 2n+1, etc).
-    /// Returns None if not matching; does not advance on failure.
     fn try_parse_nth(&mut self) -> Option<Span> {
         let start = self.pos;
 
@@ -407,7 +415,6 @@ impl<'src> Parser<'src> {
             return None;
         }
 
-        // [+|-]?\d*n?(\s*[+-]\s*\d+)?
         if self.matches(b'+') || self.matches(b'-') {
             self.pos += 1;
         }
@@ -427,7 +434,6 @@ impl<'src> Parser<'src> {
             return None;
         }
 
-        // Check for "of" keyword or terminator
         let saved = self.pos;
         self.skip_whitespace();
         if self.eat_str("of")
@@ -490,7 +496,6 @@ impl<'src> Parser<'src> {
 
         let index = self.pos;
 
-        // Explicit combinators: ||, +, ~, >
         if self.eat2(b'|', b'|') {
             return Some(Combinator {
                 span: Span::new(index as u32, self.pos as u32),
@@ -513,7 +518,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // Descendant combinator: whitespace consumed
         if self.pos != start {
             return Some(Combinator {
                 span: Span::new(start as u32, self.pos as u32),
@@ -562,7 +566,7 @@ impl<'src> Parser<'src> {
         let start = self.pos;
         self.expect(b'@')?;
 
-        let name = self.parse_ident()?;
+        let (_, name) = self.parse_ident_with_name()?;
         let prelude = self.read_value();
 
         let block = if self.matches(b'{') {
@@ -581,15 +585,16 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_style_rule(&mut self) -> Result<StyleRule> {
+        let id = self.alloc_id();
         let start = self.pos;
         let prelude = self.parse_selector_list(false)?;
         let block = self.parse_block()?;
 
         Ok(StyleRule {
+            id,
             span: self.span_from(start),
             prelude,
             block,
-            metadata: RuleMetadata::default(),
         })
     }
 
@@ -625,14 +630,11 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_complex_selector(&mut self, inside_pseudo: bool) -> Result<ComplexSelector> {
+        let id = self.alloc_id();
         let list_start = self.pos;
         let mut children: RelativeSelectorVec = SmallVec::new();
 
-        let mut rel = RelativeSelector {
-            span: Span::new(self.pos as u32, 0),
-            combinator: None,
-            selectors: SmallVec::new(),
-        };
+        let mut rel = self.new_relative_selector(None);
 
         loop {
             if self.at_end() {
@@ -645,34 +647,39 @@ impl<'src> Parser<'src> {
                 rel.selectors
                     .push(SimpleSelector::Nesting(self.span_from(start)));
             } else if self.eat(b'*') {
+                let mut name_span = self.span_from(start);
                 if self.eat(b'|') {
-                    self.parse_ident()?;
+                    name_span = self.parse_ident()?;
                 }
-                rel.selectors
-                    .push(SimpleSelector::Type(self.span_from(start)));
+                rel.selectors.push(SimpleSelector::Type {
+                    span: self.span_from(start),
+                    name: self.text(name_span),
+                });
             } else if self.eat(b'#') {
-                self.parse_ident()?;
-                rel.selectors
-                    .push(SimpleSelector::Id(self.span_from(start)));
+                let ident_span = self.parse_ident()?;
+                rel.selectors.push(SimpleSelector::Id {
+                    span: self.span_from(start),
+                    name: self.text(ident_span),
+                });
             } else if self.eat(b'.') {
-                self.parse_ident()?;
-                rel.selectors
-                    .push(SimpleSelector::Class(self.span_from(start)));
+                let ident_span = self.parse_ident()?;
+                rel.selectors.push(SimpleSelector::Class {
+                    span: self.span_from(start),
+                    name: self.text(ident_span),
+                });
             } else if self.eat2(b':', b':') {
-                self.parse_ident()?;
-                let pseudo_span = self.span_from(start);
+                let (_, name) = self.parse_ident_with_name()?;
                 if self.eat(b'(') {
                     self.parse_selector_list(true)?;
                     self.expect(b')')?;
                 }
-                let name_span = Span::new(start as u32 + 2, pseudo_span.end);
                 rel.selectors
                     .push(SimpleSelector::PseudoElement(PseudoElementSelector {
                         span: self.span_from(start),
-                        name: name_span,
+                        name,
                     }));
             } else if self.eat(b':') {
-                let name = self.parse_ident()?;
+                let (_, name) = self.parse_ident_with_name()?;
 
                 let args = if self.eat(b'(') {
                     let sel_list = self.parse_selector_list(true)?;
@@ -690,7 +697,7 @@ impl<'src> Parser<'src> {
                     }));
             } else if self.eat(b'[') {
                 self.skip_whitespace();
-                let name = self.parse_ident()?;
+                let (_, attr_name) = self.parse_ident_with_name()?;
                 self.skip_whitespace();
 
                 let matcher = self.try_parse_attr_matcher();
@@ -710,7 +717,7 @@ impl<'src> Parser<'src> {
                 rel.selectors
                     .push(SimpleSelector::Attribute(AttributeSelector {
                         span: self.span_from(start),
-                        name,
+                        name: attr_name,
                         matcher,
                         value,
                         flags,
@@ -721,22 +728,26 @@ impl<'src> Parser<'src> {
                 } else if let Some(pct) = self.try_parse_percentage() {
                     rel.selectors.push(SimpleSelector::Percentage(pct));
                 } else if !self.is_combinator_start() {
-                    let mut _name = self.parse_ident()?;
+                    let mut ident_span = self.parse_ident()?;
                     if self.eat(b'|') {
-                        _name = self.parse_ident()?;
+                        ident_span = self.parse_ident()?;
                     }
-                    rel.selectors
-                        .push(SimpleSelector::Type(self.span_from(start)));
+                    rel.selectors.push(SimpleSelector::Type {
+                        span: self.span_from(start),
+                        name: self.text(ident_span),
+                    });
                 }
             } else if let Some(pct) = self.try_parse_percentage() {
                 rel.selectors.push(SimpleSelector::Percentage(pct));
             } else if !self.is_combinator_start() {
-                let mut _name = self.parse_ident()?;
+                let mut ident_span = self.parse_ident()?;
                 if self.eat(b'|') {
-                    _name = self.parse_ident()?;
+                    ident_span = self.parse_ident()?;
                 }
-                rel.selectors
-                    .push(SimpleSelector::Type(self.span_from(start)));
+                rel.selectors.push(SimpleSelector::Type {
+                    span: self.span_from(start),
+                    name: self.text(ident_span),
+                });
             }
 
             // Check for selector list terminator
@@ -750,6 +761,7 @@ impl<'src> Parser<'src> {
                 children.push(rel);
 
                 return Ok(ComplexSelector {
+                    id,
                     span: Span::new(list_start as u32, index as u32),
                     children,
                 });
@@ -763,11 +775,7 @@ impl<'src> Parser<'src> {
                     children.push(rel);
                 }
 
-                rel = RelativeSelector {
-                    span: Span::new(combinator.span.start, 0),
-                    combinator: Some(combinator),
-                    selectors: SmallVec::new(),
-                };
+                rel = self.new_relative_selector(Some(combinator));
 
                 self.skip_whitespace();
 
@@ -775,6 +783,19 @@ impl<'src> Parser<'src> {
                     return Err(self.error("invalid selector".into()));
                 }
             }
+        }
+    }
+
+    fn new_relative_selector(&mut self, combinator: Option<Combinator>) -> RelativeSelector {
+        let id = self.alloc_id();
+        let start = combinator
+            .as_ref()
+            .map_or(self.pos as u32, |c| c.span.start);
+        RelativeSelector {
+            id,
+            span: Span::new(start, 0),
+            combinator,
+            selectors: SmallVec::new(),
         }
     }
 
@@ -854,14 +875,15 @@ impl<'src> Parser<'src> {
             return Ok(BlockChild::Rule(Rule::AtRule(self.parse_at_rule()?)));
         }
 
-        // Lookahead: read_value, then check if next is `{` (rule) or not (declaration)
         let saved = self.pos;
         self.read_value();
         let is_rule = self.matches(b'{');
         self.pos = saved;
 
         if is_rule {
-            Ok(BlockChild::Rule(Rule::Style(Box::new(self.parse_style_rule()?))))
+            Ok(BlockChild::Rule(Rule::Style(Box::new(
+                self.parse_style_rule()?,
+            ))))
         } else {
             Ok(BlockChild::Declaration(self.parse_declaration()?))
         }
@@ -870,7 +892,6 @@ impl<'src> Parser<'src> {
     fn parse_declaration(&mut self) -> Result<Declaration> {
         let start = self.pos;
 
-        // Read property name (until whitespace or colon)
         let prop_start = self.pos;
         while self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
@@ -887,7 +908,6 @@ impl<'src> Parser<'src> {
 
         let value = self.read_value();
 
-        // Check for empty declaration value (allowed for custom properties)
         if value.start == value.end {
             let prop_text = property.source_text(self.src);
             if !prop_text.starts_with("--") {
@@ -916,7 +936,6 @@ impl<'src> Parser<'src> {
 // UTF-8 helpers
 // ---------------------------------------------------------------------------
 
-/// Get the byte length of a UTF-8 character from its leading byte.
 #[inline(always)]
 fn utf8_char_len(lead: u8) -> usize {
     if lead < 0x80 {

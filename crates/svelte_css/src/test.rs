@@ -34,7 +34,7 @@ fn basic_rule() {
     assert_eq!(rule.prelude.children.len(), 1);
     let rel = &rule.prelude.children[0].children[0];
     assert_eq!(rel.selectors.len(), 1);
-    assert!(matches!(&rel.selectors[0], SimpleSelector::Type(s) if text(*s, src) == "p"));
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "p"));
 
     // Declaration
     assert_eq!(rule.block.children.len(), 1);
@@ -156,7 +156,7 @@ fn pseudo_class_hover() {
     let SimpleSelector::PseudoClass(pc) = &rel.selectors[1] else {
         panic!("expected pseudo-class");
     };
-    assert_eq!(text(pc.name, src), "hover");
+    assert_eq!(pc.name.as_str(), "hover");
     assert!(pc.args.is_none());
 }
 
@@ -171,13 +171,13 @@ fn pseudo_class_not() {
     let SimpleSelector::PseudoClass(pc) = &rel.selectors[1] else {
         panic!("expected pseudo-class");
     };
-    assert_eq!(text(pc.name, src), "not");
+    assert_eq!(pc.name.as_str(), "not");
     assert!(pc.args.is_some());
     let args = pc.args.as_ref().unwrap();
     assert_eq!(args.children.len(), 1);
     assert!(matches!(
         &args.children[0].children[0].selectors[0],
-        SimpleSelector::Class(_)
+        SimpleSelector::Class { .. }
     ));
 }
 
@@ -196,7 +196,7 @@ fn global_function() {
     let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
         panic!("expected pseudo-class");
     };
-    assert_eq!(text(pc.name, src), "global");
+    assert_eq!(pc.name.as_str(), "global");
     assert!(pc.args.is_some());
 }
 
@@ -213,7 +213,7 @@ fn global_block() {
     let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
         panic!("expected pseudo-class");
     };
-    assert_eq!(text(pc.name, src), "global");
+    assert_eq!(pc.name.as_str(), "global");
     assert!(pc.args.is_none());
 
     // The block should contain a nested rule
@@ -236,7 +236,7 @@ fn attribute_presence() {
     let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
         panic!("expected attribute selector");
     };
-    assert_eq!(text(attr.name, src), "data-x");
+    assert_eq!(attr.name.as_str(), "data-x");
     assert!(attr.matcher.is_none());
     assert!(attr.value.is_none());
 }
@@ -252,7 +252,7 @@ fn attribute_with_value() {
     let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
         panic!("expected attribute selector");
     };
-    assert_eq!(text(attr.name, src), "href");
+    assert_eq!(attr.name.as_str(), "href");
     assert_eq!(text(attr.matcher.unwrap(), src), "^=");
     assert_eq!(text(attr.value.unwrap(), src), "https");
 }
@@ -268,7 +268,7 @@ fn attribute_with_flags() {
     let SimpleSelector::Attribute(attr) = &rel.selectors[0] else {
         panic!("expected attribute selector");
     };
-    assert_eq!(text(attr.name, src), "class");
+    assert_eq!(attr.name.as_str(), "class");
     assert!(attr.flags.is_some());
     assert_eq!(text(attr.flags.unwrap(), src), "i");
 }
@@ -285,7 +285,7 @@ fn at_media() {
     let StyleSheetChild::Rule(Rule::AtRule(at)) = &ss.children[0] else {
         panic!("expected at-rule");
     };
-    assert_eq!(text(at.name, src), "media");
+    assert_eq!(at.name.as_str(), "media");
     assert!(at.block.is_some());
 }
 
@@ -296,7 +296,7 @@ fn at_import() {
     let StyleSheetChild::Rule(Rule::AtRule(at)) = &ss.children[0] else {
         panic!("expected at-rule");
     };
-    assert_eq!(text(at.name, src), "import");
+    assert_eq!(at.name.as_str(), "import");
     assert!(at.block.is_none());
 }
 
@@ -307,7 +307,7 @@ fn at_keyframes() {
     let StyleSheetChild::Rule(Rule::AtRule(at)) = &ss.children[0] else {
         panic!("expected at-rule");
     };
-    assert_eq!(text(at.name, src), "keyframes");
+    assert_eq!(at.name.as_str(), "keyframes");
     let block = at.block.as_ref().unwrap();
     assert_eq!(block.children.len(), 2);
 }
@@ -328,7 +328,7 @@ fn nested_rule() {
         panic!("expected nested style rule");
     };
     let rel = &nested.prelude.children[0].children[0];
-    assert!(matches!(&rel.selectors[0], SimpleSelector::Class(_)));
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Class { .. }));
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +414,7 @@ fn pseudo_element() {
     let SimpleSelector::PseudoElement(pe) = &rel.selectors[1] else {
         panic!("expected pseudo-element");
     };
-    assert_eq!(text(pe.name, src), "before");
+    assert_eq!(pe.name.as_str(), "before");
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ fn id_selector() {
         panic!("expected style rule");
     };
     let rel = &rule.prelude.children[0].children[0];
-    assert!(matches!(&rel.selectors[0], SimpleSelector::Id(s) if text(*s, src) == "#main"));
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Id { name, .. } if name == "main"));
 }
 
 // ---------------------------------------------------------------------------
@@ -462,7 +462,7 @@ fn universal_selector() {
         panic!("expected style rule");
     };
     let rel = &rule.prelude.children[0].children[0];
-    assert!(matches!(&rel.selectors[0], SimpleSelector::Type(s) if text(*s, src) == "*"));
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "*"));
 }
 
 // ---------------------------------------------------------------------------

@@ -106,7 +106,7 @@ impl Printer {
     fn print_at_rule(&mut self, rule: &AtRule, source: &str) {
         self.write_indent();
         self.output.push('@');
-        self.push_span(rule.name, source);
+        self.output.push_str(&rule.name);
 
         let prelude_text = rule.prelude.source_text(source).trim();
         if !prelude_text.is_empty() {
@@ -192,9 +192,9 @@ impl Printer {
 
     fn print_simple_selector(&mut self, sel: &SimpleSelector, source: &str) {
         match sel {
-            SimpleSelector::Type(span)
-            | SimpleSelector::Id(span)
-            | SimpleSelector::Class(span)
+            SimpleSelector::Type { span, .. }
+            | SimpleSelector::Id { span, .. }
+            | SimpleSelector::Class { span, .. }
             | SimpleSelector::Nesting(span)
             | SimpleSelector::Nth(span)
             | SimpleSelector::Percentage(span) => {
@@ -202,7 +202,7 @@ impl Printer {
             }
             SimpleSelector::PseudoClass(pc) => {
                 self.output.push(':');
-                self.push_span(pc.name, source);
+                self.output.push_str(&pc.name);
                 if let Some(args) = &pc.args {
                     self.output.push('(');
                     self.print_selector_list(args.as_ref(), source);
@@ -211,11 +211,11 @@ impl Printer {
             }
             SimpleSelector::PseudoElement(pe) => {
                 self.output.push_str("::");
-                self.push_span(pe.name, source);
+                self.output.push_str(&pe.name);
             }
             SimpleSelector::Attribute(attr) => {
                 self.output.push('[');
-                self.push_span(attr.name, source);
+                self.output.push_str(&attr.name);
                 if let Some(matcher) = attr.matcher {
                     self.push_span(matcher, source);
                     if let Some(value) = attr.value {

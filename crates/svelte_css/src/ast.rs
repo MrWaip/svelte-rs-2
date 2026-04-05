@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_span::{GetSpan, Span};
 
@@ -9,6 +10,22 @@ pub type SimpleSelectorVec = SmallVec<[SimpleSelector; 4]>;
 
 /// Inline capacity for relative selectors within a complex selector (usually 1-2).
 pub type RelativeSelectorVec = SmallVec<[RelativeSelector; 2]>;
+
+// ---------------------------------------------------------------------------
+// CssNodeId — stable identity for side-table keying
+// ---------------------------------------------------------------------------
+
+/// Unique identifier for CSS AST nodes that receive per-node metadata
+/// in the analyze phase. Assigned sequentially by the parser.
+///
+/// Used to key into side tables (e.g. `IndexVec<CssNodeId, RuleMeta>`)
+/// in `svelte_analyze`, keeping derived data out of the immutable AST.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CssNodeId(pub u32);
+
+impl CssNodeId {
+    pub const DUMMY: Self = Self(u32::MAX);
+}
 
 // ---------------------------------------------------------------------------
 // Top-level
@@ -48,24 +65,16 @@ pub enum Rule {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StyleRule {
+    pub id: CssNodeId,
     pub span: Span,
     pub prelude: SelectorList,
     pub block: Block,
-    pub metadata: RuleMetadata,
-}
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct RuleMetadata {
-    pub parent_rule: Option<usize>,
-    pub has_local_selectors: bool,
-    pub has_global_selectors: bool,
-    pub is_global_block: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AtRule {
     pub span: Span,
-    pub name: Span,
+    pub name: CompactString,
     pub prelude: Span,
     pub block: Option<Block>,
 }
@@ -82,12 +91,14 @@ pub struct SelectorList {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComplexSelector {
+    pub id: CssNodeId,
     pub span: Span,
     pub children: RelativeSelectorVec,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RelativeSelector {
+    pub id: CssNodeId,
     pub span: Span,
     pub combinator: Option<Combinator>,
     pub selectors: SimpleSelectorVec,
@@ -116,11 +127,11 @@ pub enum CombinatorKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimpleSelector {
     /// Element / type selector (e.g. `div`, `*`, `ns|div`)
-    Type(Span),
+    Type { span: Span, name: CompactString },
     /// `#id`
-    Id(Span),
+    Id { span: Span, name: CompactString },
     /// `.class`
-    Class(Span),
+    Class { span: Span, name: CompactString },
     /// `:pseudo-class` or `:pseudo-class(...)`
     PseudoClass(PseudoClassSelector),
     /// `::pseudo-element`
@@ -138,7 +149,7 @@ pub enum SimpleSelector {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PseudoClassSelector {
     pub span: Span,
-    pub name: Span,
+    pub name: CompactString,
     /// Boxed to break the recursive type cycle (SelectorList → SimpleSelector → PseudoClassSelector).
     pub args: Option<Box<SelectorList>>,
 }
@@ -146,13 +157,13 @@ pub struct PseudoClassSelector {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PseudoElementSelector {
     pub span: Span,
-    pub name: Span,
+    pub name: CompactString,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttributeSelector {
     pub span: Span,
-    pub name: Span,
+    pub name: CompactString,
     /// The matcher operator span (e.g. `~=`, `^=`, `=`)
     pub matcher: Option<Span>,
     /// The attribute value (quoted or unquoted content, without quotes)
@@ -258,12 +269,12 @@ impl GetSpan for Combinator {
 impl GetSpan for SimpleSelector {
     fn span(&self) -> Span {
         match self {
-            Self::Type(s)
-            | Self::Id(s)
-            | Self::Class(s)
-            | Self::Nesting(s)
-            | Self::Nth(s)
-            | Self::Percentage(s) => *s,
+            Self::Type { span, .. }
+            | Self::Id { span, .. }
+            | Self::Class { span, .. }
+            | Self::Nesting(span)
+            | Self::Nth(span)
+            | Self::Percentage(span) => *span,
             Self::PseudoClass(p) => p.span,
             Self::PseudoElement(p) => p.span,
             Self::Attribute(a) => a.span,
