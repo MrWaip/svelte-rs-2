@@ -1,6 +1,7 @@
 pub mod ast;
 mod parser;
 pub mod printer;
+pub(crate) mod scanner;
 pub mod visit;
 
 #[cfg(test)]
