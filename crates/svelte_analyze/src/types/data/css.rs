@@ -1,3 +1,5 @@
+use compact_str::CompactString;
+
 use super::NodeBitSet;
 
 /// CSS-scoping metadata computed by the CSS analysis pass.
@@ -10,6 +12,10 @@ pub struct CssAnalysis {
     /// Whether CSS should be injected at runtime via `$.append_styles()` instead of
     /// returned in `CompileResult.css`. Set when `css:"injected"` is active.
     pub inject_styles: bool,
+    /// Locally-scoped `@keyframes` names (those without `-global-` prefix).
+    /// Used by the CSS transform to prefix these names with the component hash
+    /// and rewrite matching `animation`/`animation-name` values.
+    pub keyframes: Vec<CompactString>,
 }
 
 impl CssAnalysis {
@@ -18,6 +24,7 @@ impl CssAnalysis {
             hash: String::new(),
             scoped_elements: NodeBitSet::new(node_count),
             inject_styles: false,
+            keyframes: Vec::new(),
         }
     }
 }

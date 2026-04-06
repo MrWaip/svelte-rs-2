@@ -109,23 +109,41 @@ impl Printer {
         self.output.push('@');
         self.output.push_str(&rule.name);
 
-        let prelude_text = rule.prelude.source_text(source).trim();
+        let prelude_text = match &rule.prelude_override {
+            Some(ov) => ov.as_str(),
+            None => rule.prelude.source_text(source).trim(),
+        };
         if !prelude_text.is_empty() {
             self.output.push(' ');
             self.output.push_str(prelude_text);
         }
 
         if let Some(block) = &rule.block {
-            if self.minify {
+            let is_keyframes = rule.name == "keyframes"
+                || rule
+                    .name
+                    .strip_prefix('-')
+                    .and_then(|s| s.split_once('-'))
+                    .is_some_and(|(_, rest)| rest == "keyframes");
+
+            if is_keyframes {
+                // Preserve original formatting for @keyframes body — the internal
+                // structure (from/to/percentage stops) is never transformed.
+                self.output.push(' ');
+                self.push_span(block.span, source);
+                self.output.push('\n');
+            } else if self.minify {
                 self.output.push('{');
+                self.print_block_children(block, source);
+                self.output.push('}');
             } else {
                 self.output.push_str(" {\n");
+                self.indent += 1;
+                self.print_block_children(block, source);
+                self.indent -= 1;
+                self.write_indent();
+                self.output.push_str("}\n");
             }
-            self.indent += 1;
-            self.print_block_children(block, source);
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("}\n");
         } else {
             self.output.push_str(";\n");
         }
@@ -156,7 +174,10 @@ impl Printer {
         } else {
             self.output.push_str(": ");
         }
-        self.push_span(decl.value, source);
+        match &decl.value_override {
+            Some(ov) => self.output.push_str(ov),
+            None => self.push_span(decl.value, source),
+        }
         self.output.push_str(";\n");
     }
 
