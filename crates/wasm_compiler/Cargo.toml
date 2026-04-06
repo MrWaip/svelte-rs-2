@@ -12,7 +12,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dependencies]
 svelte_compiler = { workspace = true }
-lightningcss = { version = "1.0.0-alpha.71", features = ["visitor"] }
+svelte_css = { workspace = true }
 svelte_diagnostics = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_codegen = { workspace = true }

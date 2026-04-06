@@ -1,5 +1,3 @@
-use lightningcss::stylesheet::{ParserOptions, StyleSheet};
-pub use lightningcss::stylesheet::StyleSheet as CssStyleSheet;
 use scanner::{token::TokenType, Scanner};
 use svelte_span::Span;
 
@@ -63,27 +61,16 @@ pub fn parse_with_js<'a>(
 
 /// Parse the CSS from a component's top-level `<style>` block.
 ///
-/// The CSS source text is copied into `alloc` so the returned `StyleSheet`
-/// has the same lifetime `'a` as all other `ParserResult` data.
-/// Returns `None` when the component has no `<style>` block or the CSS is
-/// syntactically invalid.
-pub fn parse_css_block<'a>(
-    alloc: &'a oxc_allocator::Allocator,
+/// Returns `None` when the component has no `<style>` block.
+/// CSS parse diagnostics are returned separately and should be merged
+/// into the main diagnostic list by the caller.
+pub fn parse_css_block(
     component: &svelte_ast::Component,
-) -> Option<CssStyleSheet<'a, 'a>> {
+) -> Option<(svelte_css::StyleSheet, Vec<svelte_diagnostics::Diagnostic>)> {
     let css_block = component.css.as_ref()?;
     let css_text = component.source_text(css_block.content_span);
-    let css_src: &'a str = alloc.alloc_str(css_text);
-    StyleSheet::parse(
-        css_src,
-        ParserOptions {
-            // Enables PseudoClass::Global { selector } for :global(...) so the transform
-            // pass can expand it at the AST level instead of working with raw tokens.
-            css_modules: Some(lightningcss::css_modules::Config::default()),
-            ..ParserOptions::default()
-        },
-    )
-    .ok()
+    let (stylesheet, diags) = svelte_css::parse(css_text);
+    Some((stylesheet, diags))
 }
 
 // ---------------------------------------------------------------------------

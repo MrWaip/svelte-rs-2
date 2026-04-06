@@ -1004,12 +1004,19 @@ impl<'src> Parser<'src> {
                     None
                 };
 
-                rel.selectors
-                    .push(SimpleSelector::PseudoClass(PseudoClassSelector {
+                if name.as_str() == "global" {
+                    rel.selectors.push(SimpleSelector::Global {
                         span: self.span_from(start),
-                        name,
                         args,
-                    }));
+                    });
+                } else {
+                    rel.selectors
+                        .push(SimpleSelector::PseudoClass(PseudoClassSelector {
+                            span: self.span_from(start),
+                            name,
+                            args,
+                        }));
+                }
             } else if self.eat(b'[') {
                 match self.parse_attribute_selector_inner(start) {
                     Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),

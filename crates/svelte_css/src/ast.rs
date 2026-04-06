@@ -140,6 +140,13 @@ pub enum SimpleSelector {
     PseudoElement(PseudoElementSelector),
     /// `[attr]`, `[attr=value]`, etc.
     Attribute(AttributeSelector),
+    /// `:global(...)` or `:global` — Svelte-specific scoping escape.
+    /// Separated from `PseudoClass` because it controls scoping semantics,
+    /// not CSS matching. Exhaustive match forces every consumer to handle it.
+    Global {
+        span: Span,
+        args: Option<Box<SelectorList>>,
+    },
     /// `&` nesting selector
     Nesting(Span),
     /// An+B notation inside `:nth-child()` etc.
@@ -279,6 +286,7 @@ impl GetSpan for SimpleSelector {
             Self::Type { span, .. }
             | Self::Id { span, .. }
             | Self::Class { span, .. }
+            | Self::Global { span, .. }
             | Self::Nesting(span)
             | Self::Nth(span)
             | Self::Percentage(span) => *span,

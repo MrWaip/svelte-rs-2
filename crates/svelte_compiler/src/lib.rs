@@ -20,7 +20,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
-    let css_stylesheet = svelte_parser::parse_css_block(&js_alloc, &component);
+    let css_parsed = svelte_parser::parse_css_block(&component);
 
     // Whether the parser already found errors — captured before the closure so it
     // can be used inside without borrowing `diagnostics` mutably at the same time.
@@ -38,21 +38,24 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     // `parsed` (invariant over its lifetime) stays inside the closure.
     // Analysis always runs; codegen is gated on the absence of error diagnostics.
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (mut analysis, mut parsed, analyze_diags) =
+        let (mut analysis, mut parsed, mut analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
 
         let mut css_text: Option<String> = None;
-        if let Some(ss) = css_stylesheet {
+        if let Some((ss, css_diags)) = css_parsed {
+            analyze_diags.extend(css_diags);
             // css:"injected" can come from compile options OR from <svelte:options css="injected">
             let inject_styles = options.css == CssMode::Injected
                 || component.options.as_ref().and_then(|o| o.css) == Some(svelte_ast::CssMode::Injected);
             svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis);
-            let hash_str: &str = js_alloc.alloc_str(&analysis.css.hash);
-            let raw_css = svelte_transform_css::transform_css(hash_str, ss);
+            let css_block = component.css.as_ref()
+                .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
+            let css_source = component.source_text(css_block.content_span);
+            let raw_css = svelte_transform_css::transform_css(&analysis.css.hash, ss, css_source);
             css_text = if inject_styles {
-                raw_css.map(|s| svelte_transform_css::compact_css_for_injection(&s))
+                Some(svelte_transform_css::compact_css_for_injection(&raw_css))
             } else {
-                raw_css
+                Some(raw_css)
             };
         }
         // External CSS is returned in CompileResult.css; injected CSS goes into the JS output.
