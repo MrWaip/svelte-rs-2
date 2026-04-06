@@ -1,13 +1,25 @@
 {
   "servers": [
     {
-      "extensions": [
-        "rs"
-      ],
-      "command": [
-        "rust-analyzer"
-      ],
-      "rootDir": "."
+      "extensions": ["rs"],
+      "command": ["rust-analyzer"],
+      "rootDir": ".",
+      "restartInterval": 30,
+      "initializationOptions": {
+        "linkedProjects": ["Cargo.toml"],
+        "cachePriming": {
+          "enable": true
+        },
+        "cargo": {
+          "noDeps": true,
+          "buildScripts": {
+            "enable": false
+          }
+        },
+        "procMacro": {
+          "enable": false
+        }
+      }
     }
   ]
 }

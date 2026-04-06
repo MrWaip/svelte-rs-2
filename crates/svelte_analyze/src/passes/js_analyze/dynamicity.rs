@@ -86,8 +86,5 @@ fn attr_symbols<'a>(
         _ => None,
     };
 
-    info.ref_symbols
-        .iter()
-        .copied()
-        .chain(fallback)
+    info.ref_symbols.iter().copied().chain(fallback)
 }

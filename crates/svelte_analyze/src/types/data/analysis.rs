@@ -1,4 +1,7 @@
 use super::*;
+use svelte_ast::{
+    Attribute, BindDirective, ExpressionAttribute, StringAttribute,
+};
 
 pub struct AnalysisData {
     pub expressions: NodeTable<ExpressionInfo>,
@@ -12,13 +15,18 @@ pub struct AnalysisData {
     pub exports: Vec<ExportInfo>,
     pub needs_context: bool,
     pub has_class_state_fields: bool,
+    element_facts: ElementFacts,
     pub element_flags: ElementFlags,
+    pub fragment_facts: FragmentFacts,
+    pub rich_content_facts: RichContentFacts,
     pub fragments: FragmentData,
     pub snippets: SnippetData,
     pub const_tags: ConstTagData,
     pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
-    pub each_blocks: EachBlockData,
+    pub each_context: EachContextIndex,
+    pub template_topology: TemplateTopology,
+    pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     pub(crate) render_tag_is_chain: NodeBitSet,
@@ -56,13 +64,18 @@ impl AnalysisData {
             exports: Vec::new(),
             needs_context: false,
             has_class_state_fields: false,
+            element_facts: ElementFacts::new(node_count),
             element_flags: ElementFlags::new(node_count),
+            fragment_facts: FragmentFacts::new(),
+            rich_content_facts: RichContentFacts::new(),
             fragments: FragmentData::with_capacity(node_count as usize / 3),
             snippets: SnippetData::new(node_count),
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
-            each_blocks: EachBlockData::new(node_count),
+            each_context: EachContextIndex::new(node_count),
+            template_topology: TemplateTopology::new(node_count),
+            template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
@@ -88,6 +101,9 @@ impl AnalysisData {
 }
 
 impl AnalysisData {
+    pub(crate) fn record_element_facts(&mut self, id: NodeId, attrs: &[Attribute]) {
+        self.element_facts.record(id, attrs);
+    }
     pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
         self.html_tag_in_svg.contains(&id)
     }
@@ -114,6 +130,230 @@ impl AnalysisData {
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
+    }
+    pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
+        self.fragment_facts.entry(key)
+    }
+    pub fn fragment_has_children(&self, key: &FragmentKey) -> bool {
+        self.fragment_facts.has_children(key)
+    }
+    pub fn fragment_child_count(&self, key: &FragmentKey) -> u32 {
+        self.fragment_facts.child_count(key)
+    }
+    pub fn fragment_single_child(&self, key: &FragmentKey) -> Option<NodeId> {
+        self.fragment_facts.single_child(key)
+    }
+    pub fn fragment_non_trivial_child_count(&self, key: &FragmentKey) -> u32 {
+        self.fragment_facts.non_trivial_child_count(key)
+    }
+    pub fn fragment_has_non_trivial_children(&self, key: &FragmentKey) -> bool {
+        self.fragment_facts.has_non_trivial_children(key)
+    }
+    pub fn fragment_has_expression_child(&self, key: &FragmentKey) -> bool {
+        self.fragment_facts.has_expression_child(key)
+    }
+    pub fn fragment_single_expression_child(&self, key: &FragmentKey) -> Option<NodeId> {
+        self.fragment_facts.single_expression_child(key)
+    }
+    pub fn fragment_single_non_trivial_child(&self, key: &FragmentKey) -> Option<NodeId> {
+        self.fragment_facts.single_non_trivial_child(key)
+    }
+    pub fn fragment_has_direct_animate_child(&self, key: &FragmentKey) -> bool {
+        self.fragment_facts.has_direct_animate_child(key)
+    }
+    pub fn fragment_has_rich_content(
+        &self,
+        key: &FragmentKey,
+        parent: RichContentParentKind,
+    ) -> bool {
+        self.rich_content_facts.has_rich_content(key, parent)
+    }
+    pub fn element_facts(&self, id: NodeId) -> Option<&ElementFactsEntry> {
+        self.element_facts.entry(id)
+    }
+    fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
+        self.element_facts.attr_index(id)
+    }
+    pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
+        self.attr_index(id).is_some_and(|index| index.has(name))
+    }
+    pub fn attribute<'a>(
+        &self,
+        id: NodeId,
+        attrs: &'a [Attribute],
+        name: &str,
+    ) -> Option<&'a Attribute> {
+        self.attr_index(id)?.first(attrs, name)
+    }
+    pub fn string_attribute<'a>(
+        &self,
+        id: NodeId,
+        attrs: &'a [Attribute],
+        name: &str,
+    ) -> Option<&'a svelte_ast::StringAttribute> {
+        self.attribute(id, attrs, name).and_then(|attr| match attr {
+            Attribute::StringAttribute(attr) => Some(attr),
+            _ => None,
+        })
+    }
+    pub fn expression_attribute<'a>(
+        &self,
+        id: NodeId,
+        attrs: &'a [Attribute],
+        name: &str,
+    ) -> Option<&'a ExpressionAttribute> {
+        self.attribute(id, attrs, name).and_then(|attr| match attr {
+            Attribute::ExpressionAttribute(attr) => Some(attr),
+            _ => None,
+        })
+    }
+    pub fn bind_directive<'a>(
+        &self,
+        id: NodeId,
+        attrs: &'a [Attribute],
+        name: &str,
+    ) -> Option<&'a BindDirective> {
+        self.attribute(id, attrs, name).and_then(|attr| match attr {
+            Attribute::BindDirective(attr) => Some(attr),
+            _ => None,
+        })
+    }
+    pub fn static_text_attribute_value<'a>(
+        &self,
+        id: NodeId,
+        attrs: &'a [Attribute],
+        name: &str,
+        source: &'a str,
+    ) -> Option<&'a str> {
+        self.string_attribute(id, attrs, name)
+            .map(|attr: &'a StringAttribute| attr.value_span.source_text(source))
+    }
+    pub fn has_true_boolean_attribute(
+        &self,
+        id: NodeId,
+        attrs: &[Attribute],
+        name: &str,
+        source: &str,
+    ) -> bool {
+        self.attribute(id, attrs, name).is_some_and(|attr| match attr {
+            Attribute::BooleanAttribute(_) => true,
+            Attribute::StringAttribute(attr) => attr.value_span.source_text(source).trim() == "true",
+            _ => false,
+        })
+    }
+    pub fn has_spread(&self, id: NodeId) -> bool {
+        self.element_facts.has_spread(id)
+    }
+    pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
+        self.element_facts.has_runtime_attrs(id)
+    }
+    pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
+        self.template_topology.parent(id)
+    }
+    pub fn expr_parent(&self, id: NodeId) -> Option<ParentRef> {
+        self.template_topology.expr_parent(id)
+    }
+    pub fn ancestors(&self, id: NodeId) -> crate::types::data::template_topology::Ancestors<'_> {
+        self.template_topology.ancestors(id)
+    }
+    pub fn expr_ancestors(
+        &self,
+        id: NodeId,
+    ) -> crate::types::data::template_topology::Ancestors<'_> {
+        self.template_topology.expr_ancestors(id)
+    }
+    pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
+        self.template_topology.nearest_element(id)
+    }
+    pub fn nearest_element_for_expr(&self, id: NodeId) -> Option<NodeId> {
+        self.template_topology.nearest_element_for_expr(id)
+    }
+    pub fn template_element(&self, id: NodeId) -> Option<&TemplateElementEntry> {
+        self.template_elements.entry(id)
+    }
+    pub fn template_elements(&self) -> &[NodeId] {
+        self.template_elements.all_elements()
+    }
+    pub fn template_elements_with_tag(&self, tag_name: &str) -> &[NodeId] {
+        self.template_elements.elements_with_tag(tag_name)
+    }
+    pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
+        self.template_elements.parent_element(id)
+    }
+    pub fn template_element_previous_sibling(&self, id: NodeId) -> Option<NodeId> {
+        self.template_elements.previous_sibling(id)
+    }
+    pub fn template_element_next_sibling(&self, id: NodeId) -> Option<NodeId> {
+        self.template_elements.next_sibling(id)
+    }
+    pub fn template_element_tag_name(&self, id: NodeId) -> Option<&str> {
+        self.template_elements.tag_name(id)
+    }
+    pub fn template_element_static_id(&self, id: NodeId) -> Option<&str> {
+        self.template_elements.static_id(id)
+    }
+    pub fn template_element_has_static_class(&self, id: NodeId, class_name: &str) -> bool {
+        self.template_elements.has_static_class(id, class_name)
+    }
+    pub fn template_element_may_match_class(&self, id: NodeId) -> bool {
+        self.template_elements.may_match_class(id)
+    }
+    pub fn template_element_may_match_id(&self, id: NodeId) -> bool {
+        self.template_elements.may_match_id(id)
+    }
+    pub fn template_elements_for_class(&self, class_name: &str) -> SmallVec<[NodeId; 8]> {
+        self.template_elements.class_candidates(class_name)
+    }
+    pub fn template_elements_for_id(&self, id_name: &str) -> SmallVec<[NodeId; 8]> {
+        self.template_elements.id_candidates(id_name)
+    }
+    pub fn template_element_previous_siblings(&self, id: NodeId) -> SmallVec<[NodeId; 8]> {
+        self.template_elements.previous_siblings(id)
+    }
+    pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
+        self.each_context.index_sym(id)
+    }
+    pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
+        self.each_context.block_for_index_sym(sym)
+    }
+    pub fn each_key_node_id(&self, id: NodeId) -> Option<NodeId> {
+        self.each_context.key_node_id(id)
+    }
+    pub fn each_key_uses_index(&self, id: NodeId) -> bool {
+        self.each_context.key_uses_index(id)
+    }
+    pub fn each_is_destructured(&self, id: NodeId) -> bool {
+        self.each_context.is_destructured(id)
+    }
+    pub fn each_body_uses_index(&self, id: NodeId) -> bool {
+        self.each_context.body_uses_index(id)
+    }
+    pub fn each_key_is_item(&self, id: NodeId) -> bool {
+        self.each_context.key_is_item(id)
+    }
+    pub fn each_has_animate(&self, id: NodeId) -> bool {
+        self.each_context.has_animate(id)
+    }
+    pub fn each_context_name(&self, id: NodeId) -> &str {
+        self.each_context.context_name(id)
+    }
+    pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+        self.each_context.bind_this_context(id)
+    }
+    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
+        self.each_context.parent_each_blocks(id)
+    }
+    pub fn contains_group_binding(&self, id: NodeId) -> bool {
+        self.each_context.contains_group_binding(id)
+    }
+    pub fn css_hash(&self) -> &str {
+        &self.css.hash
+    }
+    pub fn is_css_scoped(&self, id: NodeId) -> bool {
+        self.css.scoped_elements.contains(&id)
+    }
+    pub fn inject_styles(&self) -> bool {
+        self.css.inject_styles
     }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.attr_expressions.get(id)

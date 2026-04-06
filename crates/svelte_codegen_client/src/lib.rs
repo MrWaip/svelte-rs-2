@@ -120,12 +120,10 @@ pub fn generate<'a>(
     // CSS injection — $.append_styles() must be the very first statement in the function body
     // so the styles are available before any DOM nodes are created.
     if ctx.query.view.inject_styles() && ctx.state.css_text.is_some() {
-        fn_body.push(
-            ctx.b.expr_stmt(ctx.b.call_expr(
-                "$.append_styles",
-                [Arg::Ident("$$anchor"), Arg::Ident("$$css")],
-            )),
-        );
+        fn_body.push(ctx.b.expr_stmt(ctx.b.call_expr(
+            "$.append_styles",
+            [Arg::Ident("$$anchor"), Arg::Ident("$$css")],
+        )));
     }
 
     // $props.id() → must be first statement for hydration correctness

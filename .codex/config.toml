@@ -1,0 +1,24 @@
+[mcp_servers.cclsp]
+command = "npx"
+args = ["cclsp"]
+
+[mcp_servers.cclsp.env]
+CCLSP_CONFIG_PATH = "./cclsp.json"
+
+[mcp_servers.cclsp.tools.find_workspace_symbols]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.get_hover]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.find_definition]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.find_references]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.get_diagnostics]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.restart_server]
+approval_mode = "approve"

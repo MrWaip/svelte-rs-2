@@ -160,11 +160,13 @@ impl ComponentScoping {
     }
 
     pub fn mark_prop_source(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::PROP_SOURCE);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::PROP_SOURCE);
     }
 
     pub fn is_prop_source(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::PROP_SOURCE)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::PROP_SOURCE)
     }
 
     pub fn mark_prop_non_source(&mut self, sym_id: SymbolId, prop_name: String) {
@@ -184,7 +186,10 @@ impl ComponentScoping {
     }
 
     pub fn has_stores(&self) -> bool {
-        self.semantics.symbols_with_state(sym_class::STORE).next().is_some()
+        self.semantics
+            .symbols_with_state(sym_class::STORE)
+            .next()
+            .is_some()
     }
 
     pub fn store_symbol_ids(&self) -> impl Iterator<Item = SymbolId> + '_ {
@@ -208,51 +213,63 @@ impl ComponentScoping {
     }
 
     pub fn mark_snippet_param(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::SNIPPET_PARAM);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::SNIPPET_PARAM);
     }
 
     pub fn is_snippet_param(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::SNIPPET_PARAM)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::SNIPPET_PARAM)
     }
 
     pub fn mark_snippet_name(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::SNIPPET_NAME);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::SNIPPET_NAME);
     }
 
     pub fn is_snippet_name(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::SNIPPET_NAME)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::SNIPPET_NAME)
     }
 
     pub fn mark_each_block_var(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR);
     }
 
     pub fn is_each_block_var(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::EACH_BLOCK_VAR)
     }
 
     pub fn mark_each_rest(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::EACH_REST);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::EACH_REST);
     }
 
     pub fn is_each_rest(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::EACH_REST)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::EACH_REST)
     }
 
     pub fn mark_each_non_reactive(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE);
     }
 
     pub fn is_each_non_reactive(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::EACH_NON_REACTIVE)
     }
 
     pub fn mark_each_index_non_dynamic(&mut self, sym_id: SymbolId) {
-        self.semantics.set_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC);
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC);
     }
 
     pub fn is_each_index_non_dynamic(&self, sym_id: SymbolId) -> bool {
-        self.semantics.has_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC)
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::EACH_INDEX_NON_DYNAMIC)
     }
 
     pub fn mark_rest_prop(&mut self, sym_id: SymbolId, excluded: FxHashSet<String>) {

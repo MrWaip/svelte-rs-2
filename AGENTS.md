@@ -11,9 +11,17 @@
 4. Relevant `specs/*.md` `Current state` for multi-session feature work
 
 ## Rust LSP
-- For Rust code navigation, symbol lookup, references, definitions, hover, diagnostics, and rename operations, always use the `rust-lsp` MCP server first.
-- Before Rust LSP queries, start the MCP-backed Rust language server for the current workspace. Use `server_id: "rust"` and `workspace_root` set to the repository root.
-- Use `rg` or other text search only as a fallback for non-code text search, regex search, or when `rust-lsp` cannot answer the query.
+- When navigating Rust code, always use the `cclsp` MCP tools before grep, glob, shell search, or manual read-and-scan. If a `cclsp` tool fails or times out, retry it at least once before falling back, and only fall back for that specific failed operation.
+- Use `rg` or other text search only for non-code text search or when the `cclsp` equivalent consistently fails.
+- Available `cclsp` MCP tools (`mcp__cclsp__*`):
+  - `find_workspace_symbols` — find a symbol by name across the workspace
+  - `find_definition` — go to definition
+  - `find_references` — all use-sites of a symbol across the workspace
+  - `find_implementation` — trait or interface implementations
+  - `prepare_call_hierarchy` + `get_incoming_calls`/`get_outgoing_calls` — call graph for a function
+  - `rename_symbol` / `rename_symbol_strict` — rename across the workspace, including dry-run support
+  - `get_diagnostics` — errors and warnings for a file
+  - `get_hover` — type and signature of a symbol; may time out on a cold `rust-analyzer`
 
 ## Hard architecture rules
 - Keep logic in the correct layer:

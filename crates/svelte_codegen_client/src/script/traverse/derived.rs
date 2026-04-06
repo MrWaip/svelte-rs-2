@@ -1,19 +1,18 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::IgnoreData;
 
 use crate::builder::{Arg, Builder};
 use crate::script::AsyncDerivedMode;
-use crate::script::{compute_line_col, sanitize_location};
+use crate::script::{compute_line_col, sanitize_location, IgnoreQuery};
 
 /// Dev-mode context for adding label/location args to `$.async_derived`.
 pub(crate) struct DevContext<'a> {
     pub(crate) component_source: &'a str,
     pub(crate) script_content_start: u32,
     pub(crate) filename: &'a str,
-    /// Svelte-ignore directives (populated in analyze, includes span-based JS comment lookups).
-    pub(crate) ignore_data: &'a IgnoreData,
+    /// Svelte-ignore queries for span-based JS comment lookups.
+    pub(crate) ignore_query: IgnoreQuery<'a>,
 }
 
 impl DevContext<'_> {
@@ -109,9 +108,7 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                     extra_args
                                         .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
                                     // Only pass location if not suppressed by svelte-ignore await_waterfall
-                                    if !ctx
-                                        .ignore_data
-                                        .is_ignored_at_span(decl_start, "await_waterfall")
+                                    if !ctx.ignore_query.is_ignored_at_span(decl_start, "await_waterfall")
                                     {
                                         let loc = ctx.locate(init_span_start);
                                         extra_args

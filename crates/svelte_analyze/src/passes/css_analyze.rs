@@ -8,7 +8,7 @@ use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;
 use svelte_span::GetSpan;
 
-use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
+use svelte_ast::Component as SvelteComponent;
 
 use crate::css::css_component_hash;
 use crate::types::data::{AnalysisData, CssAnalysis};
@@ -40,7 +40,7 @@ pub fn analyze_css_pass(
     // Phase 2: walk template, mark elements whose tag name is in selected_tags.
     let node_count = component.node_count();
     let mut scoped = NodeBitSet::new(node_count);
-    mark_scoped_elements(&component.fragment, &component.store, &selected_tags, &mut scoped);
+    mark_scoped_elements(data, &selected_tags, &mut scoped);
 
     // Phase 3: validate CSS (:global usage, nesting selectors, etc.)
     let mut validator = CssValidator::new(diagnostics);
@@ -51,7 +51,13 @@ pub fn analyze_css_pass(
         scoped_elements: scoped,
         inject_styles,
         keyframes,
+        used_selectors: rustc_hash::FxHashSet::default(),
     };
+
+    // Phase 4: prune — determine which selectors match template elements, emit unused warnings.
+    let template_elements = &data.template_elements;
+    let css = &mut data.css;
+    super::css_prune::prune_and_warn(stylesheet, css_text, template_elements, css, diagnostics);
 }
 
 // ---------------------------------------------------------------------------
@@ -258,10 +264,7 @@ impl<'a> CssValidator<'a> {
             let mut is_global_block = false;
 
             for (selector_idx, child) in complex_selector.children.iter().enumerate() {
-                let global_pos = child
-                    .selectors
-                    .iter()
-                    .position(is_global_block_selector);
+                let global_pos = child.selectors.iter().position(is_global_block_selector);
 
                 if let Some(idx) = global_pos {
                     if idx == 0 {
@@ -326,10 +329,7 @@ impl<'a> CssValidator<'a> {
             }
 
             if rule_is_global_block && !is_global_block {
-                self.emit(
-                    DiagnosticKind::CssGlobalBlockInvalidList,
-                    rule.prelude.span,
-                );
+                self.emit(DiagnosticKind::CssGlobalBlockInvalidList, rule.prelude.span);
             }
 
             if first_complex {
@@ -489,9 +489,7 @@ fn is_nesting_in_global_args(args: &SelectorList) -> bool {
 
 /// True if a `RelativeSelector` starts with `:global` (block form, no args).
 fn is_global_block_selector_in_rel(rel: &RelativeSelector) -> bool {
-    rel.selectors
-        .first()
-        .is_some_and(is_global_block_selector)
+    rel.selectors.first().is_some_and(is_global_block_selector)
 }
 
 fn has_declaration(block: &Block) -> bool {
@@ -561,49 +559,13 @@ impl Visit for CssValidator<'_> {
 // ---------------------------------------------------------------------------
 
 fn mark_scoped_elements(
-    fragment: &Fragment,
-    store: &AstStore,
+    data: &AnalysisData,
     selected_tags: &FxHashSet<String>,
     scoped: &mut NodeBitSet,
 ) {
-    for &id in fragment.nodes.iter() {
-        match store.get(id) {
-            Node::Element(el) => {
-                if selected_tags.contains(&el.name) {
-                    scoped.insert(el.id);
-                }
-                mark_scoped_elements(&el.fragment, store, selected_tags, scoped);
-            }
-            Node::IfBlock(b) => {
-                mark_scoped_elements(&b.consequent, store, selected_tags, scoped);
-                if let Some(alt) = &b.alternate {
-                    mark_scoped_elements(alt, store, selected_tags, scoped);
-                }
-            }
-            Node::EachBlock(b) => {
-                mark_scoped_elements(&b.body, store, selected_tags, scoped);
-                if let Some(fb) = &b.fallback {
-                    mark_scoped_elements(fb, store, selected_tags, scoped);
-                }
-            }
-            Node::SnippetBlock(b) => {
-                mark_scoped_elements(&b.body, store, selected_tags, scoped);
-            }
-            Node::KeyBlock(b) => {
-                mark_scoped_elements(&b.fragment, store, selected_tags, scoped);
-            }
-            Node::AwaitBlock(b) => {
-                if let Some(f) = &b.pending {
-                    mark_scoped_elements(f, store, selected_tags, scoped);
-                }
-                if let Some(f) = &b.then {
-                    mark_scoped_elements(f, store, selected_tags, scoped);
-                }
-                if let Some(f) = &b.catch {
-                    mark_scoped_elements(f, store, selected_tags, scoped);
-                }
-            }
-            _ => {}
+    for tag_name in selected_tags {
+        for &id in data.template_elements_with_tag(tag_name) {
+            scoped.insert(id);
         }
     }
 }
@@ -632,7 +594,10 @@ mod tests {
 
     fn assert_no_diagnostics(css: &str) {
         let kinds = validate_css(css);
-        assert!(kinds.is_empty(), "Expected no diagnostics for CSS:\n  {css}\nGot: {kinds:?}");
+        assert!(
+            kinds.is_empty(),
+            "Expected no diagnostics for CSS:\n  {css}\nGot: {kinds:?}"
+        );
     }
 
     #[test]
@@ -768,10 +733,7 @@ mod tests {
     #[test]
     fn css_selector_invalid() {
         // Leading combinator on first selector
-        assert_diagnostic(
-            "> .foo { color: red; }",
-            DiagnosticKind::CssSelectorInvalid,
-        );
+        assert_diagnostic("> .foo { color: red; }", DiagnosticKind::CssSelectorInvalid);
     }
 
     #[test]

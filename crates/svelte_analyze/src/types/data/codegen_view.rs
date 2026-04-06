@@ -70,9 +70,6 @@ impl<'a> CodegenView<'a> {
     pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
         self.data.ignore_data.is_ignored_at_span(span_start, code)
     }
-    pub fn ignore_data(&self) -> &IgnoreData {
-        &self.data.ignore_data
-    }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
         self.data.await_bindings.value(id)
     }
@@ -158,11 +155,16 @@ impl<'a> CodegenView<'a> {
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
         self.data.fragments.has_dynamic_children(key)
     }
-    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
-        self.data.element_flags.attr_index(id)
+    pub fn string_attribute<'b>(
+        &self,
+        id: NodeId,
+        attrs: &'b [svelte_ast::Attribute],
+        name: &str,
+    ) -> Option<&'b svelte_ast::StringAttribute> {
+        self.data.string_attribute(id, attrs, name)
     }
     pub fn has_spread(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_spread(id)
+        self.data.has_spread(id)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
         self.data.element_flags.has_class_directives(id)
@@ -255,10 +257,10 @@ impl<'a> CodegenView<'a> {
         self.data.bind_semantics.bind_group_value_attr(id)
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
-        self.data.bind_semantics.parent_each_blocks(id)
+        self.data.parent_each_blocks(id)
     }
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.data.bind_semantics.contains_group_binding(id)
+        self.data.contains_group_binding(id)
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.data.bind_semantics.bind_blockers(id)
@@ -270,7 +272,7 @@ impl<'a> CodegenView<'a> {
         self.data.bind_semantics.is_prop_source(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.data.bind_semantics.each_context(id)
+        self.data.bind_each_context(id)
     }
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
         self.data.const_tags.names(id)
@@ -289,24 +291,23 @@ impl<'a> CodegenView<'a> {
     }
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
         self.data
-            .each_blocks
-            .index_sym(id)
+            .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
     }
     pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_blocks.key_uses_index(id)
+        self.data.each_key_uses_index(id)
     }
     pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.data.each_blocks.body_uses_index(id)
+        self.data.each_body_uses_index(id)
     }
     pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.data.each_blocks.key_is_item(id)
+        self.data.each_key_is_item(id)
     }
     pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.data.each_blocks.has_animate(id)
+        self.data.each_has_animate(id)
     }
     pub fn each_context_name(&self, id: NodeId) -> &str {
-        self.data.each_blocks.context_name(id)
+        self.data.each_context_name(id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.data.expression(id)
@@ -323,14 +324,14 @@ impl<'a> CodegenView<'a> {
     /// The scoping class for this component, e.g. `"svelte-1a7i8ec"`.
     /// Returns an empty string when no `<style>` block is present.
     pub fn css_hash(&self) -> &str {
-        &self.data.css.hash
+        self.data.css_hash()
     }
     /// Whether the element should receive the scoped CSS class.
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
-        self.data.css.scoped_elements.contains(&id)
+        self.data.is_css_scoped(id)
     }
     /// Whether CSS should be injected at runtime via `$.append_styles()`.
     pub fn inject_styles(&self) -> bool {
-        self.data.css.inject_styles
+        self.data.inject_styles()
     }
 }

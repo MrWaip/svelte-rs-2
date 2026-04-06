@@ -1,4 +1,4 @@
-use svelte_ast::{Attribute, Element};
+use svelte_ast::Element;
 
 use crate::types::data::{
     AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart,
@@ -79,13 +79,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         return true;
     }
 
-    let has_runtime_attrs = el.attributes.iter().any(|a| {
-        !matches!(
-            a,
-            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
-        )
-    });
-    if has_runtime_attrs {
+    if data.has_runtime_attrs(id) {
         return true;
     }
 

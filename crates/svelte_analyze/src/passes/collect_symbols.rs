@@ -44,7 +44,7 @@ pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
 impl TemplateVisitor for CollectSymbolsVisitor {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(key_id) = block.key_id {
-            ctx.data.each_blocks.key_node_ids.insert(block.id, key_id);
+            ctx.data.each_context.record_key_node_id(block.id, key_id);
         }
     }
 
@@ -203,16 +203,14 @@ fn detect_each_index_usage(
     data: &mut AnalysisData,
 ) {
     for &sym in symbols {
-        if let Some(&block_id) = data.each_blocks.index_sym_to_block.get(&sym) {
+        if let Some(block_id) = data.each_block_for_index_sym(sym) {
             let is_key = data
-                .each_blocks
-                .key_node_ids
-                .get(block_id)
-                .is_some_and(|&kid| kid == node_id);
+                .each_key_node_id(block_id)
+                .is_some_and(|kid| kid == node_id);
             if is_key {
-                data.each_blocks.key_uses_index.insert(block_id);
+                data.each_context.mark_key_uses_index(block_id);
             } else {
-                data.each_blocks.body_uses_index.insert(block_id);
+                data.each_context.mark_body_uses_index(block_id);
             }
         }
     }

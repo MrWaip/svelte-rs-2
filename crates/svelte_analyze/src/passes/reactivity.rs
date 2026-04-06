@@ -29,20 +29,22 @@ impl TemplateVisitor for ReactivityVisitor {
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
         if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
-            if let Some(el_id) = ctx.nearest_element() {
+            if let Some(el_id) = ctx.data.nearest_element(attr.id()) {
                 ctx.data.element_flags.needs_ref.insert(el_id);
             }
         }
     }
 
     fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_>) {
-        let parent_kind = ctx.parent().map(|p| p.kind);
+        let parent = ctx.data.expr_parent(node_id);
+        let parent_kind = parent.map(|p| p.kind);
 
         if parent_kind.is_some_and(|k| k.is_attr()) {
             // For concat parts, use the parent attribute's id for dynamic_attrs marking
-            let attr_id = ctx.parent().map_or(node_id, |p| p.id);
+            let attr_id = parent.map_or(node_id, |p| p.id);
             let in_component = ctx
-                .ancestors()
+                .data
+                .expr_ancestors(node_id)
                 .nth(1) // grandparent (skip immediate attr parent)
                 .is_some_and(|gp| {
                     matches!(
@@ -62,7 +64,7 @@ impl TemplateVisitor for ReactivityVisitor {
             if is_dynamic {
                 ctx.data.element_flags.dynamic_attrs.insert(attr_id);
                 if !in_component {
-                    if let Some(el_id) = ctx.nearest_element() {
+                    if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
                         ctx.data.element_flags.needs_ref.insert(el_id);
                         if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
                             ctx.data
@@ -75,7 +77,7 @@ impl TemplateVisitor for ReactivityVisitor {
             }
             // else: SvelteWindow/Document/Body attrs — not processed (matches original)
         } else if !(matches!(parent_kind, Some(ParentKind::SvelteElement))
-            && ctx.parent().is_some_and(|p| p.id == node_id))
+            && parent.is_some_and(|p| p.id == node_id))
         {
             // SvelteElement tag expression (where node_id == parent el.id) is not
             // classified as dynamic_node. Child expressions have their own id.

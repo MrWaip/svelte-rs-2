@@ -1,13 +1,12 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{
-    is_mathml, is_svg, is_void, AstStore, Attribute, ComponentNode, Element, Fragment, Node,
-};
+use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::types::data::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode,
+    FragmentKey, RichContentParentKind,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -37,37 +36,27 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ));
         }
 
-        let has_value_attr = {
-            let idx = ctx.data.element_flags.attr_index(el.id);
-            idx.is_some_and(|i| i.has("value"))
-        };
+        let has_value_attr = ctx.data.has_attribute(el.id, "value");
+        let fragment_key = FragmentKey::Element(el.id);
 
         // <textarea>: detect expression children
-        if el.name == "textarea" && !el.fragment.nodes.is_empty() {
-            let has_expr_children = el
-                .fragment
-                .nodes
-                .iter()
-                .any(|&id| matches!(ctx.store.get(id), Node::ExpressionTag(_)));
-            if has_expr_children {
-                if has_value_attr {
-                    ctx.warnings_mut().push(Diagnostic::error(
-                        DiagnosticKind::TextareaInvalidContent,
-                        el.span,
-                    ));
-                } else {
-                    ctx.data
-                        .element_flags
-                        .needs_textarea_value_lowering
-                        .insert(el.id);
-                }
+        if el.name == "textarea" && ctx.data.fragment_has_expression_child(&fragment_key) {
+            if has_value_attr {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::TextareaInvalidContent,
+                    el.span,
+                ));
+            } else {
+                ctx.data
+                    .element_flags
+                    .needs_textarea_value_lowering
+                    .insert(el.id);
             }
         }
 
         // <option>: single ExpressionTag child, no explicit value attribute → synthetic __value
-        if el.name == "option" && !has_value_attr && el.fragment.nodes.len() == 1 {
-            let child_id = el.fragment.nodes[0];
-            if matches!(ctx.store.get(child_id), Node::ExpressionTag(_)) {
+        if el.name == "option" && !has_value_attr {
+            if let Some(child_id) = ctx.data.fragment_single_expression_child(&fragment_key) {
                 ctx.data
                     .element_flags
                     .option_synthetic_value_expr
@@ -76,7 +65,15 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         }
 
         // Customizable select: <select>, <optgroup>, <option> with rich DOM content.
-        if is_customizable_select_element(el, ctx.store, self.source) {
+        let rich_content_parent = match el.name.as_str() {
+            "select" => Some(RichContentParentKind::Select),
+            "optgroup" => Some(RichContentParentKind::Optgroup),
+            "option" => Some(RichContentParentKind::Option),
+            _ => None,
+        };
+        if rich_content_parent
+            .is_some_and(|parent| ctx.data.fragment_has_rich_content(&fragment_key, parent))
+        {
             ctx.data.element_flags.customizable_select.insert(el.id);
         }
         if el.name == "selectedcontent" {
@@ -85,7 +82,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
-        let Some(el_id) = ctx.nearest_element() else {
+        let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
         match attr {
@@ -100,9 +97,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .element_flags
                     .static_style
                     .insert(el_id, self.source_text(sa.value_span).to_string());
-            }
-            Attribute::SpreadAttribute(_) => {
-                ctx.data.element_flags.has_spread.insert(el_id);
             }
             Attribute::ClassDirective(cd) => {
                 ctx.data
@@ -264,100 +258,4 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .push(ComponentPropInfo { kind, is_dynamic });
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Customizable select detection
-// ---------------------------------------------------------------------------
-
-/// Returns true for `<select>`, `<optgroup>`, or `<option>` elements that contain
-/// "rich content" — DOM structure that requires `$.customizable_select` at runtime.
-///
-/// Port of `is_customizable_select_element` from `reference/compiler/phases/nodes.js`.
-fn is_customizable_select_element(el: &Element, store: &AstStore, source: &str) -> bool {
-    matches!(el.name.as_str(), "select" | "optgroup" | "option")
-        && find_rich_descendants(&el.fragment, &el.name, store, source)
-}
-
-/// Recursively walks a fragment looking for rich content under `parent_name`.
-/// Skips SnippetBlock, DebugTag, ConstTag, Comment, ExpressionTag.
-/// Recurses into control-flow blocks.
-fn find_rich_descendants(
-    fragment: &Fragment,
-    parent_name: &str,
-    store: &AstStore,
-    source: &str,
-) -> bool {
-    for &id in &fragment.nodes {
-        match store.get(id) {
-            // Non-content nodes — never rich
-            Node::Comment(_)
-            | Node::ConstTag(_)
-            | Node::DebugTag(_)
-            | Node::ExpressionTag(_)
-            | Node::SnippetBlock(_) => {}
-            // Recurse into control flow — only rich if descendants are rich
-            Node::IfBlock(b) => {
-                if find_rich_descendants(&b.consequent, parent_name, store, source) {
-                    return true;
-                }
-                if let Some(alt) = &b.alternate {
-                    if find_rich_descendants(alt, parent_name, store, source) {
-                        return true;
-                    }
-                }
-            }
-            Node::EachBlock(b) => {
-                if find_rich_descendants(&b.body, parent_name, store, source) {
-                    return true;
-                }
-                if let Some(fallback) = &b.fallback {
-                    if find_rich_descendants(fallback, parent_name, store, source) {
-                        return true;
-                    }
-                }
-            }
-            Node::KeyBlock(b) => {
-                if find_rich_descendants(&b.fragment, parent_name, store, source) {
-                    return true;
-                }
-            }
-            Node::AwaitBlock(b) => {
-                for frag in [b.pending.as_ref(), b.then.as_ref(), b.catch.as_ref()]
-                    .into_iter()
-                    .flatten()
-                {
-                    if find_rich_descendants(frag, parent_name, store, source) {
-                        return true;
-                    }
-                }
-            }
-            // Non-whitespace text is rich for <select>/<optgroup> (they should only have element children)
-            Node::Text(t) => {
-                if matches!(parent_name, "select" | "optgroup")
-                    && !t.raw_value(source).trim().is_empty()
-                {
-                    return true;
-                }
-            }
-            // RegularElement: rich depending on what the parent allows
-            Node::Element(child_el) => match parent_name {
-                "select" if child_el.name != "option" && child_el.name != "optgroup" => {
-                    return true
-                }
-                "optgroup" if child_el.name != "option" => return true,
-                "option" => return true,
-                _ => {}
-            },
-            // Recurse into SvelteBoundary — only rich if descendants are rich
-            Node::SvelteBoundary(b) => {
-                if find_rich_descendants(&b.fragment, parent_name, store, source) {
-                    return true;
-                }
-            }
-            // Any other node type counts as rich content
-            _ => return true,
-        }
-    }
-    false
 }

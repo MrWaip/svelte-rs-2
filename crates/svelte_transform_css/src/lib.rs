@@ -162,8 +162,10 @@ impl VisitMut for ScopeSelectors<'_> {
                 node.prelude_override = Some(CompactString::new(stripped));
             } else if self.keyframes.iter().any(|k| k.as_str() == prelude) {
                 // Local keyframe: prefix with component hash
-                node.prelude_override =
-                    Some(CompactString::new(&format!("{}-{}", self.hash_class, prelude)));
+                node.prelude_override = Some(CompactString::new(&format!(
+                    "{}-{}",
+                    self.hash_class, prelude
+                )));
             }
             // Do NOT recurse into @keyframes body — keyframe selectors (from/to/%)
             // are not scoped.
@@ -351,7 +353,10 @@ mod tests {
         let source = ":global(.foo) { color: red; }";
         let (ss, _) = svelte_css::parse(source);
         let result = transform_css("svelte-abc123", &[], ss, source);
-        assert!(!result.contains("svelte-abc123"), "global should not be scoped, got: {result}");
+        assert!(
+            !result.contains("svelte-abc123"),
+            "global should not be scoped, got: {result}"
+        );
         assert!(result.contains(".foo"), "got: {result}");
     }
 
@@ -373,7 +378,10 @@ mod tests {
             "global block inner rules should not be scoped, got: {result}"
         );
         assert!(result.contains("p"), "got: {result}");
-        assert!(!result.contains(":global"), "global wrapper should be removed, got: {result}");
+        assert!(
+            !result.contains(":global"),
+            "global wrapper should be removed, got: {result}"
+        );
     }
 
     #[test]

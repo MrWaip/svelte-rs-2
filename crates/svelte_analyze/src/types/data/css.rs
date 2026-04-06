@@ -1,4 +1,6 @@
 use compact_str::CompactString;
+use rustc_hash::FxHashSet;
+use svelte_css::CssNodeId;
 
 use super::NodeBitSet;
 
@@ -16,6 +18,9 @@ pub struct CssAnalysis {
     /// Used by the CSS transform to prefix these names with the component hash
     /// and rewrite matching `animation`/`animation-name` values.
     pub keyframes: Vec<CompactString>,
+    /// Set of `ComplexSelector` CssNodeIds that match at least one template element.
+    /// Selectors not in this set are considered unused (emit `css_unused_selector` warning).
+    pub used_selectors: FxHashSet<CssNodeId>,
 }
 
 impl CssAnalysis {
@@ -25,6 +30,7 @@ impl CssAnalysis {
             scoped_elements: NodeBitSet::new(node_count),
             inject_styles: false,
             keyframes: Vec::new(),
+            used_selectors: FxHashSet::default(),
         }
     }
 }

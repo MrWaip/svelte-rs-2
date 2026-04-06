@@ -201,10 +201,7 @@ pub fn walk_simple_selector_args<V: Visit + ?Sized>(v: &mut V, node: &SimpleSele
 }
 
 /// Mutable version of [`walk_simple_selector_args`].
-pub fn walk_simple_selector_args_mut<V: VisitMut + ?Sized>(
-    v: &mut V,
-    node: &mut SimpleSelector,
-) {
+pub fn walk_simple_selector_args_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut SimpleSelector) {
     let args = match node {
         SimpleSelector::PseudoClass(pc) => pc.args.as_deref_mut(),
         SimpleSelector::Global { args, .. } => args.as_deref_mut(),

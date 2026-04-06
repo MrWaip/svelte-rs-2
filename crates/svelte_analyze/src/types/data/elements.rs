@@ -1,5 +1,4 @@
 use super::*;
-use super::attr_index::AttrIndex;
 
 pub struct ClassDirectiveInfo {
     pub id: NodeId,
@@ -80,7 +79,8 @@ pub enum EventHandlerMode {
 }
 
 pub struct ElementFlags {
-    pub(crate) has_spread: NodeBitSet,
+    // Shared normalized attribute facts live in ElementFacts; this table stays limited
+    // to downstream derived flags that are specific to later analyze/codegen consumers.
     pub(crate) class_attr_id: NodeTable<NodeId>,
     pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
     pub(crate) needs_clsx: NodeBitSet,
@@ -109,13 +109,11 @@ pub struct ElementFlags {
     pub(crate) customizable_select: NodeBitSet,
     /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
     pub(crate) is_selectedcontent: NodeBitSet,
-    pub(crate) attr_indices: NodeTable<AttrIndex>,
 }
 
 impl ElementFlags {
     pub fn new(node_count: u32) -> Self {
         Self {
-            has_spread: NodeBitSet::new(node_count),
             class_attr_id: NodeTable::new(node_count),
             class_directive_info: NodeTable::new(node_count),
             needs_clsx: NodeBitSet::new(node_count),
@@ -137,12 +135,7 @@ impl ElementFlags {
             is_dynamic_component: NodeBitSet::new(node_count),
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
-            attr_indices: NodeTable::new(node_count),
         }
-    }
-
-    pub fn has_spread(&self, id: NodeId) -> bool {
-        self.has_spread.contains(&id)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
         self.class_directive_info.contains_key(id)
@@ -222,8 +215,5 @@ impl ElementFlags {
     }
     pub fn is_selectedcontent(&self, id: NodeId) -> bool {
         self.is_selectedcontent.contains(&id)
-    }
-    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
-        self.attr_indices.get(id)
     }
 }

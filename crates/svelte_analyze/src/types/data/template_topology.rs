@@ -1,0 +1,184 @@
+use super::*;
+use svelte_ast::Attribute;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ParentKind {
+    Element,
+    IfBlock,
+    EachBlock,
+    SnippetBlock,
+    ComponentNode,
+    KeyBlock,
+    SvelteHead,
+    SvelteElement,
+    SvelteWindow,
+    SvelteDocument,
+    SvelteBody,
+    SvelteBoundary,
+    AwaitBlock,
+    ExpressionAttribute,
+    ConcatenationAttribute,
+    SpreadAttribute,
+    Shorthand,
+    ClassDirective,
+    StyleDirective,
+    BindDirective,
+    UseDirective,
+    OnDirectiveLegacy,
+    TransitionDirective,
+    AnimateDirective,
+    AttachTag,
+}
+
+impl ParentKind {
+    pub fn is_element(&self) -> bool {
+        matches!(self, Self::Element | Self::SvelteElement)
+    }
+
+    pub fn is_attr(&self) -> bool {
+        matches!(
+            self,
+            Self::ExpressionAttribute
+                | Self::ConcatenationAttribute
+                | Self::SpreadAttribute
+                | Self::Shorthand
+                | Self::ClassDirective
+                | Self::StyleDirective
+                | Self::BindDirective
+                | Self::UseDirective
+                | Self::OnDirectiveLegacy
+                | Self::TransitionDirective
+                | Self::AnimateDirective
+                | Self::AttachTag
+        )
+    }
+
+    pub fn needs_element_ref(&self) -> bool {
+        match self {
+            Self::BindDirective
+            | Self::UseDirective
+            | Self::TransitionDirective
+            | Self::AnimateDirective
+            | Self::AttachTag => true,
+            Self::Element
+            | Self::IfBlock
+            | Self::EachBlock
+            | Self::SnippetBlock
+            | Self::ComponentNode
+            | Self::KeyBlock
+            | Self::SvelteHead
+            | Self::SvelteElement
+            | Self::SvelteWindow
+            | Self::SvelteDocument
+            | Self::SvelteBody
+            | Self::SvelteBoundary
+            | Self::AwaitBlock
+            | Self::ExpressionAttribute
+            | Self::ConcatenationAttribute
+            | Self::SpreadAttribute
+            | Self::Shorthand
+            | Self::ClassDirective
+            | Self::StyleDirective
+            | Self::OnDirectiveLegacy => false,
+        }
+    }
+
+    pub fn from_attr(attr: &Attribute) -> Option<Self> {
+        match attr {
+            Attribute::ExpressionAttribute(_) => Some(Self::ExpressionAttribute),
+            Attribute::ConcatenationAttribute(_) => Some(Self::ConcatenationAttribute),
+            Attribute::SpreadAttribute(_) => Some(Self::SpreadAttribute),
+            Attribute::Shorthand(_) => Some(Self::Shorthand),
+            Attribute::ClassDirective(_) => Some(Self::ClassDirective),
+            Attribute::StyleDirective(_) => Some(Self::StyleDirective),
+            Attribute::BindDirective(_) => Some(Self::BindDirective),
+            Attribute::UseDirective(_) => Some(Self::UseDirective),
+            Attribute::OnDirectiveLegacy(_) => Some(Self::OnDirectiveLegacy),
+            Attribute::TransitionDirective(_) => Some(Self::TransitionDirective),
+            Attribute::AnimateDirective(_) => Some(Self::AnimateDirective),
+            Attribute::AttachTag(_) => Some(Self::AttachTag),
+            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ParentRef {
+    pub id: NodeId,
+    pub kind: ParentKind,
+}
+
+pub struct TemplateTopology {
+    node_parents: NodeTable<ParentRef>,
+    expr_parents: NodeTable<ParentRef>,
+}
+
+impl TemplateTopology {
+    pub fn new(node_count: u32) -> Self {
+        Self {
+            node_parents: NodeTable::new(node_count),
+            expr_parents: NodeTable::new(node_count),
+        }
+    }
+
+    pub fn record_node_parent(&mut self, id: NodeId, parent: Option<ParentRef>) {
+        if let Some(parent) = parent {
+            self.node_parents.insert(id, parent);
+        }
+    }
+
+    pub fn record_expr_parent(&mut self, id: NodeId, parent: Option<ParentRef>) {
+        if let Some(parent) = parent {
+            self.expr_parents.insert(id, parent);
+        }
+    }
+
+    pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
+        self.node_parents.get(id).copied()
+    }
+
+    pub fn expr_parent(&self, id: NodeId) -> Option<ParentRef> {
+        self.expr_parents.get(id).copied()
+    }
+
+    pub fn ancestors(&self, id: NodeId) -> Ancestors<'_> {
+        Ancestors {
+            topology: self,
+            current: self.parent(id),
+        }
+    }
+
+    pub fn expr_ancestors(&self, id: NodeId) -> Ancestors<'_> {
+        Ancestors {
+            topology: self,
+            current: self.expr_parent(id),
+        }
+    }
+
+    pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
+        self.ancestors(id)
+            .find(|parent| parent.kind.is_element())
+            .map(|parent| parent.id)
+    }
+
+    pub fn nearest_element_for_expr(&self, id: NodeId) -> Option<NodeId> {
+        self.expr_ancestors(id)
+            .find(|parent| parent.kind.is_element())
+            .map(|parent| parent.id)
+    }
+}
+
+pub struct Ancestors<'a> {
+    topology: &'a TemplateTopology,
+    current: Option<ParentRef>,
+}
+
+impl Iterator for Ancestors<'_> {
+    type Item = ParentRef;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current?;
+        self.current = self.topology.parent(current.id);
+        Some(current)
+    }
+}

@@ -448,9 +448,7 @@ fn tokenize(src: &str) -> Vec<Token> {
             b'@' => {
                 pos += 1;
                 if pos < len
-                    && (is_ident_start(bytes[pos])
-                        || bytes[pos] == b'-'
-                        || bytes[pos] == b'\\')
+                    && (is_ident_start(bytes[pos]) || bytes[pos] == b'-' || bytes[pos] == b'\\')
                 {
                     consume_ident(bytes, &mut pos);
                     tokens.push(Token::new(TokenKind::AtKeyword, start, pos as u32));
@@ -642,10 +640,7 @@ fn consume_ident(bytes: &[u8], pos: &mut usize) {
 fn consume_escape(bytes: &[u8], pos: &mut usize) {
     if bytes[*pos].is_ascii_hexdigit() {
         let hex_start = *pos;
-        while *pos < bytes.len()
-            && *pos - hex_start < 6
-            && bytes[*pos].is_ascii_hexdigit()
-        {
+        while *pos < bytes.len() && *pos - hex_start < 6 && bytes[*pos].is_ascii_hexdigit() {
             *pos += 1;
         }
         // Optional single whitespace after hex escape.
@@ -671,11 +666,7 @@ fn consume_number(bytes: &[u8], pos: &mut usize) {
         *pos += 1;
     }
     // Decimal part
-    if *pos < len
-        && bytes[*pos] == b'.'
-        && *pos + 1 < len
-        && bytes[*pos + 1].is_ascii_digit()
-    {
+    if *pos < len && bytes[*pos] == b'.' && *pos + 1 < len && bytes[*pos + 1].is_ascii_digit() {
         *pos += 1; // skip '.'
         while *pos < len && bytes[*pos].is_ascii_digit() {
             *pos += 1;

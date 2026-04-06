@@ -74,7 +74,11 @@ pub(super) fn validate_module(
     offset: u32,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = ModuleStoreValidator { diags, offset, data };
+    let mut v = ModuleStoreValidator {
+        diags,
+        offset,
+        data,
+    };
     v.visit_program(program);
 }
 
