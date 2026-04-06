@@ -220,6 +220,81 @@ fn global_block() {
     assert!(matches!(&rule.block.children[0], BlockChild::Rule(Rule::Style(_))));
 }
 
+#[test]
+fn global_in_compound_selector() {
+    // p:global(.active) — type selector followed by :global()
+    let src = "p:global(.active) { font-weight: bold; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 2);
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "p"));
+    assert!(matches!(&rel.selectors[1], SimpleSelector::Global { args: Some(_), .. }));
+
+    // Verify the inner selector list contains .active
+    let SimpleSelector::Global { args: Some(args), .. } = &rel.selectors[1] else {
+        panic!("expected Global with args");
+    };
+    let inner_rel = &args.children[0].children[0];
+    assert!(matches!(&inner_rel.selectors[0], SimpleSelector::Class { name, .. } if name == "active"));
+}
+
+#[test]
+fn global_with_complex_inner_selector() {
+    // :global(h2.featured) — multiple simple selectors inside :global()
+    let src = ":global(h2.featured) { font-style: italic; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 1);
+    let SimpleSelector::Global { args: Some(args), .. } = &rel.selectors[0] else {
+        panic!("expected Global with args");
+    };
+    let inner_rel = &args.children[0].children[0];
+    assert_eq!(inner_rel.selectors.len(), 2);
+    assert!(matches!(&inner_rel.selectors[0], SimpleSelector::Type { name, .. } if name == "h2"));
+    assert!(matches!(&inner_rel.selectors[1], SimpleSelector::Class { name, .. } if name == "featured"));
+}
+
+#[test]
+fn global_multiple_in_descendant() {
+    // :global(.wrapper) :global(.item) — two :global() with descendant combinator
+    let src = ":global(.wrapper) :global(.item) { display: flex; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let complex = &rule.prelude.children[0];
+    assert_eq!(complex.children.len(), 2);
+
+    let rel0 = &complex.children[0];
+    assert!(matches!(&rel0.selectors[0], SimpleSelector::Global { args: Some(_), .. }));
+
+    let rel1 = &complex.children[1];
+    assert!(matches!(&rel1.selectors[0], SimpleSelector::Global { args: Some(_), .. }));
+}
+
+#[test]
+fn non_global_pseudo_class_stays_pseudo_class() {
+    // :hover should remain PseudoClass, not Global
+    let src = "a:hover { color: blue; }";
+    let ss = p(src);
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    let rel = &rule.prelude.children[0].children[0];
+    assert_eq!(rel.selectors.len(), 2);
+    assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "a"));
+    assert!(
+        matches!(&rel.selectors[1], SimpleSelector::PseudoClass(pc) if pc.name == "hover"),
+        "expected PseudoClass(:hover), not Global"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Attribute selectors
 // ---------------------------------------------------------------------------
@@ -528,6 +603,36 @@ fn printer_global_function() {
     let ss = p(src);
     let output = Printer::print(&ss, src);
     assert_eq!(output, ":global(.foo) {\n  color: red;\n}\n");
+}
+
+#[test]
+fn printer_global_block() {
+    let src = ":global { p { color: red; } }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(output, ":global {\n  p {\n    color: red;\n  }\n}\n");
+}
+
+#[test]
+fn printer_global_in_compound() {
+    let src = "p:global(.active) { font-weight: bold; }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(
+        output,
+        "p:global(.active) {\n  font-weight: bold;\n}\n"
+    );
+}
+
+#[test]
+fn printer_multiple_globals_descendant() {
+    let src = ":global(.wrapper) :global(.item) { display: flex; }";
+    let ss = p(src);
+    let output = Printer::print(&ss, src);
+    assert_eq!(
+        output,
+        ":global(.wrapper) :global(.item) {\n  display: flex;\n}\n"
+    );
 }
 
 // ---------------------------------------------------------------------------
