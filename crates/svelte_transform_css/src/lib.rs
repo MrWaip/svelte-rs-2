@@ -1,112 +1,126 @@
-use lightningcss::error::PrinterError;
-use lightningcss::printer::{Printer, PrinterOptions};
-use lightningcss::selector::{Component, PseudoClass, Selector};
-use lightningcss::stylesheet::StyleSheet;
-use lightningcss::traits::ToCss;
-use lightningcss::values::ident::Ident;
-use lightningcss::{visit_types, visitor::{Visit, Visitor, VisitTypes}};
+use compact_str::CompactString;
+use svelte_css::{
+    ComplexSelector, PseudoClassSelector, RelativeSelector, SimpleSelector, StyleSheet, VisitMut,
+};
+use svelte_span::Span;
 
 /// Transform the stylesheet AST: scope selectors and serialize to CSS text.
 ///
-/// `hash_str` must be allocated into the same arena as the stylesheet so that
-/// `Ident<'a>` components satisfy the lifetime bound.
-///
-/// Returns `None` when the printer fails.
-pub fn transform_css<'a>(
-    hash_str: &'a str,
-    mut stylesheet: StyleSheet<'a, 'a>,
-) -> Option<String> {
-    let mut scoper = ScopeSelectors { hash_class: hash_str };
-    if stylesheet.visit(&mut scoper).is_err() {
-        return None;
-    }
-
-    // Serialize directly through Printer with no CSS module context so that
-    // class names are not renamed (stylesheet.to_css() would enable renaming
-    // because the stylesheet was parsed with css_modules enabled).
-    let mut dest = String::new();
-    let mut printer = Printer::new(&mut dest, PrinterOptions::default());
-    stylesheet.rules.to_css(&mut printer).ok()?;
-    printer.newline().ok()?;
-    Some(dest)
+/// `hash_class` is the scoping class name (e.g. `"svelte-1a7i8ec"`).
+/// `source` is the original CSS source text (needed by the printer which
+/// resolves `Span`s back to source slices).
+pub fn transform_css(
+    hash_class: &str,
+    mut stylesheet: StyleSheet,
+    source: &str,
+) -> String {
+    let mut scoper = ScopeSelectors {
+        hash_class: CompactString::new(hash_class),
+    };
+    scoper.visit_stylesheet_mut(&mut stylesheet);
+    svelte_css::Printer::print(&stylesheet, source)
 }
 
-struct ScopeSelectors<'h> {
-    /// The scoping class name, e.g. `"svelte-1a7i8ec"` (without the dot).
-    /// Allocated into the stylesheet arena so `Ident<'h>` satisfies `'h: 'i`.
-    hash_class: &'h str,
+struct ScopeSelectors {
+    hash_class: CompactString,
 }
 
-impl<'i, 'h: 'i> Visitor<'i> for ScopeSelectors<'h> {
-    type Error = PrinterError;
-
-    fn visit_types(&self) -> VisitTypes {
-        visit_types!(SELECTORS)
-    }
-
-    fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
-        // iter_raw_match_order() returns components in right-to-left (match) order at the
-        // compound level: rightmost compound first, leftmost last. Within a single compound,
-        // components are in parse (left-to-right) order. Selector::from() expects left-to-right
-        // input. We split on combinators, then process compounds from highest index (leftmost in
-        // CSS) down to 0 (rightmost), which produces the correct left-to-right sequence for
-        // Selector::from(). Components within each compound are already in parse order and need
-        // no reversal.
-        let components: Vec<Component<'i>> =
-            selector.iter_raw_match_order().cloned().collect();
-
-        let has_local_name = components.iter().any(|c| matches!(c, Component::LocalName(_)));
-        let has_global = components.iter().any(|c| {
-            matches!(c, Component::NonTSPseudoClass(PseudoClass::Global { .. }))
-        });
-
-        if !has_local_name && !has_global {
-            return Ok(());
+impl VisitMut for ScopeSelectors {
+    fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
+        // Check if this entire complex selector is wrapped in :global()
+        if is_entirely_global(node) {
+            unwrap_global(node);
+            return;
         }
 
-        // Split components into compound selectors (separated by combinators).
-        // The resulting compounds are in right-to-left order (match order).
-        let compounds: Vec<&[Component<'i>]> = components
-            .as_slice()
-            .split(|c| c.is_combinator())
-            .collect();
+        svelte_css::visit::walk_complex_selector_mut(self, node);
+    }
 
-        // Combinators in right-to-left order: combinators[k] is between compounds[k] and compounds[k+1].
-        let combinators: Vec<Component<'i>> = components
-            .iter()
-            .filter(|c| c.is_combinator())
-            .cloned()
-            .collect();
+    fn visit_relative_selector_mut(&mut self, node: &mut RelativeSelector) {
+        let mut new_selectors = Vec::with_capacity(node.selectors.len() + 1);
+        let mut has_non_global_scopable = false;
+        let mut scope_inserted = false;
 
-        let mut result: Vec<Component<'i>> = Vec::with_capacity(components.len() + 1);
-
-        // Iterate compounds from last index (leftmost in CSS) to 0 (rightmost in CSS).
-        // Between compound[i] and compound[i-1] the combinator is combinators[i-1].
-        for i in (0..compounds.len()).rev() {
-            for component in compounds[i] {
-                match component {
-                    Component::NonTSPseudoClass(PseudoClass::Global { selector }) => {
-                        // Expand the inner selector's components inline, without a scope class —
-                        // content of :global() is intentionally unscoped.
-                        // iter_raw_match_order() returns components within a compound in parse
-                        // (left-to-right) order, so no reversal is needed here.
-                        result.extend(selector.iter_raw_match_order().cloned());
+        for sel in node.selectors.drain(..) {
+            match sel {
+                SimpleSelector::PseudoClass(PseudoClassSelector {
+                    name,
+                    args: Some(args),
+                    span: _,
+                }) if name.as_str() == "global" => {
+                    // Insert scope class before global content if we have a scopable selector
+                    // but haven't inserted the scope class yet.
+                    if has_non_global_scopable && !scope_inserted {
+                        new_selectors.push(SimpleSelector::Class {
+                            span: Span::new(0, 0),
+                            name: self.hash_class.clone(),
+                        });
+                        scope_inserted = true;
                     }
-                    Component::LocalName(_) => {
-                        result.push(component.clone());
-                        result.push(Component::Class(Ident::from(self.hash_class)));
+                    // Expand :global(...) — inline the inner selectors unscoped
+                    for complex in args.children {
+                        for rel in complex.children {
+                            new_selectors.extend(rel.selectors);
+                        }
                     }
-                    _ => result.push(component.clone()),
+                }
+                _ => {
+                    if is_scopable(&sel) {
+                        has_non_global_scopable = true;
+                    }
+                    new_selectors.push(sel);
                 }
             }
-            if i > 0 {
-                result.push(combinators[i - 1].clone());
-            }
         }
 
-        *selector = Selector::from(result);
-        Ok(())
+        // Append scope class at end if we have scopable selectors but didn't insert yet
+        if has_non_global_scopable && !scope_inserted {
+            new_selectors.push(SimpleSelector::Class {
+                span: Span::new(0, 0),
+                name: self.hash_class.clone(),
+            });
+        }
+
+        node.selectors = new_selectors.into();
     }
+}
+
+/// Returns true if the entire complex selector is a single `:global(...)` call.
+fn is_entirely_global(complex: &ComplexSelector) -> bool {
+    complex.children.len() == 1
+        && complex.children[0].selectors.len() == 1
+        && matches!(
+            &complex.children[0].selectors[0],
+            SimpleSelector::PseudoClass(PseudoClassSelector { name, args: Some(_), .. })
+            if name.as_str() == "global"
+        )
+}
+
+/// Unwrap a `:global(...)` complex selector — replace with its inner selectors.
+fn unwrap_global(complex: &mut ComplexSelector) {
+    let sel = complex.children[0].selectors.remove(0);
+    if let SimpleSelector::PseudoClass(PseudoClassSelector { args: Some(args), .. }) = sel {
+        // Replace the complex selector's children with the inner selector list's children
+        let mut new_children = svelte_css::RelativeSelectorVec::new();
+        for inner_complex in args.children {
+            new_children.extend(inner_complex.children);
+        }
+        complex.children = new_children;
+    }
+}
+
+/// Check if a simple selector is something that can be scoped
+/// (type, class, id, attribute, pseudo-element, nesting).
+fn is_scopable(sel: &SimpleSelector) -> bool {
+    matches!(
+        sel,
+        SimpleSelector::Type { .. }
+            | SimpleSelector::Class { .. }
+            | SimpleSelector::Id { .. }
+            | SimpleSelector::Attribute(_)
+            | SimpleSelector::PseudoElement(_)
+            | SimpleSelector::Nesting(_)
+    )
 }
 
 /// Compact formatted CSS into a single-line string matching the reference compiler's
@@ -147,4 +161,17 @@ pub fn compact_css_for_injection(css: &str) -> String {
         out.pop();
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scope_type_selector() {
+        let source = "p { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(result.contains("p.svelte-abc123"), "got: {result}");
+    }
 }

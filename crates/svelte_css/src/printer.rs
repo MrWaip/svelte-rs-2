@@ -194,10 +194,18 @@ impl Printer {
 
     fn print_simple_selector(&mut self, sel: &SimpleSelector, source: &str) {
         match sel {
-            SimpleSelector::Type { span, .. }
-            | SimpleSelector::Id { span, .. }
-            | SimpleSelector::Class { span, .. }
-            | SimpleSelector::Nesting(span)
+            SimpleSelector::Type { name, .. } => {
+                self.output.push_str(name);
+            }
+            SimpleSelector::Id { name, .. } => {
+                self.output.push('#');
+                self.output.push_str(name);
+            }
+            SimpleSelector::Class { name, .. } => {
+                self.output.push('.');
+                self.output.push_str(name);
+            }
+            SimpleSelector::Nesting(span)
             | SimpleSelector::Nth(span)
             | SimpleSelector::Percentage(span) => {
                 self.push_span(*span, source);

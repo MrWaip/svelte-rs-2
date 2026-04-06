@@ -1,7 +1,7 @@
-use lightningcss::rules::CssRule;
-use lightningcss::selector::{Component, PseudoClass, Selector};
-use lightningcss::stylesheet::StyleSheet;
 use rustc_hash::FxHashSet;
+use svelte_css::{
+    ComplexSelector, PseudoClassSelector, RelativeSelector, SimpleSelector, StyleSheet, Visit,
+};
 
 use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
 
@@ -14,7 +14,7 @@ use crate::types::node_table::NodeBitSet;
 /// Does NOT transform or serialize CSS — call `svelte_transform_css::transform_css` for that.
 pub fn analyze_css_pass(
     component: &SvelteComponent,
-    stylesheet: &StyleSheet<'_, '_>,
+    stylesheet: &StyleSheet,
     inject_styles: bool,
     data: &mut AnalysisData,
 ) {
@@ -43,38 +43,47 @@ pub fn analyze_css_pass(
 // Collect selected tag names (read-only, no visitor mutation)
 // ---------------------------------------------------------------------------
 
-fn collect_type_selectors(stylesheet: &StyleSheet<'_, '_>) -> FxHashSet<String> {
-    let mut tags = FxHashSet::default();
-    for rule in stylesheet.rules.0.iter() {
-        if let CssRule::Style(style_rule) = rule {
-            for selector in style_rule.selectors.0.iter() {
-                if has_global_component(selector) {
-                    continue;
-                }
-                for component in selector.iter_raw_match_order() {
-                    if let Component::LocalName(name) = component {
-                        tags.insert(name.name.to_string());
-                    }
-                }
+fn collect_type_selectors(stylesheet: &StyleSheet) -> FxHashSet<String> {
+    let mut collector = TypeSelectorCollector {
+        tags: FxHashSet::default(),
+    };
+    collector.visit_stylesheet(stylesheet);
+    collector.tags
+}
+
+struct TypeSelectorCollector {
+    tags: FxHashSet<String>,
+}
+
+impl Visit for TypeSelectorCollector {
+    fn visit_complex_selector(&mut self, node: &ComplexSelector) {
+        if has_global_selector(node) {
+            return;
+        }
+        svelte_css::visit::walk_complex_selector(self, node);
+    }
+
+    fn visit_relative_selector(&mut self, node: &RelativeSelector) {
+        for sel in &node.selectors {
+            if let SimpleSelector::Type { name, .. } = sel {
+                self.tags.insert(name.to_string());
             }
         }
     }
-    tags
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn has_global_component(selector: &Selector<'_>) -> bool {
-    selector.iter_raw_match_order().any(|c| match c {
-        Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
-        Component::NonTSPseudoClass(PseudoClass::Custom { name }) => name.as_ref() == "global",
-        Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
-            name.as_ref() == "global"
-        }
-        _ => false,
+fn has_global_selector(complex: &ComplexSelector) -> bool {
+    complex.children.iter().any(|rel| {
+        rel.selectors.iter().any(|s| is_global_pseudo(s))
     })
+}
+
+fn is_global_pseudo(sel: &SimpleSelector) -> bool {
+    matches!(sel, SimpleSelector::PseudoClass(PseudoClassSelector { name, .. }) if name.as_str() == "global")
 }
 
 // ---------------------------------------------------------------------------
