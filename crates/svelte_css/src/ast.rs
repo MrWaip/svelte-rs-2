@@ -145,6 +145,18 @@ pub enum CombinatorKind {
     Column,
 }
 
+impl CombinatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Descendant => " ",
+            Self::Child => ">",
+            Self::NextSibling => "+",
+            Self::SubsequentSibling => "~",
+            Self::Column => "||",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimpleSelector {
     /// Element / type selector (e.g. `div`, `*`, `ns|div`)

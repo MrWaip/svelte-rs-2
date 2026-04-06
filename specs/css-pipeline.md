@@ -2,16 +2,17 @@
 
 ## Current state
 - **Working**: scoped CSS pipeline complete — hash, selector scoping, element marking, class injection, `CompileResult.css`. Both `css:"external"` (default) and `css:"injected"` modes work. Tests: `css_scoped_basic`, `css_injected`, `css_injected_via_compile_options`.
-- **Architecture**: `svelte_transform_css` crate owns CSS AST → CSS string transform (scoping, serialization, injection compaction). `svelte_analyze::analyze_css_pass` is read-only classifier (hash, scoped elements, inject flag). `svelte_compiler` orchestrates and owns mode-specific post-processing.
+- **Architecture**: `svelte_transform_css` crate owns CSS AST → CSS string transform (scoping, serialization, injection compaction). `svelte_analyze::analyze_css_pass` is read-only classifier (hash, scoped elements, inject flag) and CSS validator (`:global` diagnostics). `svelte_compiler` orchestrates and owns mode-specific post-processing.
 - **Working**: `:global(.foo)` functional form — AST-level stripping of pseudo-class wrapper, mixed selectors (`p :global(.bar)`) scope outer LocalName correctly. Test: `css_global_basic`.
 - **Working**: `:global { ... }` block form — lone `:global` blocks hoisted at transform time (inner rules promoted unscoped to parent level). Works at top level, inside `@media`/`@supports`, and nested inside style rules. Analyze pass skips type selector collection for global blocks. Test: `css_global_block`.
-- **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global .foo { ... }` compound form (non-lone), `:global()` validation diagnostics, unused-selector warnings, CSS custom properties.
+- **Done**: `:global()` validation diagnostics — all 12 CSS validation error diagnostics ported from reference `css-analyze.js`. `CssValidator` visitor in `svelte_analyze::passes::css_analyze` tracks parent rule context via stack. 20 unit tests covering all diagnostic kinds plus valid cases.
 - **Done**: Scoped `@keyframes` + `-global-` escape — keyframe names prefixed with hash, `-global-` prefix stripped, `animation`/`animation-name` values rewritten.
 - **Done**: `:global()` inside `:not()`/`:is()`/`:where()`/`:has()` — visitor recurses into pseudo-class args, unwraps `:global()` and scopes non-global selectors. Also fixed scope class insertion position to go before trailing pseudo-classes (matching reference compiler). Test: `css_global_in_pseudo`.
-- **Next**: Port `:global .foo { ... }` compound form or `:global()` validation diagnostics.
+- **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
+- **Missing**: `:global .foo { ... }` compound form (non-lone), unused-selector warnings, CSS custom properties.
+- **Next**: Port unused selector warnings (requires css-prune pass) or `:global .foo { ... }` compound form.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
-- **Current slice**: completed `:global()` inside pseudo-classes
+- **Current slice**: completed `:global()` validation diagnostics
 - Last updated: 2026-04-06
 
 ## Source
@@ -43,7 +44,7 @@ ROADMAP.md — CSS
 - [x] `:global(.foo)` functional form — strip wrapper, scope outer LocalName (test: `css_global_basic`)
 - [x] `:global { ... }` block form transform (test: `css_global_block`)
 - [x] `:global()` inside `:not()`, `:is()`, `:where()`, `:has()` — visitor recurses into pseudo-class args (test: `css_global_in_pseudo`)
-- [ ] `:global()` validation diagnostics
+- [x] `:global()` validation diagnostics (20 unit tests in `css_analyze::tests`)
 - [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
 - [ ] Unused selector warning (`css_unused_selector`)
