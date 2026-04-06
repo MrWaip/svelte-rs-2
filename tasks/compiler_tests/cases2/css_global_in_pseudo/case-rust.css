@@ -1,0 +1,11 @@
+p.svelte-1rk0dqc:not(.active) {
+  color: red;
+}
+
+:is(.foo, .bar.svelte-1rk0dqc) {
+  font-weight: bold;
+}
+
+div.svelte-1rk0dqc:where(.x) {
+  margin: 0;
+}

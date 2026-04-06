@@ -6,10 +6,12 @@
 - **Working**: `:global(.foo)` functional form — AST-level stripping of pseudo-class wrapper, mixed selectors (`p :global(.bar)`) scope outer LocalName correctly. Test: `css_global_basic`.
 - **Working**: `:global { ... }` block form — lone `:global` blocks hoisted at transform time (inner rules promoted unscoped to parent level). Works at top level, inside `@media`/`@supports`, and nested inside style rules. Analyze pass skips type selector collection for global blocks. Test: `css_global_block`.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global .foo { ... }` compound form (non-lone), `:global()` inside `:not()`/`:is()`/`:where()`, `:global()` validation diagnostics, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
+- **Missing**: `:global .foo { ... }` compound form (non-lone), `:global()` validation diagnostics, unused-selector warnings, CSS custom properties.
 - **Done**: Scoped `@keyframes` + `-global-` escape — keyframe names prefixed with hash, `-global-` prefix stripped, `animation`/`animation-name` values rewritten.
-- **Next**: Port `:global .foo { ... }` compound form or `:global()` inside `:not()`/`:is()`/`:where()`.
+- **Done**: `:global()` inside `:not()`/`:is()`/`:where()`/`:has()` — visitor recurses into pseudo-class args, unwraps `:global()` and scopes non-global selectors. Also fixed scope class insertion position to go before trailing pseudo-classes (matching reference compiler). Test: `css_global_in_pseudo`.
+- **Next**: Port `:global .foo { ... }` compound form or `:global()` validation diagnostics.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
+- **Current slice**: completed `:global()` inside pseudo-classes
 - Last updated: 2026-04-06
 
 ## Source
@@ -40,7 +42,7 @@ ROADMAP.md — CSS
 - [x] `css: "injected"` output — `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body (tests: `css_injected`, `css_injected_via_compile_options`)
 - [x] `:global(.foo)` functional form — strip wrapper, scope outer LocalName (test: `css_global_basic`)
 - [x] `:global { ... }` block form transform (test: `css_global_block`)
-- [ ] `:global()` inside `:not()`, `:is()`, `:where()` — currently unvisited (visitor declares SELECTORS only, not PSEUDO_CLASSES; nested selectors inside functional pseudo-classes silently pass through)
+- [x] `:global()` inside `:not()`, `:is()`, `:where()`, `:has()` — visitor recurses into pseudo-class args (test: `css_global_in_pseudo`)
 - [ ] `:global()` validation diagnostics
 - [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
@@ -87,3 +89,4 @@ ROADMAP.md — CSS
 - [x] `css_injected_via_compile_options`
 - [x] `css_global_block`
 - [x] `css_keyframes_scoped`
+- [x] `css_global_in_pseudo`

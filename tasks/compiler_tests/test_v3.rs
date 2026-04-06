@@ -169,6 +169,11 @@ fn css_global_block() {
 }
 
 #[rstest]
+fn css_global_in_pseudo() {
+    assert_compiler("css_global_in_pseudo");
+}
+
+#[rstest]
 fn css_keyframes_scoped() {
     assert_compiler("css_keyframes_scoped");
 }

@@ -127,12 +127,28 @@ impl VisitMut for ScopeSelectors<'_> {
                         has_non_global_scopable = true;
                     }
                     new_selectors.push(sel);
+                    // Recurse into pseudo-class args (e.g. :not(), :is(), :where(), :has())
+                    // so that :global() inside them is unwrapped and inner selectors are scoped.
+                    if let Some(last) = new_selectors.last_mut() {
+                        self.visit_simple_selector_mut(last);
+                    }
                 }
             }
         }
 
         if has_non_global_scopable && !scope_inserted {
-            new_selectors.push(self.scope_class());
+            // Insert scope class before trailing pseudo-class/pseudo-element selectors,
+            // matching the reference compiler which walks backwards to find insertion point.
+            let mut insert_pos = new_selectors.len();
+            while insert_pos > 0 {
+                match &new_selectors[insert_pos - 1] {
+                    SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_) => {
+                        insert_pos -= 1;
+                    }
+                    _ => break,
+                }
+            }
+            new_selectors.insert(insert_pos, self.scope_class());
         }
 
         node.selectors = new_selectors.into();
@@ -154,6 +170,20 @@ impl VisitMut for ScopeSelectors<'_> {
             return;
         }
         svelte_css::visit::walk_at_rule_mut(self, node);
+    }
+
+    fn visit_simple_selector_mut(&mut self, node: &mut SimpleSelector) {
+        // Recurse into :is(), :where(), :has(), :not() arguments so that
+        // :global() inside them is unwrapped and non-global selectors are scoped.
+        // Mirrors reference compiler PseudoClassSelector visitor.
+        if let SimpleSelector::PseudoClass(pc) = node {
+            match pc.name.as_str() {
+                "is" | "where" | "has" | "not" => {
+                    svelte_css::visit::walk_simple_selector_args_mut(self, node);
+                }
+                _ => {}
+            }
+        }
     }
 
     fn visit_declaration_mut(&mut self, node: &mut Declaration) {
@@ -453,6 +483,62 @@ mod tests {
         assert!(
             result.contains(", other"),
             "non-matching name should be preserved, got: {result}"
+        );
+    }
+
+    #[test]
+    fn global_inside_not() {
+        let source = "p:not(:global(.active)) { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains("p.svelte-abc123:not(.active)"),
+            ":global() inside :not() should be unwrapped, got: {result}"
+        );
+        assert!(
+            !result.contains(":global"),
+            ":global should be removed, got: {result}"
+        );
+    }
+
+    #[test]
+    fn global_inside_is() {
+        let source = ":is(:global(.foo), .bar) { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains(".foo"),
+            ":global(.foo) should be unwrapped to .foo, got: {result}"
+        );
+        assert!(
+            result.contains(".bar.svelte-abc123"),
+            ".bar should be scoped, got: {result}"
+        );
+        assert!(
+            !result.contains(":global"),
+            ":global should be removed, got: {result}"
+        );
+    }
+
+    #[test]
+    fn global_inside_where() {
+        let source = "p:where(:global(.x)) { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains("p.svelte-abc123:where(.x)"),
+            ":global() inside :where() should be unwrapped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn scoped_inside_not() {
+        let source = "p:not(.active) { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains("p.svelte-abc123:not(.active.svelte-abc123)"),
+            "selectors inside :not() should be scoped, got: {result}"
         );
     }
 
