@@ -205,6 +205,14 @@ impl Printer {
                 self.output.push('.');
                 self.output.push_str(name);
             }
+            SimpleSelector::Global { args, .. } => {
+                self.output.push_str(":global");
+                if let Some(args) = args {
+                    self.output.push('(');
+                    self.print_selector_list(args.as_ref(), source);
+                    self.output.push(')');
+                }
+            }
             SimpleSelector::Nesting(span)
             | SimpleSelector::Nth(span)
             | SimpleSelector::Percentage(span) => {

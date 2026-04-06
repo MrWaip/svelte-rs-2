@@ -197,11 +197,10 @@ fn global_function() {
         panic!("expected style rule");
     };
     let rel = &rule.prelude.children[0].children[0];
-    let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
-        panic!("expected pseudo-class");
-    };
-    assert_eq!(pc.name.as_str(), "global");
-    assert!(pc.args.is_some());
+    assert!(
+        matches!(&rel.selectors[0], SimpleSelector::Global { args: Some(_), .. }),
+        "expected Global with args"
+    );
 }
 
 #[test]
@@ -212,11 +211,10 @@ fn global_block() {
         panic!("expected style rule");
     };
     let rel = &rule.prelude.children[0].children[0];
-    let SimpleSelector::PseudoClass(pc) = &rel.selectors[0] else {
-        panic!("expected pseudo-class");
-    };
-    assert_eq!(pc.name.as_str(), "global");
-    assert!(pc.args.is_none());
+    assert!(
+        matches!(&rel.selectors[0], SimpleSelector::Global { args: None, .. }),
+        "expected Global without args"
+    );
 
     assert_eq!(rule.block.children.len(), 1);
     assert!(matches!(&rule.block.children[0], BlockChild::Rule(Rule::Style(_))));

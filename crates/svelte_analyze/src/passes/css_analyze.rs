@@ -1,7 +1,5 @@
 use rustc_hash::FxHashSet;
-use svelte_css::{
-    ComplexSelector, PseudoClassSelector, RelativeSelector, SimpleSelector, StyleSheet, Visit,
-};
+use svelte_css::{ComplexSelector, RelativeSelector, SimpleSelector, StyleSheet, Visit};
 
 use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
 
@@ -78,12 +76,10 @@ impl Visit for TypeSelectorCollector {
 
 fn has_global_selector(complex: &ComplexSelector) -> bool {
     complex.children.iter().any(|rel| {
-        rel.selectors.iter().any(|s| is_global_pseudo(s))
+        rel.selectors
+            .iter()
+            .any(|s| matches!(s, SimpleSelector::Global { .. }))
     })
-}
-
-fn is_global_pseudo(sel: &SimpleSelector) -> bool {
-    matches!(sel, SimpleSelector::PseudoClass(PseudoClassSelector { name, .. }) if name.as_str() == "global")
 }
 
 // ---------------------------------------------------------------------------

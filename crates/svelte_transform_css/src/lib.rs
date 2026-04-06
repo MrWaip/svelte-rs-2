@@ -1,7 +1,5 @@
 use compact_str::CompactString;
-use svelte_css::{
-    ComplexSelector, PseudoClassSelector, RelativeSelector, SimpleSelector, StyleSheet, VisitMut,
-};
+use svelte_css::{ComplexSelector, RelativeSelector, SimpleSelector, StyleSheet, VisitMut};
 use svelte_span::Span;
 
 /// Transform the stylesheet AST: scope selectors and serialize to CSS text.
@@ -27,7 +25,6 @@ struct ScopeSelectors {
 
 impl VisitMut for ScopeSelectors {
     fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
-        // Check if this entire complex selector is wrapped in :global()
         if is_entirely_global(node) {
             unwrap_global(node);
             return;
@@ -43,18 +40,13 @@ impl VisitMut for ScopeSelectors {
 
         for sel in node.selectors.drain(..) {
             match sel {
-                SimpleSelector::PseudoClass(PseudoClassSelector {
-                    name,
-                    args: Some(args),
-                    span: _,
-                }) if name.as_str() == "global" => {
+                SimpleSelector::Global {
+                    args: Some(args), ..
+                } => {
                     // Insert scope class before global content if we have a scopable selector
                     // but haven't inserted the scope class yet.
                     if has_non_global_scopable && !scope_inserted {
-                        new_selectors.push(SimpleSelector::Class {
-                            span: Span::new(0, 0),
-                            name: self.hash_class.clone(),
-                        });
+                        new_selectors.push(self.scope_class());
                         scope_inserted = true;
                     }
                     // Expand :global(...) — inline the inner selectors unscoped
@@ -63,6 +55,9 @@ impl VisitMut for ScopeSelectors {
                             new_selectors.extend(rel.selectors);
                         }
                     }
+                }
+                SimpleSelector::Global { args: None, .. } => {
+                    // Bare `:global` without args — drop it (block form handled elsewhere)
                 }
                 _ => {
                     if is_scopable(&sel) {
@@ -73,15 +68,20 @@ impl VisitMut for ScopeSelectors {
             }
         }
 
-        // Append scope class at end if we have scopable selectors but didn't insert yet
         if has_non_global_scopable && !scope_inserted {
-            new_selectors.push(SimpleSelector::Class {
-                span: Span::new(0, 0),
-                name: self.hash_class.clone(),
-            });
+            new_selectors.push(self.scope_class());
         }
 
         node.selectors = new_selectors.into();
+    }
+}
+
+impl ScopeSelectors {
+    fn scope_class(&self) -> SimpleSelector {
+        SimpleSelector::Class {
+            span: Span::new(0, 0),
+            name: self.hash_class.clone(),
+        }
     }
 }
 
@@ -91,16 +91,17 @@ fn is_entirely_global(complex: &ComplexSelector) -> bool {
         && complex.children[0].selectors.len() == 1
         && matches!(
             &complex.children[0].selectors[0],
-            SimpleSelector::PseudoClass(PseudoClassSelector { name, args: Some(_), .. })
-            if name.as_str() == "global"
+            SimpleSelector::Global { args: Some(_), .. }
         )
 }
 
 /// Unwrap a `:global(...)` complex selector — replace with its inner selectors.
 fn unwrap_global(complex: &mut ComplexSelector) {
     let sel = complex.children[0].selectors.remove(0);
-    if let SimpleSelector::PseudoClass(PseudoClassSelector { args: Some(args), .. }) = sel {
-        // Replace the complex selector's children with the inner selector list's children
+    if let SimpleSelector::Global {
+        args: Some(args), ..
+    } = sel
+    {
         let mut new_children = svelte_css::RelativeSelectorVec::new();
         for inner_complex in args.children {
             new_children.extend(inner_complex.children);
@@ -173,5 +174,22 @@ mod tests {
         let (ss, _) = svelte_css::parse(source);
         let result = transform_css("svelte-abc123", ss, source);
         assert!(result.contains("p.svelte-abc123"), "got: {result}");
+    }
+
+    #[test]
+    fn global_not_scoped() {
+        let source = ":global(.foo) { color: red; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(!result.contains("svelte-abc123"), "global should not be scoped, got: {result}");
+        assert!(result.contains(".foo"), "got: {result}");
+    }
+
+    #[test]
+    fn mixed_global_and_local() {
+        let source = "p:global(.active) { font-weight: bold; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(result.contains("p.svelte-abc123.active"), "got: {result}");
     }
 }
