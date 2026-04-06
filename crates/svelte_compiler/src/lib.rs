@@ -47,7 +47,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             // css:"injected" can come from compile options OR from <svelte:options css="injected">
             let inject_styles = options.css == CssMode::Injected
                 || component.options.as_ref().and_then(|o| o.css) == Some(svelte_ast::CssMode::Injected);
-            svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis);
+            svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis, &mut analyze_diags);
             let css_block = component.css.as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
