@@ -404,11 +404,11 @@ impl<'a> CssValidator<'a> {
             } = &global_rel.selectors[0]
             {
                 if idx != 0 && idx != node.children.len() - 1 {
-                    let has_non_global_after = node.children[idx + 1..]
-                        .iter()
-                        .any(|r| !is_global_relative_selector(r));
-                    if has_non_global_after {
-                        self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
+                    // Emit once per non-global child after the global one
+                    for r in &node.children[idx + 1..] {
+                        if !is_global_relative_selector(r) {
+                            self.emit(DiagnosticKind::CssGlobalInvalidPlacement, *span);
+                        }
                     }
                 }
             }
@@ -654,6 +654,17 @@ mod tests {
             ".a :global(.b) .c { color: red; }",
             DiagnosticKind::CssGlobalInvalidPlacement,
         );
+    }
+
+    #[test]
+    fn css_global_invalid_placement_multiple_non_global_after() {
+        // Reference emits once per non-global child after the global
+        let kinds = validate_css(".a :global(.b) .c .d { color: red; }");
+        let count = kinds
+            .iter()
+            .filter(|k| matches!(k, DiagnosticKind::CssGlobalInvalidPlacement))
+            .count();
+        assert_eq!(count, 2, "expected 2 emissions for .c and .d, got {count}");
     }
 
     #[test]
