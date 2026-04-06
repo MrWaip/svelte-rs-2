@@ -5,6 +5,7 @@ use svelte_css::{
     SimpleSelector, StyleRule, StyleSheet, Visit,
 };
 use svelte_diagnostics::Diagnostic;
+use svelte_diagnostics::DiagnosticKind;
 use svelte_span::GetSpan;
 
 use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
@@ -207,8 +208,6 @@ fn is_unscoped_pseudo_class(sel: &SimpleSelector) -> bool {
 // ---------------------------------------------------------------------------
 // CSS validation — `:global()` diagnostics
 // ---------------------------------------------------------------------------
-
-use svelte_diagnostics::DiagnosticKind;
 
 /// Per-rule context tracked on the validator's stack.
 struct RuleContext {
@@ -414,42 +413,40 @@ impl<'a> CssValidator<'a> {
             }
         }
 
-        // Validate `:global(...)` args in each relative selector
+        // Validate `:global(...)` / `:global` args in each relative selector
         for rel in &node.children {
             for (i, sel) in rel.selectors.iter().enumerate() {
                 let (args, span) = match sel {
-                    SimpleSelector::Global {
-                        args: Some(args),
-                        span,
-                        ..
-                    } => (args, span),
+                    SimpleSelector::Global { args, span, .. } => (args, span),
                     _ => continue,
                 };
 
-                // `:global(element)` must be at position 0 in compound
-                if let Some(first_type_sel) = args
-                    .children
-                    .first()
-                    .and_then(|c| c.children.first())
-                    .and_then(|r| r.selectors.first())
-                {
-                    if matches!(first_type_sel, SimpleSelector::Type { .. }) && i != 0 {
-                        self.emit(DiagnosticKind::CssGlobalInvalidSelectorList, *span);
+                if let Some(args) = args {
+                    // `:global(element)` must be at position 0 in compound
+                    if let Some(first_type_sel) = args
+                        .children
+                        .first()
+                        .and_then(|c| c.children.first())
+                        .and_then(|r| r.selectors.first())
+                    {
+                        if matches!(first_type_sel, SimpleSelector::Type { .. }) && i != 0 {
+                            self.emit(DiagnosticKind::CssGlobalInvalidSelectorList, *span);
+                        }
+                    }
+
+                    // `:global(...)` must contain exactly one selector in compound context
+                    if args.children.len() > 1
+                        && (node.children.len() > 1 || rel.selectors.len() > 1)
+                    {
+                        self.emit(DiagnosticKind::CssGlobalInvalidSelector, *span);
                     }
                 }
 
-                // `:global(.class)` must not be followed by a type selector
+                // `:global(...)` or bare `:global` must not be followed by a type selector
                 if let Some(next) = rel.selectors.get(i + 1) {
                     if matches!(next, SimpleSelector::Type { .. }) {
                         self.emit(DiagnosticKind::CssTypeSelectorInvalidPlacement, next.span());
                     }
-                }
-
-                // `:global(...)` must contain exactly one selector in compound context
-                if args.children.len() > 1
-                    && (node.children.len() > 1 || rel.selectors.len() > 1)
-                {
-                    self.emit(DiagnosticKind::CssGlobalInvalidSelector, *span);
                 }
             }
         }
