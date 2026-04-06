@@ -7,4 +7,6 @@ edition = "2021"
 doctest = false
 
 [dependencies]
-lightningcss = { version = "1.0.0-alpha.71", features = ["visitor"] }
+svelte_css = { workspace = true }
+svelte_span = { workspace = true }
+compact_str = { workspace = true }

@@ -190,10 +190,13 @@ pub fn walk_block_mut<V: VisitMut + ?Sized>(v: &mut V, node: &mut Block) {
 /// Call this from your `visit_simple_selector` if you need to recurse into
 /// `:not(...)`, `:is(...)`, `:global(...)` etc.
 pub fn walk_simple_selector_args<V: Visit + ?Sized>(v: &mut V, node: &SimpleSelector) {
-    if let SimpleSelector::PseudoClass(pc) = node
-        && let Some(args) = &pc.args
-    {
-        v.visit_selector_list(args.as_ref());
+    let args = match node {
+        SimpleSelector::PseudoClass(pc) => pc.args.as_deref(),
+        SimpleSelector::Global { args, .. } => args.as_deref(),
+        _ => None,
+    };
+    if let Some(args) = args {
+        v.visit_selector_list(args);
     }
 }
 
@@ -202,9 +205,12 @@ pub fn walk_simple_selector_args_mut<V: VisitMut + ?Sized>(
     v: &mut V,
     node: &mut SimpleSelector,
 ) {
-    if let SimpleSelector::PseudoClass(pc) = node
-        && let Some(args) = &mut pc.args
-    {
-        v.visit_selector_list_mut(args.as_mut());
+    let args = match node {
+        SimpleSelector::PseudoClass(pc) => pc.args.as_deref_mut(),
+        SimpleSelector::Global { args, .. } => args.as_deref_mut(),
+        _ => None,
+    };
+    if let Some(args) = args {
+        v.visit_selector_list_mut(args);
     }
 }

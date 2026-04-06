@@ -110,11 +110,7 @@ impl WasmCompiler {
 
     #[wasm_bindgen()]
     pub fn format_css(&self, source: &str) -> String {
-        use lightningcss::stylesheet::{ParserOptions, PrinterOptions, StyleSheet};
-        StyleSheet::parse(source, ParserOptions::default())
-            .ok()
-            .and_then(|ss| ss.to_css(PrinterOptions::default()).ok())
-            .map(|r| r.code)
-            .unwrap_or_else(|| source.to_string())
+        let (stylesheet, _diags) = svelte_css::parse(source);
+        svelte_css::Printer::print(&stylesheet, source)
     }
 }

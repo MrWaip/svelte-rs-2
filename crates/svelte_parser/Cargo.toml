@@ -18,7 +18,7 @@ oxc_span = { workspace = true }
 oxc_syntax = { workspace = true }
 compact_str = { workspace = true }
 rustc-hash = { workspace = true }
-lightningcss = { version = "1.0.0-alpha.71", features = ["visitor"] }
+svelte_css = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
