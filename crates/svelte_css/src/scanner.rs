@@ -67,7 +67,7 @@ pub(crate) enum TokenKind {
     Whitespace,
     /// CSS comment `/* ... */`
     Comment,
-    /// `<!--`
+    /// HTML comment `<!-- ... -->` (consumed as a single token).
     Cdo,
     /// `-->`
     Cdc,
@@ -126,7 +126,7 @@ pub(crate) struct ScannerCheckpoint {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct Scanner<'src> {
-    pub(crate) src: &'src str,
+    src: &'src str,
     tokens: Box<[Token]>,
     pos: usize,
     /// Byte offset of the end of the last consumed token.
@@ -619,6 +619,7 @@ fn starts_number_after_sign(bytes: &[u8], pos: usize) -> bool {
 /// Consume a CSS identifier (ident continuation chars + escapes).
 /// Assumes `pos` is at the start of an ident or the first char of an ident
 /// (may be `-`, `_`, letter, non-ASCII, or `\`).
+#[inline]
 fn consume_ident(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
     while *pos < len {
@@ -658,6 +659,7 @@ fn consume_escape(bytes: &[u8], pos: &mut usize) {
 }
 
 /// Consume a numeric value: optional sign, digits, optional `.` + digits.
+#[inline]
 fn consume_number(bytes: &[u8], pos: &mut usize) {
     let len = bytes.len();
     // Optional sign
@@ -682,6 +684,7 @@ fn consume_number(bytes: &[u8], pos: &mut usize) {
 }
 
 /// After consuming a number, classify as Number, Percentage, or Dimension.
+#[inline]
 fn classify_after_number(bytes: &[u8], pos: &mut usize) -> TokenKind {
     let len = bytes.len();
     if *pos < len && bytes[*pos] == b'%' {
