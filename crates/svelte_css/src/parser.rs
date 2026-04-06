@@ -4,25 +4,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::ast::*;
-
-// ---------------------------------------------------------------------------
-// CSS whitespace lookup (space, tab, newline, carriage return, form feed)
-// ---------------------------------------------------------------------------
-
-static CSS_WS: [bool; 256] = {
-    let mut t = [false; 256];
-    t[0x20] = true; // space
-    t[0x09] = true; // tab
-    t[0x0A] = true; // LF
-    t[0x0D] = true; // CR
-    t[0x0C] = true; // FF
-    t
-};
-
-#[inline(always)]
-fn is_css_ws(b: u8) -> bool {
-    CSS_WS[b as usize]
-}
+use crate::scanner::{Scanner, TokenKind};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -41,9 +23,7 @@ pub fn parse(source: &str) -> (StyleSheet, Vec<Diagnostic>) {
 // ---------------------------------------------------------------------------
 
 struct Parser<'src> {
-    src: &'src str,
-    bytes: &'src [u8],
-    pos: usize,
+    scanner: Scanner<'src>,
     next_id: u32,
     diagnostics: Vec<Diagnostic>,
 }
@@ -51,9 +31,7 @@ struct Parser<'src> {
 impl<'src> Parser<'src> {
     fn new(src: &'src str) -> Self {
         Self {
-            src,
-            bytes: src.as_bytes(),
-            pos: 0,
+            scanner: Scanner::new(src),
             next_id: 0,
             diagnostics: Vec::new(),
         }
@@ -73,260 +51,30 @@ impl<'src> Parser<'src> {
         self.diagnostics.push(Diagnostic::error(kind, span));
     }
 
-    // -- helpers (hot path) -------------------------------------------------
+    // -- ident helpers ------------------------------------------------------
 
-    #[inline(always)]
-    fn at_end(&self) -> bool {
-        self.pos >= self.bytes.len()
-    }
-
-    #[inline(always)]
-    fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.pos).copied()
-    }
-
-    #[inline(always)]
-    fn peek_at(&self, offset: usize) -> Option<u8> {
-        self.bytes.get(self.pos + offset).copied()
-    }
-
-    #[inline(always)]
-    fn matches(&self, ch: u8) -> bool {
-        self.peek() == Some(ch)
-    }
-
-    #[inline(always)]
-    fn eat(&mut self, ch: u8) -> bool {
-        if self.pos < self.bytes.len() && self.bytes[self.pos] == ch {
-            self.pos += 1;
-            true
+    /// Expect an `Ident` token, emitting a diagnostic on failure.
+    fn parse_ident(&mut self) -> Option<Span> {
+        if self.scanner.at(TokenKind::Ident) {
+            let tok = self.scanner.bump();
+            Some(tok.span)
         } else {
-            false
+            self.recover(
+                DiagnosticKind::CssExpectedIdentifier,
+                self.scanner.span_at(),
+            );
+            None
         }
     }
 
-    #[inline(always)]
-    fn eat2(&mut self, a: u8, b: u8) -> bool {
-        if self.pos + 1 < self.bytes.len()
-            && self.bytes[self.pos] == a
-            && self.bytes[self.pos + 1] == b
-        {
-            self.pos += 2;
-            true
-        } else {
-            false
-        }
+    /// Parse ident and return (span, name) pair.
+    fn parse_ident_with_name(&mut self) -> Option<(Span, CompactString)> {
+        let span = self.parse_ident()?;
+        let name = CompactString::new(self.scanner.source_text(span));
+        Some((span, name))
     }
 
-    #[inline]
-    fn matches_str(&self, s: &str) -> bool {
-        self.bytes
-            .get(self.pos..self.pos + s.len())
-            .is_some_and(|slice| slice == s.as_bytes())
-    }
-
-    #[inline]
-    fn eat_str(&mut self, s: &str) -> bool {
-        if self.matches_str(s) {
-            self.pos += s.len();
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline(always)]
-    fn span_from(&self, start: usize) -> Span {
-        Span::new(start as u32, self.pos as u32)
-    }
-
-    #[inline(always)]
-    fn span_at(&self) -> Span {
-        let p = self.pos as u32;
-        Span::new(p, p)
-    }
-
-    #[inline]
-    fn compact_str(&self, start: usize, end: usize) -> CompactString {
-        CompactString::new(&self.src[start..end])
-    }
-
-    #[inline(always)]
-    fn advance_char(&mut self) {
-        let b = self.bytes[self.pos];
-        if b < 0x80 {
-            self.pos += 1;
-        } else if b < 0xE0 {
-            self.pos += 2;
-        } else if b < 0xF0 {
-            self.pos += 3;
-        } else {
-            self.pos += 4;
-        }
-    }
-
-    // -- recovery helpers ---------------------------------------------------
-
-    /// Skip to next unquoted `}` or end of input, consuming the `}`.
-    /// Used to recover from errors inside a block.
-    fn skip_to_block_end(&mut self) {
-        let mut depth: u32 = 0;
-        let mut quote: u8 = 0;
-        let mut escaped = false;
-
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-
-            if escaped {
-                escaped = false;
-                self.advance_char();
-                continue;
-            }
-            if b == b'\\' {
-                escaped = true;
-                self.pos += 1;
-                continue;
-            }
-            if b == quote {
-                quote = 0;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 && (b == b'"' || b == b'\'') {
-                quote = b;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 {
-                match b {
-                    b'{' => depth += 1,
-                    b'}' => {
-                        if depth == 0 {
-                            self.pos += 1;
-                            return;
-                        }
-                        depth -= 1;
-                    }
-                    _ => {}
-                }
-            }
-            self.advance_char();
-        }
-    }
-
-    /// Skip to next unquoted `;` or `}` (without consuming `}`), or end of input.
-    /// Used to recover from bad declarations.
-    fn skip_to_semicolon_or_block_end(&mut self) {
-        let mut quote: u8 = 0;
-        let mut escaped = false;
-
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-
-            if escaped {
-                escaped = false;
-                self.advance_char();
-                continue;
-            }
-            if b == b'\\' {
-                escaped = true;
-                self.pos += 1;
-                continue;
-            }
-            if b == quote {
-                quote = 0;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 && (b == b'"' || b == b'\'') {
-                quote = b;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 {
-                match b {
-                    b';' => {
-                        self.pos += 1;
-                        return;
-                    }
-                    b'}' => return, // don't consume — caller handles block close
-                    _ => {}
-                }
-            }
-            self.advance_char();
-        }
-    }
-
-    /// Skip an entire rule: selector part + `{ ... }`.
-    /// Used when selector parsing fails.
-    fn skip_rule(&mut self) {
-        let mut quote: u8 = 0;
-        let mut escaped = false;
-
-        // Phase 1: skip to `{`
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-            if escaped {
-                escaped = false;
-                self.advance_char();
-                continue;
-            }
-            if b == b'\\' {
-                escaped = true;
-                self.pos += 1;
-                continue;
-            }
-            if b == quote {
-                quote = 0;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 && (b == b'"' || b == b'\'') {
-                quote = b;
-                self.pos += 1;
-                continue;
-            }
-            if quote == 0 {
-                match b {
-                    b'{' => {
-                        self.pos += 1;
-                        // Phase 2: skip matched block
-                        self.skip_to_block_end();
-                        return;
-                    }
-                    b';' => {
-                        self.pos += 1;
-                        return;
-                    }
-                    b'}' => return,
-                    _ => {}
-                }
-            }
-            self.advance_char();
-        }
-    }
-
-    // -- whitespace & comments ----------------------------------------------
-
-    #[inline]
-    fn skip_whitespace(&mut self) {
-        while self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
-            self.pos += 1;
-        }
-    }
-
-    fn skip_whitespace_and_comments(&mut self) {
-        loop {
-            self.skip_whitespace();
-            if self.eat2(b'/', b'*') {
-                self.scan_to_comment_end();
-            } else if self.eat_str("<!--") {
-                self.scan_to_html_comment_end();
-            } else {
-                break;
-            }
-        }
-    }
+    // -- whitespace & comments with AST nodes -------------------------------
 
     fn skip_whitespace_and_collect_comments<T>(
         &mut self,
@@ -334,421 +82,241 @@ impl<'src> Parser<'src> {
         wrap: fn(Comment) -> T,
     ) {
         loop {
-            self.skip_whitespace();
-            if self.pos + 1 < self.bytes.len()
-                && self.bytes[self.pos] == b'/'
-                && self.bytes[self.pos + 1] == b'*'
-            {
-                let start = self.pos;
-                self.pos += 2;
-                self.scan_to_comment_end();
-                out.push(wrap(Comment {
-                    span: self.span_from(start),
-                }));
-            } else if self.eat_str("<!--") {
-                self.scan_to_html_comment_end();
-            } else {
-                break;
-            }
-        }
-    }
-
-    #[inline]
-    fn scan_to_comment_end(&mut self) {
-        while self.pos + 1 < self.bytes.len() {
-            if self.bytes[self.pos] == b'*' && self.bytes[self.pos + 1] == b'/' {
-                self.pos += 2;
-                return;
-            }
-            self.pos += 1;
-        }
-        if self.pos < self.bytes.len() {
-            self.pos += 1;
-        }
-    }
-
-    #[inline]
-    fn scan_to_html_comment_end(&mut self) {
-        while self.pos + 2 < self.bytes.len() {
-            if self.bytes[self.pos] == b'-'
-                && self.bytes[self.pos + 1] == b'-'
-                && self.bytes[self.pos + 2] == b'>'
-            {
-                self.pos += 3;
-                return;
-            }
-            self.pos += 1;
-        }
-        self.pos = self.bytes.len();
-    }
-
-    // -- identifiers --------------------------------------------------------
-
-    /// CSS identifier continuation character: ASCII alphanumeric, `_`, `-`, or non-ASCII (≥0x80).
-    /// Non-ASCII bytes are always valid in CSS identifiers per the spec.
-    #[inline(always)]
-    fn is_ident_char(ch: u8) -> bool {
-        ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-' || ch >= 0x80
-    }
-
-    /// Parse a CSS identifier. Returns `None` on failure (emits diagnostic).
-    fn parse_ident(&mut self) -> Option<Span> {
-        let start = self.pos;
-
-        if self.at_end() {
-            self.recover(DiagnosticKind::CssExpectedIdentifier, self.span_at());
-            return None;
-        }
-
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-            if b == b'\\' {
-                self.pos += 1;
-                if self.pos < self.bytes.len() {
-                    if self.bytes[self.pos].is_ascii_hexdigit() {
-                        let hex_start = self.pos;
-                        while self.pos < self.bytes.len()
-                            && self.pos - hex_start < 6
-                            && self.bytes[self.pos].is_ascii_hexdigit()
-                        {
-                            self.pos += 1;
-                        }
-                        if self.pos < self.bytes.len() && is_css_ws(self.bytes[self.pos]) {
-                            self.pos += 1;
-                        }
-                    } else {
-                        self.advance_char();
-                    }
+            match self.scanner.peek().kind {
+                TokenKind::Whitespace | TokenKind::Cdo | TokenKind::Cdc => {
+                    self.scanner.bump();
                 }
-            } else if Self::is_ident_char(b) {
-                // Non-ASCII (≥0x80) is handled by is_ident_char but needs
-                // multi-byte stepping; ASCII ident chars are single-byte.
-                if b >= 0x80 {
-                    self.advance_char();
-                } else {
-                    self.pos += 1;
+                TokenKind::Comment => {
+                    let tok = self.scanner.bump();
+                    out.push(wrap(Comment { span: tok.span }));
                 }
-            } else {
-                break;
+                _ => break,
             }
         }
-
-        if self.pos == start {
-            self.recover(DiagnosticKind::CssExpectedIdentifier, self.span_at());
-            return None;
-        }
-
-        Some(self.span_from(start))
     }
 
-    /// Parse identifier and return (span, name) pair. Returns `None` on failure.
-    #[inline]
-    fn parse_ident_with_name(&mut self) -> Option<(Span, CompactString)> {
-        let span = self.parse_ident()?;
-        let name = self.compact_str(span.start as usize, span.end as usize);
-        Some((span, name))
-    }
+    // -- value reading ------------------------------------------------------
 
-    // -- value reading (raw text spans) -------------------------------------
-
+    /// Read a raw CSS value (e.g. declaration value or at-rule prelude).
+    /// Consumes tokens until `;`, `{`, `}` at paren-depth 0.
+    /// Trailing whitespace is trimmed from the returned span.
     fn read_value(&mut self) -> Span {
-        let start = self.pos;
-        let mut escaped = false;
-        let mut quote: u8 = 0;
+        let start = self.scanner.current_start();
+        let mut last_non_ws_end = start;
         let mut paren_depth: u32 = 0;
-        let mut last_non_ws = self.pos;
 
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-
-            if escaped {
-                escaped = false;
-                self.advance_char();
-                last_non_ws = self.pos;
-                continue;
-            }
-
-            if b == b'\\' {
-                escaped = true;
-                self.pos += 1;
-                continue;
-            }
-
-            if b == quote {
-                quote = 0;
-                self.pos += 1;
-                last_non_ws = self.pos;
-                continue;
-            }
-
-            if quote == 0 && (b == b'"' || b == b'\'') {
-                quote = b;
-                self.pos += 1;
-                last_non_ws = self.pos;
-                continue;
-            }
-
-            if quote == 0 {
-                match b {
-                    b'(' => paren_depth += 1,
-                    b')' => paren_depth = paren_depth.saturating_sub(1),
-                    b';' | b'{' | b'}' if paren_depth == 0 => {
-                        return Span::new(start as u32, last_non_ws as u32);
-                    }
-                    _ => {}
+        loop {
+            let kind = self.scanner.peek().kind;
+            match kind {
+                TokenKind::Semicolon | TokenKind::LBrace | TokenKind::RBrace
+                    if paren_depth == 0 =>
+                {
+                    return Span::new(start, last_non_ws_end);
                 }
+                TokenKind::Eof => return Span::new(start, last_non_ws_end),
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
+                _ => {}
             }
-
-            self.advance_char();
-            if !is_css_ws(b) {
-                last_non_ws = self.pos;
+            self.scanner.bump();
+            if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
+                last_non_ws_end = self.scanner.prev_end;
             }
         }
-
-        Span::new(start as u32, last_non_ws as u32)
     }
 
+    /// Read an attribute value (quoted or unquoted).
     fn read_attribute_value(&mut self) -> Option<Span> {
-        let quote = if self.eat(b'"') {
-            b'"'
-        } else if self.eat(b'\'') {
-            b'\''
-        } else {
-            0
-        };
-
-        let start = self.pos;
-        let mut escaped = false;
-
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-            if escaped {
-                escaped = false;
-                self.advance_char();
-                continue;
-            }
-            if b == b'\\' {
-                escaped = true;
-                self.pos += 1;
-                continue;
-            }
-
-            if quote != 0 {
-                if b == quote {
-                    let span = self.span_from(start);
-                    self.pos += 1;
-                    return Some(span);
-                }
-            } else if is_css_ws(b) || b == b']' {
-                return Some(self.span_from(start));
-            }
-
-            self.advance_char();
+        if self.scanner.at(TokenKind::String) {
+            let tok = self.scanner.bump();
+            // Return inner span (without quotes).
+            return Some(Span::new(tok.span.start + 1, tok.span.end - 1));
         }
 
-        self.recover(
-            DiagnosticKind::CssExpectedToken {
-                token: "]".into(),
-            },
-            self.span_from(start),
-        );
-        None
-    }
-
-    // -- block item lookahead -----------------------------------------------
-
-    /// Lookahead: is the current block item a nested rule (`{`) or a declaration (`;`/`}`)?
-    /// Scans to first unquoted, non-paren-nested `{`, `}`, or `;`.
-    /// Does NOT use `:` — pseudo-classes like `a:hover {}` contain `:` but are rules.
-    fn block_item_is_rule(&self) -> bool {
-        let mut i = self.pos;
-        let mut escaped = false;
-        let mut quote: u8 = 0;
-        let mut paren_depth: u32 = 0;
-        let len = self.bytes.len();
-
-        while i < len {
-            let b = self.bytes[i];
-
-            if escaped {
-                escaped = false;
-                if b < 0x80 {
-                    i += 1;
-                } else if b < 0xE0 {
-                    i += 2;
-                } else if b < 0xF0 {
-                    i += 3;
-                } else {
-                    i += 4;
+        // Unquoted: consume tokens until `]` or whitespace.
+        let start = self.scanner.current_start();
+        loop {
+            match self.scanner.peek().kind {
+                TokenKind::RBracket | TokenKind::Whitespace | TokenKind::Eof => break,
+                _ => {
+                    self.scanner.bump();
                 }
-                continue;
-            }
-
-            if b == b'\\' {
-                escaped = true;
-                i += 1;
-                continue;
-            }
-
-            if b == quote {
-                quote = 0;
-                i += 1;
-                continue;
-            }
-
-            if quote == 0 && (b == b'"' || b == b'\'') {
-                quote = b;
-                i += 1;
-                continue;
-            }
-
-            if quote == 0 {
-                match b {
-                    b'(' => paren_depth += 1,
-                    b')' => paren_depth = paren_depth.saturating_sub(1),
-                    b'{' if paren_depth == 0 => return true,
-                    b';' | b'}' if paren_depth == 0 => return false,
-                    _ => {}
-                }
-            }
-
-            if b < 0x80 {
-                i += 1;
-            } else if b < 0xE0 {
-                i += 2;
-            } else if b < 0xF0 {
-                i += 3;
-            } else {
-                i += 4;
             }
         }
+        let end = self.scanner.prev_end;
 
-        false
+        if start == end {
+            self.recover(
+                DiagnosticKind::CssExpectedToken {
+                    token: "]".into(),
+                },
+                self.scanner.span_from(start),
+            );
+            return None;
+        }
+
+        Some(Span::new(start, end))
     }
 
     // -- nth patterns -------------------------------------------------------
 
     fn try_parse_nth(&mut self) -> Option<Span> {
-        let start = self.pos;
+        let save = self.scanner.save();
+        let start = self.scanner.current_start();
 
-        if self.eat_str("even") {
-            if self.is_nth_terminator() {
-                return Some(self.span_from(start));
-            }
-            self.pos = start;
-            return None;
-        }
-        if self.eat_str("odd") {
-            if self.is_nth_terminator() {
-                return Some(self.span_from(start));
-            }
-            self.pos = start;
-            return None;
-        }
-
-        if self.matches(b'+') || self.matches(b'-') {
-            self.pos += 1;
-        }
-
-        self.eat_digits();
-
-        if self.eat(b'n') {
-            self.skip_whitespace();
-            if self.matches(b'+') || self.matches(b'-') {
-                self.pos += 1;
-                self.skip_whitespace();
-                self.eat_digits();
+        // "even" or "odd"
+        if self.scanner.at(TokenKind::Ident) {
+            let text = self.scanner.current_raw();
+            if text == "even" || text == "odd" {
+                self.scanner.bump();
+                if self.is_nth_terminator() {
+                    return Some(self.scanner.span_from(start));
+                }
+                self.scanner.restore(save);
+                return None;
             }
         }
 
-        if self.pos == start {
+        let mut has_n = false;
+
+        // Optional leading sign (as a Delim token)
+        if self.scanner.at_delim(b'+') || self.scanner.at_delim(b'-') {
+            self.scanner.bump();
+        }
+
+        if self.scanner.at(TokenKind::Number) {
+            self.scanner.bump();
+            // Check if `n` follows immediately (the tokenizer may have
+            // kept them separate when there is whitespace).
+            if self.scanner.at(TokenKind::Ident) {
+                let t = self.scanner.current_raw();
+                if t == "n" || t == "N" || t == "-n" || t == "-N" {
+                    has_n = true;
+                    self.scanner.bump();
+                }
+            }
+        } else if self.scanner.at(TokenKind::Dimension) {
+            let text = self.scanner.current_raw();
+            if text.contains('n') || text.contains('N') {
+                has_n = true;
+            }
+            self.scanner.bump();
+        } else if self.scanner.at(TokenKind::Ident) {
+            let text = self.scanner.current_raw();
+            if text.contains('n') || text.contains('N') {
+                has_n = true;
+                self.scanner.bump();
+            }
+        }
+
+        // Nothing consumed
+        if self.scanner.current_start() == start {
             return None;
         }
 
-        let saved = self.pos;
-        self.skip_whitespace();
-        if self.eat_str("of")
-            && self.pos < self.bytes.len()
-            && is_css_ws(self.bytes[self.pos])
-        {
-            // Consume the whitespace after "of" so the Nth span
+        // If we have 'n', optionally consume + B
+        if has_n {
+            let before_b = self.scanner.save();
+            self.scanner.skip_whitespace();
+
+            // Signed number as single token: "+1", "-1"
+            if self.scanner.at(TokenKind::Number) {
+                let text = self.scanner.current_raw();
+                if text.starts_with('+') || text.starts_with('-') {
+                    self.scanner.bump();
+                } else {
+                    self.scanner.restore(before_b);
+                }
+            }
+            // Or sign + number as separate tokens
+            else if self.scanner.at_delim(b'+') || self.scanner.at_delim(b'-') {
+                self.scanner.bump();
+                self.scanner.skip_whitespace();
+                if self.scanner.at(TokenKind::Number) {
+                    self.scanner.bump();
+                }
+            } else {
+                self.scanner.restore(before_b);
+            }
+        }
+
+        // Check for "of" keyword
+        let saved = self.scanner.save();
+        self.scanner.skip_whitespace();
+        if self.scanner.at(TokenKind::Ident) && self.scanner.current_raw() == "of" {
+            self.scanner.bump();
+            // Consume one whitespace token after "of" so the Nth span
             // covers "2n+1 of " — the selector after it is separate.
-            self.pos += 1;
-            return Some(self.span_from(start));
+            if self.scanner.at(TokenKind::Whitespace) {
+                self.scanner.bump();
+                return Some(self.scanner.span_from(start));
+            }
         }
-        self.pos = saved;
+        self.scanner.restore(saved);
 
         if self.is_nth_terminator() {
-            return Some(self.span_from(start));
+            return Some(self.scanner.span_from(start));
         }
 
-        self.pos = start;
+        self.scanner.restore(save);
         None
     }
 
     #[inline(always)]
     fn is_nth_terminator(&self) -> bool {
-        match self.peek() {
-            None | Some(b')' | b',') => true,
-            Some(b) => is_css_ws(b),
-        }
-    }
-
-    #[inline]
-    fn eat_digits(&mut self) {
-        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_digit() {
-            self.pos += 1;
-        }
+        matches!(
+            self.scanner.peek().kind,
+            TokenKind::RParen | TokenKind::Comma | TokenKind::Whitespace | TokenKind::Eof
+        )
     }
 
     // -- percentage ---------------------------------------------------------
 
     fn try_parse_percentage(&mut self) -> Option<Span> {
-        let start = self.pos;
-        self.eat_digits();
-        if self.pos > start && self.eat(b'.') {
-            self.eat_digits();
+        if self.scanner.at(TokenKind::Percentage) {
+            return Some(self.scanner.bump().span);
         }
-        if self.pos > start && self.eat(b'%') {
-            return Some(self.span_from(start));
-        }
-        self.pos = start;
         None
     }
 
     // -- combinator ---------------------------------------------------------
 
     fn try_parse_combinator(&mut self) -> Option<Combinator> {
-        let start = self.pos;
-        self.skip_whitespace();
+        let had_ws_start = self.scanner.current_start();
+        let had_ws = self.scanner.eat(TokenKind::Whitespace);
 
-        let index = self.pos;
-
-        if self.eat2(b'|', b'|') {
+        // ||
+        if self.scanner.at_delim(b'|') && self.scanner.peek_at(1).kind == TokenKind::Delim(b'|')
+        {
+            let comb_start = self.scanner.current_start();
+            self.scanner.bump();
+            self.scanner.bump();
             return Some(Combinator {
-                span: Span::new(index as u32, self.pos as u32),
+                span: self.scanner.span_from(comb_start),
                 kind: CombinatorKind::Column,
             });
         }
-        if let Some(&b) = self.bytes.get(self.pos) {
-            let kind = match b {
-                b'>' => Some(CombinatorKind::Child),
-                b'+' => Some(CombinatorKind::NextSibling),
-                b'~' => Some(CombinatorKind::SubsequentSibling),
-                _ => None,
-            };
-            if let Some(kind) = kind {
-                self.pos += 1;
-                return Some(Combinator {
-                    span: Span::new(index as u32, self.pos as u32),
-                    kind,
-                });
-            }
+
+        // > + ~
+        let kind = match self.scanner.peek().kind {
+            TokenKind::Delim(b'>') => Some(CombinatorKind::Child),
+            TokenKind::Delim(b'+') => Some(CombinatorKind::NextSibling),
+            TokenKind::Delim(b'~') => Some(CombinatorKind::SubsequentSibling),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let comb_start = self.scanner.current_start();
+            self.scanner.bump();
+            return Some(Combinator {
+                span: self.scanner.span_from(comb_start),
+                kind,
+            });
         }
 
-        if self.pos != start {
+        // Descendant (whitespace-only) combinator
+        if had_ws {
             return Some(Combinator {
-                span: Span::new(start as u32, self.pos as u32),
+                span: Span::new(had_ws_start, self.scanner.current_start()),
                 kind: CombinatorKind::Descendant,
             });
         }
@@ -756,15 +324,64 @@ impl<'src> Parser<'src> {
         None
     }
 
+    // -- attribute selector helpers -----------------------------------------
+
+    /// Parse a type selector: `ident` or `ident|ident` (namespace).
+    fn parse_type_selector(&mut self, start: u32) -> Option<SimpleSelector> {
+        let ident_start = self.scanner.current_start();
+        self.parse_ident()?;
+        let mut ident_end = self.scanner.prev_end;
+        if self.scanner.eat_delim(b'|') {
+            self.parse_ident()?;
+            ident_end = self.scanner.prev_end;
+        }
+        Some(SimpleSelector::Type {
+            span: self.scanner.span_from(start),
+            name: CompactString::new(
+                self.scanner.source_text(Span::new(ident_start, ident_end)),
+            ),
+        })
+    }
+
+    fn try_parse_attr_matcher(&mut self) -> Option<Span> {
+        let start = self.scanner.current_start();
+
+        match self.scanner.peek().kind {
+            TokenKind::Delim(b'~' | b'^' | b'$' | b'*' | b'|') => {
+                let save = self.scanner.save();
+                self.scanner.bump();
+                if self.scanner.eat_delim(b'=') {
+                    return Some(self.scanner.span_from(start));
+                }
+                self.scanner.restore(save);
+                None
+            }
+            TokenKind::Delim(b'=') => {
+                self.scanner.bump();
+                Some(self.scanner.span_from(start))
+            }
+            _ => None,
+        }
+    }
+
+    fn try_parse_attr_flags(&mut self) -> Option<Span> {
+        if self.scanner.at(TokenKind::Ident) {
+            let tok = self.scanner.bump();
+            Some(tok.span)
+        } else {
+            None
+        }
+    }
+
     // =======================================================================
-    // Parsing methods
+    // Main parsing methods
     // =======================================================================
 
     fn parse_stylesheet(&mut self) -> StyleSheet {
-        let start = self.pos;
+        let start = self.scanner.current_start();
         let children = self.parse_stylesheet_body();
         StyleSheet {
-            span: self.span_from(start),
+            span: self.scanner.span_from(start),
             children,
         }
     }
@@ -775,28 +392,28 @@ impl<'src> Parser<'src> {
         loop {
             self.skip_whitespace_and_collect_comments(&mut children, StyleSheetChild::Comment);
 
-            if self.at_end() {
+            if self.scanner.at_end() {
                 break;
             }
 
-            let start = self.pos;
-            if self.matches(b'@') {
+            let start = self.scanner.current_start();
+            if self.scanner.at(TokenKind::AtKeyword) {
                 if let Some(at) = self.parse_at_rule() {
                     children.push(StyleSheetChild::Rule(Rule::AtRule(at)));
                 } else {
                     // Ensure forward progress after failed parse
-                    if self.pos == start {
-                        self.advance_char();
+                    if self.scanner.current_start() == start {
+                        self.scanner.bump();
                     }
-                    children.push(StyleSheetChild::Error(self.span_from(start)));
+                    children.push(StyleSheetChild::Error(self.scanner.span_from(start)));
                 }
             } else if let Some(rule) = self.parse_style_rule() {
                 children.push(StyleSheetChild::Rule(Rule::Style(Box::new(rule))));
             } else {
-                if self.pos == start {
-                    self.advance_char();
+                if self.scanner.current_start() == start {
+                    self.scanner.bump();
                 }
-                children.push(StyleSheetChild::Error(self.span_from(start)));
+                children.push(StyleSheetChild::Error(self.scanner.span_from(start)));
             }
         }
 
@@ -804,34 +421,34 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_at_rule(&mut self) -> Option<AtRule> {
-        let start = self.pos;
-        self.pos += 1; // consume '@'
+        let start = self.scanner.current_start();
 
-        let (_, name) = self.parse_ident_with_name().or_else(|| {
-            self.skip_to_semicolon_or_block_end();
-            None
-        })?;
+        // Consume the AtKeyword token and extract name (skip leading '@').
+        let tok = self.scanner.bump();
+        let name = CompactString::new(self.scanner.text_after(tok.span, 1));
+
+        // Skip whitespace before prelude
+        self.scanner.skip_whitespace();
 
         let prelude = self.read_value();
 
-        let block = if self.matches(b'{') {
+        let block = if self.scanner.at(TokenKind::LBrace) {
             Some(self.parse_block())
-        } else if !self.eat(b';') {
-            // Missing semicolon — recover
+        } else if !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: ";".into(),
                 },
-                self.span_from(start),
+                self.scanner.span_from(start),
             );
-            self.skip_to_semicolon_or_block_end();
+            self.scanner.skip_to_semicolon_or_block_end();
             None
         } else {
             None
         };
 
         Some(AtRule {
-            span: self.span_from(start),
+            span: self.scanner.span_from(start),
             name,
             prelude,
             prelude_override: None,
@@ -841,25 +458,24 @@ impl<'src> Parser<'src> {
 
     fn parse_style_rule(&mut self) -> Option<StyleRule> {
         let id = self.alloc_id();
-        let start = self.pos;
+        let start = self.scanner.current_start();
 
         let prelude = match self.parse_selector_list(false) {
             Some(sel) => sel,
             None => {
-                // Selector failed — skip entire rule
-                self.skip_rule();
+                self.scanner.skip_rule();
                 return None;
             }
         };
 
-        if !self.matches(b'{') {
+        if !self.scanner.at(TokenKind::LBrace) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: "{".into(),
                 },
-                self.span_from(start),
+                self.scanner.span_from(start),
             );
-            self.skip_rule();
+            self.scanner.skip_rule();
             return None;
         }
 
@@ -867,7 +483,7 @@ impl<'src> Parser<'src> {
 
         Some(StyleRule {
             id,
-            span: self.span_from(start),
+            span: self.scanner.span_from(start),
             prelude,
             block,
         })
@@ -878,14 +494,14 @@ impl<'src> Parser<'src> {
     fn parse_selector_list(&mut self, inside_pseudo: bool) -> Option<SelectorList> {
         let mut children = SmallVec::new();
 
-        self.skip_whitespace_and_comments();
-        let start = self.pos;
+        self.scanner.skip_whitespace_and_comments();
+        let start = self.scanner.current_start();
 
         loop {
-            if self.at_end() {
+            if self.scanner.at_end() {
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
-                    self.span_from(start),
+                    self.scanner.span_from(start),
                 );
                 return None;
             }
@@ -894,247 +510,235 @@ impl<'src> Parser<'src> {
                 Some(sel) => children.push(sel),
                 None => return None,
             }
-            let end = self.pos;
+            let end = self.scanner.prev_end;
 
-            self.skip_whitespace_and_comments();
+            self.scanner.skip_whitespace_and_comments();
 
-            let terminator = if inside_pseudo { b')' } else { b'{' };
-            if self.matches(terminator) {
+            let terminator = if inside_pseudo {
+                TokenKind::RParen
+            } else {
+                TokenKind::LBrace
+            };
+            if self.scanner.at(terminator) {
                 return Some(SelectorList {
-                    span: Span::new(start as u32, end as u32),
+                    span: Span::new(start, end),
                     children,
                 });
             }
 
-            if !self.eat(b',') {
+            if !self.scanner.eat(TokenKind::Comma) {
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
-                    self.span_from(start),
+                    self.scanner.span_from(start),
                 );
                 return None;
             }
-            self.skip_whitespace_and_comments();
+            self.scanner.skip_whitespace_and_comments();
         }
     }
 
     fn parse_complex_selector(&mut self, inside_pseudo: bool) -> Option<ComplexSelector> {
         let id = self.alloc_id();
-        let list_start = self.pos;
+        let list_start = self.scanner.current_start();
         let mut children: RelativeSelectorVec = SmallVec::new();
 
         let mut rel = self.new_relative_selector(None);
 
         loop {
-            if self.at_end() {
+            if self.scanner.at_end() {
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
-                    self.span_from(list_start),
+                    self.scanner.span_from(list_start),
                 );
                 return None;
             }
 
-            let start = self.pos;
+            let start = self.scanner.current_start();
 
-            if self.eat(b'&') {
-                rel.selectors
-                    .push(SimpleSelector::Nesting(self.span_from(start)));
-            } else if self.eat(b'*') {
-                let mut name_end = self.pos;
-                if self.eat(b'|') {
-                    match self.parse_ident() {
-                        Some(ident) => name_end = ident.end as usize,
+            match self.scanner.peek().kind {
+                // &
+                TokenKind::Delim(b'&') => {
+                    let tok = self.scanner.bump();
+                    rel.selectors
+                        .push(SimpleSelector::Nesting(tok.span));
+                }
+                // * (universal / namespace)
+                TokenKind::Delim(b'*') => {
+                    self.scanner.bump();
+                    let mut name_end = self.scanner.prev_end;
+                    if self.scanner.eat_delim(b'|') {
+                        name_end = self.parse_ident()?.end;
+                    }
+                    let name_span = Span::new(start, name_end);
+                    rel.selectors.push(SimpleSelector::Type {
+                        span: self.scanner.span_from(start),
+                        name: CompactString::new(self.scanner.source_text(name_span)),
+                    });
+                }
+                // # → id selector (via Hash token)
+                TokenKind::Hash => {
+                    let tok = self.scanner.bump();
+                    rel.selectors.push(SimpleSelector::Id {
+                        span: tok.span,
+                        name: CompactString::new(self.scanner.text_after(tok.span, 1)),
+                    });
+                }
+                // . → class selector
+                TokenKind::Delim(b'.') => {
+                    self.scanner.bump();
+                    let ident = self.parse_ident()?;
+                    rel.selectors.push(SimpleSelector::Class {
+                        span: self.scanner.span_from(start),
+                        name: CompactString::new(self.scanner.source_text(ident)),
+                    });
+                }
+                // : or :: → pseudo-class or pseudo-element
+                TokenKind::Colon => {
+                    self.scanner.bump();
+                    // Check for ::
+                    let is_element = self.scanner.eat(TokenKind::Colon);
+
+                    let (_, name) = self.parse_ident_with_name()?;
+
+                    let args = if self.scanner.eat(TokenKind::LParen) {
+                        let sel_list = self.parse_selector_list(true)?;
+                        if !self.scanner.eat(TokenKind::RParen) {
+                            self.recover(
+                                DiagnosticKind::CssExpectedToken {
+                                    token: ")".into(),
+                                },
+                                self.scanner.span_from(start),
+                            );
+                            return None;
+                        }
+                        Some(Box::new(sel_list))
+                    } else {
+                        None
+                    };
+
+                    let span = self.scanner.span_from(start);
+
+                    if is_element {
+                        rel.selectors.push(SimpleSelector::PseudoElement(
+                            PseudoElementSelector { span, name, args },
+                        ));
+                    } else if name.as_str() == "global" {
+                        rel.selectors.push(SimpleSelector::Global { span, args });
+                    } else {
+                        rel.selectors.push(SimpleSelector::PseudoClass(
+                            PseudoClassSelector { span, name, args },
+                        ));
+                    }
+                }
+                // [ → attribute selector
+                TokenKind::LBracket => {
+                    self.scanner.bump();
+                    match self.parse_attribute_selector_inner(start) {
+                        Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),
                         None => return None,
                     }
                 }
-                let full_span = self.span_from(start);
-                rel.selectors.push(SimpleSelector::Type {
-                    span: full_span,
-                    name: self.compact_str(start, name_end),
-                });
-            } else if self.eat(b'#') {
-                let ident = self.parse_ident()?;
-                rel.selectors.push(SimpleSelector::Id {
-                    span: self.span_from(start),
-                    name: self.compact_str(ident.start as usize, ident.end as usize),
-                });
-            } else if self.eat(b'.') {
-                let ident = self.parse_ident()?;
-                rel.selectors.push(SimpleSelector::Class {
-                    span: self.span_from(start),
-                    name: self.compact_str(ident.start as usize, ident.end as usize),
-                });
-            } else if self.eat2(b':', b':') {
-                let (_, name) = self.parse_ident_with_name()?;
-                let args = if self.eat(b'(') {
-                    let sel_list = self.parse_selector_list(true)?;
-                    if !self.eat(b')') {
-                        self.recover(
-                            DiagnosticKind::CssExpectedToken {
-                                token: ")".into(),
-                            },
-                            self.span_from(start),
-                        );
-                        return None;
+                // Other selectors depending on context
+                _ => {
+                    if inside_pseudo {
+                        if let Some(nth) = self.try_parse_nth() {
+                            rel.selectors.push(SimpleSelector::Nth(nth));
+                        } else if let Some(pct) = self.try_parse_percentage() {
+                            rel.selectors.push(SimpleSelector::Percentage(pct));
+                        } else if !self.scanner.is_combinator_start() {
+                            rel.selectors.push(self.parse_type_selector(start)?);
+                        }
+                    } else if let Some(pct) = self.try_parse_percentage() {
+                        rel.selectors.push(SimpleSelector::Percentage(pct));
+                    } else if !self.scanner.is_combinator_start() {
+                        rel.selectors.push(self.parse_type_selector(start)?);
                     }
-                    Some(Box::new(sel_list))
-                } else {
-                    None
-                };
-                rel.selectors
-                    .push(SimpleSelector::PseudoElement(PseudoElementSelector {
-                        span: self.span_from(start),
-                        name,
-                        args,
-                    }));
-            } else if self.eat(b':') {
-                let (_, name) = self.parse_ident_with_name()?;
-
-                let args = if self.eat(b'(') {
-                    let sel_list = self.parse_selector_list(true)?;
-                    if !self.eat(b')') {
-                        self.recover(
-                            DiagnosticKind::CssExpectedToken {
-                                token: ")".into(),
-                            },
-                            self.span_from(start),
-                        );
-                        return None;
-                    }
-                    Some(Box::new(sel_list))
-                } else {
-                    None
-                };
-
-                if name.as_str() == "global" {
-                    rel.selectors.push(SimpleSelector::Global {
-                        span: self.span_from(start),
-                        args,
-                    });
-                } else {
-                    rel.selectors
-                        .push(SimpleSelector::PseudoClass(PseudoClassSelector {
-                            span: self.span_from(start),
-                            name,
-                            args,
-                        }));
                 }
-            } else if self.eat(b'[') {
-                match self.parse_attribute_selector_inner(start) {
-                    Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),
-                    None => return None,
-                }
-            } else if inside_pseudo {
-                if let Some(nth) = self.try_parse_nth() {
-                    rel.selectors.push(SimpleSelector::Nth(nth));
-                } else if let Some(pct) = self.try_parse_percentage() {
-                    rel.selectors.push(SimpleSelector::Percentage(pct));
-                } else if !self.is_combinator_start() {
-                    let ident_start = self.pos;
-                    self.parse_ident()?;
-                    let mut ident_end = self.pos;
-                    if self.eat(b'|') {
-                        self.parse_ident()?;
-                        ident_end = self.pos;
-                    }
-                    rel.selectors.push(SimpleSelector::Type {
-                        span: self.span_from(start),
-                        name: self.compact_str(ident_start, ident_end),
-                    });
-                }
-            } else if let Some(pct) = self.try_parse_percentage() {
-                rel.selectors.push(SimpleSelector::Percentage(pct));
-            } else if !self.is_combinator_start() {
-                let ident_start = self.pos;
-                self.parse_ident()?;
-                let mut ident_end = self.pos;
-                if self.eat(b'|') {
-                    self.parse_ident()?;
-                    ident_end = self.pos;
-                }
-                rel.selectors.push(SimpleSelector::Type {
-                    span: self.span_from(start),
-                    name: self.compact_str(ident_start, ident_end),
-                });
             }
 
             // Check for selector list terminator
-            let index = self.pos;
-            self.skip_whitespace_and_comments();
+            let index_start = self.scanner.current_start();
+            let index_save = self.scanner.save();
 
-            let terminator = if inside_pseudo { b')' } else { b'{' };
-            if self.matches(b',') || self.matches(terminator) {
-                self.pos = index;
-                rel.span.end = index as u32;
+            self.scanner.skip_whitespace_and_comments();
+
+            let terminator = if inside_pseudo {
+                TokenKind::RParen
+            } else {
+                TokenKind::LBrace
+            };
+            if self.scanner.at(TokenKind::Comma) || self.scanner.at(terminator) {
+                self.scanner.restore(index_save);
+                rel.span.end = index_start;
                 children.push(rel);
 
                 return Some(ComplexSelector {
                     id,
-                    span: Span::new(list_start as u32, index as u32),
+                    span: Span::new(list_start, index_start),
                     children,
                 });
             }
 
             // Try combinator
-            self.pos = index;
+            self.scanner.restore(index_save);
             if let Some(combinator) = self.try_parse_combinator() {
                 if !rel.selectors.is_empty() {
-                    rel.span.end = index as u32;
+                    rel.span.end = index_start;
                     children.push(rel);
                 }
 
                 rel = self.new_relative_selector(Some(combinator));
 
-                self.skip_whitespace();
+                self.scanner.skip_whitespace();
 
-                if self.matches(b',') || self.matches(terminator) {
+                if self.scanner.at(TokenKind::Comma) || self.scanner.at(terminator) {
                     self.recover(
                         DiagnosticKind::CssSelectorInvalid,
-                        self.span_from(list_start),
+                        self.scanner.span_from(list_start),
                     );
                     return None;
                 }
-            } else if self.pos == start {
-                // Nothing matched and pos didn't advance — bail to prevent infinite loop
+            } else if self.scanner.current_start() == start {
+                // Nothing matched and pos didn't advance
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
-                    self.span_from(list_start),
+                    self.scanner.span_from(list_start),
                 );
                 return None;
             }
         }
     }
 
-    /// Parse attribute selector contents after `[` has been consumed.
-    fn parse_attribute_selector_inner(&mut self, start: usize) -> Option<AttributeSelector> {
-        self.skip_whitespace();
+    fn parse_attribute_selector_inner(&mut self, start: u32) -> Option<AttributeSelector> {
+        self.scanner.skip_whitespace();
         let (_, attr_name) = self.parse_ident_with_name()?;
-        self.skip_whitespace();
+        self.scanner.skip_whitespace();
 
         let matcher = self.try_parse_attr_matcher();
 
         let value = if matcher.is_some() {
-            self.skip_whitespace();
+            self.scanner.skip_whitespace();
             self.read_attribute_value()
         } else {
             None
         };
 
-        self.skip_whitespace();
+        self.scanner.skip_whitespace();
         let flags = self.try_parse_attr_flags();
-        self.skip_whitespace();
+        self.scanner.skip_whitespace();
 
-        if !self.eat(b']') {
+        if !self.scanner.eat(TokenKind::RBracket) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: "]".into(),
                 },
-                self.span_from(start),
+                self.scanner.span_from(start),
             );
             return None;
         }
 
         Some(AttributeSelector {
-            span: self.span_from(start),
+            span: self.scanner.span_from(start),
             name: attr_name,
             matcher,
             value,
@@ -1146,7 +750,7 @@ impl<'src> Parser<'src> {
         let id = self.alloc_id();
         let start = combinator
             .as_ref()
-            .map_or(self.pos as u32, |c| c.span.start);
+            .map_or(self.scanner.current_start(), |c| c.span.start);
         RelativeSelector {
             id,
             span: Span::new(start, 0),
@@ -1155,62 +759,20 @@ impl<'src> Parser<'src> {
         }
     }
 
-    #[inline(always)]
-    fn is_combinator_start(&self) -> bool {
-        match self.peek() {
-            Some(b'+' | b'~' | b'>') => true,
-            Some(b'|') => self.peek_at(1) == Some(b'|'),
-            _ => false,
-        }
-    }
-
-    fn try_parse_attr_matcher(&mut self) -> Option<Span> {
-        let start = self.pos;
-
-        match self.peek() {
-            Some(b'~' | b'^' | b'$' | b'*' | b'|') => {
-                self.pos += 1;
-                if self.eat(b'=') {
-                    return Some(self.span_from(start));
-                }
-                self.pos = start;
-            }
-            Some(b'=') => {
-                self.pos += 1;
-                return Some(self.span_from(start));
-            }
-            _ => {}
-        }
-
-        None
-    }
-
-    fn try_parse_attr_flags(&mut self) -> Option<Span> {
-        let start = self.pos;
-        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_alphabetic() {
-            self.pos += 1;
-        }
-        if self.pos > start {
-            Some(self.span_from(start))
-        } else {
-            None
-        }
-    }
-
     // -- blocks & declarations ----------------------------------------------
 
     fn parse_block(&mut self) -> Block {
-        let start = self.pos;
+        let start = self.scanner.current_start();
 
-        if !self.eat(b'{') {
+        if !self.scanner.eat(TokenKind::LBrace) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: "{".into(),
                 },
-                self.span_at(),
+                self.scanner.span_at(),
             );
             return Block {
-                span: self.span_from(start),
+                span: self.scanner.span_from(start),
                 children: Vec::new(),
             };
         }
@@ -1220,11 +782,11 @@ impl<'src> Parser<'src> {
         loop {
             self.skip_whitespace_and_collect_comments(&mut children, BlockChild::Comment);
 
-            if self.eat(b'}') {
+            if self.scanner.eat(TokenKind::RBrace) {
                 break;
             }
-            if self.at_end() {
-                self.recover(DiagnosticKind::CssUnclosedBlock, self.span_from(start));
+            if self.scanner.at_end() {
+                self.recover(DiagnosticKind::CssUnclosedBlock, self.scanner.span_from(start));
                 break;
             }
 
@@ -1232,113 +794,120 @@ impl<'src> Parser<'src> {
         }
 
         Block {
-            span: self.span_from(start),
+            span: self.scanner.span_from(start),
             children,
         }
     }
 
     fn parse_block_item(&mut self, children: &mut Vec<BlockChild>) {
-        let start = self.pos;
+        let start = self.scanner.current_start();
 
-        if self.matches(b'@') {
+        if self.scanner.at(TokenKind::AtKeyword) {
             if let Some(at) = self.parse_at_rule() {
                 children.push(BlockChild::Rule(Rule::AtRule(at)));
             } else {
-                if self.pos == start {
-                    self.advance_char();
+                if self.scanner.current_start() == start {
+                    self.scanner.bump();
                 }
-                children.push(BlockChild::Error(self.span_from(start)));
+                children.push(BlockChild::Error(self.scanner.span_from(start)));
             }
             return;
         }
 
-        if self.block_item_is_rule() {
+        if self.scanner.block_item_is_rule() {
             if let Some(rule) = self.parse_style_rule() {
                 children.push(BlockChild::Rule(Rule::Style(Box::new(rule))));
             } else {
-                if self.pos == start {
-                    self.advance_char();
+                if self.scanner.current_start() == start {
+                    self.scanner.bump();
                 }
-                children.push(BlockChild::Error(self.span_from(start)));
+                children.push(BlockChild::Error(self.scanner.span_from(start)));
             }
         } else {
             match self.parse_declaration() {
                 Some(decl) => children.push(BlockChild::Declaration(decl)),
                 None => {
-                    if self.pos == start {
-                        self.advance_char();
+                    if self.scanner.current_start() == start {
+                        self.scanner.bump();
                     }
-                    children.push(BlockChild::Error(self.span_from(start)));
+                    children.push(BlockChild::Error(self.scanner.span_from(start)));
                 }
             }
         }
     }
 
     fn parse_declaration(&mut self) -> Option<Declaration> {
-        let start = self.pos;
+        let start = self.scanner.current_start();
 
-        // CSS property names are ASCII-only; non-ASCII bytes (≥0x80) never
-        // match the break conditions so single-byte stepping is safe here.
-        let prop_start = self.pos;
-        while self.pos < self.bytes.len() {
-            let b = self.bytes[self.pos];
-            if is_css_ws(b) || b == b':' || b == b';' || b == b'{' || b == b'}' {
-                break;
+        // Property name: scan tokens until Whitespace, Colon, Semicolon, or braces.
+        // Typically an Ident, but we accept any tokens for robustness.
+        let prop_start = self.scanner.current_start();
+        loop {
+            match self.scanner.peek().kind {
+                TokenKind::Whitespace
+                | TokenKind::Colon
+                | TokenKind::Semicolon
+                | TokenKind::LBrace
+                | TokenKind::RBrace
+                | TokenKind::Eof => break,
+                _ => {
+                    self.scanner.bump();
+                }
             }
-            self.pos += 1;
         }
-        let property = self.span_from(prop_start);
+        let property = Span::new(prop_start, self.scanner.prev_end);
 
         if property.start == property.end {
-            self.recover(DiagnosticKind::CssEmptyDeclaration, self.span_at());
-            self.skip_to_semicolon_or_block_end();
+            self.recover(DiagnosticKind::CssEmptyDeclaration, self.scanner.span_at());
+            self.scanner.skip_to_semicolon_or_block_end();
             return None;
         }
 
-        self.skip_whitespace();
+        self.scanner.skip_whitespace();
 
-        if !self.eat(b':') {
+        if !self.scanner.eat(TokenKind::Colon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: ":".into(),
                 },
-                self.span_from(start),
+                self.scanner.span_from(start),
             );
-            self.skip_to_semicolon_or_block_end();
+            self.scanner.skip_to_semicolon_or_block_end();
             return None;
         }
 
-        self.skip_whitespace();
+        self.scanner.skip_whitespace();
 
         let value = self.read_value();
 
         if value.start == value.end {
-            let prop_text = property.source_text(self.src);
+            let prop_text = self.scanner.source_text(property);
             if !prop_text.starts_with("--") {
-                self.recover(DiagnosticKind::CssEmptyDeclaration, self.span_from(start));
-                self.skip_to_semicolon_or_block_end();
+                self.recover(
+                    DiagnosticKind::CssEmptyDeclaration,
+                    self.scanner.span_from(start),
+                );
+                self.scanner.skip_to_semicolon_or_block_end();
                 return None;
             }
         }
 
-        let end = self.pos;
+        let end = self.scanner.current_start();
 
         // Consume trailing semicolon if not at block end
-        if !self.matches(b'}')
-            && !self.eat(b';')
-        {
+        if !self.scanner.at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken {
                     token: ";".into(),
                 },
-                self.span_from(start),
+                self.scanner.span_from(start),
             );
-            self.skip_to_semicolon_or_block_end();
+            self.scanner.skip_to_semicolon_or_block_end();
             return None;
         }
 
         Some(Declaration {
-            span: Span::new(start as u32, end as u32),
+            span: Span::new(start, end),
             property,
             value,
             value_override: None,
