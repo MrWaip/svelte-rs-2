@@ -1,32 +1,38 @@
 use compact_str::CompactString;
 use svelte_css::{
-    Block, BlockChild, ComplexSelector, RelativeSelector, Rule, SimpleSelector, StyleSheet,
-    StyleSheetChild, VisitMut,
+    AtRule, Block, BlockChild, ComplexSelector, Declaration, RelativeSelector, Rule,
+    SimpleSelector, StyleSheet, StyleSheetChild, VisitMut,
 };
 use svelte_span::Span;
 
 /// Transform the stylesheet AST: scope selectors and serialize to CSS text.
 ///
 /// `hash_class` is the scoping class name (e.g. `"svelte-1a7i8ec"`).
+/// `keyframes` is the list of locally-scoped `@keyframes` names (collected by analyze).
 /// `source` is the original CSS source text (needed by the printer which
 /// resolves `Span`s back to source slices).
 pub fn transform_css(
     hash_class: &str,
+    keyframes: &[CompactString],
     mut stylesheet: StyleSheet,
     source: &str,
 ) -> String {
     let mut scoper = ScopeSelectors {
         hash_class: CompactString::new(hash_class),
+        keyframes,
+        source,
     };
     scoper.visit_stylesheet_mut(&mut stylesheet);
     svelte_css::Printer::print(&stylesheet, source)
 }
 
-struct ScopeSelectors {
+struct ScopeSelectors<'a> {
     hash_class: CompactString,
+    keyframes: &'a [CompactString],
+    source: &'a str,
 }
 
-impl VisitMut for ScopeSelectors {
+impl VisitMut for ScopeSelectors<'_> {
     fn visit_stylesheet_mut(&mut self, node: &mut StyleSheet) {
         let children = std::mem::take(&mut node.children);
         let mut new_children = Vec::with_capacity(children.len());
@@ -131,9 +137,86 @@ impl VisitMut for ScopeSelectors {
 
         node.selectors = new_selectors.into();
     }
+
+    fn visit_at_rule_mut(&mut self, node: &mut AtRule) {
+        if node.name == "keyframes" {
+            let prelude = node.prelude.source_text(self.source).trim();
+            if let Some(stripped) = prelude.strip_prefix("-global-") {
+                // `-global-` escape: strip prefix, leave name unscoped
+                node.prelude_override = Some(CompactString::new(stripped));
+            } else if self.keyframes.iter().any(|k| k.as_str() == prelude) {
+                // Local keyframe: prefix with component hash
+                node.prelude_override =
+                    Some(CompactString::new(&format!("{}-{}", self.hash_class, prelude)));
+            }
+            // Do NOT recurse into @keyframes body — keyframe selectors (from/to/%)
+            // are not scoped.
+            return;
+        }
+        svelte_css::visit::walk_at_rule_mut(self, node);
+    }
+
+    fn visit_declaration_mut(&mut self, node: &mut Declaration) {
+        if self.keyframes.is_empty() {
+            return;
+        }
+        let prop = node.property.source_text(self.source).trim();
+        let prop_lower = prop.to_ascii_lowercase();
+        let is_animation = prop_lower == "animation" || prop_lower == "animation-name";
+        if !is_animation {
+            return;
+        }
+        let value = node.value.source_text(self.source);
+        let rewritten = rewrite_animation_value(value, &self.hash_class, self.keyframes);
+        if let Some(rewritten) = rewritten {
+            node.value_override = Some(rewritten);
+        }
+    }
 }
 
-impl ScopeSelectors {
+/// Scan an `animation` or `animation-name` value token by token, replacing
+/// tokens that match a locally-scoped keyframe name with the hash-prefixed form.
+///
+/// Returns `Some(rewritten)` if any replacement was made, `None` otherwise.
+fn rewrite_animation_value(
+    value: &str,
+    hash_class: &str,
+    keyframes: &[CompactString],
+) -> Option<String> {
+    let mut result = String::with_capacity(value.len() + 32);
+    let mut changed = false;
+    let bytes = value.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        let b = bytes[i];
+        // Accumulate non-name characters (whitespace, commas, semicolons)
+        if b.is_ascii_whitespace() || b == b',' {
+            result.push(b as char);
+            i += 1;
+            continue;
+        }
+        // Accumulate a CSS name token
+        let start = i;
+        while i < len && !bytes[i].is_ascii_whitespace() && bytes[i] != b',' && bytes[i] != b';' {
+            i += 1;
+        }
+        let token = &value[start..i];
+        if keyframes.iter().any(|k| k.as_str() == token) {
+            result.push_str(hash_class);
+            result.push('-');
+            result.push_str(token);
+            changed = true;
+        } else {
+            result.push_str(token);
+        }
+    }
+
+    changed.then_some(result)
+}
+
+impl ScopeSelectors<'_> {
     fn scope_class(&self) -> SimpleSelector {
         SimpleSelector::Class {
             span: Span::new(0, 0),
@@ -229,7 +312,7 @@ mod tests {
     fn scope_type_selector() {
         let source = "p { color: red; }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(result.contains("p.svelte-abc123"), "got: {result}");
     }
 
@@ -237,7 +320,7 @@ mod tests {
     fn global_not_scoped() {
         let source = ":global(.foo) { color: red; }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(!result.contains("svelte-abc123"), "global should not be scoped, got: {result}");
         assert!(result.contains(".foo"), "got: {result}");
     }
@@ -246,7 +329,7 @@ mod tests {
     fn mixed_global_and_local() {
         let source = "p:global(.active) { font-weight: bold; }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(result.contains("p.svelte-abc123.active"), "got: {result}");
     }
 
@@ -254,7 +337,7 @@ mod tests {
     fn global_block_not_scoped() {
         let source = ":global { p { color: red; } }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(
             !result.contains("svelte-abc123"),
             "global block inner rules should not be scoped, got: {result}"
@@ -267,7 +350,7 @@ mod tests {
     fn global_block_multiple_inner_rules() {
         let source = ":global { .foo { color: red; } .bar { font-size: 16px; } }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(!result.contains("svelte-abc123"), "got: {result}");
         assert!(result.contains(".foo"), "got: {result}");
         assert!(result.contains(".bar"), "got: {result}");
@@ -278,7 +361,7 @@ mod tests {
     fn global_block_mixed_with_local() {
         let source = ":global { p { color: red; } }\ndiv { font-size: 16px; }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(
             !result.contains("p.svelte-abc123"),
             "p should not be scoped, got: {result}"
@@ -293,7 +376,7 @@ mod tests {
     fn global_block_in_media() {
         let source = "@media (min-width: 768px) { :global { p { color: red; } } }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(!result.contains("svelte-abc123"), "got: {result}");
         assert!(result.contains("p"), "got: {result}");
         assert!(!result.contains(":global"), "got: {result}");
@@ -303,7 +386,7 @@ mod tests {
     fn global_block_nested_in_style_rule() {
         let source = ".foo { :global { .bar { color: red; } } }";
         let (ss, _) = svelte_css::parse(source);
-        let result = transform_css("svelte-abc123", ss, source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
         assert!(
             result.contains(".foo.svelte-abc123"),
             ".foo should be scoped, got: {result}"
@@ -311,6 +394,80 @@ mod tests {
         assert!(
             !result.contains(".bar.svelte-abc123"),
             ".bar should not be scoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn scope_keyframes_basic() {
+        let source = "@keyframes bounce { from { opacity: 0; } to { opacity: 1; } }";
+        let keyframes = vec![CompactString::new("bounce")];
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &keyframes, ss, source);
+        assert!(
+            result.contains("@keyframes svelte-abc123-bounce"),
+            "keyframe name should be scoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn keyframes_global_escape() {
+        let source = "@keyframes -global-slide { from { opacity: 0; } to { opacity: 1; } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains("@keyframes slide"),
+            "-global- prefix should be stripped, got: {result}"
+        );
+        assert!(
+            !result.contains("-global-"),
+            "-global- should not appear in output, got: {result}"
+        );
+        assert!(
+            !result.contains("svelte-abc123-slide"),
+            "global keyframe should not be scoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn animation_value_rewritten() {
+        let source = ".foo { animation: bounce 2s ease; }";
+        let keyframes = vec![CompactString::new("bounce")];
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &keyframes, ss, source);
+        assert!(
+            result.contains("svelte-abc123-bounce 2s ease"),
+            "animation value should reference scoped keyframe, got: {result}"
+        );
+    }
+
+    #[test]
+    fn animation_name_rewritten() {
+        let source = ".foo { animation-name: bounce, other; }";
+        let keyframes = vec![CompactString::new("bounce")];
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &keyframes, ss, source);
+        assert!(
+            result.contains("svelte-abc123-bounce"),
+            "matching keyframe should be rewritten, got: {result}"
+        );
+        assert!(
+            result.contains(", other"),
+            "non-matching name should be preserved, got: {result}"
+        );
+    }
+
+    #[test]
+    fn keyframes_in_global_block_untouched() {
+        let source = ":global { @keyframes slide { from { opacity: 0; } to { opacity: 1; } } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", &[], ss, source);
+        assert!(
+            result.contains("@keyframes slide"),
+            "keyframes in :global block should stay unscoped, got: {result}"
+        );
+        assert!(
+            !result.contains("svelte-abc123-slide"),
+            "should not be scoped, got: {result}"
         );
     }
 }

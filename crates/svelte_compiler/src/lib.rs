@@ -51,7 +51,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let css_block = component.css.as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
-            let raw_css = svelte_transform_css::transform_css(&analysis.css.hash, ss, css_source);
+            let raw_css = svelte_transform_css::transform_css(&analysis.css.hash, &analysis.css.keyframes, ss, css_source);
             css_text = if inject_styles {
                 Some(svelte_transform_css::compact_css_for_injection(&raw_css))
             } else {

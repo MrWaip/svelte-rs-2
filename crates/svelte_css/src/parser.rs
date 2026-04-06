@@ -834,6 +834,7 @@ impl<'src> Parser<'src> {
             span: self.span_from(start),
             name,
             prelude,
+            prelude_override: None,
             block,
         })
     }
@@ -1340,6 +1341,7 @@ impl<'src> Parser<'src> {
             span: Span::new(start as u32, end as u32),
             property,
             value,
+            value_override: None,
         })
     }
 }

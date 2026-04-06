@@ -1,0 +1,17 @@
+@keyframes svelte-13q9pxc-bounce {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+@keyframes slide {
+		from { transform: translateX(-100%); }
+		to { transform: translateX(0); }
+	}
+
+p.svelte-13q9pxc {
+  animation: svelte-13q9pxc-bounce 2s ease;
+}
+
+div.svelte-13q9pxc {
+  animation-name: svelte-13q9pxc-bounce, slide;
+}
