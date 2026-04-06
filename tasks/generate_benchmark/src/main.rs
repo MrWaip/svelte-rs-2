@@ -8,7 +8,9 @@ fn main() {
 
     let mut out = String::with_capacity(n * 3000);
 
+    write_module_script(&mut out);
     write_script(&mut out);
+    write_style(&mut out);
     write_svelte_head(&mut out);
     write_special_elements(&mut out);
     write_snippets(&mut out);
@@ -29,7 +31,9 @@ fn main() {
 
     // Also generate single-chunk example for docs/example.js
     let mut example = String::with_capacity(8000);
+    write_module_script(&mut example);
     write_script(&mut example);
+    write_style(&mut example);
     write_svelte_head(&mut example);
     write_special_elements(&mut example);
     write_snippets(&mut example);
@@ -78,10 +82,26 @@ $effect(() => {
 
 "#;
 
+fn write_module_script(out: &mut String) {
+    out.push_str(
+        r#"<script module>
+    export const BENCHMARK_KIND = "compiler";
+    export const MODULE_SCALE = 3;
+
+    export function moduleLabel(name) {
+        return `${BENCHMARK_KIND}:${name}`;
+    }
+</script>
+
+"#,
+    );
+}
+
 fn write_script(out: &mut String) {
     out.push_str(
         r#"<script>
     import { onMount } from "svelte";
+    import { writable } from "svelte/store";
     import { fade, fly, slide } from "svelte/transition";
     import { flip } from "svelte/animate";
     import ChildComponent from "./Child.svelte";
@@ -104,8 +124,13 @@ fn write_script(out: &mut String) {
     let checked = $state(false);
     let group = $state([]);
     let volume = $state(0.5);
+    let selected = $state("opt-0");
     let inputEl;
     let componentRef;
+    let dynamicEl;
+
+    let metrics = writable([1, 2, 3]);
+    let labelStore = writable("ready");
 
     /** @type {Function | undefined} */
     let show;
@@ -116,6 +141,8 @@ fn write_script(out: &mut String) {
     let computed = $derived.by(() => {
         return items.length * multiplier + counter;
     });
+    let moduleSummary = $derived(moduleLabel(title) + ":" + MODULE_SCALE);
+    let storeSummary = $derived($metrics.length + ":" + $labelStore);
     let snapshot = $state.snapshot(rawData);
 
     $effect(() => {
@@ -134,6 +161,11 @@ fn write_script(out: &mut String) {
 
     export function formatTitle(prefix) {
         return prefix + ": " + title;
+    }
+
+    function addMetric() {
+        $metrics = [...$metrics, counter];
+        $labelStore = title;
     }
 
     function action(node, arg) {
@@ -171,6 +203,68 @@ fn write_svelte_head(out: &mut String) {
     );
 }
 
+fn write_style(out: &mut String) {
+    out.push_str(
+        r#"<style>
+    :global(body) {
+        margin: 0;
+        font-family: "IBM Plex Sans", sans-serif;
+        background: #f5f1e8;
+    }
+
+    :global(.benchmark-host) {
+        color: #3f2a18;
+    }
+
+    :global {
+        .benchmark-reset {
+            box-sizing: border-box;
+        }
+    }
+
+    @keyframes pulse {
+        0% { opacity: 0.4; transform: scale(0.98); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes -global-marquee {
+        from { transform: translateX(0); }
+        to { transform: translateX(12px); }
+    }
+
+    .chunk-shell {
+        padding: 16px;
+        margin: 12px 0;
+        border: 1px solid #d9c7ab;
+        background: linear-gradient(180deg, #fffdf9 0%, #f4ead9 100%);
+    }
+
+    .chunk-shell :is(.badge, .card, .summary) {
+        border-radius: 10px;
+    }
+
+    .chunk-shell.state .summary {
+        animation: pulse 180ms ease-out;
+    }
+
+    .summary span {
+        display: inline-block;
+        margin-right: 8px;
+    }
+
+    .item-less {
+        color: #7a4f2a;
+    }
+
+    [data-index] {
+        color: var(--custom, #5c4634);
+    }
+</style>
+
+"#,
+    );
+}
+
 fn write_special_elements(out: &mut String) {
     out.push_str(
         r#"<svelte:window onscroll={handleClick} />
@@ -197,6 +291,15 @@ fn write_snippets(out: &mut String) {
     </div>
 {/snippet}
 
+{#snippet metricSummary({ label, values = [counter], meta: { id = propsId } = {} })}
+    <section class="summary" data-id={id}>
+        <h4>{label}</h4>
+        {#each values as value, index}
+            <span>{index}: {value}</span>
+        {/each}
+    </section>
+{/snippet}
+
 "#,
     );
 }
@@ -204,9 +307,10 @@ fn write_snippets(out: &mut String) {
 fn write_chunk(out: &mut String, i: usize) {
     let _ = write!(
         out,
-        r#"<div>
+        r#"<div class="chunk-shell benchmark-reset benchmark-host" data-kind="chunk-{i}">
     Chunk {i}: Lorem {{state}} + {{state}} = Ipsum;
     <p>Props: title={{title}}, count={{count}}, doubled={{doubled}}, computed={{computed}}</p>
+    <p>Module: {{moduleSummary}} | Store: {{storeSummary}} | Label: {{$labelStore}}</p>
 
     {{@html "<b>raw html chunk {i}</b>"}}
     {{@debug counter, state}}
@@ -225,6 +329,7 @@ fn write_chunk(out: &mut String, i: usize) {
         onscroll={{handleClick}}
         onclickcapture={{handleClick}}
         onfocus={{getHandler()}}
+        bind:this={{dynamicEl}}
     >
         Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua.
@@ -256,7 +361,12 @@ fn write_chunk(out: &mut String, i: usize) {
     {{/key}}
 
     {{#each items as item, idx (item.id)}}
-        <p {{...rest}} data-index="chunk-{i}-{{idx}}" animate:flip>{{item.name}}</p>
+        {{@const itemLabel = `${{idx}}:${{item.name}}`}}
+        <p {{...rest}} data-index="chunk-{i}-{{idx}}" animate:flip>{{itemLabel}}</p>
+    {{/each}}
+
+    {{#each items}}
+        <span class="item-less">Repeated shell chunk {i}</span>
     {{/each}}
 
     {{#await promise}}
@@ -267,7 +377,16 @@ fn write_chunk(out: &mut String, i: usize) {
         <p>Error: {{error.message}}</p>
     {{/await}}
 
+    {{#await promise then quickValue}}
+        <p>Quick resolved: {{quickValue}}</p>
+    {{/await}}
+
     <input bind:value={{state}} />
+    <textarea bind:value={{state}} />
+    <select bind:value={{selected}}>
+        <option value="opt-0">Zero</option>
+        <option value="opt-1">One</option>
+    </select>
     <input type="checkbox" bind:checked={{checked}} />
     <input type="radio" bind:group={{group}} value="opt-{i}" />
     <div bind:this={{inputEl}} bind:clientWidth={{counter}} contenteditable bind:innerHTML={{state}}>editable</div>
@@ -280,11 +399,18 @@ fn write_chunk(out: &mut String, i: usize) {
         Dynamic element chunk {i}: {{title}}
     </svelte:element>
 
-    <ChildComponent bind:this={{componentRef}} title={{title}} onclick={{getHandler()}} />
+    <ChildComponent bind:this={{componentRef}} title={{title}} onclick={{getHandler()}}>
+        <strong>Inline child chunk {i}: {{title}}</strong>
+        <div slot="footer">Footer chunk {i}: {{counter}}</div>
+    </ChildComponent>
 
     {{@render badge("chunk-{i}", "secondary")}}
     {{@render card(title, "Content for chunk {i}")}}
+    {{@render metricSummary({{ label: title, values: [count, doubled, counter], meta: {{ id: propsId }} }})}}
     {{@render show?.()}}
+
+    <button onclick={{addMetric}}>Update store</button>
+    <p>Metric count: {{$metrics.length}}</p>
 
     <svelte:boundary onerror={{handleError}}>
         <p>Boundary chunk {i}: {{title}}</p>

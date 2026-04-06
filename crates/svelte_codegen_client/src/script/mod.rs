@@ -19,8 +19,8 @@ pub(super) const PROPS_IS_LAZY_INITIAL: u32 = 1 << 4;
 /// for preserving JSDoc/leading comments in the final output.
 pub(crate) use location::{compute_line_col, sanitize_location};
 use model::{
-    AsyncDerivedMode, ClassStateField, ClassStateInfo, FunctionInfo, PropKind, PropsGenInfo,
-    ScriptTransformer,
+    AsyncDerivedMode, ClassStateField, ClassStateInfo, FunctionInfo, IgnoreQuery, PropKind,
+    PropsGenInfo, ScriptTransformer,
 };
 pub use pipeline::{
     gen_script, transform_component_module_program, transform_component_module_script,

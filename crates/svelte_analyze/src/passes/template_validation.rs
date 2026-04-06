@@ -9,22 +9,22 @@
 
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
 use oxc_ast_visit::{walk, Visit};
-use svelte_component_semantics::SymbolFlags;
 use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
     KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
 };
+use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
-use crate::types::data::ExpressionKind;
+use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
-
+use crate::AnalysisData;
 
 const EVENT_MODIFIERS: &[&str] = &[
     "preventDefault",
@@ -125,9 +125,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         // const_tag_invalid_placement: {@const} must be a direct child of an allowed block.
-        // In our walker ctx.parent() is the block that pushed itself before walking the
-        // fragment containing this tag — equivalent to grand_parent in the reference compiler.
-        let is_valid_parent = ctx.parent().is_some_and(|p| {
+        // TemplateTopology preserves the same direct-parent relationship the walker stack exposed.
+        let is_valid_parent = ctx.data.parent(tag.id).is_some_and(|p| {
             matches!(
                 p.kind,
                 ParentKind::IfBlock
@@ -163,36 +162,52 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // Pre-compute all attribute-based flags and refs inside a block so that
         // the ctx.data borrow through `idx` is released before ctx.warnings_mut().
         // &Attribute results borrow `el`, not `ctx`, so they outlive the block.
-        let (has_slot, has_spread, accesskey_attr, tabindex_attr, has_autofocus, missing_attr_diag,
-             has_value_attr, slot_attr) =
-        {
-            let idx = ctx.data.element_flags.attr_index(el.id);
+        let (
+            has_slot,
+            has_spread,
+            accesskey_attr,
+            tabindex_attr,
+            has_autofocus,
+            missing_attr_diag,
+            has_value_attr,
+            slot_attr,
+        ) = {
             (
-                idx.is_some_and(|i| i.has("slot")),
-                ctx.data.element_flags.has_spread(el.id),
-                idx.and_then(|i| i.first(&el.attributes, "accesskey")),
-                idx.and_then(|i| i.first(&el.attributes, "tabindex")),
-                idx.is_some_and(|i| i.has("autofocus")),
-                if !ctx.data.element_flags.has_spread(el.id) {
-                    check_a11y_missing_attribute(el, idx, source)
+                ctx.data.has_attribute(el.id, "slot"),
+                ctx.data.has_spread(el.id),
+                ctx.data.attribute(el.id, &el.attributes, "accesskey"),
+                ctx.data.attribute(el.id, &el.attributes, "tabindex"),
+                ctx.data.has_attribute(el.id, "autofocus"),
+                if !ctx.data.has_spread(el.id) {
+                    check_a11y_missing_attribute(el, ctx.data, source)
                 } else {
                     None
                 },
-                idx.is_some_and(|i| i.has("value")),
-                idx.and_then(|i| i.first(&el.attributes, "slot")),
+                ctx.data.has_attribute(el.id, "value"),
+                ctx.data.attribute(el.id, &el.attributes, "slot"),
             )
         };
 
         // textarea_invalid_content: <textarea> may not have both a value attribute and children.
-        if el.name == "textarea" && has_value_attr && !el.fragment.nodes.is_empty() {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::TextareaInvalidContent, el.span));
+        if el.name == "textarea"
+            && has_value_attr
+            && ctx.data.fragment_has_children(&FragmentKey::Element(el.id))
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::TextareaInvalidContent,
+                el.span,
+            ));
         }
 
         // slot_attribute_invalid_placement / slot_attribute_invalid:
         // - placement error when the element is NOT a direct child of a component.
         // - value error when it IS a direct child but slot value is not a plain string.
-        if has_slot && !ctx.parent().is_some_and(|p| p.kind == ParentKind::ComponentNode) {
+        if has_slot
+            && !ctx
+                .data
+                .parent(el.id)
+                .is_some_and(|p| p.kind == ParentKind::ComponentNode)
+        {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::SlotAttributeInvalidPlacement,
                 el.span,
@@ -211,7 +226,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         // a11y_distracting_elements: <marquee> and <blink> are harmful to accessibility.
         if matches!(el.name.as_str(), "marquee" | "blink") {
             ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yDistractingElements { name: el.name.clone() },
+                DiagnosticKind::A11yDistractingElements {
+                    name: el.name.clone(),
+                },
                 el.span,
             ));
         }
@@ -236,7 +253,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
         if has_autofocus && el.name != "dialog" && self.dialog_depth == 0 {
-            ctx.warnings_mut().push(Diagnostic::warning(DiagnosticKind::A11yAutofocus, el.span));
+            ctx.warnings_mut()
+                .push(Diagnostic::warning(DiagnosticKind::A11yAutofocus, el.span));
         }
 
         // a11y_missing_attribute: certain elements require specific attributes.
@@ -246,8 +264,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
         if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
-            ctx.warnings_mut()
-                .push(Diagnostic::warning(DiagnosticKind::SlotElementDeprecated, el.span));
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::SlotElementDeprecated,
+                el.span,
+            ));
         }
 
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
@@ -294,7 +314,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_>) {
-        if let Some(parent) = current_bind_parent(ctx) {
+        if let Some(parent) = current_bind_parent(dir.id, ctx) {
             validate_bind_name_and_target(dir, &parent, ctx);
             validate_bind_parent_specifics(dir, &parent, ctx);
         }
@@ -342,7 +362,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
     // event_directive_deprecated, mixed_event_handler_syntaxes
     fn visit_on_directive_legacy(&mut self, dir: &OnDirectiveLegacy, ctx: &mut VisitContext<'_>) {
         let is_component = ctx
-            .parent()
+            .data
+            .parent(dir.id)
             .is_some_and(|p| p.kind == ParentKind::ComponentNode);
 
         if !is_component {
@@ -395,7 +416,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         let value = text.value(ctx.source);
 
         if contains_non_whitespace_text(value) {
-            if let Some(message) = invalid_text_parent_message(ctx) {
+            if let Some(message) = invalid_text_parent_message(text.id, ctx) {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::NodeInvalidPlacement { message },
                     text.span,
@@ -423,7 +444,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_>) {
-        if let Some(message) = invalid_text_parent_message(ctx) {
+        if let Some(message) = invalid_text_parent_message(tag.id, ctx) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::NodeInvalidPlacement { message },
                 tag.span,
@@ -448,7 +469,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: block_empty, block_unexpected_character
     fn visit_key_block(&mut self, block: &KeyBlock, ctx: &mut VisitContext<'_>) {
-        check_empty_fragment(&block.fragment, ctx);
+        check_empty_fragment(&block.fragment, FragmentKey::KeyBlockBody(block.id), ctx);
 
         // block_unexpected_character: runes mode only — char after `{` must be `#`
         if ctx.runes {
@@ -466,9 +487,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases: block_empty (consequent + alternate), block_unexpected_character
     fn visit_if_block(&mut self, block: &IfBlock, ctx: &mut VisitContext<'_>) {
-        check_empty_fragment(&block.consequent, ctx);
+        check_empty_fragment(&block.consequent, FragmentKey::IfConsequent(block.id), ctx);
         if let Some(alt) = &block.alternate {
-            check_empty_fragment(alt, ctx);
+            check_empty_fragment(alt, FragmentKey::IfAlternate(block.id), ctx);
         }
 
         // block_unexpected_character: runes mode only — `{#if` needs `#`, `{:else if` needs `:`
@@ -522,10 +543,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_>) {
         // Collect grandparent info in a block so the ancestors iterator is dropped
         // before we borrow ctx.store or ctx.warnings_mut().
-        let grandparent = {
-            let mut ancestors = ctx.ancestors();
+        let (parent, grandparent) = {
+            let parent = ctx.data.parent(dir.id);
+            let mut ancestors = ctx.data.ancestors(dir.id);
             ancestors.next(); // skip Element (direct attr parent)
-            ancestors.next().copied()
+            (parent, ancestors.next())
         };
 
         let diag_kind = match grandparent.map(|p| p.kind) {
@@ -537,13 +559,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     if each_block.key_span.is_none() {
                         Some(DiagnosticKind::AnimationMissingKey)
                     } else {
-                        let non_trivial = each_block
-                            .body
-                            .nodes
-                            .iter()
-                            .filter(|&&nid| !is_trivial_node(ctx.store.get(nid), ctx.source))
-                            .count();
-                        if non_trivial > 1 {
+                        let only_child = ctx
+                            .data
+                            .fragment_single_non_trivial_child(&FragmentKey::EachBody(each_id));
+                        if only_child != parent.map(|p| p.id) {
                             Some(DiagnosticKind::AnimationInvalidPlacement)
                         } else {
                             None
@@ -617,8 +636,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 }
 
-fn current_bind_parent(ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
-    let parent = ctx.parent()?;
+fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_>) -> Option<BindParentInfo> {
+    let parent = ctx.data.parent(bind_id)?;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
             id: el.id,
@@ -758,11 +777,7 @@ fn validate_bind_parent_specifics(
     }
 
     if parent.name == "select" && dir.name != "this" {
-        let multiple = ctx
-            .data
-            .element_flags
-            .attr_index(parent.id)
-            .and_then(|i| i.first(&parent.attrs, "multiple"));
+        let multiple = ctx.data.attribute(parent.id, &parent.attrs, "multiple");
         if let Some(a) = multiple {
             if !attr_is_text(a) && !matches!(a, Attribute::BooleanAttribute(_)) {
                 ctx.warnings_mut().push(Diagnostic::error(
@@ -790,9 +805,7 @@ fn validate_bind_parent_specifics(
     if matches!(dir.name.as_str(), "innerHTML" | "innerText" | "textContent") {
         let contenteditable = ctx
             .data
-            .element_flags
-            .attr_index(parent.id)
-            .and_then(|i| i.first(&parent.attrs, "contenteditable"));
+            .attribute(parent.id, &parent.attrs, "contenteditable");
         match contenteditable {
             None => emit_bind_error(
                 ctx,
@@ -819,9 +832,7 @@ fn validate_input_bindings(
 ) {
     let Some(type_attr) = ctx
         .data
-        .element_flags
-        .attr_index(parent.id)
-        .and_then(|i| i.first(&parent.attrs, "type"))
+        .attribute(parent.id, &parent.attrs, "type")
     else {
         return;
     };
@@ -836,7 +847,10 @@ fn validate_input_bindings(
         return;
     }
 
-    let type_value = static_text_attr_value(type_attr, ctx.source).unwrap_or_default();
+    let type_value = ctx
+        .data
+        .static_text_attribute_value(parent.id, &parent.attrs, "type", ctx.source)
+        .unwrap_or_default();
     if dir.name == "checked" && type_value != "checkbox" {
         let elements = if type_value == "radio" {
             "`<input type=\"checkbox\">` — for `<input type=\"radio\">`, use `bind:group`"
@@ -913,7 +927,7 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     ) || ctx.data.scoping.is_prop_source(sym_id)
         || ctx.data.scoping.prop_non_source_name(sym_id).is_some()
         || ctx.data.scoping.is_each_block_var(sym_id)
-        || bind_targets_each_context(sym_id, ctx)
+        || bind_targets_each_context(sym_id, dir.id, ctx)
         || ctx.data.scoping.is_store(sym_id)
         // Plain mutable let/var (no rune) is bindable — the bind directive's setter writes to it.
         // This matches the reference compiler: any bind target is marked as `binding.updated`
@@ -970,7 +984,6 @@ fn bind_base_symbol(dir: &BindDirective, ctx: &VisitContext<'_>) -> Option<crate
     }
 }
 
-
 fn bind_expression<'a>(
     dir: &BindDirective,
     ctx: &'a VisitContext<'a>,
@@ -982,13 +995,17 @@ fn bind_expression<'a>(
         .and_then(|handle| parsed.expr(handle))
 }
 
-fn bind_targets_each_context(sym_id: crate::scope::SymbolId, ctx: &VisitContext<'_>) -> bool {
+fn bind_targets_each_context(
+    sym_id: crate::scope::SymbolId,
+    bind_id: NodeId,
+    ctx: &VisitContext<'_>,
+) -> bool {
     let sym_scope = ctx.data.scoping.symbol_scope_id(sym_id);
-    ctx.ancestors()
+    ctx.data
+        .ancestors(bind_id)
         .filter(|parent| parent.kind == ParentKind::EachBlock)
         .any(|parent| ctx.data.each_body_scope(parent.id, ctx.scope) == sym_scope)
 }
-
 
 fn attr_is_text(attr: &Attribute) -> bool {
     matches!(attr, Attribute::StringAttribute(_))
@@ -1064,7 +1081,7 @@ fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_>
 }
 
 fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
-    let Some(parent) = ctx.parent() else {
+    let Some(parent) = ctx.data.parent(block.id) else {
         return;
     };
     if parent.kind != ParentKind::ComponentNode {
@@ -1094,7 +1111,7 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
         return;
     }
 
-    let Some(parent) = ctx.parent() else {
+    let Some(parent) = ctx.data.parent(block.id) else {
         return;
     };
     if parent.kind != ParentKind::ComponentNode {
@@ -1114,9 +1131,8 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
 
 /// Warns `BlockEmpty` when a fragment contains exactly one whitespace-only text node.
 /// Mirrors `validate_block_not_empty` in the reference compiler's shared utils.
-fn check_empty_fragment(fragment: &Fragment, ctx: &mut VisitContext<'_>) {
-    if fragment.nodes.len() == 1 {
-        let node_id = fragment.nodes[0];
+fn check_empty_fragment(_fragment: &Fragment, key: FragmentKey, ctx: &mut VisitContext<'_>) {
+    if let Some(node_id) = ctx.data.fragment_single_child(&key) {
         if let Node::Text(text) = ctx.store.get(node_id) {
             if text.value(ctx.source).trim().is_empty() {
                 ctx.warnings_mut()
@@ -1139,21 +1155,9 @@ fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_>) -> bool {
         Node::SvelteElement(el) => &el.attributes,
         _ => return false,
     };
-    attrs
-        .iter()
-        .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"))
-}
-
-/// Trivial nodes are invisible non-content nodes that don't count as "children"
-/// for the purpose of animate placement validation.
-fn is_trivial_node(node: &Node, source: &str) -> bool {
-    match node {
-        Node::Comment(_) | Node::ConstTag(_) => true,
-        Node::Text(t) => source[t.span.start as usize..t.span.end as usize]
-            .trim()
-            .is_empty(),
-        _ => false,
-    }
+    ctx.data
+        .attribute(parent.id, attrs, "slot")
+        .is_some_and(|attr| matches!(attr, Attribute::StringAttribute(_)))
 }
 
 fn contains_non_whitespace_text(text: &str) -> bool {
@@ -1176,9 +1180,10 @@ fn is_bidi_control(ch: char) -> bool {
     )
 }
 
-fn invalid_text_parent_message(ctx: &VisitContext<'_>) -> Option<String> {
+fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_>) -> Option<String> {
     let parent = ctx
-        .ancestors()
+        .data
+        .ancestors(id)
         .find(|parent| parent.kind == ParentKind::Element)?;
     let element = ctx.store.get(parent.id).as_element()?;
     let name = element.name.as_str();
@@ -1239,16 +1244,20 @@ fn component_has_implicit_children(
     current_snippet_id: NodeId,
     ctx: &VisitContext<'_>,
 ) -> bool {
-    component
-        .fragment
-        .nodes
-        .iter()
-        .any(|&node_id| match ctx.store.get(node_id) {
-            Node::SnippetBlock(snippet) => snippet.id != current_snippet_id && false,
-            Node::Comment(_) => false,
-            Node::Text(text) => contains_non_whitespace_text(text.value(ctx.source)),
-            _ => true,
-        })
+    let key = FragmentKey::ComponentNode(component.id);
+    match ctx.data.fragment_non_trivial_child_count(&key) {
+        0 => false,
+        1 => {
+            let Some(node_id) = ctx.data.fragment_single_non_trivial_child(&key) else {
+                return true;
+            };
+            !matches!(
+                ctx.store.get(node_id),
+                Node::SnippetBlock(snippet) if snippet.id == current_snippet_id
+            )
+        }
+        _ => true,
+    }
 }
 
 fn extract_arrow_params<'s, 'a: 's>(
@@ -1534,12 +1543,6 @@ fn contains_invalid_snippet_param_assignment(
 // A11y: missing required attributes
 // ---------------------------------------------------------------------------
 
-/// Returns `true` if `el` has a named attribute (string, boolean, expression, or concatenation)
-/// with the given `name`. Spread and directive attributes are not matched.
-fn el_has_attr(idx: Option<&crate::types::data::AttrIndex>, name: &str) -> bool {
-    idx.is_some_and(|i| i.has(name))
-}
-
 /// Emit `attribute_avoid_is`, `attribute_illegal_colon`, and
 /// `attribute_invalid_property_name` warnings for plain HTML attributes on a
 /// `RegularElement` or `SvelteElement`.  The borrow of `ctx.data` is confined
@@ -1551,7 +1554,6 @@ fn check_plain_attr_warnings(
     ctx: &mut VisitContext<'_>,
 ) {
     let (has_is, has_colon, invalid_prop) = {
-        let idx = ctx.data.element_flags.attr_index(id);
         let has_colon = attrs.iter().any(|a| {
             let n = a.html_name();
             n.contains(':')
@@ -1559,22 +1561,25 @@ fn check_plain_attr_warnings(
                 && !n.starts_with("xlink:")
                 && !n.starts_with("xmlns:")
         });
-        let invalid_prop = if idx.is_some_and(|i| i.has("className")) {
+        let invalid_prop = if ctx.data.has_attribute(id, "className") {
             Some(("className", "class"))
-        } else if idx.is_some_and(|i| i.has("htmlFor")) {
+        } else if ctx.data.has_attribute(id, "htmlFor") {
             Some(("htmlFor", "for"))
         } else {
             None
         };
-        (idx.is_some_and(|i| i.has("is")), has_colon, invalid_prop)
+        (ctx.data.has_attribute(id, "is"), has_colon, invalid_prop)
     };
 
     if has_is {
-        ctx.warnings_mut().push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, span));
+        ctx.warnings_mut()
+            .push(Diagnostic::warning(DiagnosticKind::AttributeAvoidIs, span));
     }
     if has_colon {
-        ctx.warnings_mut()
-            .push(Diagnostic::warning(DiagnosticKind::AttributeIllegalColon, span));
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::AttributeIllegalColon,
+            span,
+        ));
     }
     if let Some((wrong, right)) = invalid_prop {
         ctx.warnings_mut().push(Diagnostic::warning(
@@ -1585,9 +1590,7 @@ fn check_plain_attr_warnings(
             span,
         ));
     }
-
 }
-
 
 /// `attribute_quoted` warning: fires in runes mode when a component or custom element
 /// receives an attribute whose value is a quoted single expression (e.g. `foo="{expr}"`).
@@ -1637,47 +1640,34 @@ fn warn_missing_attr(el: &Element, required: &[&str]) -> Diagnostic {
 /// Returns a diagnostic to emit, or `None` if the element is valid.
 fn check_a11y_missing_attribute(
     el: &Element,
-    idx: Option<&crate::types::data::AttrIndex>,
+    data: &AnalysisData,
     source: &str,
 ) -> Option<Diagnostic> {
     match el.name.as_str() {
         // img needs alt
-        "img" => (!el_has_attr(idx, "alt")).then(|| warn_missing_attr(el, &["alt"])),
+        "img" => (!data.has_attribute(el.id, "alt")).then(|| warn_missing_attr(el, &["alt"])),
         // area needs alt, aria-label, or aria-labelledby
-        "area" => {
-            (!el_has_attr(idx, "alt")
-                && !el_has_attr(idx, "aria-label")
-                && !el_has_attr(idx, "aria-labelledby"))
-            .then(|| warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"]))
-        }
+        "area" => (!data.has_attribute(el.id, "alt")
+            && !data.has_attribute(el.id, "aria-label")
+            && !data.has_attribute(el.id, "aria-labelledby"))
+        .then(|| warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"])),
         // iframe needs title
-        "iframe" => (!el_has_attr(idx, "title")).then(|| warn_missing_attr(el, &["title"])),
+        "iframe" => (!data.has_attribute(el.id, "title")).then(|| warn_missing_attr(el, &["title"])),
         // object needs title, aria-label, or aria-labelledby
-        "object" => {
-            (!el_has_attr(idx, "title")
-                && !el_has_attr(idx, "aria-label")
-                && !el_has_attr(idx, "aria-labelledby"))
-            .then(|| warn_missing_attr(el, &["title", "aria-label", "aria-labelledby"]))
-        }
+        "object" => (!data.has_attribute(el.id, "title")
+            && !data.has_attribute(el.id, "aria-label")
+            && !data.has_attribute(el.id, "aria-labelledby"))
+        .then(|| warn_missing_attr(el, &["title", "aria-label", "aria-labelledby"])),
         // <a> without href is only valid as a named anchor (id/name) or disabled link
         "a" => {
-            if el_has_attr(idx, "href") || el_has_attr(idx, "xlink:href") {
+            if data.has_attribute(el.id, "href") || data.has_attribute(el.id, "xlink:href") {
                 return None;
             }
             // Named anchors and aria-disabled links don't require href.
-            if el_has_attr(idx, "id") || el_has_attr(idx, "name") {
+            if data.has_attribute(el.id, "id") || data.has_attribute(el.id, "name") {
                 return None;
             }
-            if idx
-                .and_then(|i| i.first(&el.attributes, "aria-disabled"))
-                .is_some_and(|a| {
-                    if let Attribute::StringAttribute(sa) = a {
-                        sa.value_span.source_text(source) == "true"
-                    } else {
-                        false
-                    }
-                })
-            {
+            if data.has_true_boolean_attribute(el.id, &el.attributes, "aria-disabled", source) {
                 return None;
             }
             Some(warn_missing_attr(el, &["href"]))

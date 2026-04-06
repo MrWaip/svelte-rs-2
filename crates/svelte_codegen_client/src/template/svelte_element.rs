@@ -46,14 +46,9 @@ pub(crate) fn gen_svelte_element<'a>(
     // Detect SVG namespace from static xmlns attribute
     let is_svg_ns = ctx
         .query
-        .attr_index(el.id)
-        .and_then(|i| i.first(&el.attributes, "xmlns"))
+        .string_attribute(el.id, &el.attributes, "xmlns")
         .is_some_and(|attr| {
-            if let svelte_ast::Attribute::StringAttribute(sa) = attr {
-                ctx.query.component.source_text(sa.value_span) == "http://www.w3.org/2000/svg"
-            } else {
-                false
-            }
+            ctx.query.component.source_text(attr.value_span) == "http://www.w3.org/2000/svg"
         });
 
     // Generate $$element ident for the inner callback

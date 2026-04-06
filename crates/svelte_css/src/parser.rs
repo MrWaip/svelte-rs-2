@@ -147,9 +147,7 @@ impl<'src> Parser<'src> {
 
         if start == end {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: "]".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: "]".into() },
                 self.scanner.span_from(start),
             );
             return None;
@@ -286,8 +284,7 @@ impl<'src> Parser<'src> {
         let had_ws = self.scanner.eat(TokenKind::Whitespace);
 
         // ||
-        if self.scanner.at_delim(b'|') && self.scanner.peek_at(1).kind == TokenKind::Delim(b'|')
-        {
+        if self.scanner.at_delim(b'|') && self.scanner.peek_at(1).kind == TokenKind::Delim(b'|') {
             let comb_start = self.scanner.current_start();
             self.scanner.bump();
             self.scanner.bump();
@@ -337,9 +334,7 @@ impl<'src> Parser<'src> {
         }
         Some(SimpleSelector::Type {
             span: self.scanner.span_from(start),
-            name: CompactString::new(
-                self.scanner.source_text(Span::new(ident_start, ident_end)),
-            ),
+            name: CompactString::new(self.scanner.source_text(Span::new(ident_start, ident_end))),
         })
     }
 
@@ -436,9 +431,7 @@ impl<'src> Parser<'src> {
             Some(self.parse_block())
         } else if !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: ";".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: ";".into() },
                 self.scanner.span_from(start),
             );
             self.scanner.skip_to_semicolon_or_block_end();
@@ -470,9 +463,7 @@ impl<'src> Parser<'src> {
 
         if !self.scanner.at(TokenKind::LBrace) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: "{".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: "{".into() },
                 self.scanner.span_from(start),
             );
             self.scanner.skip_rule();
@@ -559,8 +550,7 @@ impl<'src> Parser<'src> {
                 // &
                 TokenKind::Delim(b'&') => {
                     let tok = self.scanner.bump();
-                    rel.selectors
-                        .push(SimpleSelector::Nesting(tok.span));
+                    rel.selectors.push(SimpleSelector::Nesting(tok.span));
                 }
                 // * (universal / namespace)
                 TokenKind::Delim(b'*') => {
@@ -604,9 +594,7 @@ impl<'src> Parser<'src> {
                         let sel_list = self.parse_selector_list(true)?;
                         if !self.scanner.eat(TokenKind::RParen) {
                             self.recover(
-                                DiagnosticKind::CssExpectedToken {
-                                    token: ")".into(),
-                                },
+                                DiagnosticKind::CssExpectedToken { token: ")".into() },
                                 self.scanner.span_from(start),
                             );
                             return None;
@@ -619,15 +607,21 @@ impl<'src> Parser<'src> {
                     let span = self.scanner.span_from(start);
 
                     if is_element {
-                        rel.selectors.push(SimpleSelector::PseudoElement(
-                            PseudoElementSelector { span, name, args },
-                        ));
+                        rel.selectors
+                            .push(SimpleSelector::PseudoElement(PseudoElementSelector {
+                                span,
+                                name,
+                                args,
+                            }));
                     } else if name.as_str() == "global" {
                         rel.selectors.push(SimpleSelector::Global { span, args });
                     } else {
-                        rel.selectors.push(SimpleSelector::PseudoClass(
-                            PseudoClassSelector { span, name, args },
-                        ));
+                        rel.selectors
+                            .push(SimpleSelector::PseudoClass(PseudoClassSelector {
+                                span,
+                                name,
+                                args,
+                            }));
                     }
                 }
                 // [ → attribute selector
@@ -729,9 +723,7 @@ impl<'src> Parser<'src> {
 
         if !self.scanner.eat(TokenKind::RBracket) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: "]".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: "]".into() },
                 self.scanner.span_from(start),
             );
             return None;
@@ -766,9 +758,7 @@ impl<'src> Parser<'src> {
 
         if !self.scanner.eat(TokenKind::LBrace) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: "{".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: "{".into() },
                 self.scanner.span_at(),
             );
             return Block {
@@ -786,7 +776,10 @@ impl<'src> Parser<'src> {
                 break;
             }
             if self.scanner.at_end() {
-                self.recover(DiagnosticKind::CssUnclosedBlock, self.scanner.span_from(start));
+                self.recover(
+                    DiagnosticKind::CssUnclosedBlock,
+                    self.scanner.span_from(start),
+                );
                 break;
             }
 
@@ -867,9 +860,7 @@ impl<'src> Parser<'src> {
 
         if !self.scanner.eat(TokenKind::Colon) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: ":".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: ":".into() },
                 self.scanner.span_from(start),
             );
             self.scanner.skip_to_semicolon_or_block_end();
@@ -897,9 +888,7 @@ impl<'src> Parser<'src> {
         // Consume trailing semicolon if not at block end
         if !self.scanner.at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
-                DiagnosticKind::CssExpectedToken {
-                    token: ";".into(),
-                },
+                DiagnosticKind::CssExpectedToken { token: ";".into() },
                 self.scanner.span_from(start),
             );
             self.scanner.skip_to_semicolon_or_block_end();

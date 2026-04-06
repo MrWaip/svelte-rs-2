@@ -24,8 +24,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     // Whether the parser already found errors — captured before the closure so it
     // can be used inside without borrowing `diagnostics` mutably at the same time.
-    let has_parse_errors =
-        diagnostics.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error);
+    let has_parse_errors = diagnostics
+        .iter()
+        .any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
     let analyze_opts = svelte_analyze::AnalyzeOptions {
         custom_element: options.custom_element,
@@ -46,12 +47,26 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             analyze_diags.extend(css_diags);
             // css:"injected" can come from compile options OR from <svelte:options css="injected">
             let inject_styles = options.css == CssMode::Injected
-                || component.options.as_ref().and_then(|o| o.css) == Some(svelte_ast::CssMode::Injected);
-            svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis, &mut analyze_diags);
-            let css_block = component.css.as_ref()
+                || component.options.as_ref().and_then(|o| o.css)
+                    == Some(svelte_ast::CssMode::Injected);
+            svelte_analyze::analyze_css_pass(
+                &component,
+                &ss,
+                inject_styles,
+                &mut analysis,
+                &mut analyze_diags,
+            );
+            let css_block = component
+                .css
+                .as_ref()
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
-            let raw_css = svelte_transform_css::transform_css(&analysis.css.hash, &analysis.css.keyframes, ss, css_source);
+            let raw_css = svelte_transform_css::transform_css(
+                &analysis.css.hash,
+                &analysis.css.keyframes,
+                ss,
+                css_source,
+            );
             css_text = if inject_styles {
                 Some(svelte_transform_css::compact_css_for_injection(&raw_css))
             } else {
@@ -67,7 +82,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         };
 
         let has_errors = has_parse_errors
-            || analyze_diags.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error);
+            || analyze_diags
+                .iter()
+                .any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
         if has_errors {
             return (None, css, analyze_diags);
@@ -102,7 +119,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     match codegen_result {
         Ok((js, css, analyze_diags)) => {
             diagnostics.extend(analyze_diags);
-            CompileResult { js, css, diagnostics }
+            CompileResult {
+                js,
+                css,
+                diagnostics,
+            }
         }
         Err(panic_payload) => {
             let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
@@ -113,7 +134,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 "unknown internal error".to_string()
             };
             diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult { js: None, css: None, diagnostics }
+            CompileResult {
+                js: None,
+                css: None,
+                diagnostics,
+            }
         }
     }
 }
@@ -127,14 +152,19 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let js_alloc = oxc_allocator::Allocator::default();
 
     // Analysis always runs so all diagnostics are surfaced.
-    let (analysis, mut diagnostics) =
-        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+    let (analysis, mut diagnostics) = svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
 
     // Codegen is skipped when generate=false or any error diagnostic is present.
     if options.generate == GenerateMode::False
-        || diagnostics.iter().any(|d| d.severity == svelte_diagnostics::Severity::Error)
+        || diagnostics
+            .iter()
+            .any(|d| d.severity == svelte_diagnostics::Severity::Error)
     {
-        return CompileResult { js: None, css: None, diagnostics };
+        return CompileResult {
+            js: None,
+            css: None,
+            diagnostics,
+        };
     }
 
     let codegen_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -142,7 +172,11 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     }));
 
     match codegen_result {
-        Ok(js) => CompileResult { js: Some(js), css: None, diagnostics },
+        Ok(js) => CompileResult {
+            js: Some(js),
+            css: None,
+            diagnostics,
+        },
         Err(panic_payload) => {
             let message = if let Some(s) = panic_payload.downcast_ref::<String>() {
                 s.clone()
@@ -152,7 +186,11 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
                 "unknown internal error".to_string()
             };
             diagnostics.push(Diagnostic::internal_error(message));
-            CompileResult { js: None, css: None, diagnostics }
+            CompileResult {
+                js: None,
+                css: None,
+                diagnostics,
+            }
         }
     }
 }

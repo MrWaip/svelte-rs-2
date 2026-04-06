@@ -8,11 +8,12 @@
 - **Done**: `:global()` validation diagnostics — all 12 CSS validation error diagnostics ported from reference `css-analyze.js`. `CssValidator` visitor in `svelte_analyze::passes::css_analyze` tracks parent rule context via stack. 20 unit tests covering all diagnostic kinds plus valid cases.
 - **Done**: Scoped `@keyframes` + `-global-` escape — keyframe names prefixed with hash, `-global-` prefix stripped, `animation`/`animation-name` values rewritten.
 - **Done**: `:global()` inside `:not()`/`:is()`/`:where()`/`:has()` — visitor recurses into pseudo-class args, unwraps `:global()` and scopes non-global selectors. Also fixed scope class insertion position to go before trailing pseudo-classes (matching reference compiler). Test: `css_global_in_pseudo`.
+- **Done**: CSS prune pass — basic backward selector matching (type/class/ID selectors, descendant/child combinators). Emits `css_unused_selector` warnings for selectors that don't match any template element. New `css_prune` module in `svelte_analyze::passes`. 24 unit tests.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global .foo { ... }` compound form (non-lone), unused-selector warnings, CSS custom properties.
-- **Next**: Port unused selector warnings (requires css-prune pass) or `:global .foo { ... }` compound form.
+- **Missing**: `:global .foo { ... }` compound form (non-lone), CSS custom properties, unused selector CSS output wrapping.
+- **Next**: Enhance prune pass with sibling combinators, `:is()`/`:where()`/`:not()` matching, nesting selector support, or implement unused selector CSS output (`/* (unused) */` wrapping).
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
-- **Current slice**: completed `:global()` validation diagnostics
+- **Current slice**: completed CSS prune pass (basic matching)
 - Last updated: 2026-04-06
 
 ## Source
@@ -47,7 +48,7 @@ ROADMAP.md — CSS
 - [x] `:global()` validation diagnostics (20 unit tests in `css_analyze::tests`)
 - [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
-- [ ] Unused selector warning (`css_unused_selector`)
+- [~] Unused selector warning (`css_unused_selector`) — basic type/class/ID matching with descendant/child combinators; missing: sibling combinators, `:is/:where/:not/:has` special matching, nesting selector, attribute value matching, component/snippet boundary matching
 - [ ] CSS custom properties on components — `<svelte-css-wrapper>` / `<g>` wrapper lowering for `--prop=...`
 - [~] Nested `<style>` elements inside markup — likely compile as plain elements today, no focused compiler case for "unscoped, inserted as-is" parity
 
@@ -65,6 +66,7 @@ ROADMAP.md — CSS
 - `reference/compiler/phases/3-transform/client/transform-client.js` — injected CSS path
 - `reference/compiler/phases/3-transform/client/visitors/shared/element.js` — scoped class injection on elements
 - `reference/compiler/phases/3-transform/client/visitors/shared/component.js` — custom-property wrapper lowering
+- `crates/svelte_analyze/src/passes/css_prune.rs` — CSS selector pruning: backward matching against template elements
 - `crates/svelte_parser/src/lib.rs` — top-level style extraction into `RawBlock`
 - `crates/svelte_parser/src/tests.rs` — current style parser coverage
 - `crates/svelte_parser/src/svelte_elements.rs` — `<svelte:options css="injected">`

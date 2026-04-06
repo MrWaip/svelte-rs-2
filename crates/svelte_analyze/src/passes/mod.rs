@@ -1,15 +1,17 @@
 pub(crate) mod bind_semantics;
-pub(crate) mod css_analyze;
 pub(crate) mod binding_properties;
 pub(crate) mod build_component_semantics;
 pub(crate) mod bundles;
 pub(crate) mod collect_symbols;
 pub(crate) mod content_types;
+pub(crate) mod css_analyze;
+pub(crate) mod css_prune;
 pub(crate) mod element_flags;
 pub(crate) mod hoistable;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
 pub(crate) mod mark_runes;
+mod executor;
 pub(crate) mod post_resolve;
 pub(crate) mod reactivity;
 pub(crate) mod template_side_tables;
@@ -17,6 +19,8 @@ pub(crate) mod template_validation;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;
+
+pub(crate) use executor::execute_pass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum PassKey {
@@ -218,6 +222,54 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
 ];
 
+pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
+    PassKey::ClassifyRenderTags,
+    PassKey::AnalyzeScript,
+    PassKey::BuildComponentSemantics,
+    PassKey::MarkRunes,
+    PassKey::PrepareAwaitBindings,
+    PassKey::ExtractCeConfig,
+];
+
+pub(crate) const INDEX_BUILD_STAGE: &[PassKey] = &[
+    PassKey::TemplateSideTables,
+    PassKey::CollectSymbols,
+    PassKey::ResolveScriptStores,
+];
+
+pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
+    PassKey::JsAnalyzePostTemplate,
+    PassKey::ClassifyNeedsContext,
+    PassKey::PostResolve,
+    PassKey::ResolveRenderTagMeta,
+    PassKey::CollectConstTagFragments,
+    PassKey::MarkConstTagBindings,
+    PassKey::PrecomputeDynamicCache,
+    PassKey::MarkBlockedSymbolsDynamic,
+    PassKey::ClassifyExpressionDynamicity,
+    PassKey::MarkBlockedExpressionsDynamic,
+];
+
+pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
+    PassKey::LowerTemplate,
+    PassKey::ReactivityWalk,
+    PassKey::TemplateClassificationWalk,
+    PassKey::ClassifyRemainingFragments,
+];
+
+pub(crate) const VALIDATION_STAGE: &[PassKey] =
+    &[PassKey::ValidateTemplate, PassKey::Validate];
+
+pub(crate) fn default_stage_execution_order() -> Vec<PassKey> {
+    let mut order = Vec::new();
+    order.extend_from_slice(PRE_TEMPLATE_SCRIPT_STAGE);
+    order.extend_from_slice(INDEX_BUILD_STAGE);
+    order.extend_from_slice(POST_TEMPLATE_ANALYSIS_STAGE);
+    order.extend_from_slice(TEMPLATE_EXECUTION_STAGE);
+    order.extend_from_slice(VALIDATION_STAGE);
+    order
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PassPlanError {
     DuplicatePassKey(PassKey),
@@ -398,5 +450,11 @@ mod tests {
 
         let order = resolve_execution_order(DESCRIPTORS).expect("must resolve");
         assert_eq!(order, vec![PassKey::AnalyzeScript, PassKey::MarkRunes]);
+    }
+
+    #[test]
+    fn staged_execution_order_matches_resolved_default_order() {
+        let resolved = resolve_default_execution_order().expect("must resolve");
+        assert_eq!(default_stage_execution_order(), resolved);
     }
 }

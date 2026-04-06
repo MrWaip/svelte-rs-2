@@ -74,11 +74,17 @@ const id2 = $props.id();
 </script><div"#, // unclosed tag → parse error; duplicate $props.id() → analyze error
         &CompileOptions::default(),
     );
-    assert!(result.js.is_none(), "codegen must be skipped when errors present");
+    assert!(
+        result.js.is_none(),
+        "codegen must be skipped when errors present"
+    );
     // Both layers contribute diagnostics.
     assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == "props_id_invalid_placement"
-            || d.kind.code() == "props_duplicate"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "props_id_invalid_placement"
+                || d.kind.code() == "props_duplicate"),
         "analyze diagnostics must surface alongside parse errors: {:?}",
         result.diagnostics
     );
@@ -173,7 +179,10 @@ const id = $props.id();
         &CompileOptions::default(),
     );
     assert!(
-        !result.diagnostics.iter().any(|d| d.kind.code() == "props_duplicate"),
+        !result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "props_duplicate"),
         "unexpected props_duplicate, got: {:?}",
         result.diagnostics
     );
@@ -183,7 +192,10 @@ const id = $props.id();
 fn attribute_invalid_name_digit_start() {
     let result = compile(r#"<div 1foo="x"></div>"#, &CompileOptions::default());
     assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_name"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "attribute_invalid_name"),
         "expected attribute_invalid_name, got: {:?}",
         result.diagnostics
     );
@@ -194,7 +206,10 @@ fn attribute_invalid_name_dash_start() {
     // Parser allows '-' in attr names including at start; analyze rejects via the illegal-char regex.
     let result = compile(r#"<div -foo="x"></div>"#, &CompileOptions::default());
     assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_name"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "attribute_invalid_name"),
         "expected attribute_invalid_name, got: {:?}",
         result.diagnostics
     );
@@ -207,24 +222,31 @@ fn css_injected_via_compile_options() {
         css: CssMode::Injected,
         ..Default::default()
     };
-    let result = compile(
-        "<style>p { color: red; }</style><p>hello</p>",
-        &opts,
-    );
-    let js = result.js.unwrap_or_else(|| panic!("compile produced no JS"));
+    let result = compile("<style>p { color: red; }</style><p>hello</p>", &opts);
+    let js = result
+        .js
+        .unwrap_or_else(|| panic!("compile produced no JS"));
     // inject path: CSS must be absent from CompileResult.css and present in JS output
     assert!(result.css.is_none(), "css should be None for injected mode");
     assert!(js.contains("$$css"), "expected $$css const in JS output");
-    assert!(js.contains("$.append_styles"), "expected $.append_styles call in JS output");
+    assert!(
+        js.contains("$.append_styles"),
+        "expected $.append_styles call in JS output"
+    );
 }
 
 #[test]
 fn attribute_invalid_event_handler_string_value() {
-    let result = compile(r#"<button onclick="doSomething()"></button>"#, &CompileOptions::default());
+    let result = compile(
+        r#"<button onclick="doSomething()"></button>"#,
+        &CompileOptions::default(),
+    );
     assert!(
-        result.diagnostics.iter().any(|d| d.kind.code() == "attribute_invalid_event_handler"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "attribute_invalid_event_handler"),
         "expected attribute_invalid_event_handler, got: {:?}",
         result.diagnostics
     );
 }
-

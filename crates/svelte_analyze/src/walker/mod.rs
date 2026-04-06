@@ -19,6 +19,7 @@ mod dispatch;
 mod traverse;
 mod visitor;
 
-pub(crate) use context::{ParentKind, ParentRef, VisitContext};
+pub(crate) use crate::types::data::{ParentKind, ParentRef};
+pub(crate) use context::VisitContext;
 pub(crate) use traverse::walk_template;
 pub(crate) use visitor::TemplateVisitor;

@@ -6,13 +6,13 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::traverse_mut;
 use rustc_hash::FxHashMap;
-use svelte_analyze::{ComponentScoping, IgnoreData, PropsAnalysis, RuneKind};
+use svelte_analyze::{ComponentScoping, PropsAnalysis, RuneKind};
 use svelte_ast::ScriptLanguage;
 
 use crate::builder::Builder;
 use crate::context::Ctx;
 
-use super::{PropsGenInfo, ScriptTransformer};
+use super::{IgnoreQuery, PropsGenInfo, ScriptTransformer};
 
 pub struct ScriptOutput<'a> {
     pub imports: Vec<Statement<'a>>,
@@ -46,7 +46,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         .content_span
         .start;
     let filename = ctx.state.filename;
-    let ignore_data = ctx.query.view.ignore_data();
+    let ignore_query = IgnoreQuery::new(ctx.query.view);
 
     let program = ctx.state.parsed.program.take();
     if let Some(program) = program {
@@ -79,7 +79,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             filename,
             ctx.state.experimental_async,
             ctx.query.view.custom_element(),
-            ignore_data,
+            ignore_query,
             false,
         );
     }
@@ -103,7 +103,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         None,
         ctx.state.experimental_async,
         ctx.query.view.custom_element(),
-        ignore_data,
+        ignore_query,
         true,
     )
 }
@@ -114,7 +114,6 @@ pub fn transform_module_script<'a>(
     is_ts: bool,
     component_scoping: &ComponentScoping,
 ) -> ScriptOutput<'a> {
-    let empty_ignore = IgnoreData::new();
     transform_script_text(
         allocator,
         source,
@@ -129,7 +128,7 @@ pub fn transform_module_script<'a>(
         None,
         false,
         false,
-        &empty_ignore,
+        IgnoreQuery::empty(),
         true,
     )
 }
@@ -139,7 +138,6 @@ pub fn transform_component_module_script<'a>(
     source: &'a str,
     is_ts: bool,
 ) -> ScriptOutput<'a> {
-    let empty_ignore = IgnoreData::new();
     let empty_scoping = ComponentScoping::new_empty();
     transform_script_text(
         allocator,
@@ -155,7 +153,7 @@ pub fn transform_component_module_script<'a>(
         None,
         false,
         false,
-        &empty_ignore,
+        IgnoreQuery::empty(),
         true,
     )
 }
@@ -166,7 +164,6 @@ pub fn transform_component_module_program<'a>(
     component_scoping: &ComponentScoping,
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
 ) -> ScriptOutput<'a> {
-    let empty_ignore = IgnoreData::new();
     run_transform(
         allocator,
         program,
@@ -181,7 +178,7 @@ pub fn transform_component_module_program<'a>(
         "(unknown)",
         false,
         false,
-        &empty_ignore,
+        IgnoreQuery::empty(),
         false,
     )
 }
@@ -201,7 +198,7 @@ fn transform_script_text<'a>(
     script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
     experimental_async: bool,
     custom_element: bool,
-    ignore_data: &IgnoreData,
+    ignore_query: IgnoreQuery<'_>,
     prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let src_type = if is_ts {
@@ -243,7 +240,7 @@ fn transform_script_text<'a>(
         filename,
         experimental_async,
         custom_element,
-        ignore_data,
+        ignore_query,
         prepare_semantic,
     )
 }
@@ -263,7 +260,7 @@ fn run_transform<'a>(
     filename: &str,
     experimental_async: bool,
     custom_element: bool,
-    ignore_data: &IgnoreData,
+    ignore_query: IgnoreQuery<'_>,
     prepare_semantic: bool,
 ) -> ScriptOutput<'a> {
     let b = Builder::new(allocator);
@@ -295,7 +292,7 @@ fn run_transform<'a>(
         script_rune_call_kinds,
         experimental_async,
         custom_element,
-        ignore_data,
+        ignore_query,
         enclosing_stmt_start: Vec::new(),
     };
 
@@ -307,7 +304,7 @@ fn run_transform<'a>(
             component_source,
             script_content_start,
             filename,
-            ignore_data: transformer.ignore_data,
+            ignore_query: transformer.ignore_query,
         });
         super::traverse::wrap_derived_thunks(
             &b,

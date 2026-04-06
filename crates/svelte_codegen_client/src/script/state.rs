@@ -622,7 +622,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             args.push(Arg::Expr(self.b.str_expr(&label)));
             // Only pass location if not suppressed by svelte-ignore await_waterfall
             if !self
-                .ignore_data
+                .ignore_query
                 .is_ignored_at_span(decl_span_start, "await_waterfall")
             {
                 let full_offset = self.script_content_start + init_span_start;

@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use svelte_analyze::{ComponentScoping, IgnoreData, PropsAnalysis, RuneKind};
+use svelte_analyze::{CodegenView, ComponentScoping, PropsAnalysis, RuneKind};
 
 use crate::builder::Builder;
 
@@ -75,6 +75,26 @@ pub(super) struct ClassStateInfo {
     pub(super) ctor_placeholder_names: FxHashSet<String>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct IgnoreQuery<'a> {
+    view: Option<CodegenView<'a>>,
+}
+
+impl<'a> IgnoreQuery<'a> {
+    pub(super) fn new(view: CodegenView<'a>) -> Self {
+        Self { view: Some(view) }
+    }
+
+    pub(super) fn empty() -> Self {
+        Self { view: None }
+    }
+
+    pub(super) fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
+        self.view
+            .is_some_and(|view| view.is_ignored_at_span(span_start, code))
+    }
+}
+
 pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) b: &'b Builder<'a>,
     pub(super) component_scoping: &'b ComponentScoping,
@@ -100,8 +120,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
     pub(super) experimental_async: bool,
     pub(super) custom_element: bool,
-    /// Svelte-ignore directives (populated in analyze, includes span-based JS comment lookups).
-    pub(super) ignore_data: &'b IgnoreData,
+    /// Svelte-ignore queries for span-based JS comment lookups.
+    pub(super) ignore_query: IgnoreQuery<'b>,
     /// Stack of enclosing statement start positions for ignore lookups.
     /// Pushed on enter_*_statement, popped on exit_*_statement.
     pub(super) enclosing_stmt_start: Vec<u32>,
@@ -111,7 +131,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     pub(super) fn is_in_ignored_stmt(&self, code: &str) -> bool {
         self.enclosing_stmt_start
             .last()
-            .is_some_and(|&start| self.ignore_data.is_ignored_at_span(start, code))
+            .is_some_and(|&start| self.ignore_query.is_ignored_at_span(start, code))
     }
 
     pub(super) fn rune_for_binding(

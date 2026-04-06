@@ -198,7 +198,10 @@ fn global_function() {
     };
     let rel = &rule.prelude.children[0].children[0];
     assert!(
-        matches!(&rel.selectors[0], SimpleSelector::Global { args: Some(_), .. }),
+        matches!(
+            &rel.selectors[0],
+            SimpleSelector::Global { args: Some(_), .. }
+        ),
         "expected Global with args"
     );
 }
@@ -217,7 +220,10 @@ fn global_block() {
     );
 
     assert_eq!(rule.block.children.len(), 1);
-    assert!(matches!(&rule.block.children[0], BlockChild::Rule(Rule::Style(_))));
+    assert!(matches!(
+        &rule.block.children[0],
+        BlockChild::Rule(Rule::Style(_))
+    ));
 }
 
 #[test]
@@ -255,14 +261,22 @@ fn global_in_compound_selector() {
     let rel = &rule.prelude.children[0].children[0];
     assert_eq!(rel.selectors.len(), 2);
     assert!(matches!(&rel.selectors[0], SimpleSelector::Type { name, .. } if name == "p"));
-    assert!(matches!(&rel.selectors[1], SimpleSelector::Global { args: Some(_), .. }));
+    assert!(matches!(
+        &rel.selectors[1],
+        SimpleSelector::Global { args: Some(_), .. }
+    ));
 
     // Verify the inner selector list contains .active
-    let SimpleSelector::Global { args: Some(args), .. } = &rel.selectors[1] else {
+    let SimpleSelector::Global {
+        args: Some(args), ..
+    } = &rel.selectors[1]
+    else {
         panic!("expected Global with args");
     };
     let inner_rel = &args.children[0].children[0];
-    assert!(matches!(&inner_rel.selectors[0], SimpleSelector::Class { name, .. } if name == "active"));
+    assert!(
+        matches!(&inner_rel.selectors[0], SimpleSelector::Class { name, .. } if name == "active")
+    );
 }
 
 #[test]
@@ -275,13 +289,18 @@ fn global_with_complex_inner_selector() {
     };
     let rel = &rule.prelude.children[0].children[0];
     assert_eq!(rel.selectors.len(), 1);
-    let SimpleSelector::Global { args: Some(args), .. } = &rel.selectors[0] else {
+    let SimpleSelector::Global {
+        args: Some(args), ..
+    } = &rel.selectors[0]
+    else {
         panic!("expected Global with args");
     };
     let inner_rel = &args.children[0].children[0];
     assert_eq!(inner_rel.selectors.len(), 2);
     assert!(matches!(&inner_rel.selectors[0], SimpleSelector::Type { name, .. } if name == "h2"));
-    assert!(matches!(&inner_rel.selectors[1], SimpleSelector::Class { name, .. } if name == "featured"));
+    assert!(
+        matches!(&inner_rel.selectors[1], SimpleSelector::Class { name, .. } if name == "featured")
+    );
 }
 
 #[test]
@@ -296,10 +315,16 @@ fn global_multiple_in_descendant() {
     assert_eq!(complex.children.len(), 2);
 
     let rel0 = &complex.children[0];
-    assert!(matches!(&rel0.selectors[0], SimpleSelector::Global { args: Some(_), .. }));
+    assert!(matches!(
+        &rel0.selectors[0],
+        SimpleSelector::Global { args: Some(_), .. }
+    ));
 
     let rel1 = &complex.children[1];
-    assert!(matches!(&rel1.selectors[0], SimpleSelector::Global { args: Some(_), .. }));
+    assert!(matches!(
+        &rel1.selectors[0],
+        SimpleSelector::Global { args: Some(_), .. }
+    ));
 }
 
 #[test]
@@ -482,7 +507,9 @@ fn top_level_comment() {
     let src = "/* hello */ p { color: red; }";
     let ss = p(src);
     assert_eq!(ss.children.len(), 2);
-    assert!(matches!(&ss.children[0], StyleSheetChild::Comment(c) if text(c.span, src) == "/* hello */"));
+    assert!(
+        matches!(&ss.children[0], StyleSheetChild::Comment(c) if text(c.span, src) == "/* hello */")
+    );
 }
 
 #[test]
@@ -580,7 +607,10 @@ fn printer_multiple_rules() {
     let src = "h1 { color: red; } h2 { color: blue; }";
     let ss = p(src);
     let output = Printer::print(&ss, src);
-    assert_eq!(output, "h1 {\n  color: red;\n}\n\nh2 {\n  color: blue;\n}\n");
+    assert_eq!(
+        output,
+        "h1 {\n  color: red;\n}\n\nh2 {\n  color: blue;\n}\n"
+    );
 }
 
 #[test]
@@ -599,10 +629,7 @@ fn printer_nested_rule() {
     let src = ".parent { .child { color: red; } }";
     let ss = p(src);
     let output = Printer::print(&ss, src);
-    assert_eq!(
-        output,
-        ".parent {\n  .child {\n    color: red;\n  }\n}\n"
-    );
+    assert_eq!(output, ".parent {\n  .child {\n    color: red;\n  }\n}\n");
 }
 
 #[test]
@@ -642,10 +669,7 @@ fn printer_global_in_compound() {
     let src = "p:global(.active) { font-weight: bold; }";
     let ss = p(src);
     let output = Printer::print(&ss, src);
-    assert_eq!(
-        output,
-        "p:global(.active) {\n  font-weight: bold;\n}\n"
-    );
+    assert_eq!(output, "p:global(.active) {\n  font-weight: bold;\n}\n");
 }
 
 #[test]
@@ -712,7 +736,10 @@ fn recovery_bad_selector_skips_rule() {
     assert!(!diags.is_empty(), "expected diagnostics for bad selector");
 
     // Error node should be present for the skipped rule
-    let has_error = ss.children.iter().any(|child| matches!(child, StyleSheetChild::Error(_)));
+    let has_error = ss
+        .children
+        .iter()
+        .any(|child| matches!(child, StyleSheetChild::Error(_)));
     assert!(has_error, "expected Error node for bad rule");
 
     // The valid rule after the bad one should be present
@@ -738,14 +765,21 @@ fn recovery_bad_declaration_continues_block() {
     };
 
     // Error node for the bad declaration
-    let has_error = rule.block.children.iter().any(|child| matches!(child, BlockChild::Error(_)));
+    let has_error = rule
+        .block
+        .children
+        .iter()
+        .any(|child| matches!(child, BlockChild::Error(_)));
     assert!(has_error, "expected Error node for bad declaration");
 
     // The valid declaration should be present
     let has_font_size = rule.block.children.iter().any(|child| {
         matches!(child, BlockChild::Declaration(d) if d.property.source_text(src) == "font-size")
     });
-    assert!(has_font_size, "valid declaration after bad one should be parsed");
+    assert!(
+        has_font_size,
+        "valid declaration after bad one should be parsed"
+    );
 }
 
 #[test]
@@ -763,7 +797,11 @@ fn recovery_multiple_errors() {
     // Multiple errors — parser should recover from each
     let src = "!bad { x: 1; } p { color: red; } !worse { y: 2; }";
     let (ss, diags) = parse(src);
-    assert!(diags.len() >= 2, "expected at least 2 diagnostics, got {}", diags.len());
+    assert!(
+        diags.len() >= 2,
+        "expected at least 2 diagnostics, got {}",
+        diags.len()
+    );
     // The valid middle rule should survive
     let has_p_rule = ss.children.iter().any(|child| {
         matches!(child, StyleSheetChild::Rule(Rule::Style(rule))
@@ -787,7 +825,11 @@ fn recovery_empty_declaration_value() {
     };
 
     // Error node for the empty-value declaration
-    let has_error = rule.block.children.iter().any(|child| matches!(child, BlockChild::Error(_)));
+    let has_error = rule
+        .block
+        .children
+        .iter()
+        .any(|child| matches!(child, BlockChild::Error(_)));
     assert!(has_error, "expected Error node for empty value declaration");
 
     // font-size declaration should still be parsed
@@ -806,7 +848,10 @@ fn error_node_span_covers_skipped_content() {
     };
     let error_text = span.source_text(src);
     // Should cover the entire skipped rule including its block
-    assert!(error_text.contains("!bad"), "error span should cover '!bad', got: {error_text:?}");
+    assert!(
+        error_text.contains("!bad"),
+        "error span should cover '!bad', got: {error_text:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -823,7 +868,10 @@ fn nested_pseudo_class_rule() {
         panic!("expected style rule");
     };
     let BlockChild::Rule(Rule::Style(nested)) = &rule.block.children[0] else {
-        panic!("expected nested style rule, got: {:?}", rule.block.children[0]);
+        panic!(
+            "expected nested style rule, got: {:?}",
+            rule.block.children[0]
+        );
     };
     // The nested rule should have `a:hover` as selector
     let rel = &nested.prelude.children[0].children[0];
@@ -862,7 +910,10 @@ fn no_infinite_loop_on_unexpected_char() {
             )
         )
     });
-    assert!(has_p_rule, "valid rule after unexpected char should be parsed");
+    assert!(
+        has_p_rule,
+        "valid rule after unexpected char should be parsed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,9 +1202,18 @@ fn multiple_at_rules() {
     let src = "@import 'a.css'; @import 'b.css'; p { color: red; }";
     let ss = p(src);
     assert_eq!(ss.children.len(), 3);
-    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::AtRule(_))));
-    assert!(matches!(&ss.children[1], StyleSheetChild::Rule(Rule::AtRule(_))));
-    assert!(matches!(&ss.children[2], StyleSheetChild::Rule(Rule::Style(_))));
+    assert!(matches!(
+        &ss.children[0],
+        StyleSheetChild::Rule(Rule::AtRule(_))
+    ));
+    assert!(matches!(
+        &ss.children[1],
+        StyleSheetChild::Rule(Rule::AtRule(_))
+    ));
+    assert!(matches!(
+        &ss.children[2],
+        StyleSheetChild::Rule(Rule::Style(_))
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -1209,9 +1269,27 @@ fn complex_multi_combinator() {
     };
     let complex = &rule.prelude.children[0];
     assert_eq!(complex.children.len(), 4);
-    assert!(matches!(complex.children[1].combinator, Some(Combinator { kind: CombinatorKind::Child, .. })));
-    assert!(matches!(complex.children[2].combinator, Some(Combinator { kind: CombinatorKind::Descendant, .. })));
-    assert!(matches!(complex.children[3].combinator, Some(Combinator { kind: CombinatorKind::Child, .. })));
+    assert!(matches!(
+        complex.children[1].combinator,
+        Some(Combinator {
+            kind: CombinatorKind::Child,
+            ..
+        })
+    ));
+    assert!(matches!(
+        complex.children[2].combinator,
+        Some(Combinator {
+            kind: CombinatorKind::Descendant,
+            ..
+        })
+    ));
+    assert!(matches!(
+        complex.children[3].combinator,
+        Some(Combinator {
+            kind: CombinatorKind::Child,
+            ..
+        })
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -1279,10 +1357,7 @@ fn custom_property_with_complex_value() {
         panic!("expected declaration");
     };
     assert_eq!(text(decl.property, src), "--gradient");
-    assert_eq!(
-        text(decl.value, src),
-        "linear-gradient(90deg, red, blue)"
-    );
+    assert_eq!(text(decl.value, src), "linear-gradient(90deg, red, blue)");
 }
 
 // ---------------------------------------------------------------------------
@@ -1339,7 +1414,10 @@ fn html_style_comment() {
     let ss = p(src);
     // The HTML comment is skipped; only the rule remains
     assert_eq!(ss.children.len(), 1);
-    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::Style(_))));
+    assert!(matches!(
+        &ss.children[0],
+        StyleSheetChild::Rule(Rule::Style(_))
+    ));
 }
 
 #[test]
@@ -1347,9 +1425,15 @@ fn comment_between_rules() {
     let src = "p { color: red; } /* separator */ div { margin: 0; }";
     let ss = p(src);
     assert_eq!(ss.children.len(), 3);
-    assert!(matches!(&ss.children[0], StyleSheetChild::Rule(Rule::Style(_))));
+    assert!(matches!(
+        &ss.children[0],
+        StyleSheetChild::Rule(Rule::Style(_))
+    ));
     assert!(matches!(&ss.children[1], StyleSheetChild::Comment(_)));
-    assert!(matches!(&ss.children[2], StyleSheetChild::Rule(Rule::Style(_))));
+    assert!(matches!(
+        &ss.children[2],
+        StyleSheetChild::Rule(Rule::Style(_))
+    ));
 }
 
 // ---------------------------------------------------------------------------

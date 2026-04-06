@@ -52,13 +52,13 @@ impl TemplateVisitor for HoistableSnippetsVisitor {
     }
 
     fn visit_expression(&mut self, node_id: NodeId, _span: Span, ctx: &mut VisitContext<'_>) {
-        let root = ctx
-            .ancestors()
-            .find(|p| p.kind == ParentKind::SnippetBlock && self.top_level_ids.contains(&p.id));
+        let root = ctx.data.expr_ancestors(node_id).find(|p| {
+            p.kind == ParentKind::SnippetBlock && self.top_level_ids.contains(&p.id)
+        });
         let Some(root) = root else { return };
         let root_id = root.id;
 
-        let info = if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
+        let info = if ctx.data.expr_parent(node_id).is_some_and(|p| p.kind.is_attr()) {
             ctx.data.attr_expressions.get(node_id)
         } else {
             ctx.data.expressions.get(node_id)

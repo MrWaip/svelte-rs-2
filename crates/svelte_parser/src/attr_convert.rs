@@ -22,7 +22,10 @@ fn track_duplicate<'s>(
     exclude_this: bool,
 ) {
     if seen.contains(&key) {
-        diagnostics.push(Diagnostic::error(DiagnosticKind::AttributeDuplicate, name_span));
+        diagnostics.push(Diagnostic::error(
+            DiagnosticKind::AttributeDuplicate,
+            name_span,
+        ));
     } else if !exclude_this || key.1 != "this" {
         seen.insert(key);
     }
@@ -51,7 +54,9 @@ impl<'a> Parser<'a> {
                     if matches!(name.as_bytes().first(), Some(&b) if b.is_ascii_digit() || b == b'-')
                     {
                         self.diagnostics.push(Diagnostic::error(
-                            DiagnosticKind::AttributeInvalidName { name: name.to_string() },
+                            DiagnosticKind::AttributeInvalidName {
+                                name: name.to_string(),
+                            },
                             html_attr.name_span,
                         ));
                     }

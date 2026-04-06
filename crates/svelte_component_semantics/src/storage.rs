@@ -102,14 +102,9 @@ impl ComponentSemantics {
         owner: SymbolOwner,
     ) -> SymbolId {
         let compact_name = CompactString::from(name);
-        let sym = self.symbols.create_symbol(
-            compact_name.clone(),
-            span,
-            flags,
-            scope,
-            node_id,
-            owner,
-        );
+        let sym =
+            self.symbols
+                .create_symbol(compact_name.clone(), span, flags, scope, node_id, owner);
         self.scopes.add_binding(scope, compact_name, sym);
         sym
     }

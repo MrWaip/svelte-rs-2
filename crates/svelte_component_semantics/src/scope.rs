@@ -70,7 +70,6 @@ impl ScopeTable {
             }
         }
     }
-
 }
 
 #[cfg(test)]

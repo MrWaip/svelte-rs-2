@@ -1,9 +1,9 @@
-use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue,
-};
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
+use svelte_ast::{
+    Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue,
+};
 
 /// Pre-computes bind/directive semantics so codegen doesn't re-derive
 /// symbol classifications from source text via string-based lookups.
@@ -43,9 +43,7 @@ impl<'s> BindSemanticsVisitor<'s> {
             .collect();
 
         if !each_vars.is_empty() {
-            data.bind_semantics
-                .bind_each_context
-                .insert(dir.id, each_vars);
+            data.each_context.set_bind_this_context(dir.id, each_vars);
         }
     }
 
@@ -108,28 +106,39 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
     }
 
     fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
-        let idx = ctx.data.element_flags.attr_indices.get(el.id);
+        let bind_group_id = ctx
+            .data
+            .bind_directive(el.id, &el.attributes, "group")
+            .map(|dir| dir.id);
+        let bind_group_value_attr_id = ctx
+            .data
+            .expression_attribute(el.id, &el.attributes, "value")
+            .map(|attr| attr.id);
+        let has_contenteditable = ctx.data.has_true_boolean_attribute(
+            el.id,
+            &el.attributes,
+            "contenteditable",
+            self.source,
+        );
+        let has_content_bind = ["innerHTML", "innerText", "textContent"]
+            .iter()
+            .any(|name| ctx.data.bind_directive(el.id, &el.attributes, name).is_some());
+
         // Detect bind:group → mark element and find value attribute
-        let bind_group = idx
-            .and_then(|i| i.first(&el.attributes, "group"))
-            .and_then(|a| if let Attribute::BindDirective(bd) = a { Some(bd) } else { None });
-        if let Some(bg) = bind_group {
+        if let Some(bind_group_id) = bind_group_id {
             ctx.data.bind_semantics.has_bind_group.insert(el.id);
-            if let Some(val_attr) = idx
-                .and_then(|i| i.first(&el.attributes, "value"))
-                .filter(|a| matches!(a, Attribute::ExpressionAttribute(_)))
-            {
+            if let Some(value_attr_id) = bind_group_value_attr_id {
                 ctx.data
                     .bind_semantics
                     .bind_group_value_attr
-                    .insert(bg.id, val_attr.id());
+                    .insert(bind_group_id, value_attr_id);
             }
 
             // Find ancestor each-blocks whose context vars are referenced in bind:group
             let referenced_syms: Vec<_> = ctx
                 .data
                 .attr_expressions
-                .get(bg.id)
+                .get(bind_group_id)
                 .map(|info| {
                     info.ref_symbols
                         .iter()
@@ -141,7 +150,8 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
 
             if !referenced_syms.is_empty() {
                 let ancestor_eaches: Vec<_> = ctx
-                    .ancestors()
+                    .data
+                    .ancestors(bind_group_id)
                     .filter(|p| p.kind == ParentKind::EachBlock)
                     .map(|p| (p.id, ctx.data.each_body_scope(p.id, ctx.scope)))
                     .collect();
@@ -153,45 +163,18 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                         .any(|&sym| ctx.data.scoping.symbol_scope_id(sym) == body_scope);
                     if has_match {
                         parent_eaches.push(each_id);
-                        ctx.data
-                            .bind_semantics
-                            .contains_group_binding
-                            .insert(each_id);
+                        ctx.data.each_context.mark_contains_group_binding(each_id);
                     }
                 }
                 if !parent_eaches.is_empty() {
                     ctx.data
-                        .bind_semantics
-                        .parent_each_blocks
-                        .insert(bg.id, parent_eaches);
+                        .each_context
+                        .set_parent_each_blocks(bind_group_id, parent_eaches);
                 }
             }
         }
 
-        // Detect contenteditable + bind:innerHTML|innerText|textContent
-        let has_contenteditable = idx
-            .and_then(|i| i.first(&el.attributes, "contenteditable"))
-            .is_some_and(|a| match a {
-                Attribute::BooleanAttribute(_) => true,
-                Attribute::StringAttribute(sa) => {
-                    let val = self.source
-                        [sa.value_span.start as usize..sa.value_span.end as usize]
-                        .trim();
-                    val == "true"
-                }
-                _ => false,
-            });
-        if !has_contenteditable {
-            return;
-        }
-
-        let has_content_bind = ["innerHTML", "innerText", "textContent"]
-            .iter()
-            .any(|name| {
-                idx.and_then(|i| i.first(&el.attributes, name))
-                    .is_some_and(|a| matches!(a, Attribute::BindDirective(_)))
-            });
-        if has_content_bind {
+        if has_contenteditable && has_content_bind {
             ctx.data.element_flags.bound_contenteditable.insert(el.id);
         }
     }
