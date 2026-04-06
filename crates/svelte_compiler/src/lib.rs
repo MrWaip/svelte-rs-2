@@ -48,9 +48,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let inject_styles = options.css == CssMode::Injected
                 || component.options.as_ref().and_then(|o| o.css) == Some(svelte_ast::CssMode::Injected);
             svelte_analyze::analyze_css_pass(&component, &ss, inject_styles, &mut analysis);
-            let css_source = component.css.as_ref()
-                .map(|b| component.source_text(b.content_span))
-                .unwrap_or("");
+            let css_block = component.css.as_ref()
+                .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
+            let css_source = component.source_text(css_block.content_span);
             let raw_css = svelte_transform_css::transform_css(&analysis.css.hash, ss, css_source);
             css_text = if inject_styles {
                 Some(svelte_transform_css::compact_css_for_injection(&raw_css))
