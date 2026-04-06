@@ -212,8 +212,8 @@ use svelte_diagnostics::DiagnosticKind;
 
 /// Per-rule context tracked on the validator's stack.
 struct RuleContext {
-    /// Whether this rule has been classified as a `:global` block.
-    is_global_block: bool,
+    /// Whether this rule is a lone `:global` block (single complex, single relative, single selector).
+    is_lone_global_block: bool,
     /// Whether this rule has a parent rule (i.e. is nested).
     has_parent_rule: bool,
     /// Whether the parent rule is a lone top-level `:global` block
@@ -340,9 +340,14 @@ impl<'a> CssValidator<'a> {
         }
 
         // Compute context for child rules
+        let is_lone_global_block = rule_is_global_block
+            && rule.prelude.children.len() == 1
+            && rule.prelude.children[0].children.len() == 1
+            && rule.prelude.children[0].children[0].selectors.len() == 1;
+
         let parent_is_lone_global_block = if has_parent {
             self.current_rule()
-                .map_or(false, |r| r.is_global_block && !r.has_parent_rule)
+                .map_or(false, |r| r.is_lone_global_block && !r.has_parent_rule)
         } else {
             false
         };
@@ -357,7 +362,7 @@ impl<'a> CssValidator<'a> {
             );
 
         self.rule_stack.push(RuleContext {
-            is_global_block: rule_is_global_block,
+            is_lone_global_block,
             has_parent_rule: has_parent,
             parent_is_lone_global_block,
             is_lone_global_with_nesting_arg,
@@ -789,6 +794,13 @@ mod tests {
             ":global .x, .y { color: red; }",
             DiagnosticKind::CssGlobalBlockInvalidList,
         );
+    }
+
+    #[test]
+    fn css_nesting_in_compound_global_block_ok() {
+        // `&` inside `:global .foo { ... }` (compound, not lone) should NOT
+        // trigger CssGlobalBlockInvalidModifierStart — only lone `:global { &.foo }` does.
+        assert_no_diagnostics(":global .foo { &.bar { color: red; } }");
     }
 
     #[test]
