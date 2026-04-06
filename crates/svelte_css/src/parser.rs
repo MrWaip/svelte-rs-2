@@ -70,7 +70,7 @@ impl<'src> Parser<'src> {
     /// Parse ident and return (span, name) pair.
     fn parse_ident_with_name(&mut self) -> Option<(Span, CompactString)> {
         let span = self.parse_ident()?;
-        let name = self.scanner.compact_str(span);
+        let name = CompactString::new(self.scanner.source_text(span));
         Some((span, name))
     }
 
@@ -106,33 +106,21 @@ impl<'src> Parser<'src> {
         let mut paren_depth: u32 = 0;
 
         loop {
-            match self.scanner.peek().kind {
+            let kind = self.scanner.peek().kind;
+            match kind {
                 TokenKind::Semicolon | TokenKind::LBrace | TokenKind::RBrace
                     if paren_depth == 0 =>
                 {
                     return Span::new(start, last_non_ws_end);
                 }
-                TokenKind::Eof => {
-                    return Span::new(start, last_non_ws_end);
-                }
-                TokenKind::LParen => {
-                    paren_depth += 1;
-                    self.scanner.bump();
-                    last_non_ws_end = self.scanner.prev_end;
-                }
-                TokenKind::RParen => {
-                    paren_depth = paren_depth.saturating_sub(1);
-                    self.scanner.bump();
-                    last_non_ws_end = self.scanner.prev_end;
-                }
-                TokenKind::Whitespace | TokenKind::Comment => {
-                    self.scanner.bump();
-                    // Don't update last_non_ws_end — trims trailing ws.
-                }
-                _ => {
-                    self.scanner.bump();
-                    last_non_ws_end = self.scanner.prev_end;
-                }
+                TokenKind::Eof => return Span::new(start, last_non_ws_end),
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
+                _ => {}
+            }
+            self.scanner.bump();
+            if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
+                last_non_ws_end = self.scanner.prev_end;
             }
         }
     }
@@ -276,29 +264,17 @@ impl<'src> Parser<'src> {
 
     #[inline(always)]
     fn is_nth_terminator(&self) -> bool {
-        match self.scanner.peek().kind {
-            TokenKind::RParen | TokenKind::Comma | TokenKind::Eof => true,
-            TokenKind::Whitespace => true,
-            _ => false,
-        }
+        matches!(
+            self.scanner.peek().kind,
+            TokenKind::RParen | TokenKind::Comma | TokenKind::Whitespace | TokenKind::Eof
+        )
     }
 
     // -- percentage ---------------------------------------------------------
 
     fn try_parse_percentage(&mut self) -> Option<Span> {
         if self.scanner.at(TokenKind::Percentage) {
-            let tok = self.scanner.bump();
-            return Some(tok.span);
-        }
-        // Also handle Number + Delim(%) for edge cases.
-        if self.scanner.at(TokenKind::Number) {
-            let save = self.scanner.save();
-            let start = self.scanner.current_start();
-            self.scanner.bump();
-            if self.scanner.eat_delim(b'%') {
-                return Some(self.scanner.span_from(start));
-            }
-            self.scanner.restore(save);
+            return Some(self.scanner.bump().span);
         }
         None
     }
@@ -349,6 +325,23 @@ impl<'src> Parser<'src> {
     }
 
     // -- attribute selector helpers -----------------------------------------
+
+    /// Parse a type selector: `ident` or `ident|ident` (namespace).
+    fn parse_type_selector(&mut self, start: u32) -> Option<SimpleSelector> {
+        let ident_start = self.scanner.current_start();
+        self.parse_ident()?;
+        let mut ident_end = self.scanner.prev_end;
+        if self.scanner.eat_delim(b'|') {
+            self.parse_ident()?;
+            ident_end = self.scanner.prev_end;
+        }
+        Some(SimpleSelector::Type {
+            span: self.scanner.span_from(start),
+            name: CompactString::new(
+                self.scanner.source_text(Span::new(ident_start, ident_end)),
+            ),
+        })
+    }
 
     fn try_parse_attr_matcher(&mut self) -> Option<Span> {
         let start = self.scanner.current_start();
@@ -432,10 +425,7 @@ impl<'src> Parser<'src> {
 
         // Consume the AtKeyword token and extract name (skip leading '@').
         let tok = self.scanner.bump();
-        let name_start = tok.span.start + 1; // skip '@'
-        let name = CompactString::new(
-            &self.scanner.src[name_start as usize..tok.span.end as usize],
-        );
+        let name = CompactString::new(self.scanner.text_after(tok.span, 1));
 
         // Skip whitespace before prelude
         self.scanner.skip_whitespace();
@@ -577,30 +567,20 @@ impl<'src> Parser<'src> {
                     self.scanner.bump();
                     let mut name_end = self.scanner.prev_end;
                     if self.scanner.eat_delim(b'|') {
-                        match self.parse_ident() {
-                            Some(ident) => name_end = ident.end,
-                            None => return None,
-                        }
+                        name_end = self.parse_ident()?.end;
                     }
-                    let full_span = self.scanner.span_from(start);
-                    let name = CompactString::new(
-                        &self.scanner.src[start as usize..name_end as usize],
-                    );
+                    let name_span = Span::new(start, name_end);
                     rel.selectors.push(SimpleSelector::Type {
-                        span: full_span,
-                        name,
+                        span: self.scanner.span_from(start),
+                        name: CompactString::new(self.scanner.source_text(name_span)),
                     });
                 }
                 // # → id selector (via Hash token)
                 TokenKind::Hash => {
                     let tok = self.scanner.bump();
-                    let name_start = tok.span.start + 1; // skip '#'
-                    let name = CompactString::new(
-                        &self.scanner.src[name_start as usize..tok.span.end as usize],
-                    );
                     rel.selectors.push(SimpleSelector::Id {
                         span: tok.span,
-                        name,
+                        name: CompactString::new(self.scanner.text_after(tok.span, 1)),
                     });
                 }
                 // . → class selector
@@ -609,7 +589,7 @@ impl<'src> Parser<'src> {
                     let ident = self.parse_ident()?;
                     rel.selectors.push(SimpleSelector::Class {
                         span: self.scanner.span_from(start),
-                        name: self.scanner.compact_str(ident),
+                        name: CompactString::new(self.scanner.source_text(ident)),
                     });
                 }
                 // : or :: → pseudo-class or pseudo-element
@@ -666,37 +646,12 @@ impl<'src> Parser<'src> {
                         } else if let Some(pct) = self.try_parse_percentage() {
                             rel.selectors.push(SimpleSelector::Percentage(pct));
                         } else if !self.scanner.is_combinator_start() {
-                            let ident_start = self.scanner.current_start();
-                            self.parse_ident()?;
-                            let mut ident_end = self.scanner.prev_end;
-                            if self.scanner.eat_delim(b'|') {
-                                self.parse_ident()?;
-                                ident_end = self.scanner.prev_end;
-                            }
-                            rel.selectors.push(SimpleSelector::Type {
-                                span: self.scanner.span_from(start),
-                                name: CompactString::new(
-                                    &self.scanner.src
-                                        [ident_start as usize..ident_end as usize],
-                                ),
-                            });
+                            rel.selectors.push(self.parse_type_selector(start)?);
                         }
                     } else if let Some(pct) = self.try_parse_percentage() {
                         rel.selectors.push(SimpleSelector::Percentage(pct));
                     } else if !self.scanner.is_combinator_start() {
-                        let ident_start = self.scanner.current_start();
-                        self.parse_ident()?;
-                        let mut ident_end = self.scanner.prev_end;
-                        if self.scanner.eat_delim(b'|') {
-                            self.parse_ident()?;
-                            ident_end = self.scanner.prev_end;
-                        }
-                        rel.selectors.push(SimpleSelector::Type {
-                            span: self.scanner.span_from(start),
-                            name: CompactString::new(
-                                &self.scanner.src[ident_start as usize..ident_end as usize],
-                            ),
-                        });
+                        rel.selectors.push(self.parse_type_selector(start)?);
                     }
                 }
             }

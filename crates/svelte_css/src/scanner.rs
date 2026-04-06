@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use svelte_span::Span;
 
 // ---------------------------------------------------------------------------
@@ -128,7 +127,7 @@ pub(crate) struct ScannerCheckpoint {
 
 pub(crate) struct Scanner<'src> {
     pub(crate) src: &'src str,
-    tokens: Vec<Token>,
+    tokens: Box<[Token]>,
     pos: usize,
     /// Byte offset of the end of the last consumed token.
     pub(crate) prev_end: u32,
@@ -136,7 +135,7 @@ pub(crate) struct Scanner<'src> {
 
 impl<'src> Scanner<'src> {
     pub fn new(src: &'src str) -> Self {
-        let tokens = tokenize(src);
+        let tokens = tokenize(src).into_boxed_slice();
         Self {
             src,
             tokens,
@@ -264,10 +263,11 @@ impl<'src> Scanner<'src> {
         &self.src[sp.start as usize..sp.end as usize]
     }
 
-    /// Create a `CompactString` from a span.
+    /// Source text of a span with `skip` leading bytes removed.
+    /// Useful for extracting the name from Hash (`#foo`) or AtKeyword (`@media`).
     #[inline]
-    pub fn compact_str(&self, span: Span) -> CompactString {
-        CompactString::new(&self.src[span.start as usize..span.end as usize])
+    pub fn text_after(&self, span: Span, skip: u32) -> &'src str {
+        &self.src[(span.start + skip) as usize..span.end as usize]
     }
 
     // -- save / restore -----------------------------------------------------
