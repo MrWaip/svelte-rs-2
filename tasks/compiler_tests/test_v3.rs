@@ -14,8 +14,17 @@ fn normalize_css(s: &str) -> String {
     s.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
+        .filter(|l| !is_css_comment_line(l))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Returns true if the entire (trimmed) line is a CSS comment.
+/// Catches standalone comment lines like `/* :global {*/` or `/*}*/`
+/// that the reference compiler emits as wrappers around global blocks.
+fn is_css_comment_line(line: &str) -> bool {
+    let s = line.trim();
+    s.starts_with("/*") && s.ends_with("*/")
 }
 
 fn case_input_and_options(case: &str) -> (String, CompileOptions) {
@@ -152,6 +161,11 @@ fn css_injected() {
 #[rstest]
 fn css_global_basic() {
     assert_compiler("css_global_basic");
+}
+
+#[rstest]
+fn css_global_block() {
+    assert_compiler("css_global_block");
 }
 
 #[rstest]

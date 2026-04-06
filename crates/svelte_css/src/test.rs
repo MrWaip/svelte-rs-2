@@ -221,6 +221,30 @@ fn global_block() {
 }
 
 #[test]
+fn is_lone_global_block_detection() {
+    // Lone :global { } → true
+    let ss = p(":global { p { color: red; } }");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    assert!(rule.is_lone_global_block());
+
+    // Functional :global(.foo) → false
+    let ss = p(":global(.foo) { color: red; }");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    assert!(!rule.is_lone_global_block());
+
+    // Regular rule → false
+    let ss = p("p { color: red; }");
+    let StyleSheetChild::Rule(Rule::Style(rule)) = &ss.children[0] else {
+        panic!("expected style rule");
+    };
+    assert!(!rule.is_lone_global_block());
+}
+
+#[test]
 fn global_in_compound_selector() {
     // p:global(.active) — type selector followed by :global()
     let src = "p:global(.active) { font-weight: bold; }";
