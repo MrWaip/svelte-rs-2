@@ -95,6 +95,8 @@ pub struct AtRule {
     pub span: Span,
     pub name: CompactString,
     pub prelude: Span,
+    /// When set by the transform, the printer uses this instead of `prelude`.
+    pub prelude_override: Option<CompactString>,
     pub block: Option<Block>,
 }
 
@@ -224,6 +226,8 @@ pub struct Declaration {
     pub span: Span,
     pub property: Span,
     pub value: Span,
+    /// When set by the transform, the printer uses this instead of `value`.
+    pub value_override: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

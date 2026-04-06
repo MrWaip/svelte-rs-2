@@ -7,7 +7,8 @@
 - **Working**: `:global { ... }` block form — lone `:global` blocks hoisted at transform time (inner rules promoted unscoped to parent level). Works at top level, inside `@media`/`@supports`, and nested inside style rules. Analyze pass skips type selector collection for global blocks. Test: `css_global_block`.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
 - **Missing**: `:global .foo { ... }` compound form (non-lone), `:global()` inside `:not()`/`:is()`/`:where()`, `:global()` validation diagnostics, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
-- **Next**: Port `:global .foo { ... }` compound form or `@keyframes` scoping.
+- **Done**: Scoped `@keyframes` + `-global-` escape — keyframe names prefixed with hash, `-global-` prefix stripped, `animation`/`animation-name` values rewritten.
+- **Next**: Port `:global .foo { ... }` compound form or `:global()` inside `:not()`/`:is()`/`:where()`.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
 - Last updated: 2026-04-06
 
@@ -41,7 +42,7 @@ ROADMAP.md — CSS
 - [x] `:global { ... }` block form transform (test: `css_global_block`)
 - [ ] `:global()` inside `:not()`, `:is()`, `:where()` — currently unvisited (visitor declares SELECTORS only, not PSEUDO_CLASSES; nested selectors inside functional pseudo-classes silently pass through)
 - [ ] `:global()` validation diagnostics
-- [ ] Scoped `@keyframes` plus `-global-*` escape
+- [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
 - [ ] Unused selector warning (`css_unused_selector`)
 - [ ] CSS custom properties on components — `<svelte-css-wrapper>` / `<g>` wrapper lowering for `--prop=...`
@@ -85,3 +86,4 @@ ROADMAP.md — CSS
 - [x] `css_injected`
 - [x] `css_injected_via_compile_options`
 - [x] `css_global_block`
+- [x] `css_keyframes_scoped`

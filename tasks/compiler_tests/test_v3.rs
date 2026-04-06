@@ -169,6 +169,11 @@ fn css_global_block() {
 }
 
 #[rstest]
+fn css_keyframes_scoped() {
+    assert_compiler("css_keyframes_scoped");
+}
+
+#[rstest]
 fn head_position_with_body() {
     assert_compiler("head_position_with_body");
 }
