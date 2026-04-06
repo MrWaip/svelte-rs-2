@@ -3,12 +3,13 @@
 ## Current state
 - **Working**: scoped CSS pipeline complete — hash, selector scoping, element marking, class injection, `CompileResult.css`. Both `css:"external"` (default) and `css:"injected"` modes work. Tests: `css_scoped_basic`, `css_injected`, `css_injected_via_compile_options`.
 - **Architecture**: `svelte_transform_css` crate owns CSS AST → CSS string transform (scoping, serialization, injection compaction). `svelte_analyze::analyze_css_pass` is read-only classifier (hash, scoped elements, inject flag). `svelte_compiler` orchestrates and owns mode-specific post-processing.
-- **Working**: `:global(.foo)` functional form — AST-level stripping of pseudo-class wrapper, mixed selectors (`p :global(.bar)`) scope outer LocalName correctly. Test: `css_global_basic`. CSS modules parsing enabled in `svelte_parser::parse_css_block` so lightningcss produces `PseudoClass::Global { selector }` (structured AST); transform expands inline; serialized via `stylesheet.rules.to_css()` directly to avoid CSS module class renaming.
+- **Working**: `:global(.foo)` functional form — AST-level stripping of pseudo-class wrapper, mixed selectors (`p :global(.bar)`) scope outer LocalName correctly. Test: `css_global_basic`.
+- **Working**: `:global { ... }` block form — lone `:global` blocks hoisted at transform time (inner rules promoted unscoped to parent level). Works at top level, inside `@media`/`@supports`, and nested inside style rules. Analyze pass skips type selector collection for global blocks. Test: `css_global_block`.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global { ... }` block form transform, `:global()` validation diagnostics, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
-- **Next**: Port `:global { ... }` block form — Rule-level visitor to hoist inner rules out of the `:global { }` wrapper.
+- **Missing**: `:global .foo { ... }` compound form (non-lone), `:global()` inside `:not()`/`:is()`/`:where()`, `:global()` validation diagnostics, `@keyframes` scoping, unused-selector warnings, CSS custom properties.
+- **Next**: Port `:global .foo { ... }` compound form or `@keyframes` scoping.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
-- Last updated: 2026-04-05
+- Last updated: 2026-04-06
 
 ## Source
 
@@ -37,7 +38,7 @@ ROADMAP.md — CSS
 - [ ] `css: "external"` output — mode flag not explicitly enforced; external is current default behavior with no special handling
 - [x] `css: "injected"` output — `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body (tests: `css_injected`, `css_injected_via_compile_options`)
 - [x] `:global(.foo)` functional form — strip wrapper, scope outer LocalName (test: `css_global_basic`)
-- [ ] `:global { ... }` block form transform
+- [x] `:global { ... }` block form transform (test: `css_global_block`)
 - [ ] `:global()` inside `:not()`, `:is()`, `:where()` — currently unvisited (visitor declares SELECTORS only, not PSEUDO_CLASSES; nested selectors inside functional pseudo-classes silently pass through)
 - [ ] `:global()` validation diagnostics
 - [ ] Scoped `@keyframes` plus `-global-*` escape
@@ -83,3 +84,4 @@ ROADMAP.md — CSS
 - [x] `css_scoped_basic`
 - [x] `css_injected`
 - [x] `css_injected_via_compile_options`
+- [x] `css_global_block`

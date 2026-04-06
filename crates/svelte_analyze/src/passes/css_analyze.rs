@@ -1,5 +1,5 @@
 use rustc_hash::FxHashSet;
-use svelte_css::{ComplexSelector, RelativeSelector, SimpleSelector, StyleSheet, Visit};
+use svelte_css::{ComplexSelector, RelativeSelector, SimpleSelector, StyleRule, StyleSheet, Visit};
 
 use svelte_ast::{AstStore, Component as SvelteComponent, Fragment, Node};
 
@@ -54,6 +54,13 @@ struct TypeSelectorCollector {
 }
 
 impl Visit for TypeSelectorCollector {
+    fn visit_style_rule(&mut self, node: &StyleRule) {
+        if node.is_lone_global_block() {
+            return;
+        }
+        svelte_css::visit::walk_style_rule(self, node);
+    }
+
     fn visit_complex_selector(&mut self, node: &ComplexSelector) {
         if has_global_selector(node) {
             return;

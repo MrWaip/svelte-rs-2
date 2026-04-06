@@ -73,6 +73,23 @@ pub struct StyleRule {
     pub block: Block,
 }
 
+impl StyleRule {
+    /// Returns true if this rule's prelude is a lone `:global` (block form).
+    ///
+    /// Matches exactly: one `ComplexSelector` → one `RelativeSelector` → one
+    /// `SimpleSelector::Global { args: None }`.  This is distinct from the
+    /// compound form (`:global .foo { … }`) which has additional selectors.
+    pub fn is_lone_global_block(&self) -> bool {
+        self.prelude.children.len() == 1
+            && self.prelude.children[0].children.len() == 1
+            && self.prelude.children[0].children[0].selectors.len() == 1
+            && matches!(
+                &self.prelude.children[0].children[0].selectors[0],
+                SimpleSelector::Global { args: None, .. }
+            )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AtRule {
     pub span: Span,

@@ -1,5 +1,8 @@
 use compact_str::CompactString;
-use svelte_css::{ComplexSelector, RelativeSelector, SimpleSelector, StyleSheet, VisitMut};
+use svelte_css::{
+    Block, BlockChild, ComplexSelector, RelativeSelector, Rule, SimpleSelector, StyleSheet,
+    StyleSheetChild, VisitMut,
+};
 use svelte_span::Span;
 
 /// Transform the stylesheet AST: scope selectors and serialize to CSS text.
@@ -24,6 +27,60 @@ struct ScopeSelectors {
 }
 
 impl VisitMut for ScopeSelectors {
+    fn visit_stylesheet_mut(&mut self, node: &mut StyleSheet) {
+        let children = std::mem::take(&mut node.children);
+        let mut new_children = Vec::with_capacity(children.len());
+        for child in children {
+            match child {
+                StyleSheetChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
+                    // Hoist inner rules unscoped — do NOT visit them with the scoper
+                    for block_child in sr.block.children {
+                        match block_child {
+                            BlockChild::Rule(rule) => {
+                                new_children.push(StyleSheetChild::Rule(rule));
+                            }
+                            BlockChild::Comment(c) => {
+                                new_children.push(StyleSheetChild::Comment(c));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                StyleSheetChild::Rule(mut rule) => {
+                    self.visit_rule_mut(&mut rule);
+                    new_children.push(StyleSheetChild::Rule(rule));
+                }
+                other => new_children.push(other),
+            }
+        }
+        node.children = new_children;
+    }
+
+    fn visit_block_mut(&mut self, node: &mut Block) {
+        let children = std::mem::take(&mut node.children);
+        let mut new_children = Vec::with_capacity(children.len());
+        for child in children {
+            match child {
+                BlockChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
+                    // Hoist inner rules unscoped
+                    for block_child in sr.block.children {
+                        new_children.push(block_child);
+                    }
+                }
+                BlockChild::Rule(mut rule) => {
+                    self.visit_rule_mut(&mut rule);
+                    new_children.push(BlockChild::Rule(rule));
+                }
+                BlockChild::Declaration(mut d) => {
+                    self.visit_declaration_mut(&mut d);
+                    new_children.push(BlockChild::Declaration(d));
+                }
+                other => new_children.push(other),
+            }
+        }
+        node.children = new_children;
+    }
+
     fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
         if is_entirely_global(node) {
             unwrap_global(node);
@@ -191,5 +248,69 @@ mod tests {
         let (ss, _) = svelte_css::parse(source);
         let result = transform_css("svelte-abc123", ss, source);
         assert!(result.contains("p.svelte-abc123.active"), "got: {result}");
+    }
+
+    #[test]
+    fn global_block_not_scoped() {
+        let source = ":global { p { color: red; } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(
+            !result.contains("svelte-abc123"),
+            "global block inner rules should not be scoped, got: {result}"
+        );
+        assert!(result.contains("p"), "got: {result}");
+        assert!(!result.contains(":global"), "global wrapper should be removed, got: {result}");
+    }
+
+    #[test]
+    fn global_block_multiple_inner_rules() {
+        let source = ":global { .foo { color: red; } .bar { font-size: 16px; } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(!result.contains("svelte-abc123"), "got: {result}");
+        assert!(result.contains(".foo"), "got: {result}");
+        assert!(result.contains(".bar"), "got: {result}");
+        assert!(!result.contains(":global"), "got: {result}");
+    }
+
+    #[test]
+    fn global_block_mixed_with_local() {
+        let source = ":global { p { color: red; } }\ndiv { font-size: 16px; }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(
+            !result.contains("p.svelte-abc123"),
+            "p should not be scoped, got: {result}"
+        );
+        assert!(
+            result.contains("div.svelte-abc123"),
+            "div should be scoped, got: {result}"
+        );
+    }
+
+    #[test]
+    fn global_block_in_media() {
+        let source = "@media (min-width: 768px) { :global { p { color: red; } } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(!result.contains("svelte-abc123"), "got: {result}");
+        assert!(result.contains("p"), "got: {result}");
+        assert!(!result.contains(":global"), "got: {result}");
+    }
+
+    #[test]
+    fn global_block_nested_in_style_rule() {
+        let source = ".foo { :global { .bar { color: red; } } }";
+        let (ss, _) = svelte_css::parse(source);
+        let result = transform_css("svelte-abc123", ss, source);
+        assert!(
+            result.contains(".foo.svelte-abc123"),
+            ".foo should be scoped, got: {result}"
+        );
+        assert!(
+            !result.contains(".bar.svelte-abc123"),
+            ".bar should not be scoped, got: {result}"
+        );
     }
 }
