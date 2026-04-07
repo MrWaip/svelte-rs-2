@@ -655,6 +655,30 @@ fn custom_element_no_tag() {
 }
 
 #[rstest]
+#[ignore = "missing: aliased prop accessors in custom elements (analyze/codegen)"]
+fn custom_element_prop_alias() {
+    assert_compiler("custom_element_prop_alias");
+}
+
+#[rstest]
+#[ignore = "missing: custom-element slot lowering and slot metadata emission (analyze/codegen)"]
+fn custom_element_slots() {
+    assert_compiler("custom_element_slots");
+}
+
+#[rstest]
+#[ignore = "missing: custom-element default CSS injection (compiler/codegen)"]
+fn custom_element_css_default_injected() {
+    assert_compiler("custom_element_css_default_injected");
+}
+
+#[rstest]
+#[ignore = "missing: ShadowRootInit object emission for customElement.shadow (analyze/codegen)"]
+fn custom_element_shadow_object() {
+    assert_compiler("custom_element_shadow_object");
+}
+
+#[rstest]
 fn html_tag() {
     assert_compiler("html_tag");
 }

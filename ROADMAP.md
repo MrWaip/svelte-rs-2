@@ -105,7 +105,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## Custom Elements
 
-- [ ] Custom Elements
+- [ ] Custom Elements — [spec](specs/custom-elements.md)
 
 ## Compiler Infrastructure
 
