@@ -100,6 +100,16 @@ fn find_element<'a>(
                     return Some(found);
                 }
             }
+            Node::SvelteHead(head) => {
+                if let Some(found) = find_element(&head.fragment, component, tag_name) {
+                    return Some(found);
+                }
+            }
+            Node::SvelteElement(el) => {
+                if let Some(found) = find_element(&el.fragment, component, tag_name) {
+                    return Some(found);
+                }
+            }
             _ => {}
         }
     }
@@ -161,6 +171,20 @@ fn find_nth_element<'a>(
                         return Some(found);
                     }
                 }
+                Node::SvelteHead(head) => {
+                    if let Some(found) =
+                        visit(&head.fragment, component, tag_name, target_index, seen)
+                    {
+                        return Some(found);
+                    }
+                }
+                Node::SvelteElement(el) => {
+                    if let Some(found) =
+                        visit(&el.fragment, component, tag_name, target_index, seen)
+                    {
+                        return Some(found);
+                    }
+                }
                 _ => {}
             }
         }
@@ -193,6 +217,95 @@ fn find_component_node_id(fragment: &Fragment, component: &Component, name: &str
             }
             Node::EachBlock(b) => {
                 if let Some(found) = find_component_node_id(&b.body, component, name) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_html_tag_id(fragment: &Fragment, component: &Component, expr_text: &str) -> Option<NodeId> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::HtmlTag(tag) if component.source_text(tag.expression_span) == expr_text => {
+                return Some(tag.id);
+            }
+            Node::ComponentNode(node) => {
+                if let Some(found) = find_html_tag_id(&node.fragment, component, expr_text) {
+                    return Some(found);
+                }
+            }
+            Node::Element(el) => {
+                if let Some(found) = find_html_tag_id(&el.fragment, component, expr_text) {
+                    return Some(found);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(found) = find_html_tag_id(&b.consequent, component, expr_text) {
+                    return Some(found);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(found) = find_html_tag_id(alt, component, expr_text) {
+                        return Some(found);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(found) = find_html_tag_id(&b.body, component, expr_text) {
+                    return Some(found);
+                }
+            }
+            Node::SvelteHead(head) => {
+                if let Some(found) = find_html_tag_id(&head.fragment, component, expr_text) {
+                    return Some(found);
+                }
+            }
+            Node::SvelteElement(el) => {
+                if let Some(found) = find_html_tag_id(&el.fragment, component, expr_text) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_svelte_head_id(fragment: &Fragment, component: &Component) -> Option<NodeId> {
+    let store = &component.store;
+    for &id in &fragment.nodes {
+        match store.get(id) {
+            Node::SvelteHead(head) => return Some(head.id),
+            Node::ComponentNode(node) => {
+                if let Some(found) = find_svelte_head_id(&node.fragment, component) {
+                    return Some(found);
+                }
+            }
+            Node::Element(el) => {
+                if let Some(found) = find_svelte_head_id(&el.fragment, component) {
+                    return Some(found);
+                }
+            }
+            Node::IfBlock(b) => {
+                if let Some(found) = find_svelte_head_id(&b.consequent, component) {
+                    return Some(found);
+                }
+                if let Some(alt) = &b.alternate {
+                    if let Some(found) = find_svelte_head_id(alt, component) {
+                        return Some(found);
+                    }
+                }
+            }
+            Node::EachBlock(b) => {
+                if let Some(found) = find_svelte_head_id(&b.body, component) {
+                    return Some(found);
+                }
+            }
+            Node::SvelteElement(el) => {
+                if let Some(found) = find_svelte_head_id(&el.fragment, component) {
                     return Some(found);
                 }
             }
@@ -1621,6 +1734,68 @@ let b = await fetch('/b');
     assert_first_await_index(&data, 0);
     assert_symbol_blocker(&data, "a", 0);
     assert_symbol_blocker(&data, "b", 1);
+}
+
+#[test]
+fn blocker_fragment_indices_are_sorted_and_unique() {
+    let (component, data) = analyze_source(
+        r#"<script>
+let a = await fetch('/a');
+let b = await fetch('/b');
+</script>
+<p>{b}{a}{b}</p>"#,
+    );
+    let paragraph = find_element(&component.fragment, &component, "p")
+        .unwrap_or_else(|| panic!("no <p> element"));
+    assert_eq!(
+        data.fragments.fragment_blockers(&FragmentKey::Element(paragraph.id)),
+        &[0, 1]
+    );
+}
+
+#[test]
+fn debug_tag_ids_collected_for_fragment() {
+    let (component, data) = analyze_source(r#"<script>let a = 1; let b = 2;</script>{@debug a}{@debug b}"#);
+    let expected: Vec<NodeId> = component
+        .fragment
+        .nodes
+        .iter()
+        .filter_map(|&id| match component.store.get(id) {
+            Node::DebugTag(tag) => Some(tag.id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(data.debug_tags.by_fragment(&FragmentKey::Root), Some(&expected));
+}
+
+#[test]
+fn title_elements_collected_for_svelte_head_fragment() {
+    let (component, data) =
+        analyze_source(r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#);
+    let head_id = find_svelte_head_id(&component.fragment, &component)
+        .unwrap_or_else(|| panic!("no <svelte:head>"));
+    let title = find_element(&component.fragment, &component, "title")
+        .unwrap_or_else(|| panic!("no <title>"));
+    assert_eq!(
+        data.title_elements
+            .by_fragment(&FragmentKey::SvelteHeadBody(head_id)),
+        Some(&vec![title.id])
+    );
+}
+
+#[test]
+fn html_tag_namespace_flags_preserved() {
+    let (component, data) = analyze_source(
+        r#"<script>let svgContent = ''; let mathContent = '';</script><svg>{@html svgContent}</svg><math>{@html mathContent}</math>"#,
+    );
+    let svg_tag = find_html_tag_id(&component.fragment, &component, "svgContent")
+        .unwrap_or_else(|| panic!("no svg html tag"));
+    let math_tag = find_html_tag_id(&component.fragment, &component, "mathContent")
+        .unwrap_or_else(|| panic!("no mathml html tag"));
+    assert!(data.html_tag_in_svg(svg_tag));
+    assert!(!data.html_tag_in_mathml(svg_tag));
+    assert!(data.html_tag_in_mathml(math_tag));
+    assert!(!data.html_tag_in_svg(math_tag));
 }
 
 #[test]
