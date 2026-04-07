@@ -2418,6 +2418,61 @@ const fn_ = () => count;
 }
 
 #[test]
+fn validate_non_reactive_update_for_direct_template_read() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = 0;
+count = 1;
+</script>
+
+{count}"#,
+    );
+    assert_has_warning(&diags, "non_reactive_update");
+}
+
+#[test]
+fn validate_non_reactive_update_no_warning_across_function_boundary() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let count = 0;
+count = 1;
+</script>
+
+<button onclick={() => count}></button>"#,
+    );
+    assert_no_warning(&diags, "non_reactive_update");
+}
+
+#[test]
+fn validate_non_reactive_update_bind_this_no_warning_without_dynamic_block() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let node = null;
+node = document.body;
+</script>
+
+<div bind:this={node}></div>"#,
+    );
+    assert_no_warning(&diags, "non_reactive_update");
+}
+
+#[test]
+fn validate_non_reactive_update_bind_this_warns_inside_if_block() {
+    let diags = analyze_with_diags(
+        r#"<script>
+let ok = true;
+let node = null;
+node = document.body;
+</script>
+
+{#if ok}
+    <div bind:this={node}></div>
+{/if}"#,
+    );
+    assert_has_warning(&diags, "non_reactive_update");
+}
+
+#[test]
 fn validate_state_invalid_export_for_reassigned_state() {
     let diags = analyze_with_diags(
         r#"<script>

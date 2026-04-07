@@ -1,13 +1,13 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 19/22 use cases — infrastructure + first batch of warning emission
-- **Current slice**: analyzer quick-win warnings in `template_validation`
-- **Why this slice came next**: it stays inside the existing walker validate pass and reuses current scope/symbol queries without adding new analysis infrastructure
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior
+- **Working**: 20/22 use cases — infrastructure + warning emission slices
+- **Current slice**: analyzer `NonReactiveUpdate` validation
+- **Why this slice came next**: it was the next explicit item in the spec and fit as a single analyzer-only warning rule after the quick template-warning slice
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity
 - **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
-- **Next**: implement `NonReactiveUpdate` as its own analyzer slice; keep legacy `<svelte:component>` deprecation separate from this run
-- **Non-goals for this run**: no `NonReactiveUpdate`, no legacy `<svelte:component>` work, no new parser/analyze infrastructure
+- **Next**: implement `<svelte:options>` warning slice (`OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, `OptionsMissingCustomElement`) as a separate analyzer pass/validation step; keep legacy `<svelte:component>` deprecation separate from that run
+- **Non-goals for this run**: no legacy `<svelte:component>` work, no options warnings, no perf warnings, no new parser/analyze infrastructure
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
 - Last updated: 2026-04-07
 
@@ -39,7 +39,7 @@ ROADMAP Tier 5, item 5a
 - [x] `AttributeAvoidIs` — warn when element has `is` attribute
 - [x] `AttributeIllegalColon` — warn when attribute name contains `:` (excluding xml/xlink/xmlns)
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
-- [ ] Remaining non-A11y warnings: `NonReactiveUpdate`, `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), options warnings, perf class warnings
+- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), options warnings, perf class warnings
 - [ ] A11y checks (5f) — ~26 missing variants (ARIA role/attribute validation)
 - [ ] CSS unused selector warning (depends on Tier 3)
 

@@ -1,3 +1,4 @@
+mod non_reactive_update;
 mod runes;
 mod stores;
 
@@ -28,6 +29,7 @@ pub fn validate(
         let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
         stores::validate_module(data, module_program, offset, diags);
     }
+    non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, parsed, diags);
     validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
