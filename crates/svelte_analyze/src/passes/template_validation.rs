@@ -270,6 +270,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
+        check_component_name_lowercase(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
 
         // attribute_quoted: custom elements (names containing '-') get the same warning
@@ -304,8 +305,33 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_expression_attribute(
         &mut self,
         attr: &ExpressionAttribute,
-        _ctx: &mut VisitContext<'_>,
+        ctx: &mut VisitContext<'_>,
     ) {
+        if attr.event_name.is_some() {
+            if let Some(expr) = ctx
+                .parsed()
+                .and_then(|parsed| parsed.expr_handle(attr.expression_span.start))
+                .and_then(|handle| ctx.parsed().and_then(|parsed| parsed.expr(handle)))
+            {
+                if let Expression::Identifier(ident) = expr {
+                    if ident.name.as_str() == attr.name.as_str()
+                        && ctx
+                            .data
+                            .scoping
+                            .find_binding(ctx.scope, ident.name.as_str())
+                            .is_none()
+                    {
+                        ctx.warnings_mut().push(Diagnostic::warning(
+                            DiagnosticKind::AttributeGlobalEventReference {
+                                name: attr.name.clone(),
+                            },
+                            attr.expression_span,
+                        ));
+                    }
+                }
+            }
+        }
+
         if attr.event_name.is_some() {
             if let Some(state) = self.element_event_state.last_mut() {
                 state.has_s5_events = true;
@@ -1585,6 +1611,27 @@ fn check_plain_attr_warnings(
                 right: right.to_string(),
             },
             span,
+        ));
+    }
+}
+
+fn check_component_name_lowercase(el: &Element, ctx: &mut VisitContext<'_>) {
+    let Some(sym_id) = ctx.data.scoping.find_binding(ctx.scope, &el.name) else {
+        return;
+    };
+
+    if ctx.data.scoping.is_import(sym_id)
+        && ctx
+            .data
+            .scoping
+            .get_resolved_reference_ids(sym_id)
+            .is_empty()
+    {
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::ComponentNameLowercase {
+                name: el.name.clone(),
+            },
+            el.span,
         ));
     }
 }
