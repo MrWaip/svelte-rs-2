@@ -249,6 +249,94 @@ const A11Y_ABSTRACT_ROLES: &[&str] = &[
     "window",
 ];
 
+const A11Y_IMPLICIT_ROLES: &[(&str, &str)] = &[
+    ("a", "link"),
+    ("area", "link"),
+    ("article", "article"),
+    ("aside", "complementary"),
+    ("body", "document"),
+    ("button", "button"),
+    ("datalist", "listbox"),
+    ("dd", "definition"),
+    ("dfn", "term"),
+    ("dialog", "dialog"),
+    ("details", "group"),
+    ("dt", "term"),
+    ("fieldset", "group"),
+    ("figure", "figure"),
+    ("form", "form"),
+    ("h1", "heading"),
+    ("h2", "heading"),
+    ("h3", "heading"),
+    ("h4", "heading"),
+    ("h5", "heading"),
+    ("h6", "heading"),
+    ("hr", "separator"),
+    ("img", "img"),
+    ("li", "listitem"),
+    ("link", "link"),
+    ("main", "main"),
+    ("menu", "list"),
+    ("meter", "progressbar"),
+    ("nav", "navigation"),
+    ("ol", "list"),
+    ("option", "option"),
+    ("optgroup", "group"),
+    ("output", "status"),
+    ("progress", "progressbar"),
+    ("section", "region"),
+    ("summary", "button"),
+    ("table", "table"),
+    ("tbody", "rowgroup"),
+    ("textarea", "textbox"),
+    ("tfoot", "rowgroup"),
+    ("thead", "rowgroup"),
+    ("tr", "row"),
+    ("ul", "list"),
+];
+
+const A11Y_NESTED_IMPLICIT_ROLES: &[(&str, &str)] =
+    &[("header", "banner"), ("footer", "contentinfo")];
+
+const A11Y_INPUT_IMPLICIT_ROLES: &[(&str, &str)] = &[
+    ("button", "button"),
+    ("image", "button"),
+    ("reset", "button"),
+    ("submit", "button"),
+    ("checkbox", "checkbox"),
+    ("radio", "radio"),
+    ("range", "slider"),
+    ("number", "spinbutton"),
+    ("email", "textbox"),
+    ("search", "searchbox"),
+    ("tel", "textbox"),
+    ("text", "textbox"),
+    ("url", "textbox"),
+];
+
+const A11Y_COMBOBOX_INPUT_TYPES: &[&str] = &["email", "search", "tel", "text", "url"];
+
+const A11Y_MENUITEM_IMPLICIT_ROLES: &[(&str, &str)] = &[
+    ("command", "menuitem"),
+    ("checkbox", "menuitemcheckbox"),
+    ("radio", "menuitemradio"),
+];
+
+const A11Y_REQUIRED_ROLE_PROPS: &[(&str, &[&str])] = &[
+    ("checkbox", &["aria-checked"]),
+    ("combobox", &["aria-controls", "aria-expanded"]),
+    ("heading", &["aria-level"]),
+    ("menuitemcheckbox", &["aria-checked"]),
+    ("menuitemradio", &["aria-checked"]),
+    ("meter", &["aria-valuenow"]),
+    ("option", &["aria-selected"]),
+    ("radio", &["aria-checked"]),
+    ("scrollbar", &["aria-controls", "aria-valuenow"]),
+    ("slider", &["aria-valuenow"]),
+    ("switch", &["aria-checked"]),
+    ("treeitem", &["aria-selected"]),
+];
+
 struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
@@ -1964,6 +2052,10 @@ fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &m
 }
 
 fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    let has_spread = ctx.data.has_spread(el.id);
+    let implicit_role = implicit_role_for_element(el, attrs, ctx);
+    let is_parent_section_or_article = has_sectioning_ancestor(el.id, ctx);
+
     for attr in attrs {
         let Some(name) = attr_named_name(attr) else {
             continue;
@@ -1997,10 +2089,7 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
                     },
                     attr_value_span(attr),
                 ));
-                continue;
-            }
-
-            if !A11Y_ARIA_ROLES.contains(&role) {
+            } else if !A11Y_ARIA_ROLES.contains(&role) {
                 ctx.warnings_mut().push(Diagnostic::warning(
                     DiagnosticKind::A11yUnknownRole {
                         role: role.to_string(),
@@ -2009,6 +2098,139 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
                     attr_value_span(attr),
                 ));
             }
+
+            if implicit_role == Some(role)
+                && !matches!(el.name.as_str(), "ul" | "ol" | "li" | "menu")
+                && !(el.name == "a" && !ctx.data.has_attribute(el.id, "href"))
+            {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yNoRedundantRoles {
+                        role: role.to_string(),
+                    },
+                    attr_value_span(attr),
+                ));
+            }
+
+            if !is_parent_section_or_article
+                && nested_implicit_role(el.name.as_str()).is_some_and(|nested| nested == role)
+            {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yNoRedundantRoles {
+                        role: role.to_string(),
+                    },
+                    attr_value_span(attr),
+                ));
+            }
+
+            let Some(required_props) = required_role_props(role) else {
+                continue;
+            };
+
+            if has_spread || is_semantic_role_element(el, attrs, ctx, role) {
+                continue;
+            }
+
+            if required_props
+                .iter()
+                .any(|prop| ctx.data.attribute(el.id, attrs, prop).is_none())
+            {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yRoleHasRequiredAriaProps {
+                        role: role.to_string(),
+                        props: format_required_role_props(required_props),
+                    },
+                    attr_value_span(attr),
+                ));
+            }
+        }
+    }
+}
+
+fn implicit_role_for_element<'a>(
+    el: &Element,
+    attrs: &'a [Attribute],
+    ctx: &VisitContext<'a>,
+) -> Option<&'static str> {
+    match el.name.as_str() {
+        "menuitem" => {
+            let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
+            let type_value = static_text_attr_value(type_attr, ctx.source)?;
+            lookup_static_pair(A11Y_MENUITEM_IMPLICIT_ROLES, type_value)
+        }
+        "input" => {
+            let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
+            let type_value = static_text_attr_value(type_attr, ctx.source)?;
+            if ctx.data.has_attribute(el.id, "list") && A11Y_COMBOBOX_INPUT_TYPES.contains(&type_value)
+            {
+                Some("combobox")
+            } else {
+                lookup_static_pair(A11Y_INPUT_IMPLICIT_ROLES, type_value)
+            }
+        }
+        _ => lookup_static_pair(A11Y_IMPLICIT_ROLES, el.name.as_str()),
+    }
+}
+
+fn nested_implicit_role(name: &str) -> Option<&'static str> {
+    lookup_static_pair(A11Y_NESTED_IMPLICIT_ROLES, name)
+}
+
+fn required_role_props(role: &str) -> Option<&'static [&'static str]> {
+    A11Y_REQUIRED_ROLE_PROPS
+        .iter()
+        .find_map(|(name, props)| (*name == role).then_some(*props))
+}
+
+fn is_semantic_role_element<'a>(
+    el: &Element,
+    attrs: &'a [Attribute],
+    ctx: &VisitContext<'a>,
+    role: &str,
+) -> bool {
+    if implicit_role_for_element(el, attrs, ctx).is_some_and(|implicit| implicit == role) {
+        return true;
+    }
+
+    !has_sectioning_ancestor(el.id, ctx)
+        && matches!(
+            (el.name.as_str(), role),
+            ("header", "banner") | ("footer", "contentinfo")
+        )
+}
+
+fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_>) -> bool {
+    ctx.data.ancestors(id).any(|parent| {
+        if parent.kind != ParentKind::Element {
+            return false;
+        }
+
+        ctx.store
+            .get(parent.id)
+            .as_element()
+            .is_some_and(|element| matches!(element.name.as_str(), "section" | "article"))
+    })
+}
+
+fn lookup_static_pair<'a>(pairs: &'a [(&'a str, &'a str)], needle: &str) -> Option<&'a str> {
+    pairs
+        .iter()
+        .find_map(|(name, value)| (*name == needle).then_some(*value))
+}
+
+fn format_required_role_props(props: &[&str]) -> String {
+    let quoted = props
+        .iter()
+        .map(|prop| format!("\"{prop}\""))
+        .collect::<Vec<_>>();
+
+    match quoted.as_slice() {
+        [] => String::new(),
+        [single] => single.clone(),
+        [left, right] => format!("{left} and {right}"),
+        _ => {
+            let last = quoted.last().cloned().unwrap_or_default();
+            let leading = &quoted[..quoted.len() - 1];
+            format!("{}, and {}", leading.join(", "), last)
         }
     }
 }
