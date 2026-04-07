@@ -21,6 +21,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] Dev mode: `$.wrap_snippet(Name, function(...) { $.validate_snippet_args(...arguments); ... })` (test: tag_snippet_dev)
 - [x] Object destructuring: `{#snippet foo({ x, y })}` → `$$arg0` param + `let x = () => $$arg0?.().x` (test: snippet_object_destructure)
 - [x] Object destructuring with defaults: `{#snippet foo({ x = 5 })}` → `$.derived_safe_equal(() => $.fallback(...))` (test: snippet_object_destructure)
+- [ ] Snippet destructure default whose initializer is a non-literal expression (e.g. `[counter]`, an array referencing a binding) must wrap the default in a lazy thunk and pass `true` as the third `$.fallback` argument: expected `$.fallback($$arg0?.().values, () => [counter], true)`, currently emitted as `$.fallback($$arg0?.().values, [counter])` — both the lazy wrap and the lazy flag are missing. (test: `snippet_destructure_default_state_ref`, `#[ignore]`, S)
 - [x] Object rest: `{#snippet foo({ x, ...rest })}` → `$.exclude_from_object($$arg0?.(), ['x'])` (test: snippet_object_destructure)
 - [x] Array destructuring: `{#snippet foo([a, b])}` → `$.to_array($$arg0?.(), 2)` + derived intermediary (test: snippet_array_destructure)
 - [x] Array destructuring with rest: `{#snippet foo([a, ...rest])}` → `$.get($$array).slice(1)` (test: snippet_array_destructure)

@@ -28,6 +28,7 @@
 
 - [x] Basic item iteration: `{#each items as item}`.
 - [x] Item iteration with index: `{#each items as item, i}`.
+- [ ] Index variable in interpolated text must not be wrapped in `?? ""`. The codegen text-tag pipeline currently emits `${index ?? ""}` inside `template_effect` template literals; reference omits the coalesce because the each-block index is always a number. (test: `each_index_text_no_coalesce`, `#[ignore]`, S)
 - [x] Keyed each blocks, including key expressions that reference the index.
 - [x] Key-is-item optimization in runes mode.
 - [x] Destructured object and array patterns.
