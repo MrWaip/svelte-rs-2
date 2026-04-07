@@ -23,6 +23,7 @@ pub(crate) mod svelte_boundary;
 pub(crate) mod svelte_document;
 pub(crate) mod svelte_element;
 pub(crate) mod svelte_head;
+pub(crate) mod slot;
 pub(crate) mod svelte_window;
 pub(crate) mod title_element;
 pub(crate) mod traverse;
@@ -30,7 +31,7 @@ pub(crate) mod traverse;
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt};
-use svelte_ast::{Node, NodeId};
+use svelte_ast::{is_mathml, is_svg, Namespace, Node, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -70,43 +71,115 @@ pub(crate) fn add_svelte_meta<'a>(
     )
 }
 
-/// Return the appropriate `$.from_*` function for the component's namespace.
-fn from_template_fn(ctx: &Ctx) -> &'static str {
-    use svelte_ast::Namespace;
-    match ctx
-        .query
+fn from_namespace(namespace: Namespace) -> &'static str {
+    match namespace {
+        Namespace::Html => "$.from_html",
+        Namespace::Svg => "$.from_svg",
+        Namespace::Mathml => "$.from_mathml",
+    }
+}
+
+fn root_namespace(ctx: &Ctx) -> Namespace {
+    ctx.query
         .component
         .options
         .as_ref()
-        .and_then(|o| o.namespace.as_ref())
-    {
-        Some(Namespace::Svg) => "$.from_svg",
-        Some(Namespace::Mathml) => "$.from_mathml",
-        _ => "$.from_html",
+        .and_then(|o| o.namespace)
+        .unwrap_or(Namespace::Html)
+}
+
+fn is_svg_ambiguous_html_element(name: &str) -> bool {
+    matches!(name, "a" | "title")
+}
+
+pub(crate) fn element_ident_prefix(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "node".to_string()
+    } else {
+        out
     }
 }
 
-/// Return the `$.from_*` function based on the element's tag name.
-/// An inline `<svg>` in an HTML component needs `$.from_svg`, not `$.from_html`.
-pub(crate) fn from_template_fn_for_element(ctx: &Ctx, el_name: &str) -> &'static str {
-    if svelte_ast::is_svg(el_name) {
-        "$.from_svg"
-    } else if svelte_ast::is_mathml(el_name) {
-        "$.from_mathml"
-    } else {
-        from_template_fn(ctx)
+fn namespace_for_element_tag(el_name: &str, inherited: Namespace) -> Namespace {
+    if is_svg(el_name) {
+        return Namespace::Svg;
     }
+    if is_mathml(el_name) {
+        return Namespace::Mathml;
+    }
+    if inherited == Namespace::Svg && is_svg_ambiguous_html_element(el_name) {
+        return Namespace::Svg;
+    }
+    Namespace::Html
+}
+
+fn child_namespace_for_element(ctx: &Ctx, el_id: NodeId) -> Namespace {
+    let el = ctx.element(el_id);
+
+    if matches!(el.name.as_str(), "foreignObject" | "annotation-xml") {
+        return Namespace::Html;
+    }
+
+    let inherited = ctx
+        .template_element_parent(el_id)
+        .map(|parent_id| child_namespace_for_element(ctx, parent_id))
+        .unwrap_or_else(|| root_namespace(ctx));
+
+    namespace_for_element_tag(&el.name, inherited)
+}
+
+fn inherited_fragment_namespace(ctx: &Ctx, key: FragmentKey) -> Namespace {
+    match key {
+        FragmentKey::Root => root_namespace(ctx),
+        FragmentKey::Element(el_id) => child_namespace_for_element(ctx, el_id),
+        FragmentKey::SvelteHeadBody(_) => Namespace::Html,
+        FragmentKey::ComponentNode(_) | FragmentKey::NamedSlot(_, _) => Namespace::Html,
+        _ => key
+            .node_id()
+            .and_then(|node_id| ctx.nearest_element(node_id))
+            .map(|parent_el| child_namespace_for_element(ctx, parent_el))
+            .unwrap_or_else(|| root_namespace(ctx)),
+    }
+}
+
+pub(crate) fn from_template_fn_for_fragment_element(
+    ctx: &Ctx,
+    key: FragmentKey,
+    el_name: &str,
+) -> &'static str {
+    let inherited = inherited_fragment_namespace(ctx, key);
+    from_namespace(namespace_for_element_tag(el_name, inherited))
 }
 
 /// Infer the `$.from_*` function from the first element in a fragment's items.
-fn from_template_fn_for_items(ctx: &Ctx, items: &[FragmentItem]) -> &'static str {
+fn from_template_fn_for_items(ctx: &Ctx, key: FragmentKey, items: &[FragmentItem]) -> &'static str {
+    let inherited = inherited_fragment_namespace(ctx, key);
+    let mut namespace = None;
+
     for item in items {
         if let FragmentItem::Element(el_id) = item {
             let el = ctx.element(*el_id);
-            return from_template_fn_for_element(ctx, &el.name);
+            let el_ns = namespace_for_element_tag(&el.name, inherited);
+            namespace = Some(match namespace {
+                None => el_ns,
+                Some(prev) if prev == el_ns => prev,
+                Some(_) => Namespace::Html,
+            });
+            if namespace == Some(Namespace::Html) {
+                break;
+            }
         }
     }
-    from_template_fn(ctx)
+
+    from_namespace(namespace.unwrap_or(inherited))
 }
 use await_block::gen_await_block;
 use component::gen_component;
@@ -121,6 +194,7 @@ use key_block::gen_key_block;
 use render_tag::gen_render_tag;
 use svelte_boundary::gen_svelte_boundary;
 use svelte_element::gen_svelte_element;
+use slot::{emit_slot_template_anchor, is_legacy_slot_element};
 use title_element::emit_title_elements;
 use traverse::traverse_items;
 
@@ -304,7 +378,7 @@ fn emit_content_strategy<'a>(
             emit_dynamic_text(ctx, key, is_root, body);
         }
         ContentStrategy::SingleElement(el_id) => {
-            emit_single_element(ctx, *el_id, tpl_name, is_root, hoisted, body);
+            emit_single_element(ctx, key, *el_id, tpl_name, is_root, hoisted, body);
         }
         ContentStrategy::SingleBlock(ref item) => {
             emit_single_block(ctx, item, is_root, body);
@@ -368,15 +442,21 @@ fn emit_dynamic_text<'a>(
 
 fn emit_single_element<'a>(
     ctx: &mut Ctx<'a>,
+    key: FragmentKey,
     el_id: NodeId,
     tpl_name: &str,
     is_root: bool,
     hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
+    if is_legacy_slot_element(ctx, el_id) {
+        emit_slot_template_anchor(ctx, el_id, body);
+        return;
+    }
+
     let el = ctx.element(el_id);
     let (html, import_node) = element_html(ctx, el);
-    let from_fn = from_template_fn_for_element(ctx, &el.name);
+    let from_fn = from_template_fn_for_fragment_element(ctx, key, &el.name);
     let mut from_html = if import_node {
         ctx.b.call_expr(
             from_fn,
@@ -393,7 +473,7 @@ fn emit_single_element<'a>(
     let tpl_stmt = ctx.b.var_stmt(tpl_name, from_html);
 
     let el_name_str = ctx.element(el_id).name.clone();
-    let el_name = ctx.gen_ident(&el_name_str);
+    let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_str));
 
     // Pre-computed blocker indices for this element's fragment
     let el_key = svelte_analyze::FragmentKey::Element(el_id);
@@ -568,7 +648,7 @@ fn emit_mixed<'a>(
 
     let (html, import_node) = fragment_html(ctx, key);
     let flags = if import_node { 3.0 } else { 1.0 };
-    let from_fn = from_template_fn_for_items(ctx, &items);
+    let from_fn = from_template_fn_for_items(ctx, key, &items);
     let make_tpl_stmt = |ctx: &mut Ctx<'a>, key: FragmentKey| {
         let mut from_html = ctx.b.call_expr(
             from_fn,

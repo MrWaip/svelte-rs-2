@@ -123,9 +123,13 @@ fn warn_attr_invalid_prop_name() {
 }
 
 #[rstest]
-#[ignore = "missing: <slot> codegen not implemented ($.slot vs from_html)"]
 fn warn_slot_deprecated() {
     assert_compiler("warn_slot_deprecated");
+}
+
+#[rstest]
+fn slot_named_fallback() {
+    assert_compiler("slot_named_fallback");
 }
 
 #[rstest]
@@ -686,6 +690,21 @@ fn html_tag() {
 #[rstest]
 fn html_tag_mathml() {
     assert_compiler("html_tag_mathml");
+}
+
+#[rstest]
+fn svg_foreignobject_fragment_html() {
+    assert_compiler("svg_foreignobject_fragment_html");
+}
+
+#[rstest]
+fn mathml_root_html_fragment() {
+    assert_compiler("mathml_root_html_fragment");
+}
+
+#[rstest]
+fn mathml_annotation_xml_fragment_html() {
+    assert_compiler("mathml_annotation_xml_fragment_html");
 }
 
 #[rstest]
@@ -1903,6 +1922,16 @@ fn namespace_svg() {
 #[rstest]
 fn namespace_mathml() {
     assert_compiler("namespace_mathml");
+}
+
+#[rstest]
+fn svg_fragment_ambiguous_a() {
+    assert_compiler("svg_fragment_ambiguous_a");
+}
+
+#[rstest]
+fn svg_fragment_ambiguous_title() {
+    assert_compiler("svg_fragment_ambiguous_title");
 }
 
 #[rstest]

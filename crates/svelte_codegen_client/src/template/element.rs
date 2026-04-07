@@ -22,9 +22,10 @@ use super::expression::{
     emit_template_effect_with_memo, emit_trailing_next, get_node_expr, item_has_local_blockers,
     text_content_needs_memo, MemoAttr,
 };
-use super::from_template_fn_for_element;
+use super::from_template_fn_for_fragment_element;
 use super::html::fragment_html;
 use super::html_tag::gen_html_tag;
+use super::slot::is_legacy_slot_element;
 use super::traverse::traverse_items;
 
 /// Process an element's attributes and children.
@@ -372,7 +373,9 @@ pub(crate) fn process_element<'a>(
 pub(crate) fn item_needs_var(item: &svelte_analyze::FragmentItem, ctx: &Ctx<'_>) -> bool {
     match item {
         svelte_analyze::FragmentItem::TextConcat { has_expr, .. } => *has_expr,
-        svelte_analyze::FragmentItem::Element(id) => ctx.needs_var(*id),
+        svelte_analyze::FragmentItem::Element(id) => {
+            is_legacy_slot_element(ctx, *id) || ctx.needs_var(*id)
+        }
         svelte_analyze::FragmentItem::ComponentNode(_)
         | svelte_analyze::FragmentItem::IfBlock(_)
         | svelte_analyze::FragmentItem::EachBlock(_)
@@ -416,7 +419,7 @@ fn emit_customizable_select<'a>(
 ) {
     let (children_html, import_node) = fragment_html(ctx, *child_key);
     let flags = if import_node { 3.0 } else { 1.0 };
-    let from_fn = from_template_fn_for_element(ctx, el_name);
+    let from_fn = from_template_fn_for_fragment_element(ctx, *child_key, el_name);
     let tpl = ctx.b.call_expr(
         from_fn,
         [

@@ -1,12 +1,15 @@
 # Element
 
 ## Current state
-- **Working**: 15/17 use cases
+- **Working**: 17/18 use cases
 - **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y ownership lives in `specs/a11y-warnings.md`.
-- **Missing**: 2 — namespace edge cases, legacy slots
-- **Current slice**: `Literal Concat Folding` completed. Shared concat codegen now folds literal dynamic parts into adjacent static text and emits a plain string literal when no runtime expressions remain, covering regular element attrs and component prop concatenations through the shared `build_attr_concat` path. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Completed non-goals**: this slice intentionally did not include identifier-based constant propagation, namespace parity, legacy slots, A11y expansion, or parser/analyzer redesign.
-- **Next**: Implement full namespace parity for ancestor-derived `<a>` / `<title>` edge cases.
+- **Missing**: 1 — remaining legacy-slot parity beyond static consumer lowering
+- **Previous slice completed**: `Literal Concat Folding`. Shared concat codegen now folds literal dynamic parts into adjacent static text and emits a plain string literal when no runtime expressions remain, covering regular element attrs and component prop concatenations through the shared `build_attr_concat` path.
+- **Previous slice completed**: `SVG Ambiguous Child Namespace Factories`. Child fragment template creation now derives namespace from fragment ancestry instead of guessing from the first child tag, so ambiguous regular elements like `<a>` and `<title>` inside SVG `{#each}` / `{#if}` fragments emit `$.from_svg(...)`.
+- **Previous slice completed**: `MathML + Reset-Boundary Fragment Namespace Inference`. Fragment factory selection now falls back to `$.from_html(...)` for plain HTML descendants in MathML-root components and through reset boundaries like `annotation-xml`, while preserving the existing `foreignObject` reset behavior and import-node parity for hyphenated MathML wrappers.
+- **Current slice completed**: `Legacy Slot Consumer Lowering`. Non-custom-element legacy `<slot>` now lowers through `$.slot(...)` with static default/named slot names, empty props objects, and fallback fragment thunks instead of compiling as a literal DOM `<slot>` tag. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Completed non-goals**: slot props (`<slot item={...}>`), spreads, `let:` interop, custom-element slot metadata/preservation, parser/analyze redesign for a dedicated `SlotElement`, and additional slot diagnostics remain out of this slice.
+- **Next**: `Legacy Slot Props + Custom-Element Preservation`.
 - Last updated: 2026-04-07
 
 ## Source
@@ -54,10 +57,11 @@
 - `[x]` `<option>{expr}</option>` synthetic value handling — `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent (test: `option_expr_child_value`)
 - `[x]` Customizable select subtree handling — `is_customizable_select` flag in ElementFlags; codegen emits `$.customizable_select(el, callback)` with separate hoisted template; `<selectedcontent>` emits `$.selectedcontent(el, setter)` (tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`)
 - `[x]` `autofocus` helper path on regular elements — `$.autofocus(el, expr)` emitted from `attributes.rs` (test: `element_autofocus`)
-- `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching — current coverage proves common cases only
+- `[x]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching and MathML/reset-boundary fragment factory selection — SVG child-template parity for ambiguous regular elements now works in nested `{#if}` / `{#each}` fragments, plain HTML descendants in MathML-root components fall back to `$.from_html(...)`, and `annotation-xml` / `foreignObject` reset child fragments to HTML (tests: `svg_fragment_ambiguous_a`, `svg_fragment_ambiguous_title`, `mathml_root_html_fragment`, `mathml_annotation_xml_fragment_html`, `svg_foreignobject_fragment_html`)
+- `[x]` Legacy slot consumer lowering for static default/named `<slot>` elements with optional fallback content — client codegen now emits `$.slot(...)` anchored on a comment placeholder instead of a literal DOM `<slot>` element, while reusing existing parent-side `$$slots` passing (tests: `warn_slot_deprecated`, `slot_named_fallback`)
 
 ## Out of scope
-- Legacy `<slot>` semantics and slot elements
+- Legacy slot props/spreads, `let:` interop, and custom-element slot preservation/metadata
 - CSS-scoped element metadata and pruning live in `specs/css-pipeline.md`
 
 ## Reference
@@ -109,3 +113,10 @@
 - `[x]` `component_prop_concat_literal_fold`
 - `[x]` `svg_inner_whitespace_trimming`
 - `[x]` `svg_text_preserves_whitespace`
+- `[x]` `svg_fragment_ambiguous_a`
+- `[x]` `svg_fragment_ambiguous_title`
+- `[x]` `mathml_root_html_fragment`
+- `[x]` `mathml_annotation_xml_fragment_html`
+- `[x]` `svg_foreignobject_fragment_html`
+- `[x]` `warn_slot_deprecated`
+- `[x]` `slot_named_fallback`

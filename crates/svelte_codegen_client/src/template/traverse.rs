@@ -16,6 +16,8 @@ use super::html_tag::gen_html_tag;
 use super::if_block::gen_if_block;
 use super::key_block::gen_key_block;
 use super::render_tag::gen_render_tag;
+use super::slot::{emit_slot_call, is_legacy_slot_element};
+use super::element_ident_prefix;
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
 ///
@@ -87,21 +89,30 @@ pub(crate) fn traverse_items<'a>(
                 }
 
                 FragmentItem::Element(el_id) => {
-                    let el_name_str = ctx.element(*el_id).name.clone();
-                    let el_name = ctx.gen_ident(&el_name_str);
-                    init.push(ctx.b.var_stmt(&el_name, node_expr));
-                    sibling_offset = 1;
-                    process_element(
-                        ctx,
-                        *el_id,
-                        &el_name,
-                        init,
-                        update,
-                        hoisted,
-                        after_update,
-                        memo_attrs,
-                    );
-                    prev_ident = Some(el_name);
+                    if is_legacy_slot_element(ctx, *el_id) {
+                        let node_name = ctx.gen_ident("node");
+                        init.push(ctx.b.var_stmt(&node_name, node_expr));
+                        sibling_offset = 1;
+                        let anchor = ctx.b.rid_expr(&node_name);
+                        emit_slot_call(ctx, *el_id, anchor, init);
+                        prev_ident = Some(node_name);
+                    } else {
+                        let el_name_str = ctx.element(*el_id).name.clone();
+                        let el_name = ctx.gen_ident(&element_ident_prefix(&el_name_str));
+                        init.push(ctx.b.var_stmt(&el_name, node_expr));
+                        sibling_offset = 1;
+                        process_element(
+                            ctx,
+                            *el_id,
+                            &el_name,
+                            init,
+                            update,
+                            hoisted,
+                            after_update,
+                            memo_attrs,
+                        );
+                        prev_ident = Some(el_name);
+                    }
                 }
 
                 FragmentItem::ComponentNode(_)

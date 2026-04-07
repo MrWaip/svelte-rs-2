@@ -321,6 +321,12 @@ impl<'a> CodegenView<'a> {
     pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
         self.data.html_tag_in_mathml(id)
     }
+    pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
+        self.data.nearest_element(id)
+    }
+    pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
+        self.data.template_element_parent(id)
+    }
     /// The scoping class for this component, e.g. `"svelte-1a7i8ec"`.
     /// Returns an empty string when no `<style>` block is present.
     pub fn css_hash(&self) -> &str {

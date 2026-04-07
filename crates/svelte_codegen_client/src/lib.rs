@@ -356,7 +356,15 @@ pub fn generate<'a>(
         })
     });
 
-    let fn_params = if runtime.needs_props_param || has_bubble_events {
+    let has_legacy_slots = (0..component.node_count()).any(|raw_id| {
+        let id = svelte_ast::NodeId(raw_id);
+        matches!(
+            component.store.get(id),
+            Node::Element(el) if el.name == "slot"
+        )
+    }) && !ctx.query.view.custom_element();
+
+    let fn_params = if runtime.needs_props_param || has_bubble_events || has_legacy_slots {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
