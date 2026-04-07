@@ -65,17 +65,21 @@ pub(crate) fn gen_svelte_boundary<'a>(
     let boundary = ctx.svelte_boundary(id);
 
     // Collect attribute info while borrowing ctx immutably.
-    // Boundary only accepts ExpressionAttribute (onerror, failed, pending).
+    // Boundary accepts expression-valued attrs, including shorthand `{failed}`.
     let attr_infos: Vec<(&str, NodeId, bool)> = boundary
         .attributes
         .iter()
-        .filter_map(|attr| {
-            if let Attribute::ExpressionAttribute(a) = attr {
+        .filter_map(|attr| match attr {
+            Attribute::ExpressionAttribute(a) => {
                 let is_dynamic = ctx.is_dynamic_attr(a.id);
                 Some((a.name.as_str(), a.id, is_dynamic))
-            } else {
-                None
             }
+            Attribute::Shorthand(a) => {
+                let name = ctx.query.component.source_text(a.expression_span);
+                let is_dynamic = ctx.is_dynamic_attr(a.id);
+                Some((name, a.id, is_dynamic))
+            }
+            _ => None,
         })
         .collect();
 
@@ -193,7 +197,7 @@ pub(crate) fn gen_svelte_boundary<'a>(
 
         if let Some(name) = prop_name {
             let key = ctx.b.alloc_str(name);
-            props.push(ObjProp::Shorthand(key));
+            props.push(ObjProp::KeyValue(key, ctx.b.rid_expr(key)));
         }
     }
 

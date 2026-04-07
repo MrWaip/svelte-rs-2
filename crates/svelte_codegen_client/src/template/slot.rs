@@ -18,11 +18,17 @@ pub(crate) fn emit_slot_template_anchor<'a>(
 ) {
     let fragment_name = ctx.gen_ident("fragment");
     let node_name = ctx.gen_ident("node");
-    body.push(ctx.b.var_stmt(&fragment_name, ctx.b.call_expr("$.comment", [])));
-    body.push(ctx.b.var_stmt(
-        &node_name,
-        ctx.b.call_expr("$.first_child", [Arg::Ident(&fragment_name)]),
-    ));
+    body.push(
+        ctx.b
+            .var_stmt(&fragment_name, ctx.b.call_expr("$.comment", [])),
+    );
+    body.push(
+        ctx.b.var_stmt(
+            &node_name,
+            ctx.b
+                .call_expr("$.first_child", [Arg::Ident(&fragment_name)]),
+        ),
+    );
     emit_slot_call(ctx, el_id, ctx.b.rid_expr(&node_name), body);
     body.push(ctx.b.call_stmt(
         "$.append",
@@ -57,7 +63,9 @@ fn legacy_slot_name<'a>(ctx: &Ctx<'a>, el_id: NodeId) -> &'a str {
     for attr in &el.attributes {
         if let Attribute::StringAttribute(attr) = attr {
             if attr.name == "name" {
-                return ctx.b.alloc_str(ctx.query.component.source_text(attr.value_span));
+                return ctx
+                    .b
+                    .alloc_str(ctx.query.component.source_text(attr.value_span));
             }
         }
     }
@@ -66,7 +74,10 @@ fn legacy_slot_name<'a>(ctx: &Ctx<'a>, el_id: NodeId) -> &'a str {
 
 fn legacy_slot_fallback<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Expression<'a> {
     let child_key = svelte_analyze::FragmentKey::Element(el_id);
-    if matches!(ctx.content_type(&child_key), svelte_analyze::ContentStrategy::Empty) {
+    if matches!(
+        ctx.content_type(&child_key),
+        svelte_analyze::ContentStrategy::Empty
+    ) {
         return ctx.b.null_expr();
     }
 

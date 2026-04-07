@@ -15,7 +15,10 @@ export default function App($$anchor) {
 			$.template_effect(() => $.set_text(text, error().message));
 			$.append($$anchor, p);
 		};
-		$.boundary(node, { failed }, ($$anchor) => {
+		$.boundary(node, {
+			failed,
+			failed
+		}, ($$anchor) => {
 			var p_1 = root_2();
 			$.append($$anchor, p_1);
 		});

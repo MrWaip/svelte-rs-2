@@ -11,13 +11,13 @@ use super::await_block::gen_await_block;
 use super::component::gen_component;
 use super::each_block::gen_each_block;
 use super::element::{item_needs_var, process_element};
+use super::element_ident_prefix;
 use super::expression::{parts_are_dynamic, MemoAttr};
 use super::html_tag::gen_html_tag;
 use super::if_block::gen_if_block;
 use super::key_block::gen_key_block;
 use super::render_tag::gen_render_tag;
 use super::slot::{emit_slot_call, is_legacy_slot_element};
-use super::element_ident_prefix;
 
 /// Traverse lowered items, assign DOM variables, generate init/update statements.
 ///

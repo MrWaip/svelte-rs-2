@@ -107,6 +107,10 @@ impl<'a> Parser<'a> {
                             Attribute::ConcatenationAttribute(ConcatenationAttribute {
                                 id: self.reserve_id(),
                                 name: name.to_string(),
+                                quoted: matches!(
+                                    self.source.as_bytes().get(concat.span.start as usize),
+                                    Some(b'"') | Some(b'\'')
+                                ),
                                 parts,
                             })
                         }

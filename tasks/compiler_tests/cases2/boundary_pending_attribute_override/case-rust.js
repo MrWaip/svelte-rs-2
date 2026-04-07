@@ -12,7 +12,10 @@ export default function App($$anchor) {
 			var p = root_1();
 			$.append($$anchor, p);
 		};
-		$.boundary(node, { pending }, ($$anchor) => {
+		$.boundary(node, {
+			pending,
+			pending
+		}, ($$anchor) => {
 			var p_1 = root_2();
 			$.append($$anchor, p_1);
 		});

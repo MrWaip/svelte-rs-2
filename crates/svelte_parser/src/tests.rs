@@ -122,6 +122,42 @@ fn element_with_attributes() {
 }
 
 #[test]
+fn component_quoted_concatenation_attribute_tracks_quotes() {
+    let c = parse(r#"<Comp foo="a{b}" />"#);
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    let Some(Attribute::ConcatenationAttribute(attr)) = component.attributes.first() else {
+        panic!("expected ConcatenationAttribute");
+    };
+    assert!(attr.quoted);
+}
+
+#[test]
+fn component_unquoted_concatenation_attribute_tracks_quotes() {
+    let c = parse(r#"<Comp foo=a{b} />"#);
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    let Some(Attribute::ConcatenationAttribute(attr)) = component.attributes.first() else {
+        panic!("expected ConcatenationAttribute");
+    };
+    assert!(!attr.quoted);
+}
+
+#[test]
+fn component_colon_attribute_parses_as_plain_attribute() {
+    let c = parse(r#"<Comp foo:bar="x" />"#);
+    let Node::ComponentNode(component) = node_at(&c, 0) else {
+        panic!("expected ComponentNode");
+    };
+    let Some(Attribute::StringAttribute(attr)) = component.attributes.first() else {
+        panic!("expected StringAttribute");
+    };
+    assert_eq!(attr.name, "foo:bar");
+}
+
+#[test]
 fn nested_if_in_element() {
     let c = parse("<div>{#if true}inside{/if}</div>");
     assert_node(&c, 0, "<div>{#if true}inside{/if}</div>");
