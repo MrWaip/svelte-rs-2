@@ -31,6 +31,7 @@ pub fn validate(
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, parsed, diags);
+    validate_svelte_options_warnings(component, data, runes, diags);
     validate_custom_element_props(data, diags);
     validate_script_context(component, runes, diags);
 }
@@ -286,4 +287,29 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
         DiagnosticKind::CustomElementPropsIdentifier,
         span,
     ));
+}
+
+fn validate_svelte_options_warnings(
+    component: &Component,
+    data: &AnalysisData,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(options) = &component.options else {
+        return;
+    };
+
+    for attr in &options.attributes {
+        let kind = match attr.html_name() {
+            "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
+            "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
+            "customElement" if !data.custom_element => Some(DiagnosticKind::OptionsMissingCustomElement),
+            _ => None,
+        };
+
+        if let Some(kind) = kind {
+            let span = component.store.get(attr.id()).span();
+            diags.push(Diagnostic::warning(kind, span));
+        }
+    }
 }

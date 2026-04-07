@@ -2140,6 +2140,88 @@ let x = $state.is(a, b);
 }
 
 #[test]
+#[ignore = "missing: duplicate transition directive validation (analyze)"]
+fn validate_transition_duplicate_transition() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade, fly } from 'svelte/transition';
+</script>
+
+<div transition:fade transition:fly></div>"#,
+    );
+    assert_has_error(&diags, "transition_duplicate");
+}
+
+#[test]
+#[ignore = "missing: duplicate intro transition validation (analyze)"]
+fn validate_transition_duplicate_in() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade, fly } from 'svelte/transition';
+</script>
+
+<div in:fade in:fly></div>"#,
+    );
+    assert_has_error(&diags, "transition_duplicate");
+}
+
+#[test]
+#[ignore = "missing: duplicate outro transition validation (analyze)"]
+fn validate_transition_duplicate_out() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade, fly } from 'svelte/transition';
+</script>
+
+<div out:fade out:fly></div>"#,
+    );
+    assert_has_error(&diags, "transition_duplicate");
+}
+
+#[test]
+#[ignore = "missing: transition plus in conflict validation (analyze)"]
+fn validate_transition_conflict_in() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade, fly } from 'svelte/transition';
+</script>
+
+<div transition:fade in:fly></div>"#,
+    );
+    assert_has_error(&diags, "transition_conflict");
+}
+
+#[test]
+#[ignore = "missing: transition plus out conflict validation (analyze)"]
+fn validate_transition_conflict_out() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade, fly } from 'svelte/transition';
+</script>
+
+<div transition:fade out:fly></div>"#,
+    );
+    assert_has_error(&diags, "transition_conflict");
+}
+
+#[test]
+#[ignore = "missing: await expressions in transition directive values (analyze)"]
+fn validate_transition_illegal_await_expression() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { fade } from 'svelte/transition';
+
+	async function load() {
+		return { duration: 100 };
+	}
+</script>
+
+<div transition:fade={await load()}></div>"#,
+    );
+    assert_has_error(&diags, "illegal_await_expression");
+}
+
+#[test]
 fn validate_state_invalid_placement_bare_expr() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -3799,6 +3881,81 @@ const props = $props();
         },
     );
     assert_no_warning(&diags, "custom_element_props_identifier");
+}
+
+#[test]
+fn validate_options_accessors_warns_in_runes_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options accessors={true} />
+<p>ok</p>"#,
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "options_deprecated_accessors");
+}
+
+#[test]
+fn validate_options_accessors_no_warn_in_legacy_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options accessors={true} />
+<p>ok</p>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "options_deprecated_accessors");
+}
+
+#[test]
+fn validate_options_immutable_warns_in_runes_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options immutable={true} />
+<p>ok</p>"#,
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "options_deprecated_immutable");
+}
+
+#[test]
+fn validate_options_immutable_no_warn_in_legacy_mode() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options immutable={true} />
+<p>ok</p>"#,
+        AnalyzeOptions {
+            runes: false,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "options_deprecated_immutable");
+}
+
+#[test]
+fn validate_options_custom_element_warns_without_compiler_flag() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement="x-foo" />
+<p>ok</p>"#,
+        AnalyzeOptions::default(),
+    );
+    assert_has_warning(&diags, "options_missing_custom_element");
+}
+
+#[test]
+fn validate_options_custom_element_no_warn_with_compiler_flag() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:options customElement="x-foo" />
+<p>ok</p>"#,
+        AnalyzeOptions {
+            custom_element: true,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "options_missing_custom_element");
 }
 
 // -----------------------------------------------------------------------

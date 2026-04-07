@@ -989,6 +989,11 @@ fn transition_reactive_params() {
     assert_compiler("transition_reactive_params");
 }
 
+#[rstest]
+fn transition_elseif_local() {
+    assert_compiler("transition_elseif_local");
+}
+
 // ---------------------------------------------------------------------------
 // Animate directive tests
 // ---------------------------------------------------------------------------
