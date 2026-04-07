@@ -20,7 +20,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 ## Template
 
 - [ ] Element — [spec](specs/element.md)
-- [ ] `<Component>` / component — [spec](specs/component-node.md)
+- [x] `<Component>` / component — [spec](specs/component-node.md)
 - [x] `{#if}` / `{:else}` — [spec](specs/if-block.md)
 - [x] `{#each}` — [spec](specs/each-block.md)
 - [x] `{#await}` — [spec](specs/await-block.md)

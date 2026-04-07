@@ -5,7 +5,7 @@
 - **Completed slice:** component-child slot conflict validation in `svelte_analyze`
 - **Done in this slice:** direct component children now emit `slot_attribute_duplicate` for repeated named slots and `slot_default_duplicate` when explicit `slot="default"` conflicts with implicit default content; shared default-child detection now correctly ignores comments, whitespace-only text, and other named-slot children
 - **Next:** feature complete for current `component-node` spec; if more reference gaps are found later, add them as new unchecked use cases before resuming
-- **Verification:** `just test-analyzer` passed; full `just test-compiler` still fails only on unrelated existing boundary cases (`boundary_failed_attribute_override`, `boundary_pending_attribute_override`)
+- **Verification:** `just test-analyzer` passed; focused compiler cases `component_basic`, `component_named_slot`, and `component_dynamic_dotted` passed on 2026-04-07
 - Last updated: 2026-04-07
 
 ## Source

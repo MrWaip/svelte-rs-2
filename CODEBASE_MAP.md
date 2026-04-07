@@ -95,7 +95,7 @@ Shared domain types в `types.rs`: `ScriptInfo`, `DeclarationInfo`, `Declaration
 11. **Walk 1: `reactivity`** — dynamic_nodes, dynamic_attrs, needs_ref
 12. **Walk 2: `element_flags` + `hoistable` + `bind_semantics` + `content_types`** — 4 visitors за один обход
 13. `classify_non_element_fragments` — Root, IfConsequent, EachBody classification
-14. `validate` — семантические проверки
+14. `validate` + `template_validation` — семантические и template-level проверки; A11y warning logic now lives in the extracted `passes/template_validation/a11y.rs`
 
 **Scope system** (`scope.rs`): `ComponentScoping` wraps `ComponentSemantics` (via `Deref`) и добавляет Svelte-specific classification (runes, props, each-block vars, rest props).
 
@@ -124,6 +124,7 @@ Shared domain types в `types.rs`: `ScriptInfo`, `DeclarationInfo`, `Declaration
 - `template/mod.rs` — root fragment generation по `ContentStrategy`
 - `template/element.rs` — element codegen
 - `template/attributes.rs` — static/dynamic attributes, bind directives
+- `template/slot.rs` — legacy `<slot>` consumer lowering through `$.slot(...)` for non-custom-element components
 - `template/if_block.rs` — `$.if()`
 - `template/each_block.rs` — `$.each()`
 - `template/expression.rs` — JS expression generation from spans
