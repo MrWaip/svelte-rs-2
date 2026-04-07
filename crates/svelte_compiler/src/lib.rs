@@ -32,6 +32,13 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         custom_element: options.custom_element,
         runes: options.runes.unwrap_or(true),
         dev: options.dev,
+        component_name: name.clone(),
+        filename_basename: options
+            .filename
+            .rsplit_once('/')
+            .or_else(|| options.filename.rsplit_once('\\'))
+            .map_or(options.filename.as_str(), |(_, basename)| basename)
+            .to_string(),
         warning_filter: None,
     };
 

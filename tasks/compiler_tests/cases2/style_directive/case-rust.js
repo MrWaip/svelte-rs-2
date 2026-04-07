@@ -4,11 +4,13 @@ export default function App($$anchor) {
 	let color = "red";
 	let fontSize = "16px";
 	let bg = "blue";
+	let columns = 3;
 	const staticVal = "bold";
 	var div = root();
 	let styles;
 	$.template_effect(() => styles = $.set_style(div, "", styles, {
 		color,
+		"--columns": columns,
 		"font-size": fontSize,
 		"background-color": bg,
 		"font-weight": staticVal

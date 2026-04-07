@@ -10,11 +10,20 @@ fn run_template_bundle<'a, const N: usize>(
     data: &'a mut AnalysisData,
     source: &'a str,
     runes: bool,
+    options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
-    let mut ctx = walker::VisitContext::new(root, data, &component.store, source, runes);
+    let mut ctx = walker::VisitContext::new(
+        root,
+        data,
+        &component.store,
+        source,
+        runes,
+        &options.component_name,
+        &options.filename_basename,
+    );
     walker::walk_template(&component.fragment, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
 }
@@ -25,12 +34,21 @@ fn run_parsed_template_bundle<'a, const N: usize>(
     parsed: &'a ParserResult<'a>,
     source: &'a str,
     runes: bool,
+    options: &AnalyzeOptions,
     diags: &mut Vec<Diagnostic>,
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
-    let mut ctx =
-        walker::VisitContext::with_parsed(root, data, &component.store, parsed, source, runes);
+    let mut ctx = walker::VisitContext::with_parsed(
+        root,
+        data,
+        &component.store,
+        parsed,
+        source,
+        runes,
+        &options.component_name,
+        &options.filename_basename,
+    );
     walker::walk_template(&component.fragment, &mut ctx, visitors);
     diags.extend(ctx.take_warnings());
 }
@@ -110,6 +128,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 source,
                 runes,
+                options,
                 diags,
                 &mut visitors,
             );
@@ -141,6 +160,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 source,
                 runes,
+                options,
                 diags,
                 &mut visitors,
             );
@@ -155,6 +175,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 source,
                 runes,
+                options,
                 diags,
                 &mut visitors,
             );
@@ -240,12 +261,12 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
             let mut visitors = bundle.visitors();
-            run_template_bundle(component, data, source, runes, diags, &mut visitors);
+            run_template_bundle(component, data, source, runes, options, diags, &mut visitors);
         }
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);
             let mut visitors = bundle.visitors();
-            run_template_bundle(component, data, source, runes, diags, &mut visitors);
+            run_template_bundle(component, data, source, runes, options, diags, &mut visitors);
             bundle.finish(data);
         }
         super::PassKey::ClassifyRemainingFragments => {
@@ -260,6 +281,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 source,
                 runes,
+                options,
                 diags,
                 &mut visitors,
             );

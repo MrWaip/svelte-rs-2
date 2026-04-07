@@ -10,11 +10,12 @@
 - **Done**: `:global()` inside `:not()`/`:is()`/`:where()`/`:has()` — visitor recurses into pseudo-class args, unwraps `:global()` and scopes non-global selectors. Also fixed scope class insertion position to go before trailing pseudo-classes (matching reference compiler). Test: `css_global_in_pseudo`.
 - **Done**: CSS prune pass — basic backward selector matching (type/class/ID selectors, descendant/child combinators). Emits `css_unused_selector` warnings for selectors that don't match any template element. New `css_prune` module in `svelte_analyze::passes`. 24 unit tests.
 - **Partial**: nested `<style>` elements likely compile as plain DOM elements, but no focused compiler case proves "unscoped, inserted as-is" parity.
-- **Missing**: `:global .foo { ... }` compound form (non-lone), CSS custom properties, unused selector CSS output wrapping.
-- **Next**: Enhance prune pass with sibling combinators, `:is()`/`:where()`/`:not()` matching, nesting selector support, or implement unused selector CSS output (`/* (unused) */` wrapping).
+- **Missing**: `:global .foo { ... }` compound form (non-lone), component CSS custom-property wrappers, unused selector CSS output wrapping.
+- **Current slice**: CSS custom properties audit complete. Element custom properties work through `style:--prop`, but component custom properties still compile as ordinary props instead of wrapper styles. SVG namespace wrapper path is also missing.
+- **Next**: port component custom-property wrapper lowering (`<svelte-css-wrapper>` / `<g>` + `$.css_props`) before returning to the remaining CSS prune and output-format gaps.
+- **Blocker**: targeted compiler-case verification is currently blocked by unrelated compile errors in `crates/svelte_analyze/src/passes/executor.rs`, `crates/svelte_analyze/src/passes/js_analyze/render_tags.rs`, and `crates/svelte_analyze/src/passes/template_validation.rs`.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial.
-- **Current slice**: completed CSS prune pass (basic matching)
-- Last updated: 2026-04-06
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -30,7 +31,10 @@ ROADMAP.md — CSS
 - `:global(...)` and `:global { ... }`
 - Nested selectors using `&`
 - Nested `<style>` elements inside regular markup or blocks, emitted unprocessed into the DOM
-- CSS custom properties passed to elements and components via `--prop="..."`
+- Element custom properties via `style:--prop={expr}` or `style:--prop="text"`
+- Component custom properties via `--prop="..."`
+- Component custom properties via `--prop={expr}`
+- Component custom properties in SVG namespace via `<g style="..."><Component /></g>`
 - Compiler CSS modes: `css: "external"` and `css: "injected"`
 
 ## Use cases
@@ -49,7 +53,9 @@ ROADMAP.md — CSS
 - [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
 - [ ] Unused selector warning (`css_unused_selector`) — basic type/class/ID matching with descendant/child combinators works; missing: sibling combinators, `:is/:where/:not/:has` special matching, nesting selector, attribute value matching, component/snippet boundary matching
-- [ ] CSS custom properties on components — `<svelte-css-wrapper>` / `<g>` wrapper lowering for `--prop=...`
+- [x] Element custom properties via `style:--prop` reuse the generic style-directive path and emit through `$.set_style(...)`
+- [ ] Component custom properties in HTML namespace wrap the component in `<svelte-css-wrapper style="display: contents">` and apply values through `$.css_props(...)` instead of passing `--*` as component props
+- [ ] Component custom properties in SVG namespace wrap the component in `<g style="...">` and apply values through `$.css_props(...)`
 - [ ] Nested `<style>` elements inside markup — likely compile as plain elements today, but there is still no focused compiler case proving "unscoped, inserted as-is" parity
 
 ## Reference
@@ -66,13 +72,17 @@ ROADMAP.md — CSS
 - `reference/compiler/phases/3-transform/client/transform-client.js` — injected CSS path
 - `reference/compiler/phases/3-transform/client/visitors/shared/element.js` — scoped class injection on elements
 - `reference/compiler/phases/3-transform/client/visitors/shared/component.js` — custom-property wrapper lowering
+- `reference/docs/07-misc/01-best-practices.md` — preferred `style:--prop` and parent-to-child custom-property patterns
 - `crates/svelte_analyze/src/passes/css_prune.rs` — CSS selector pruning: backward matching against template elements
+- `crates/svelte_analyze/src/passes/element_flags.rs` — component attributes currently classified as plain `ComponentPropKind::*`
 - `crates/svelte_parser/src/lib.rs` — top-level style extraction into `RawBlock`
 - `crates/svelte_parser/src/tests.rs` — current style parser coverage
 - `crates/svelte_parser/src/svelte_elements.rs` — `<svelte:options css="injected">`
 - `crates/svelte_transform_css/src/lib.rs` — CSS AST transform: scoping, serialization, injection compaction
 - `crates/svelte_compiler/src/options.rs` — `CssMode`
 - `crates/svelte_compiler/src/lib.rs` — compile() orchestration, CSS mode dispatch
+- `crates/svelte_codegen_client/src/template/attributes.rs` — generic `style:` directive lowering for elements
+- `crates/svelte_codegen_client/src/template/component.rs` — missing custom-property wrapper lowering for components
 
 ## Test cases
 
@@ -93,3 +103,6 @@ ROADMAP.md — CSS
 - [x] `css_global_block`
 - [x] `css_keyframes_scoped`
 - [x] `css_global_in_pseudo`
+- [x] `style_directive` extended with `style:--columns`
+- [ ] `css_custom_prop_component`
+- [ ] `css_custom_prop_component_svg`

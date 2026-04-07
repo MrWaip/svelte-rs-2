@@ -680,6 +680,18 @@ fn style_directive() {
 }
 
 #[rstest]
+#[ignore = "missing: component CSS custom property wrapper lowering (codegen)"]
+fn css_custom_prop_component() {
+    assert_compiler("css_custom_prop_component");
+}
+
+#[rstest]
+#[ignore = "missing: SVG component CSS custom property wrapper lowering (codegen)"]
+fn css_custom_prop_component_svg() {
+    assert_compiler("css_custom_prop_component_svg");
+}
+
+#[rstest]
 fn style_directive_important() {
     assert_compiler("style_directive_important");
 }

@@ -96,6 +96,33 @@ impl TemplateValidationVisitor {
             }
         }
     }
+
+    fn maybe_warn_legacy_special_element(
+        &mut self,
+        name: &str,
+        span: Span,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        if !ctx.runes {
+            return;
+        }
+
+        match name {
+            "svelte:component" => ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::SvelteComponentDeprecated,
+                span,
+            )),
+            "svelte:self" => {
+                let name = ctx.component_name().to_string();
+                let basename = ctx.filename_basename().to_string();
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::SvelteSelfDeprecated { name, basename },
+                    span,
+                ));
+            }
+            _ => {}
+        }
+    }
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
@@ -149,6 +176,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
+        self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);
 
         // Track dialog nesting for a11y_autofocus suppression.
         if el.name == "dialog" {
@@ -290,6 +318,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
+        self.maybe_warn_legacy_special_element(&cn.name, cn.span, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
     }
 

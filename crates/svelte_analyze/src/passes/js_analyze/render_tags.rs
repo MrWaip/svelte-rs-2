@@ -15,7 +15,15 @@ pub(crate) fn classify_render_tags(
 ) {
     let root = data.scoping.root_scope_id();
     let mut visitor = RenderTagClassifier { parsed };
-    let mut ctx = crate::walker::VisitContext::new(root, data, &component.store, source, runes);
+    let mut ctx = crate::walker::VisitContext::new(
+        root,
+        data,
+        &component.store,
+        source,
+        runes,
+        "Self",
+        "Self.svelte",
+    );
     crate::walker::walk_template(&component.fragment, &mut ctx, &mut [&mut visitor]);
 }
 
