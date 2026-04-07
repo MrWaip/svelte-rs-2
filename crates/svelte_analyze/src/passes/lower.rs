@@ -160,9 +160,31 @@ fn lower_fragment(
     in_svg_ns: bool,       // actual SVG namespace: true only when inside a real SVG subtree
     in_mathml: bool,
 ) {
+    lower_nodes(
+        &fragment.nodes,
+        key,
+        component,
+        data,
+        store,
+        in_svg_non_text,
+        in_svg_ns,
+        in_mathml,
+    );
+}
+
+fn lower_nodes(
+    nodes: &[NodeId],
+    key: FragmentKey,
+    component: &Component,
+    data: &mut AnalysisData,
+    store: &AstStore,
+    in_svg_non_text: bool,
+    in_svg_ns: bool,
+    in_mathml: bool,
+) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
-    let items = build_items(fragment, component, inside_head, in_svg_non_text, store);
+    let items = build_items_from_nodes(nodes, component, inside_head, in_svg_non_text, store);
 
     // Pre-compute fragment blocker indices (experimental.async)
     if data.blocker_data.has_async {
@@ -192,7 +214,7 @@ fn lower_fragment(
     let mut debug_ids: Option<Vec<NodeId>> = None;
     let mut title_ids: Option<Vec<NodeId>> = None;
 
-    for &id in &fragment.nodes {
+    for &id in nodes {
         match store.get(id) {
             Node::DebugTag(tag) => {
                 debug_ids.get_or_insert_with(Vec::new).push(tag.id);
@@ -219,8 +241,8 @@ fn lower_fragment(
                 // annotation-xml resets from MathML to HTML context
                 let child_mathml =
                     is_mathml(&el.name) || (in_mathml && el.name != "annotation-xml");
-                lower_fragment(
-                    &el.fragment,
+                lower_nodes(
+                    &el.fragment.nodes,
                     FragmentKey::Element(el.id),
                     component,
                     data,
@@ -248,24 +270,19 @@ fn lower_fragment(
                 }
 
                 // Partition children by slot="name" attribute
-                let mut default_nodes: Vec<NodeId> = Vec::new();
-                // Groups keyed by the slot element's NodeId
-                let mut named_groups: Vec<(NodeId, Vec<NodeId>)> = Vec::new();
+                let mut default_nodes = SmallVec::<[NodeId; 8]>::new();
+                let mut named_groups = SmallVec::<[(NodeId, NodeId); 4]>::new();
 
                 for &child_id in &cn.fragment.nodes {
                     if let Some(slot_el_id) = determine_slot(store.get(child_id)) {
-                        named_groups.push((slot_el_id, vec![child_id]));
+                        named_groups.push((slot_el_id, child_id));
                     } else {
                         default_nodes.push(child_id);
                     }
                 }
 
-                // Lower default children
-                let default_frag = Fragment {
-                    nodes: default_nodes,
-                };
-                lower_fragment(
-                    &default_frag,
+                lower_nodes(
+                    default_nodes.as_slice(),
                     FragmentKey::ComponentNode(cn.id),
                     component,
                     data,
@@ -275,13 +292,18 @@ fn lower_fragment(
                     false,
                 );
 
-                // Lower each named slot group
                 let mut slot_mappings: Vec<(NodeId, FragmentKey)> = Vec::new();
-                for (slot_el_id, slot_nodes) in named_groups {
+                for (slot_el_id, child_id) in named_groups {
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
-                    let slot_frag = Fragment { nodes: slot_nodes };
-                    lower_fragment(
-                        &slot_frag, frag_key, component, data, store, false, false, false,
+                    lower_nodes(
+                        std::slice::from_ref(&child_id),
+                        frag_key,
+                        component,
+                        data,
+                        store,
+                        false,
+                        false,
+                        false,
                     );
                     slot_mappings.push((slot_el_id, frag_key));
                 }
@@ -292,8 +314,8 @@ fn lower_fragment(
                 }
             }
             Node::IfBlock(block) => {
-                lower_fragment(
-                    &block.consequent,
+                lower_nodes(
+                    &block.consequent.nodes,
                     FragmentKey::IfConsequent(block.id),
                     component,
                     data,
@@ -304,8 +326,8 @@ fn lower_fragment(
                 );
                 if let Some(alt) = &block.alternate {
                     let alt_key = FragmentKey::IfAlternate(block.id);
-                    lower_fragment(
-                        alt,
+                    lower_nodes(
+                        &alt.nodes,
                         alt_key,
                         component,
                         data,
@@ -326,8 +348,8 @@ fn lower_fragment(
                 }
             }
             Node::EachBlock(block) => {
-                lower_fragment(
-                    &block.body,
+                lower_nodes(
+                    &block.body.nodes,
                     FragmentKey::EachBody(block.id),
                     component,
                     data,
@@ -337,8 +359,8 @@ fn lower_fragment(
                     in_mathml,
                 );
                 if let Some(fb) = &block.fallback {
-                    lower_fragment(
-                        fb,
+                    lower_nodes(
+                        &fb.nodes,
                         FragmentKey::EachFallback(block.id),
                         component,
                         data,
@@ -350,8 +372,8 @@ fn lower_fragment(
                 }
             }
             Node::SnippetBlock(block) => {
-                lower_fragment(
-                    &block.body,
+                lower_nodes(
+                    &block.body.nodes,
                     FragmentKey::SnippetBody(block.id),
                     component,
                     data,
@@ -362,8 +384,8 @@ fn lower_fragment(
                 );
             }
             Node::KeyBlock(block) => {
-                lower_fragment(
-                    &block.fragment,
+                lower_nodes(
+                    &block.fragment.nodes,
                     FragmentKey::KeyBlockBody(block.id),
                     component,
                     data,
@@ -374,8 +396,8 @@ fn lower_fragment(
                 );
             }
             Node::SvelteHead(head) => {
-                lower_fragment(
-                    &head.fragment,
+                lower_nodes(
+                    &head.fragment.nodes,
                     FragmentKey::SvelteHeadBody(head.id),
                     component,
                     data,
@@ -386,8 +408,8 @@ fn lower_fragment(
                 );
             }
             Node::SvelteElement(el) => {
-                lower_fragment(
-                    &el.fragment,
+                lower_nodes(
+                    &el.fragment.nodes,
                     FragmentKey::SvelteElementBody(el.id),
                     component,
                     data,
@@ -398,8 +420,8 @@ fn lower_fragment(
                 );
             }
             Node::SvelteBoundary(b) => {
-                lower_fragment(
-                    &b.fragment,
+                lower_nodes(
+                    &b.fragment.nodes,
                     FragmentKey::SvelteBoundaryBody(b.id),
                     component,
                     data,
@@ -411,8 +433,8 @@ fn lower_fragment(
             }
             Node::AwaitBlock(block) => {
                 if let Some(ref p) = block.pending {
-                    lower_fragment(
-                        p,
+                    lower_nodes(
+                        &p.nodes,
                         FragmentKey::AwaitPending(block.id),
                         component,
                         data,
@@ -423,8 +445,8 @@ fn lower_fragment(
                     );
                 }
                 if let Some(ref t) = block.then {
-                    lower_fragment(
-                        t,
+                    lower_nodes(
+                        &t.nodes,
                         FragmentKey::AwaitThen(block.id),
                         component,
                         data,
@@ -435,8 +457,8 @@ fn lower_fragment(
                     );
                 }
                 if let Some(ref c) = block.catch {
-                    lower_fragment(
-                        c,
+                    lower_nodes(
+                        &c.nodes,
                         FragmentKey::AwaitCatch(block.id),
                         component,
                         data,
@@ -472,6 +494,11 @@ fn lower_fragment(
     }
 }
 
+#[derive(Clone, Copy)]
+struct FilteredNode<'a> {
+    node: &'a Node,
+}
+
 /// Build the lowered item list for a fragment.
 ///
 /// Follows the Svelte reference compiler's `clean_nodes` algorithm:
@@ -499,6 +526,7 @@ fn is_skipped_node(node: &Node, inside_head: bool) -> bool {
     }
 }
 
+#[cfg(test)]
 fn build_items(
     fragment: &Fragment,
     component: &Component,
@@ -506,23 +534,36 @@ fn build_items(
     can_remove_entirely: bool,
     store: &AstStore,
 ) -> Vec<FragmentItem> {
-    let nodes = &fragment.nodes;
+    build_items_from_nodes(
+        &fragment.nodes,
+        component,
+        inside_head,
+        can_remove_entirely,
+        store,
+    )
+}
+
+fn build_items_from_nodes(
+    nodes: &[NodeId],
+    component: &Component,
+    inside_head: bool,
+    can_remove_entirely: bool,
+    store: &AstStore,
+) -> Vec<FragmentItem> {
     let source = &component.source;
     let source_ptr = source.as_ptr() as usize;
 
-    // Build filtered index list to avoid allocating Vec<&Node>.
-    // For small fragments (common case), use inline storage.
-    let mut filtered = SmallVec::<[usize; 8]>::with_capacity(nodes.len());
-    for (i, &id) in nodes.iter().enumerate() {
-        if !is_skipped_node(store.get(id), inside_head) {
-            filtered.push(i);
+    let mut filtered = SmallVec::<[FilteredNode<'_>; 8]>::with_capacity(nodes.len());
+    for &id in nodes {
+        let node = store.get(id);
+        if !is_skipped_node(node, inside_head) {
+            filtered.push(FilteredNode { node });
         }
     }
 
-    // Strip leading whitespace-only Text nodes
     let mut start = 0;
     while start < filtered.len() {
-        if let Node::Text(t) = store.get(nodes[filtered[start]]) {
+        if let Node::Text(t) = filtered[start].node {
             if is_ws_only(t.value(source)) {
                 start += 1;
                 continue;
@@ -531,10 +572,9 @@ fn build_items(
         break;
     }
 
-    // Strip trailing whitespace-only Text nodes
     let mut end = filtered.len();
     while end > start {
-        if let Node::Text(t) = store.get(nodes[filtered[end - 1]]) {
+        if let Node::Text(t) = filtered[end - 1].node {
             if is_ws_only(t.value(source)) {
                 end -= 1;
                 continue;
@@ -568,19 +608,19 @@ fn build_items(
     };
 
     for fi in 0..len {
-        let idx = filtered[fi];
-        match store.get(nodes[idx]) {
+        let entry = filtered[fi];
+        match entry.node {
             Node::Text(text) => {
                 let value = text.value(source);
                 let is_first = fi == 0;
                 let is_last = fi == len - 1;
                 let prev = if fi > 0 {
-                    Some(store.get(nodes[filtered[fi - 1]]))
+                    Some(filtered[fi - 1].node)
                 } else {
                     None
                 };
                 let next = if fi + 1 < len {
-                    Some(store.get(nodes[filtered[fi + 1]]))
+                    Some(filtered[fi + 1].node)
                 } else {
                     None
                 };
@@ -670,30 +710,34 @@ fn trim_text<'a>(
 }
 
 // ---------------------------------------------------------------------------
-// Whitespace utilities — operate on [ \t\r\n] to match Svelte's patterns.
+// Whitespace utilities — operate on ASCII [ \t\r\n] to match Svelte's patterns.
 // Return Cow to avoid allocation when the string is unchanged.
 // ---------------------------------------------------------------------------
 
-fn is_ws_char(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\r' | '\n')
+fn is_ws_byte(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
 fn is_ws_only(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(is_ws_char)
+    !s.is_empty() && s.as_bytes().iter().copied().all(is_ws_byte)
 }
 
 fn ends_with_ws(s: &str) -> bool {
-    s.ends_with(is_ws_char)
+    s.as_bytes().last().copied().is_some_and(is_ws_byte)
 }
 
 /// Count leading `[ \t\r\n]` bytes.
 fn leading_ws_len(s: &str) -> usize {
-    s.len() - s.trim_start_matches(is_ws_char).len()
+    s.as_bytes().iter().take_while(|&&byte| is_ws_byte(byte)).count()
 }
 
 /// Count trailing `[ \t\r\n]` bytes.
 fn trailing_ws_len(s: &str) -> usize {
-    s.len() - s.trim_end_matches(is_ws_char).len()
+    s.as_bytes()
+        .iter()
+        .rev()
+        .take_while(|&&byte| is_ws_byte(byte))
+        .count()
 }
 
 /// Strip leading `[ \t\r\n]+`. Borrows when no leading ws.

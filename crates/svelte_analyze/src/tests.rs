@@ -1799,6 +1799,45 @@ fn html_tag_namespace_flags_preserved() {
 }
 
 #[test]
+fn component_children_lowering_preserves_default_and_named_slot_fragments() {
+    let (component, data) =
+        analyze_source(r#"<Comp><p>default</p><p slot="footer">footer</p></Comp>"#);
+    let component_id = find_component_node_id(&component.fragment, &component, "Comp")
+        .unwrap_or_else(|| panic!("no <Comp>"));
+    let default_child = find_nth_element(&component.fragment, &component, "p", 0)
+        .unwrap_or_else(|| panic!("no default <p>"));
+    let slotted_child = find_nth_element(&component.fragment, &component, "p", 1)
+        .unwrap_or_else(|| panic!("no slotted <p>"));
+
+    let default_fragment = data
+        .fragments
+        .lowered(&FragmentKey::ComponentNode(component_id))
+        .unwrap_or_else(|| panic!("no lowered default fragment"));
+    assert!(matches!(
+        default_fragment.items.as_slice(),
+        [FragmentItem::Element(id)] if *id == default_child.id
+    ));
+
+    let named_slots = data.snippets.component_named_slots(component_id);
+    assert_eq!(named_slots.len(), 1);
+    let (slot_el_id, slot_key) = named_slots[0];
+    assert_eq!(slot_el_id, slotted_child.id);
+    assert_eq!(
+        slot_key,
+        FragmentKey::NamedSlot(component_id, slotted_child.id)
+    );
+
+    let slot_fragment = data
+        .fragments
+        .lowered(&slot_key)
+        .unwrap_or_else(|| panic!("no lowered named slot fragment"));
+    assert!(matches!(
+        slot_fragment.items.as_slice(),
+        [FragmentItem::Element(id)] if *id == slotted_child.id
+    ));
+}
+
+#[test]
 fn blocker_function_decl_no_blocker() {
     let (_c, data) = analyze_source(
         r#"<script>
