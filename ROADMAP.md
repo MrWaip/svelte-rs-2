@@ -81,10 +81,6 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 - [ ] CSS custom properties on elements & components — [spec](specs/css-pipeline.md)
 - [ ] Nested `<style>` elements (unscoped, global rules)
 
-Самый большой standalone workstream — новый подсистема `svelte_css`. Pipeline: парсинг `<style>` в CSS AST (selectors, declarations, at-rules, nesting с `&`) → детерминистический hash (`svelte-{hash}` из filename) → анализ selectors (`:global()`, `:global { ... }`, `is_global_like` для `:root`/`:host`/`::view-transition-*`, keyframe collection) → pruning: backward matching selectors против template elements с обходом комбинаторов (descendant, child, adjacent, sibling), conservative matching для компонентов и сниппетов → трансформация: append `.svelte-HASH` class, удаление `:global()` синтаксиса, scoping `@keyframes`, pruning unused rules, минификация в prod. На стороне template codegen — injection `class="svelte-HASH"` для scoped элементов и поддержка `css: 'injected'` (embed в JS) / `css: 'external'` (отдельный файл).
-
-Первый шаг — выбор CSS-стека: OXC css parser, `lightningcss`, `cssparser` (Servo), или свой парсер. Критерии: полнота CSS3 selectors, поддержка `:global()`/nesting, доступ к AST для мутаций, source maps.
-
 ## Source Maps
 
 - Shared spec for this bucket: [specs/source-maps.md](specs/source-maps.md)
@@ -103,10 +99,16 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 - [ ] A11y warnings — [spec](specs/a11y-warnings.md)
 
+## Modules `.svelte.js` / `.svelte.ts`
+
+- [ ] `.svelte.js` / `.svelte.ts`
+
+## Custom Elements
+
+- [ ] Custom Elements
+
 ## Compiler Infrastructure
 
-- [ ] Module compilation (`.svelte.js` / `.svelte.ts`)
-- [ ] Custom elements
 - [ ] `discloseVersion` option
 - [ ] `preserveComments` option
 - [ ] HMR
