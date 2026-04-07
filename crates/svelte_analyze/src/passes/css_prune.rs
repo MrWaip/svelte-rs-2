@@ -597,7 +597,9 @@ mod tests {
 
     #[test]
     fn general_sibling_combinator_match() {
-        assert_all_used("<div></div><span></span><p>hello</p>\n<style>div ~ p { color: red; }</style>");
+        assert_all_used(
+            "<div></div><span></span><p>hello</p>\n<style>div ~ p { color: red; }</style>",
+        );
     }
 
     #[test]

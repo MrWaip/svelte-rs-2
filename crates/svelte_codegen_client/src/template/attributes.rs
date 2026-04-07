@@ -188,13 +188,17 @@ pub(crate) fn process_attr<'a>(
             }
         }
         Attribute::ConcatenationAttribute(a) => {
-            let val = build_attr_concat(ctx, attr_id, &a.parts);
-            if a.name == "style" {
+            if a.name == "class" {
+                // Concatenated class attributes share the set_class path so directives and
+                // element-level class handling stay consistent with class={expr}.
+            } else if a.name == "style" {
+                let val = build_attr_concat(ctx, attr_id, &a.parts);
                 target.push(
                     ctx.b
                         .call_stmt("$.set_style", [Arg::Ident(el_name), Arg::Expr(val)]),
                 );
             } else {
+                let val = build_attr_concat(ctx, attr_id, &a.parts);
                 target.push(ctx.b.call_stmt(
                     "$.set_attribute",
                     [Arg::Ident(el_name), Arg::StrRef(&a.name), Arg::Expr(val)],
@@ -279,6 +283,33 @@ fn build_class_directives_object<'a>(ctx: &mut Ctx<'a>, el_id: NodeId) -> Option
     Some(ctx.b.object_expr(props))
 }
 
+fn build_class_attr_value<'a>(
+    ctx: &mut Ctx<'a>,
+    el_id: NodeId,
+    class_attr_id: NodeId,
+) -> Expression<'a> {
+    let Some(attr) = ctx
+        .element(el_id)
+        .attributes
+        .iter()
+        .find(|attr| attr.id() == class_attr_id)
+    else {
+        panic!("class_attr_id {class_attr_id:?} missing from element {el_id:?}");
+    };
+
+    match attr {
+        Attribute::ExpressionAttribute(_) => {
+            let mut expr = get_attr_expr(ctx, class_attr_id);
+            if ctx.needs_clsx(class_attr_id) {
+                expr = ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
+            }
+            expr
+        }
+        Attribute::ConcatenationAttribute(a) => build_attr_concat(ctx, class_attr_id, &a.parts),
+        _ => panic!("class_attr_id must reference expression or concatenation attribute"),
+    }
+}
+
 /// Generate `$.set_class(el, 1, value, null, prev, { ... })` for class expression attributes
 /// and/or class:name directives. Handles all combinations:
 /// - class={expr} only -> `$.set_class(el, 1, $.clsx(expr))`
@@ -303,13 +334,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
         let class_attr_id = ctx
             .class_attr_id(el_id)
             .expect("has_class_attribute set but no class attr id");
-
-        let mut expr = get_attr_expr(ctx, class_attr_id);
-        if ctx.needs_clsx(class_attr_id) {
-            expr = ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
-        }
-
-        expr
+        build_class_attr_value(ctx, el_id, class_attr_id)
     } else {
         // No class expression attribute — use static class or empty string
         let static_class = ctx.static_class(el_id).unwrap_or("");

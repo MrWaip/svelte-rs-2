@@ -23,8 +23,8 @@ mod fragment_facts;
 mod fragments;
 mod ignore;
 mod props;
-mod rich_content_facts;
 mod render;
+mod rich_content_facts;
 mod runtime;
 mod template_data;
 mod template_element_index;
@@ -51,8 +51,8 @@ pub use fragments::{
 };
 pub use ignore::IgnoreData;
 pub use props::{PropAnalysis, PropsAnalysis};
-pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
+pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::RuntimePlan;
 pub use template_data::{
     AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, SnippetData,

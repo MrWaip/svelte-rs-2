@@ -728,7 +728,10 @@ fn ends_with_ws(s: &str) -> bool {
 
 /// Count leading `[ \t\r\n]` bytes.
 fn leading_ws_len(s: &str) -> usize {
-    s.as_bytes().iter().take_while(|&&byte| is_ws_byte(byte)).count()
+    s.as_bytes()
+        .iter()
+        .take_while(|&&byte| is_ws_byte(byte))
+        .count()
 }
 
 /// Count trailing `[ \t\r\n]` bytes.
@@ -1057,7 +1060,9 @@ mod tests {
             panic!("expected TextConcat");
         };
         assert!(!has_expr);
-        assert!(matches!(parts.as_slice(), [LoweredTextPart::TextSpan(span)] if *span == Span::new(0, 5)));
+        assert!(
+            matches!(parts.as_slice(), [LoweredTextPart::TextSpan(span)] if *span == Span::new(0, 5))
+        );
     }
 
     #[test]

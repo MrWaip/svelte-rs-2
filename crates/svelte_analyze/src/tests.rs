@@ -137,19 +137,22 @@ fn find_nth_element<'a>(
                         return Some(el);
                     }
                     *seen += 1;
-                    if let Some(found) = visit(&el.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) =
+                        visit(&el.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::ComponentNode(node) => {
-                    if let Some(found) = visit(&node.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) =
+                        visit(&node.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
                 }
                 Node::Element(el) => {
-                    if let Some(found) = visit(&el.fragment, component, tag_name, target_index, seen)
+                    if let Some(found) =
+                        visit(&el.fragment, component, tag_name, target_index, seen)
                     {
                         return Some(found);
                     }
@@ -195,7 +198,11 @@ fn find_nth_element<'a>(
     visit(fragment, component, tag_name, target_index, &mut seen)
 }
 
-fn find_component_node_id(fragment: &Fragment, component: &Component, name: &str) -> Option<NodeId> {
+fn find_component_node_id(
+    fragment: &Fragment,
+    component: &Component,
+    name: &str,
+) -> Option<NodeId> {
     let store = &component.store;
     for &id in &fragment.nodes {
         match store.get(id) {
@@ -1124,6 +1131,18 @@ fn template_topology_tracks_attr_and_expr_to_nearest_element() {
 }
 
 #[test]
+fn concatenated_class_attr_is_registered_for_set_class() {
+    let (component, data) = analyze_source(
+        r#"<script>let value = $state("x");</script><div class="static {value}"></div>"#,
+    );
+    let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
+    let class_attr_id = find_attribute_id(&component.fragment, &component, "div", "class")
+        .expect("no class attr on <div>");
+
+    assert_eq!(data.element_flags.class_attr_id(el.id), Some(class_attr_id));
+}
+
+#[test]
 fn template_element_index_tracks_css_candidates() {
     let (component, data) = analyze_source(
         r#"<script>let dynamic = "bar"; let props = {};</script>
@@ -1180,10 +1199,19 @@ fn template_element_index_tracks_element_siblings() {
 
     assert_eq!(data.template_element_previous_sibling(div.id), None);
     assert_eq!(data.template_element_next_sibling(div.id), Some(span.id));
-    assert_eq!(data.template_element_previous_sibling(span.id), Some(div.id));
+    assert_eq!(
+        data.template_element_previous_sibling(span.id),
+        Some(div.id)
+    );
     assert_eq!(data.template_element_next_sibling(span.id), Some(p.id));
-    assert_eq!(data.template_element_previous_siblings(p.id).as_slice(), &[span.id, div.id]);
-    assert_eq!(data.template_element_previous_sibling(strong.id), Some(em.id));
+    assert_eq!(
+        data.template_element_previous_siblings(p.id).as_slice(),
+        &[span.id, div.id]
+    );
+    assert_eq!(
+        data.template_element_previous_sibling(strong.id),
+        Some(em.id)
+    );
 }
 
 #[test]
@@ -1748,14 +1776,16 @@ let b = await fetch('/b');
     let paragraph = find_element(&component.fragment, &component, "p")
         .unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
-        data.fragments.fragment_blockers(&FragmentKey::Element(paragraph.id)),
+        data.fragments
+            .fragment_blockers(&FragmentKey::Element(paragraph.id)),
         &[0, 1]
     );
 }
 
 #[test]
 fn debug_tag_ids_collected_for_fragment() {
-    let (component, data) = analyze_source(r#"<script>let a = 1; let b = 2;</script>{@debug a}{@debug b}"#);
+    let (component, data) =
+        analyze_source(r#"<script>let a = 1; let b = 2;</script>{@debug a}{@debug b}"#);
     let expected: Vec<NodeId> = component
         .fragment
         .nodes
@@ -1765,13 +1795,17 @@ fn debug_tag_ids_collected_for_fragment() {
             _ => None,
         })
         .collect();
-    assert_eq!(data.debug_tags.by_fragment(&FragmentKey::Root), Some(&expected));
+    assert_eq!(
+        data.debug_tags.by_fragment(&FragmentKey::Root),
+        Some(&expected)
+    );
 }
 
 #[test]
 fn title_elements_collected_for_svelte_head_fragment() {
-    let (component, data) =
-        analyze_source(r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#);
+    let (component, data) = analyze_source(
+        r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#,
+    );
     let head_id = find_svelte_head_id(&component.fragment, &component)
         .unwrap_or_else(|| panic!("no <svelte:head>"));
     let title = find_element(&component.fragment, &component, "title")

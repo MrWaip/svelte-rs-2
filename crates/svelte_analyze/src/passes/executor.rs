@@ -105,7 +105,13 @@ pub(crate) fn execute_pass<'a>(
             let mut bundle = bundles::AwaitBindingBundle::new();
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
-                component, data, parsed, source, runes, diags, &mut visitors,
+                component,
+                data,
+                parsed,
+                source,
+                runes,
+                diags,
+                &mut visitors,
             );
         }
         super::PassKey::ExtractCeConfig => {
@@ -130,7 +136,13 @@ pub(crate) fn execute_pass<'a>(
             let mut bundle = bundles::TemplateSideTablesBundle::new(component);
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
-                component, data, parsed, source, runes, diags, &mut visitors,
+                component,
+                data,
+                parsed,
+                source,
+                runes,
+                diags,
+                &mut visitors,
             );
         }
         super::PassKey::CollectSymbols => {
@@ -138,7 +150,13 @@ pub(crate) fn execute_pass<'a>(
                 bundles::SymbolCollectionBundle::new(crate::types::markers::ScopingBuilt::new());
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
-                component, data, parsed, source, runes, diags, &mut visitors,
+                component,
+                data,
+                parsed,
+                source,
+                runes,
+                diags,
+                &mut visitors,
             );
         }
         super::PassKey::ResolveScriptStores => {
@@ -237,7 +255,13 @@ pub(crate) fn execute_pass<'a>(
             let mut bundle = bundles::TemplateValidationBundle::new();
             let mut visitors = bundle.visitors();
             run_parsed_template_bundle(
-                component, data, parsed, source, runes, diags, &mut visitors,
+                component,
+                data,
+                parsed,
+                source,
+                runes,
+                diags,
+                &mut visitors,
             );
         }
         super::PassKey::Validate => {

@@ -830,10 +830,7 @@ fn validate_input_bindings(
     parent: &BindParentInfo,
     ctx: &mut VisitContext<'_>,
 ) {
-    let Some(type_attr) = ctx
-        .data
-        .attribute(parent.id, &parent.attrs, "type")
-    else {
+    let Some(type_attr) = ctx.data.attribute(parent.id, &parent.attrs, "type") else {
         return;
     };
 
@@ -1652,7 +1649,9 @@ fn check_a11y_missing_attribute(
             && !data.has_attribute(el.id, "aria-labelledby"))
         .then(|| warn_missing_attr(el, &["alt", "aria-label", "aria-labelledby"])),
         // iframe needs title
-        "iframe" => (!data.has_attribute(el.id, "title")).then(|| warn_missing_attr(el, &["title"])),
+        "iframe" => {
+            (!data.has_attribute(el.id, "title")).then(|| warn_missing_attr(el, &["title"]))
+        }
         // object needs title, aria-label, or aria-labelledby
         "object" => (!data.has_attribute(el.id, "title")
             && !data.has_attribute(el.id, "aria-label")
