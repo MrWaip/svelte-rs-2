@@ -187,7 +187,7 @@ pub(crate) fn build_attr_concat<'a>(
     let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
     for part in parts {
         match part {
-            AstConcatPart::Static(s) => tpl_parts.push(TemplatePart::Str(s.clone())),
+            AstConcatPart::Static(s) => push_template_str(&mut tpl_parts, s.clone()),
             AstConcatPart::Dynamic { span, .. } => {
                 let expr = ctx
                     .state
@@ -195,11 +195,40 @@ pub(crate) fn build_attr_concat<'a>(
                     .expr_handle(span.start)
                     .map(|handle| get_concat_part_expr(ctx, handle))
                     .unwrap_or_else(|| ctx.b.str_expr(""));
-                tpl_parts.push(TemplatePart::Expr(expr));
+                if let Some(value) = literal_concat_part_value(&expr) {
+                    push_template_str(&mut tpl_parts, value);
+                } else {
+                    tpl_parts.push(TemplatePart::Expr(expr));
+                }
             }
         }
     }
+
+    if tpl_parts.len() == 1 {
+        if let TemplatePart::Str(value) = &tpl_parts[0] {
+            return ctx.b.str_expr(value);
+        }
+    }
+
     ctx.b.template_parts_expr(tpl_parts)
+}
+
+fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
+    if let Some(TemplatePart::Str(prev)) = tpl_parts.last_mut() {
+        prev.push_str(&value);
+    } else {
+        tpl_parts.push(TemplatePart::Str(value));
+    }
+}
+
+fn literal_concat_part_value(expr: &Expression<'_>) -> Option<String> {
+    match expr {
+        Expression::StringLiteral(lit) => Some(lit.value.as_str().to_string()),
+        Expression::NumericLiteral(lit) => Some(lit.value.to_string()),
+        Expression::BooleanLiteral(lit) => Some(lit.value.to_string()),
+        Expression::NullLiteral(_) => Some(String::new()),
+        _ => None,
+    }
 }
 
 pub(crate) enum MemoValueRef {

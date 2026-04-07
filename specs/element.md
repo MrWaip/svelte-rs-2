@@ -1,12 +1,12 @@
 # Element
 
 ## Current state
-- **Working**: 14/18 use cases
+- **Working**: 15/18 use cases
 - **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: 5 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus`, `a11y_missing_attribute` for img/area/iframe/object/a); remaining (ARIA roles, event handler A11y, html[lang], input type=image) deferred.
-- **Missing**: 4 — literal constant folding, namespace edge cases, legacy slots, CSS-scoped metadata
-- **Current slice**: `ConcatenationAttribute class -> set_class` completed. Analyzer now records concatenated `class` attrs as the canonical class source, and codegen routes them through the shared `$.set_class` path instead of generic `$.set_attribute`. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Non-goals completed**: this slice intentionally did not include constant folding for literal concat parts, namespace parity, legacy slots, A11y expansion, or CSS-scoped metadata.
-- **Next**: Implement constant folding for all-literal `ConcatenationAttribute` parts so cases like `class="1231 {1231}"` collapse to a plain string rather than a template literal.
+- **Missing**: 3 — namespace edge cases, legacy slots, CSS-scoped metadata
+- **Current slice**: `Literal Concat Folding` completed. Shared concat codegen now folds literal dynamic parts into adjacent static text and emits a plain string literal when no runtime expressions remain, covering regular element attrs and component prop concatenations through the shared `build_attr_concat` path. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Completed non-goals**: this slice intentionally did not include identifier-based constant propagation, namespace parity, legacy slots, A11y expansion, CSS-scoped metadata, or parser/analyzer redesign.
+- **Next**: Implement full namespace parity for ancestor-derived `<a>` / `<title>` edge cases.
 - Last updated: 2026-04-07
 
 ## Source
@@ -43,7 +43,7 @@
 - `[x]` Basic regular elements parse and compile as DOM nodes (tests: `single_element`, `nested_elements`, `elements_childs`, `mixed_html_elements`)
 - `[x]` Static and simple dynamic attributes compile on regular elements (tests: `element_attributes`, `spread_attribute`)
 - `[x]` `ConcatenationAttribute` for `class` (e.g. `class="static {expr}"`) compiles via `$.set_class`, not `$.set_attribute` — `class_attr_id` in `element_flags.rs` now registers the concat attr, and codegen routes it through the shared class pipeline (test: `class_concat`)
-- `[ ]` Constant folding for all-literal `ConcatenationAttribute` parts (e.g. `class="1231 {1231}"` → `"1231 1231"`, not a template literal) — reference compiler evaluates constant numeric/string literal dynamic parts at compile time and collapses them into a plain string
+- `[x]` Constant folding for all-literal `ConcatenationAttribute` parts (e.g. `class="1231 {1231}"` → `"1231 1231"`, not a template literal) — shared codegen now folds literal dynamic parts for regular-element attrs and component prop concatenations (tests: `class_concat_literal_fold`, `attribute_concat_literal_fold`, `component_prop_concat_literal_fold`)
 - `[x]` Root namespace options and basic inline SVG/MathML paths compile (tests: `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`)
 - `[x]` Non-void self-closing tags lower to explicit open/close HTML (tests: `non_void_self_closing`, `mixed_html_elements`)
 - `[x]` `<noscript>` content is stripped from the static template payload (tests: `smoke`, `smoke_all`)
@@ -108,6 +108,9 @@
 - `[x]` `selectedcontent_basic`
 - `[x]` `element_autofocus`
 - `[x]` `class_concat`
+- `[x]` `class_concat_literal_fold`
+- `[x]` `attribute_concat_literal_fold`
+- `[x]` `component_prop_concat_literal_fold`
 - `[x]` `svg_inner_whitespace_trimming`
 - `[x]` `svg_text_preserves_whitespace`
 - `[x]` `a11y_distracting_elements_marquee`
