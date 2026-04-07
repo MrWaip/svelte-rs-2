@@ -49,9 +49,8 @@ Put `Current state` first. It is the session handoff section.
 ## Scope rules
 
 - client-side only unless explicitly stated otherwise
-- `[ ]` means in scope and not done
+- `[ ]` means still open; if partially implemented, keep it unchecked and describe what already works plus what remains
 - `[x]` means implemented and covered by test
-- `[~]` means partial
 - Use cases: flat list of checkboxes only — no `###` subsections
 - Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
 

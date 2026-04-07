@@ -2,8 +2,8 @@
 
 ## Current state
 
-- **Working**: 24/25 use cases. One partial (`block_unexpected_character`).
-- `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace is structurally implemented in the analyzer but cannot be triggered: the scanner dispatches immediately on the char after `{` and does not skip whitespace before `:`. The check will fire when the scanner is made permissive. Tracked as `[~]` below.
+- **Working**: 24/25 use cases.
+- `block_unexpected_character` for `{ :then}` / `{ :catch}` whitespace is structurally implemented in the analyzer but cannot be triggered: the scanner dispatches immediately on the char after `{` and does not skip whitespace before `:`. The check will fire when the scanner is made permissive. Tracked as an open use case below.
 - **Next**: Fix scanner gap — make the scanner permissive to whitespace before `:then`/`:catch` so the existing `block_unexpected_character` analyzer check can be triggered.
 - Last updated: 2026-04-03
 
@@ -51,7 +51,7 @@ Audit of existing implementation (2026-04-01)
 - [x] `$.async()` wrapping with blockers (test: async_await_has_await)
 - [x] Pickled await in template (test: async_pickled_await_template)
 - [x] `block_duplicate_clause` error for duplicate `:then`/`:catch`
-- [~] `block_unexpected_character` validation for whitespace before `:then`/`:catch` (analyzer check implemented; blocked on scanner not parsing `{ :then val}` — scanner gap)
+- [ ] `block_unexpected_character` validation for whitespace before `:then`/`:catch` (analyzer check implemented; blocked on scanner not parsing `{ :then val}` — scanner gap)
 
 ## Reference
 

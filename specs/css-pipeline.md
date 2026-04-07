@@ -48,9 +48,9 @@ ROADMAP.md — CSS
 - [x] `:global()` validation diagnostics (20 unit tests in `css_analyze::tests`)
 - [x] Scoped `@keyframes` plus `-global-*` escape (test: `css_keyframes_scoped`)
 - [ ] CSS comments preserved in output — lightningcss drops comments during AST parsing; reference compiler preserves them via MagicString text manipulation
-- [~] Unused selector warning (`css_unused_selector`) — basic type/class/ID matching with descendant/child combinators; missing: sibling combinators, `:is/:where/:not/:has` special matching, nesting selector, attribute value matching, component/snippet boundary matching
+- [ ] Unused selector warning (`css_unused_selector`) — basic type/class/ID matching with descendant/child combinators works; missing: sibling combinators, `:is/:where/:not/:has` special matching, nesting selector, attribute value matching, component/snippet boundary matching
 - [ ] CSS custom properties on components — `<svelte-css-wrapper>` / `<g>` wrapper lowering for `--prop=...`
-- [~] Nested `<style>` elements inside markup — likely compile as plain elements today, no focused compiler case for "unscoped, inserted as-is" parity
+- [ ] Nested `<style>` elements inside markup — likely compile as plain elements today, but there is still no focused compiler case proving "unscoped, inserted as-is" parity
 
 ## Reference
 

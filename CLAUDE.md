@@ -43,7 +43,7 @@ Section order is fixed. Most important things go at the top.
 | Current state | **First thing a reader sees.** What's done, what's next, blockers. Date updated. | Required |
 | Source | Link to ROADMAP item or request | Required |
 | Syntax variants | All syntactic forms of the feature (from docs and reference compiler parser) | Required |
-| Use cases | Flat checklist: `[ ]`, `[x]`, `[~]` — no subsections | Required |
+| Use cases | Flat checklist: `[ ]`, `[x]` — no subsections | Required |
 | Out of scope | Plain list of things explicitly excluded: SSR, removed features, future tiers | Optional |
 | Reference | Reference compiler files + our files — so the next session doesn't have to search | Required |
 | Tasks | Implementation plan per layer, with specific files and functions | Required |
@@ -53,9 +53,8 @@ Section order is fixed. Most important things go at the top.
 
 ### Scope rules
 - **Client-side only.** Do NOT include SSR use cases — SSR is a separate phase after client is complete.
-- Use case marked `[ ]` = in scope for current work
+- Use case marked `[ ]` = still open for current work; if partially implemented, keep it unchecked and describe what works / what is missing inline
 - Use case marked `[x]` = implemented and covered by a test
-- Use case marked `[~]` = partial (describe what works, what doesn't)
 - `Use cases` — flat checklist, no `###` subsections
 - `Out of scope` — plain list for explicitly excluded things (SSR, removed features, future tiers)
 

@@ -48,7 +48,7 @@
 - `[x]` Non-void self-closing tags lower to explicit open/close HTML (tests: `non_void_self_closing`, `mixed_html_elements`)
 - `[x]` `<noscript>` content is stripped from the static template payload (tests: `smoke`, `smoke_all`)
 - `[x]` Child fragment lowering respects SVG whitespace rules (tests: `svg_inner_whitespace_trimming`, `svg_text_preserves_whitespace`)
-- `[~]` Regular-element directives and advanced attribute paths work, but coverage/spec ownership lives elsewhere — see `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
+- `[ ]` Regular-element directives and advanced attribute paths mostly work, but coverage/spec ownership still lives elsewhere — see `specs/bind-directives.md`, `specs/css-pipeline.md`, `specs/experimental-async.md`
 - `[x]` Template validation for regular elements and element attributes — working: `element_invalid_self_closing_tag`, `textarea_invalid_content`, `slot_attribute_invalid_placement`; skipped (out of scope): `node_invalid_placement` (requires HTML content model table), `component_name_lowercase` (requires symbol ref-count access)
 - `[x]` `<textarea>` child-content lowering to a synthetic `value` attribute — `needs_textarea_value_lowering` flag in ElementFlags; codegen emits `$.remove_textarea_child` + `$.set_value` with raw expression (test: `textarea_child_value_dynamic`)
 - `[x]` `<option>{expr}</option>` synthetic value handling — `option_synthetic_value_expr` side table in ElementFlags; codegen emits `option.__value = expr` via `get_node_expr` after textContent (test: `option_expr_child_value`)
@@ -56,7 +56,7 @@
 - `[x]` `autofocus` helper path on regular elements — `$.autofocus(el, expr)` emitted from `attributes.rs` (test: `element_autofocus`)
 - `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching — current coverage proves common cases only
 - `[ ]` Legacy `<slot>` semantics and slot elements
-- `[~]` A11y warnings for regular elements — implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions)
+- `[ ]` A11y warnings for regular elements — implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions)
 - `[ ]` A11y: `html[lang]` — root element, needs separate treatment
 - `[ ]` A11y: `input[type=image]` alt — needs static type attribute value inspection
 - `[ ]` A11y: ARIA role checks (`a11y_unknown_role`, `a11y_no_abstract_role`, `a11y_role_has_required_aria_props`, etc.)

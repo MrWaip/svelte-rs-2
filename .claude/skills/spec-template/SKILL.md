@@ -37,8 +37,7 @@ Sections in fixed order. Most important first.
 ## Use cases
 
 - [x] <description> (test: <test_name>)
-- [~] <description> — what works / what doesn't (test: <test_name>)
-- [ ] <description> — <layer>: <what to do> (test: <test_name>, #[ignore], quick fix)
+- [ ] <description> — if partially implemented, say what works and what remains; otherwise note the next layer/task (test: <test_name>, #[ignore], quick fix)
 
 ## Out of scope
 
@@ -59,7 +58,8 @@ Sections in fixed order. Most important first.
 
 ## Scope rules
 - **Client-side only.** No SSR use cases.
-- `[ ]` = in scope, `[x]` = done with test, `[~]` = partial (describe what works)
+- `[ ]` = in scope and still open; partial work stays `[ ]` with the completed part and remaining gap described inline
+- `[x]` = done with test
 - Use cases: flat list of bullets `- [x]` — no numbered lists, no `###` subsections
 - Out of scope: plain list (no checkboxes) for things explicitly excluded (SSR, removed features, future tiers)
 - Omit `Out of scope` and `Syntax variants` sections if empty/not applicable
@@ -76,7 +76,7 @@ Sections in fixed order. Most important first.
 
 ## Sections that do NOT belong in specs
 - `Tasks` — implementation hints go inline with `[ ]` use cases
-- `Discovered bugs` — OPEN bugs become `[ ]` or `[~]` use cases; FIXED bugs are deleted
+- `Discovered bugs` — OPEN bugs become `[ ]` use cases; FIXED bugs are deleted
 - `Implementation order` — order is implied by use case sequence
 - `Test cases` subsections — always flat checklist
 
