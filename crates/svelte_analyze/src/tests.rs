@@ -4259,3 +4259,38 @@ fn attribute_quoted_regular_element_no_warn() {
         analyze_with_diags(r#"<script>let x = $state('val');</script><div foo="{x}"></div>"#);
     assert!(!diags.iter().any(|d| d.kind.code() == "attribute_quoted"));
 }
+
+// ---------------------------------------------------------------------------
+// attribute_global_event_reference
+// ---------------------------------------------------------------------------
+
+#[test]
+fn attribute_global_event_reference_on_missing_binding() {
+    let diags = analyze_with_diags(r#"<button onclick={onclick}></button>"#);
+    assert_has_warning(&diags, "attribute_global_event_reference");
+}
+
+#[test]
+fn attribute_global_event_reference_on_local_binding_no_warn() {
+    let diags = analyze_with_diags(
+        r#"<script>const onclick = () => {}</script><button onclick={onclick}></button>"#,
+    );
+    assert_no_warning(&diags, "attribute_global_event_reference");
+}
+
+// ---------------------------------------------------------------------------
+// component_name_lowercase
+// ---------------------------------------------------------------------------
+
+#[test]
+fn component_name_lowercase_on_unused_import() {
+    let diags =
+        analyze_with_diags(r#"<script>import widget from './widget.js';</script><widget />"#);
+    assert_has_warning(&diags, "component_name_lowercase");
+}
+
+#[test]
+fn component_name_lowercase_on_plain_html_element_no_warn() {
+    let diags = analyze_with_diags(r#"<widget />"#);
+    assert_no_warning(&diags, "component_name_lowercase");
+}

@@ -2333,6 +2333,12 @@ fn attach_on_component_dynamic() {
 }
 
 #[rstest]
+#[ignore = "missing: <svelte:document> attach codegen (codegen)"]
+fn attach_on_document() {
+    assert_compiler("attach_on_document");
+}
+
+#[rstest]
 fn each_keyed_destructure() {
     assert_compiler("each_keyed_destructure");
 }

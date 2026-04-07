@@ -1,11 +1,15 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 18/22 use cases — infrastructure + first batch of warning emission
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`
+- **Working**: 19/22 use cases — infrastructure + first batch of warning emission
+- **Current slice**: analyzer quick-win warnings in `template_validation`
+- **Why this slice came next**: it stays inside the existing walker validate pass and reuses current scope/symbol queries without adding new analysis infrastructure
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior
 - **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
-- **Next**: Emit `NonReactiveUpdate`, `ComponentNameLowercase`, `AttributeGlobalEventReference`, `AttributeQuoted`, and `SvelteComponentDeprecated` warnings in the walker validate pass.
-- Last updated: 2026-04-04
+- **Next**: implement `NonReactiveUpdate` as its own analyzer slice; keep legacy `<svelte:component>` deprecation separate from this run
+- **Non-goals for this run**: no `NonReactiveUpdate`, no legacy `<svelte:component>` work, no new parser/analyze infrastructure
+- Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -35,7 +39,7 @@ ROADMAP Tier 5, item 5a
 - [x] `AttributeAvoidIs` — warn when element has `is` attribute
 - [x] `AttributeIllegalColon` — warn when attribute name contains `:` (excluding xml/xlink/xmlns)
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
-- [ ] Remaining non-A11y warnings: `NonReactiveUpdate`, `ComponentNameLowercase`, `AttributeGlobalEventReference`, `AttributeQuoted`, `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), options warnings, perf class warnings
+- [ ] Remaining non-A11y warnings: `NonReactiveUpdate`, `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), options warnings, perf class warnings
 - [ ] A11y checks (5f) — ~26 missing variants (ARIA role/attribute validation)
 - [ ] CSS unused selector warning (depends on Tier 3)
 
