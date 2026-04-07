@@ -1,13 +1,13 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 23/26 use cases — infrastructure + warning emission slices
-- **Current slice**: analyzer `<svelte:options>` warnings
-- **Why this slice came next**: it was the next explicit bounded analyzer-only warning cluster after `NonReactiveUpdate`, and the parser already preserved the raw option attributes needed for span-accurate warnings
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes
+- **Working**: 24/27 use cases — infrastructure + warning emission slices
+- **Current slice**: analyzer perf class warnings
+- **Why this slice came next**: it is the smallest remaining analyzer-only non-A11y warning cluster and does not require legacy special-element parity or SSR tree-validation plumbing
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity
 - **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
-- **Next**: implement the next non-A11y warning slice outside `<svelte:options>`, most likely one of `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, or perf class warnings; keep legacy `<svelte:component>` work scoped separately if it needs parser/codegen parity
-- **Non-goals for this run**: no legacy `<svelte:component>` work, no perf warnings, no new parser/analyze infrastructure
+- **Next**: implement either `NodeInvalidPlacementSsr` as a dedicated regular-element validation slice or the legacy deprecation pair (`SvelteComponentDeprecated`, `SvelteSelfDeprecated`) once their parser/analyzer ownership is made explicit
+- **Non-goals for this run**: no legacy `<svelte:component>` work, no SSR placement warnings, no new parser/analyze infrastructure
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
 - Last updated: 2026-04-07
 
@@ -40,7 +40,8 @@ ROADMAP Tier 5, item 5a
 - [x] `AttributeIllegalColon` — warn when attribute name contains `:` (excluding xml/xlink/xmlns)
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
 - [x] Options warnings: `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, `OptionsMissingCustomElement`
-- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy), perf class warnings
+- [x] Perf warnings: `PerfAvoidInlineClass`, `PerfAvoidNestedClass`
+- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`, `SvelteComponentDeprecated`, `SvelteSelfDeprecated`, `SlotElementDeprecated` (legacy)
 - [ ] A11y checks (5f) — ~26 missing variants (ARIA role/attribute validation)
 - [ ] CSS unused selector warning (depends on Tier 3)
 

@@ -61,7 +61,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## Directives
 
-- [ ] `use:action`
+- [ ] `use:action` — [spec](specs/use-action.md)
 - [ ] `transition:` / `in:` / `out:` — [spec](specs/transitions.md)
 - [ ] `animate:` — [spec](specs/animate.md)
 - [ ] `{@attach}` — [spec](specs/attach-tag.md)
