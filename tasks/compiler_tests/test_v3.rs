@@ -1483,6 +1483,12 @@ fn svelte_element_xmlns() {
 }
 
 #[rstest]
+#[ignore = "missing: dynamic xmlns is not forwarded as $.element namespace thunk (codegen)"]
+fn svelte_element_dynamic_xmlns() {
+    assert_compiler("svelte_element_dynamic_xmlns");
+}
+
+#[rstest]
 fn svelte_element_children_expr() {
     assert_compiler("svelte_element_children_expr");
 }
@@ -1565,6 +1571,26 @@ fn boundary_in_if() {
 #[rstest]
 fn boundary_other_snippets() {
     assert_compiler("boundary_other_snippets");
+}
+
+#[rstest]
+fn boundary_pending_attribute() {
+    assert_compiler("boundary_pending_attribute");
+}
+
+#[rstest]
+fn boundary_pending_imported() {
+    assert_compiler("boundary_pending_imported");
+}
+
+#[rstest]
+fn boundary_failed_attribute_override() {
+    assert_compiler("boundary_failed_attribute_override");
+}
+
+#[rstest]
+fn boundary_pending_attribute_override() {
+    assert_compiler("boundary_pending_attribute_override");
 }
 
 #[rstest]
@@ -1868,6 +1894,18 @@ fn svelte_element_class_directive() {
 #[rstest]
 fn svelte_element_style_directive() {
     assert_compiler("svelte_element_style_directive");
+}
+
+#[rstest]
+#[ignore = "missing: dev-mode validate_dynamic_element_tag call for <svelte:element> (codegen)"]
+fn svelte_element_dev_invalid_tag() {
+    assert_compiler("svelte_element_dev_invalid_tag");
+}
+
+#[rstest]
+#[ignore = "missing: dev-mode validate_void_dynamic_element call for <svelte:element> with children (codegen)"]
+fn svelte_element_dev_void_children() {
+    assert_compiler("svelte_element_dev_void_children");
 }
 
 #[rstest]

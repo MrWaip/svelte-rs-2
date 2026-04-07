@@ -337,6 +337,112 @@ const A11Y_REQUIRED_ROLE_PROPS: &[(&str, &[&str])] = &[
     ("treeitem", &["aria-selected"]),
 ];
 
+const A11Y_INTERACTIVE_ROLES: &[&str] = &[
+    "alertdialog",
+    "button",
+    "cell",
+    "checkbox",
+    "columnheader",
+    "combobox",
+    "dialog",
+    "grid",
+    "gridcell",
+    "link",
+    "listbox",
+    "menu",
+    "menubar",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "option",
+    "radio",
+    "radiogroup",
+    "row",
+    "rowheader",
+    "scrollbar",
+    "searchbox",
+    "slider",
+    "spinbutton",
+    "switch",
+    "tab",
+    "tablist",
+    "tabpanel",
+    "textbox",
+    "toolbar",
+    "tree",
+    "treegrid",
+    "treeitem",
+    "doc-backlink",
+    "doc-biblioref",
+    "doc-glossref",
+    "doc-noteref",
+];
+
+const A11Y_PRESENTATION_ROLES: &[&str] = &["presentation", "none"];
+
+const A11Y_INTERACTIVE_HANDLERS: &[&str] = &[
+    "keypress",
+    "keydown",
+    "keyup",
+    "click",
+    "contextmenu",
+    "dblclick",
+    "drag",
+    "dragend",
+    "dragenter",
+    "dragexit",
+    "dragleave",
+    "dragover",
+    "dragstart",
+    "drop",
+    "mousedown",
+    "mouseenter",
+    "mouseleave",
+    "mousemove",
+    "mouseout",
+    "mouseover",
+    "mouseup",
+    "pointerdown",
+    "pointerup",
+    "pointermove",
+    "pointerenter",
+    "pointerleave",
+    "pointerover",
+    "pointerout",
+    "pointercancel",
+    "touchstart",
+    "touchend",
+    "touchmove",
+    "touchcancel",
+];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ElementInteractivity {
+    Interactive,
+    NonInteractive,
+    Static,
+}
+
+const A11Y_GLOBAL_ROLE_SUPPORTED_PROPS: &[&str] = &[
+    "aria-atomic",
+    "aria-busy",
+    "aria-controls",
+    "aria-current",
+    "aria-describedby",
+    "aria-details",
+    "aria-dropeffect",
+    "aria-flowto",
+    "aria-grabbed",
+    "aria-hidden",
+    "aria-keyshortcuts",
+    "aria-label",
+    "aria-labelledby",
+    "aria-live",
+    "aria-owns",
+    "aria-relevant",
+    "aria-roledescription",
+];
+
 struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
@@ -591,6 +697,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         check_a11y_aria_attribute_warnings(el, &el.attributes, ctx);
         check_a11y_role_warnings(el, &el.attributes, ctx);
+        check_a11y_role_supported_aria_props_warnings(el, &el.attributes, ctx);
+        check_a11y_role_attribute_interaction_warnings(el, &el.attributes, ctx);
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
         if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
@@ -2146,6 +2254,142 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
     }
 }
 
+fn check_a11y_role_supported_aria_props_warnings(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &mut VisitContext<'_>,
+) {
+    let explicit_role_attr = ctx.data.attribute(el.id, attrs, "role");
+    let role_value = explicit_role_attr
+        .and_then(|attr| static_text_attr_value(attr, ctx.source))
+        .or_else(|| explicit_role_attr.is_none().then(|| implicit_role_for_element(el, attrs, ctx)).flatten());
+    let Some(role_value) = role_value else {
+        return;
+    };
+
+    if !is_known_role_for_prop_support(role_value) {
+        return;
+    }
+
+    let is_implicit = explicit_role_attr.is_none();
+
+    for attr in attrs {
+        let Some(name) = attr_named_name(attr) else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        if !name.starts_with("aria-") {
+            continue;
+        }
+
+        let attribute = name.trim_start_matches("aria-");
+        if !A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
+            continue;
+        }
+
+        if role_supports_aria_prop(role_value, name.as_str()) {
+            continue;
+        }
+
+        let diag = if is_implicit {
+            DiagnosticKind::A11yRoleSupportsAriaPropsImplicit {
+                attribute: name.clone(),
+                role: role_value.to_string(),
+                name: el.name.clone(),
+            }
+        } else {
+            DiagnosticKind::A11yRoleSupportsAriaProps {
+                attribute: name.clone(),
+                role: role_value.to_string(),
+            }
+        };
+        ctx.warnings_mut()
+            .push(Diagnostic::warning(diag, attr_value_span(attr)));
+    }
+}
+
+fn check_a11y_role_attribute_interaction_warnings(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &mut VisitContext<'_>,
+) {
+    let interactivity = element_interactivity(el, attrs, ctx);
+    let is_interactive = interactivity == ElementInteractivity::Interactive;
+    let is_static = interactivity == ElementInteractivity::Static;
+    let has_spread = ctx.data.has_spread(el.id);
+    let has_tabindex = ctx.data.attribute(el.id, attrs, "tabindex");
+    let role_attr = ctx.data.attribute(el.id, attrs, "role");
+    let role_static_value = role_attr.and_then(|attr| static_text_attr_value(attr, ctx.source));
+    let handlers = collect_element_handlers(attrs);
+
+    for attr in attrs {
+        let Some(name) = attr_named_name(attr) else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        if name == "aria-activedescendant"
+            && !is_interactive
+            && has_tabindex.is_none()
+            && !has_spread
+        {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yAriaActivedescendantHasTabindex,
+                attr_value_span(attr),
+            ));
+        }
+    }
+
+    if let Some(tabindex_attr) = has_tabindex {
+        if !is_interactive && !is_interactive_role(role_static_value) {
+            let should_warn = static_text_attr_value(tabindex_attr, ctx.source)
+                .and_then(|value| value.trim().parse::<f64>().ok())
+                .is_none_or(|value| value >= 0.0);
+            if should_warn {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yNoNoninteractiveTabindex,
+                    attr_value_span(tabindex_attr),
+                ));
+            }
+        }
+    }
+
+    let has_interactive_handlers = handlers
+        .iter()
+        .any(|handler| A11Y_INTERACTIVE_HANDLERS.contains(&handler.as_str()));
+    if !has_interactive_handlers
+        || has_spread
+        || has_disabled_attribute(el.id, attrs, ctx)
+        || is_hidden_from_screen_reader(el, attrs, ctx)
+        || has_tabindex.is_some()
+        || !is_static
+    {
+        return;
+    }
+
+    let Some(role_attr) = role_attr else {
+        return;
+    };
+    let Some(role_value) = static_text_attr_value(role_attr, ctx.source) else {
+        return;
+    };
+
+    for role in role_value.split_ascii_whitespace() {
+        if role.is_empty()
+            || !is_interactive_role(Some(role))
+            || is_presentation_role(Some(role))
+        {
+            continue;
+        }
+
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::A11yInteractiveSupportsFocus {
+                role: role.to_string(),
+            },
+            el.span,
+        ));
+    }
+}
+
 fn implicit_role_for_element<'a>(
     el: &Element,
     attrs: &'a [Attribute],
@@ -2232,6 +2476,476 @@ fn format_required_role_props(props: &[&str]) -> String {
             let leading = &quoted[..quoted.len() - 1];
             format!("{}, and {}", leading.join(", "), last)
         }
+    }
+}
+
+fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
+    attrs.iter()
+        .filter_map(|attr| match attr {
+            Attribute::ExpressionAttribute(attr) => attr.event_name.clone(),
+            Attribute::OnDirectiveLegacy(attr) => Some(attr.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn is_hidden_from_screen_reader(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_>,
+) -> bool {
+    if el.name == "input" {
+        if let Some(input_type) = ctx
+            .data
+            .attribute(el.id, attrs, "type")
+            .and_then(|attr| static_text_attr_value(attr, ctx.source))
+        {
+            if input_type == "hidden" {
+                return true;
+            }
+        }
+    }
+
+    ctx.data
+        .attribute(el.id, attrs, "aria-hidden")
+        .map_or(false, |attr| match attr {
+            Attribute::BooleanAttribute(_) => true,
+            _ => static_text_attr_value(attr, ctx.source)
+                .is_some_and(|value| value == "true"),
+        })
+}
+
+fn has_disabled_attribute(id: NodeId, attrs: &[Attribute], ctx: &VisitContext<'_>) -> bool {
+    if ctx
+        .data
+        .attribute(id, attrs, "disabled")
+        .is_some_and(|attr| {
+            matches!(attr, Attribute::BooleanAttribute(_))
+                || static_text_attr_value(attr, ctx.source).is_some_and(|value| !value.is_empty())
+        })
+    {
+        return true;
+    }
+
+    ctx.data
+        .attribute(id, attrs, "aria-disabled")
+        .and_then(|attr| static_text_attr_value(attr, ctx.source))
+        .is_some_and(|value| value == "true")
+}
+
+fn element_interactivity(
+    el: &Element,
+    attrs: &[Attribute],
+    ctx: &VisitContext<'_>,
+) -> ElementInteractivity {
+    if let Some(role) = implicit_role_for_element(el, attrs, ctx) {
+        return if is_interactive_role(Some(role)) {
+            ElementInteractivity::Interactive
+        } else {
+            ElementInteractivity::NonInteractive
+        };
+    }
+
+    match el.name.as_str() {
+        "button" | "details" | "embed" | "iframe" | "label" | "select" | "textarea" => {
+            ElementInteractivity::Interactive
+        }
+        "a" | "area" => {
+            if ctx.data.has_attribute(el.id, "href") {
+                ElementInteractivity::Interactive
+            } else {
+                ElementInteractivity::Static
+            }
+        }
+        "audio" | "video" => {
+            if ctx.data.has_attribute(el.id, "controls") {
+                ElementInteractivity::Interactive
+            } else {
+                ElementInteractivity::Static
+            }
+        }
+        "input" => {
+            let input_type = ctx
+                .data
+                .attribute(el.id, attrs, "type")
+                .and_then(|attr| static_text_attr_value(attr, ctx.source));
+            if input_type == Some("hidden") {
+                ElementInteractivity::NonInteractive
+            } else {
+                ElementInteractivity::Interactive
+            }
+        }
+        _ => ElementInteractivity::Static,
+    }
+}
+
+fn is_interactive_role(role: Option<&str>) -> bool {
+    role.is_some_and(|role| A11Y_INTERACTIVE_ROLES.contains(&role))
+}
+
+fn is_presentation_role(role: Option<&str>) -> bool {
+    role.is_some_and(|role| A11Y_PRESENTATION_ROLES.contains(&role))
+}
+
+fn is_known_role_for_prop_support(role: &str) -> bool {
+    A11Y_ARIA_ROLES.contains(&role)
+}
+
+fn role_supports_aria_prop(role: &str, attr: &str) -> bool {
+    if matches!(role, "none" | "doc-pullquote") {
+        return false;
+    }
+
+    if A11Y_GLOBAL_ROLE_SUPPORTED_PROPS.contains(&attr) {
+        return true;
+    }
+
+    match role {
+        "alertdialog" | "dialog" | "window" => matches!(attr, "aria-modal"),
+        "application" | "graphics-object" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+        ),
+        "article" => matches!(attr, "aria-posinset" | "aria-setsize"),
+        "button" => matches!(
+            attr,
+            "aria-disabled" | "aria-expanded" | "aria-haspopup" | "aria-pressed"
+        ),
+        "cell" => matches!(
+            attr,
+            "aria-colindex" | "aria-colspan" | "aria-rowindex" | "aria-rowspan"
+        ),
+        "checkbox" | "switch" => matches!(
+            attr,
+            "aria-checked"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-invalid"
+                | "aria-readonly"
+                | "aria-required"
+        ),
+        "columnheader" | "rowheader" => matches!(
+            attr,
+            "aria-colindex"
+                | "aria-colspan"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-readonly"
+                | "aria-required"
+                | "aria-rowindex"
+                | "aria-rowspan"
+                | "aria-selected"
+                | "aria-sort"
+        ),
+        "combobox" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-autocomplete"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-readonly"
+                | "aria-required"
+        ),
+        "composite" | "group" => matches!(attr, "aria-activedescendant" | "aria-disabled"),
+        "doc-abstract"
+        | "doc-acknowledgments"
+        | "doc-afterword"
+        | "doc-appendix"
+        | "doc-backlink"
+        | "doc-bibliography"
+        | "doc-biblioref"
+        | "doc-chapter"
+        | "doc-colophon"
+        | "doc-conclusion"
+        | "doc-cover"
+        | "doc-credit"
+        | "doc-credits"
+        | "doc-dedication"
+        | "doc-endnotes"
+        | "doc-epigraph"
+        | "doc-epilogue"
+        | "doc-errata"
+        | "doc-example"
+        | "doc-footnote"
+        | "doc-foreword"
+        | "doc-glossary"
+        | "doc-glossref"
+        | "doc-index"
+        | "doc-introduction"
+        | "doc-noteref"
+        | "doc-notice"
+        | "doc-pagelist"
+        | "doc-part"
+        | "doc-preface"
+        | "doc-prologue"
+        | "doc-qna"
+        | "doc-subtitle"
+        | "doc-tip"
+        | "doc-toc"
+        | "graphics-document"
+        | "graphics-symbol" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+        ),
+        "doc-biblioentry" | "doc-endnote" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-level"
+                | "aria-posinset"
+                | "aria-setsize"
+        ),
+        "doc-pagebreak" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-orientation"
+                | "aria-valuemax"
+                | "aria-valuemin"
+                | "aria-valuenow"
+                | "aria-valuetext"
+        ),
+        "doc-pagefooter" | "doc-pageheader" => matches!(
+            attr,
+            "aria-braillelabel"
+                | "aria-brailleroledescription"
+                | "aria-description"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-haspopup"
+                | "aria-invalid"
+        ),
+        "grid" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-colcount"
+                | "aria-disabled"
+                | "aria-multiselectable"
+                | "aria-readonly"
+                | "aria-rowcount"
+        ),
+        "gridcell" => matches!(
+            attr,
+            "aria-colindex"
+                | "aria-colspan"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-readonly"
+                | "aria-required"
+                | "aria-rowindex"
+                | "aria-rowspan"
+                | "aria-selected"
+        ),
+        "heading" => matches!(attr, "aria-level"),
+        "input" => matches!(attr, "aria-disabled"),
+        "link" => matches!(attr, "aria-disabled" | "aria-expanded" | "aria-haspopup"),
+        "listbox" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-invalid"
+                | "aria-multiselectable"
+                | "aria-orientation"
+                | "aria-readonly"
+                | "aria-required"
+        ),
+        "listitem" => matches!(attr, "aria-level" | "aria-posinset" | "aria-setsize"),
+        "mark" => matches!(
+            attr,
+            "aria-braillelabel" | "aria-brailleroledescription" | "aria-description"
+        ),
+        "menu" | "menubar" | "select" | "toolbar" => matches!(
+            attr,
+            "aria-activedescendant" | "aria-disabled" | "aria-orientation"
+        ),
+        "menuitem" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-posinset"
+                | "aria-setsize"
+        ),
+        "menuitemcheckbox" | "menuitemradio" => matches!(
+            attr,
+            "aria-checked"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-posinset"
+                | "aria-readonly"
+                | "aria-required"
+                | "aria-setsize"
+        ),
+        "meter" | "progressbar" => matches!(
+            attr,
+            "aria-valuemax" | "aria-valuemin" | "aria-valuenow" | "aria-valuetext"
+        ),
+        "option" => matches!(
+            attr,
+            "aria-checked"
+                | "aria-disabled"
+                | "aria-posinset"
+                | "aria-selected"
+                | "aria-setsize"
+        ),
+        "radio" => matches!(
+            attr,
+            "aria-checked" | "aria-disabled" | "aria-posinset" | "aria-setsize"
+        ),
+        "radiogroup" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-invalid"
+                | "aria-orientation"
+                | "aria-readonly"
+                | "aria-required"
+        ),
+        "range" => matches!(attr, "aria-valuemax" | "aria-valuemin" | "aria-valuenow"),
+        "row" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-colindex"
+                | "aria-disabled"
+                | "aria-expanded"
+                | "aria-level"
+                | "aria-posinset"
+                | "aria-rowindex"
+                | "aria-selected"
+                | "aria-setsize"
+        ),
+        "scrollbar" | "separator" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-orientation"
+                | "aria-valuemax"
+                | "aria-valuemin"
+                | "aria-valuenow"
+                | "aria-valuetext"
+        ),
+        "searchbox" | "textbox" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-autocomplete"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-multiline"
+                | "aria-placeholder"
+                | "aria-readonly"
+                | "aria-required"
+        ),
+        "slider" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-errormessage"
+                | "aria-haspopup"
+                | "aria-invalid"
+                | "aria-orientation"
+                | "aria-readonly"
+                | "aria-valuemax"
+                | "aria-valuemin"
+                | "aria-valuenow"
+                | "aria-valuetext"
+        ),
+        "spinbutton" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-invalid"
+                | "aria-readonly"
+                | "aria-required"
+                | "aria-valuemax"
+                | "aria-valuemin"
+                | "aria-valuenow"
+                | "aria-valuetext"
+        ),
+        "tab" => matches!(
+            attr,
+            "aria-disabled"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-posinset"
+                | "aria-selected"
+                | "aria-setsize"
+        ),
+        "table" => matches!(attr, "aria-colcount" | "aria-rowcount"),
+        "tablist" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-level"
+                | "aria-multiselectable"
+                | "aria-orientation"
+        ),
+        "tree" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-invalid"
+                | "aria-multiselectable"
+                | "aria-orientation"
+                | "aria-required"
+        ),
+        "treegrid" => matches!(
+            attr,
+            "aria-activedescendant"
+                | "aria-colcount"
+                | "aria-disabled"
+                | "aria-errormessage"
+                | "aria-invalid"
+                | "aria-multiselectable"
+                | "aria-orientation"
+                | "aria-readonly"
+                | "aria-required"
+                | "aria-rowcount"
+        ),
+        "treeitem" => matches!(
+            attr,
+            "aria-checked"
+                | "aria-disabled"
+                | "aria-expanded"
+                | "aria-haspopup"
+                | "aria-level"
+                | "aria-posinset"
+                | "aria-selected"
+                | "aria-setsize"
+        ),
+        _ => false,
     }
 }
 
