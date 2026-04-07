@@ -1013,6 +1013,18 @@ fn animate_reactive_params() {
     assert_compiler("animate_reactive_params");
 }
 
+#[rstest]
+#[ignore = "missing: animate on <svelte:element> inside keyed each (codegen/analyze)"]
+fn animate_svelte_element() {
+    assert_compiler("animate_svelte_element");
+}
+
+#[rstest]
+#[ignore = "missing: animate with @const sibling in keyed each (codegen)"]
+fn animate_with_const_tag() {
+    assert_compiler("animate_with_const_tag");
+}
+
 // ---------------------------------------------------------------------------
 // Attach tag tests
 // ---------------------------------------------------------------------------

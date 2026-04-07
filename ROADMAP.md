@@ -63,7 +63,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 - [ ] `use:action`
 - [ ] `transition:` / `in:` / `out:`
-- [ ] `animate:`
+- [ ] `animate:` — [spec](specs/animate.md)
 - [ ] `{@attach}` — [spec](specs/attach-tag.md)
 
 ## Special Elements
