@@ -202,6 +202,7 @@ fn simple() {
     assert_compiler("hello_state");
 }
 
+
 #[rstest]
 fn single_text_node() {
     assert_compiler("single_text_node");
@@ -2676,4 +2677,28 @@ fn state_var_safe_get() {
 #[rstest]
 fn state_assign_dev() {
     assert_compiler("state_assign_dev");
+}
+
+#[rstest]
+#[ignore = "bug: class/id/attribute selectors don't mark template elements as scoped — only type selectors do (analyze: passes/css_analyze.rs::mark_scoped_elements)"]
+fn css_scoped_class_selector() {
+    assert_compiler("css_scoped_class_selector");
+}
+
+#[rstest]
+#[ignore = "missing: <select bind:value> with static <option value=\"...\"> children does not emit `option.value = option.__value = ...` initialisation (codegen: select/option handling)"]
+fn bind_select_static_option_value() {
+    assert_compiler("bind_select_static_option_value");
+}
+
+#[rstest]
+#[ignore = "bug: each-block index variable is wrapped in `?? \"\"` inside template literals — reference omits the coalesce because index is always a number (codegen: text expression)"]
+fn each_index_text_no_coalesce() {
+    assert_compiler("each_index_text_no_coalesce");
+}
+
+#[rstest]
+#[ignore = "missing: snippet parameter destructure default that references a rune is not wrapped as a lazy thunk (`() => [$.get(counter)]`) and lacks the third truthy fallback flag (codegen/transform: snippet param defaults)"]
+fn snippet_destructure_default_state_ref() {
+    assert_compiler("snippet_destructure_default_state_ref");
 }

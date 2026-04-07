@@ -24,6 +24,7 @@ ROADMAP.md — Bindings
 
 - [x] `bind:value` on `<input>` and `<select>` including shorthand and function bindings
   Existing tests: `bind_directives`, `bind_directives_extended`, `bind_function_value`, `bind_select_value`
+- [ ] `<select bind:value>` with static `<option value="...">` children must drop the `value=` attribute from the template HTML and emit an `option.value = option.__value = "..."` initializer per option. Currently we keep the literal `value` attr in the template and emit only `$.next()`, so the `__value` channel is missing entirely. (test: `bind_select_static_option_value`, `#[ignore]`, S)
 - [x] `bind:value` on `<textarea>`
   Existing tests: `bind_textarea_value`, `textarea_child_value_dynamic`
 - [x] `bind:checked`, `bind:group`, and `bind:files`

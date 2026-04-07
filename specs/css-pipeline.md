@@ -43,6 +43,7 @@ ROADMAP.md — CSS
 - [x] Diagnose duplicate top-level `<style>` blocks (test: `duplicate_style_tag_returns_diagnostic`)
 - [x] Parse `<svelte:options css="injected">`
 - [x] Scoped CSS pipeline for top-level `<style>` — hash, selector scoping, element marking, class injection, CSS output (test: `css_scoped_basic`)
+- [ ] Element marking via class / id / attribute selectors — `mark_scoped_elements` (`crates/svelte_analyze/src/passes/css_analyze.rs`) only walks `SimpleSelector::Type` via `TypeSelectorCollector`, so an element matched only by `.foo`, `#bar`, or `[attr]` never gets the scope-hash class injected. The full matching logic in `css_prune.rs::PruneVisitor` already knows which elements match each selector but never propagates that to `CssAnalysis::scoped_elements` (test: `css_scoped_class_selector`, `#[ignore]`, M)
 - [x] Compile result CSS plumbing — `CompileResult.css` field, `analyze_css_pass()` integrated into `compile()`
 - [ ] `css: "external"` output — mode flag not explicitly enforced; external is current default behavior with no special handling
 - [x] `css: "injected"` output — `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body (tests: `css_injected`, `css_injected_via_compile_options`)
