@@ -2,12 +2,12 @@
 
 ## Current state
 - **Working**: 24/27 use cases — infrastructure + warning emission slices
-- **Current slice**: legacy special-element deprecation warnings
-- **Why this slice came next**: it is the smallest remaining analyzer-owned legacy warning cluster; `NodeInvalidPlacementSsr` is a separate regular-element validation slice with different ancestry and message-plumbing needs
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint
+- **Current slice**: A11y ARIA attribute-name checks
+- **Why this slice came next**: it is the smallest analyzer-only ARIA subcluster; it stays inside the existing template validation attribute scan and needs only local ARIA name tables, not role/interactivity semantics
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint; implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`
 - **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
-- **Next**: implement `NodeInvalidPlacementSsr` as a dedicated regular-element validation slice
-- **Non-goals for this run**: no SSR placement warnings, no legacy placement/missing-attribute validation beyond the deprecation pair, no new parser/analyze infrastructure beyond warning message context plumbing
+- **Next**: implement either the ARIA role-validation slice (`A11yMisplacedRole`, `A11yUnknownRole`, `A11yNoAbstractRole`, `A11yNoRedundantRoles`) or `NodeInvalidPlacementSsr` as a dedicated regular-element validation slice
+- **Non-goals for this run**: no SSR placement warnings, no role/interactivity A11y semantics, no ARIA value-type validation, no new parser/analyze infrastructure beyond local ARIA name tables
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
 - Last updated: 2026-04-07
 
@@ -41,7 +41,7 @@ ROADMAP Tier 5, item 5a
 - [x] `AttributeInvalidPropertyName` — warn for `className`/`htmlFor` React-style props
 - [x] Options warnings: `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, `OptionsMissingCustomElement`
 - [x] Perf warnings: `PerfAvoidInlineClass`, `PerfAvoidNestedClass`
-- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`, `SlotElementDeprecated` (legacy)
+- [ ] Remaining non-A11y warnings: `NodeInvalidPlacementSsr`
 - [ ] A11y checks (5f) — ~26 missing variants (ARIA role/attribute validation)
 - [ ] CSS unused selector warning (depends on Tier 3)
 
@@ -79,3 +79,4 @@ ROADMAP Tier 5, item 5a
 - [x] compile: all ~165 semantic error enum variants
 - [x] compile: `AnalyzeOptions` struct
 - [x] unit: `SvelteComponentDeprecated` / `SvelteSelfDeprecated`
+- [x] unit: `A11yAriaAttributes` / `A11yUnknownAriaAttribute` / `A11yHidden`
