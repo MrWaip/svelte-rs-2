@@ -2,11 +2,14 @@
 
 ## Current state
 
-- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`)
+- **Working**: Infrastructure, block wrapping for if/each/html/key/await/svelte:element, directive blockers, `$.template_effect()` blockers, shared async memoization plumbing for render/title/template-effect deps, generic async text/attribute memoization, `{@const}` async with `$.run()` + blocker propagation, `$derived` async basic + destructured, `{@render}` async with blockers + complex async args, `<title>` async with `async_values`, `<svelte:boundary>` async const/snippet scoping, `{await expr}` template syntax, pickled awaits (`$.save()`) in template/attr reactive expressions, dev-mode `$.track_reactivity_loss()` for script/template `await`, `$.async_derived()` label+location args in dev mode, `for await...of` dev wrapping with `$.for_await_track_reactivity_loss`, `$.trace` async function body handling, `svelte-ignore await_waterfall` suppression (omits location arg from `$.async_derived()`), `const_tag_invalid_reference` in async mode for component children and boundary `failed`/`pending` snippets
+- **Current slice**: Use case 37 — async-only `const_tag_invalid_reference` validation in analyze plus analyze-option plumbing from the compiler entrypoint
+- **Why this slice came next**: It was the only remaining unchecked `experimental.async` use case, and it fits one cohesive analyze-owned flow: flag `{@const}` declarations as template-only symbols and validate out-of-scope snippet reads when `experimental.async` is enabled.
+- **Non-goals for this run**: no non-async snippet validation changes, no codegen changes, no expansion into unrelated boundary diagnostics, and no work on the still-blocked `async_derived_dev_ignored_destructured` test.
 - **Not working**: —
-- **Missing**: `const_tag_invalid_reference` diagnostic in async mode (use case 37)
-- **Next**: Implement use case 37 — add `is_template_declaration` flag on `{@const}` symbols in `AnalysisData`, then add scope-aware check in the identifier visitor (`Identifier.js:162` equivalent).
-- Last updated: 2026-04-04
+- **Missing**: —
+- **Next**: No remaining implementation slices in this spec; only the separately blocked `async_derived_dev_ignored_destructured` test remains in Test cases.
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -50,7 +53,7 @@ Audit of existing implementation (2026-03-28)
 - [x] `$derived` async — `svelte-ignore await_waterfall` suppression (test: async_derived_dev_ignored; destructured test blocked on Tier 6c `$.tag()`)
 - [x] `$.track_reactivity_loss()` — script + template `await` wrapping, `$.async_derived()` label+location args, `for await...of` wrapping with `$.for_await_track_reactivity_loss` (tests: async_derived_dev, async_for_await_dev)
 - [x] `$.trace` with async function bodies — handled in `inspect.rs:89-103` via `async_thunk_block` + `await` of trace call
-- [ ] `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding in async mode; requires `is_template_declaration` flag on `{@const}` symbols in `AnalysisData` + scope-aware check in the identifier visitor (`Identifier.js:162`)
+- [x] `const_tag_invalid_reference` — snippet reads out-of-scope `{@const}` binding in async mode; implemented via per-symbol template-declaration marking plus scope-aware identifier validation in analyze
 
 ## Out of scope
 

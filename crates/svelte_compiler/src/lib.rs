@@ -30,6 +30,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 
     let analyze_opts = svelte_analyze::AnalyzeOptions {
         custom_element: options.custom_element,
+        experimental_async: options.experimental.async_,
         runes: options.runes.unwrap_or(true),
         dev: options.dev,
         component_name: name.clone(),

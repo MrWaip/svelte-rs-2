@@ -29,6 +29,7 @@ mod sym_class {
     pub const EACH_NON_REACTIVE: u32 = 1 << 15;
     pub const EACH_INDEX_NON_DYNAMIC: u32 = 1 << 16;
     pub const VAR_STATE: u32 = 1 << 17;
+    pub const TEMPLATE_DECLARATION: u32 = 1 << 18;
 }
 
 /// Svelte component scoping — wraps `ComponentSemantics` with Svelte-specific
@@ -157,6 +158,16 @@ impl ComponentScoping {
 
     pub fn is_var_declared_state(&self, id: SymbolId) -> bool {
         self.semantics.has_symbol_state(id, sym_class::VAR_STATE)
+    }
+
+    pub fn mark_template_declaration(&mut self, sym_id: SymbolId) {
+        self.semantics
+            .set_symbol_state(sym_id, sym_class::TEMPLATE_DECLARATION);
+    }
+
+    pub fn is_template_declaration(&self, sym_id: SymbolId) -> bool {
+        self.semantics
+            .has_symbol_state(sym_id, sym_class::TEMPLATE_DECLARATION)
     }
 
     pub fn mark_prop_source(&mut self, sym_id: SymbolId) {

@@ -91,6 +91,33 @@ const id2 = $props.id();
 }
 
 #[test]
+fn compile_const_tag_invalid_reference_experimental_async() {
+    let mut opts = CompileOptions::default();
+    opts.experimental.async_ = true;
+    let result = compile(
+        r#"<script>
+    import Widget from './Widget.svelte';
+</script>
+
+<Widget>
+    {@const foo = 1}
+    {#snippet children()}
+        <p>{foo}</p>
+    {/snippet}
+</Widget>"#,
+        &opts,
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.kind.code() == "const_tag_invalid_reference"),
+        "expected const_tag_invalid_reference, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn module_generate_false_returns_no_js() {
     let opts = ModuleCompileOptions {
         generate: GenerateMode::False,

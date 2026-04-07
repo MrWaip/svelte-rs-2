@@ -334,6 +334,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
             for name in &names {
                 if let Some(sym_id) = data.scoping.find_binding(scope, name) {
                     syms.push(sym_id);
+                    data.scoping.mark_template_declaration(sym_id);
                     data.scoping.mark_rune(sym_id, RuneKind::Derived);
                     data.scoping.set_derived_deps(sym_id, deps.clone());
                     if is_destructured {
