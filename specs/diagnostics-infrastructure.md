@@ -1,13 +1,13 @@
 # 5a — Diagnostics Infrastructure Setup
 
 ## Current state
-- **Working**: 28/34 use cases — infrastructure + warning emission slices
-- **Current slice**: A11y role semantics (`A11yNoRedundantRoles`, `A11yRoleHasRequiredAriaProps`)
-- **Why this slice came next**: it was the next smallest analyzer-only continuation of the existing `role` attribute branch; it needed one new local metadata layer for implicit roles and required role props, but not the broader role-to-supported-props or interactivity machinery
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint; implemented the basic A11y cluster (`A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`); implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`; implemented `A11yNoRedundantRoles` and `A11yRoleHasRequiredAriaProps`
-- **Missing**: 6 use cases — 5 A11y slices and `NodeInvalidPlacementSsr`
-- **Next**: implement the remaining role/ARIA property support slice (`A11yRoleSupportsAriaProps`, `A11yRoleSupportsAriaPropsImplicit`) before moving on to the interactivity- and value-type-driven A11y clusters
-- **Non-goals for this run**: no SSR placement warnings, no ARIA role/property support validation, no interactivity or tabindex A11y semantics, no ARIA value-type validation, no parser or codegen changes
+- **Working**: 30/34 use cases — infrastructure + warning emission slices
+- **Current slice**: A11y role/attribute interaction checks (`A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, `A11yNoNoninteractiveTabindex`)
+- **Why this slice came next**: it was the next analyzer-only cluster after role/property support validation; it reused the implicit-role work and added one local interactivity/handler classification concept without pulling in value-type parsing or broader event-policy checks
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint; implemented the basic A11y cluster (`A11yAccesskey`, `A11yAutofocus`, `A11yPositiveTabindex`, `A11yMissingAttribute`, `A11yDistractingElements`); implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`; implemented `A11yNoRedundantRoles` and `A11yRoleHasRequiredAriaProps`; implemented `A11yRoleSupportsAriaProps` and `A11yRoleSupportsAriaPropsImplicit`; implemented `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, and `A11yNoNoninteractiveTabindex`
+- **Missing**: 4 use cases — 3 A11y slices and `NodeInvalidPlacementSsr`
+- **Next**: implement the ARIA value-type validation slice (`A11yIncorrectAriaAttributeType*`) before moving on to broader interaction/content checks
+- **Non-goals for this run**: no SSR placement warnings, no ARIA value-type validation, no click/static/mouse interaction warnings, no parser or codegen changes
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
 - Last updated: 2026-04-07
 
@@ -45,8 +45,8 @@ ROADMAP Tier 5, item 5a
 - [x] A11y ARIA attribute-name checks: `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, `A11yHidden`
 - [x] A11y role name validation: `A11yMisplacedRole`, `A11yUnknownRole`, `A11yNoAbstractRole`
 - [x] A11y role semantics: `A11yNoRedundantRoles`, `A11yRoleHasRequiredAriaProps`
-- [ ] A11y ARIA role/property support validation: `A11yRoleSupportsAriaProps`, `A11yRoleSupportsAriaPropsImplicit`
-- [ ] A11y ARIA role/attribute interaction checks: `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, `A11yNoNoninteractiveTabindex`
+- [x] A11y ARIA role/property support validation: `A11yRoleSupportsAriaProps`, `A11yRoleSupportsAriaPropsImplicit`
+- [x] A11y ARIA role/attribute interaction checks: `A11yAriaActivedescendantHasTabindex`, `A11yInteractiveSupportsFocus`, `A11yNoNoninteractiveTabindex`
 - [ ] A11y ARIA value-type validation: `A11yIncorrectAriaAttributeType`, `A11yIncorrectAriaAttributeTypeBoolean`, `A11yIncorrectAriaAttributeTypeId`, `A11yIncorrectAriaAttributeTypeIdlist`, `A11yIncorrectAriaAttributeTypeInteger`, `A11yIncorrectAriaAttributeTypeToken`, `A11yIncorrectAriaAttributeTypeTokenlist`, `A11yIncorrectAriaAttributeTypeTristate`
 - [ ] A11y interaction/event checks: `A11yClickEventsHaveKeyEvents`, `A11yNoNoninteractiveElementInteractions`, `A11yNoStaticElementInteractions`, `A11yMouseEventsHaveKeyEvents`
 - [ ] A11y element-content checks: `A11yConsiderExplicitLabel`, `A11yInvalidAttribute`, `A11yAutocompleteValid`, `A11yImgRedundantAlt`, `A11yLabelHasAssociatedControl`, `A11yMissingContent`, `A11yMediaHasCaption`, `A11yFigcaptionParent`, `A11yFigcaptionIndex`, `A11yMisplacedScope`
@@ -90,8 +90,8 @@ ROADMAP Tier 5, item 5a
 - [x] unit: `A11yAriaAttributes` / `A11yUnknownAriaAttribute` / `A11yHidden`
 - [x] unit: `A11yMisplacedRole` / `A11yUnknownRole` / `A11yNoAbstractRole`
 - [x] unit: `A11yNoRedundantRoles` / `A11yRoleHasRequiredAriaProps`
-- [ ] unit: `A11yRoleSupportsAriaProps*`
-- [ ] unit: `A11yAriaActivedescendantHasTabindex` / `A11yInteractiveSupportsFocus` / `A11yNoNoninteractiveTabindex`
+- [x] unit: `A11yRoleSupportsAriaProps*`
+- [x] unit: `A11yAriaActivedescendantHasTabindex` / `A11yInteractiveSupportsFocus` / `A11yNoNoninteractiveTabindex`
 - [ ] unit: `A11yIncorrectAriaAttributeType*`
 - [ ] unit: `A11yClickEventsHaveKeyEvents` / `A11yNoNoninteractiveElementInteractions` / `A11yNoStaticElementInteractions` / `A11yMouseEventsHaveKeyEvents`
 - [ ] unit: `A11yConsiderExplicitLabel` / `A11yInvalidAttribute` / `A11yAutocompleteValid` / `A11yImgRedundantAlt` / `A11yLabelHasAssociatedControl` / `A11yMissingContent` / `A11yMediaHasCaption` / `A11yFigcaption*` / `A11yMisplacedScope`

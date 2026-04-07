@@ -4313,6 +4313,24 @@ fn a11y_tabindex_dynamic_no_warning() {
 }
 
 #[test]
+fn a11y_no_noninteractive_tabindex_warns_for_div() {
+    let diags = analyze_with_diags(r#"<div tabindex="0">content</div>"#);
+    assert_has_warning(&diags, "a11y_no_noninteractive_tabindex");
+}
+
+#[test]
+fn a11y_no_noninteractive_tabindex_no_warning_for_negative_tabindex() {
+    let diags = analyze_with_diags(r#"<div tabindex="-1">content</div>"#);
+    assert_no_warning(&diags, "a11y_no_noninteractive_tabindex");
+}
+
+#[test]
+fn a11y_no_noninteractive_tabindex_no_warning_for_interactive_element() {
+    let diags = analyze_with_diags(r#"<button tabindex="0">content</button>"#);
+    assert_no_warning(&diags, "a11y_no_noninteractive_tabindex");
+}
+
+#[test]
 fn a11y_autofocus_warns() {
     let diags = analyze_with_diags(r#"<input autofocus />"#);
     assert_has_warning(&diags, "a11y_autofocus");
@@ -4574,6 +4592,105 @@ fn a11y_role_has_required_aria_props_no_warning_with_spread() {
         r#"<script>let props = $state({});</script><div role="combobox" {...props}></div>"#,
     );
     assert_no_warning(&diags, "a11y_role_has_required_aria_props");
+}
+
+#[test]
+fn a11y_role_supports_aria_props_warns_for_explicit_role() {
+    let diags = analyze_with_diags(r#"<div role="button" aria-checked="true"></div>"#);
+    assert_has_warning(&diags, "a11y_role_supports_aria_props");
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yRoleSupportsAriaProps { attribute, role }
+                if attribute == "aria-checked" && role == "button"
+        )
+    });
+}
+
+#[test]
+fn a11y_role_supports_aria_props_no_warning_for_supported_explicit_role_prop() {
+    let diags = analyze_with_diags(r#"<div role="button" aria-expanded="true"></div>"#);
+    assert_no_warning(&diags, "a11y_role_supports_aria_props");
+}
+
+#[test]
+fn a11y_role_supports_aria_props_warns_for_implicit_role() {
+    let diags = analyze_with_diags(r#"<button aria-checked="true"></button>"#);
+    assert_has_warning(&diags, "a11y_role_supports_aria_props_implicit");
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yRoleSupportsAriaPropsImplicit {
+                attribute,
+                role,
+                name,
+            } if attribute == "aria-checked" && role == "button" && name == "button"
+        )
+    });
+}
+
+#[test]
+fn a11y_role_supports_aria_props_no_warning_for_supported_implicit_role_prop() {
+    let diags = analyze_with_diags(r#"<button aria-expanded="true"></button>"#);
+    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
+}
+
+#[test]
+fn a11y_role_supports_aria_props_unknown_aria_attr_only_warns_once() {
+    let diags = analyze_with_diags(r#"<button aria-labl="x"></button>"#);
+    assert_has_warning(&diags, "a11y_unknown_aria_attribute");
+    assert_no_warning(&diags, "a11y_role_supports_aria_props");
+    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
+}
+
+#[test]
+fn a11y_role_supports_aria_props_no_warning_without_role() {
+    let diags = analyze_with_diags(r#"<div aria-checked="true"></div>"#);
+    assert_no_warning(&diags, "a11y_role_supports_aria_props");
+    assert_no_warning(&diags, "a11y_role_supports_aria_props_implicit");
+}
+
+#[test]
+fn a11y_aria_activedescendant_has_tabindex_warns_without_tabindex() {
+    let diags = analyze_with_diags(r#"<div aria-activedescendant="item"></div>"#);
+    assert_has_warning(&diags, "a11y_aria_activedescendant_has_tabindex");
+}
+
+#[test]
+fn a11y_aria_activedescendant_has_tabindex_no_warning_with_tabindex() {
+    let diags = analyze_with_diags(r#"<div aria-activedescendant="item" tabindex="0"></div>"#);
+    assert_no_warning(&diags, "a11y_aria_activedescendant_has_tabindex");
+}
+
+#[test]
+fn a11y_interactive_supports_focus_warns_for_interactive_role_with_handler() {
+    let diags = analyze_with_diags(r#"<div role="button" onclick={handle}></div>"#);
+    assert_has_warning(&diags, "a11y_interactive_supports_focus");
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yInteractiveSupportsFocus { role }
+                if role == "button"
+        )
+    });
+}
+
+#[test]
+fn a11y_interactive_supports_focus_no_warning_with_tabindex() {
+    let diags = analyze_with_diags(r#"<div role="button" tabindex="0" onclick={handle}></div>"#);
+    assert_no_warning(&diags, "a11y_interactive_supports_focus");
+}
+
+#[test]
+fn a11y_interactive_supports_focus_no_warning_when_disabled() {
+    let diags = analyze_with_diags(r#"<div role="button" aria-disabled="true" onclick={handle}></div>"#);
+    assert_no_warning(&diags, "a11y_interactive_supports_focus");
+}
+
+#[test]
+fn a11y_interactive_supports_focus_no_warning_for_native_interactive_element() {
+    let diags = analyze_with_diags(r#"<button onclick={handle}></button>"#);
+    assert_no_warning(&diags, "a11y_interactive_supports_focus");
 }
 
 #[test]
