@@ -34,7 +34,7 @@
 - [x] `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` accept both Svelte 5 event attributes and legacy `on:` syntax in the same special-element code paths (tests: `svelte_window_event_attr`, `svelte_document_events`, `svelte_body_event_attr`)
 - [x] Legacy `nonpassive` modifier preserves an undefined capture slot and passes explicit passive `false` (`on_directive_nonpassive`)
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
-- [~] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` remains open in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
+- [ ] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` remains open in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
 - [ ] Dev-mode `$.apply()` + event handler naming
 
 ## Reference

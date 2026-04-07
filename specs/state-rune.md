@@ -1,7 +1,7 @@
 # $state rune
 
 ## Current state
-- **Working**: 41/43 use cases
+- **Working**: 40/43 use cases
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
 - **Completed (2026-04-02)**:
   - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads
@@ -47,7 +47,7 @@ Audit of existing implementation
 - [x] State in render tag context (covered, test: render_tag_dynamic_state)
 - [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
 - [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
-- [~] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` implemented, ObjectPattern `[$state object]` requires intermediate `$.derived` restructuring
+- [ ] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` is implemented, but ObjectPattern `[$state object]` still requires intermediate `$.derived` restructuring
 - [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
 - [x] `$state.is` → error: rune removed (validate/runes.rs)
 - [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)

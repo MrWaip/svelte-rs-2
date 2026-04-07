@@ -26,7 +26,7 @@
 - `[x]` Generate async client code for awaited key expressions via `$.async(...)` and `$.get($$key)`.
 - `[x]` Handle `{#key}` nested inside element children without breaking parent fragment traversal or DOM anchors.
 - `[x]` Emit `block_empty` when the key block body contains only whitespace.
-- `[~]` In runes mode, emit `block_unexpected_character` when the opening tag is malformed — implemented in analyzer but effectively dead code: our Rust parser rejects `{ #key ...}` (space after `{`) at parse time, stricter than the reference JS parser which accepts it in legacy mode.
+- `[ ]` In runes mode, emit `block_unexpected_character` when the opening tag is malformed — analyzer logic exists, but it is still effectively dead code because our Rust parser rejects `{ #key ...}` (space after `{`) at parse time, stricter than the reference JS parser which accepts it in legacy mode.
 - `[x]` Reference analyzer marks key-block subtrees dynamic via `mark_subtree_dynamic()`; investigated and intentionally not ported — `has_dynamic_children` is only consulted for `ContentStrategy::DynamicText`, which never co-exists with `{#key}` (presence of a block shifts strategy to `SingleBlock`/`Mixed`). Not observable. Verified by `key_block_nested` output match.
 
 ## Reference

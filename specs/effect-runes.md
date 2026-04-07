@@ -1,10 +1,11 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 10/10 use cases — feature complete
+- **Working**: 9/10 use cases
+- **Missing**: script-side coverage for `$effect.pending()`
 - Last updated: 2026-04-03
 
-**Next:** feature complete; no further work planned unless new edge cases emerge
+**Next:** extend `$effect.pending()` coverage beyond template and branch positions so script-side usage is tracked explicitly
 
 ## Source
 
@@ -33,7 +34,7 @@
   Tests: `effect_root_basic`, `effect_root_cleanup`
 - [x] `$effect.tracking()` lowers to `$.effect_tracking()` and can flow into template output
   Tests: `effect_tracking`
-- [~] `$effect.pending()` lowers in template expressions, but coverage is limited to template/branch positions rather than script-side usage
+- [ ] `$effect.pending()` lowers in template expressions, but coverage is still limited to template/branch positions rather than script-side usage
   Tests: `effect_pending`
 - [x] `$effect()` placement validation: only allowed as an expression statement
   Tests: `validate_effect_invalid_placement_fn_arg`
