@@ -1,10 +1,10 @@
 # $props / $bindable
 
 ## Current state
-- **Complete**: 15/16 use cases — `$props()`/`$props.id()` in `<script module>` rejection not yet verified
+- **Working**: 15/17 use cases
 - **Completed (2026-04-03)**: added compiler-level pipeline tests for `$props.id()` validation edge cases (`compile_props_id_invalid_placement`, `compile_props_id_duplicate_with_props`) in `crates/svelte_compiler/src/tests.rs`
-- **Next**: Verify and add coverage for `$props()` and `$props.id()` rejection inside `<script module>` (`ast_type !== 'instance'` check in reference `CallExpression.js`).
-- Last updated: 2026-04-03
+- **Next**: Verify and add coverage for `$props()` and `$props.id()` rejection inside `<script module>` (`ast_type !== 'instance'` check in reference `CallExpression.js`), then track dev-mode ownership mutation validation here instead of leaving it only in ROADMAP.
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -42,6 +42,7 @@ ROADMAP.md — `$props` / `$bindable`
 - [x] `$props()` pattern validation: `props_invalid_pattern` and `props_invalid_identifier`
 - [x] `props_illegal_name` for MemberExpression access on rest props
 - [x] Custom-element warning: `custom_element_props_identifier` for identifier/rest `$props()` in custom elements
+- [ ] Dev-mode ownership mutation validation for prop / bindable-prop member writes via `$$ownership_validator.mutation(...)`
 - [ ] `$$props` / `$$restProps` legacy compatibility (Tier 7)
 
 ## Reference
@@ -53,6 +54,7 @@ ROADMAP.md — `$props` / `$bindable`
 - `reference/compiler/phases/2-analyze/visitors/MemberExpression.js` — `props_illegal_name`
 - `reference/compiler/phases/3-transform/client/visitors/VariableDeclaration.js`
 - `reference/compiler/phases/3-transform/client/transform-client.js`
+- `reference/compiler/phases/3-transform/client/visitors/shared/utils.js` — `validate_mutation`, `$$ownership_validator.mutation`
 - `reference/compiler/phases/3-transform/client/utils.js`
 - `crates/svelte_analyze/src/utils/script_info.rs` — structural extraction of props declarations/defaults
 - `crates/svelte_analyze/src/passes/post_resolve.rs` — `PropsAnalysis` construction and bindable/runtime-plan flags

@@ -261,12 +261,28 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::ReactivityWalk => {
             let mut bundle = bundles::ReactivityBundle::new();
             let mut visitors = bundle.visitors();
-            run_template_bundle(component, data, source, runes, options, diags, &mut visitors);
+            run_template_bundle(
+                component,
+                data,
+                source,
+                runes,
+                options,
+                diags,
+                &mut visitors,
+            );
         }
         super::PassKey::TemplateClassificationWalk => {
             let mut bundle = bundles::TemplateClassificationBundle::new(component, data, source);
             let mut visitors = bundle.visitors();
-            run_template_bundle(component, data, source, runes, options, diags, &mut visitors);
+            run_template_bundle(
+                component,
+                data,
+                source,
+                runes,
+                options,
+                diags,
+                &mut visitors,
+            );
             bundle.finish(data);
         }
         super::PassKey::ClassifyRemainingFragments => {

@@ -131,7 +131,8 @@ impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if self.function_depth > 0 && matches!(expr.callee, oxc_ast::ast::Expression::ClassExpression(_))
+        if self.function_depth > 0
+            && matches!(expr.callee, oxc_ast::ast::Expression::ClassExpression(_))
         {
             self.diags.push(Diagnostic::warning(
                 DiagnosticKind::PerfAvoidInlineClass,
@@ -383,7 +384,9 @@ fn validate_svelte_options_warnings(
         let kind = match attr.html_name() {
             "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
             "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
-            "customElement" if !data.custom_element => Some(DiagnosticKind::OptionsMissingCustomElement),
+            "customElement" if !data.custom_element => {
+                Some(DiagnosticKind::OptionsMissingCustomElement)
+            }
             _ => None,
         };
 

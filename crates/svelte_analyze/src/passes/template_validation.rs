@@ -8,23 +8,25 @@
 //! so that sub-expression spans can be reported correctly.
 
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
-    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
+    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
+    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
+    Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, is_svg,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
+use crate::AnalysisData;
+use crate::passes::binding_properties::{BINDING_NAMES, binding_property};
 use crate::scope::ComponentScoping;
 use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
-use crate::AnalysisData;
+
+mod a11y;
 
 const EVENT_MODIFIERS: &[&str] = &[
     "preventDefault",
@@ -91,24 +93,6 @@ const A11Y_ARIA_ATTRIBUTES: &[&str] = &[
 ];
 
 const A11Y_INVISIBLE_ELEMENTS: &[&str] = &["meta", "html", "script", "style"];
-
-#[derive(Clone, Copy)]
-enum AriaValueKind {
-    Id,
-    String,
-    Number,
-    Boolean,
-    Idlist,
-    Integer,
-    Token(&'static [&'static str]),
-    Tokenlist(&'static [&'static str]),
-    Tristate,
-}
-
-enum StaticAttributeValue<'a> {
-    Text(&'a str),
-    True,
-}
 
 const A11Y_ARIA_AUTOCOMPLETE_VALUES: &[&str] = &["inline", "list", "both", "none"];
 const A11Y_ARIA_CURRENT_VALUES: &[&str] =
@@ -410,6 +394,96 @@ const A11Y_INTERACTIVE_ROLES: &[&str] = &[
 
 const A11Y_PRESENTATION_ROLES: &[&str] = &["presentation", "none"];
 
+const A11Y_NON_INTERACTIVE_ROLES: &[&str] = &[
+    "alert",
+    "alertdialog",
+    "application",
+    "article",
+    "banner",
+    "blockquote",
+    "caption",
+    "code",
+    "complementary",
+    "contentinfo",
+    "definition",
+    "deletion",
+    "dialog",
+    "directory",
+    "document",
+    "emphasis",
+    "feed",
+    "figure",
+    "form",
+    "group",
+    "heading",
+    "img",
+    "insertion",
+    "list",
+    "listitem",
+    "log",
+    "main",
+    "mark",
+    "marquee",
+    "math",
+    "meter",
+    "navigation",
+    "note",
+    "paragraph",
+    "region",
+    "rowgroup",
+    "search",
+    "separator",
+    "status",
+    "strong",
+    "subscript",
+    "superscript",
+    "table",
+    "term",
+    "time",
+    "timer",
+    "tooltip",
+    "doc-abstract",
+    "doc-acknowledgments",
+    "doc-afterword",
+    "doc-appendix",
+    "doc-biblioentry",
+    "doc-bibliography",
+    "doc-chapter",
+    "doc-colophon",
+    "doc-conclusion",
+    "doc-cover",
+    "doc-credit",
+    "doc-credits",
+    "doc-dedication",
+    "doc-endnote",
+    "doc-endnotes",
+    "doc-epigraph",
+    "doc-epilogue",
+    "doc-errata",
+    "doc-example",
+    "doc-footnote",
+    "doc-foreword",
+    "doc-glossary",
+    "doc-index",
+    "doc-introduction",
+    "doc-notice",
+    "doc-pagebreak",
+    "doc-pagefooter",
+    "doc-pageheader",
+    "doc-pagelist",
+    "doc-part",
+    "doc-preface",
+    "doc-prologue",
+    "doc-pullquote",
+    "doc-qna",
+    "doc-subtitle",
+    "doc-tip",
+    "doc-toc",
+    "graphics-document",
+    "graphics-object",
+    "graphics-symbol",
+];
+
 const A11Y_INTERACTIVE_HANDLERS: &[&str] = &[
     "keypress",
     "keydown",
@@ -446,12 +520,14 @@ const A11Y_INTERACTIVE_HANDLERS: &[&str] = &[
     "touchcancel",
 ];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ElementInteractivity {
-    Interactive,
-    NonInteractive,
-    Static,
-}
+const A11Y_RECOMMENDED_INTERACTIVE_HANDLERS: &[&str] = &[
+    "click",
+    "mousedown",
+    "mouseup",
+    "keypress",
+    "keydown",
+    "keyup",
+];
 
 const A11Y_GLOBAL_ROLE_SUPPORTED_PROPS: &[&str] = &[
     "aria-atomic",
@@ -686,49 +762,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
         }
 
-        // a11y_distracting_elements: <marquee> and <blink> are harmful to accessibility.
-        if matches!(el.name.as_str(), "marquee" | "blink") {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yDistractingElements {
-                    name: el.name.clone(),
-                },
-                el.span,
-            ));
-        }
-
-        // Attribute-level A11y checks.
-        if let Some(attr) = accesskey_attr {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yAccesskey,
-                attr_value_span(attr),
-            ));
-        }
-        if let Some(attr) = tabindex_attr {
-            if let Some(text) = static_text_attr_value(attr, source) {
-                if let Ok(n) = text.trim().parse::<i64>() {
-                    if n > 0 {
-                        ctx.warnings_mut().push(Diagnostic::warning(
-                            DiagnosticKind::A11yPositiveTabindex,
-                            attr_value_span(attr),
-                        ));
-                    }
-                }
-            }
-        }
-        if has_autofocus && el.name != "dialog" && self.dialog_depth == 0 {
-            ctx.warnings_mut()
-                .push(Diagnostic::warning(DiagnosticKind::A11yAutofocus, el.span));
-        }
-
-        // a11y_missing_attribute: certain elements require specific attributes.
-        if let Some(diag) = missing_attr_diag {
-            ctx.warnings_mut().push(diag);
-        }
-
-        check_a11y_aria_attribute_warnings(el, &el.attributes, ctx);
-        check_a11y_role_warnings(el, &el.attributes, ctx);
-        check_a11y_role_supported_aria_props_warnings(el, &el.attributes, ctx);
-        check_a11y_role_attribute_interaction_warnings(el, &el.attributes, ctx);
+        a11y::check_element_warnings(
+            el,
+            &el.attributes,
+            accesskey_attr,
+            tabindex_attr,
+            has_autofocus,
+            self.dialog_depth,
+            missing_attr_diag,
+            ctx,
+        );
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
         if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
@@ -1503,21 +1546,11 @@ fn attr_is_text(attr: &Attribute) -> bool {
     matches!(attr, Attribute::StringAttribute(_))
 }
 
-fn static_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<StaticAttributeValue<'a>> {
+fn static_text_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<&'a str> {
     match attr {
-        Attribute::StringAttribute(attr) => {
-            Some(StaticAttributeValue::Text(attr.value_span.source_text(source)))
-        }
-        Attribute::BooleanAttribute(_) => Some(StaticAttributeValue::True),
+        Attribute::StringAttribute(attr) => Some(attr.value_span.source_text(source)),
         _ => None,
     }
-}
-
-fn static_text_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<&'a str> {
-    static_attr_value(attr, source).and_then(|value| match value {
-        StaticAttributeValue::Text(text) => Some(text),
-        StaticAttributeValue::True => None,
-    })
 }
 
 fn attr_value_span(attr: &Attribute) -> Span {
@@ -2134,1045 +2167,6 @@ fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
     }
 }
 
-fn attr_named_name(attr: &Attribute) -> Option<&str> {
-    match attr {
-        Attribute::StringAttribute(attr) => Some(&attr.name),
-        Attribute::ExpressionAttribute(attr) => Some(&attr.name),
-        Attribute::BooleanAttribute(attr) => Some(&attr.name),
-        Attribute::ConcatenationAttribute(attr) => Some(&attr.name),
-        Attribute::BindDirective(attr) => Some(&attr.name),
-        Attribute::Shorthand(_)
-        | Attribute::SpreadAttribute(_)
-        | Attribute::ClassDirective(_)
-        | Attribute::StyleDirective(_)
-        | Attribute::UseDirective(_)
-        | Attribute::OnDirectiveLegacy(_)
-        | Attribute::TransitionDirective(_)
-        | Attribute::AnimateDirective(_)
-        | Attribute::AttachTag(_) => None,
-    }
-}
-
-fn is_heading_tag(name: &str) -> bool {
-    matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
-}
-
-fn aria_attribute_value_kind(name: &str) -> Option<AriaValueKind> {
-    match name {
-        "aria-activedescendant" | "aria-details" | "aria-errormessage" => Some(AriaValueKind::Id),
-        "aria-braillelabel"
-        | "aria-brailleroledescription"
-        | "aria-description"
-        | "aria-keyshortcuts"
-        | "aria-label"
-        | "aria-placeholder"
-        | "aria-roledescription"
-        | "aria-valuetext" => Some(AriaValueKind::String),
-        "aria-valuemax" | "aria-valuemin" | "aria-valuenow" => Some(AriaValueKind::Number),
-        "aria-atomic"
-        | "aria-busy"
-        | "aria-disabled"
-        | "aria-expanded"
-        | "aria-grabbed"
-        | "aria-hidden"
-        | "aria-modal"
-        | "aria-multiline"
-        | "aria-multiselectable"
-        | "aria-readonly"
-        | "aria-required"
-        | "aria-selected" => Some(AriaValueKind::Boolean),
-        "aria-controls" | "aria-describedby" | "aria-flowto" | "aria-labelledby" | "aria-owns" => {
-            Some(AriaValueKind::Idlist)
-        }
-        "aria-colcount"
-        | "aria-colindex"
-        | "aria-colspan"
-        | "aria-level"
-        | "aria-posinset"
-        | "aria-rowcount"
-        | "aria-rowindex"
-        | "aria-rowspan"
-        | "aria-setsize" => Some(AriaValueKind::Integer),
-        "aria-autocomplete" => Some(AriaValueKind::Token(A11Y_ARIA_AUTOCOMPLETE_VALUES)),
-        "aria-current" => Some(AriaValueKind::Token(A11Y_ARIA_CURRENT_VALUES)),
-        "aria-haspopup" => Some(AriaValueKind::Token(A11Y_ARIA_HASPOPUP_VALUES)),
-        "aria-invalid" => Some(AriaValueKind::Token(A11Y_ARIA_INVALID_VALUES)),
-        "aria-live" => Some(AriaValueKind::Token(A11Y_ARIA_LIVE_VALUES)),
-        "aria-orientation" => Some(AriaValueKind::Token(A11Y_ARIA_ORIENTATION_VALUES)),
-        "aria-sort" => Some(AriaValueKind::Token(A11Y_ARIA_SORT_VALUES)),
-        "aria-dropeffect" => Some(AriaValueKind::Tokenlist(A11Y_ARIA_DROPEFFECT_VALUES)),
-        "aria-relevant" => Some(AriaValueKind::Tokenlist(A11Y_ARIA_RELEVANT_VALUES)),
-        "aria-checked" | "aria-pressed" => Some(AriaValueKind::Tristate),
-        _ => None,
-    }
-}
-
-fn format_quoted_list(values: &[&str]) -> String {
-    let quoted = values
-        .iter()
-        .map(|value| format!("\"{value}\""))
-        .collect::<Vec<_>>();
-
-    match quoted.as_slice() {
-        [] => String::new(),
-        [single] => single.clone(),
-        [left, right] => format!("{left} or {right}"),
-        _ => {
-            let last = quoted.last().cloned().unwrap_or_default();
-            let leading = &quoted[..quoted.len() - 1];
-            format!("{} or {}", leading.join(", "), last)
-        }
-    }
-}
-
-fn validate_aria_attribute_value(
-    attr: &Attribute,
-    name: &str,
-    kind: AriaValueKind,
-    ctx: &mut VisitContext<'_>,
-) {
-    let span = attr_value_span(attr);
-    let Some(value) = static_attr_value(attr, ctx.source) else {
-        return;
-    };
-    let value = match value {
-        StaticAttributeValue::Text(text) => text,
-        StaticAttributeValue::True => "",
-    };
-
-    let diagnostic = match kind {
-        AriaValueKind::Id | AriaValueKind::String if value.is_empty() => {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeType {
-                attribute: name.to_string(),
-                type_: "non-empty string".to_string(),
-            })
-        }
-        AriaValueKind::Number
-            if value.is_empty() || value.trim().parse::<f64>().is_err() =>
-        {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeType {
-                attribute: name.to_string(),
-                type_: "number".to_string(),
-            })
-        }
-        AriaValueKind::Boolean if !matches!(value, "true" | "false") => {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeBoolean {
-                attribute: name.to_string(),
-            })
-        }
-        AriaValueKind::Idlist if value.is_empty() => {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeIdlist {
-                attribute: name.to_string(),
-            })
-        }
-        AriaValueKind::Integer
-            if value.is_empty()
-                || value
-                    .trim()
-                    .parse::<f64>()
-                    .ok()
-                    .is_none_or(|number| !number.is_finite() || number.fract() != 0.0) =>
-        {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeInteger {
-                attribute: name.to_string(),
-            })
-        }
-        AriaValueKind::Token(values)
-            if !values.contains(&value.to_ascii_lowercase().as_str()) =>
-        {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeToken {
-                attribute: name.to_string(),
-                values: format_quoted_list(values),
-            })
-        }
-        AriaValueKind::Tokenlist(values)
-            if value
-                .split_whitespace()
-                .map(str::to_ascii_lowercase)
-                .any(|token| !values.contains(&token.as_str())) =>
-        {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeTokenlist {
-                attribute: name.to_string(),
-                values: format_quoted_list(values),
-            })
-        }
-        AriaValueKind::Tristate if !matches!(value, "true" | "false" | "mixed") => {
-            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeTristate {
-                attribute: name.to_string(),
-            })
-        }
-        _ => None,
-    };
-
-    if let Some(diagnostic) = diagnostic {
-        ctx.warnings_mut().push(Diagnostic::warning(diagnostic, span));
-    }
-}
-
-fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
-    for attr in attrs {
-        let Some(name) = attr_named_name(attr) else {
-            continue;
-        };
-        let name = name.to_ascii_lowercase();
-        if !name.starts_with("aria-") {
-            continue;
-        }
-
-        if A11Y_INVISIBLE_ELEMENTS.contains(&el.name.as_str()) {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yAriaAttributes {
-                    name: el.name.clone(),
-                },
-                attr_value_span(attr),
-            ));
-        }
-
-        let attribute = name.trim_start_matches("aria-");
-        if !A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yUnknownAriaAttribute {
-                    attribute: attribute.to_string(),
-                    suggestion: fuzzymatch(attribute, A11Y_ARIA_ATTRIBUTES)
-                        .map(|s| format!("aria-{s}")),
-                },
-                attr_value_span(attr),
-            ));
-            continue;
-        }
-
-        if name == "aria-hidden" && is_heading_tag(&el.name) {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yHidden {
-                    name: el.name.clone(),
-                },
-                attr_value_span(attr),
-            ));
-        }
-
-        if let Some(kind) = aria_attribute_value_kind(name.as_str()) {
-            validate_aria_attribute_value(attr, name.as_str(), kind, ctx);
-        }
-    }
-}
-
-fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
-    let has_spread = ctx.data.has_spread(el.id);
-    let implicit_role = implicit_role_for_element(el, attrs, ctx);
-    let is_parent_section_or_article = has_sectioning_ancestor(el.id, ctx);
-
-    for attr in attrs {
-        let Some(name) = attr_named_name(attr) else {
-            continue;
-        };
-        if !name.eq_ignore_ascii_case("role") {
-            continue;
-        }
-
-        if A11Y_INVISIBLE_ELEMENTS.contains(&el.name.as_str()) {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yMisplacedRole {
-                    name: el.name.clone(),
-                },
-                attr_value_span(attr),
-            ));
-        }
-
-        let Some(value) = static_text_attr_value(attr, ctx.source) else {
-            continue;
-        };
-
-        for role in value.split_ascii_whitespace() {
-            if role.is_empty() {
-                continue;
-            }
-
-            if A11Y_ABSTRACT_ROLES.contains(&role) {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoAbstractRole {
-                        role: role.to_string(),
-                    },
-                    attr_value_span(attr),
-                ));
-            } else if !A11Y_ARIA_ROLES.contains(&role) {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yUnknownRole {
-                        role: role.to_string(),
-                        suggestion: fuzzymatch(role, A11Y_ARIA_ROLES).map(str::to_string),
-                    },
-                    attr_value_span(attr),
-                ));
-            }
-
-            if implicit_role == Some(role)
-                && !matches!(el.name.as_str(), "ul" | "ol" | "li" | "menu")
-                && !(el.name == "a" && !ctx.data.has_attribute(el.id, "href"))
-            {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoRedundantRoles {
-                        role: role.to_string(),
-                    },
-                    attr_value_span(attr),
-                ));
-            }
-
-            if !is_parent_section_or_article
-                && nested_implicit_role(el.name.as_str()).is_some_and(|nested| nested == role)
-            {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoRedundantRoles {
-                        role: role.to_string(),
-                    },
-                    attr_value_span(attr),
-                ));
-            }
-
-            let Some(required_props) = required_role_props(role) else {
-                continue;
-            };
-
-            if has_spread || is_semantic_role_element(el, attrs, ctx, role) {
-                continue;
-            }
-
-            if required_props
-                .iter()
-                .any(|prop| ctx.data.attribute(el.id, attrs, prop).is_none())
-            {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yRoleHasRequiredAriaProps {
-                        role: role.to_string(),
-                        props: format_required_role_props(required_props),
-                    },
-                    attr_value_span(attr),
-                ));
-            }
-        }
-    }
-}
-
-fn check_a11y_role_supported_aria_props_warnings(
-    el: &Element,
-    attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
-) {
-    let explicit_role_attr = ctx.data.attribute(el.id, attrs, "role");
-    let role_value = explicit_role_attr
-        .and_then(|attr| static_text_attr_value(attr, ctx.source))
-        .or_else(|| explicit_role_attr.is_none().then(|| implicit_role_for_element(el, attrs, ctx)).flatten());
-    let Some(role_value) = role_value else {
-        return;
-    };
-
-    if !is_known_role_for_prop_support(role_value) {
-        return;
-    }
-
-    let is_implicit = explicit_role_attr.is_none();
-
-    for attr in attrs {
-        let Some(name) = attr_named_name(attr) else {
-            continue;
-        };
-        let name = name.to_ascii_lowercase();
-        if !name.starts_with("aria-") {
-            continue;
-        }
-
-        let attribute = name.trim_start_matches("aria-");
-        if !A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
-            continue;
-        }
-
-        if role_supports_aria_prop(role_value, name.as_str()) {
-            continue;
-        }
-
-        let diag = if is_implicit {
-            DiagnosticKind::A11yRoleSupportsAriaPropsImplicit {
-                attribute: name.clone(),
-                role: role_value.to_string(),
-                name: el.name.clone(),
-            }
-        } else {
-            DiagnosticKind::A11yRoleSupportsAriaProps {
-                attribute: name.clone(),
-                role: role_value.to_string(),
-            }
-        };
-        ctx.warnings_mut()
-            .push(Diagnostic::warning(diag, attr_value_span(attr)));
-    }
-}
-
-fn check_a11y_role_attribute_interaction_warnings(
-    el: &Element,
-    attrs: &[Attribute],
-    ctx: &mut VisitContext<'_>,
-) {
-    let interactivity = element_interactivity(el, attrs, ctx);
-    let is_interactive = interactivity == ElementInteractivity::Interactive;
-    let is_static = interactivity == ElementInteractivity::Static;
-    let has_spread = ctx.data.has_spread(el.id);
-    let has_tabindex = ctx.data.attribute(el.id, attrs, "tabindex");
-    let role_attr = ctx.data.attribute(el.id, attrs, "role");
-    let role_static_value = role_attr.and_then(|attr| static_text_attr_value(attr, ctx.source));
-    let handlers = collect_element_handlers(attrs);
-
-    for attr in attrs {
-        let Some(name) = attr_named_name(attr) else {
-            continue;
-        };
-        let name = name.to_ascii_lowercase();
-        if name == "aria-activedescendant"
-            && !is_interactive
-            && has_tabindex.is_none()
-            && !has_spread
-        {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::A11yAriaActivedescendantHasTabindex,
-                attr_value_span(attr),
-            ));
-        }
-    }
-
-    if let Some(tabindex_attr) = has_tabindex {
-        if !is_interactive && !is_interactive_role(role_static_value) {
-            let should_warn = static_text_attr_value(tabindex_attr, ctx.source)
-                .and_then(|value| value.trim().parse::<f64>().ok())
-                .is_none_or(|value| value >= 0.0);
-            if should_warn {
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::A11yNoNoninteractiveTabindex,
-                    attr_value_span(tabindex_attr),
-                ));
-            }
-        }
-    }
-
-    let has_interactive_handlers = handlers
-        .iter()
-        .any(|handler| A11Y_INTERACTIVE_HANDLERS.contains(&handler.as_str()));
-    if !has_interactive_handlers
-        || has_spread
-        || has_disabled_attribute(el.id, attrs, ctx)
-        || is_hidden_from_screen_reader(el, attrs, ctx)
-        || has_tabindex.is_some()
-        || !is_static
-    {
-        return;
-    }
-
-    let Some(role_attr) = role_attr else {
-        return;
-    };
-    let Some(role_value) = static_text_attr_value(role_attr, ctx.source) else {
-        return;
-    };
-
-    for role in role_value.split_ascii_whitespace() {
-        if role.is_empty()
-            || !is_interactive_role(Some(role))
-            || is_presentation_role(Some(role))
-        {
-            continue;
-        }
-
-        ctx.warnings_mut().push(Diagnostic::warning(
-            DiagnosticKind::A11yInteractiveSupportsFocus {
-                role: role.to_string(),
-            },
-            el.span,
-        ));
-    }
-}
-
-fn implicit_role_for_element<'a>(
-    el: &Element,
-    attrs: &'a [Attribute],
-    ctx: &VisitContext<'a>,
-) -> Option<&'static str> {
-    match el.name.as_str() {
-        "menuitem" => {
-            let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
-            let type_value = static_text_attr_value(type_attr, ctx.source)?;
-            lookup_static_pair(A11Y_MENUITEM_IMPLICIT_ROLES, type_value)
-        }
-        "input" => {
-            let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
-            let type_value = static_text_attr_value(type_attr, ctx.source)?;
-            if ctx.data.has_attribute(el.id, "list") && A11Y_COMBOBOX_INPUT_TYPES.contains(&type_value)
-            {
-                Some("combobox")
-            } else {
-                lookup_static_pair(A11Y_INPUT_IMPLICIT_ROLES, type_value)
-            }
-        }
-        _ => lookup_static_pair(A11Y_IMPLICIT_ROLES, el.name.as_str()),
-    }
-}
-
-fn nested_implicit_role(name: &str) -> Option<&'static str> {
-    lookup_static_pair(A11Y_NESTED_IMPLICIT_ROLES, name)
-}
-
-fn required_role_props(role: &str) -> Option<&'static [&'static str]> {
-    A11Y_REQUIRED_ROLE_PROPS
-        .iter()
-        .find_map(|(name, props)| (*name == role).then_some(*props))
-}
-
-fn is_semantic_role_element<'a>(
-    el: &Element,
-    attrs: &'a [Attribute],
-    ctx: &VisitContext<'a>,
-    role: &str,
-) -> bool {
-    if implicit_role_for_element(el, attrs, ctx).is_some_and(|implicit| implicit == role) {
-        return true;
-    }
-
-    !has_sectioning_ancestor(el.id, ctx)
-        && matches!(
-            (el.name.as_str(), role),
-            ("header", "banner") | ("footer", "contentinfo")
-        )
-}
-
-fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_>) -> bool {
-    ctx.data.ancestors(id).any(|parent| {
-        if parent.kind != ParentKind::Element {
-            return false;
-        }
-
-        ctx.store
-            .get(parent.id)
-            .as_element()
-            .is_some_and(|element| matches!(element.name.as_str(), "section" | "article"))
-    })
-}
-
-fn lookup_static_pair<'a>(pairs: &'a [(&'a str, &'a str)], needle: &str) -> Option<&'a str> {
-    pairs
-        .iter()
-        .find_map(|(name, value)| (*name == needle).then_some(*value))
-}
-
-fn format_required_role_props(props: &[&str]) -> String {
-    let quoted = props
-        .iter()
-        .map(|prop| format!("\"{prop}\""))
-        .collect::<Vec<_>>();
-
-    match quoted.as_slice() {
-        [] => String::new(),
-        [single] => single.clone(),
-        [left, right] => format!("{left} and {right}"),
-        _ => {
-            let last = quoted.last().cloned().unwrap_or_default();
-            let leading = &quoted[..quoted.len() - 1];
-            format!("{}, and {}", leading.join(", "), last)
-        }
-    }
-}
-
-fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
-    attrs.iter()
-        .filter_map(|attr| match attr {
-            Attribute::ExpressionAttribute(attr) => attr.event_name.clone(),
-            Attribute::OnDirectiveLegacy(attr) => Some(attr.name.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn is_hidden_from_screen_reader(
-    el: &Element,
-    attrs: &[Attribute],
-    ctx: &VisitContext<'_>,
-) -> bool {
-    if el.name == "input" {
-        if let Some(input_type) = ctx
-            .data
-            .attribute(el.id, attrs, "type")
-            .and_then(|attr| static_text_attr_value(attr, ctx.source))
-        {
-            if input_type == "hidden" {
-                return true;
-            }
-        }
-    }
-
-    ctx.data
-        .attribute(el.id, attrs, "aria-hidden")
-        .map_or(false, |attr| match attr {
-            Attribute::BooleanAttribute(_) => true,
-            _ => static_text_attr_value(attr, ctx.source)
-                .is_some_and(|value| value == "true"),
-        })
-}
-
-fn has_disabled_attribute(id: NodeId, attrs: &[Attribute], ctx: &VisitContext<'_>) -> bool {
-    if ctx
-        .data
-        .attribute(id, attrs, "disabled")
-        .is_some_and(|attr| {
-            matches!(attr, Attribute::BooleanAttribute(_))
-                || static_text_attr_value(attr, ctx.source).is_some_and(|value| !value.is_empty())
-        })
-    {
-        return true;
-    }
-
-    ctx.data
-        .attribute(id, attrs, "aria-disabled")
-        .and_then(|attr| static_text_attr_value(attr, ctx.source))
-        .is_some_and(|value| value == "true")
-}
-
-fn element_interactivity(
-    el: &Element,
-    attrs: &[Attribute],
-    ctx: &VisitContext<'_>,
-) -> ElementInteractivity {
-    if let Some(role) = implicit_role_for_element(el, attrs, ctx) {
-        return if is_interactive_role(Some(role)) {
-            ElementInteractivity::Interactive
-        } else {
-            ElementInteractivity::NonInteractive
-        };
-    }
-
-    match el.name.as_str() {
-        "button" | "details" | "embed" | "iframe" | "label" | "select" | "textarea" => {
-            ElementInteractivity::Interactive
-        }
-        "a" | "area" => {
-            if ctx.data.has_attribute(el.id, "href") {
-                ElementInteractivity::Interactive
-            } else {
-                ElementInteractivity::Static
-            }
-        }
-        "audio" | "video" => {
-            if ctx.data.has_attribute(el.id, "controls") {
-                ElementInteractivity::Interactive
-            } else {
-                ElementInteractivity::Static
-            }
-        }
-        "input" => {
-            let input_type = ctx
-                .data
-                .attribute(el.id, attrs, "type")
-                .and_then(|attr| static_text_attr_value(attr, ctx.source));
-            if input_type == Some("hidden") {
-                ElementInteractivity::NonInteractive
-            } else {
-                ElementInteractivity::Interactive
-            }
-        }
-        _ => ElementInteractivity::Static,
-    }
-}
-
-fn is_interactive_role(role: Option<&str>) -> bool {
-    role.is_some_and(|role| A11Y_INTERACTIVE_ROLES.contains(&role))
-}
-
-fn is_presentation_role(role: Option<&str>) -> bool {
-    role.is_some_and(|role| A11Y_PRESENTATION_ROLES.contains(&role))
-}
-
-fn is_known_role_for_prop_support(role: &str) -> bool {
-    A11Y_ARIA_ROLES.contains(&role)
-}
-
-fn role_supports_aria_prop(role: &str, attr: &str) -> bool {
-    if matches!(role, "none" | "doc-pullquote") {
-        return false;
-    }
-
-    if A11Y_GLOBAL_ROLE_SUPPORTED_PROPS.contains(&attr) {
-        return true;
-    }
-
-    match role {
-        "alertdialog" | "dialog" | "window" => matches!(attr, "aria-modal"),
-        "application" | "graphics-object" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-        ),
-        "article" => matches!(attr, "aria-posinset" | "aria-setsize"),
-        "button" => matches!(
-            attr,
-            "aria-disabled" | "aria-expanded" | "aria-haspopup" | "aria-pressed"
-        ),
-        "cell" => matches!(
-            attr,
-            "aria-colindex" | "aria-colspan" | "aria-rowindex" | "aria-rowspan"
-        ),
-        "checkbox" | "switch" => matches!(
-            attr,
-            "aria-checked"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-invalid"
-                | "aria-readonly"
-                | "aria-required"
-        ),
-        "columnheader" | "rowheader" => matches!(
-            attr,
-            "aria-colindex"
-                | "aria-colspan"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-readonly"
-                | "aria-required"
-                | "aria-rowindex"
-                | "aria-rowspan"
-                | "aria-selected"
-                | "aria-sort"
-        ),
-        "combobox" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-autocomplete"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-readonly"
-                | "aria-required"
-        ),
-        "composite" | "group" => matches!(attr, "aria-activedescendant" | "aria-disabled"),
-        "doc-abstract"
-        | "doc-acknowledgments"
-        | "doc-afterword"
-        | "doc-appendix"
-        | "doc-backlink"
-        | "doc-bibliography"
-        | "doc-biblioref"
-        | "doc-chapter"
-        | "doc-colophon"
-        | "doc-conclusion"
-        | "doc-cover"
-        | "doc-credit"
-        | "doc-credits"
-        | "doc-dedication"
-        | "doc-endnotes"
-        | "doc-epigraph"
-        | "doc-epilogue"
-        | "doc-errata"
-        | "doc-example"
-        | "doc-footnote"
-        | "doc-foreword"
-        | "doc-glossary"
-        | "doc-glossref"
-        | "doc-index"
-        | "doc-introduction"
-        | "doc-noteref"
-        | "doc-notice"
-        | "doc-pagelist"
-        | "doc-part"
-        | "doc-preface"
-        | "doc-prologue"
-        | "doc-qna"
-        | "doc-subtitle"
-        | "doc-tip"
-        | "doc-toc"
-        | "graphics-document"
-        | "graphics-symbol" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-        ),
-        "doc-biblioentry" | "doc-endnote" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-level"
-                | "aria-posinset"
-                | "aria-setsize"
-        ),
-        "doc-pagebreak" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-orientation"
-                | "aria-valuemax"
-                | "aria-valuemin"
-                | "aria-valuenow"
-                | "aria-valuetext"
-        ),
-        "doc-pagefooter" | "doc-pageheader" => matches!(
-            attr,
-            "aria-braillelabel"
-                | "aria-brailleroledescription"
-                | "aria-description"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-haspopup"
-                | "aria-invalid"
-        ),
-        "grid" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-colcount"
-                | "aria-disabled"
-                | "aria-multiselectable"
-                | "aria-readonly"
-                | "aria-rowcount"
-        ),
-        "gridcell" => matches!(
-            attr,
-            "aria-colindex"
-                | "aria-colspan"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-readonly"
-                | "aria-required"
-                | "aria-rowindex"
-                | "aria-rowspan"
-                | "aria-selected"
-        ),
-        "heading" => matches!(attr, "aria-level"),
-        "input" => matches!(attr, "aria-disabled"),
-        "link" => matches!(attr, "aria-disabled" | "aria-expanded" | "aria-haspopup"),
-        "listbox" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-invalid"
-                | "aria-multiselectable"
-                | "aria-orientation"
-                | "aria-readonly"
-                | "aria-required"
-        ),
-        "listitem" => matches!(attr, "aria-level" | "aria-posinset" | "aria-setsize"),
-        "mark" => matches!(
-            attr,
-            "aria-braillelabel" | "aria-brailleroledescription" | "aria-description"
-        ),
-        "menu" | "menubar" | "select" | "toolbar" => matches!(
-            attr,
-            "aria-activedescendant" | "aria-disabled" | "aria-orientation"
-        ),
-        "menuitem" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-posinset"
-                | "aria-setsize"
-        ),
-        "menuitemcheckbox" | "menuitemradio" => matches!(
-            attr,
-            "aria-checked"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-posinset"
-                | "aria-readonly"
-                | "aria-required"
-                | "aria-setsize"
-        ),
-        "meter" | "progressbar" => matches!(
-            attr,
-            "aria-valuemax" | "aria-valuemin" | "aria-valuenow" | "aria-valuetext"
-        ),
-        "option" => matches!(
-            attr,
-            "aria-checked"
-                | "aria-disabled"
-                | "aria-posinset"
-                | "aria-selected"
-                | "aria-setsize"
-        ),
-        "radio" => matches!(
-            attr,
-            "aria-checked" | "aria-disabled" | "aria-posinset" | "aria-setsize"
-        ),
-        "radiogroup" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-invalid"
-                | "aria-orientation"
-                | "aria-readonly"
-                | "aria-required"
-        ),
-        "range" => matches!(attr, "aria-valuemax" | "aria-valuemin" | "aria-valuenow"),
-        "row" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-colindex"
-                | "aria-disabled"
-                | "aria-expanded"
-                | "aria-level"
-                | "aria-posinset"
-                | "aria-rowindex"
-                | "aria-selected"
-                | "aria-setsize"
-        ),
-        "scrollbar" | "separator" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-orientation"
-                | "aria-valuemax"
-                | "aria-valuemin"
-                | "aria-valuenow"
-                | "aria-valuetext"
-        ),
-        "searchbox" | "textbox" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-autocomplete"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-multiline"
-                | "aria-placeholder"
-                | "aria-readonly"
-                | "aria-required"
-        ),
-        "slider" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-errormessage"
-                | "aria-haspopup"
-                | "aria-invalid"
-                | "aria-orientation"
-                | "aria-readonly"
-                | "aria-valuemax"
-                | "aria-valuemin"
-                | "aria-valuenow"
-                | "aria-valuetext"
-        ),
-        "spinbutton" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-invalid"
-                | "aria-readonly"
-                | "aria-required"
-                | "aria-valuemax"
-                | "aria-valuemin"
-                | "aria-valuenow"
-                | "aria-valuetext"
-        ),
-        "tab" => matches!(
-            attr,
-            "aria-disabled"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-posinset"
-                | "aria-selected"
-                | "aria-setsize"
-        ),
-        "table" => matches!(attr, "aria-colcount" | "aria-rowcount"),
-        "tablist" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-level"
-                | "aria-multiselectable"
-                | "aria-orientation"
-        ),
-        "tree" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-invalid"
-                | "aria-multiselectable"
-                | "aria-orientation"
-                | "aria-required"
-        ),
-        "treegrid" => matches!(
-            attr,
-            "aria-activedescendant"
-                | "aria-colcount"
-                | "aria-disabled"
-                | "aria-errormessage"
-                | "aria-invalid"
-                | "aria-multiselectable"
-                | "aria-orientation"
-                | "aria-readonly"
-                | "aria-required"
-                | "aria-rowcount"
-        ),
-        "treeitem" => matches!(
-            attr,
-            "aria-checked"
-                | "aria-disabled"
-                | "aria-expanded"
-                | "aria-haspopup"
-                | "aria-level"
-                | "aria-posinset"
-                | "aria-selected"
-                | "aria-setsize"
-        ),
-        _ => false,
-    }
-}
-
-fn warn_missing_attr(el: &Element, required: &[&str]) -> Diagnostic {
-    let first = required[0];
-    // "href" and vowel-starting names take "an"; everything else takes "a".
-    let article = if first == "href" || first.starts_with(['a', 'e', 'i', 'o', 'u']) {
-        "an"
-    } else {
-        "a"
-    };
-    let sequence = if required.len() == 1 {
-        required[0].to_string()
-    } else {
-        let (last, rest) = required.split_last().unwrap();
-        format!("{} or {last}", rest.join(", "))
-    };
-    Diagnostic::warning(
-        DiagnosticKind::A11yMissingAttribute {
-            name: el.name.clone(),
-            article: article.to_string(),
-            sequence,
-        },
-        el.span,
-    )
-}
-
-/// Check `a11y_missing_attribute` for elements that require specific attributes.
-/// Only called when no spread attribute is present on `el`.
-/// Returns a diagnostic to emit, or `None` if the element is valid.
 fn check_a11y_missing_attribute(
     el: &Element,
     data: &AnalysisData,
@@ -3211,4 +2205,35 @@ fn check_a11y_missing_attribute(
         }
         _ => None,
     }
+}
+
+fn warn_missing_attr(el: &Element, attrs: &[&str]) -> Diagnostic {
+    let article = attrs
+        .first()
+        .copied()
+        .map(|attr| match attr.chars().next() {
+            Some('a' | 'e' | 'i' | 'o' | 'u') | _ if attr == "href" => "an",
+            _ => "a",
+        })
+        .unwrap_or("a")
+        .to_string();
+    let sequence = match attrs {
+        [] => String::new(),
+        [single] => (*single).to_string(),
+        [left, right] => format!("{left} or {right}"),
+        _ => {
+            let last = attrs.last().copied().unwrap_or_default();
+            let leading = &attrs[..attrs.len() - 1];
+            format!("{} or {}", leading.join(", "), last)
+        }
+    };
+
+    Diagnostic::warning(
+        DiagnosticKind::A11yMissingAttribute {
+            name: el.name.clone(),
+            article,
+            sequence,
+        },
+        el.span,
+    )
 }
