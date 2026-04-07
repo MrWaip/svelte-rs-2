@@ -2,12 +2,12 @@
 
 ## Current state
 - **Working**: 24/27 use cases — infrastructure + warning emission slices
-- **Current slice**: A11y ARIA attribute-name checks
-- **Why this slice came next**: it is the smallest analyzer-only ARIA subcluster; it stays inside the existing template validation attribute scan and needs only local ARIA name tables, not role/interactivity semantics
-- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint; implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`
+- **Current slice**: A11y role name validation
+- **Why this slice came next**: it is the next smallest analyzer-only role subcluster; it stays inside the existing `role` attribute branch and needs only local ARIA role-name tables, not implicit-role or interactivity semantics
+- **Done this session**: early bail on parser errors; `ScriptContextDeprecated`; `SlotElementDeprecated`; `AttributeAvoidIs`; `AttributeIllegalColon`; `AttributeInvalidPropertyName`; `AttributeGlobalEventReference`; `ComponentNameLowercase`; verified `AttributeQuoted` coverage already matched the intended analyzer behavior; implemented `NonReactiveUpdate` for top-level mutated normal bindings referenced directly from template, with function-boundary suppression and `bind:this` dynamic-block parity; implemented `OptionsDeprecatedAccessors`, `OptionsDeprecatedImmutable`, and `OptionsMissingCustomElement` from preserved `<svelte:options>` attributes; implemented `PerfAvoidInlineClass` and `PerfAvoidNestedClass` from script validation with instance/module depth parity; implemented `SvelteComponentDeprecated` and `SvelteSelfDeprecated` in template validation, including filename/component-name message plumbing for the self-import hint; implemented `A11yAriaAttributes`, `A11yUnknownAriaAttribute`, and `A11yHidden`; implemented `A11yMisplacedRole`, `A11yUnknownRole`, and `A11yNoAbstractRole`
 - **Missing**: A11y checks (~26 remaining variants), CSS unused selector (Tier 3 dependency), remaining non-A11y warnings (see Use cases below)
-- **Next**: implement either the ARIA role-validation slice (`A11yMisplacedRole`, `A11yUnknownRole`, `A11yNoAbstractRole`, `A11yNoRedundantRoles`) or `NodeInvalidPlacementSsr` as a dedicated regular-element validation slice
-- **Non-goals for this run**: no SSR placement warnings, no role/interactivity A11y semantics, no ARIA value-type validation, no new parser/analyze infrastructure beyond local ARIA name tables
+- **Next**: implement either the next role-semantics slice (`A11yNoRedundantRoles`, `A11yRoleHasRequiredAriaProps`, `A11yRoleSupportsAriaProps*`) or `NodeInvalidPlacementSsr` as a dedicated regular-element validation slice
+- **Non-goals for this run**: no SSR placement warnings, no implicit-role or interactivity A11y semantics, no ARIA value-type validation, no new parser/analyze infrastructure beyond local ARIA role-name tables
 - Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
 - Last updated: 2026-04-07
 
@@ -80,3 +80,4 @@ ROADMAP Tier 5, item 5a
 - [x] compile: `AnalyzeOptions` struct
 - [x] unit: `SvelteComponentDeprecated` / `SvelteSelfDeprecated`
 - [x] unit: `A11yAriaAttributes` / `A11yUnknownAriaAttribute` / `A11yHidden`
+- [x] unit: `A11yMisplacedRole` / `A11yUnknownRole` / `A11yNoAbstractRole`

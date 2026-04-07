@@ -4416,6 +4416,52 @@ fn a11y_hidden_no_warning_on_non_heading_tags() {
 }
 
 #[test]
+fn a11y_unknown_role_warns() {
+    let diags = analyze_with_diags(r#"<div role="buton"></div>"#);
+    assert_has_warning(&diags, "a11y_unknown_role");
+}
+
+#[test]
+fn a11y_unknown_role_suggests_closest_match() {
+    let diags = analyze_with_diags(r#"<div role="buton"></div>"#);
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yUnknownRole {
+                role,
+                suggestion: Some(suggestion),
+            } if role == "buton" && suggestion == "button"
+        )
+    });
+}
+
+#[test]
+fn a11y_abstract_role_warns() {
+    let diags = analyze_with_diags(r#"<div role="widget"></div>"#);
+    assert_has_warning(&diags, "a11y_no_abstract_role");
+}
+
+#[test]
+fn a11y_valid_concrete_role_no_name_warning() {
+    let diags = analyze_with_diags(r#"<div role="button"></div>"#);
+    assert_no_warning(&diags, "a11y_unknown_role");
+    assert_no_warning(&diags, "a11y_no_abstract_role");
+}
+
+#[test]
+fn a11y_misplaced_role_warns_on_invisible_elements() {
+    let diags = analyze_with_diags(r#"<meta role="button" />"#);
+    assert_has_warning(&diags, "a11y_misplaced_role");
+}
+
+#[test]
+fn a11y_role_whitespace_validates_each_token() {
+    let diags = analyze_with_diags(r#"<div role="widget buton"></div>"#);
+    assert_has_warning(&diags, "a11y_no_abstract_role");
+    assert_has_warning(&diags, "a11y_unknown_role");
+}
+
+#[test]
 fn invalid_text_parent_uses_topology_ancestor_lookup() {
     let diags = analyze_with_diags(r#"<table><tbody><tr>text</tr></tbody></table>"#);
     assert_has_error(&diags, "node_invalid_placement");
