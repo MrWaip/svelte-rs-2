@@ -1995,6 +1995,8 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             custom_element: true,
             runes: true,
             dev: true,
+            component_name: "Self".to_string(),
+            filename_basename: "Self.svelte".to_string(),
             warning_filter: None,
         },
     );
@@ -2099,6 +2101,17 @@ fn assert_has_warning(diags: &[svelte_diagnostics::Diagnostic], code: &str) {
             .iter()
             .any(|d| d.kind.code() == code && d.severity == svelte_diagnostics::Severity::Warning),
         "expected warning '{code}', got: {diags:?}"
+    );
+}
+
+fn assert_has_warning_kind(
+    diags: &[svelte_diagnostics::Diagnostic],
+    pred: impl Fn(&svelte_diagnostics::DiagnosticKind) -> bool,
+) {
+    assert!(
+        diags.iter()
+            .any(|d| d.severity == svelte_diagnostics::Severity::Warning && pred(&d.kind)),
+        "expected matching warning, got: {diags:?}"
     );
 }
 
@@ -4108,6 +4121,80 @@ fn on_directive_mixed_syntax_svelte_element() {
         r#"<script>let tag = $state("div"); function f(){} function g(){}</script><svelte:element this={tag} onclick={f} on:click={g}></svelte:element>"#,
     );
     assert_has_error(&diags, "mixed_event_handler_syntaxes");
+}
+
+#[test]
+fn svelte_component_deprecated_warns_in_runes_mode() {
+    let diags = analyze_with_options_diags(
+        "<script>import A from './A.svelte'; let current = A;</script><svelte:component this={current}></svelte:component>",
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning(&diags, "svelte_component_deprecated");
+}
+
+#[test]
+fn svelte_component_deprecated_no_warn_in_legacy_mode() {
+    let diags = analyze_with_options_diags(
+        "<script>import A from './A.svelte'; let current = A;</script><svelte:component this={current}></svelte:component>",
+        AnalyzeOptions {
+            runes: false,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "svelte_component_deprecated");
+}
+
+#[test]
+fn svelte_self_deprecated_warns_with_default_self_import_hint() {
+    let diags = analyze_with_options_diags(
+        "<svelte:self></svelte:self>",
+        AnalyzeOptions {
+            runes: true,
+            ..Default::default()
+        },
+    );
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
+                if name == "Self" && basename == "Self.svelte"
+        )
+    });
+}
+
+#[test]
+fn svelte_self_deprecated_warns_with_configured_self_import_hint() {
+    let diags = analyze_with_options_diags(
+        "<svelte:self></svelte:self>",
+        AnalyzeOptions {
+            runes: true,
+            component_name: "Counter".to_string(),
+            filename_basename: "Counter.svelte".to_string(),
+            ..Default::default()
+        },
+    );
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::SvelteSelfDeprecated { name, basename }
+                if name == "Counter" && basename == "Counter.svelte"
+        )
+    });
+}
+
+#[test]
+fn svelte_self_deprecated_no_warn_in_legacy_mode() {
+    let diags = analyze_with_options_diags(
+        "<svelte:self></svelte:self>",
+        AnalyzeOptions {
+            runes: false,
+            ..Default::default()
+        },
+    );
+    assert_no_warning(&diags, "svelte_self_deprecated");
 }
 
 #[test]

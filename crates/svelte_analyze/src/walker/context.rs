@@ -9,6 +9,8 @@ pub(crate) struct VisitContext<'a> {
     element_name: Option<String>,
     pub source: &'a str,
     pub runes: bool,
+    component_name: &'a str,
+    filename_basename: &'a str,
     ignore_current: FxHashSet<String>,
     ignore_stack: Vec<FxHashSet<String>>,
     warnings: Vec<Diagnostic>,
@@ -21,6 +23,8 @@ impl<'a> VisitContext<'a> {
         store: &'a svelte_ast::AstStore,
         source: &'a str,
         runes: bool,
+        component_name: &'a str,
+        filename_basename: &'a str,
     ) -> Self {
         Self {
             scope,
@@ -31,6 +35,8 @@ impl<'a> VisitContext<'a> {
             element_name: None,
             source,
             runes,
+            component_name,
+            filename_basename,
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
@@ -44,6 +50,8 @@ impl<'a> VisitContext<'a> {
         parsed: &'a ParserResult<'a>,
         source: &'a str,
         runes: bool,
+        component_name: &'a str,
+        filename_basename: &'a str,
     ) -> Self {
         Self {
             scope,
@@ -54,6 +62,8 @@ impl<'a> VisitContext<'a> {
             element_name: None,
             source,
             runes,
+            component_name,
+            filename_basename,
             ignore_current: FxHashSet::default(),
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
@@ -74,6 +84,14 @@ impl<'a> VisitContext<'a> {
 
     pub fn element_name(&self) -> Option<&str> {
         self.element_name.as_deref()
+    }
+
+    pub fn component_name(&self) -> &str {
+        self.component_name
+    }
+
+    pub fn filename_basename(&self) -> &str {
+        self.filename_basename
     }
 
     pub fn nearest_element(&self) -> Option<NodeId> {

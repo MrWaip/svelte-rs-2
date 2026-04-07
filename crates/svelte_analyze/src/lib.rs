@@ -37,6 +37,8 @@ pub struct AnalyzeOptions {
     pub custom_element: bool,
     pub runes: bool,
     pub dev: bool,
+    pub component_name: String,
+    pub filename_basename: String,
     pub warning_filter: Option<Box<dyn Fn(&Diagnostic) -> bool>>,
 }
 
@@ -46,6 +48,8 @@ impl Default for AnalyzeOptions {
             custom_element: false,
             runes: true,
             dev: false,
+            component_name: "Self".to_string(),
+            filename_basename: "Self.svelte".to_string(),
             warning_filter: None,
         }
     }
