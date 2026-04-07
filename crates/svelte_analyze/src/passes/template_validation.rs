@@ -92,6 +92,163 @@ const A11Y_ARIA_ATTRIBUTES: &[&str] = &[
 
 const A11Y_INVISIBLE_ELEMENTS: &[&str] = &["meta", "html", "script", "style"];
 
+const A11Y_ARIA_ROLES: &[&str] = &[
+    "command",
+    "composite",
+    "input",
+    "landmark",
+    "range",
+    "roletype",
+    "section",
+    "sectionhead",
+    "select",
+    "structure",
+    "widget",
+    "window",
+    "alert",
+    "alertdialog",
+    "application",
+    "article",
+    "banner",
+    "blockquote",
+    "button",
+    "caption",
+    "cell",
+    "checkbox",
+    "code",
+    "columnheader",
+    "combobox",
+    "complementary",
+    "contentinfo",
+    "definition",
+    "deletion",
+    "dialog",
+    "directory",
+    "document",
+    "emphasis",
+    "feed",
+    "figure",
+    "form",
+    "generic",
+    "grid",
+    "gridcell",
+    "group",
+    "heading",
+    "img",
+    "insertion",
+    "link",
+    "list",
+    "listbox",
+    "listitem",
+    "log",
+    "main",
+    "mark",
+    "marquee",
+    "math",
+    "menu",
+    "menubar",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "meter",
+    "navigation",
+    "none",
+    "note",
+    "option",
+    "paragraph",
+    "presentation",
+    "progressbar",
+    "radio",
+    "radiogroup",
+    "region",
+    "row",
+    "rowgroup",
+    "rowheader",
+    "scrollbar",
+    "search",
+    "searchbox",
+    "separator",
+    "slider",
+    "spinbutton",
+    "status",
+    "strong",
+    "subscript",
+    "superscript",
+    "switch",
+    "tab",
+    "table",
+    "tablist",
+    "tabpanel",
+    "term",
+    "textbox",
+    "time",
+    "timer",
+    "toolbar",
+    "tooltip",
+    "tree",
+    "treegrid",
+    "treeitem",
+    "doc-abstract",
+    "doc-acknowledgments",
+    "doc-afterword",
+    "doc-appendix",
+    "doc-backlink",
+    "doc-biblioentry",
+    "doc-bibliography",
+    "doc-biblioref",
+    "doc-chapter",
+    "doc-colophon",
+    "doc-conclusion",
+    "doc-cover",
+    "doc-credit",
+    "doc-credits",
+    "doc-dedication",
+    "doc-endnote",
+    "doc-endnotes",
+    "doc-epigraph",
+    "doc-epilogue",
+    "doc-errata",
+    "doc-example",
+    "doc-footnote",
+    "doc-foreword",
+    "doc-glossary",
+    "doc-glossref",
+    "doc-index",
+    "doc-introduction",
+    "doc-noteref",
+    "doc-notice",
+    "doc-pagebreak",
+    "doc-pagefooter",
+    "doc-pageheader",
+    "doc-pagelist",
+    "doc-part",
+    "doc-preface",
+    "doc-prologue",
+    "doc-pullquote",
+    "doc-qna",
+    "doc-subtitle",
+    "doc-tip",
+    "doc-toc",
+    "graphics-document",
+    "graphics-object",
+    "graphics-symbol",
+];
+
+const A11Y_ABSTRACT_ROLES: &[&str] = &[
+    "command",
+    "composite",
+    "input",
+    "landmark",
+    "range",
+    "roletype",
+    "section",
+    "sectionhead",
+    "select",
+    "structure",
+    "widget",
+    "window",
+];
+
 struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
@@ -345,6 +502,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         check_a11y_aria_attribute_warnings(el, &el.attributes, ctx);
+        check_a11y_role_warnings(el, &el.attributes, ctx);
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
         if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
@@ -1801,6 +1959,56 @@ fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &m
                 },
                 attr_value_span(attr),
             ));
+        }
+    }
+}
+
+fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    for attr in attrs {
+        let Some(name) = attr_named_name(attr) else {
+            continue;
+        };
+        if !name.eq_ignore_ascii_case("role") {
+            continue;
+        }
+
+        if A11Y_INVISIBLE_ELEMENTS.contains(&el.name.as_str()) {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yMisplacedRole {
+                    name: el.name.clone(),
+                },
+                attr_value_span(attr),
+            ));
+        }
+
+        let Some(value) = static_text_attr_value(attr, ctx.source) else {
+            continue;
+        };
+
+        for role in value.split_ascii_whitespace() {
+            if role.is_empty() {
+                continue;
+            }
+
+            if A11Y_ABSTRACT_ROLES.contains(&role) {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yNoAbstractRole {
+                        role: role.to_string(),
+                    },
+                    attr_value_span(attr),
+                ));
+                continue;
+            }
+
+            if !A11Y_ARIA_ROLES.contains(&role) {
+                ctx.warnings_mut().push(Diagnostic::warning(
+                    DiagnosticKind::A11yUnknownRole {
+                        role: role.to_string(),
+                        suggestion: fuzzymatch(role, A11Y_ARIA_ROLES).map(str::to_string),
+                    },
+                    attr_value_span(attr),
+                ));
+            }
         }
     }
 }
