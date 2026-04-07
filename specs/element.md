@@ -1,11 +1,11 @@
 # Element
 
 ## Current state
-- **Working**: 15/18 use cases
-- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: 5 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus`, `a11y_missing_attribute` for img/area/iframe/object/a); remaining (ARIA roles, event handler A11y, html[lang], input type=image) deferred.
-- **Missing**: 3 — namespace edge cases, legacy slots, CSS-scoped metadata
+- **Working**: 15/17 use cases
+- **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y ownership lives in `specs/a11y-warnings.md`.
+- **Missing**: 2 — namespace edge cases, legacy slots
 - **Current slice**: `Literal Concat Folding` completed. Shared concat codegen now folds literal dynamic parts into adjacent static text and emits a plain string literal when no runtime expressions remain, covering regular element attrs and component prop concatenations through the shared `build_attr_concat` path. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
-- **Completed non-goals**: this slice intentionally did not include identifier-based constant propagation, namespace parity, legacy slots, A11y expansion, CSS-scoped metadata, or parser/analyzer redesign.
+- **Completed non-goals**: this slice intentionally did not include identifier-based constant propagation, namespace parity, legacy slots, A11y expansion, or parser/analyzer redesign.
 - **Next**: Implement full namespace parity for ancestor-derived `<a>` / `<title>` edge cases.
 - Last updated: 2026-04-07
 
@@ -55,14 +55,10 @@
 - `[x]` Customizable select subtree handling — `is_customizable_select` flag in ElementFlags; codegen emits `$.customizable_select(el, callback)` with separate hoisted template; `<selectedcontent>` emits `$.selectedcontent(el, setter)` (tests: `customizable_select_option_el`, `customizable_select_select_div`, `selectedcontent_basic`)
 - `[x]` `autofocus` helper path on regular elements — `$.autofocus(el, expr)` emitted from `attributes.rs` (test: `element_autofocus`)
 - `[ ]` Full namespace parity for edge cases like ancestor-derived `<a>` / `<title>` switching — current coverage proves common cases only
-- `[ ]` Legacy `<slot>` semantics and slot elements
-- `[ ]` A11y warnings for regular elements — implemented: `a11y_distracting_elements` (`<marquee>`/`<blink>`), `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus` (suppressed inside `<dialog>`; diagnostic reported at element span — `BooleanAttribute` has no span field so attribute-level span is not yet available), `a11y_missing_attribute` (img[alt], area[alt|aria-label|aria-labelledby], iframe[title], object[title|aria-label|aria-labelledby], a[href] with id/name/aria-disabled exceptions)
-- `[ ]` A11y: `html[lang]` — root element, needs separate treatment
-- `[ ]` A11y: `input[type=image]` alt — needs static type attribute value inspection
-- `[ ]` A11y: ARIA role checks (`a11y_unknown_role`, `a11y_no_abstract_role`, `a11y_role_has_required_aria_props`, etc.)
-- `[ ]` A11y: event handler pair checks (`a11y_click_events_have_key_events`, `a11y_mouse_events_have_key_events`)
-- `[ ]` A11y: `a11y_missing_content` for headings, buttons, anchors
-- `[ ]` CSS-scoped element metadata and pruning
+
+## Out of scope
+- Legacy `<slot>` semantics and slot elements
+- CSS-scoped element metadata and pruning live in `specs/css-pipeline.md`
 
 ## Reference
 
@@ -113,28 +109,3 @@
 - `[x]` `component_prop_concat_literal_fold`
 - `[x]` `svg_inner_whitespace_trimming`
 - `[x]` `svg_text_preserves_whitespace`
-- `[x]` `a11y_distracting_elements_marquee`
-- `[x]` `a11y_distracting_elements_blink`
-- `[x]` `a11y_accesskey_warns`
-- `[x]` `a11y_positive_tabindex_warns`
-- `[x]` `a11y_tabindex_zero_no_warning`
-- `[x]` `a11y_tabindex_negative_no_warning`
-- `[x]` `a11y_tabindex_dynamic_no_warning`
-- `[x]` `a11y_autofocus_warns`
-- `[x]` `a11y_autofocus_on_dialog_no_warning`
-- `[x]` `a11y_autofocus_inside_dialog_no_warning`
-- `[x]` `a11y_missing_attribute_img_no_alt`
-- `[x]` `a11y_missing_attribute_img_with_alt_no_warning`
-- `[x]` `a11y_missing_attribute_img_spread_no_warning`
-- `[x]` `a11y_missing_attribute_area_no_alt`
-- `[x]` `a11y_missing_attribute_area_with_aria_label_no_warning`
-- `[x]` `a11y_missing_attribute_iframe_no_title`
-- `[x]` `a11y_missing_attribute_iframe_with_title_no_warning`
-- `[x]` `a11y_missing_attribute_object_no_title`
-- `[x]` `a11y_missing_attribute_object_with_aria_labelledby_no_warning`
-- `[x]` `a11y_missing_attribute_anchor_no_href`
-- `[x]` `a11y_missing_attribute_anchor_with_href_no_warning`
-- `[x]` `a11y_missing_attribute_anchor_with_id_no_warning`
-- `[x]` `a11y_missing_attribute_anchor_with_name_no_warning`
-- `[x]` `a11y_missing_attribute_anchor_aria_disabled_no_warning`
-- `[x]` `a11y_missing_attribute_anchor_spread_no_warning`
