@@ -772,6 +772,57 @@ fn no_svelte_options() {
 }
 
 #[test]
+#[ignore = "missing: duplicate <svelte:head> validation (parser)"]
+fn svelte_head_duplicate_reports_diagnostic() {
+    let diags = parse_with_diags("<svelte:head></svelte:head><svelte:head></svelte:head>");
+    assert!(
+        diags.iter().any(|d| d.kind.code() == "svelte_meta_duplicate"),
+        "expected svelte_meta_duplicate, got {diags:?}"
+    );
+}
+
+#[test]
+#[ignore = "missing: root-only <svelte:head> placement validation (parser)"]
+fn svelte_head_invalid_placement_inside_block_reports_diagnostic() {
+    let diags = parse_with_diags("{#if ok}<svelte:head></svelte:head>{/if}");
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.kind.code() == "svelte_meta_invalid_placement"),
+        "expected svelte_meta_invalid_placement, got {diags:?}"
+    );
+}
+
+#[test]
+#[ignore = "missing: duplicate root-only special-element validation (parser)"]
+fn svelte_special_elements_duplicate_report_diagnostic() {
+    for name in ["window", "document", "body"] {
+        let source =
+            format!("<svelte:{name}></svelte:{name}><svelte:{name}></svelte:{name}>");
+        let diags = parse_with_diags(&source);
+        assert!(
+            diags.iter().any(|d| d.kind.code() == "svelte_meta_duplicate"),
+            "expected svelte_meta_duplicate for <svelte:{name}>, got {diags:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "missing: root-only special-element placement validation (parser)"]
+fn svelte_special_elements_invalid_placement_inside_block_report_diagnostic() {
+    for name in ["window", "document", "body"] {
+        let source = format!("{{#if ok}}<svelte:{name}></svelte:{name}>{{/if}}");
+        let diags = parse_with_diags(&source);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.kind.code() == "svelte_meta_invalid_placement"),
+            "expected svelte_meta_invalid_placement for <svelte:{name}>, got {diags:?}"
+        );
+    }
+}
+
+#[test]
 fn svelte_options_unknown_attribute_diagnostic() {
     let (_, diags) = parse_with_diagnostics(r#"<svelte:options foo="bar" />"#);
     assert!(!diags.is_empty());

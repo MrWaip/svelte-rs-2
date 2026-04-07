@@ -69,8 +69,8 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 ## Special Elements
 
 - [ ] [`<svelte:options>`](specs/svelte-options.md)
-- [ ] `<svelte:head>` / `<title>`
-- [ ] `<svelte:window>` / `<svelte:document>` / `<svelte:body>`
+- [ ] `<svelte:head>` / `<title>` — [spec](specs/svelte-head-title.md)
+- [ ] `<svelte:window>` / `<svelte:document>` / `<svelte:body>` — [spec](specs/svelte-window-document-body.md)
 - [ ] `<svelte:element>`
 - [ ] `<svelte:boundary>`
 
