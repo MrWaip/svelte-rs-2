@@ -85,30 +85,30 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 Первый шаг — выбор CSS-стека: OXC css parser, `lightningcss`, `cssparser` (Servo), или свой парсер. Критерии: полнота CSS3 selectors, поддержка `:global()`/nesting, доступ к AST для мутаций, source maps.
 
+## Source Maps
+
+- Shared spec for this bucket: [specs/source-maps.md](specs/source-maps.md)
+- [ ] JS source maps
+- [ ] CSS source maps
+- [ ] Preprocessor / upstream map composition
+- [ ] Source map validation fixtures
+
 ## Validation & Diagnostics
 
 - [ ] Diagnostic infrastructure — [spec](specs/diagnostics-infrastructure.md)
 - [ ] Rune argument & placement validation
 - [ ] Element & directive validation
-- [ ] A11y warnings
-- [ ] Unused selector warnings (depends on CSS)
 
-## Dev Mode
+## A11y Warnings
 
-- [ ] `$.tag()` / `$.tag_proxy()` rune tagging
-- [ ] Strict equality transforms (`$.strict_equals` / `$.equals`)
-- [ ] `$.apply()` + event handler naming
-- [ ] Ownership validation
-- [ ] Runtime validations (`$.validate_store`, console state logging, etc.)
+- [ ] A11y warnings — [spec](specs/a11y-warnings.md)
 
 ## Compiler Infrastructure
 
 - [ ] Module compilation (`.svelte.js` / `.svelte.ts`)
-- [ ] WASM target
 - [ ] Custom elements
 - [ ] `discloseVersion` option
 - [ ] `preserveComments` option
-- [ ] Source maps (JS + CSS)
 - [ ] HMR
 
 ## Legacy Svelte 4

@@ -1,9 +1,9 @@
 # bind:*
 
 ## Current state
-- **Working**: all listed client-side bind codegen and analyzer validation use cases are implemented and covered, including getter/setter pairs, bind diagnostics, attribute-coupled validation, rest-pattern warnings, and focused compiler coverage for `<textarea bind:value>` plus resize-observer bindings
-- **Next:** feature complete for the current `bind:*` scope; keep parity checks in `/qa` and revisit only if new ignored compiler cases or validation mismatches appear
-- Last updated: 2026-04-03
+- **Working**: all existing bind codegen and analyzer validation use cases are implemented and covered, except dev-mode ownership validation for component prop bindings
+- **Next:** keep parity checks in `/qa`; remaining gap is dev-mode `$$ownership_validator.binding(...)` coverage for component bindings
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -50,6 +50,7 @@ ROADMAP.md — Bindings
   `each_item_invalid_assignment`
 - [x] Warning parity for rest-pattern each bindings
   `bind_invalid_each_rest`
+- [ ] Dev-mode component prop bindings validate ownership via `$$ownership_validator.binding(...)`
 
 ## Reference
 
@@ -58,6 +59,7 @@ ROADMAP.md — Bindings
 - `reference/compiler/errors.js` — bind and attribute diagnostic definitions
 - `reference/compiler/warnings.js` — `bind_invalid_each_rest`
 - `reference/compiler/phases/3-transform/client/visitors/BindDirective.js` — reference client transform surface
+- `reference/compiler/phases/3-transform/client/visitors/shared/component.js` — `$$ownership_validator.binding(...)` for component bindings
 - `crates/svelte_parser/src/scanner/mod.rs` — parser support for `BindDirective`
 - `crates/svelte_analyze/src/passes/template_semantic.rs` — bind expressions participate in template semantic analysis
 - `crates/svelte_analyze/src/passes/bind_semantics.rs` — bind/group metadata currently precomputed for codegen

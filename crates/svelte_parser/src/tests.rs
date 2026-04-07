@@ -776,7 +776,9 @@ fn no_svelte_options() {
 fn svelte_head_duplicate_reports_diagnostic() {
     let diags = parse_with_diags("<svelte:head></svelte:head><svelte:head></svelte:head>");
     assert!(
-        diags.iter().any(|d| d.kind.code() == "svelte_meta_duplicate"),
+        diags
+            .iter()
+            .any(|d| d.kind.code() == "svelte_meta_duplicate"),
         "expected svelte_meta_duplicate, got {diags:?}"
     );
 }
@@ -797,11 +799,12 @@ fn svelte_head_invalid_placement_inside_block_reports_diagnostic() {
 #[ignore = "missing: duplicate root-only special-element validation (parser)"]
 fn svelte_special_elements_duplicate_report_diagnostic() {
     for name in ["window", "document", "body"] {
-        let source =
-            format!("<svelte:{name}></svelte:{name}><svelte:{name}></svelte:{name}>");
+        let source = format!("<svelte:{name}></svelte:{name}><svelte:{name}></svelte:{name}>");
         let diags = parse_with_diags(&source);
         assert!(
-            diags.iter().any(|d| d.kind.code() == "svelte_meta_duplicate"),
+            diags
+                .iter()
+                .any(|d| d.kind.code() == "svelte_meta_duplicate"),
             "expected svelte_meta_duplicate for <svelte:{name}>, got {diags:?}"
         );
     }

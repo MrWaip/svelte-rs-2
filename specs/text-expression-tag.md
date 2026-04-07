@@ -1,9 +1,9 @@
 # Text / ExpressionTag
 
 ## Current state
-- **Working**: 7/7 use cases
-- **Next**: feature complete for current client-side scope; keep parity checks in `/qa` and follow-up audits
-- Last updated: 2026-04-02
+- **Working**: 7/8 use cases
+- **Next**: keep parity checks in `/qa`; dev-mode equality rewrites still need explicit coverage and ownership in this spec
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -28,6 +28,7 @@
 - `[x]` Text entities decode correctly for mixed text/expression concatenation in root fragments, regular elements, and `<title>`
 - `[x]` Template validation rejects invalid text / expression placement with `node_invalid_placement`
 - `[x]` Bidirectional control character warnings in text nodes are implemented, including `svelte-ignore` handling
+- `[ ]` Dev-mode equality expressions lower through `$.strict_equals(...)` / `$.equals(...)` instead of raw `===` / `==` when expression tags and related template expressions are compiled in dev mode
 
 ## Reference
 
@@ -39,12 +40,14 @@
 - `reference/compiler/phases/2-analyze/visitors/ExpressionTag.js`
 - `reference/compiler/phases/3-transform/client/visitors/shared/fragment.js`
 - `reference/compiler/phases/3-transform/client/visitors/RegularElement.js`
+- `reference/compiler/phases/3-transform/client/visitors/BinaryExpression.js`
 - Rust implementation:
 - `crates/svelte_ast/src/lib.rs`
 - `crates/svelte_parser/src/lib.rs`
 - `crates/svelte_parser/src/scanner/mod.rs`
 - `crates/svelte_analyze/src/passes/lower.rs`
 - `crates/svelte_analyze/src/passes/content_types.rs`
+- `crates/svelte_codegen_client/src/lib.rs`
 - `crates/svelte_codegen_client/src/template/expression.rs`
 - `crates/svelte_codegen_client/src/template/element.rs`
 - `crates/svelte_codegen_client/src/template/title_element.rs`
