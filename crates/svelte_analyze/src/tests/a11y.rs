@@ -596,3 +596,38 @@ fn a11y_mouse_events_have_key_events_no_warning_with_paired_handler() {
     let diags = analyze_with_diags(r#"<div onmouseover={handle} onfocus={handle}></div>"#);
     assert_no_warning(&diags, "a11y_mouse_events_have_key_events");
 }
+
+#[test]
+#[ignore = "missing: interactive element to noninteractive role warning (analyze)"]
+fn a11y_no_interactive_element_to_noninteractive_role_warns_for_button_role_presentation() {
+    let diags = analyze_with_diags(r#"<button role="presentation"></button>"#);
+    assert_has_warning(&diags, "a11y_no_interactive_element_to_noninteractive_role");
+}
+
+#[test]
+#[ignore = "missing: noninteractive element to interactive role warning (analyze)"]
+fn a11y_no_noninteractive_element_to_interactive_role_warns_for_div_role_button() {
+    let diags = analyze_with_diags(r#"<div role="button"></div>"#);
+    assert_has_warning(&diags, "a11y_no_noninteractive_element_to_interactive_role");
+}
+
+#[test]
+#[ignore = "missing: explicit label warning for unlabeled button/link content (analyze)"]
+fn a11y_consider_explicit_label_warns_for_icon_button() {
+    let diags = analyze_with_diags(r#"<button><svg aria-hidden="true"></svg></button>"#);
+    assert_has_warning(&diags, "a11y_consider_explicit_label");
+}
+
+#[test]
+#[ignore = "missing: invalid href attribute warning (analyze)"]
+fn a11y_invalid_attribute_warns_for_anchor_hash_href() {
+    let diags = analyze_with_diags(r##"<a href="#">jump</a>"##);
+    assert_has_warning(&diags, "a11y_invalid_attribute");
+}
+
+#[test]
+#[ignore = "missing: label association warning (analyze)"]
+fn a11y_label_has_associated_control_warns_without_for_or_control() {
+    let diags = analyze_with_diags(r#"<label>Username</label>"#);
+    assert_has_warning(&diags, "a11y_label_has_associated_control");
+}
