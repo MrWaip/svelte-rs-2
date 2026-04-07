@@ -4372,6 +4372,50 @@ fn a11y_missing_attribute_anchor_spread_no_warning() {
 }
 
 #[test]
+fn a11y_unknown_aria_attribute_warns() {
+    let diags = analyze_with_diags(r#"<div aria-labl="name"></div>"#);
+    assert_has_warning(&diags, "a11y_unknown_aria_attribute");
+}
+
+#[test]
+fn a11y_unknown_aria_attribute_suggests_closest_match() {
+    let diags = analyze_with_diags(r#"<div aria-labl="name"></div>"#);
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yUnknownAriaAttribute {
+                attribute,
+                suggestion: Some(suggestion),
+            } if attribute == "labl" && suggestion == "aria-label"
+        )
+    });
+}
+
+#[test]
+fn a11y_known_aria_attribute_no_unknown_warning() {
+    let diags = analyze_with_diags(r#"<div aria-label="name"></div>"#);
+    assert_no_warning(&diags, "a11y_unknown_aria_attribute");
+}
+
+#[test]
+fn a11y_aria_attributes_warn_on_invisible_elements() {
+    let diags = analyze_with_diags(r#"<meta aria-label="x" />"#);
+    assert_has_warning(&diags, "a11y_aria_attributes");
+}
+
+#[test]
+fn a11y_hidden_warns_on_heading_tags() {
+    let diags = analyze_with_diags(r#"<h1 aria-hidden="true">Title</h1>"#);
+    assert_has_warning(&diags, "a11y_hidden");
+}
+
+#[test]
+fn a11y_hidden_no_warning_on_non_heading_tags() {
+    let diags = analyze_with_diags(r#"<div aria-hidden="true">Title</div>"#);
+    assert_no_warning(&diags, "a11y_hidden");
+}
+
+#[test]
 fn invalid_text_parent_uses_topology_ancestor_lookup() {
     let diags = analyze_with_diags(r#"<table><tbody><tr>text</tr></tbody></table>"#);
     assert_has_error(&diags, "node_invalid_placement");

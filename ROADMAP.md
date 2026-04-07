@@ -78,7 +78,7 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 - Shared spec for all CSS items: [specs/css-pipeline.md](specs/css-pipeline.md)
 - [ ] CSS scoping pipeline (parse → hash → analyze → prune → transform) — [spec](specs/css-pipeline.md)
-- [ ] CSS custom properties on elements & components
+- [ ] CSS custom properties on elements & components — [spec](specs/css-pipeline.md)
 - [ ] Nested `<style>` elements (unscoped, global rules)
 
 Самый большой standalone workstream — новый подсистема `svelte_css`. Pipeline: парсинг `<style>` в CSS AST (selectors, declarations, at-rules, nesting с `&`) → детерминистический hash (`svelte-{hash}` из filename) → анализ selectors (`:global()`, `:global { ... }`, `is_global_like` для `:root`/`:host`/`::view-transition-*`, keyframe collection) → pruning: backward matching selectors против template elements с обходом комбинаторов (descendant, child, adjacent, sibling), conservative matching для компонентов и сниппетов → трансформация: append `.svelte-HASH` class, удаление `:global()` синтаксиса, scoping `@keyframes`, pruning unused rules, минификация в prod. На стороне template codegen — injection `class="svelte-HASH"` для scoped элементов и поддержка `css: 'injected'` (embed в JS) / `css: 'external'` (отдельный файл).

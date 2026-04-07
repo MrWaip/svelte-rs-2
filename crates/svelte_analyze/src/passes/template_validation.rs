@@ -38,6 +38,60 @@ const EVENT_MODIFIERS: &[&str] = &[
     "nonpassive",
 ];
 
+const A11Y_ARIA_ATTRIBUTES: &[&str] = &[
+    "activedescendant",
+    "atomic",
+    "autocomplete",
+    "busy",
+    "checked",
+    "colcount",
+    "colindex",
+    "colspan",
+    "controls",
+    "current",
+    "describedby",
+    "description",
+    "details",
+    "disabled",
+    "dropeffect",
+    "errormessage",
+    "expanded",
+    "flowto",
+    "grabbed",
+    "haspopup",
+    "hidden",
+    "invalid",
+    "keyshortcuts",
+    "label",
+    "labelledby",
+    "level",
+    "live",
+    "modal",
+    "multiline",
+    "multiselectable",
+    "orientation",
+    "owns",
+    "placeholder",
+    "posinset",
+    "pressed",
+    "readonly",
+    "relevant",
+    "required",
+    "roledescription",
+    "rowcount",
+    "rowindex",
+    "rowspan",
+    "selected",
+    "setsize",
+    "sort",
+    "valuemax",
+    "valuemin",
+    "valuenow",
+    "valuetext",
+];
+
+const A11Y_INVISIBLE_ELEMENTS: &[&str] = &["meta", "html", "script", "style"];
+
 struct BindParentInfo {
     id: svelte_ast::NodeId,
     name: String,
@@ -289,6 +343,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if let Some(diag) = missing_attr_diag {
             ctx.warnings_mut().push(diag);
         }
+
+        check_a11y_aria_attribute_warnings(el, &el.attributes, ctx);
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
         if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
@@ -1680,6 +1736,71 @@ fn check_attribute_quoted(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
                     attr_value_span(attr),
                 ));
             }
+        }
+    }
+}
+
+fn attr_named_name(attr: &Attribute) -> Option<&str> {
+    match attr {
+        Attribute::StringAttribute(attr) => Some(&attr.name),
+        Attribute::ExpressionAttribute(attr) => Some(&attr.name),
+        Attribute::BooleanAttribute(attr) => Some(&attr.name),
+        Attribute::ConcatenationAttribute(attr) => Some(&attr.name),
+        Attribute::BindDirective(attr) => Some(&attr.name),
+        Attribute::Shorthand(_)
+        | Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => None,
+    }
+}
+
+fn is_heading_tag(name: &str) -> bool {
+    matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
+}
+
+fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    for attr in attrs {
+        let Some(name) = attr_named_name(attr) else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        if !name.starts_with("aria-") {
+            continue;
+        }
+
+        if A11Y_INVISIBLE_ELEMENTS.contains(&el.name.as_str()) {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yAriaAttributes {
+                    name: el.name.clone(),
+                },
+                attr_value_span(attr),
+            ));
+        }
+
+        let attribute = name.trim_start_matches("aria-");
+        if !A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yUnknownAriaAttribute {
+                    attribute: attribute.to_string(),
+                    suggestion: fuzzymatch(attribute, A11Y_ARIA_ATTRIBUTES)
+                        .map(|s| format!("aria-{s}")),
+                },
+                attr_value_span(attr),
+            ));
+        }
+
+        if name == "aria-hidden" && is_heading_tag(&el.name) {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::A11yHidden {
+                    name: el.name.clone(),
+                },
+                attr_value_span(attr),
+            ));
         }
     }
 }
