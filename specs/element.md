@@ -1,11 +1,13 @@
 # Element
 
 ## Current state
-- **Working**: 13/18 use cases
+- **Working**: 14/18 use cases
 - **Partial**: template validation — `slot_attribute_invalid_placement` added; `node_invalid_placement` and `component_name_lowercase` skipped (require HTML content model table and symbol ref-count access respectively). A11y: 5 checks implemented (`a11y_distracting_elements`, `a11y_accesskey`, `a11y_positive_tabindex`, `a11y_autofocus`, `a11y_missing_attribute` for img/area/iframe/object/a); remaining (ARIA roles, event handler A11y, html[lang], input type=image) deferred.
-- **Missing**: 5 — ConcatenationAttribute+class bug, literal constant folding, namespace edge cases, legacy slots, CSS-scoped metadata
-- **Next**: Fix `ConcatenationAttribute` for `class` → `$.set_class` in `element_flags.rs` and `attributes.rs` — `class_attr_id` only registers `ExpressionAttribute` so the concat path falls through to `$.set_attribute`
-- Last updated: 2026-04-04
+- **Missing**: 4 — literal constant folding, namespace edge cases, legacy slots, CSS-scoped metadata
+- **Current slice**: `ConcatenationAttribute class -> set_class` completed. Analyzer now records concatenated `class` attrs as the canonical class source, and codegen routes them through the shared `$.set_class` path instead of generic `$.set_attribute`. Changes were systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Non-goals completed**: this slice intentionally did not include constant folding for literal concat parts, namespace parity, legacy slots, A11y expansion, or CSS-scoped metadata.
+- **Next**: Implement constant folding for all-literal `ConcatenationAttribute` parts so cases like `class="1231 {1231}"` collapse to a plain string rather than a template literal.
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -40,7 +42,7 @@
 
 - `[x]` Basic regular elements parse and compile as DOM nodes (tests: `single_element`, `nested_elements`, `elements_childs`, `mixed_html_elements`)
 - `[x]` Static and simple dynamic attributes compile on regular elements (tests: `element_attributes`, `spread_attribute`)
-- `[ ]` `ConcatenationAttribute` for `class` (e.g. `class="static {expr}"`) compiles via `$.set_class`, not `$.set_attribute` — `class_attr_id` in `element_flags.rs` only registers `ExpressionAttribute`, so the ConcatenationAttribute path falls through to `$.set_attribute`
+- `[x]` `ConcatenationAttribute` for `class` (e.g. `class="static {expr}"`) compiles via `$.set_class`, not `$.set_attribute` — `class_attr_id` in `element_flags.rs` now registers the concat attr, and codegen routes it through the shared class pipeline (test: `class_concat`)
 - `[ ]` Constant folding for all-literal `ConcatenationAttribute` parts (e.g. `class="1231 {1231}"` → `"1231 1231"`, not a template literal) — reference compiler evaluates constant numeric/string literal dynamic parts at compile time and collapses them into a plain string
 - `[x]` Root namespace options and basic inline SVG/MathML paths compile (tests: `namespace_svg`, `namespace_mathml`, `svg_inner_template_from_svg`, `html_tag_svg`)
 - `[x]` Non-void self-closing tags lower to explicit open/close HTML (tests: `non_void_self_closing`, `mixed_html_elements`)
@@ -105,6 +107,7 @@
 - `[x]` `customizable_select_select_div`
 - `[x]` `selectedcontent_basic`
 - `[x]` `element_autofocus`
+- `[x]` `class_concat`
 - `[x]` `svg_inner_whitespace_trimming`
 - `[x]` `svg_text_preserves_whitespace`
 - `[x]` `a11y_distracting_elements_marquee`

@@ -7,11 +7,11 @@ pub(crate) mod content_types;
 pub(crate) mod css_analyze;
 pub(crate) mod css_prune;
 pub(crate) mod element_flags;
+mod executor;
 pub(crate) mod hoistable;
 pub(crate) mod js_analyze;
 pub(crate) mod lower;
 pub(crate) mod mark_runes;
-mod executor;
 pub(crate) mod post_resolve;
 pub(crate) mod reactivity;
 pub(crate) mod template_side_tables;
@@ -257,8 +257,7 @@ pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::ClassifyRemainingFragments,
 ];
 
-pub(crate) const VALIDATION_STAGE: &[PassKey] =
-    &[PassKey::ValidateTemplate, PassKey::Validate];
+pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::ValidateTemplate, PassKey::Validate];
 
 pub(crate) fn default_stage_execution_order() -> Vec<PassKey> {
     let mut order = Vec::new();

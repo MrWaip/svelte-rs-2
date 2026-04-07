@@ -108,7 +108,9 @@ fn wrap_derived_thunks_in_stmts<'a>(
                                     extra_args
                                         .push(oxc_ast::ast::Argument::from(b.str_expr(&var_name)));
                                     // Only pass location if not suppressed by svelte-ignore await_waterfall
-                                    if !ctx.ignore_query.is_ignored_at_span(decl_start, "await_waterfall")
+                                    if !ctx
+                                        .ignore_query
+                                        .is_ignored_at_span(decl_start, "await_waterfall")
                                     {
                                         let loc = ctx.locate(init_span_start);
                                         extra_args

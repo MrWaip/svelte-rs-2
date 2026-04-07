@@ -142,6 +142,11 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         .insert(ea.id, mode);
                 }
             }
+            Attribute::ConcatenationAttribute(attr) => {
+                if attr.name == "class" {
+                    ctx.data.element_flags.class_attr_id.insert(el_id, attr.id);
+                }
+            }
             Attribute::BindDirective(bd) => {
                 if ctx.element_name() == Some("input")
                     && matches!(bd.name.as_str(), "value" | "checked" | "group")

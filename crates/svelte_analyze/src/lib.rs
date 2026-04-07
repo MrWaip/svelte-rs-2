@@ -18,8 +18,7 @@ pub use types::data::{
     FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart,
     ParentKind, ParentRef, ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode,
     RenderTagPlan, RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan,
-    SnippetData, StmtHandle, TemplateElementEntry,
-    TemplateElementIndex, TemplateTopology,
+    SnippetData, StmtHandle, TemplateElementEntry, TemplateElementIndex, TemplateTopology,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,

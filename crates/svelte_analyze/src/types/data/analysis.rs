@@ -1,7 +1,5 @@
 use super::*;
-use svelte_ast::{
-    Attribute, BindDirective, ExpressionAttribute, StringAttribute,
-};
+use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, StringAttribute};
 
 pub struct AnalysisData {
     pub expressions: NodeTable<ExpressionInfo>,
@@ -235,11 +233,14 @@ impl AnalysisData {
         name: &str,
         source: &str,
     ) -> bool {
-        self.attribute(id, attrs, name).is_some_and(|attr| match attr {
-            Attribute::BooleanAttribute(_) => true,
-            Attribute::StringAttribute(attr) => attr.value_span.source_text(source).trim() == "true",
-            _ => false,
-        })
+        self.attribute(id, attrs, name)
+            .is_some_and(|attr| match attr {
+                Attribute::BooleanAttribute(_) => true,
+                Attribute::StringAttribute(attr) => {
+                    attr.value_span.source_text(source).trim() == "true"
+                }
+                _ => false,
+            })
     }
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.element_facts.has_spread(id)

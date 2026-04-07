@@ -394,6 +394,11 @@ fn class_directive() {
 }
 
 #[rstest]
+fn class_concat() {
+    assert_compiler("class_concat");
+}
+
+#[rstest]
 fn rune_update() {
     assert_compiler("rune_update");
 }

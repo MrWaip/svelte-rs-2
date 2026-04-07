@@ -122,7 +122,11 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
         );
         let has_content_bind = ["innerHTML", "innerText", "textContent"]
             .iter()
-            .any(|name| ctx.data.bind_directive(el.id, &el.attributes, name).is_some());
+            .any(|name| {
+                ctx.data
+                    .bind_directive(el.id, &el.attributes, name)
+                    .is_some()
+            });
 
         // Detect bind:group → mark element and find value attribute
         if let Some(bind_group_id) = bind_group_id {

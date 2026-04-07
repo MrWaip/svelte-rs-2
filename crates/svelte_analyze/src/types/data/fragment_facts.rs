@@ -42,11 +42,10 @@ impl FragmentFactsEntry {
             .filter(|&id| !is_trivial_node(store.get(id), source));
         let first_non_trivial_child = non_trivial_children.next();
         let second_non_trivial_child = non_trivial_children.next();
-        let single_non_trivial_child =
-            match (first_non_trivial_child, second_non_trivial_child) {
-                (Some(id), None) => Some(id),
-                _ => None,
-            };
+        let single_non_trivial_child = match (first_non_trivial_child, second_non_trivial_child) {
+            (Some(id), None) => Some(id),
+            _ => None,
+        };
         let non_trivial_child_count = match (first_non_trivial_child, second_non_trivial_child) {
             (None, _) => 0,
             (Some(_), None) => 1,
@@ -127,7 +126,9 @@ impl FragmentFacts {
     }
 
     pub fn child_count(&self, key: &FragmentKey) -> u32 {
-        self.entries.get(key).map_or(0, FragmentFactsEntry::child_count)
+        self.entries
+            .get(key)
+            .map_or(0, FragmentFactsEntry::child_count)
     }
 
     pub fn single_child(&self, key: &FragmentKey) -> Option<NodeId> {
