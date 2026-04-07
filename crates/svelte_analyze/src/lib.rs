@@ -35,6 +35,7 @@ use svelte_diagnostics::{Diagnostic, Severity};
 /// Options controlling analysis behavior.
 pub struct AnalyzeOptions {
     pub custom_element: bool,
+    pub experimental_async: bool,
     pub runes: bool,
     pub dev: bool,
     pub component_name: String,
@@ -46,6 +47,7 @@ impl Default for AnalyzeOptions {
     fn default() -> Self {
         Self {
             custom_element: false,
+            experimental_async: false,
             runes: true,
             dev: false,
             component_name: "Self".to_string(),
@@ -74,6 +76,7 @@ pub fn analyze_with_options<'a>(
     let mut data = AnalysisData::new_empty(component.node_count());
     data.runes = options.runes;
     data.custom_element = options.custom_element;
+    data.experimental_async = options.experimental_async;
     let execution_order = passes::resolve_default_execution_order()
         .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));
     debug_assert_eq!(execution_order, passes::default_stage_execution_order());

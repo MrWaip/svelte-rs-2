@@ -1995,6 +1995,7 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
         source,
         AnalyzeOptions {
             custom_element: true,
+            experimental_async: false,
             runes: true,
             dev: true,
             component_name: "Self".to_string(),
@@ -3070,6 +3071,99 @@ fn validate_const_tag_parenthesized_sequence_ok() {
     // `{@const a = (b, c)}` is valid — the sequence is inside parens.
     let diags = analyze_with_diags("{#each items as item}{@const a = (item.x, item.y)}{/each}");
     assert_no_error(&diags, "const_tag_invalid_expression");
+}
+
+#[test]
+fn validate_const_tag_invalid_reference_component_children_async() {
+    let diags = analyze_with_options_diags(
+        r#"<script>
+    import Widget from './Widget.svelte';
+</script>
+
+<Widget>
+    {@const foo = 1}
+    {#snippet children()}
+        <p>{foo}</p>
+    {/snippet}
+</Widget>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_has_error(&diags, "const_tag_invalid_reference");
+}
+
+#[test]
+fn validate_const_tag_invalid_reference_boundary_failed_async() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:boundary>
+    {@const foo = 1}
+    {#snippet failed(error, reset)}
+        <p>{foo}</p>
+    {/snippet}
+</svelte:boundary>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_has_error(&diags, "const_tag_invalid_reference");
+}
+
+#[test]
+fn validate_const_tag_invalid_reference_boundary_pending_async() {
+    let diags = analyze_with_options_diags(
+        r#"<svelte:boundary>
+    {@const foo = 1}
+    {#snippet pending()}
+        <p>{foo}</p>
+    {/snippet}
+</svelte:boundary>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_has_error(&diags, "const_tag_invalid_reference");
+}
+
+#[test]
+fn validate_const_tag_invalid_reference_skipped_without_async() {
+    let diags = analyze_with_diags(
+        r#"<script>
+    import Widget from './Widget.svelte';
+</script>
+
+<Widget>
+    {@const foo = 1}
+    {#snippet children()}
+        <p>{foo}</p>
+    {/snippet}
+</Widget>"#,
+    );
+    assert_no_error(&diags, "const_tag_invalid_reference");
+}
+
+#[test]
+fn validate_const_tag_reference_inside_snippet_scope_is_allowed_async() {
+    let diags = analyze_with_options_diags(
+        r#"<script>
+    import Widget from './Widget.svelte';
+</script>
+
+<Widget>
+    {#snippet children()}
+        {@const foo = 1}
+        <p>{foo}</p>
+    {/snippet}
+</Widget>"#,
+        AnalyzeOptions {
+            experimental_async: true,
+            ..AnalyzeOptions::default()
+        },
+    );
+    assert_no_error(&diags, "const_tag_invalid_reference");
 }
 
 #[test]

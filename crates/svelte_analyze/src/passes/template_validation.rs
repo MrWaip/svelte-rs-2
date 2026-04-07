@@ -7,7 +7,7 @@
 //! `current_expr_offset` tracks the source-absolute start of the current expression
 //! so that sub-expression spans can be reported correctly.
 
-use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
+use oxc_ast::ast::{AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
@@ -637,6 +637,15 @@ impl TemplateValidationVisitor {
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
+    fn visit_js_statement(
+        &mut self,
+        node_id: NodeId,
+        stmt: &Statement<'_>,
+        ctx: &mut VisitContext<'_>,
+    ) {
+        validate_const_tag_invalid_reference_stmt(node_id, stmt, self.current_expr_offset, ctx);
+    }
+
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
         validate_snippet_rest_params(block, ctx);
         validate_snippet_shadowing_prop(block, ctx);
@@ -1126,13 +1135,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.current_expr_offset = span.start;
     }
 
+    fn visit_statement(&mut self, _id: NodeId, span: Span, _ctx: &mut VisitContext<'_>) {
+        self.current_expr_offset = span.start;
+    }
+
     // Use case 5: each_item_invalid_assignment (runes mode only)
     fn visit_js_expression(
         &mut self,
-        _id: NodeId,
+        id: NodeId,
         expr: &Expression<'_>,
         ctx: &mut VisitContext<'_>,
     ) {
+        validate_const_tag_invalid_reference_expr(id, expr, self.current_expr_offset, ctx);
+
         if !ctx.runes {
             return;
         }
@@ -1799,6 +1814,131 @@ fn is_snippet_param_ref(
         .get()
         .and_then(|ref_id| scoping.get_reference(ref_id).symbol_id())
         .is_some_and(|sym| scoping.is_snippet_param(sym))
+}
+
+fn validate_const_tag_invalid_reference_expr(
+    node_id: NodeId,
+    expr: &Expression<'_>,
+    source_offset: u32,
+    ctx: &mut VisitContext<'_>,
+) {
+    if !ctx.data.experimental_async {
+        return;
+    }
+
+    let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, ctx);
+    visitor.visit_expression(expr);
+}
+
+fn validate_const_tag_invalid_reference_stmt(
+    node_id: NodeId,
+    stmt: &Statement<'_>,
+    source_offset: u32,
+    ctx: &mut VisitContext<'_>,
+) {
+    if !ctx.data.experimental_async {
+        return;
+    }
+
+    let mut visitor = ConstTagInvalidReferenceVisitor::new(node_id, source_offset, ctx);
+    visitor.visit_statement(stmt);
+}
+
+fn maybe_const_tag_invalid_reference(
+    node_id: NodeId,
+    source_offset: u32,
+    ident: &IdentifierReference<'_>,
+    ctx: &mut VisitContext<'_>,
+) -> Option<Diagnostic> {
+    let sym_id = ident
+        .reference_id
+        .get()
+        .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
+
+    if !ctx.data.scoping.is_template_declaration(sym_id) {
+        return None;
+    }
+
+    let binding_scope = ctx.data.scoping.symbol_scope_id(sym_id);
+    let mut snippet_name = None;
+    for parent in ctx.data.ancestors(node_id) {
+        if parent.kind == ParentKind::SnippetBlock {
+            let Node::SnippetBlock(block) = ctx.store.get(parent.id) else {
+                continue;
+            };
+            snippet_name = Some(block.name(ctx.source).to_string());
+            continue;
+        }
+
+        let Some(snippet_name) = snippet_name.as_deref() else {
+            continue;
+        };
+
+        match parent.kind {
+            ParentKind::ComponentNode => {
+                let component_scope = ctx
+                    .data
+                    .scoping
+                    .fragment_scope(&FragmentKey::ComponentNode(parent.id));
+                if component_scope == Some(binding_scope) {
+                    return Some(Diagnostic::error(
+                        DiagnosticKind::ConstTagInvalidReference {
+                            name: ident.name.to_string(),
+                        },
+                        Span::new(source_offset + ident.span.start, source_offset + ident.span.end),
+                    ));
+                }
+                break;
+            }
+            ParentKind::SvelteBoundary if matches!(snippet_name, "failed" | "pending") => {
+                let boundary_scope = ctx
+                    .data
+                    .scoping
+                    .fragment_scope(&FragmentKey::SvelteBoundaryBody(parent.id));
+                if boundary_scope == Some(binding_scope) {
+                    return Some(Diagnostic::error(
+                        DiagnosticKind::ConstTagInvalidReference {
+                            name: ident.name.to_string(),
+                        },
+                        Span::new(source_offset + ident.span.start, source_offset + ident.span.end),
+                    ));
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+struct ConstTagInvalidReferenceVisitor<'c, 'a> {
+    node_id: NodeId,
+    source_offset: u32,
+    ctx: &'c mut VisitContext<'a>,
+}
+
+impl<'c, 'a> ConstTagInvalidReferenceVisitor<'c, 'a> {
+    fn new(node_id: NodeId, source_offset: u32, ctx: &'c mut VisitContext<'a>) -> Self {
+        Self {
+            node_id,
+            source_offset,
+            ctx,
+        }
+    }
+}
+
+impl<'a> Visit<'a> for ConstTagInvalidReferenceVisitor<'_, '_> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        if let Some(diag) = maybe_const_tag_invalid_reference(
+            self.node_id,
+            self.source_offset,
+            ident,
+            self.ctx,
+        ) {
+            self.ctx.warnings_mut().push(diag);
+        }
+    }
 }
 
 fn named_component_attr(attr: &Attribute, name: &str) -> bool {
