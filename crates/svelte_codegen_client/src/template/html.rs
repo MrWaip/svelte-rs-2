@@ -7,6 +7,7 @@ use svelte_ast::{is_void, Attribute, Element};
 
 use super::expression::item_has_local_blockers;
 use crate::context::Ctx;
+use super::slot::is_legacy_slot_element;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 /// Returns `(html, needs_import_node)` — the flag is true when the fragment
@@ -32,10 +33,14 @@ pub(crate) fn fragment_html(ctx: &Ctx<'_>, key: FragmentKey) -> (String, bool) {
                 }
             }
             FragmentItem::Element(id) => {
-                let el = ctx.element(*id);
-                let (el_html, el_import) = element_html(ctx, el);
-                html.push_str(&el_html);
-                import_node |= el_import;
+                if is_legacy_slot_element(ctx, *id) {
+                    html.push_str("<!>");
+                } else {
+                    let el = ctx.element(*id);
+                    let (el_html, el_import) = element_html(ctx, el);
+                    html.push_str(&el_html);
+                    import_node |= el_import;
+                }
             }
             FragmentItem::ComponentNode(_)
             | FragmentItem::IfBlock(_)
@@ -61,7 +66,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     let css_hash = ctx.css_hash();
 
     let mut html = String::new();
-    let mut import_node = el.name == "video";
+    let mut import_node = el.name == "video" || el.name.contains('-');
     write!(html, "<{}", el.name).unwrap();
 
     // Track whether we emitted a class attribute so we know to add one later.

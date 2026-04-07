@@ -343,6 +343,12 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.query.view.each_index_name(id).map(str::to_string)
     }
+    pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
+        self.query.view.nearest_element(id)
+    }
+    pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
+        self.query.view.template_element_parent(id)
+    }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.query.view.await_value_binding(id)
     }
