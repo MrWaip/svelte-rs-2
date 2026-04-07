@@ -3,8 +3,15 @@ mod runes;
 mod stores;
 
 use oxc_ast::ast::{
-    BindingPattern, Declaration, ImportDeclarationSpecifier, ModuleExportName, Program, Statement,
+    ArrowFunctionExpression, BindingPattern, Declaration, Function, ImportDeclarationSpecifier,
+    ModuleExportName, NewExpression, Program, Statement,
 };
+use oxc_ast_visit::walk::{
+    walk_arrow_function_expression, walk_declaration, walk_function, walk_new_expression,
+    walk_program,
+};
+use oxc_ast_visit::Visit;
+use oxc_semantic::ScopeFlags;
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -28,6 +35,7 @@ pub fn validate(
     if let Some(module_program) = &parsed.module_program {
         let offset = parsed.module_script_content_span.map_or(0, |s| s.start);
         stores::validate_module(data, module_program, offset, diags);
+        validate_perf_class_warnings(module_program, offset, 0, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, parsed, diags);
@@ -61,6 +69,78 @@ pub fn validate_program(
 ) {
     runes::validate(data, program, offset, runes, diags);
     stores::validate(data, program, offset, diags);
+    validate_perf_class_warnings(program, offset, 1, diags);
+}
+
+fn validate_perf_class_warnings(
+    program: &Program<'_>,
+    offset: u32,
+    base_function_depth: u32,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut visitor = PerfClassWarningValidator {
+        diags,
+        offset,
+        base_function_depth,
+        function_depth: base_function_depth,
+    };
+    visitor.visit_program(program);
+}
+
+struct PerfClassWarningValidator<'a> {
+    diags: &'a mut Vec<Diagnostic>,
+    offset: u32,
+    base_function_depth: u32,
+    function_depth: u32,
+}
+
+impl PerfClassWarningValidator<'_> {
+    fn span(&self, span: oxc_span::Span) -> Span {
+        Span::new(span.start + self.offset, span.end + self.offset)
+    }
+}
+
+impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
+    fn visit_program(&mut self, program: &Program<'a>) {
+        walk_program(self, program);
+    }
+
+    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        self.function_depth += 1;
+        walk_function(self, function, flags);
+        self.function_depth -= 1;
+    }
+
+    fn visit_arrow_function_expression(&mut self, expr: &ArrowFunctionExpression<'a>) {
+        self.function_depth += 1;
+        walk_arrow_function_expression(self, expr);
+        self.function_depth -= 1;
+    }
+
+    fn visit_declaration(&mut self, decl: &Declaration<'a>) {
+        if let Declaration::ClassDeclaration(class) = decl {
+            if self.function_depth > self.base_function_depth {
+                self.diags.push(Diagnostic::warning(
+                    DiagnosticKind::PerfAvoidNestedClass,
+                    self.span(class.span),
+                ));
+            }
+        }
+
+        walk_declaration(self, decl);
+    }
+
+    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+        if self.function_depth > 0 && matches!(expr.callee, oxc_ast::ast::Expression::ClassExpression(_))
+        {
+            self.diags.push(Diagnostic::warning(
+                DiagnosticKind::PerfAvoidInlineClass,
+                self.span(expr.span),
+            ));
+        }
+
+        walk_new_expression(self, expr);
+    }
 }
 
 fn validate_module_program(parsed: &ParserResult, diags: &mut Vec<Diagnostic>) {

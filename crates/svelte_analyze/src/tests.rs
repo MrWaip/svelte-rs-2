@@ -2205,6 +2205,23 @@ fn validate_transition_conflict_out() {
 }
 
 #[test]
+#[ignore = "missing: await expressions in use directive values (analyze)"]
+fn validate_use_directive_illegal_await_expression() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { tooltip } from './actions.js';
+
+	async function load() {
+		return { text: 'hello' };
+	}
+</script>
+
+<div use:tooltip={await load()}></div>"#,
+    );
+    assert_has_error(&diags, "illegal_await_expression");
+}
+
+#[test]
 #[ignore = "missing: await expressions in transition directive values (analyze)"]
 fn validate_transition_illegal_await_expression() {
     let diags = analyze_with_diags(
@@ -3956,6 +3973,82 @@ fn validate_options_custom_element_no_warn_with_compiler_flag() {
         },
     );
     assert_no_warning(&diags, "options_missing_custom_element");
+}
+
+#[test]
+fn validate_perf_avoid_nested_class_no_warning_at_instance_top_level() {
+    let diags = analyze_with_diags(
+        r#"<script>
+class Foo {}
+</script>"#,
+    );
+    assert_no_warning(&diags, "perf_avoid_nested_class");
+}
+
+#[test]
+fn validate_perf_avoid_nested_class_warns_in_instance_nested_function() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function outer() {
+    class Foo {}
+}
+</script>"#,
+    );
+    assert_has_warning(&diags, "perf_avoid_nested_class");
+}
+
+#[test]
+fn validate_perf_avoid_nested_class_no_warning_at_module_top_level() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+class Foo {}
+</script>"#,
+    );
+    assert_no_warning(&diags, "perf_avoid_nested_class");
+}
+
+#[test]
+fn validate_perf_avoid_nested_class_warns_in_module_nested_function() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+function outer() {
+    class Foo {}
+}
+</script>"#,
+    );
+    assert_has_warning(&diags, "perf_avoid_nested_class");
+}
+
+#[test]
+fn validate_perf_avoid_inline_class_warns_at_instance_top_level() {
+    let diags = analyze_with_diags(
+        r#"<script>
+const value = new class {}();
+</script>"#,
+    );
+    assert_has_warning(&diags, "perf_avoid_inline_class");
+}
+
+#[test]
+fn validate_perf_avoid_inline_class_no_warning_at_module_top_level() {
+    let diags = analyze_with_diags(
+        r#"<script module>
+const value = new class {}();
+</script>"#,
+    );
+    assert_no_warning(&diags, "perf_avoid_inline_class");
+}
+
+#[test]
+fn validate_perf_avoid_inline_class_warns_in_nested_function() {
+    let diags = analyze_with_diags(
+        r#"<script>
+function outer() {
+    const value = new class {}();
+}
+</script>"#,
+    );
+    assert_has_warning(&diags, "perf_avoid_inline_class");
 }
 
 // -----------------------------------------------------------------------

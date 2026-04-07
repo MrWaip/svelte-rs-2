@@ -730,6 +730,12 @@ fn use_action_dotted() {
 }
 
 #[rstest]
+#[ignore = "missing: dotted use: directive names with hyphenated segments (parser)"]
+fn use_action_dotted_hyphen() {
+    assert_compiler("use_action_dotted_hyphen");
+}
+
+#[rstest]
 fn use_action_multiple() {
     assert_compiler("use_action_multiple");
 }
