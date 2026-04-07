@@ -4,6 +4,7 @@
 - **Working**: 17/19 use cases
 - **Missing**: 2 use cases
 - **Fixed in codegen:** shorthand boundary attributes `{failed}` / `{pending}` now participate in snippet-over-attribute override precedence, so `boundary_failed_attribute_override` and `boundary_pending_attribute_override` pass
+- **Verification:** focused compiler cases `boundary_failed_attribute_override` and `boundary_pending_attribute_override` passed on 2026-04-07
 - **Next**: implement boundary-specific validation diagnostics in analyze and add coverage for those diagnostics once the compiler-test harness can assert them cleanly
 - Last updated: 2026-04-07
 

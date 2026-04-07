@@ -8,6 +8,7 @@
 - **Audit revision (2026-04-07)**: reference parity review found two still-missing areas that the initial extracted spec had undercounted: role-transition warnings (`A11yNoInteractiveElementToNoninteractiveRole`, `A11yNoNoninteractiveElementToInteractiveRole`) and the broader element-content cluster
 - **Missing**: 2 use cases — role-transition warnings and the element-content A11y cluster
 - **Next**: implement role-transition warnings first, then the element-content A11y cluster
+- **Verification**: `just test-analyzer` passed on 2026-04-07 with the current A11y slice covered and the remaining gaps still represented by ignored analyzer tests
 - **Non-goals for this run**: no non-A11y diagnostics, no parser or codegen changes
 - Last updated: 2026-04-07
 
