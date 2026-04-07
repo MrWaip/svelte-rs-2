@@ -192,8 +192,12 @@ impl<'a> Scanner<'a> {
             } else if AttributeIdentifierType::is_animate_directive(name) {
                 AttributeIdentifierType::AnimateDirective(value_span, value).as_ok()
             } else {
-                Diagnostic::unknown_directive(Span::new(colon_pos as u32, self.current as u32))
-                    .as_err()
+                let full_span = self.span(start, self.current);
+                AttributeIdentifierType::HTMLAttribute(
+                    full_span,
+                    self.slice_source(start, self.current),
+                )
+                .as_ok()
             }
         } else if start == self.current {
             AttributeIdentifierType::None.as_ok()
@@ -226,30 +230,6 @@ impl<'a> Scanner<'a> {
         } else {
             self.source[self.current..].chars().next()
         }
-    }
-
-    fn collect_until_span<F>(&mut self, condition: F) -> Result<Span, Diagnostic>
-    where
-        F: Fn(char) -> bool,
-    {
-        let start = self.current;
-
-        while !self.is_at_end() {
-            if self.peek().is_some_and(&condition) {
-                break;
-            }
-
-            self.advance();
-        }
-
-        if self.is_at_end() {
-            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
-                start as u32,
-                self.current as u32,
-            )));
-        }
-
-        Ok(self.span(start, self.current))
     }
 
     fn skip_whitespace(&mut self) {
@@ -649,12 +629,7 @@ impl<'a> Scanner<'a> {
             return self.attribute_concatenation_or_string(quote);
         }
 
-        let span = self.collect_until_span(|char| match char {
-            '"' | '\'' | '>' | '<' | '`' => true,
-            char => char.is_whitespace(),
-        })?;
-
-        Ok(AttributeValue::String(span))
+        self.unquoted_attribute_concatenation_or_string()
     }
 
     fn expression_tag(&mut self) -> Result<ExpressionTag, Diagnostic> {
@@ -735,6 +710,50 @@ impl<'a> Scanner<'a> {
 
         Ok(AttributeValue::Concatenation(Concatenation {
             span: self.span(start, self.current),
+            parts,
+        }))
+    }
+
+    fn unquoted_attribute_concatenation_or_string(&mut self) -> Result<AttributeValue, Diagnostic> {
+        let start = self.current;
+        let mut current_pos = self.current;
+        let mut has_expression = false;
+        let mut parts: Vec<ConcatenationPart> = vec![];
+
+        while let Some(char) = self.peek() {
+            if matches!(char, '"' | '\'' | '>' | '<' | '`') || char.is_whitespace() {
+                break;
+            }
+
+            if char == '{' {
+                has_expression = true;
+
+                if current_pos < self.current {
+                    parts.push(ConcatenationPart::String(
+                        self.span(current_pos, self.current),
+                    ));
+                }
+
+                let expression_tag = self.expression_tag()?;
+                parts.push(ConcatenationPart::Expression(expression_tag));
+                current_pos = self.current;
+                continue;
+            }
+
+            self.advance();
+        }
+
+        let end = self.current;
+        if !has_expression {
+            return Ok(AttributeValue::String(self.span(start, end)));
+        }
+
+        if current_pos < end {
+            parts.push(ConcatenationPart::String(self.span(current_pos, end)));
+        }
+
+        Ok(AttributeValue::Concatenation(Concatenation {
+            span: self.span(start, end),
             parts,
         }))
     }

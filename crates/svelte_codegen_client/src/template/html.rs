@@ -6,8 +6,8 @@ use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
 use svelte_ast::{is_void, Attribute, Element};
 
 use super::expression::item_has_local_blockers;
-use crate::context::Ctx;
 use super::slot::is_legacy_slot_element;
+use crate::context::Ctx;
 
 /// Build the HTML string for a fragment (used in `$.template(...)`).
 /// Returns `(html, needs_import_node)` — the flag is true when the fragment

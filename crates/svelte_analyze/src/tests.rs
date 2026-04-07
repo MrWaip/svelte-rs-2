@@ -3209,10 +3209,9 @@ fn fragment_facts_capture_single_expression_queries() {
         component.store.get(textarea_expr),
         Node::ExpressionTag(_)
     ));
-    assert!(
-        data.element_flags
-            .needs_textarea_value_lowering(textarea.id)
-    );
+    assert!(data
+        .element_flags
+        .needs_textarea_value_lowering(textarea.id));
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
     assert!(matches!(
@@ -4494,11 +4493,9 @@ fn textarea_invalid_content_fires() {
 #[test]
 fn textarea_no_conflict_without_value_attr() {
     let diags = analyze_with_diags(r#"<textarea>content</textarea>"#);
-    assert!(
-        !diags
-            .iter()
-            .any(|d| d.kind.code() == "textarea_invalid_content")
-    );
+    assert!(!diags
+        .iter()
+        .any(|d| d.kind.code() == "textarea_invalid_content"));
 }
 
 // ---------------------------------------------------------------------------
@@ -4516,22 +4513,47 @@ fn slot_attribute_invalid_expression_value() {
 #[test]
 fn slot_attribute_static_value_ok() {
     let diags = analyze_with_diags(r#"<Comp><div slot="header"></div></Comp>"#);
-    assert!(
-        !diags
-            .iter()
-            .any(|d| d.kind.code() == "slot_attribute_invalid")
-    );
+    assert!(!diags
+        .iter()
+        .any(|d| d.kind.code() == "slot_attribute_invalid"));
+}
+
+#[test]
+fn slot_attribute_duplicate_reports_second_named_slot() {
+    let diags =
+        analyze_with_diags(r#"<Comp><div slot="header"></div><p slot="header"></p></Comp>"#);
+    assert_has_error(&diags, "slot_attribute_duplicate");
+}
+
+#[test]
+fn slot_default_duplicate_reports_implicit_default_content() {
+    let diags =
+        analyze_with_diags(r#"<Comp><div slot="default"></div><p>implicit default</p></Comp>"#);
+    assert_has_error(&diags, "slot_default_duplicate");
+}
+
+#[test]
+fn slot_distinct_named_slots_do_not_conflict() {
+    let diags =
+        analyze_with_diags(r#"<Comp><div slot="header"></div><p slot="footer"></p></Comp>"#);
+    assert_no_error(&diags, "slot_attribute_duplicate");
+    assert_no_error(&diags, "slot_default_duplicate");
+}
+
+#[test]
+fn slot_default_duplicate_ignores_whitespace_and_other_named_slots() {
+    let diags =
+        analyze_with_diags("<Comp> \n <div slot=\"default\"></div><p slot=\"header\"></p></Comp>");
+    assert_no_error(&diags, "slot_default_duplicate");
 }
 
 #[test]
 fn const_tag_inside_slotted_element_is_allowed() {
     let diags =
         analyze_with_diags(r#"<Comp><div slot="header">{@const foo = 1}{foo}</div></Comp>"#);
-    assert!(
-        !diags
-            .iter()
-            .any(|d| d.kind.code() == "const_tag_invalid_placement")
-    );
+    assert!(!diags
+        .iter()
+        .any(|d| d.kind.code() == "const_tag_invalid_placement"));
 }
 
 // ---------------------------------------------------------------------------
@@ -4542,6 +4564,30 @@ fn const_tag_inside_slotted_element_is_allowed() {
 fn attribute_quoted_on_component() {
     let diags = analyze_with_diags(r#"<script>let x = $state('val');</script><Comp foo="{x}" />"#);
     assert_has_warning(&diags, "attribute_quoted");
+}
+
+#[test]
+fn component_invalid_directive_use() {
+    let diags = analyze_with_diags(r#"<Comp use:tooltip />"#);
+    assert_has_error(&diags, "component_invalid_directive");
+}
+
+#[test]
+fn component_on_modifier_only_allows_once() {
+    let diags = analyze_with_diags(r#"<Comp on:done|capture={() => {}} />"#);
+    assert_has_error(&diags, "event_handler_invalid_component_modifier");
+}
+
+#[test]
+fn component_attribute_illegal_colon_warns() {
+    let diags = analyze_with_diags(r#"<Comp foo:bar="x" />"#);
+    assert_has_warning(&diags, "attribute_illegal_colon");
+}
+
+#[test]
+fn component_attribute_unquoted_sequence_errors() {
+    let diags = analyze_with_diags(r#"<script>let value = 'x';</script><Comp foo=a{value} />"#);
+    assert_has_error(&diags, "attribute_unquoted_sequence");
 }
 
 #[test]

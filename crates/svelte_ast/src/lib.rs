@@ -767,6 +767,8 @@ pub struct BooleanAttribute {
 pub struct ConcatenationAttribute {
     pub id: NodeId,
     pub name: String,
+    /// `true` when the source used quotes (`foo="a{b}"`), `false` for unquoted forms (`foo=a{b}`).
+    pub quoted: bool,
     pub parts: Vec<ConcatPart>,
 }
 

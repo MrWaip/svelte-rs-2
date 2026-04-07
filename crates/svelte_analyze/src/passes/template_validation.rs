@@ -8,23 +8,23 @@
 //! so that sub-expression spans can be reported correctly.
 
 use oxc_ast::ast::{AssignmentTarget, Expression, SimpleAssignmentTarget};
-use oxc_ast_visit::{Visit, walk};
+use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
-    AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart, ConstTag,
-    DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock, KeyBlock,
-    Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, is_svg,
+    is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
+    ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::AnalysisData;
-use crate::passes::binding_properties::{BINDING_NAMES, binding_property};
+use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
 use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
+use crate::AnalysisData;
 
 mod a11y;
 
@@ -758,6 +758,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         DiagnosticKind::SlotAttributeInvalid,
                         attr_value_span(attr),
                     ));
+                } else {
+                    validate_component_slot_conflicts(el, attr, ctx);
                 }
             }
         }
@@ -802,6 +804,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         self.maybe_warn_legacy_special_element(&cn.name, cn.span, ctx);
+        check_component_directives(&cn.attributes, ctx);
+        check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
@@ -1584,10 +1588,10 @@ fn attr_value_span(attr: &Attribute) -> Span {
             svelte_ast::StyleDirectiveValue::String(_)
             | svelte_ast::StyleDirectiveValue::Shorthand => Span::new(0, 0),
         },
-        Attribute::UseDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::UseDirective(attr) => attr.expression_span.unwrap_or(attr.name),
         Attribute::OnDirectiveLegacy(attr) => attr.expression_span.unwrap_or(attr.name_span),
-        Attribute::TransitionDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
-        Attribute::AnimateDirective(attr) => attr.expression_span.unwrap_or(Span::new(0, 0)),
+        Attribute::TransitionDirective(attr) => attr.expression_span.unwrap_or(attr.name),
+        Attribute::AnimateDirective(attr) => attr.expression_span.unwrap_or(attr.name),
         Attribute::AttachTag(attr) => attr.expression_span,
     }
 }
@@ -1656,11 +1660,53 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
     let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
         return;
     };
-    if component_has_implicit_children(component, block.id, ctx) {
+    if component_has_implicit_default_children(component, Some(block.id), ctx).is_some() {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SnippetConflict,
             block.expression_span,
         ));
+    }
+}
+
+fn validate_component_slot_conflicts(
+    el: &Element,
+    slot_attr: &Attribute,
+    ctx: &mut VisitContext<'_>,
+) {
+    let Some(parent) = ctx.data.parent(el.id) else {
+        return;
+    };
+    if parent.kind != ParentKind::ComponentNode {
+        return;
+    }
+
+    let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
+        return;
+    };
+    let Attribute::StringAttribute(slot_attr) = slot_attr else {
+        return;
+    };
+    let slot_name = slot_attr.value_span.source_text(ctx.source);
+
+    if has_prior_named_slot(component, el.id, slot_name, ctx) {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotAttributeDuplicate {
+                name: slot_name.to_string(),
+                component: component.name.clone(),
+            },
+            slot_attr.value_span,
+        ));
+    }
+
+    if slot_name == "default" {
+        if let Some(conflict_span) =
+            component_has_implicit_default_children(component, Some(el.id), ctx)
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SlotDefaultDuplicate,
+                conflict_span,
+            ));
+        }
     }
 }
 
@@ -1774,25 +1820,69 @@ fn named_component_attr(attr: &Attribute, name: &str) -> bool {
     }
 }
 
-fn component_has_implicit_children(
+fn has_prior_named_slot(
     component: &ComponentNode,
-    current_snippet_id: NodeId,
+    current_child_id: NodeId,
+    slot_name: &str,
     ctx: &VisitContext<'_>,
 ) -> bool {
-    let key = FragmentKey::ComponentNode(component.id);
-    match ctx.data.fragment_non_trivial_child_count(&key) {
-        0 => false,
-        1 => {
-            let Some(node_id) = ctx.data.fragment_single_non_trivial_child(&key) else {
-                return true;
-            };
-            !matches!(
-                ctx.store.get(node_id),
-                Node::SnippetBlock(snippet) if snippet.id == current_snippet_id
-            )
+    for &child_id in &component.fragment.nodes {
+        if child_id == current_child_id {
+            break;
         }
-        _ => true,
+
+        let Some(other_slot_name) =
+            direct_child_static_slot_name(ctx.store.get(child_id), ctx.source)
+        else {
+            continue;
+        };
+        if other_slot_name == slot_name {
+            return true;
+        }
     }
+
+    false
+}
+
+fn direct_child_static_slot_name<'a>(node: &'a Node, source: &'a str) -> Option<&'a str> {
+    let attrs = match node {
+        Node::Element(el) => &el.attributes,
+        _ => return None,
+    };
+
+    attrs.iter().find_map(|attr| match attr {
+        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+            Some(attr.value_span.source_text(source))
+        }
+        _ => None,
+    })
+}
+
+fn component_has_implicit_default_children(
+    component: &ComponentNode,
+    excluded_child_id: Option<NodeId>,
+    ctx: &VisitContext<'_>,
+) -> Option<Span> {
+    for &child_id in &component.fragment.nodes {
+        if Some(child_id) == excluded_child_id {
+            continue;
+        }
+
+        let child = ctx.store.get(child_id);
+        match child {
+            Node::Text(text) if text.value(ctx.source).trim().is_empty() => continue,
+            Node::Comment(_) => continue,
+            _ => {}
+        }
+
+        if direct_child_static_slot_name(child, ctx.source).is_some() {
+            continue;
+        }
+
+        return Some(child.span());
+    }
+
+    None
 }
 
 fn extract_arrow_params<'s, 'a: 's>(
@@ -2124,6 +2214,82 @@ fn check_plain_attr_warnings(
             },
             span,
         ));
+    }
+}
+
+fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    for attr in attrs {
+        match attr {
+            Attribute::StringAttribute(_)
+            | Attribute::ExpressionAttribute(_)
+            | Attribute::BooleanAttribute(_)
+            | Attribute::ConcatenationAttribute(_)
+            | Attribute::Shorthand(_)
+            | Attribute::SpreadAttribute(_)
+            | Attribute::BindDirective(_)
+            | Attribute::AttachTag(_) => {}
+            Attribute::OnDirectiveLegacy(dir) => {
+                if dir.modifiers.len() > 1
+                    || dir.modifiers.iter().any(|modifier| modifier != "once")
+                {
+                    ctx.warnings_mut().push(Diagnostic::error(
+                        DiagnosticKind::EventHandlerInvalidComponentModifier,
+                        dir.name_span,
+                    ));
+                }
+            }
+            Attribute::ClassDirective(_)
+            | Attribute::StyleDirective(_)
+            | Attribute::UseDirective(_)
+            | Attribute::TransitionDirective(_)
+            | Attribute::AnimateDirective(_) => {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::ComponentInvalidDirective,
+                    attr_value_span(attr),
+                ));
+            }
+        }
+    }
+}
+
+fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
+    let has_illegal_colon = attrs.iter().any(|attr| {
+        let name = attr.html_name();
+        name.contains(':')
+            && !name.starts_with("xml:")
+            && !name.starts_with("xlink:")
+            && !name.starts_with("xmlns:")
+    });
+
+    if has_illegal_colon {
+        let span = attrs
+            .iter()
+            .find(|attr| {
+                let name = attr.html_name();
+                name.contains(':')
+                    && !name.starts_with("xml:")
+                    && !name.starts_with("xlink:")
+                    && !name.starts_with("xmlns:")
+            })
+            .map(attr_value_span)
+            .unwrap_or(Span::new(0, 0));
+        ctx.warnings_mut().push(Diagnostic::warning(
+            DiagnosticKind::AttributeIllegalColon,
+            span,
+        ));
+    }
+
+    for attr in attrs {
+        let Attribute::ConcatenationAttribute(concat) = attr else {
+            continue;
+        };
+
+        if !concat.quoted && concat.parts.len() > 1 {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::AttributeUnquotedSequence,
+                attr_value_span(attr),
+            ));
+        }
     }
 }
 
