@@ -1,10 +1,14 @@
 # Lower Pass Performance
 
 ## Current state
-- **Working**: 0/8 use cases
-- **Missing**: 8 use cases
-- **Next**: implement low-risk optimizations in `crates/svelte_analyze/src/passes/lower.rs`, verify no JS output changes, then decide whether the structural one-pass merge is still worth doing.
-- Last updated: 2026-04-06
+- **Working**: 8/8 use cases
+- **Missing**: 0 use cases
+- **Current slice**: `lower_fragment` scan merge in `crates/svelte_analyze/src/passes/lower.rs`
+- **Why this slice was next**: it was the last remaining implementation change with meaningful payoff after the low-risk micro-optimizations were complete.
+- **Done in this slice**: debug-tag and head-title collection now run inside the same fragment walk that already handles recursion and namespace bookkeeping; lowering output and side tables stayed stable under analyzer and compiler regression coverage.
+- **Non-goals in this run**: no whitespace-helper rewrite, no benchmark-harness work, no new lowering cache structures.
+- **Next**: no required implementation slice remains for this spec; the only follow-up worth considering is benchmark-driven measurement to confirm whether the scan merge materially improves end-to-end performance.
+- Last updated: 2026-04-07
 
 ## Source
 
@@ -25,14 +29,14 @@ User request: investigate whether `crates/svelte_analyze/src/passes/lower.rs` ca
 
 ## Use cases
 
-- [ ] Replace quadratic blocker deduplication with append + sort + dedup without changing `fragment_blockers` semantics.
-- [ ] Remove redundant linear search when grouping component children by named slot element `NodeId`.
-- [ ] Reduce small-fragment allocation overhead in `build_items` by using inline storage where appropriate.
-- [ ] Avoid the extra pass over `TextConcat.parts` just to compute `has_expr`.
-- [ ] Avoid repeated invariant loads in hot loops where the value can be hoisted once per fragment or once per function call.
-- [ ] Merge compatible per-fragment scans in `lower_fragment` so the same `fragment.nodes` slice is not re-walked for unrelated side tables.
-- [ ] Preserve exact lowered output, including whitespace trimming, slot partitioning, debug/title collection, and recursive fragment coverage.
-- [ ] Add or update tests so performance-oriented refactors keep behavior stable across HTML, SVG, head, slot, and async-blocker cases.
+- [x] Replace quadratic blocker deduplication with append + sort + dedup without changing `fragment_blockers` semantics.
+- [x] Remove redundant linear search when grouping component children by named slot element `NodeId`.
+- [x] Reduce small-fragment allocation overhead in `build_items` by using inline storage where appropriate.
+- [x] Avoid the extra pass over `TextConcat.parts` just to compute `has_expr`.
+- [x] Avoid repeated invariant loads in hot loops where the value can be hoisted once per fragment or once per function call.
+- [x] Merge compatible per-fragment scans in `lower_fragment` so the same `fragment.nodes` slice is not re-walked for unrelated side tables.
+- [x] Preserve exact lowered output, including whitespace trimming, slot partitioning, debug/title collection, and recursive fragment coverage.
+- [x] Add or update tests so performance-oriented refactors keep behavior stable across HTML, SVG, head, slot, and async-blocker cases.
 
 ## Out of scope
 
@@ -94,3 +98,13 @@ User request: investigate whether `crates/svelte_analyze/src/passes/lower.rs` ca
   - component named-slot grouping
   - head `title` collection after scan merging
   - SVG whitespace removal after temporary-vector changes
+- Added in the redundant-work slice:
+  - analyzer unit test for sorted/unique fragment blocker indices
+  - targeted verification with `component_named_slot`, `async_blockers_basic`, and `if_elseif_new_blockers`
+  - `svelte_fragment_named_slot` remains ignored as an existing known parity gap
+- Added in the allocation slice:
+  - `lower.rs` unit test confirming unchanged text still lowers to `TextSpan` after source/source-pointer hoisting
+- Added in the scan-merge slice:
+  - analyzer unit test for `debug_tags.by_fragment` on root fragments
+  - analyzer unit test for `title_elements.by_fragment` on `<svelte:head>` fragments
+  - analyzer unit test for `html_tag_in_svg` / `html_tag_in_mathml` namespace flags

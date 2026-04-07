@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use smallvec::SmallVec;
+
 use svelte_ast::{
     is_mathml, is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment,
     Namespace, Node, NodeId,
@@ -160,46 +162,17 @@ fn lower_fragment(
 ) {
     let inside_head = matches!(key, FragmentKey::SvelteHeadBody(_));
 
-    // Collect debug_tag and title IDs (const_tags.by_fragment already
-    // populated by collect_const_tag_fragments which runs earlier).
-    {
-        let mut debug_ids: Option<Vec<svelte_ast::NodeId>> = None;
-        let mut title_ids: Option<Vec<svelte_ast::NodeId>> = None;
-
-        for &id in &fragment.nodes {
-            let node = store.get(id);
-            if let Some(dt) = node.as_debug_tag() {
-                debug_ids.get_or_insert_with(Vec::new).push(dt.id);
-            } else if inside_head {
-                if let Some(el) = node.as_element() {
-                    if el.name == "title" {
-                        title_ids.get_or_insert_with(Vec::new).push(el.id);
-                    }
-                }
-            }
-        }
-
-        if let Some(ids) = debug_ids {
-            data.debug_tags.by_fragment.insert(key, ids);
-        }
-        if let Some(ids) = title_ids {
-            data.title_elements.by_fragment.insert(key, ids);
-        }
-    }
-
     let items = build_items(fragment, component, inside_head, in_svg_non_text, store);
 
     // Pre-compute fragment blocker indices (experimental.async)
     if data.blocker_data.has_async {
-        let mut blockers = smallvec::SmallVec::<[u32; 2]>::new();
+        let mut blockers = SmallVec::<[u32; 2]>::new();
         for item in &items {
             if let FragmentItem::TextConcat { parts, .. } = item {
                 for part in parts {
                     if let LoweredTextPart::Expr(id) = part {
                         for idx in data.expression_blockers(*id) {
-                            if !blockers.contains(&idx) {
-                                blockers.push(idx);
-                            }
+                            blockers.push(idx);
                         }
                     }
                 }
@@ -207,6 +180,7 @@ fn lower_fragment(
         }
         if !blockers.is_empty() {
             blockers.sort_unstable();
+            blockers.dedup();
             data.fragments.fragment_blockers.insert(key, blockers);
         }
     }
@@ -215,9 +189,18 @@ fn lower_fragment(
         .lowered
         .insert(key, LoweredFragment { items });
 
+    let mut debug_ids: Option<Vec<NodeId>> = None;
+    let mut title_ids: Option<Vec<NodeId>> = None;
+
     for &id in &fragment.nodes {
         match store.get(id) {
+            Node::DebugTag(tag) => {
+                debug_ids.get_or_insert_with(Vec::new).push(tag.id);
+            }
             Node::Element(el) => {
+                if inside_head && el.name == "title" {
+                    title_ids.get_or_insert_with(Vec::new).push(el.id);
+                }
                 // SVG elements (except <text>) propagate can_remove_entirely to children.
                 // <foreignObject> resets to HTML context.
                 let child_svg = if el.name == "foreignObject" {
@@ -271,13 +254,7 @@ fn lower_fragment(
 
                 for &child_id in &cn.fragment.nodes {
                     if let Some(slot_el_id) = determine_slot(store.get(child_id)) {
-                        if let Some(group) =
-                            named_groups.iter_mut().find(|(id, _)| *id == slot_el_id)
-                        {
-                            group.1.push(child_id);
-                        } else {
-                            named_groups.push((slot_el_id, vec![child_id]));
-                        }
+                        named_groups.push((slot_el_id, vec![child_id]));
                     } else {
                         default_nodes.push(child_id);
                     }
@@ -483,9 +460,15 @@ fn lower_fragment(
             | Node::ExpressionTag(_)
             | Node::RenderTag(_)
             | Node::ConstTag(_)
-            | Node::DebugTag(_)
             | Node::Error(_) => {}
         }
+    }
+
+    if let Some(ids) = debug_ids {
+        data.debug_tags.by_fragment.insert(key, ids);
+    }
+    if let Some(ids) = title_ids {
+        data.title_elements.by_fragment.insert(key, ids);
     }
 }
 
@@ -524,10 +507,12 @@ fn build_items(
     store: &AstStore,
 ) -> Vec<FragmentItem> {
     let nodes = &fragment.nodes;
+    let source = &component.source;
+    let source_ptr = source.as_ptr() as usize;
 
     // Build filtered index list to avoid allocating Vec<&Node>.
     // For small fragments (common case), use inline storage.
-    let mut filtered: Vec<usize> = Vec::with_capacity(nodes.len());
+    let mut filtered = SmallVec::<[usize; 8]>::with_capacity(nodes.len());
     for (i, &id) in nodes.iter().enumerate() {
         if !is_skipped_node(store.get(id), inside_head) {
             filtered.push(i);
@@ -538,7 +523,7 @@ fn build_items(
     let mut start = 0;
     while start < filtered.len() {
         if let Node::Text(t) = store.get(nodes[filtered[start]]) {
-            if is_ws_only(t.value(&component.source)) {
+            if is_ws_only(t.value(source)) {
                 start += 1;
                 continue;
             }
@@ -550,7 +535,7 @@ fn build_items(
     let mut end = filtered.len();
     while end > start {
         if let Node::Text(t) = store.get(nodes[filtered[end - 1]]) {
-            if is_ws_only(t.value(&component.source)) {
+            if is_ws_only(t.value(source)) {
                 end -= 1;
                 continue;
             }
@@ -566,14 +551,19 @@ fn build_items(
     }
 
     let mut items: Vec<FragmentItem> = Vec::with_capacity(len);
-    let mut concat: Vec<LoweredTextPart> = Vec::with_capacity(4);
+    let mut concat = SmallVec::<[LoweredTextPart; 4]>::new();
+    let mut concat_has_expr = false;
     let mut prev_text_ends_ws = false;
 
-    let flush = |concat: &mut Vec<LoweredTextPart>, items: &mut Vec<FragmentItem>| {
+    let flush = |concat: &mut SmallVec<[LoweredTextPart; 4]>,
+                 concat_has_expr: &mut bool,
+                 items: &mut Vec<FragmentItem>| {
         if !concat.is_empty() {
-            let parts = std::mem::take(concat);
-            let has_expr = parts.iter().any(|p| matches!(p, LoweredTextPart::Expr(_)));
-            items.push(FragmentItem::TextConcat { parts, has_expr });
+            let parts = std::mem::take(concat).into_vec();
+            items.push(FragmentItem::TextConcat {
+                parts,
+                has_expr: std::mem::take(concat_has_expr),
+            });
         }
     };
 
@@ -581,7 +571,7 @@ fn build_items(
         let idx = filtered[fi];
         match store.get(nodes[idx]) {
             Node::Text(text) => {
-                let value = text.value(&component.source);
+                let value = text.value(source);
                 let is_first = fi == 0;
                 let is_last = fi == len - 1;
                 let prev = if fi > 0 {
@@ -606,7 +596,7 @@ fn build_items(
                     let part = match trimmed {
                         Cow::Borrowed(s) if text.decoded.is_none() => {
                             // Compute span from pointer offset into source
-                            let offset = s.as_ptr() as usize - component.source.as_ptr() as usize;
+                            let offset = s.as_ptr() as usize - source_ptr;
                             LoweredTextPart::TextSpan(Span::new(
                                 offset as u32,
                                 (offset + s.len()) as u32,
@@ -621,10 +611,11 @@ fn build_items(
             Node::ExpressionTag(tag) => {
                 prev_text_ends_ws = false;
                 concat.push(LoweredTextPart::Expr(tag.id));
+                concat_has_expr = true;
             }
             other => {
                 prev_text_ends_ws = false;
-                flush(&mut concat, &mut items);
+                flush(&mut concat, &mut concat_has_expr, &mut items);
                 match other {
                     Node::Element(el) => items.push(FragmentItem::Element(el.id)),
                     Node::ComponentNode(cn) => items.push(FragmentItem::ComponentNode(cn.id)),
@@ -642,7 +633,7 @@ fn build_items(
         }
     }
 
-    flush(&mut concat, &mut items);
+    flush(&mut concat, &mut concat_has_expr, &mut items);
     items
 }
 
@@ -1011,6 +1002,18 @@ mod tests {
         let raw = "hello world";
         let result = trim_text(raw, true, true, None, None, false);
         assert!(matches!(result, Cow::Borrowed("hello world")));
+    }
+
+    #[test]
+    fn unchanged_text_still_uses_text_span_after_source_hoisting() {
+        let src = "hello";
+        let comp = make_component(src, vec![text_node(0, src.len() as u32)]);
+        let items = build_items(&comp.fragment, &comp, false, false, &comp.store);
+        let FragmentItem::TextConcat { parts, has_expr } = &items[0] else {
+            panic!("expected TextConcat");
+        };
+        assert!(!has_expr);
+        assert!(matches!(parts.as_slice(), [LoweredTextPart::TextSpan(span)] if *span == Span::new(0, 5)));
     }
 
     #[test]
