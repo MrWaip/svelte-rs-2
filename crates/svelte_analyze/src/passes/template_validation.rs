@@ -92,6 +92,36 @@ const A11Y_ARIA_ATTRIBUTES: &[&str] = &[
 
 const A11Y_INVISIBLE_ELEMENTS: &[&str] = &["meta", "html", "script", "style"];
 
+#[derive(Clone, Copy)]
+enum AriaValueKind {
+    Id,
+    String,
+    Number,
+    Boolean,
+    Idlist,
+    Integer,
+    Token(&'static [&'static str]),
+    Tokenlist(&'static [&'static str]),
+    Tristate,
+}
+
+enum StaticAttributeValue<'a> {
+    Text(&'a str),
+    True,
+}
+
+const A11Y_ARIA_AUTOCOMPLETE_VALUES: &[&str] = &["inline", "list", "both", "none"];
+const A11Y_ARIA_CURRENT_VALUES: &[&str] =
+    &["page", "step", "location", "date", "time", "true", "false"];
+const A11Y_ARIA_HASPOPUP_VALUES: &[&str] =
+    &["false", "true", "menu", "listbox", "tree", "grid", "dialog"];
+const A11Y_ARIA_INVALID_VALUES: &[&str] = &["grammar", "false", "spelling", "true"];
+const A11Y_ARIA_LIVE_VALUES: &[&str] = &["assertive", "off", "polite"];
+const A11Y_ARIA_ORIENTATION_VALUES: &[&str] = &["vertical", "undefined", "horizontal"];
+const A11Y_ARIA_SORT_VALUES: &[&str] = &["ascending", "descending", "none", "other"];
+const A11Y_ARIA_DROPEFFECT_VALUES: &[&str] = &["copy", "execute", "link", "move", "none", "popup"];
+const A11Y_ARIA_RELEVANT_VALUES: &[&str] = &["additions", "all", "removals", "text"];
+
 const A11Y_ARIA_ROLES: &[&str] = &[
     "command",
     "composite",
@@ -1473,11 +1503,21 @@ fn attr_is_text(attr: &Attribute) -> bool {
     matches!(attr, Attribute::StringAttribute(_))
 }
 
-fn static_text_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<&'a str> {
+fn static_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<StaticAttributeValue<'a>> {
     match attr {
-        Attribute::StringAttribute(attr) => Some(attr.value_span.source_text(source)),
+        Attribute::StringAttribute(attr) => {
+            Some(StaticAttributeValue::Text(attr.value_span.source_text(source)))
+        }
+        Attribute::BooleanAttribute(_) => Some(StaticAttributeValue::True),
         _ => None,
     }
+}
+
+fn static_text_attr_value<'a>(attr: &Attribute, source: &'a str) -> Option<&'a str> {
+    static_attr_value(attr, source).and_then(|value| match value {
+        StaticAttributeValue::Text(text) => Some(text),
+        StaticAttributeValue::True => None,
+    })
 }
 
 fn attr_value_span(attr: &Attribute) -> Span {
@@ -2117,6 +2157,158 @@ fn is_heading_tag(name: &str) -> bool {
     matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
 }
 
+fn aria_attribute_value_kind(name: &str) -> Option<AriaValueKind> {
+    match name {
+        "aria-activedescendant" | "aria-details" | "aria-errormessage" => Some(AriaValueKind::Id),
+        "aria-braillelabel"
+        | "aria-brailleroledescription"
+        | "aria-description"
+        | "aria-keyshortcuts"
+        | "aria-label"
+        | "aria-placeholder"
+        | "aria-roledescription"
+        | "aria-valuetext" => Some(AriaValueKind::String),
+        "aria-valuemax" | "aria-valuemin" | "aria-valuenow" => Some(AriaValueKind::Number),
+        "aria-atomic"
+        | "aria-busy"
+        | "aria-disabled"
+        | "aria-expanded"
+        | "aria-grabbed"
+        | "aria-hidden"
+        | "aria-modal"
+        | "aria-multiline"
+        | "aria-multiselectable"
+        | "aria-readonly"
+        | "aria-required"
+        | "aria-selected" => Some(AriaValueKind::Boolean),
+        "aria-controls" | "aria-describedby" | "aria-flowto" | "aria-labelledby" | "aria-owns" => {
+            Some(AriaValueKind::Idlist)
+        }
+        "aria-colcount"
+        | "aria-colindex"
+        | "aria-colspan"
+        | "aria-level"
+        | "aria-posinset"
+        | "aria-rowcount"
+        | "aria-rowindex"
+        | "aria-rowspan"
+        | "aria-setsize" => Some(AriaValueKind::Integer),
+        "aria-autocomplete" => Some(AriaValueKind::Token(A11Y_ARIA_AUTOCOMPLETE_VALUES)),
+        "aria-current" => Some(AriaValueKind::Token(A11Y_ARIA_CURRENT_VALUES)),
+        "aria-haspopup" => Some(AriaValueKind::Token(A11Y_ARIA_HASPOPUP_VALUES)),
+        "aria-invalid" => Some(AriaValueKind::Token(A11Y_ARIA_INVALID_VALUES)),
+        "aria-live" => Some(AriaValueKind::Token(A11Y_ARIA_LIVE_VALUES)),
+        "aria-orientation" => Some(AriaValueKind::Token(A11Y_ARIA_ORIENTATION_VALUES)),
+        "aria-sort" => Some(AriaValueKind::Token(A11Y_ARIA_SORT_VALUES)),
+        "aria-dropeffect" => Some(AriaValueKind::Tokenlist(A11Y_ARIA_DROPEFFECT_VALUES)),
+        "aria-relevant" => Some(AriaValueKind::Tokenlist(A11Y_ARIA_RELEVANT_VALUES)),
+        "aria-checked" | "aria-pressed" => Some(AriaValueKind::Tristate),
+        _ => None,
+    }
+}
+
+fn format_quoted_list(values: &[&str]) -> String {
+    let quoted = values
+        .iter()
+        .map(|value| format!("\"{value}\""))
+        .collect::<Vec<_>>();
+
+    match quoted.as_slice() {
+        [] => String::new(),
+        [single] => single.clone(),
+        [left, right] => format!("{left} or {right}"),
+        _ => {
+            let last = quoted.last().cloned().unwrap_or_default();
+            let leading = &quoted[..quoted.len() - 1];
+            format!("{} or {}", leading.join(", "), last)
+        }
+    }
+}
+
+fn validate_aria_attribute_value(
+    attr: &Attribute,
+    name: &str,
+    kind: AriaValueKind,
+    ctx: &mut VisitContext<'_>,
+) {
+    let span = attr_value_span(attr);
+    let Some(value) = static_attr_value(attr, ctx.source) else {
+        return;
+    };
+    let value = match value {
+        StaticAttributeValue::Text(text) => text,
+        StaticAttributeValue::True => "",
+    };
+
+    let diagnostic = match kind {
+        AriaValueKind::Id | AriaValueKind::String if value.is_empty() => {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeType {
+                attribute: name.to_string(),
+                type_: "non-empty string".to_string(),
+            })
+        }
+        AriaValueKind::Number
+            if value.is_empty() || value.trim().parse::<f64>().is_err() =>
+        {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeType {
+                attribute: name.to_string(),
+                type_: "number".to_string(),
+            })
+        }
+        AriaValueKind::Boolean if !matches!(value, "true" | "false") => {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeBoolean {
+                attribute: name.to_string(),
+            })
+        }
+        AriaValueKind::Idlist if value.is_empty() => {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeIdlist {
+                attribute: name.to_string(),
+            })
+        }
+        AriaValueKind::Integer
+            if value.is_empty()
+                || value
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .is_none_or(|number| !number.is_finite() || number.fract() != 0.0) =>
+        {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeInteger {
+                attribute: name.to_string(),
+            })
+        }
+        AriaValueKind::Token(values)
+            if !values.contains(&value.to_ascii_lowercase().as_str()) =>
+        {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeToken {
+                attribute: name.to_string(),
+                values: format_quoted_list(values),
+            })
+        }
+        AriaValueKind::Tokenlist(values)
+            if value
+                .split_whitespace()
+                .map(str::to_ascii_lowercase)
+                .any(|token| !values.contains(&token.as_str())) =>
+        {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeTokenlist {
+                attribute: name.to_string(),
+                values: format_quoted_list(values),
+            })
+        }
+        AriaValueKind::Tristate if !matches!(value, "true" | "false" | "mixed") => {
+            Some(DiagnosticKind::A11yIncorrectAriaAttributeTypeTristate {
+                attribute: name.to_string(),
+            })
+        }
+        _ => None,
+    };
+
+    if let Some(diagnostic) = diagnostic {
+        ctx.warnings_mut().push(Diagnostic::warning(diagnostic, span));
+    }
+}
+
 fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
     for attr in attrs {
         let Some(name) = attr_named_name(attr) else {
@@ -2146,6 +2338,7 @@ fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &m
                 },
                 attr_value_span(attr),
             ));
+            continue;
         }
 
         if name == "aria-hidden" && is_heading_tag(&el.name) {
@@ -2155,6 +2348,10 @@ fn check_a11y_aria_attribute_warnings(el: &Element, attrs: &[Attribute], ctx: &m
                 },
                 attr_value_span(attr),
             ));
+        }
+
+        if let Some(kind) = aria_attribute_value_kind(name.as_str()) {
+            validate_aria_attribute_value(attr, name.as_str(), kind, ctx);
         }
     }
 }

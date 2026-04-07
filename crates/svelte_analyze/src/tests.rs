@@ -4489,6 +4489,90 @@ fn a11y_hidden_no_warning_on_non_heading_tags() {
 }
 
 #[test]
+fn a11y_incorrect_aria_attribute_type_idlist_warns_on_empty_value() {
+    let diags = analyze_with_diags(r#"<div aria-labelledby=""></div>"#);
+    assert_has_warning(&diags, "a11y_incorrect_aria_attribute_type_idlist");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_warns_for_invalid_number() {
+    let diags = analyze_with_diags(r#"<div aria-valuenow="abc"></div>"#);
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yIncorrectAriaAttributeType {
+                attribute,
+                type_,
+            } if attribute == "aria-valuenow" && type_ == "number"
+        )
+    });
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_integer_warns_for_non_integer() {
+    let diags = analyze_with_diags(r#"<div aria-rowindex="1.5"></div>"#);
+    assert_has_warning(&diags, "a11y_incorrect_aria_attribute_type_integer");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_boolean_warns_for_invalid_boolean() {
+    let diags = analyze_with_diags(r#"<div aria-hidden="maybe"></div>"#);
+    assert_has_warning(&diags, "a11y_incorrect_aria_attribute_type_boolean");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_token_warns_with_allowed_values() {
+    let diags = analyze_with_diags(r#"<div aria-autocomplete="bad"></div>"#);
+    assert_has_warning_kind(&diags, |kind| {
+        matches!(
+            kind,
+            svelte_diagnostics::DiagnosticKind::A11yIncorrectAriaAttributeTypeToken {
+                attribute,
+                values,
+            } if attribute == "aria-autocomplete"
+                && values == "\"inline\", \"list\", \"both\" or \"none\""
+        )
+    });
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_tokenlist_warns_for_invalid_token() {
+    let diags = analyze_with_diags(r#"<div aria-dropeffect="copy wrong"></div>"#);
+    assert_has_warning(&diags, "a11y_incorrect_aria_attribute_type_tokenlist");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_tristate_accepts_mixed() {
+    let diags = analyze_with_diags(r#"<div aria-checked="mixed"></div>"#);
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_tristate");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_no_warning_for_valid_known_value() {
+    let diags = analyze_with_diags(r#"<div aria-hidden="true"></div>"#);
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_boolean");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_no_warning_for_dynamic_value() {
+    let diags = analyze_with_diags(r#"<script>let value = $state('maybe');</script><div aria-hidden={value}></div>"#);
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_boolean");
+}
+
+#[test]
+fn a11y_incorrect_aria_attribute_type_unknown_attribute_only_warns_once() {
+    let diags = analyze_with_diags(r#"<div aria-labl="x"></div>"#);
+    assert_has_warning(&diags, "a11y_unknown_aria_attribute");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_boolean");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_idlist");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_integer");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_token");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_tokenlist");
+    assert_no_warning(&diags, "a11y_incorrect_aria_attribute_type_tristate");
+}
+
+#[test]
 fn a11y_unknown_role_warns() {
     let diags = analyze_with_diags(r#"<div role="buton"></div>"#);
     assert_has_warning(&diags, "a11y_unknown_role");
