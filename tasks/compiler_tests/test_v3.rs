@@ -399,6 +399,21 @@ fn class_concat() {
 }
 
 #[rstest]
+fn class_concat_literal_fold() {
+    assert_compiler("class_concat_literal_fold");
+}
+
+#[rstest]
+fn attribute_concat_literal_fold() {
+    assert_compiler("attribute_concat_literal_fold");
+}
+
+#[rstest]
+fn component_prop_concat_literal_fold() {
+    assert_compiler("component_prop_concat_literal_fold");
+}
+
+#[rstest]
 fn rune_update() {
     assert_compiler("rune_update");
 }
