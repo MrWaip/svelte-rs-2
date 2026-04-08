@@ -2719,7 +2719,6 @@ fn state_assign_dev() {
 }
 
 #[rstest]
-#[ignore = "bug: class/id/attribute selectors don't mark template elements as scoped — only type selectors do (analyze: passes/css_analyze.rs::mark_scoped_elements)"]
 fn css_scoped_class_selector() {
     assert_compiler("css_scoped_class_selector");
 }
