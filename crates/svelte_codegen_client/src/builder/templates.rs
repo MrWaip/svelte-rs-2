@@ -60,7 +60,7 @@ impl<'a> Builder<'a> {
                         ));
                     }
                 }
-                TemplatePart::Expr(expr) => {
+                TemplatePart::Expr(expr, defined) => {
                     quasis.push(self.ast.template_element(
                         SPAN,
                         TemplateElementValue {
@@ -72,14 +72,18 @@ impl<'a> Builder<'a> {
                     ));
                     pending.clear();
 
-                    let empty_str = self.ast.atom("");
-                    let wrapped = self.ast.expression_logical(
-                        SPAN,
-                        expr,
-                        ast::LogicalOperator::Coalesce,
-                        self.ast.expression_string_literal(SPAN, empty_str, None),
-                    );
-                    expressions.push(wrapped);
+                    let value = if defined {
+                        expr
+                    } else {
+                        let empty_str = self.ast.atom("");
+                        self.ast.expression_logical(
+                            SPAN,
+                            expr,
+                            ast::LogicalOperator::Coalesce,
+                            self.ast.expression_string_literal(SPAN, empty_str, None),
+                        )
+                    };
+                    expressions.push(value);
 
                     if is_last {
                         quasis.push(self.ast.template_element(

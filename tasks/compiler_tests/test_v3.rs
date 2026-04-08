@@ -2692,7 +2692,6 @@ fn bind_select_static_option_value() {
 }
 
 #[rstest]
-#[ignore = "bug: each-block index variable is wrapped in `?? \"\"` inside template literals — reference omits the coalesce because index is always a number (codegen: text expression)"]
 fn each_index_text_no_coalesce() {
     assert_compiler("each_index_text_no_coalesce");
 }

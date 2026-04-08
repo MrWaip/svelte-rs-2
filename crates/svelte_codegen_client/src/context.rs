@@ -343,6 +343,9 @@ impl<'a> Ctx<'a> {
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.query.view.each_index_name(id).map(str::to_string)
     }
+    pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
+        self.query.view.is_each_index_sym(sym)
+    }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.nearest_element(id)
     }

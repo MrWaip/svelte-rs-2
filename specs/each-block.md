@@ -1,10 +1,10 @@
 # Each Block
 
 ## Current state
-- **Working**: 15/15 core client-side `{#each}` use cases implemented and passing.
-- **Open gap**: When an each block's inner scope has a declaration that shadows an outer scope binding (e.g. `{@const a = ...}` shadowing a snippet named `a`), the reference compiler sets `collection_id` and emits `$$index, $$array` as extra render-callback params. The Rust codegen lacks this `collection_id` concept entirely — new use case added below.
-- **Next**: implement `collection_id` inner-scope shadowing logic in `crates/svelte_codegen_client/src/template/each_block.rs` (reference: `EachBlock.js` lines 112–123 and 316–318)
-- Last updated: 2026-04-04
+- **Working**: 16/16 passing client-side `{#each}` use cases.
+- **Just landed**: non-keyed each-block index identifier is no longer wrapped in `?? ""` inside `template_effect` template literals. Introduced `CodegenView::is_each_index_sym`, `Ctx::is_each_index_sym`, and `is_definitely_defined(ctx, nid, expr)` in `crates/svelte_codegen_client/src/template/expression.rs`. `TemplatePart::Expr` and `TitleValuePart` now carry a `defined` flag; the builder skips the `?? ""` wrap when set. The check also inspects the post-transform `Expression` — keyed each blocks wrap `idx` in `$.get(idx)` (a `CallExpression`), so those correctly keep the fallback. (test: `each_index_text_no_coalesce`)
+- **Next slice**: implement `collection_id` inner-scope shadowing logic in `crates/svelte_codegen_client/src/template/each_block.rs` (reference: `EachBlock.js` lines 112–123 and 316–318). Non-goals for that run: parser `{#each expr, index}` without `as`, related diagnostics.
+- Last updated: 2026-04-08
 
 ## Source
 
@@ -28,7 +28,7 @@
 
 - [x] Basic item iteration: `{#each items as item}`.
 - [x] Item iteration with index: `{#each items as item, i}`.
-- [ ] Index variable in interpolated text must not be wrapped in `?? ""`. The codegen text-tag pipeline currently emits `${index ?? ""}` inside `template_effect` template literals; reference omits the coalesce because the each-block index is always a number. (test: `each_index_text_no_coalesce`, `#[ignore]`, S)
+- [x] Non-keyed each-block index identifier in interpolated text is NOT wrapped in `?? ""` (reference treats bare `index` as `is_defined`). Keyed each blocks transform `i` into `$.get(i)` (a call expression), so those correctly keep the `?? ""` fallback. (test: `each_index_text_no_coalesce`)
 - [x] Keyed each blocks, including key expressions that reference the index.
 - [x] Key-is-item optimization in runes mode.
 - [x] Destructured object and array patterns.

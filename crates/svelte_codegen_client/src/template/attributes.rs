@@ -501,7 +501,7 @@ fn build_style_concat<'a>(
                     .expr_handle(span.start)
                     .map(|handle| get_concat_part_expr(ctx, handle))
                     .unwrap_or_else(|| ctx.b.str_expr(""));
-                tpl_parts.push(TemplatePart::Expr(expr));
+                tpl_parts.push(TemplatePart::Expr(expr, false));
             }
         }
     }

@@ -294,6 +294,12 @@ impl<'a> CodegenView<'a> {
             .each_index_sym(id)
             .map(|sym| self.data.scoping.symbol_name(sym))
     }
+    /// Returns true when the given symbol is the `index` binding of some
+    /// `{#each}` block. Each-block indices are always `number`, so an
+    /// interpolation referencing one never needs a `?? ""` fallback.
+    pub fn is_each_index_sym(&self, sym: SymbolId) -> bool {
+        self.data.each_block_for_index_sym(sym).is_some()
+    }
     pub fn each_key_uses_index(&self, id: NodeId) -> bool {
         self.data.each_key_uses_index(id)
     }
