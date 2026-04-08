@@ -1,7 +1,8 @@
 # SnippetBlock
 
 ## Current state
-- **Complete**: 21/21 use cases — all implemented and covered
+- **Complete**: 22/22 use cases — all implemented and covered
+- `snippet_destructure_default_mutated_state_ref` landed: `svelte_transform::walk_node` now visits snippet parameter destructure defaults inside the snippet body scope, so identifiers that refer to mutated `$state` bindings are rewritten to `$.get(name)` inside the lazy-fallback thunk. Previously defaults were cloned verbatim by `build_fallback_expr`; the mutated-state variant was missed because the only existing default-state test used a never-mutated binding (demoted to `let` by the reference compiler).
 - `snippet_destructure_default_state_ref` landed: snippet param destructuring defaults whose initializer is non-simple (per `is_simple_expression`) are now emitted as `$.fallback(access, () => <default>, true)` matching the reference compiler `build_fallback`. `is_simple_expression` lifted to `svelte_analyze::utils` and consumed from `svelte_codegen_client::template::snippet::build_fallback_expr`.
 - `snippet_invalid_export` landed earlier: dual top-level script parsing (`instance_script` + `module_script`) added to AST/parser; validation fires when `<script module>` exports a template snippet name
 - Last updated: 2026-04-08
@@ -23,6 +24,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] Object destructuring: `{#snippet foo({ x, y })}` → `$$arg0` param + `let x = () => $$arg0?.().x` (test: snippet_object_destructure)
 - [x] Object destructuring with defaults: `{#snippet foo({ x = 5 })}` → `$.derived_safe_equal(() => $.fallback(...))` (test: snippet_object_destructure)
 - [x] Snippet destructure default whose initializer is a non-literal expression (e.g. `[counter]`, an array referencing a binding) wraps the default in a lazy thunk and passes `true` as the third `$.fallback` argument: `$.fallback($$arg0?.().values, () => [counter], true)` (test: `snippet_destructure_default_state_ref`)
+- [x] Snippet destructure default whose initializer references a **mutated** reactive binding (`$state`, `$derived`, store) must rewrite identifier reads to `$.get(name)` / thunk form inside the lazy-fallback thunk. Default expressions are transformed by `svelte_transform::walk_node::SnippetBlock` in the snippet body scope, matching the reference compiler's `context.visit(path.expression, child_state)`. (test: `snippet_destructure_default_mutated_state_ref`)
 - [x] Object rest: `{#snippet foo({ x, ...rest })}` → `$.exclude_from_object($$arg0?.(), ['x'])` (test: snippet_object_destructure)
 - [x] Array destructuring: `{#snippet foo([a, b])}` → `$.to_array($$arg0?.(), 2)` + derived intermediary (test: snippet_array_destructure)
 - [x] Array destructuring with rest: `{#snippet foo([a, ...rest])}` → `$.get($$array).slice(1)` (test: snippet_array_destructure)
@@ -47,6 +49,7 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 
 ### Our code
 - `crates/svelte_codegen_client/src/template/snippet.rs` — parsed-param-driven destructuring codegen, including nested object/array patterns, computed keys, and lazy `$.fallback` for non-simple defaults
+- `crates/svelte_transform/src/lib.rs` — `walk_node::SnippetBlock` transforms parameter destructure defaults via `transform_snippet_param_defaults`, reusing `ExprTransformer` in the snippet body scope so state/store reads inside defaults get `$.get(...)` / thunk rewrites
 - `crates/svelte_analyze/src/utils/simple_expression.rs` — `is_simple_expression` syntactic check (mirrors reference `is_simple_expression`); consumed by snippet codegen to choose lazy vs eager `$.fallback` form
 - `crates/svelte_analyze/src/passes/template_side_tables.rs` — `SnippetParamMarker` marks snippet-param symbols for downstream validation
 - `crates/svelte_analyze/src/passes/template_validation.rs` — snippet param assignment/rest/shadowing/conflict validation
@@ -75,3 +78,4 @@ ROADMAP Tier 2b: `{#snippet}` — parameter destructuring
 - [x] `snippet_conflict` (analyzer)
 - [x] `snippet_invalid_export` (analyzer)
 - [x] `snippet_destructure_default_state_ref`
+- [x] `snippet_destructure_default_mutated_state_ref`

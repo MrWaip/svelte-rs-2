@@ -2709,3 +2709,8 @@ fn each_index_text_no_coalesce() {
 fn snippet_destructure_default_state_ref() {
     assert_compiler("snippet_destructure_default_state_ref");
 }
+
+#[rstest]
+fn snippet_destructure_default_mutated_state_ref() {
+    assert_compiler("snippet_destructure_default_mutated_state_ref");
+}
