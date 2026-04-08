@@ -74,6 +74,62 @@ pub(crate) fn parse_js<'a>(
     }
 }
 
+/// Parse a `use:` directive name like `"actions.tooltip-extra"` into a valid JS expression.
+///
+/// Segments that are not valid JS identifiers (e.g. contain `-`) are emitted as computed
+/// bracket access: `actions["tooltip-extra"]`. This matches the Svelte reference compiler's
+/// `parse_directive_name` utility. Stores the result at `name_span.start`.
+fn parse_directive_name_span<'a>(
+    alloc: &'a Allocator,
+    component: &Component,
+    name_span: svelte_span::Span,
+    typescript: bool,
+    result: &mut ParserResult<'a>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let name = component.source_text(name_span);
+    let js = directive_name_to_js(name);
+    let arena_js: &'a str = alloc.alloc_str(&js);
+    match parse_expression_with_alloc(alloc, arena_js, name_span.start, typescript) {
+        Ok(expr) => {
+            result.alloc_expr(name_span.start, expr);
+        }
+        Err(diag) => diags.push(diag),
+    }
+}
+
+/// Convert a Svelte directive name (e.g. `"actions.tooltip-extra"`) to a valid JS expression
+/// string (e.g. `actions["tooltip-extra"]`), applying bracket notation for segments that are
+/// not valid JS identifiers.
+fn directive_name_to_js(name: &str) -> String {
+    let mut parts = name.split('.');
+    let mut result = parts.next().unwrap_or("").to_string();
+    for part in parts {
+        if is_valid_js_identifier(part) {
+            result.push('.');
+            result.push_str(part);
+        } else {
+            result.push('[');
+            result.push('"');
+            result.push_str(part);
+            result.push('"');
+            result.push(']');
+        }
+    }
+    result
+}
+
+fn is_valid_js_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => false,
+        Some(first) => {
+            (first.is_alphabetic() || first == '_' || first == '$')
+                && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        }
+    }
+}
+
 /// Parse an expression and store it by source offset.
 fn parse_span<'a>(
     alloc: &'a Allocator,
@@ -461,7 +517,9 @@ fn walk_attrs<'a>(
                 if let Some(span) = a.expression_span {
                     parse_span(alloc, component, span, typescript, result, diags);
                 }
-                parse_span(alloc, component, a.name, typescript, result, diags);
+                // Use dedicated helper: directive names may contain hyphens (e.g. `tooltip-extra`)
+                // which are not valid JS identifiers and require bracket notation.
+                parse_directive_name_span(alloc, component, a.name, typescript, result, diags);
             }
             Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
             // LEGACY(svelte4): on:directive — parse expression if present
