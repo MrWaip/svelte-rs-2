@@ -71,8 +71,8 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
         let has_await = has_await_in_statement(stmt_ref);
         awaited |= has_await;
 
-        if awaited && data.blocker_data.first_await_index.is_none() {
-            data.blocker_data.first_await_index = Some(non_import_idx);
+        if awaited && data.script.blocker_data.first_await_index.is_none() {
+            data.script.blocker_data.first_await_index = Some(non_import_idx);
         }
 
         let is_function = matches!(stmt_ref, Statement::FunctionDeclaration(_))
@@ -81,7 +81,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
 
         if is_function {
             if awaited {
-                data.blocker_data.stmt_metas.push(AsyncStmtMeta {
+                data.script.blocker_data.stmt_metas.push(AsyncStmtMeta {
                     has_await: false,
                     hoist_names: Vec::new(),
                 });
@@ -123,7 +123,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
                 let names = collect_binding_names(&declarator.id);
                 for name in &names {
                     if let Some(sym) = data.scoping.find_binding(root, name) {
-                        data.blocker_data.symbol_blockers.insert(sym, async_index);
+                        data.script.blocker_data.symbol_blockers.insert(sym, async_index);
                     }
                 }
                 hoist_names.extend(names);
@@ -134,7 +134,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
                 if let Some(ref id) = class.id {
                     let name = id.name.to_string();
                     if let Some(sym) = data.scoping.find_binding(root, &name) {
-                        data.blocker_data.symbol_blockers.insert(sym, async_index);
+                        data.script.blocker_data.symbol_blockers.insert(sym, async_index);
                     }
                     hoist_names.push(name);
                 }
@@ -142,7 +142,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
             async_index += 1;
         }
 
-        data.blocker_data.stmt_metas.push(AsyncStmtMeta {
+        data.script.blocker_data.stmt_metas.push(AsyncStmtMeta {
             has_await,
             hoist_names,
         });
@@ -150,8 +150,8 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
         non_import_idx += 1;
     }
 
-    data.blocker_data.async_thunk_count = async_index;
-    data.blocker_data.has_async = async_index > 0;
+    data.script.blocker_data.async_thunk_count = async_index;
+    data.script.blocker_data.has_async = async_index > 0;
 }
 
 fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>) -> Vec<String> {

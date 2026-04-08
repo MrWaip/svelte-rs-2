@@ -15,7 +15,8 @@ pub(crate) fn classify_pickled_awaits(parsed: &ParserResult<'_>, data: &mut Anal
         .expressions
         .iter()
         .filter_map(|(node_id, _)| {
-            data.template_semantics
+            data.template
+                .template_semantics
                 .node_expr_handles
                 .get(node_id)
                 .copied()
@@ -25,7 +26,8 @@ pub(crate) fn classify_pickled_awaits(parsed: &ParserResult<'_>, data: &mut Anal
         .attr_expressions
         .iter()
         .filter_map(|(node_id, _)| {
-            data.template_semantics
+            data.template
+                .template_semantics
                 .attr_expr_handles
                 .get(node_id)
                 .copied()
@@ -47,7 +49,9 @@ fn collect_pickled_await_offsets(
         };
         let mut collector = PickledAwaitCollector::new();
         collector.visit_expression(expr);
-        data.pickled_await_offsets.extend_offsets(collector.offsets);
+        data.script
+            .pickled_await_offsets
+            .extend_offsets(collector.offsets);
     }
 }
 

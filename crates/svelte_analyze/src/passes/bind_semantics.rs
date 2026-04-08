@@ -43,18 +43,21 @@ impl<'s> BindSemanticsVisitor<'s> {
             .collect();
 
         if !each_vars.is_empty() {
-            data.bind_this_each_context.set(dir.id, each_vars);
+            data.template
+                .bind_semantics
+                .bind_this_each_context
+                .insert(dir.id, each_vars);
         }
     }
 
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
         if let Some(sym_id) = data.bind_target_symbol(dir.id) {
             if Self::is_mutable_rune(sym_id, data) {
-                data.bind_semantics.mutable_rune_targets.insert(dir.id);
+                data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
             }
-            if data.blocker_data.has_async {
-                if let Some(idx) = data.blocker_data.symbol_blocker(sym_id) {
-                    data.bind_semantics
+            if data.script.blocker_data.has_async {
+                if let Some(idx) = data.script.blocker_data.symbol_blocker(sym_id) {
+                    data.template.bind_semantics
                         .bind_blockers
                         .insert(dir.id, smallvec::smallvec![idx]);
                 }
@@ -65,7 +68,7 @@ impl<'s> BindSemanticsVisitor<'s> {
     fn classify_class(dir: &ClassDirective, data: &mut AnalysisData) {
         if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
         {
-            data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
         }
     }
 
@@ -75,7 +78,7 @@ impl<'s> BindSemanticsVisitor<'s> {
         }
         if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
         {
-            data.bind_semantics.mutable_rune_targets.insert(dir.id);
+            data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
         }
     }
 }
@@ -100,7 +103,11 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                 .iter()
                 .any(|&s| ctx.data.scoping.is_prop_source(s))
             {
-                ctx.data.bind_semantics.prop_source_nodes.insert(block.id);
+                ctx.data
+                    .template
+                    .bind_semantics
+                    .prop_source_nodes
+                    .insert(block.id);
             }
         }
     }
@@ -130,9 +137,10 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
 
         // Detect bind:group → mark element and find value attribute
         if let Some(bind_group_id) = bind_group_id {
-            ctx.data.bind_semantics.has_bind_group.insert(el.id);
+            ctx.data.template.bind_semantics.has_bind_group.insert(el.id);
             if let Some(value_attr_id) = bind_group_value_attr_id {
                 ctx.data
+                    .template
                     .bind_semantics
                     .bind_group_value_attr
                     .insert(bind_group_id, value_attr_id);
@@ -140,13 +148,12 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
 
             let parent_eaches = ctx.data.parent_each_blocks(bind_group_id);
             for each_id in parent_eaches {
-                ctx.data.contains_group_binding_each_blocks.insert(each_id);
+                ctx.data.blocks.each_context.mark_contains_group_binding(each_id);
             }
-
         }
 
         if has_contenteditable && has_content_bind {
-            ctx.data.element_flags.bound_contenteditable.insert(el.id);
+            ctx.data.elements.flags.bound_contenteditable.insert(el.id);
         }
     }
 }

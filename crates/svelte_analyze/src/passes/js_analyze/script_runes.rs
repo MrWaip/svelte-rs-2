@@ -16,14 +16,14 @@ pub(crate) fn collect_script_rune_call_kinds(parsed: &ParserResult<'_>, data: &m
             if let Some(kind) = crate::utils::script_info::detect_rune_from_call(call) {
                 let node =
                     OxcNodeId::from_usize(call.node_id().index() + self.node_id_offset as usize);
-                self.data.script_rune_calls.record(node, kind);
+                self.data.script.script_rune_calls.record(node, kind);
             }
             walk_call_expression(self, call);
         }
     }
 
     if let Some(program) = parsed.program.as_ref() {
-        let node_id_offset = data.instance_script_node_id_offset;
+        let node_id_offset = data.script.instance_node_id_offset;
         let mut collector = Collector {
             data,
             node_id_offset,
@@ -31,7 +31,7 @@ pub(crate) fn collect_script_rune_call_kinds(parsed: &ParserResult<'_>, data: &m
         collector.visit_program(program);
     }
     if let Some(program) = parsed.module_program.as_ref() {
-        let node_id_offset = data.module_script_node_id_offset;
+        let node_id_offset = data.script.module_node_id_offset;
         let mut collector = Collector {
             data,
             node_id_offset,

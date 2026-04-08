@@ -1,23 +1,67 @@
 use super::*;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 
-pub struct AnalysisData {
-    pub expressions: NodeTable<ExpressionInfo>,
-    pub attr_expressions: NodeTable<ExpressionInfo>,
-    pub script: Option<ScriptInfo>,
-    pub scoping: ComponentScoping,
-    pub dynamic_nodes: NodeBitSet,
-    pub alt_is_elseif: NodeBitSet,
+pub struct ScriptAnalysis {
+    pub info: Option<ScriptInfo>,
     pub props: Option<PropsAnalysis>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
-    pub instance_script_node_id_offset: u32,
-    pub module_script_node_id_offset: u32,
-    pub needs_context: bool,
+    pub instance_node_id_offset: u32,
+    pub module_node_id_offset: u32,
     pub has_class_state_fields: bool,
-    pub(crate) element_facts: ElementFacts,
-    pub element_flags: ElementFlags,
+    pub has_store_member_mutations: bool,
+    pub runes: bool,
+    pub experimental_async: bool,
+    pub ce_config: Option<svelte_parser::ParsedCeConfig>,
+    pub proxy_state_inits: ProxyStateInits,
+    pub pickled_await_offsets: PickledAwaitOffsets,
+    pub blocker_data: BlockerData,
+    pub script_rune_calls: ScriptRuneCalls,
+}
+
+impl ScriptAnalysis {
+    fn new() -> Self {
+        Self {
+            info: None,
+            props: None,
+            props_id: None,
+            exports: Vec::new(),
+            instance_node_id_offset: 0,
+            module_node_id_offset: 0,
+            has_class_state_fields: false,
+            has_store_member_mutations: false,
+            runes: true,
+            experimental_async: false,
+            ce_config: None,
+            proxy_state_inits: ProxyStateInits::new(),
+            pickled_await_offsets: PickledAwaitOffsets::new(),
+            blocker_data: BlockerData::default(),
+            script_rune_calls: ScriptRuneCalls::new(),
+        }
+    }
+}
+
+pub struct ElementAnalysis {
+    pub(crate) facts: ElementFacts,
+    pub flags: ElementFlags,
     pub directive_modifiers: DirectiveModifierFlags,
+    pub(crate) html_tag_in_svg: NodeBitSet,
+    pub(crate) html_tag_in_mathml: NodeBitSet,
+}
+
+impl ElementAnalysis {
+    fn new(node_count: u32) -> Self {
+        Self {
+            facts: ElementFacts::new(node_count),
+            flags: ElementFlags::new(node_count),
+            directive_modifiers: DirectiveModifierFlags::new(node_count),
+            html_tag_in_svg: NodeBitSet::new(node_count),
+            html_tag_in_mathml: NodeBitSet::new(node_count),
+        }
+    }
+}
+
+pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
     pub rich_content_facts: RichContentFacts,
     pub fragments: FragmentData,
@@ -25,54 +69,16 @@ pub struct AnalysisData {
     pub const_tags: ConstTagData,
     pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
-    pub each_context: EachContextIndex,
-    pub bind_this_each_context: BindThisEachContext,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
-    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
-    pub(crate) render_tag_is_chain: NodeBitSet,
-    pub render_tag_plans: NodeTable<RenderTagPlan>,
-    pub(crate) contains_group_binding_each_blocks: NodeBitSet,
-    pub(crate) html_tag_in_svg: NodeBitSet,
-    pub(crate) html_tag_in_mathml: NodeBitSet,
     pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
-    pub import_syms: ImportSymbolSet,
-    pub runes: bool,
-    pub custom_element: bool,
-    pub experimental_async: bool,
-    pub runtime_plan: RuntimePlan,
-    pub ce_config: Option<svelte_parser::ParsedCeConfig>,
-    pub(crate) proxy_state_inits: ProxyStateInits,
-    pub(crate) has_store_member_mutations: bool,
-    pub(crate) blocker_data: BlockerData,
-    pub(crate) script_rune_calls: ScriptRuneCalls,
-    pub(crate) pickled_await_offsets: PickledAwaitOffsets,
-    pub ignore_data: IgnoreData,
-    /// CSS-scoping metadata: hash, scoped elements, transformed stylesheet.
-    pub css: CssAnalysis,
 }
 
-impl AnalysisData {
-    pub(crate) fn new_empty(node_count: u32) -> Self {
+impl TemplateAnalysis {
+    fn new(node_count: u32) -> Self {
         Self {
-            expressions: NodeTable::new(node_count),
-            attr_expressions: NodeTable::new(node_count),
-            script: None,
-            scoping: ComponentScoping::new_empty(),
-            dynamic_nodes: NodeBitSet::new(node_count),
-            alt_is_elseif: NodeBitSet::new(node_count),
-            props: None,
-            props_id: None,
-            exports: Vec::new(),
-            instance_script_node_id_offset: 0,
-            module_script_node_id_offset: 0,
-            needs_context: false,
-            has_class_state_fields: false,
-            element_facts: ElementFacts::new(node_count),
-            element_flags: ElementFlags::new(node_count),
-            directive_modifiers: DirectiveModifierFlags::new(node_count),
             fragment_facts: FragmentFacts::new(),
             rich_content_facts: RichContentFacts::new(),
             fragments: FragmentData::with_capacity(node_count as usize / 3),
@@ -80,106 +86,154 @@ impl AnalysisData {
             const_tags: ConstTagData::new(node_count),
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
-            each_context: EachContextIndex::new(node_count),
-            bind_this_each_context: BindThisEachContext::new(node_count),
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
+            await_bindings: AwaitBindingData::new(node_count),
+            bind_semantics: BindSemanticsData::new(node_count),
+        }
+    }
+}
+
+pub struct BlockAnalysis {
+    pub each_context: EachContextIndex,
+    pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
+    pub(crate) render_tag_is_chain: NodeBitSet,
+    pub render_tag_plans: NodeTable<RenderTagPlan>,
+}
+
+impl BlockAnalysis {
+    fn new(node_count: u32) -> Self {
+        Self {
+            each_context: EachContextIndex::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
             render_tag_plans: NodeTable::new(node_count),
-            contains_group_binding_each_blocks: NodeBitSet::new(node_count),
-            html_tag_in_svg: NodeBitSet::new(node_count),
-            html_tag_in_mathml: NodeBitSet::new(node_count),
-            await_bindings: AwaitBindingData::new(node_count),
-            bind_semantics: BindSemanticsData::new(node_count),
-            import_syms: ImportSymbolSet::new(),
-            runes: true,
+        }
+    }
+}
+
+pub struct OutputPlanData {
+    pub dynamic_nodes: NodeBitSet,
+    pub alt_is_elseif: NodeBitSet,
+    pub needs_context: bool,
+    pub custom_element: bool,
+    pub runtime_plan: RuntimePlan,
+    pub ignore_data: IgnoreData,
+    /// CSS-scoping metadata: hash, scoped elements, transformed stylesheet.
+    pub css: CssAnalysis,
+}
+
+impl OutputPlanData {
+    fn new(node_count: u32) -> Self {
+        Self {
+            dynamic_nodes: NodeBitSet::new(node_count),
+            alt_is_elseif: NodeBitSet::new(node_count),
+            needs_context: false,
             custom_element: false,
-            experimental_async: false,
             runtime_plan: RuntimePlan::default(),
-            ce_config: None,
-            proxy_state_inits: ProxyStateInits::new(),
-            has_store_member_mutations: false,
-            blocker_data: BlockerData::default(),
-            script_rune_calls: ScriptRuneCalls::new(),
-            pickled_await_offsets: PickledAwaitOffsets::new(),
             ignore_data: IgnoreData::new(),
             css: CssAnalysis::empty(node_count),
         }
     }
 }
 
+pub struct AnalysisData {
+    pub expressions: NodeTable<ExpressionInfo>,
+    pub attr_expressions: NodeTable<ExpressionInfo>,
+    pub scoping: ComponentScoping,
+    pub script: ScriptAnalysis,
+    pub elements: ElementAnalysis,
+    pub template: TemplateAnalysis,
+    pub blocks: BlockAnalysis,
+    pub output: OutputPlanData,
+}
+
+impl AnalysisData {
+    pub(crate) fn new_empty(node_count: u32) -> Self {
+        Self {
+            expressions: NodeTable::new(node_count),
+            attr_expressions: NodeTable::new(node_count),
+            scoping: ComponentScoping::new_empty(),
+            script: ScriptAnalysis::new(),
+            elements: ElementAnalysis::new(node_count),
+            template: TemplateAnalysis::new(node_count),
+            blocks: BlockAnalysis::new(node_count),
+            output: OutputPlanData::new(node_count),
+        }
+    }
+}
+
 impl AnalysisData {
     pub(crate) fn record_element_facts(&mut self, id: NodeId, entry: ElementFactsEntry) {
-        self.element_facts.record_entry(id, entry);
+        self.elements.facts.record_entry(id, entry);
     }
     pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
-        self.html_tag_in_svg.contains(&id)
+        self.elements.html_tag_in_svg.contains(&id)
     }
     pub fn html_tag_in_mathml(&self, id: NodeId) -> bool {
-        self.html_tag_in_mathml.contains(&id)
+        self.elements.html_tag_in_mathml.contains(&id)
     }
     pub fn blocker_data(&self) -> &BlockerData {
-        &self.blocker_data
+        &self.script.blocker_data
     }
     pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
-        &self.script_rune_calls
+        &self.script.script_rune_calls
     }
     pub fn is_pickled_await(&self, offset: u32) -> bool {
-        self.pickled_await_offsets.contains_offset(offset)
+        self.script.pickled_await_offsets.contains_offset(offset)
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
-        self.dynamic_nodes.contains(&id)
+        self.output.dynamic_nodes.contains(&id)
     }
     pub fn is_elseif_alt(&self, id: NodeId) -> bool {
-        self.alt_is_elseif.contains(&id)
+        self.output.alt_is_elseif.contains(&id)
     }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.expressions.get(id)
     }
     pub fn fragment_facts(&self, key: &FragmentKey) -> Option<&FragmentFactsEntry> {
-        self.fragment_facts.entry(key)
+        self.template.fragment_facts.entry(key)
     }
     pub fn fragment_has_children(&self, key: &FragmentKey) -> bool {
-        self.fragment_facts.has_children(key)
+        self.template.fragment_facts.has_children(key)
     }
     pub fn fragment_child_count(&self, key: &FragmentKey) -> u32 {
-        self.fragment_facts.child_count(key)
+        self.template.fragment_facts.child_count(key)
     }
     pub fn fragment_single_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.fragment_facts.single_child(key)
+        self.template.fragment_facts.single_child(key)
     }
     pub fn fragment_non_trivial_child_count(&self, key: &FragmentKey) -> u32 {
-        self.fragment_facts.non_trivial_child_count(key)
+        self.template.fragment_facts.non_trivial_child_count(key)
     }
     pub fn fragment_has_non_trivial_children(&self, key: &FragmentKey) -> bool {
-        self.fragment_facts.has_non_trivial_children(key)
+        self.template.fragment_facts.has_non_trivial_children(key)
     }
     pub fn fragment_has_expression_child(&self, key: &FragmentKey) -> bool {
-        self.fragment_facts.has_expression_child(key)
+        self.template.fragment_facts.has_expression_child(key)
     }
     pub fn fragment_single_expression_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.fragment_facts.single_expression_child(key)
+        self.template.fragment_facts.single_expression_child(key)
     }
     pub fn fragment_single_non_trivial_child(&self, key: &FragmentKey) -> Option<NodeId> {
-        self.fragment_facts.single_non_trivial_child(key)
+        self.template.fragment_facts.single_non_trivial_child(key)
     }
     pub fn fragment_has_direct_animate_child(&self, key: &FragmentKey) -> bool {
-        self.fragment_facts.has_direct_animate_child(key)
+        self.template.fragment_facts.has_direct_animate_child(key)
     }
     pub fn fragment_has_rich_content(
         &self,
         key: &FragmentKey,
         parent: RichContentParentKind,
     ) -> bool {
-        self.rich_content_facts.has_rich_content(key, parent)
+        self.template.rich_content_facts.has_rich_content(key, parent)
     }
     pub fn element_facts(&self, id: NodeId) -> Option<&ElementFactsEntry> {
-        self.element_facts.entry(id)
+        self.elements.facts.entry(id)
     }
     pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
-        self.element_facts.attr_index(id)
+        self.elements.facts.attr_index(id)
     }
     pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
         self.attr_index(id).is_some_and(|index| index.has(name))
@@ -252,124 +306,124 @@ impl AnalysisData {
             })
     }
     pub fn has_spread(&self, id: NodeId) -> bool {
-        self.element_facts.has_spread(id)
+        self.elements.facts.has_spread(id)
     }
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
-        self.element_facts.has_runtime_attrs(id)
+        self.elements.facts.has_runtime_attrs(id)
     }
     pub fn namespace(&self, id: NodeId) -> Option<NamespaceKind> {
-        self.element_facts.namespace(id)
+        self.elements.facts.namespace(id)
     }
     pub fn creation_namespace(&self, id: NodeId) -> Option<Namespace> {
-        self.element_facts.creation_namespace(id)
+        self.elements.facts.creation_namespace(id)
     }
     pub fn is_void(&self, id: NodeId) -> bool {
-        self.element_facts.is_void(id)
+        self.elements.facts.is_void(id)
     }
     pub fn is_custom_element(&self, id: NodeId) -> bool {
-        self.element_facts.is_custom_element(id)
+        self.elements.facts.is_custom_element(id)
     }
     pub fn event_modifiers(&self, id: NodeId) -> EventModifier {
-        self.directive_modifiers.get(id)
+        self.elements.directive_modifiers.get(id)
     }
     pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
-        self.template_topology.parent(id)
+        self.template.template_topology.parent(id)
     }
     pub fn expr_parent(&self, id: NodeId) -> Option<ParentRef> {
-        self.template_topology.expr_parent(id)
+        self.template.template_topology.expr_parent(id)
     }
     pub fn ancestors(&self, id: NodeId) -> crate::types::data::template_topology::Ancestors<'_> {
-        self.template_topology.ancestors(id)
+        self.template.template_topology.ancestors(id)
     }
     pub fn expr_ancestors(
         &self,
         id: NodeId,
     ) -> crate::types::data::template_topology::Ancestors<'_> {
-        self.template_topology.expr_ancestors(id)
+        self.template.template_topology.expr_ancestors(id)
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
-        self.template_topology.nearest_element(id)
+        self.template.template_topology.nearest_element(id)
     }
     pub fn nearest_element_for_expr(&self, id: NodeId) -> Option<NodeId> {
-        self.template_topology.nearest_element_for_expr(id)
+        self.template.template_topology.nearest_element_for_expr(id)
     }
     pub fn template_element(&self, id: NodeId) -> Option<&TemplateElementEntry> {
-        self.template_elements.entry(id)
+        self.template.template_elements.entry(id)
     }
     pub fn template_elements(&self) -> &[NodeId] {
-        self.template_elements.all_elements()
+        self.template.template_elements.all_elements()
     }
     pub fn template_elements_with_tag(&self, tag_name: &str) -> &[NodeId] {
-        self.template_elements.elements_with_tag(tag_name)
+        self.template.template_elements.elements_with_tag(tag_name)
     }
     pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
-        self.template_elements.parent_element(id)
+        self.template.template_elements.parent_element(id)
     }
     pub fn template_element_previous_sibling(&self, id: NodeId) -> Option<NodeId> {
-        self.template_elements.previous_sibling(id)
+        self.template.template_elements.previous_sibling(id)
     }
     pub fn template_element_next_sibling(&self, id: NodeId) -> Option<NodeId> {
-        self.template_elements.next_sibling(id)
+        self.template.template_elements.next_sibling(id)
     }
     pub fn template_element_tag_name(&self, id: NodeId) -> Option<&str> {
-        self.template_elements.tag_name(id)
+        self.template.template_elements.tag_name(id)
     }
     pub fn template_element_static_id(&self, id: NodeId) -> Option<&str> {
-        self.element_facts.static_id(id)
+        self.elements.facts.static_id(id)
     }
     pub fn template_element_has_static_class(&self, id: NodeId, class_name: &str) -> bool {
-        self.element_facts.has_static_class(id, class_name)
+        self.elements.facts.has_static_class(id, class_name)
     }
     pub fn template_element_may_match_class(&self, id: NodeId) -> bool {
-        self.element_facts.may_match_class(id)
+        self.elements.facts.may_match_class(id)
     }
     pub fn template_element_may_match_id(&self, id: NodeId) -> bool {
-        self.element_facts.may_match_id(id)
+        self.elements.facts.may_match_id(id)
     }
     pub fn template_elements_for_class(
         &self,
         class_name: &str,
     ) -> impl Iterator<Item = NodeId> + '_ {
-        self.template_elements.class_candidates(class_name)
+        self.template.template_elements.class_candidates(class_name)
     }
     pub fn template_elements_for_id(&self, id_name: &str) -> impl Iterator<Item = NodeId> + '_ {
-        self.template_elements.id_candidates(id_name)
+        self.template.template_elements.id_candidates(id_name)
     }
     pub fn template_element_previous_siblings(
         &self,
         id: NodeId,
     ) -> impl Iterator<Item = NodeId> + '_ {
-        self.template_elements.previous_siblings(id)
+        self.template.template_elements.previous_siblings(id)
     }
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
-        self.each_context.index_sym(id)
+        self.blocks.each_context.index_sym(id)
     }
     pub fn each_block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
-        self.each_context.block_for_index_sym(sym)
+        self.blocks.each_context.block_for_index_sym(sym)
     }
     pub fn each_key_node_id(&self, id: NodeId) -> Option<NodeId> {
-        self.each_context.key_node_id(id)
+        self.blocks.each_context.key_node_id(id)
     }
     pub fn each_key_uses_index(&self, id: NodeId) -> bool {
-        self.each_context.key_uses_index(id)
+        self.blocks.each_context.key_uses_index(id)
     }
     pub fn each_is_destructured(&self, id: NodeId) -> bool {
-        self.each_context.is_destructured(id)
+        self.blocks.each_context.is_destructured(id)
     }
     pub fn each_body_uses_index(&self, id: NodeId) -> bool {
-        self.each_context.body_uses_index(id)
+        self.blocks.each_context.body_uses_index(id)
     }
     pub fn each_key_is_item(&self, id: NodeId) -> bool {
-        self.each_context.key_is_item(id)
+        self.blocks.each_context.key_is_item(id)
     }
     pub fn each_has_animate(&self, id: NodeId) -> bool {
-        self.each_context.has_animate(id)
+        self.blocks.each_context.has_animate(id)
     }
     pub fn each_context_name(&self, id: NodeId) -> &str {
-        self.each_context.context_name(id)
+        self.blocks.each_context.context_name(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.bind_this_each_context.get(id)
+        self.template.bind_semantics.bind_this_each_context(id)
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         let Some(info) = self.attr_expressions.get(id) else {
@@ -390,25 +444,26 @@ impl AnalysisData {
             .collect()
     }
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.contains_group_binding_each_blocks.contains(&id)
+        self.blocks.each_context.contains_group_binding(id)
     }
     pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
-        self.each_context.needs_collection_id(id)
+        self.blocks.each_context.needs_collection_id(id)
     }
     pub fn css_hash(&self) -> &str {
-        &self.css.hash
+        &self.output.css.hash
     }
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
-        self.css.scoped_elements.contains(&id)
+        self.output.css.scoped_elements.contains(&id)
     }
     pub fn inject_styles(&self) -> bool {
-        self.css.inject_styles
+        self.output.css.inject_styles
     }
     pub fn attr_expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.attr_expressions.get(id)
     }
     pub fn node_expr_handle(&self, id: NodeId) -> ExprHandle {
         *self
+            .template
             .template_semantics
             .node_expr_handles
             .get(id)
@@ -416,58 +471,66 @@ impl AnalysisData {
     }
     pub fn attr_expr_handle(&self, id: NodeId) -> ExprHandle {
         *self
+            .template
             .template_semantics
             .attr_expr_handles
             .get(id)
             .unwrap_or_else(|| panic!("no expr handle for attr {:?}", id))
     }
     pub fn const_tag_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .const_tag_stmt_handles
             .get(id)
             .copied()
     }
     pub fn snippet_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .snippet_stmt_handles
             .get(id)
             .copied()
     }
     pub fn each_context_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .each_context_stmt_handles
             .get(id)
             .copied()
     }
     pub fn each_index_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .each_index_stmt_handles
             .get(id)
             .copied()
     }
     pub fn await_value_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .await_value_stmt_handles
             .get(id)
             .copied()
     }
     pub fn await_error_stmt_handle(&self, id: NodeId) -> Option<StmtHandle> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .await_error_stmt_handles
             .get(id)
             .copied()
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.template_semantics.node_ref_symbols(id)
+        self.template.template_semantics.node_ref_symbols(id)
     }
     pub fn stmt_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.template_semantics.stmt_ref_symbols(id)
+        self.template.template_semantics.stmt_ref_symbols(id)
     }
     pub fn snippet_param_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
-        self.template_semantics.stmt_ref_symbols(id)
+        self.template.template_semantics.stmt_ref_symbols(id)
     }
     pub fn shorthand_symbol(&self, id: NodeId) -> Option<SymbolId> {
-        self.template_semantics
+        self.template
+            .template_semantics
             .node_ref_symbols(id)
             .first()
             .copied()
@@ -492,14 +555,14 @@ impl AnalysisData {
                         .find_binding(self.scoping.root_scope_id(), name.as_str()),
                     _ => None,
                 })
-                .is_some_and(|sym| self.import_syms.contains(sym))
+                .is_some_and(|sym| self.scoping.is_import(sym))
         })
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
-        self.render_tag_plans.get(id)
+        self.blocks.render_tag_plans.get(id)
     }
     pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.const_tags.syms(id).map(|syms| syms.as_slice())
+        self.template.const_tags.syms(id).map(|syms| syms.as_slice())
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {
@@ -518,7 +581,7 @@ impl AnalysisData {
                 Some(ExprDeps {
                     info,
                     blockers,
-                    needs_memo: self.element_flags.is_dynamic_attr(id)
+                    needs_memo: self.elements.flags.is_dynamic_attr(id)
                         && (info.has_call || info.has_await),
                 })
             }
@@ -526,7 +589,7 @@ impl AnalysisData {
     }
     pub fn component_attr_needs_memo(&self, attr_id: NodeId) -> bool {
         self.attr_expressions.get(attr_id).is_some_and(|e| {
-            e.has_call || (!e.kind.is_simple() && self.element_flags.is_dynamic_attr(attr_id))
+            e.has_call || (!e.kind.is_simple() && self.elements.flags.is_dynamic_attr(attr_id))
         })
     }
     pub fn needs_expr_memoization(&self, id: NodeId) -> bool {
@@ -549,11 +612,11 @@ impl AnalysisData {
     }
     fn collect_blockers(&self, ref_symbols: &[SymbolId]) -> SmallVec<[u32; 2]> {
         let mut result = SmallVec::new();
-        if !self.blocker_data.has_async {
+        if !self.script.blocker_data.has_async {
             return result;
         }
         for sym in ref_symbols {
-            if let Some(&idx) = self.blocker_data.symbol_blockers.get(sym) {
+            if let Some(&idx) = self.script.blocker_data.symbol_blockers.get(sym) {
                 if !result.contains(&idx) {
                     result.push(idx);
                 }
@@ -659,7 +722,7 @@ impl AnalysisData {
         if syms.is_empty() {
             return false;
         }
-        let Some(fragment) = self.fragments.lowered(key) else {
+        let Some(fragment) = self.template.fragments.lowered(key) else {
             return false;
         };
         for item in &fragment.items {

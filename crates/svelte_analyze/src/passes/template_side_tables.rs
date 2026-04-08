@@ -102,7 +102,7 @@ pub(crate) fn collect_fragment_facts(
         FragmentKey::Root,
         &component.store,
         &component.source,
-        &mut data.fragment_facts,
+        &mut data.template.fragment_facts,
     );
 }
 
@@ -115,7 +115,7 @@ pub(crate) fn collect_rich_content_facts(
         FragmentKey::Root,
         &component.store,
         &component.source,
-        &mut data.rich_content_facts,
+        &mut data.template.rich_content_facts,
     );
 }
 
@@ -504,7 +504,7 @@ fn get_declarator<'a>(
 impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
     fn visit_text(&mut self, text: &svelte_ast::Text, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(text.id, ctx.parent());
     }
 
@@ -514,32 +514,32 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         ctx: &mut VisitContext<'_>,
     ) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(tag.id, ctx.parent());
     }
 
     fn visit_render_tag(&mut self, tag: &svelte_ast::RenderTag, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(tag.id, ctx.parent());
     }
 
     fn visit_html_tag(&mut self, tag: &svelte_ast::HtmlTag, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(tag.id, ctx.parent());
     }
 
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(block.id, ctx.parent());
         if let Some(handle) = block
             .context_span
             .and_then(|cs| ctx.parsed().and_then(|p| p.stmt_handle(cs.start)))
         {
             ctx.data
-                .template_semantics
+                .template.template_semantics
                 .each_context_stmt_handles
                 .insert(block.id, handle);
         }
@@ -548,7 +548,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .and_then(|span| ctx.parsed().and_then(|p| p.stmt_handle(span.start)))
         {
             ctx.data
-                .template_semantics
+                .template.template_semantics
                 .each_index_stmt_handles
                 .insert(block.id, handle);
         }
@@ -570,7 +570,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .scoping
                 .add_synthetic_binding(child_scope, "$$item");
             ctx.data.scoping.mark_each_block_var(ctx_sym);
-            ctx.data.each_context.mark_destructured(block.id);
+            ctx.data.blocks.each_context.mark_destructured(block.id);
         }
 
         // Index SymbolId is populated in leave_each_block (after dispatch_stmt creates bindings)
@@ -579,13 +579,13 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .data
             .fragment_has_direct_animate_child(&FragmentKey::EachBody(block.id))
         {
-            ctx.data.each_context.mark_has_animate(block.id);
+            ctx.data.blocks.each_context.mark_has_animate(block.id);
         }
     }
 
     fn visit_if_block(&mut self, block: &svelte_ast::IfBlock, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
@@ -636,7 +636,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
             if let Some(ctx_name) = ctx_name {
                 ctx.data
-                    .each_context
+                    .blocks.each_context
                     .record_context_name(block.id, ctx_name.to_string());
 
                 if let Some(ctx_sym) = ctx.data.scoping.find_binding(child_scope, ctx_name) {
@@ -656,7 +656,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                             .is_some_and(|sym| sym == ctx_sym);
                         if is_key_item {
                             ctx.data.scoping.mark_each_non_reactive(ctx_sym);
-                            ctx.data.each_context.mark_key_is_item(block.id);
+                            ctx.data.blocks.each_context.mark_key_is_item(block.id);
                         }
                     }
                 }
@@ -673,7 +673,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             if let Some(idx_name) = idx_name {
                 if let Some(idx_sym) = ctx.data.scoping.find_binding(child_scope, idx_name) {
                     ctx.data.scoping.mark_each_block_var(idx_sym);
-                    ctx.data.each_context.record_index_sym(block.id, idx_sym);
+                    ctx.data.blocks.each_context.record_index_sym(block.id, idx_sym);
                     // EACH_INDEX_REACTIVE is only set for keyed blocks. For unkeyed blocks the
                     // index is a plain iteration counter — not a reactive signal — so reads
                     // must not be wrapped in $.get().
@@ -698,7 +698,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 .own_binding_names(child_scope)
                 .any(|name| ctx.data.scoping.find_binding(parent_scope, name).is_some());
             if shadows {
-                ctx.data.each_context.mark_needs_collection_id(block.id);
+                ctx.data.blocks.each_context.mark_needs_collection_id(block.id);
             }
         }
     }
@@ -709,7 +709,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .and_then(|p| p.stmt_handle(block.expression_span.start))
         {
             ctx.data
-                .template_semantics
+                .template.template_semantics
                 .snippet_stmt_handles
                 .insert(block.id, handle);
         }
@@ -734,7 +734,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(tag.id, ctx.parent());
         if let Some(parsed) = ctx.parsed() {
             if let Some(oxc_ast::ast::Statement::VariableDeclaration(decl)) = parsed
@@ -744,7 +744,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 if let Some(declarator) = decl.declarations.first() {
                     let mut name_strings = Vec::new();
                     collect_binding_names(&declarator.id, &mut name_strings);
-                    ctx.data.const_tags.names.insert(tag.id, name_strings);
+                    ctx.data.template.const_tags.names.insert(tag.id, name_strings);
                 }
             }
         }
@@ -752,7 +752,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         let parent_element = ctx.nearest_element();
         let inherited = inherited_namespace(self.component, ctx, parent_element);
@@ -764,20 +764,20 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             is_void(&el.name),
             el.name.contains('-'),
         );
-        ctx.data.element_facts.record_entry(el.id, facts);
+        ctx.data.elements.facts.record_entry(el.id, facts);
         let facts = ctx
             .data
-            .element_facts
+            .elements.facts
             .entry(el.id)
             .expect("element facts recorded before template element index");
         ctx.data
-            .template_elements
+            .template.template_elements
             .record(el.id, &el.name, facts, parent_element);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(cn.id, ctx.parent());
         ctx.data.record_element_facts(
             cn.id,
@@ -794,7 +794,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         let namespace = static_xmlns_namespace(&el.attributes, ctx.source)
             .unwrap_or_else(|| inherited_namespace(self.component, ctx, ctx.nearest_element()));
@@ -813,7 +813,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         ctx.data.record_element_facts(
             el.id,
@@ -830,7 +830,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_svelte_document(&mut self, el: &SvelteDocument, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         ctx.data.record_element_facts(
             el.id,
@@ -847,7 +847,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_svelte_body(&mut self, el: &SvelteBody, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         ctx.data.record_element_facts(
             el.id,
@@ -864,7 +864,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_svelte_boundary(&mut self, el: &SvelteBoundary, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(el.id, ctx.parent());
         ctx.data.record_element_facts(
             el.id,
@@ -881,25 +881,25 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
     fn visit_key_block(&mut self, block: &svelte_ast::KeyBlock, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
     fn visit_await_block(&mut self, block: &svelte_ast::AwaitBlock, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(block.id, ctx.parent());
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_node_parent(attr.id(), ctx.parent());
     }
 
@@ -910,7 +910,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         ctx: &mut VisitContext<'_>,
     ) {
         ctx.data
-            .template_topology
+            .template.template_topology
             .record_expr_parent(node_id, ctx.parent());
     }
 }

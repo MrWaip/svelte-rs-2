@@ -146,6 +146,7 @@ fn walk_node<'a>(
 
             let names = ctx
                 .analysis
+                .template
                 .const_tags
                 .names(tag.id)
                 .cloned()

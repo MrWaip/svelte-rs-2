@@ -13,7 +13,7 @@ impl ReactivityVisitor {
 impl TemplateVisitor for ReactivityVisitor {
     fn visit_await_block(&mut self, block: &AwaitBlock, ctx: &mut VisitContext<'_>) {
         // Await blocks are always dynamic
-        ctx.data.dynamic_nodes.insert(block.id);
+        ctx.data.output.dynamic_nodes.insert(block.id);
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_>) {
@@ -23,14 +23,14 @@ impl TemplateVisitor for ReactivityVisitor {
             .get(tag.id)
             .is_some_and(|info| info.is_dynamic)
         {
-            ctx.data.dynamic_nodes.insert(tag.id);
+            ctx.data.output.dynamic_nodes.insert(tag.id);
         }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_>) {
         if ParentKind::from_attr(attr).is_some_and(|k| k.needs_element_ref()) {
             if let Some(el_id) = ctx.data.nearest_element(attr.id()) {
-                ctx.data.element_flags.needs_ref.insert(el_id);
+                ctx.data.elements.flags.needs_ref.insert(el_id);
             }
         }
     }
@@ -62,13 +62,14 @@ impl TemplateVisitor for ReactivityVisitor {
             });
 
             if is_dynamic {
-                ctx.data.element_flags.dynamic_attrs.insert(attr_id);
+                ctx.data.elements.flags.dynamic_attrs.insert(attr_id);
                 if !in_component {
                     if let Some(el_id) = ctx.data.nearest_element_for_expr(node_id) {
-                        ctx.data.element_flags.needs_ref.insert(el_id);
+                        ctx.data.elements.flags.needs_ref.insert(el_id);
                         if matches!(parent_kind, Some(ParentKind::ClassDirective)) {
                             ctx.data
-                                .element_flags
+                                .elements
+                                .flags
                                 .has_dynamic_class_directives
                                 .insert(el_id);
                         }
@@ -87,7 +88,7 @@ impl TemplateVisitor for ReactivityVisitor {
                 .get(node_id)
                 .is_some_and(|info| info.is_dynamic)
             {
-                ctx.data.dynamic_nodes.insert(node_id);
+                ctx.data.output.dynamic_nodes.insert(node_id);
             }
         }
     }

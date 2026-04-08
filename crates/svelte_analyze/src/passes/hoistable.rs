@@ -29,7 +29,7 @@ impl HoistableSnippetsVisitor {
     pub(crate) fn finish(self, data: &mut crate::types::data::AnalysisData) {
         for id in &self.top_level_ids {
             if !self.tainted.contains(id) {
-                data.snippets.hoistable.insert(*id);
+                data.template.snippets.hoistable.insert(*id);
             }
         }
     }

@@ -334,16 +334,16 @@ fn binding_contains(pattern: &BindingPattern<'_>, name: &str) -> bool {
 /// Warn when `$props()` uses identifier pattern or rest element in a custom element
 /// without explicit `customElement.props` config.
 fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
-    if !data.custom_element {
+    if !data.output.custom_element {
         return;
     }
 
     // Explicit `customElement.props` config suppresses the warning.
-    if data.ce_config.as_ref().is_some_and(|c| !c.props.is_empty()) {
+    if data.script.ce_config.as_ref().is_some_and(|c| !c.props.is_empty()) {
         return;
     }
 
-    let Some(props) = &data.props else {
+    let Some(props) = &data.script.props else {
         return;
     };
 
@@ -355,6 +355,7 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
     // Use the $props() declaration span from script info.
     let span = data
         .script
+        .info
         .as_ref()
         .and_then(|s| {
             s.declarations
@@ -384,7 +385,7 @@ fn validate_svelte_options_warnings(
         let kind = match attr.html_name() {
             "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
             "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
-            "customElement" if !data.custom_element => {
+            "customElement" if !data.output.custom_element => {
                 Some(DiagnosticKind::OptionsMissingCustomElement)
             }
             _ => None,

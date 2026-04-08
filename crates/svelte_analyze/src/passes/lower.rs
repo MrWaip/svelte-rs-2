@@ -72,7 +72,7 @@ fn collect_const_tags_in(
         }
     }
     if let Some(ids) = const_ids {
-        data.const_tags.by_fragment.insert(key, ids);
+        data.template.const_tags.by_fragment.insert(key, ids);
     }
     for &id in &fragment.nodes {
         match store.get(id) {
@@ -187,7 +187,7 @@ fn lower_nodes(
     let items = build_items_from_nodes(nodes, component, inside_head, in_svg_non_text, store);
 
     // Pre-compute fragment blocker indices (experimental.async)
-    if data.blocker_data.has_async {
+    if data.script.blocker_data.has_async {
         let mut blockers = SmallVec::<[u32; 2]>::new();
         for item in &items {
             if let FragmentItem::TextConcat { parts, .. } = item {
@@ -203,11 +203,12 @@ fn lower_nodes(
         if !blockers.is_empty() {
             blockers.sort_unstable();
             blockers.dedup();
-            data.fragments.fragment_blockers.insert(key, blockers);
+            data.template.fragments.fragment_blockers.insert(key, blockers);
         }
     }
 
-    data.fragments
+    data.template
+        .fragments
         .lowered
         .insert(key, LoweredFragment { items });
 
@@ -266,7 +267,7 @@ fn lower_nodes(
                     })
                     .collect();
                 if !snippets.is_empty() {
-                    data.snippets.component_snippets.insert(cn.id, snippets);
+                    data.template.snippets.component_snippets.insert(cn.id, snippets);
                 }
 
                 // Partition children by slot="name" attribute
@@ -308,7 +309,7 @@ fn lower_nodes(
                     slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
-                    data.snippets
+                    data.template.snippets
                         .component_named_slots
                         .insert(cn.id, slot_mappings);
                 }
@@ -337,13 +338,13 @@ fn lower_nodes(
                         in_mathml,
                     );
                     // Detect elseif: alternate has a single IfBlock child marked as elseif
-                    let is_elseif = data.fragments.lowered.get(&alt_key).is_some_and(|lf| {
+                    let is_elseif = data.template.fragments.lowered.get(&alt_key).is_some_and(|lf| {
                         lf.items.len() == 1
                             && matches!(&lf.items[0], FragmentItem::IfBlock(id)
                                 if alt.nodes.iter().any(|&nid| matches!(store.get(nid), Node::IfBlock(ib) if ib.id == *id && ib.elseif)))
                     });
                     if is_elseif {
-                        data.alt_is_elseif.insert(block.id);
+                        data.output.alt_is_elseif.insert(block.id);
                     }
                 }
             }
@@ -472,9 +473,9 @@ fn lower_nodes(
             Node::SvelteWindow(_) | Node::SvelteDocument(_) | Node::SvelteBody(_) => {}
             Node::HtmlTag(tag) => {
                 if in_svg_ns {
-                    data.html_tag_in_svg.insert(tag.id);
+                    data.elements.html_tag_in_svg.insert(tag.id);
                 } else if in_mathml {
-                    data.html_tag_in_mathml.insert(tag.id);
+                    data.elements.html_tag_in_mathml.insert(tag.id);
                 }
             }
             Node::Text(_)
@@ -487,10 +488,10 @@ fn lower_nodes(
     }
 
     if let Some(ids) = debug_ids {
-        data.debug_tags.by_fragment.insert(key, ids);
+        data.template.debug_tags.by_fragment.insert(key, ids);
     }
     if let Some(ids) = title_ids {
-        data.title_elements.by_fragment.insert(key, ids);
+        data.template.title_elements.by_fragment.insert(key, ids);
     }
 }
 

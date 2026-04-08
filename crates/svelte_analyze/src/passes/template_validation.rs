@@ -787,7 +787,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         );
 
         // slot_element_deprecated: <slot> is deprecated in runes mode; use {@render} instead.
-        if el.name == "slot" && ctx.runes && !ctx.data.custom_element {
+        if el.name == "slot" && ctx.runes && !ctx.data.output.custom_element {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SlotElementDeprecated,
                 el.span,
@@ -984,7 +984,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
             if ctx
                 .data
-                .ignore_data
+                .output.ignore_data
                 .is_ignored(text.id, "bidirectional_control_characters")
             {
                 break;
@@ -1825,7 +1825,7 @@ fn validate_const_tag_invalid_reference_expr(
     source_offset: u32,
     ctx: &mut VisitContext<'_>,
 ) {
-    if !ctx.data.experimental_async {
+    if !ctx.data.script.experimental_async {
         return;
     }
 
@@ -1839,7 +1839,7 @@ fn validate_const_tag_invalid_reference_stmt(
     source_offset: u32,
     ctx: &mut VisitContext<'_>,
 ) {
-    if !ctx.data.experimental_async {
+    if !ctx.data.script.experimental_async {
         return;
     }
 

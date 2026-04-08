@@ -18,8 +18,8 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
     if let Some(module_program) = parsed.module_program.as_ref() {
         builder.add_module_program(module_program);
     }
-    data.module_script_node_id_offset = 0;
-    data.instance_script_node_id_offset = builder.next_node_id();
+    data.script.module_node_id_offset = 0;
+    data.script.instance_node_id_offset = builder.next_node_id();
 
     if let Some(program) = parsed.program.as_ref() {
         builder.add_instance_program(program);
@@ -35,10 +35,10 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
     let mut scoping = ComponentScoping::from_semantics(builder.finish());
     scoping.build_template_scope_set();
 
-    if let Some(script) = data.script.as_mut() {
+    if let Some(script) = data.script.info.as_mut() {
         script_info::enrich_from_component_scoping(&scoping, script);
         if let Some(program) = parsed.program.as_ref() {
-            data.needs_context =
+            data.output.needs_context =
                 crate::passes::js_analyze::needs_context_for_program(program, &scoping, script);
         }
     }
@@ -49,17 +49,13 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
             let mut module_info =
                 script_info::extract_script_info(module_program, span.start, module_source);
             script_info::enrich_from_component_scoping(&scoping, &mut module_info);
-            data.needs_context |= crate::passes::js_analyze::needs_context_for_program(
+            data.output.needs_context |= crate::passes::js_analyze::needs_context_for_program(
                 module_program,
                 &scoping,
                 &module_info,
             );
         }
     }
-
-    let import_syms = scoping.collect_import_syms();
-    data.import_syms = crate::types::data::ImportSymbolSet::new();
-    data.import_syms.extend(import_syms);
     data.scoping = scoping;
 }
 
@@ -116,6 +112,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     self.record_expr_handle(tag.id, tag.expression_span.start, false);
                     if let Some(handle) = self.parsed.stmt_handle(tag.expression_span.start) {
                         self.data
+                            .template
                             .template_semantics
                             .const_tag_stmt_handles
                             .insert(tag.id, handle);
@@ -165,7 +162,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                         .stmt_handle(block.expression_span.start)
                         .and_then(|handle| self.parsed.stmt(handle))
                     {
-                        self.data.template_semantics.snippet_stmt_handles.insert(
+                        self.data.template.template_semantics.snippet_stmt_handles.insert(
                             block.id,
                             self.parsed
                                 .stmt_handle(block.expression_span.start)
@@ -264,6 +261,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
         if let Some(span) = block.context_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
                 self.data
+                    .template
                     .template_semantics
                     .each_context_stmt_handles
                     .insert(block.id, handle);
@@ -275,6 +273,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
         if let Some(span) = block.index_span {
             if let Some(handle) = self.parsed.stmt_handle(span.start) {
                 self.data
+                    .template
                     .template_semantics
                     .each_index_stmt_handles
                     .insert(block.id, handle);
@@ -321,6 +320,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
             if let Some(span) = block.value_span {
                 if let Some(handle) = self.parsed.stmt_handle(span.start) {
                     self.data
+                        .template
                         .template_semantics
                         .await_value_stmt_handles
                         .insert(block.id, handle);
@@ -337,6 +337,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
             if let Some(span) = block.error_span {
                 if let Some(handle) = self.parsed.stmt_handle(span.start) {
                     self.data
+                        .template
                         .template_semantics
                         .await_error_stmt_handles
                         .insert(block.id, handle);
@@ -425,6 +426,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                 ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Write)
             {
                 self.data
+                    .template
                     .template_semantics
                     .node_ref_symbols
                     .insert(dir.id, smallvec![sym_id]);
@@ -446,6 +448,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
             ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Read)
         {
             self.data
+                .template
                 .template_semantics
                 .node_ref_symbols
                 .insert(dir.id, smallvec![sym_id]);
@@ -462,6 +465,7 @@ impl AnalyzeTemplateWalker<'_, '_> {
                     ctx.materialize_shorthand_reference(dir.name.as_str(), ReferenceFlags::Read)
                 {
                     self.data
+                        .template
                         .template_semantics
                         .node_ref_symbols
                         .insert(dir.id, smallvec![sym_id]);
@@ -533,11 +537,13 @@ impl AnalyzeTemplateWalker<'_, '_> {
         };
         if is_attr {
             self.data
+                .template
                 .template_semantics
                 .attr_expr_handles
                 .insert(node_id, handle);
         } else {
             self.data
+                .template
                 .template_semantics
                 .node_expr_handles
                 .insert(node_id, handle);

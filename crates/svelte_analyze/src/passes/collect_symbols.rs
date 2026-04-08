@@ -28,7 +28,7 @@ pub(crate) struct CollectSymbolsVisitor {
 /// Resolve script-level store subscriptions from OXC unresolved references.
 /// Called after the template walk, when ComponentScoping is fully built.
 pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
-    let candidates: Vec<String> = match &data.script {
+    let candidates: Vec<String> = match &data.script.info {
         Some(s) => s.store_candidates.iter().map(|n| format!("${n}")).collect(),
         None => return,
     };
@@ -44,7 +44,7 @@ pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
 impl TemplateVisitor for CollectSymbolsVisitor {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(key_id) = block.key_id {
-            ctx.data.each_context.record_key_node_id(block.id, key_id);
+            ctx.data.blocks.each_context.record_key_node_id(block.id, key_id);
         }
     }
 
@@ -81,6 +81,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         let symbols = collect_ref_symbols_from_formal_parameters(params, &mut ctx.data.scoping);
         if !symbols.is_empty() {
             ctx.data
+                .template
                 .template_semantics
                 .stmt_ref_symbols
                 .insert(node_id, symbols);
@@ -98,6 +99,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
             .and_then(|p| p.expr_handle(tag.expression_span.start))
         {
             ctx.data
+                .template
                 .template_semantics
                 .node_expr_handles
                 .insert(tag.id, handle);
@@ -107,6 +109,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
             .and_then(|p| p.stmt_handle(tag.expression_span.start))
         {
             ctx.data
+                .template
                 .template_semantics
                 .const_tag_stmt_handles
                 .insert(tag.id, handle);
@@ -208,9 +211,9 @@ fn detect_each_index_usage(
                 .each_key_node_id(block_id)
                 .is_some_and(|kid| kid == node_id);
             if is_key {
-                data.each_context.mark_key_uses_index(block_id);
+                data.blocks.each_context.mark_key_uses_index(block_id);
             } else {
-                data.each_context.mark_body_uses_index(block_id);
+                data.blocks.each_context.mark_body_uses_index(block_id);
             }
         }
     }
@@ -230,11 +233,13 @@ fn store_expr_offset(node_id: NodeId, span: Span, ctx: &mut VisitContext<'_>) {
     };
     if ctx.parent().is_some_and(|p| p.kind.is_attr()) {
         ctx.data
+            .template
             .template_semantics
             .attr_expr_handles
             .insert(node_id, handle);
     } else {
         ctx.data
+            .template
             .template_semantics
             .node_expr_handles
             .insert(node_id, handle);
@@ -250,7 +255,7 @@ fn classify_shorthand(
     if let Some((attr_id, name)) = pending.take() {
         if let Expression::Identifier(ident) = expr {
             if ident.name.as_str() == name {
-                data.element_flags.expression_shorthand.insert(attr_id);
+                data.elements.flags.expression_shorthand.insert(attr_id);
             }
         }
     }
@@ -272,7 +277,7 @@ fn classify_clsx(
             | Expression::TemplateLiteral(_)
             | Expression::BinaryExpression(_)
     ) {
-        data.element_flags.needs_clsx.insert(node_id);
+        data.elements.flags.needs_clsx.insert(node_id);
     }
 }
 
@@ -321,7 +326,7 @@ fn resolve_render_tag_callee(tag: &RenderTag, ctx: &mut VisitContext<'_>) {
         {
             if let Expression::Identifier(ident) = &call.callee {
                 if let Some(sym_id) = resolve_identifier_symbol(ident, &ctx.data.scoping) {
-                    ctx.data.render_tag_callee_sym.insert(tag.id, sym_id);
+                    ctx.data.blocks.render_tag_callee_sym.insert(tag.id, sym_id);
                 }
             }
         }

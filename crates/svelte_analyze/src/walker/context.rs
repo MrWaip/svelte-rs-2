@@ -135,8 +135,12 @@ impl<'a> VisitContext<'a> {
 
     pub fn record_ignore_for_node(&mut self, node_id: NodeId) {
         if !self.ignore_current.is_empty() {
-            let idx = self.data.ignore_data.intern_snapshot(&self.ignore_current);
-            self.data.ignore_data.set_snapshot(node_id, idx);
+            let idx = self
+                .data
+                .output
+                .ignore_data
+                .intern_snapshot(&self.ignore_current);
+            self.data.output.ignore_data.set_snapshot(node_id, idx);
         }
     }
 

@@ -38,7 +38,7 @@ pub fn analyze_css_pass(
     validator.visit_stylesheet(stylesheet);
 
     let node_count = component.node_count();
-    data.css = CssAnalysis {
+    data.output.css = CssAnalysis {
         hash,
         scoped_elements: NodeBitSet::new(node_count),
         inject_styles,

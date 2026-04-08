@@ -44,7 +44,7 @@ impl crate::walker::TemplateVisitor for RenderTagClassifier<'_, '_> {
             self.parsed.expr(handle),
             Some(Expression::ChainExpression(_))
         ) {
-            ctx.data.render_tag_is_chain.insert(tag.id);
+            ctx.data.blocks.render_tag_is_chain.insert(tag.id);
             if let Some(Expression::ChainExpression(chain)) = self.parsed.take_expr(handle) {
                 if let oxc_ast::ast::ChainElement::CallExpression(call) = chain.unbox().expression {
                     self.parsed
@@ -67,23 +67,25 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
         if let Some(val_span) = block.value_span {
             if let Some(handle) = parsed.stmt_handle(val_span.start) {
                 ctx.data
+                    .template
                     .template_semantics
                     .await_value_stmt_handles
                     .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, val_span.start) {
-                ctx.data.await_bindings.values.insert(block.id, info);
+                ctx.data.template.await_bindings.values.insert(block.id, info);
             }
         }
         if let Some(err_span) = block.error_span {
             if let Some(handle) = parsed.stmt_handle(err_span.start) {
                 ctx.data
+                    .template
                     .template_semantics
                     .await_error_stmt_handles
                     .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, err_span.start) {
-                ctx.data.await_bindings.errors.insert(block.id, info);
+                ctx.data.template.await_bindings.errors.insert(block.id, info);
             }
         }
     }
@@ -138,7 +140,7 @@ pub(crate) fn classify_render_tag_args(
                 prop_source: None,
             })
             .collect();
-        data.render_tag_plans.insert(
+        data.blocks.render_tag_plans.insert(
             tag_id,
             RenderTagPlan {
                 callee_mode: RenderTagCalleeMode::Direct,

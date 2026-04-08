@@ -11,16 +11,17 @@ pub(crate) mod walker;
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockerData,
-    ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
+    BlockAnalysis, ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo,
+    ComponentPropKind, ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
     DirectiveModifierFlags, EachContextIndex, ElementFacts, ElementFactsEntry, ElementFlags,
-    EventHandlerMode, EventModifier, ExprDeps, ExprHandle,
+    ElementAnalysis, EventHandlerMode, EventModifier, ExprDeps, ExprHandle,
     ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry,
-    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, ImportSymbolSet, LoweredFragment,
-    LoweredTextPart, NamespaceKind, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets,
+    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart,
+    NamespaceKind, OutputPlanData, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets,
     PropAnalysis, PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptRuneCalls,
-    SnippetData, StmtHandle, TemplateElementEntry, TemplateElementIndex, TemplateTopology,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptAnalysis,
+    ScriptRuneCalls, SnippetData, StmtHandle, TemplateAnalysis, TemplateElementEntry,
+    TemplateElementIndex, TemplateTopology,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -76,9 +77,9 @@ pub fn analyze_with_options<'a>(
     let mut diags = Vec::new();
 
     let mut data = AnalysisData::new_empty(component.node_count());
-    data.runes = options.runes;
-    data.custom_element = options.custom_element;
-    data.experimental_async = options.experimental_async;
+    data.script.runes = options.runes;
+    data.output.custom_element = options.custom_element;
+    data.script.experimental_async = options.experimental_async;
     let execution_order = passes::resolve_default_execution_order()
         .unwrap_or_else(|err| panic!("invalid analyze pass configuration: {err:?}"));
     debug_assert_eq!(execution_order, passes::default_stage_execution_order());
@@ -104,7 +105,7 @@ pub fn analyze_with_options<'a>(
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
     }
 
-    data.runtime_plan = build_runtime_plan(&data, options.dev);
+    data.output.runtime_plan = build_runtime_plan(&data, options.dev);
 
     (data, parsed, diags)
 }
@@ -134,12 +135,9 @@ pub fn analyze_module(
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
 
             data.scoping = scoping;
-            data.script = Some(script_info);
+            data.script.info = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
             passes::mark_runes::mark_nested_runes(&program, &mut data.scoping);
-            let import_syms = data.scoping.collect_import_syms();
-            data.import_syms = ImportSymbolSet::new();
-            data.import_syms.extend(import_syms);
             validate::validate_program(&data, &program, 0, true, &mut diags);
         }
         Err(errs) => diags.extend(errs),
@@ -148,14 +146,20 @@ pub fn analyze_module(
     (data, diags)
 }
 fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
-    let has_exports = !data.exports.is_empty();
-    let has_bindable = data.props.as_ref().is_some_and(|p| p.has_bindable);
+    let has_exports = !data.script.exports.is_empty();
+    let has_bindable = data.script.props.as_ref().is_some_and(|p| p.has_bindable);
     let has_stores = data.scoping.has_stores();
     let has_ce_props =
-        data.custom_element && data.props.as_ref().is_some_and(|p| !p.props.is_empty());
-    let needs_push = has_bindable || has_exports || has_ce_props || data.needs_context || dev;
+        data.output.custom_element
+            && data
+                .script
+                .props
+                .as_ref()
+                .is_some_and(|p| !p.props.is_empty());
+    let needs_push =
+        has_bindable || has_exports || has_ce_props || data.output.needs_context || dev;
     let has_component_exports = has_exports || has_ce_props || dev;
-    let needs_props_param = data.props.is_some() || needs_push;
+    let needs_props_param = data.script.props.is_some() || needs_push;
 
     RuntimePlan {
         needs_push,

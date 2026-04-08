@@ -85,6 +85,7 @@ impl<'s> TemplateClassificationBundle<'s> {
         let root = data.scoping.root_scope_id();
         let script_syms: FxHashSet<SymbolId> = data
             .script
+            .info
             .as_ref()
             .map(|s| {
                 s.declarations
