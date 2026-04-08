@@ -135,7 +135,6 @@ fn css_scope_spread_attribute() {
 }
 
 #[rstest]
-#[ignore = "bug: <script module> exports emitted before snippet consts instead of between snippet consts and var root_N template allocations (codegen ordering)"]
 fn script_module_exports_ordering_with_snippets() {
     assert_compiler("script_module_exports_ordering_with_snippets");
 }
