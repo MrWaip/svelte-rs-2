@@ -5,7 +5,7 @@
 
 use compact_str::CompactString;
 use oxc_ast::ast::{CallExpression, Expression};
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::Visit;
 use oxc_span::GetSpan as _;
 
 use rustc_hash::FxHashSet;
@@ -15,32 +15,7 @@ use crate::types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
 };
 use crate::utils::binding_pattern::collect_binding_names;
-
-struct SimpleExprChecker(bool);
-
-impl<'a> Visit<'a> for SimpleExprChecker {
-    fn visit_expression(&mut self, expr: &Expression<'a>) {
-        match expr {
-            Expression::NumericLiteral(_)
-            | Expression::StringLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::NullLiteral(_)
-            | Expression::Identifier(_)
-            | Expression::ArrowFunctionExpression(_)
-            | Expression::FunctionExpression(_) => {}
-            Expression::ConditionalExpression(_)
-            | Expression::BinaryExpression(_)
-            | Expression::LogicalExpression(_) => walk::walk_expression(self, expr),
-            _ => self.0 = false,
-        }
-    }
-}
-
-fn is_simple_expr(expr: &Expression<'_>) -> bool {
-    let mut checker = SimpleExprChecker(true);
-    checker.visit_expression(expr);
-    checker.0
-}
+use crate::utils::is_simple_expression;
 
 /// Extract structural metadata from a parsed script Program AST.
 /// Pure syntax extraction — no semantic analysis (scoping, store detection, etc.).
@@ -515,7 +490,7 @@ fn extract_prop_default(
                             (
                                 Some(Span::new(sp.start + offset, sp.end + offset)),
                                 Some(text.to_string()),
-                                is_simple_expr(expr),
+                                is_simple_expression(expr),
                             )
                         } else {
                             (None, None, true)
@@ -526,7 +501,7 @@ fn extract_prop_default(
         }
         let sp = right.span();
         let text = &source[sp.start as usize..sp.end as usize];
-        let is_simple = is_simple_expr(right);
+        let is_simple = is_simple_expression(right);
         (
             Some(Span::new(sp.start + offset, sp.end + offset)),
             Some(text.to_string()),

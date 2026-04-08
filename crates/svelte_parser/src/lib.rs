@@ -244,7 +244,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::StartTag(tag) => {
                     let name = tag.name_span.source_text(self.source);
-                    let attrs = self.convert_attributes(&tag.attributes);
+                    let is_component = is_component_name(name);
+                    let attrs = self.convert_attributes(&tag.attributes, is_component);
                     if tag.self_closing {
                         let name = name.to_string();
                         let node = if is_component_name(&name) {

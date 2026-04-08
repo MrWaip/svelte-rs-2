@@ -627,6 +627,22 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 }
             }
         }
+
+        // Reference: EachBlock.js lines 112–123. If any binding declared inside the each
+        // body shadows a name in an outer scope, the reference compiler appends a
+        // unique `$$array` parameter to the render callback. In runes mode the only
+        // observable effect is that extra parameter; legacy invalidate-by-collection
+        // is out of scope for this slice.
+        if let Some(parent_scope) = ctx.data.scoping.scope_parent_id(child_scope) {
+            let shadows = ctx
+                .data
+                .scoping
+                .own_binding_names(child_scope)
+                .any(|name| ctx.data.scoping.find_binding(parent_scope, name).is_some());
+            if shadows {
+                ctx.data.each_context.mark_needs_collection_id(block.id);
+            }
+        }
     }
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {

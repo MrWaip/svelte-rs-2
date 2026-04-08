@@ -99,20 +99,27 @@ pub(crate) fn gen_each_block<'a>(
     // User-declared index name (always available regardless of body usage)
     let user_index_name = ctx.each_index_name(block_id);
 
-    // Render function index param: only when body uses it or group binding needs it
+    // Reference: EachBlock.js lines 316–318. When the each body shadows an outer
+    // binding, the reference compiler always emits an index param (even if unused)
+    // followed by a unique `$$array` param so the body can reach the collection.
+    let needs_collection_id = ctx.each_needs_collection_id(block_id);
+
+    // Render function index param: only when body uses it, group binding needs it,
+    // or collection_id forces an index slot.
     let needs_group_index = ctx.contains_group_binding(block_id);
     let body_uses_index = ctx.each_body_uses_index(block_id);
-    let render_index_name = if body_uses_index || needs_group_index {
+    let render_index_name = if body_uses_index || needs_group_index || needs_collection_id {
         user_index_name.clone().or_else(|| {
-            needs_group_index.then(|| {
-                let name = ctx.gen_ident("$$index");
+            let name = ctx.gen_ident("$$index");
+            if needs_group_index {
                 ctx.state.group_index_names.insert(block_id, name.clone());
-                name
-            })
+            }
+            Some(name)
         })
     } else {
         None
     };
+    let collection_id_name = needs_collection_id.then(|| ctx.gen_ident("$$array"));
 
     // Build async thunk from expression BEFORE it gets consumed by the normal path
     let async_collection_thunk = if has_await {
@@ -188,12 +195,17 @@ pub(crate) fn gen_each_block<'a>(
         frag_body = combined;
     }
 
-    let frag_fn = if let Some(ref idx) = render_index_name {
-        ctx.b
-            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body)
-    } else {
-        ctx.b
-            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body)
+    let frag_fn = match (&render_index_name, &collection_id_name) {
+        (Some(idx), Some(arr)) => ctx.b.arrow_block_expr(
+            ctx.b.params(["$$anchor", &context_name, idx, arr]),
+            frag_body,
+        ),
+        (Some(idx), None) => ctx
+            .b
+            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name, idx]), frag_body),
+        (None, _) => ctx
+            .b
+            .arrow_block_expr(ctx.b.params(["$$anchor", &context_name]), frag_body),
     };
 
     if needs_async {

@@ -17,6 +17,7 @@ pub struct EachContextIndex {
     bind_this_context: NodeTable<Vec<String>>,
     parent_each_blocks: NodeTable<Vec<NodeId>>,
     contains_group_binding: NodeBitSet,
+    needs_collection_id: NodeBitSet,
 }
 
 impl EachContextIndex {
@@ -34,6 +35,7 @@ impl EachContextIndex {
             bind_this_context: NodeTable::new(node_count),
             parent_each_blocks: NodeTable::new(node_count),
             contains_group_binding: NodeBitSet::new(node_count),
+            needs_collection_id: NodeBitSet::new(node_count),
         }
     }
 
@@ -128,5 +130,13 @@ impl EachContextIndex {
 
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
         self.contains_group_binding.contains(&id)
+    }
+
+    pub fn mark_needs_collection_id(&mut self, block_id: NodeId) {
+        self.needs_collection_id.insert(block_id);
+    }
+
+    pub fn needs_collection_id(&self, id: NodeId) -> bool {
+        self.needs_collection_id.contains(&id)
     }
 }

@@ -6,7 +6,7 @@ use std::{
 
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions};
+use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOptions, Namespace};
 
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
@@ -54,6 +54,13 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         }
         if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
             opts.filename = filename.to_string();
+        }
+        if let Some(ns) = config.get("namespace").and_then(|v| v.as_str()) {
+            opts.namespace = match ns {
+                "svg" => Namespace::Svg,
+                "mathml" => Namespace::MathMl,
+                _ => Namespace::Html,
+            };
         }
         if let Some(exp) = config.get("experimental") {
             if let Some(async_val) = exp.get("async").and_then(|v| v.as_bool()) {
@@ -336,6 +343,11 @@ fn state_snapshot_reactive() {
 #[rstest]
 fn each_block() {
     assert_compiler("each_block");
+}
+
+#[rstest]
+fn each_inner_shadow() {
+    assert_compiler("each_inner_shadow");
 }
 
 #[rstest]
@@ -724,13 +736,11 @@ fn style_directive() {
 }
 
 #[rstest]
-#[ignore = "missing: component CSS custom property wrapper lowering (codegen)"]
 fn css_custom_prop_component() {
     assert_compiler("css_custom_prop_component");
 }
 
 #[rstest]
-#[ignore = "missing: SVG component CSS custom property wrapper lowering (codegen)"]
 fn css_custom_prop_component_svg() {
     assert_compiler("css_custom_prop_component_svg");
 }
@@ -2686,7 +2696,6 @@ fn css_scoped_class_selector() {
 }
 
 #[rstest]
-#[ignore = "missing: <select bind:value> with static <option value=\"...\"> children does not emit `option.value = option.__value = ...` initialisation (codegen: select/option handling)"]
 fn bind_select_static_option_value() {
     assert_compiler("bind_select_static_option_value");
 }
@@ -2697,7 +2706,6 @@ fn each_index_text_no_coalesce() {
 }
 
 #[rstest]
-#[ignore = "missing: snippet parameter destructure default that references a rune is not wrapped as a lazy thunk (`() => [$.get(counter)]`) and lacks the third truthy fallback flag (codegen/transform: snippet param defaults)"]
 fn snippet_destructure_default_state_ref() {
     assert_compiler("snippet_destructure_default_state_ref");
 }

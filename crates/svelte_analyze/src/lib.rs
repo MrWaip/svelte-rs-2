@@ -25,8 +25,8 @@ pub use types::script::{
 };
 pub use utils::IdentGen;
 pub use utils::{
-    is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
-    strip_capture_event,
+    is_capture_event, is_delegatable_event, is_passive_event, is_simple_expression,
+    is_simple_identifier, strip_capture_event,
 };
 
 use svelte_ast::Component;

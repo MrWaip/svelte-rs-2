@@ -168,6 +168,22 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             data.element_flags.is_dynamic_component.insert(cn.id);
         }
         for attr in &cn.attributes {
+            // CSS custom properties (`--name`) on a component are routed to the
+            // wrapper-element + `$.css_props(...)` lowering, not into the regular
+            // component props loop.
+            let css_prop_name: Option<&str> = match attr {
+                Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
+                Attribute::StringAttribute(a) if a.name.starts_with("--") => Some(&a.name),
+                Attribute::ConcatenationAttribute(a) if a.name.starts_with("--") => Some(&a.name),
+                _ => None,
+            };
+            if let Some(name) = css_prop_name {
+                data.element_flags
+                    .component_css_props
+                    .get_or_default(cn.id)
+                    .push((name.to_string(), attr.id()));
+                continue;
+            }
             let kind = match attr {
                 Attribute::StringAttribute(a) => ComponentPropKind::String {
                     name: a.name.clone(),

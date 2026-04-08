@@ -92,6 +92,10 @@ impl ComponentSemantics {
         self.scopes.get_binding(scope, name)
     }
 
+    pub fn own_binding_names(&self, scope: ScopeId) -> impl Iterator<Item = &str> {
+        self.scopes.own_binding_names(scope)
+    }
+
     pub fn add_binding(
         &mut self,
         scope: ScopeId,

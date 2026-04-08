@@ -96,6 +96,11 @@ pub struct ElementFlags {
     pub(crate) has_dynamic_class_directives: NodeBitSet,
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
+    /// `--*` attributes on a component — routed through `<svelte-css-wrapper>` /
+    /// `<g>` + `$.css_props(...)` instead of being passed as ordinary props.
+    /// Each entry stores the full attribute name (with `--` prefix) and the
+    /// attribute NodeId for retrieving the parsed expression.
+    pub(crate) component_css_props: NodeTable<Vec<(String, NodeId)>>,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
     /// `<textarea>` with expression children and no explicit `value` attribute —
     /// codegen emits `$.remove_textarea_child` + `$.set_value` instead of textContent.
@@ -129,6 +134,7 @@ impl ElementFlags {
             has_dynamic_class_directives: NodeBitSet::new(node_count),
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
+            component_css_props: NodeTable::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
@@ -197,6 +203,14 @@ impl ElementFlags {
     }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
+        self.component_css_props
+            .get(id)
+            .map_or(&[], |v| v.as_slice())
+    }
+    pub fn has_component_css_props(&self, id: NodeId) -> bool {
+        self.component_css_props.contains_key(id)
     }
     pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
         self.event_handler_mode.get(attr_id).copied()

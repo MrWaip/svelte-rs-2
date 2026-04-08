@@ -13,13 +13,49 @@ pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Merge `CompileOptions.namespace` into the parsed component when no inline
+/// `<svelte:options namespace="..." />` was specified. The reference compiler
+/// performs the same fallback so that JS-API consumers can set the namespace
+/// without modifying the source.
+fn apply_compile_options_to_component(
+    component: &mut svelte_ast::Component,
+    options: &CompileOptions,
+) {
+    if options.namespace == Namespace::Html {
+        return;
+    }
+    let ast_namespace = match options.namespace {
+        Namespace::Html => svelte_ast::Namespace::Html,
+        Namespace::Svg => svelte_ast::Namespace::Svg,
+        Namespace::MathMl => svelte_ast::Namespace::Mathml,
+    };
+    let opts = component
+        .options
+        .get_or_insert_with(|| svelte_ast::SvelteOptions {
+            span: svelte_ast::Span::default(),
+            runes: None,
+            namespace: None,
+            css: None,
+            custom_element: None,
+            immutable: None,
+            accessors: None,
+            preserve_whitespace: None,
+            attributes: Vec::new(),
+        });
+    if opts.namespace.is_none() {
+        opts.namespace = Some(ast_namespace);
+    }
+}
+
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let name = options.component_name();
 
     let js_alloc = oxc_allocator::Allocator::default();
-    let (component, js_result, mut diagnostics) = svelte_parser::parse_with_js(&js_alloc, source);
+    let (mut component, js_result, mut diagnostics) =
+        svelte_parser::parse_with_js(&js_alloc, source);
+    apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);
 
     // Whether the parser already found errors — captured before the closure so it

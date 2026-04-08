@@ -94,8 +94,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                         wrote_class_attr = true;
                         continue;
                     }
-                    // bind:group uses __value pattern — value attr is set in JS, not template
-                    if a.name == "value" && ctx.has_bind_group(el.id) {
+                    // `<option value=...>` and `<input bind:group ... value=...>` both
+                    // emit the value via the `__value` cache pattern in JS, so the literal
+                    // attr is dropped from the template HTML.
+                    if a.name == "value" && (ctx.has_bind_group(el.id) || el.name == "option") {
                         continue;
                     }
                     write!(

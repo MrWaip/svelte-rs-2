@@ -66,8 +66,12 @@ pub(crate) fn process_attr<'a>(
     };
 
     match attr {
-        Attribute::StringAttribute(a) if a.name == "value" && ctx.has_bind_group(el_id) => {
-            // bind:group + static value: emit el.value = el.__value = "val"
+        Attribute::StringAttribute(a)
+            if a.name == "value" && (ctx.has_bind_group(el_id) || tag_name == "option") =>
+        {
+            // `<option value="...">` and `<input bind:group value="...">` share the
+            // `el.value = el.__value = "<lit>"` initializer; reference compiler always
+            // routes options through `__value` so runtime selectedIndex matching works.
             let val_text = ctx.query.component.source_text(a.value_span);
             let val_expr = ctx.b.str_expr(val_text);
             let __value_assign = ctx.b.assign_expr(

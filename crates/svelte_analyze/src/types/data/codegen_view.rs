@@ -220,6 +220,12 @@ impl<'a> CodegenView<'a> {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.data.element_flags.component_props(id)
     }
+    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
+        self.data.element_flags.component_css_props(id)
+    }
+    pub fn has_component_css_props(&self, id: NodeId) -> bool {
+        self.data.element_flags.has_component_css_props(id)
+    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.data.snippets.component_snippets(id)
     }
@@ -308,6 +314,9 @@ impl<'a> CodegenView<'a> {
     }
     pub fn each_key_is_item(&self, id: NodeId) -> bool {
         self.data.each_key_is_item(id)
+    }
+    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
+        self.data.each_needs_collection_id(id)
     }
     pub fn each_has_animate(&self, id: NodeId) -> bool {
         self.data.each_has_animate(id)
