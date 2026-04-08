@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, NamespaceKind};
 use svelte_ast::{Attribute, Element};
 
 use super::expression::item_has_local_blockers;
@@ -66,7 +66,18 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     let css_hash = ctx.css_hash();
 
     let mut html = String::new();
-    let mut import_node = el.name == "video" || ctx.query.view.is_custom_element(el.id);
+    let has_is_attr = el
+        .attributes
+        .iter()
+        .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "is"));
+    let mut import_node =
+        el.name == "video" || ctx.query.view.is_custom_element(el.id) || has_is_attr;
+    // HTML attribute names are case-insensitive; normalize to lowercase for HTML-namespace
+    // elements. SVG and MathML attributes are case-sensitive — preserve their case.
+    let lowercase_attrs = !matches!(
+        ctx.query.view.namespace(el.id),
+        Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) | Some(NamespaceKind::AnnotationXml)
+    );
     write!(html, "<{}", el.name).unwrap();
 
     // Track whether we emitted a class attribute so we know to add one later.
@@ -100,16 +111,19 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                     if a.name == "value" && (ctx.has_bind_group(el.id) || el.name == "option") {
                         continue;
                     }
-                    write!(
-                        html,
-                        " {}=\"{}\"",
-                        a.name,
-                        ctx.query.component.source_text(a.value_span)
-                    )
-                    .unwrap();
+                    let val = ctx.query.component.source_text(a.value_span);
+                    if lowercase_attrs {
+                        write!(html, " {}=\"{val}\"", a.name.to_lowercase()).unwrap();
+                    } else {
+                        write!(html, " {}=\"{val}\"", a.name).unwrap();
+                    }
                 }
                 Attribute::BooleanAttribute(a) => {
-                    write!(html, " {}=\"\"", a.name).unwrap();
+                    if lowercase_attrs {
+                        write!(html, " {}=\"\"", a.name.to_lowercase()).unwrap();
+                    } else {
+                        write!(html, " {}=\"\"", a.name).unwrap();
+                    }
                 }
                 _ => {}
             }

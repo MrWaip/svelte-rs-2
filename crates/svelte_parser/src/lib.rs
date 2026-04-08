@@ -556,7 +556,10 @@ fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
 }
 
 fn is_component_name(name: &str) -> bool {
-    name.starts_with(|c: char| c.is_uppercase()) || name.contains('.')
+    name.starts_with(|c: char| c.is_uppercase())
+        || name.contains('.')
+        || name == "svelte:component"
+        || name == "svelte:self"
 }
 
 struct ScriptData {

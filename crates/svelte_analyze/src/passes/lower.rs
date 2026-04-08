@@ -296,8 +296,21 @@ fn lower_nodes(
                 let mut slot_mappings: Vec<(NodeId, FragmentKey)> = Vec::new();
                 for (slot_el_id, child_id) in named_groups {
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
+                    // <svelte:fragment slot="name"> wraps the real slot content — lower
+                    // its children instead of the wrapper element itself.
+                    let slot_nodes: SmallVec<[NodeId; 4]> =
+                        match store.get(child_id) {
+                            Node::Element(el) if el.name == "svelte:fragment" => {
+                                el.fragment.nodes.iter().copied().collect()
+                            }
+                            _ => {
+                                let mut v = SmallVec::new();
+                                v.push(child_id);
+                                v
+                            }
+                        };
                     lower_nodes(
-                        std::slice::from_ref(&child_id),
+                        &slot_nodes,
                         frag_key,
                         component,
                         data,

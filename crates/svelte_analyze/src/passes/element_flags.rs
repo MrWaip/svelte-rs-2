@@ -201,8 +201,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         let data = &mut *ctx.data;
-        // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
-        if cn.name.contains('.') {
+        // Dotted component names and <svelte:component> are dynamic → $.component(...)
+        if cn.name.contains('.') || cn.name == "svelte:component" {
             data.elements.flags.is_dynamic_component.insert(cn.id);
         }
         for attr in &cn.attributes {

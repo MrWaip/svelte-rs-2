@@ -140,7 +140,6 @@ fn script_module_exports_ordering_with_snippets() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn warn_attr_avoid_is() {
     assert_compiler("warn_attr_avoid_is");
 }
@@ -152,7 +151,6 @@ fn warn_attr_illegal_colon() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn warn_attr_invalid_prop_name() {
     assert_compiler("warn_attr_invalid_prop_name");
 }
@@ -549,7 +547,6 @@ fn component_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_component_basic() {
     assert_compiler("svelte_component_basic");
 }
@@ -1024,7 +1021,6 @@ fn component_bind_this_variants() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_self_if() {
     assert_compiler("svelte_self_if");
 }
@@ -1523,7 +1519,6 @@ fn svelte_element_self_closing() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_fragment_named_slot() {
     assert_compiler("svelte_fragment_named_slot");
 }

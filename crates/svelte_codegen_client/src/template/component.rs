@@ -21,7 +21,7 @@ pub(crate) fn gen_component<'a>(
     init: &mut Vec<Statement<'a>>,
 ) {
     let cn = ctx.component_node(id);
-    let name: &str = &cn.name;
+    let cn_name: String = cn.name.clone();
 
     // Snapshot pre-classified props to release immutable borrow before mutable ctx usage
     let prop_infos: Vec<_> = ctx
@@ -37,6 +37,8 @@ pub(crate) fn gen_component<'a>(
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
     // LEGACY(svelte4): on:directive events → $$events prop
     let mut events: Vec<(String, NodeId, bool, bool)> = Vec::new(); // (name, attr_id, has_expr, once)
+    // <svelte:component this={expr}>: the 'this' attribute becomes the component thunk
+    let mut svelte_component_this: Option<Expression<'a>> = None;
 
     for (kind, is_dynamic) in prop_infos {
         match kind {
@@ -61,6 +63,11 @@ pub(crate) fn gen_component<'a>(
                 shorthand,
                 needs_memo,
             } => {
+                // <svelte:component this={expr}>: extract as the dynamic component tag
+                if cn_name == "svelte:component" && name == "this" {
+                    svelte_component_this = Some(get_attr_expr(ctx, attr_id));
+                    continue;
+                }
                 let key = ctx.b.alloc_str(&name);
                 if needs_memo {
                     let mut memo_name = String::with_capacity(4);
@@ -305,6 +312,15 @@ pub(crate) fn gen_component<'a>(
         // Recover slot name from the element's slot="..." attribute
         let slot_name = slot_name_from_element(ctx, slot_el_id);
 
+        // <svelte:fragment slot="name"> wraps the real content. The reference compiler
+        // visits the wrapper as a Fragment whose single child is SvelteFragment, which
+        // allocates a template_name (consumed, not emitted). Replicate that by consuming
+        // one root identifier here so downstream numbering stays in sync.
+        let is_svelte_fragment_wrapper = ctx.element(slot_el_id).name == "svelte:fragment";
+        if is_svelte_fragment_wrapper {
+            ctx.gen_ident("root");
+        }
+
         let needs_next = matches!(
             slot_ct,
             ContentStrategy::Static(_) | ContentStrategy::DynamicText
@@ -332,11 +348,23 @@ pub(crate) fn gen_component<'a>(
     let is_dynamic = ctx.is_dynamic_component(id);
 
     if is_dynamic {
-        // $.component(anchor, () => registry.Widget, ($$anchor, registry_Widget) => { ... })
-        let intermediate = name.replace('.', "_");
-        let intermediate_ref = ctx.b.alloc_str(&intermediate);
+        // Determine the intermediate parameter name and component thunk.
+        // For <svelte:component this={expr}>: use "$$component" + the this-expression.
+        // For dotted names (registry.Widget): use derived name + member-expr thunk.
+        let (intermediate_ref, component_thunk) = if cn_name == "svelte:component" {
+            let this_expr = svelte_component_this
+                .unwrap_or_else(|| panic!("<svelte:component> missing `this` attribute"));
+            let thunk = ctx.b.thunk(this_expr);
+            ("$$component", thunk)
+        } else {
+            let intermediate = cn_name.replace('.', "_");
+            let intermediate_ref: &str = ctx.b.alloc_str(&intermediate);
+            let component_ref = build_dotted_member_expr(ctx, &cn_name);
+            let thunk = ctx.b.thunk(component_ref);
+            (intermediate_ref, thunk)
+        };
 
-        // Inner call: registry_Widget($$anchor, props)
+        // Inner call: $$component($$anchor, props)
         let inner_call = ctx.b.call_expr(
             intermediate_ref,
             [Arg::Ident("$$anchor"), Arg::Expr(props_expr)],
@@ -356,10 +384,6 @@ pub(crate) fn gen_component<'a>(
             .b
             .arrow_block_expr(ctx.b.params(["$$anchor", intermediate_ref]), inner_body);
 
-        // Thunk: () => registry.Widget — build as member expression chain
-        let component_ref = build_dotted_member_expr(ctx, name);
-        let component_thunk = ctx.b.thunk(component_ref);
-
         let component_call = ctx.b.call_expr(
             "$.component",
             [
@@ -377,9 +401,15 @@ pub(crate) fn gen_component<'a>(
             init.push(ctx.b.expr_stmt(component_call));
         }
     } else {
+        // For <svelte:self>, call the current component function by its actual name.
+        let callee: &str = if cn_name == "svelte:self" {
+            ctx.state.name
+        } else {
+            ctx.b.alloc_str(&cn_name)
+        };
         let component_call = ctx
             .b
-            .call_expr(name, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
+            .call_expr(callee, [Arg::Expr(anchor), Arg::Expr(props_expr)]);
 
         let final_expr = if let Some(bind_id) = bind_this_info {
             build_bind_this_call(ctx, id, bind_id, component_call)
