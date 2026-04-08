@@ -120,13 +120,11 @@ fn css_scope_class_in_snippet() {
 }
 
 #[rstest]
-#[ignore = "bug: scope class svelte-xxx not appended to <svelte:element> class literal (codegen)"]
 fn css_scope_svelte_element_class() {
     assert_compiler("css_scope_svelte_element_class");
 }
 
 #[rstest]
-#[ignore = "bug: scope class arg to $.set_class is null instead of 'svelte-xxx' when class attribute is an object literal (codegen)"]
 fn css_scope_class_object() {
     assert_compiler("css_scope_class_object");
 }

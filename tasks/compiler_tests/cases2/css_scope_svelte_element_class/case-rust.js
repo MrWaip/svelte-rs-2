@@ -4,7 +4,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.element(node, () => tag, false, ($$element, $$anchor) => {
-		$.set_class($$element, 0, "dynamic");
+		$.set_class($$element, 0, "dynamic svelte-z15oen");
 		var text = $.text("content");
 		$.append($$anchor, text);
 	});

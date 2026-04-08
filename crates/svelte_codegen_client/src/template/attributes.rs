@@ -361,9 +361,18 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
 
     let has_state = ctx.class_needs_state(el_id);
 
+    // When the class value is a dynamic expression (has_class_attr), the scope hash
+    // goes as the 4th argument. When it's a static string, it was already baked in above.
+    let hash = ctx.css_hash();
+    let scope_arg = if has_class_attr && ctx.is_css_scoped(el_id) && !hash.is_empty() {
+        ctx.b.str_expr(hash)
+    } else {
+        ctx.b.null_expr()
+    };
+
     // --- Generate $.set_class() call ---
     if let Some(dir_obj) = directives_obj {
-        // With directives: $.set_class(el, 1, value, null, prev, { ... })
+        // With directives: $.set_class(el, 1, value, scope_hash, prev, { ... })
         if has_state {
             let classes_name = ctx.gen_ident("classes");
             let set_class_call = ctx.b.call_expr(
@@ -372,7 +381,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
                     Arg::Ident(el_name),
                     Arg::Num(1.0),
                     Arg::Expr(class_value),
-                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Expr(scope_arg),
                     Arg::Ident(&classes_name),
                     Arg::Expr(dir_obj),
                 ],
@@ -390,7 +399,7 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
                     Arg::Ident(el_name),
                     Arg::Num(1.0),
                     Arg::Expr(class_value),
-                    Arg::Expr(ctx.b.null_expr()),
+                    Arg::Expr(scope_arg),
                     Arg::Expr(ctx.b.object_expr(vec![])),
                     Arg::Expr(dir_obj),
                 ],

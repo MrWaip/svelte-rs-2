@@ -66,9 +66,19 @@ pub(crate) fn gen_svelte_element<'a>(
     };
 
     if let Some(class_value) = sole_static_class {
+        let hash = ctx.css_hash();
+        let scoped_class = if ctx.is_css_scoped(id) && !hash.is_empty() {
+            if class_value.is_empty() {
+                hash.to_string()
+            } else {
+                format!("{class_value} {hash}")
+            }
+        } else {
+            class_value
+        };
         inner_init.push(ctx.b.call_stmt(
             "$.set_class",
-            [Arg::Ident(&el_name), Arg::Num(0.0), Arg::Str(class_value)],
+            [Arg::Ident(&el_name), Arg::Num(0.0), Arg::Str(scoped_class)],
         ));
     } else if has_attrs {
         // Generic spread-like handling for svelte:element
