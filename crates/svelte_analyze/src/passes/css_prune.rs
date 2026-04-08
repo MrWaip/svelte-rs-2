@@ -10,14 +10,16 @@ use svelte_span::GetSpan;
 use svelte_ast::NodeId;
 
 use crate::types::data::{CssAnalysis, TemplateElementIndex};
+use crate::types::node_table::NodeBitSet;
 
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
 /// Determine which CSS selectors match template elements.
-/// Marks matched selectors in `css.used_selectors` and emits
-/// `css_unused_selector` warnings for unmatched ones.
+/// Marks matched selectors in `css.used_selectors`, marks every element
+/// reached by a non-global selector chain in `css.scoped_elements`, and
+/// emits `css_unused_selector` warnings for unmatched selectors.
 pub(crate) fn prune_and_warn(
     stylesheet: &StyleSheet,
     css_source: &str,
@@ -25,15 +27,11 @@ pub(crate) fn prune_and_warn(
     css: &mut CssAnalysis,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    if elements.is_empty() {
-        // No template elements — all local selectors are unused.
-        // Still need to walk the stylesheet to mark globals as used and warn on the rest.
-    }
-
     let mut used = FxHashSet::default();
     let mut pruner = PruneVisitor {
         elements,
         used: &mut used,
+        scoped: &mut css.scoped_elements,
         in_global_block: false,
     };
     pruner.visit_stylesheet(stylesheet);
@@ -49,6 +47,7 @@ pub(crate) fn prune_and_warn(
 struct PruneVisitor<'a, 'b> {
     elements: &'a TemplateElementIndex,
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
+    scoped: &'b mut NodeBitSet,
     in_global_block: bool,
 }
 
@@ -76,10 +75,13 @@ impl Visit for PruneVisitor<'_, '_> {
                 continue;
             }
 
+            // Walk every candidate element matching the rightmost simple selector
+            // and try the full chain. Mark every successful match as scoped — we
+            // can't break early like the unused-selector pass because each
+            // matching element needs the scope class.
             for elem_id in candidate_elements(self.elements, selectors.last().copied().unwrap()) {
-                if apply_selector(&selectors, self.elements, elem_id) {
+                if apply_selector(&selectors, self.elements, elem_id, self.scoped) {
                     self.used.insert(complex.id);
-                    break;
                 }
             }
         }
@@ -132,10 +134,13 @@ fn is_unscoped_pseudo_class(pc: &svelte_css::PseudoClassSelector) -> bool {
 }
 
 /// Try matching the selector chain against an element, working backward.
+/// On a successful match, marks `elem_id` (and any ancestor element matched
+/// through a combinator) in `scoped`.
 fn apply_selector(
     selectors: &[&RelativeSelector],
     elements: &TemplateElementIndex,
     elem_id: NodeId,
+    scoped: &mut NodeBitSet,
 ) -> bool {
     if selectors.is_empty() {
         return false;
@@ -151,12 +156,17 @@ fn apply_selector(
 
     if last_idx == 0 {
         // Only one selector and it matched
+        scoped.insert(elem_id);
         return true;
     }
 
     // Need to match remaining selectors via combinators
     let rest = &selectors[..last_idx];
-    apply_combinator(rest, last_sel, elements, elem_id)
+    if apply_combinator(rest, last_sel, elements, elem_id, scoped) {
+        scoped.insert(elem_id);
+        return true;
+    }
+    false
 }
 
 /// Apply the combinator from `current_sel` to traverse the template tree
@@ -166,6 +176,7 @@ fn apply_combinator(
     current_sel: &RelativeSelector,
     elements: &TemplateElementIndex,
     elem_id: NodeId,
+    scoped: &mut NodeBitSet,
 ) -> bool {
     let combinator = match &current_sel.combinator {
         Some(c) => c.kind,
@@ -181,7 +192,7 @@ fn apply_combinator(
             // Check all ancestors
             let mut current = elements.parent_element(elem_id);
             while let Some(parent_id) = current {
-                if apply_selector(remaining, elements, parent_id) {
+                if apply_selector(remaining, elements, parent_id, scoped) {
                     return true;
                 }
                 current = elements.parent_element(parent_id);
@@ -192,7 +203,7 @@ fn apply_combinator(
         CombinatorKind::Child => {
             // Check direct parent only
             if let Some(parent_id) = elements.parent_element(elem_id) {
-                if apply_selector(remaining, elements, parent_id) {
+                if apply_selector(remaining, elements, parent_id, scoped) {
                     return true;
                 }
             }
@@ -201,7 +212,7 @@ fn apply_combinator(
         }
         CombinatorKind::NextSibling => {
             if let Some(prev_id) = elements.previous_sibling(elem_id) {
-                if apply_selector(remaining, elements, prev_id) {
+                if apply_selector(remaining, elements, prev_id, scoped) {
                     return true;
                 }
             }
@@ -209,7 +220,7 @@ fn apply_combinator(
         }
         CombinatorKind::SubsequentSibling => {
             for prev_id in elements.previous_siblings(elem_id) {
-                if apply_selector(remaining, elements, prev_id) {
+                if apply_selector(remaining, elements, prev_id, scoped) {
                     return true;
                 }
             }

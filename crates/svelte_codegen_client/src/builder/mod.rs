@@ -47,7 +47,11 @@ pub enum AssignLeft<'a> {
 
 pub enum TemplatePart<'a> {
     Str(String),
-    Expr(Expression<'a>),
+    /// Expression part. The boolean indicates whether the expression is
+    /// guaranteed to be defined (non-null/undefined). When `false`, the
+    /// builder wraps it with `?? ""` so that interpolating `null`/`undefined`
+    /// produces an empty string instead of `"null"`/`"undefined"`.
+    Expr(Expression<'a>, /* defined */ bool),
 }
 
 pub struct Builder<'a> {

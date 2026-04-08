@@ -8,7 +8,7 @@ export default function App($$anchor) {
 		var span = root_1();
 		var text = $.child(span);
 		$.reset(span);
-		$.template_effect(() => $.set_text(text, `${index ?? ""}: ${$.get(item) ?? ""}`));
+		$.template_effect(() => $.set_text(text, `${index}: ${$.get(item) ?? ""}`));
 		$.append($$anchor, span);
 	});
 	$.append($$anchor, fragment);

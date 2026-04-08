@@ -126,6 +126,41 @@ fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
     }
 }
 
+/// Whether the given post-transform expression is statically known to be
+/// defined (non-null, non-undefined). When true, `build_template_chunk` may
+/// skip the `?? ""` wrap that protects against `"null"`/`"undefined"`
+/// leaking into interpolated text.
+///
+/// Currently narrow: covers only `{#each}` index identifiers whose transform
+/// kept them as bare identifiers (non-keyed blocks). In keyed blocks the
+/// transform wraps the index in `$.get(idx)`, which produces a
+/// `CallExpression` — the reference compiler's `scope.evaluate(...)` treats
+/// that as unknown, so we must keep the `?? ""` fallback. Broadening this to
+/// literals and numeric operations is tracked as a follow-up in
+/// `specs/each-block.md`.
+pub(crate) fn is_definitely_defined(
+    ctx: &Ctx<'_>,
+    nid: NodeId,
+    expr: &Expression<'_>,
+) -> bool {
+    // Only trust the classification when transform left the expression as a
+    // bare identifier. Once wrapped in a call (`$.get(...)`), the call result
+    // type is unknown to the scope evaluator.
+    if !matches!(expr, Expression::Identifier(_)) {
+        return false;
+    }
+    let Some(info) = ctx.expression(nid) else {
+        return false;
+    };
+    if !matches!(info.kind, ExpressionKind::Identifier(_)) {
+        return false;
+    }
+    if info.ref_symbols.len() != 1 {
+        return false;
+    }
+    ctx.is_each_index_sym(info.ref_symbols[0])
+}
+
 pub(crate) fn build_concat_from_parts<'a>(
     ctx: &mut Ctx<'a>,
     parts: &[LoweredTextPart],
@@ -163,7 +198,8 @@ pub(crate) fn build_concat_from_parts<'a>(
                     }
                 } else {
                     let expr = get_node_expr(ctx, *nid);
-                    tpl_parts.push(TemplatePart::Expr(expr));
+                    let defined = is_definitely_defined(ctx, *nid, &expr);
+                    tpl_parts.push(TemplatePart::Expr(expr, defined));
                 }
             }
         }
@@ -198,7 +234,7 @@ pub(crate) fn build_attr_concat<'a>(
                 if let Some(value) = literal_concat_part_value(&expr) {
                     push_template_str(&mut tpl_parts, value);
                 } else {
-                    tpl_parts.push(TemplatePart::Expr(expr));
+                    tpl_parts.push(TemplatePart::Expr(expr, false));
                 }
             }
         }
@@ -748,10 +784,13 @@ fn build_concat_with_memo<'a>(
                 }
 
                 let expr = get_node_expr(ctx, *nid);
+                let defined = is_definitely_defined(ctx, *nid, &expr);
                 let node_deps = ctx
                     .expr_deps(ExprSite::Node(*nid))
                     .unwrap_or_else(|| panic!("missing expression deps for {:?}", nid));
                 let expr = if node_deps.needs_memo {
+                    // Memo params (`$0`, `$1`) lose the original expression
+                    // shape — treat them as not-definitely-defined.
                     if node_deps.has_await() {
                         let index = deps.async_values.len();
                         deps.async_values.push(ctx.b.clone_expr(&expr));
@@ -764,7 +803,7 @@ fn build_concat_with_memo<'a>(
                 } else {
                     expr
                 };
-                tpl_parts.push(TemplatePart::Expr(expr));
+                tpl_parts.push(TemplatePart::Expr(expr, defined));
             }
         }
     }

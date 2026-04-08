@@ -1,5 +1,4 @@
 use compact_str::CompactString;
-use rustc_hash::FxHashSet;
 use svelte_css::{
     AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, RelativeSelector, SelectorList,
     SimpleSelector, StyleRule, StyleSheet, Visit,
@@ -31,73 +30,27 @@ pub fn analyze_css_pass(
     let css_text = component.source_text(css_block.content_span);
     let hash = css_component_hash(css_text);
 
-    // Phase 1: collect HTML tag names selected by CSS rules (read-only).
-    let selected_tags = collect_type_selectors(stylesheet);
-
-    // Phase 1b: collect locally-scoped @keyframes names.
+    // Phase 1: collect locally-scoped @keyframes names.
     let keyframes = collect_keyframe_names(stylesheet, css_text);
 
-    // Phase 2: walk template, mark elements whose tag name is in selected_tags.
-    let node_count = component.node_count();
-    let mut scoped = NodeBitSet::new(node_count);
-    mark_scoped_elements(data, &selected_tags, &mut scoped);
-
-    // Phase 3: validate CSS (:global usage, nesting selectors, etc.)
+    // Phase 2: validate CSS (:global usage, nesting selectors, etc.)
     let mut validator = CssValidator::new(diagnostics);
     validator.visit_stylesheet(stylesheet);
 
+    let node_count = component.node_count();
     data.css = CssAnalysis {
         hash,
-        scoped_elements: scoped,
+        scoped_elements: NodeBitSet::new(node_count),
         inject_styles,
         keyframes,
         used_selectors: rustc_hash::FxHashSet::default(),
     };
 
-    // Phase 4: prune — determine which selectors match template elements, emit unused warnings.
+    // Phase 3: prune — backward-match every selector against the template, populate
+    // `used_selectors` and mark every matched element in `scoped_elements`.
     let template_elements = &data.template_elements;
     let css = &mut data.css;
     super::css_prune::prune_and_warn(stylesheet, css_text, template_elements, css, diagnostics);
-}
-
-// ---------------------------------------------------------------------------
-// Collect selected tag names (read-only, no visitor mutation)
-// ---------------------------------------------------------------------------
-
-fn collect_type_selectors(stylesheet: &StyleSheet) -> FxHashSet<String> {
-    let mut collector = TypeSelectorCollector {
-        tags: FxHashSet::default(),
-    };
-    collector.visit_stylesheet(stylesheet);
-    collector.tags
-}
-
-struct TypeSelectorCollector {
-    tags: FxHashSet<String>,
-}
-
-impl Visit for TypeSelectorCollector {
-    fn visit_style_rule(&mut self, node: &StyleRule) {
-        if node.is_lone_global_block() {
-            return;
-        }
-        svelte_css::visit::walk_style_rule(self, node);
-    }
-
-    fn visit_complex_selector(&mut self, node: &ComplexSelector) {
-        if has_global_selector(node) {
-            return;
-        }
-        svelte_css::visit::walk_complex_selector(self, node);
-    }
-
-    fn visit_relative_selector(&mut self, node: &RelativeSelector) {
-        for sel in &node.selectors {
-            if let SimpleSelector::Type { name, .. } = sel {
-                self.tags.insert(name.to_string());
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -142,14 +95,6 @@ impl Visit for KeyframeCollector<'_> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn has_global_selector(complex: &ComplexSelector) -> bool {
-    complex.children.iter().any(|rel| {
-        rel.selectors
-            .iter()
-            .any(|s| matches!(s, SimpleSelector::Global { .. }))
-    })
-}
 
 /// True if the `SimpleSelector` is `:global` (block form, no args).
 fn is_global_block_selector(sel: &SimpleSelector) -> bool {
@@ -550,22 +495,6 @@ impl Visit for CssValidator<'_> {
                 self.in_pseudo_class = prev;
             }
             _ => {}
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Mark scoped elements in the template
-// ---------------------------------------------------------------------------
-
-fn mark_scoped_elements(
-    data: &AnalysisData,
-    selected_tags: &FxHashSet<String>,
-    scoped: &mut NodeBitSet,
-) {
-    for tag_name in selected_tags {
-        for &id in data.template_elements_with_tag(tag_name) {
-            scoped.insert(id);
         }
     }
 }

@@ -16,9 +16,20 @@ use super::expression::{emit_effect_call, parts_are_dynamic, MemoValueRef, Templ
 
 enum TitleValuePart<'a> {
     Str(String),
-    Expr(Expression<'a>),
-    SyncMemo(usize),
-    AsyncMemo(usize),
+    Expr(Expression<'a>, /* defined */ bool),
+    SyncMemo(usize, /* defined */ bool),
+    AsyncMemo(usize, /* defined */ bool),
+}
+
+impl<'a> TitleValuePart<'a> {
+    fn is_defined(&self) -> bool {
+        match self {
+            Self::Str(_) => true,
+            Self::Expr(_, defined) | Self::SyncMemo(_, defined) | Self::AsyncMemo(_, defined) => {
+                *defined
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -35,6 +46,7 @@ impl<'a> TitleMemoizer<'a> {
         }
 
         let expr = super::expression::get_node_expr(ctx, id);
+        let defined = super::expression::is_definitely_defined(ctx, id, &expr);
         let info = ctx
             .expression(id)
             .expect("title expression metadata should exist");
@@ -42,9 +54,9 @@ impl<'a> TitleMemoizer<'a> {
             .deps
             .add_memoized_expr(ctx, info, ctx.b.clone_expr(&expr))
         {
-            Some(MemoValueRef::Sync(index)) => TitleValuePart::SyncMemo(index),
-            Some(MemoValueRef::Async(index)) => TitleValuePart::AsyncMemo(index),
-            None => TitleValuePart::Expr(expr),
+            Some(MemoValueRef::Sync(index)) => TitleValuePart::SyncMemo(index, defined),
+            Some(MemoValueRef::Async(index)) => TitleValuePart::AsyncMemo(index, defined),
+            None => TitleValuePart::Expr(expr, defined),
         }
     }
 
@@ -58,9 +70,9 @@ impl<'a> TitleMemoizer<'a> {
     fn part_expr(&self, ctx: &Ctx<'a>, part: TitleValuePart<'a>) -> Expression<'a> {
         match part {
             TitleValuePart::Str(value) => ctx.b.str_expr(&value),
-            TitleValuePart::Expr(expr) => expr,
-            TitleValuePart::SyncMemo(index) => self.deps.sync_param_expr(ctx, index),
-            TitleValuePart::AsyncMemo(index) => self.deps.async_param_expr(ctx, index),
+            TitleValuePart::Expr(expr, _) => expr,
+            TitleValuePart::SyncMemo(index, _) => self.deps.sync_param_expr(ctx, index),
+            TitleValuePart::AsyncMemo(index, _) => self.deps.async_param_expr(ctx, index),
         }
     }
 }
@@ -184,7 +196,10 @@ fn build_title_value<'a>(
     } else {
         let template_parts = built_parts.into_iter().map(|part| match part {
             TitleValuePart::Str(value) => TemplatePart::Str(value),
-            other => TemplatePart::Expr(memoizer.part_expr(ctx, other)),
+            other => {
+                let defined = other.is_defined();
+                TemplatePart::Expr(memoizer.part_expr(ctx, other), defined)
+            }
         });
         ctx.b.template_parts_expr(template_parts)
     };
