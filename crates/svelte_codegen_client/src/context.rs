@@ -497,6 +497,12 @@ impl<'a> Ctx<'a> {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.query.view.component_props(id)
     }
+    pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
+        self.query.view.component_css_props(id)
+    }
+    pub fn has_component_css_props(&self, id: NodeId) -> bool {
+        self.query.view.has_component_css_props(id)
+    }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
         self.query.view.component_snippets(id)
     }
@@ -602,6 +608,9 @@ impl<'a> Ctx<'a> {
     }
     pub fn each_has_animate(&self, id: NodeId) -> bool {
         self.query.view.each_has_animate(id)
+    }
+    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
+        self.query.view.each_needs_collection_id(id)
     }
 
     // -- Parsed template JS handles --

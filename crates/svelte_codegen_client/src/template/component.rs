@@ -3,7 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey};
-use svelte_ast::{Attribute, NodeId};
+use svelte_ast::{Attribute, Namespace, NodeId};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
@@ -11,6 +11,7 @@ use crate::context::Ctx;
 use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
 use super::snippet;
+use super::{from_namespace, inherited_fragment_namespace};
 
 /// Generate `ComponentName($$anchor, { props })` call.
 pub(crate) fn gen_component<'a>(
@@ -398,6 +399,83 @@ pub(crate) fn gen_component<'a>(
             init.push(ctx.b.block_stmt(memo_stmts));
         }
     }
+}
+
+/// Lower a component with `--*` props through the `<svelte-css-wrapper>` (HTML)
+/// or `<g>` (SVG) wrapper element + `$.css_props(node, () => ({...}))`. The
+/// component itself is still emitted via `gen_component` but its anchor becomes
+/// `node.lastChild` so the comment placeholder inside the wrapper is replaced.
+pub(crate) fn emit_component_with_css_wrapper<'a>(
+    ctx: &mut Ctx<'a>,
+    component_id: NodeId,
+    parent_key: FragmentKey,
+    tpl_name: &str,
+    is_root: bool,
+    hoisted: &mut Vec<Statement<'a>>,
+    body: &mut Vec<Statement<'a>>,
+) {
+    let namespace = inherited_fragment_namespace(ctx, parent_key);
+    let (html, from_fn) = if namespace == Namespace::Svg {
+        ("<g><!></g>", from_namespace(Namespace::Svg))
+    } else {
+        (
+            "<svelte-css-wrapper style=\"display: contents\"><!></svelte-css-wrapper>",
+            from_namespace(Namespace::Html),
+        )
+    };
+
+    let from_call = ctx.b.call_expr(
+        from_fn,
+        [Arg::Expr(ctx.b.template_str_expr(html)), Arg::Num(1.0)],
+    );
+    let tpl_stmt = ctx.b.var_stmt(tpl_name, from_call);
+    if is_root {
+        hoisted.push(tpl_stmt);
+    } else {
+        ctx.state.module_hoisted.push(tpl_stmt);
+    }
+
+    let frag = ctx.gen_ident("fragment");
+    let node = ctx.gen_ident("node");
+    body.push(ctx.b.var_stmt(&frag, ctx.b.call_expr(tpl_name, [])));
+    body.push(
+        ctx.b
+            .var_stmt(&node, ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)])),
+    );
+
+    // Snapshot CSS props before any mutable ctx use.
+    let css_props: Vec<(String, NodeId)> = ctx.component_css_props(component_id).to_vec();
+
+    let mut block: Vec<Statement<'a>> = Vec::new();
+
+    // $.css_props(node, () => ({ "--name": expr, ... }))
+    let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
+    for (name, attr_id) in css_props {
+        let key = ctx.b.alloc_str(&name);
+        let expr = get_attr_expr(ctx, attr_id);
+        prop_items.push(ObjProp::KeyValue(key, expr));
+    }
+    let props_obj = ctx.b.object_expr(prop_items);
+    let props_thunk = ctx.b.thunk(props_obj);
+    let node_ident = ctx.b.alloc_str(&node);
+    block.push(ctx.b.call_stmt(
+        "$.css_props",
+        [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
+    ));
+
+    // Component($node.lastChild, { ... })
+    let last_child = ctx
+        .b
+        .static_member_expr(ctx.b.rid_expr(node_ident), "lastChild");
+    gen_component(ctx, component_id, last_child, &mut block);
+
+    block.push(ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)]));
+
+    body.push(ctx.b.block_stmt(block));
+    body.push(
+        ctx.b
+            .call_stmt("$.append", [Arg::Ident("$$anchor"), Arg::Ident(&frag)]),
+    );
 }
 
 /// Build `$.bind_this(value, setter, getter[, context_thunk])` for component bind:this.

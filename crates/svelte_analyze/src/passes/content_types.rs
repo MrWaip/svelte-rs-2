@@ -1,4 +1,4 @@
-use svelte_ast::Element;
+use svelte_ast::{Attribute, Element};
 
 use crate::types::data::{
     AnalysisData, ContentStrategy, FragmentItem, FragmentKey, LoweredTextPart,
@@ -80,6 +80,17 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
     }
 
     if data.has_runtime_attrs(id) {
+        return true;
+    }
+
+    // `<option value="...">` always emits a JS-side `el.value = el.__value = "<lit>"`
+    // initializer (matches reference compiler `needs_special_value_handling`), so the
+    // option element needs a DOM ref even if nothing else is dynamic.
+    if el.name == "option"
+        && el.attributes.iter().any(|a| {
+            matches!(a, Attribute::StringAttribute(s) if s.name == "value")
+        })
+    {
         return true;
     }
 

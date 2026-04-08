@@ -1,4 +1,4 @@
-use svelte_span::Span;
+pub use svelte_span::Span;
 
 const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link",

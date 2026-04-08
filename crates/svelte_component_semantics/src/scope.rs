@@ -44,6 +44,11 @@ impl ScopeTable {
         self.bindings[scope.index()].get(name).copied()
     }
 
+    /// Iterate names declared directly in this scope (no parent walk).
+    pub fn own_binding_names(&self, scope: ScopeId) -> impl Iterator<Item = &str> {
+        self.bindings[scope.index()].keys().map(|k| k.as_str())
+    }
+
     /// Walk the parent chain to find a binding.
     pub fn find_binding(&self, mut scope: ScopeId, name: &str) -> Option<SymbolId> {
         loop {

@@ -1,9 +1,9 @@
 # Each Block
 
 ## Current state
-- **Working**: 16/16 passing client-side `{#each}` use cases.
-- **Just landed**: non-keyed each-block index identifier is no longer wrapped in `?? ""` inside `template_effect` template literals. Introduced `CodegenView::is_each_index_sym`, `Ctx::is_each_index_sym`, and `is_definitely_defined(ctx, nid, expr)` in `crates/svelte_codegen_client/src/template/expression.rs`. `TemplatePart::Expr` and `TitleValuePart` now carry a `defined` flag; the builder skips the `?? ""` wrap when set. The check also inspects the post-transform `Expression` — keyed each blocks wrap `idx` in `$.get(idx)` (a `CallExpression`), so those correctly keep the fallback. (test: `each_index_text_no_coalesce`)
-- **Next slice**: implement `collection_id` inner-scope shadowing logic in `crates/svelte_codegen_client/src/template/each_block.rs` (reference: `EachBlock.js` lines 112–123 and 316–318). Non-goals for that run: parser `{#each expr, index}` without `as`, related diagnostics.
+- **Working**: 17/17 passing client-side `{#each}` use cases.
+- **Just landed**: `collection_id` inner-scope shadowing. When any binding declared inside the each body shadows an outer-scope name, the render callback now emits the extra `$$index, $$array` parameters to match the reference compiler. Detection lives in `crates/svelte_analyze/src/passes/template_side_tables.rs::leave_each_block` via the new `ScopeTable::own_binding_names` accessor; codegen consumes `Ctx::each_needs_collection_id` in `crates/svelte_codegen_client/src/template/each_block.rs` and synthesises both names with `ctx.gen_ident`. (test: `each_inner_shadow`)
+- **Next slice**: parser support for `{#each expression, index}` without `as`, plus its `each_block_no_item_with_index` test and the matching `each_block_invalid_context` diagnostic in `crates/svelte_analyze/src/validate/mod.rs`.
 - Last updated: 2026-04-08
 
 ## Source
@@ -42,7 +42,7 @@
 - [x] Diagnostic: `animate:` outside a keyed each or on a non-sole child should raise `animation_invalid_placement`.
 - [x] Diagnostic: `animate:` inside an unkeyed each should raise `animation_missing_key`.
 - [x] Diagnostic: runes-mode reassignment or binding to an each item should raise `each_item_invalid_assignment`.
-- [ ] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318).
+- [x] Inner-scope shadowing: when an each block's inner scope declares a binding that shadows an outer scope name, emit `$$index, $$array` as extra render-callback params (reference: `collection_id` logic in `EachBlock.js` lines 112–123 and 316–318). Runes-only: legacy `transitive_deps`/reassigned-item rewrites are tracked separately. (test: `each_inner_shadow`)
 - [ ] Parser: support `{#each expression, index}` without `as` (currently requires `as` to finalize the each header).
 - [ ] Diagnostic: `{#each expression, index}` without `as` — currently unimplemented in `crates/svelte_analyze/src/validate/mod.rs`.
 
@@ -88,6 +88,7 @@
 - [x] `animate_reactive_params`
 - [x] `animate_blockers`
 - [x] `animate_with_spread`
+- [x] `each_inner_shadow`
 - [ ] `each_block_no_item_with_index`
 - [ ] `validate_each_key_without_as`
 - [ ] `validate_each_animation_missing_key`

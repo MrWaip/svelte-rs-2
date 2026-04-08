@@ -349,6 +349,9 @@ impl AnalysisData {
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
         self.each_context.contains_group_binding(id)
     }
+    pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
+        self.each_context.needs_collection_id(id)
+    }
     pub fn css_hash(&self) -> &str {
         &self.css.hash
     }

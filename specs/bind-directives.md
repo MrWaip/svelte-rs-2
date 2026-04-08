@@ -2,8 +2,9 @@
 
 ## Current state
 - **Working**: all existing bind codegen and analyzer validation use cases are implemented and covered, except dev-mode ownership validation for component prop bindings
-- **Next:** keep parity checks in `/qa`; remaining gap is dev-mode `$$ownership_validator.binding(...)` coverage for component bindings
-- Last updated: 2026-04-07
+- `bind_select_static_option_value` landed: any `<option value="...">` (StringAttribute) now drops the literal `value=` from the template HTML and emits `option.value = option.__value = "<lit>"` in JS init, matching the reference compiler's `needs_special_value_handling` rule. Routed via `element_needs_var` in analyze + extended `value` attr arms in `template/html.rs` and `template/attributes.rs` (reuses the existing `bind:group` `__value` emission).
+- **Next:** remaining gap is dev-mode `$$ownership_validator.binding(...)` coverage for component bindings; also `<option value={expr}>` (Expression / Concatenation) still emits the legacy path and should be ported separately.
+- Last updated: 2026-04-08
 
 ## Source
 
@@ -24,7 +25,8 @@ ROADMAP.md — Bindings
 
 - [x] `bind:value` on `<input>` and `<select>` including shorthand and function bindings
   Existing tests: `bind_directives`, `bind_directives_extended`, `bind_function_value`, `bind_select_value`
-- [ ] `<select bind:value>` with static `<option value="...">` children must drop the `value=` attribute from the template HTML and emit an `option.value = option.__value = "..."` initializer per option. Currently we keep the literal `value` attr in the template and emit only `$.next()`, so the `__value` channel is missing entirely. (test: `bind_select_static_option_value`, `#[ignore]`, S)
+- [x] `<option value="...">` (StringAttribute) drops the literal `value=` from the template HTML and emits `option.value = option.__value = "<lit>"` JS initializer, matching reference `needs_special_value_handling`. Always-on, not gated on parent `<select bind:value>`. (test: `bind_select_static_option_value`)
+- [ ] `<option value={expr}>` and `<option value="prefix-{expr}">` (Expression / Concatenation): currently fall through the generic dynamic-attribute path; reference routes them through `build_element_special_value_attribute` with the `__value` cache + effect wrapping. No failing test exists yet — port when a fixture lands. (M)
 - [x] `bind:value` on `<textarea>`
   Existing tests: `bind_textarea_value`, `textarea_child_value_dynamic`
 - [x] `bind:checked`, `bind:group`, and `bind:files`
@@ -128,3 +130,4 @@ ROADMAP.md — Bindings
 - [x] `validate_attribute_invalid_multiple`
 - [x] `validate_bind_member_expression_no_error`
 - [x] `validate_bind_getter_setter_no_error`
+- [x] `bind_select_static_option_value`

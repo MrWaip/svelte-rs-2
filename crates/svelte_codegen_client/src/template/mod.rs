@@ -71,7 +71,7 @@ pub(crate) fn add_svelte_meta<'a>(
     )
 }
 
-fn from_namespace(namespace: Namespace) -> &'static str {
+pub(crate) fn from_namespace(namespace: Namespace) -> &'static str {
     match namespace {
         Namespace::Html => "$.from_html",
         Namespace::Svg => "$.from_svg",
@@ -136,7 +136,7 @@ fn child_namespace_for_element(ctx: &Ctx, el_id: NodeId) -> Namespace {
     namespace_for_element_tag(&el.name, inherited)
 }
 
-fn inherited_fragment_namespace(ctx: &Ctx, key: FragmentKey) -> Namespace {
+pub(crate) fn inherited_fragment_namespace(ctx: &Ctx, key: FragmentKey) -> Namespace {
     match key {
         FragmentKey::Root => root_namespace(ctx),
         FragmentKey::Element(el_id) => child_namespace_for_element(ctx, el_id),
@@ -381,7 +381,7 @@ fn emit_content_strategy<'a>(
             emit_single_element(ctx, key, *el_id, tpl_name, is_root, hoisted, body);
         }
         ContentStrategy::SingleBlock(ref item) => {
-            emit_single_block(ctx, item, is_root, body);
+            emit_single_block(ctx, key, item, tpl_name, is_root, hoisted, body);
         }
         ContentStrategy::Mixed { .. } => {
             emit_mixed(ctx, key, tpl_name, is_root, hoisted, body);
@@ -547,8 +547,11 @@ fn emit_single_element<'a>(
 
 fn emit_single_block<'a>(
     ctx: &mut Ctx<'a>,
+    parent_key: FragmentKey,
     item: &FragmentItem,
+    tpl_name: &str,
     is_root: bool,
+    hoisted: &mut Vec<Statement<'a>>,
     body: &mut Vec<Statement<'a>>,
 ) {
     // RenderTag / ComponentNode: call directly with $$anchor, no wrapping.
@@ -565,6 +568,14 @@ fn emit_single_block<'a>(
                 ctx.gen_ident("fragment");
             }
             gen_render_tag(ctx, *id, ctx.b.rid_expr("$$anchor"), true, body);
+            return;
+        }
+        FragmentItem::ComponentNode(id)
+            if !ctx.is_dynamic_component(*id) && ctx.has_component_css_props(*id) =>
+        {
+            component::emit_component_with_css_wrapper(
+                ctx, *id, parent_key, tpl_name, is_root, hoisted, body,
+            );
             return;
         }
         FragmentItem::ComponentNode(id) if !ctx.is_dynamic_component(*id) => {

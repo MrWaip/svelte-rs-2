@@ -35,6 +35,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn convert_attributes(
         &mut self,
         token_attrs: &[token::Attribute],
+        is_component: bool,
     ) -> Vec<Attribute> {
         let mut attributes = Vec::new();
         // Tracks (type_key, name) pairs to detect duplicates.
@@ -51,7 +52,11 @@ impl<'a> Parser<'a> {
                     // the only cases that pass the scanner but violate the reference compiler's
                     // `regex_illegal_attribute_character` are names starting with a digit or '-'.
                     // Check the first byte — O(1), no scan of the rest of the name needed.
-                    if matches!(name.as_bytes().first(), Some(&b) if b.is_ascii_digit() || b == b'-')
+                    // Reference compiler runs `regex_illegal_attribute_character` only in
+                    // `visitors/shared/element.js` — components allow CSS custom-property
+                    // names like `--color`, which the wrapper-element lowering picks up.
+                    if !is_component
+                        && matches!(name.as_bytes().first(), Some(&b) if b.is_ascii_digit() || b == b'-')
                     {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticKind::AttributeInvalidName {

@@ -9,7 +9,7 @@ use oxc_ast_visit::VisitMut;
 use oxc_span::SPAN;
 use rustc_hash::FxHashSet;
 
-use svelte_analyze::FragmentKey;
+use svelte_analyze::{is_simple_expression, FragmentKey};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -349,9 +349,21 @@ fn build_fallback_expr<'a>(
     assign: &AssignmentPattern<'a>,
 ) -> oxc_ast::ast::Expression<'a> {
     let default_val = assign.right.clone_in(ctx.b.ast.allocator);
+    if is_simple_expression(&assign.right) {
+        return ctx.b.call_expr(
+            "$.fallback",
+            [Arg::Expr(ctx.b.clone_expr(access)), Arg::Expr(default_val)],
+        );
+    }
+    // Non-simple defaults must be lazy: `$.fallback(access, () => <default>, true)`
+    // matches reference compiler `build_fallback` (`reference/compiler/utils/ast.js`).
     ctx.b.call_expr(
         "$.fallback",
-        [Arg::Expr(ctx.b.clone_expr(access)), Arg::Expr(default_val)],
+        [
+            Arg::Expr(ctx.b.clone_expr(access)),
+            Arg::Expr(ctx.b.thunk(default_val)),
+            Arg::Bool(true),
+        ],
     )
 }
 
