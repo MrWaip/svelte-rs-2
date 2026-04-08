@@ -130,7 +130,6 @@ fn css_scope_class_object() {
 }
 
 #[rstest]
-#[ignore = "bug: $.attribute_effect drops trailing scope-class arg for spread attributes — emits 2 args instead of 6 (codegen)"]
 fn css_scope_spread_attribute() {
     assert_compiler("css_scope_spread_attribute");
 }

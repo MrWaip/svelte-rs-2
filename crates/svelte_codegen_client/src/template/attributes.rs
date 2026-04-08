@@ -679,14 +679,26 @@ pub(crate) fn process_attrs_spread<'a>(
         props.push(ObjProp::Computed(style_key_expr, style_obj));
     }
 
-    // $.attribute_effect(el, () => ({...})) — skip if no renderable properties
+    // $.attribute_effect(el, () => ({...})[, void 0, void 0, void 0, hash]) — skip if empty.
+    // When the element is CSS-scoped, args 3-5 are void 0 placeholders for memoizer
+    // sync/async/blockers (unused in our non-async path), and arg 6 is the scope hash.
     if !props.is_empty() {
         let obj = ctx.b.object_expr(props);
         let arrow = ctx.b.arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(obj)]);
-        init.push(ctx.b.call_stmt(
-            "$.attribute_effect",
-            [Arg::Ident(el_name), Arg::Expr(arrow)],
-        ));
+        let hash = ctx.css_hash();
+        let args: Vec<Arg<'a, '_>> = if ctx.is_css_scoped(el_id) && !hash.is_empty() {
+            vec![
+                Arg::Ident(el_name),
+                Arg::Expr(arrow),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Expr(ctx.b.void_zero_expr()),
+                Arg::Str(hash.to_string()),
+            ]
+        } else {
+            vec![Arg::Ident(el_name), Arg::Expr(arrow)]
+        };
+        init.push(ctx.b.call_stmt("$.attribute_effect", args));
     }
 }
 
