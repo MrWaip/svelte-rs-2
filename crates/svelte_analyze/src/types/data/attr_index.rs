@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use svelte_ast::Attribute;
+use svelte_ast::{Attribute, NodeId};
 
 /// Per-element attribute index enabling O(1) lookups by name.
 ///
@@ -13,12 +13,15 @@ use svelte_ast::Attribute;
 /// `AnimateDirective`) and nameless variants are not indexed.
 pub struct AttrIndex {
     by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>>,
+    by_id: FxHashMap<NodeId, u16>,
 }
 
 impl AttrIndex {
     pub fn build(attrs: &[Attribute]) -> Self {
         let mut by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>> = FxHashMap::default();
+        let mut by_id = FxHashMap::default();
         for (i, attr) in attrs.iter().enumerate() {
+            by_id.insert(attr.id(), i as u16);
             if let Some(name) = attr.name() {
                 by_name
                     .entry(CompactString::from(name))
@@ -26,7 +29,7 @@ impl AttrIndex {
                     .push(i as u16);
             }
         }
-        Self { by_name }
+        Self { by_name, by_id }
     }
 
     /// O(1). Returns `true` if at least one attribute with this name is present.
@@ -57,5 +60,11 @@ impl AttrIndex {
             .get(name)
             .into_iter()
             .flat_map(move |positions| positions.iter().map(move |&pos| &attrs[pos as usize]))
+    }
+
+    #[inline]
+    pub fn find_by_id<'a>(&self, attrs: &'a [Attribute], id: NodeId) -> Option<&'a Attribute> {
+        let pos = *self.by_id.get(&id)?;
+        Some(&attrs[pos as usize])
     }
 }

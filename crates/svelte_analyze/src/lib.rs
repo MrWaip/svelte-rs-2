@@ -10,14 +10,16 @@ pub(crate) mod walker;
 
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AwaitBindingData, AwaitBindingInfo, BlockerData,
+    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockerData,
     ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind, EachContextIndex,
-    ElementFacts, ElementFactsEntry, ElementFlags, EventHandlerMode, ExprDeps, ExprHandle,
+    ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
+    DirectiveModifierFlags, EachContextIndex, ElementFacts, ElementFactsEntry, ElementFlags,
+    EventHandlerMode, EventModifier, ExprDeps, ExprHandle,
     ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry,
-    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart,
-    ParentKind, ParentRef, ParserResult, PropAnalysis, PropsAnalysis, RenderTagCalleeMode,
-    RenderTagPlan, RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan,
+    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, ImportSymbolSet, LoweredFragment,
+    LoweredTextPart, NamespaceKind, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets,
+    PropAnalysis, PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptRuneCalls,
     SnippetData, StmtHandle, TemplateElementEntry, TemplateElementIndex, TemplateTopology,
 };
 pub use types::script::{
@@ -135,7 +137,9 @@ pub fn analyze_module(
             data.script = Some(script_info);
             passes::mark_runes::mark_script_runes(&mut data);
             passes::mark_runes::mark_nested_runes(&program, &mut data.scoping);
-            data.import_syms = data.scoping.collect_import_syms();
+            let import_syms = data.scoping.collect_import_syms();
+            data.import_syms = ImportSymbolSet::new();
+            data.import_syms.extend(import_syms);
             validate::validate_program(&data, &program, 0, true, &mut diags);
         }
         Err(errs) => diags.extend(errs),

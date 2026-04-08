@@ -1,6 +1,7 @@
 use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
-use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
+use crate::walker::{TemplateVisitor, VisitContext};
+use smallvec::SmallVec;
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, Element, StyleDirective, StyleDirectiveValue,
 };
@@ -34,16 +35,15 @@ impl<'s> BindSemanticsVisitor<'s> {
             return;
         };
 
-        let each_vars: Vec<String> = info
+        let each_vars: SmallVec<[SymbolId; 4]> = info
             .ref_symbols
             .iter()
             .copied()
             .filter(|&sym| data.scoping.is_each_block_var(sym))
-            .map(|sym| data.scoping.symbol_name(sym).to_string())
             .collect();
 
         if !each_vars.is_empty() {
-            data.each_context.set_bind_this_context(dir.id, each_vars);
+            data.bind_this_each_context.set(dir.id, each_vars);
         }
     }
 
@@ -138,44 +138,11 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
                     .insert(bind_group_id, value_attr_id);
             }
 
-            // Find ancestor each-blocks whose context vars are referenced in bind:group
-            let referenced_syms: Vec<_> = ctx
-                .data
-                .attr_expressions
-                .get(bind_group_id)
-                .map(|info| {
-                    info.ref_symbols
-                        .iter()
-                        .copied()
-                        .filter(|&sym| ctx.data.scoping.is_each_block_var(sym))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            if !referenced_syms.is_empty() {
-                let ancestor_eaches: Vec<_> = ctx
-                    .data
-                    .ancestors(bind_group_id)
-                    .filter(|p| p.kind == ParentKind::EachBlock)
-                    .map(|p| (p.id, ctx.data.each_body_scope(p.id, ctx.scope)))
-                    .collect();
-
-                let mut parent_eaches = Vec::new();
-                for (each_id, body_scope) in ancestor_eaches {
-                    let has_match = referenced_syms
-                        .iter()
-                        .any(|&sym| ctx.data.scoping.symbol_scope_id(sym) == body_scope);
-                    if has_match {
-                        parent_eaches.push(each_id);
-                        ctx.data.each_context.mark_contains_group_binding(each_id);
-                    }
-                }
-                if !parent_eaches.is_empty() {
-                    ctx.data
-                        .each_context
-                        .set_parent_each_blocks(bind_group_id, parent_eaches);
-                }
+            let parent_eaches = ctx.data.parent_each_blocks(bind_group_id);
+            for each_id in parent_eaches {
+                ctx.data.contains_group_binding_each_blocks.insert(each_id);
             }
+
         }
 
         if has_contenteditable && has_content_bind {

@@ -337,8 +337,11 @@ impl<'a> Ctx<'a> {
     pub fn is_prop_source_node(&self, id: NodeId) -> bool {
         self.query.view.is_prop_source_node(id)
     }
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.query.view.bind_each_context(id)
+    }
+    pub fn attr_index(&self, id: NodeId) -> Option<&svelte_analyze::AttrIndex> {
+        self.query.view.attr_index(id)
     }
     pub fn each_index_name(&self, id: NodeId) -> Option<String> {
         self.query.view.each_index_name(id).map(str::to_string)
@@ -348,9 +351,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn nearest_element(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.nearest_element(id)
-    }
-    pub fn template_element_parent(&self, id: NodeId) -> Option<NodeId> {
-        self.query.view.template_element_parent(id)
     }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&svelte_analyze::AwaitBindingInfo> {
         self.query.view.await_value_binding(id)
@@ -518,8 +518,11 @@ impl<'a> Ctx<'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.query.view.ce_config()
     }
-    pub fn script_rune_call_kinds(&self) -> &rustc_hash::FxHashMap<u32, svelte_analyze::RuneKind> {
-        self.query.view.script_rune_call_kinds()
+    pub fn script_rune_calls(&self) -> &svelte_analyze::ScriptRuneCalls {
+        self.query.view.script_rune_calls()
+    }
+    pub fn instance_script_node_id_offset(&self) -> u32 {
+        self.query.view.instance_script_node_id_offset()
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
@@ -533,8 +536,8 @@ impl<'a> Ctx<'a> {
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
         self.query.view.bind_group_value_attr(id)
     }
-    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
-        self.query.view.parent_each_blocks(id)
+    pub fn parent_each_blocks(&self, id: NodeId) -> Vec<NodeId> {
+        self.query.view.parent_each_blocks(id).into_iter().collect()
     }
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
         self.query.view.contains_group_binding(id)

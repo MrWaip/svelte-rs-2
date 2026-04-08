@@ -5,12 +5,10 @@
 //! - `mark_script_runes` — root-scope runes from ScriptInfo declarations
 //! - `mark_nested_runes` — non-root runes found via OXC Visit
 
-use oxc_ast_visit::Visit;
-use rustc_hash::FxHashMap;
-
 use crate::scope::{ComponentScoping, ScopeId, SymbolId};
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, ProxyStateInits};
 use crate::types::script::{DeclarationInfo, DeclarationKind, RuneKind};
+use oxc_ast_visit::Visit;
 
 /// Mark runes declared at the root scope from ScriptInfo.
 pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
@@ -30,7 +28,7 @@ pub(crate) fn mark_root_script_runes_in_scope(
     scoping: &mut ComponentScoping,
     scope: ScopeId,
     declarations: &[DeclarationInfo],
-    proxy_state_inits: &FxHashMap<compact_str::CompactString, bool>,
+    proxy_state_inits: &ProxyStateInits,
 ) {
     for decl in declarations {
         let Some(rune_kind) = decl.is_rune else {
@@ -39,7 +37,7 @@ pub(crate) fn mark_root_script_runes_in_scope(
         let Some(sym_id) = scoping.find_binding(scope, &decl.name) else {
             continue;
         };
-        let is_proxy = proxy_state_inits.get(&decl.name).copied().unwrap_or(false);
+        let is_proxy = proxy_state_inits.is_proxied(&decl.name);
         scoping.mark_rune_with_proxy(sym_id, rune_kind, is_proxy);
         if decl.kind == DeclarationKind::Var
             && matches!(rune_kind, RuneKind::State | RuneKind::StateRaw)

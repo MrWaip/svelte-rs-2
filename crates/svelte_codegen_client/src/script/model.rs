@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use svelte_analyze::{CodegenView, ComponentScoping, PropsAnalysis, RuneKind};
+use svelte_analyze::{CodegenView, ComponentScoping, PropsAnalysis, RuneKind, ScriptRuneCalls};
 
 use crate::builder::Builder;
 
@@ -117,7 +117,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) class_state_stack: Vec<ClassStateInfo>,
     pub(super) class_name_stack: Vec<Option<String>>,
     pub(super) prop_default_exprs: Vec<Option<Expression<'a>>>,
-    pub(super) script_rune_call_kinds: Option<&'b FxHashMap<u32, RuneKind>>,
+    pub(super) script_rune_calls: Option<&'b ScriptRuneCalls>,
+    pub(super) script_node_id_offset: u32,
     pub(super) experimental_async: bool,
     pub(super) custom_element: bool,
     /// Svelte-ignore queries for span-based JS comment lookups.

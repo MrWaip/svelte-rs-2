@@ -419,7 +419,12 @@ fn emit_customizable_select<'a>(
 ) {
     let (children_html, import_node) = fragment_html(ctx, *child_key);
     let flags = if import_node { 3.0 } else { 1.0 };
-    let from_fn = from_template_fn_for_fragment_element(ctx, *child_key, el_name);
+    let from_fn = from_template_fn_for_fragment_element(
+        ctx,
+        child_key
+            .node_id()
+            .unwrap_or_else(|| panic!("customizable select child fragment must be keyed by element")),
+    );
     let tpl = ctx.b.call_expr(
         from_fn,
         [

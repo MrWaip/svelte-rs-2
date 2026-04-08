@@ -18,6 +18,8 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
     if let Some(module_program) = parsed.module_program.as_ref() {
         builder.add_module_program(module_program);
     }
+    data.module_script_node_id_offset = 0;
+    data.instance_script_node_id_offset = builder.next_node_id();
 
     if let Some(program) = parsed.program.as_ref() {
         builder.add_instance_program(program);
@@ -55,7 +57,9 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
         }
     }
 
-    data.import_syms = scoping.collect_import_syms();
+    let import_syms = scoping.collect_import_syms();
+    data.import_syms = crate::types::data::ImportSymbolSet::new();
+    data.import_syms.extend(import_syms);
     data.scoping = scoping;
 }
 

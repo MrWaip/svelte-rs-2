@@ -6,7 +6,7 @@ use svelte_span::Span;
 
 use crate::types::data::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, EventHandlerMode,
-    FragmentKey, RichContentParentKind,
+    EventModifier, FragmentKey, RichContentParentKind,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 
@@ -21,6 +21,25 @@ impl<'src> ElementFlagsVisitor<'src> {
 
     fn source_text(&self, span: Span) -> &str {
         &self.source[span.start as usize..span.end as usize]
+    }
+
+    fn modifier_flags(modifiers: &[String]) -> EventModifier {
+        modifiers.iter().fold(EventModifier::empty(), |mut flags, modifier| {
+            flags |= match modifier.as_str() {
+                "once" => EventModifier::ONCE,
+                "capture" => EventModifier::CAPTURE,
+                "preventDefault" => EventModifier::PREVENT_DEFAULT,
+                "stopPropagation" => EventModifier::STOP_PROPAGATION,
+                "stopImmediatePropagation" => EventModifier::STOP_IMMEDIATE_PROPAGATION,
+                "passive" => EventModifier::PASSIVE,
+                "nonpassive" => EventModifier::NONPASSIVE,
+                "trusted" => EventModifier::TRUSTED,
+                "self" => EventModifier::SELF,
+                "global" => EventModifier::GLOBAL,
+                _ => EventModifier::empty(),
+            };
+            flags
+        })
     }
 }
 
@@ -154,6 +173,16 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     ctx.data.element_flags.needs_input_defaults.insert(el_id);
                 }
             }
+            Attribute::OnDirectiveLegacy(dir) => {
+                ctx.data
+                    .directive_modifiers
+                    .record(dir.id, Self::modifier_flags(&dir.modifiers));
+            }
+            Attribute::TransitionDirective(dir) => {
+                ctx.data
+                    .directive_modifiers
+                    .record(dir.id, Self::modifier_flags(&dir.modifiers));
+            }
             Attribute::UseDirective(_) => {
                 ctx.data.element_flags.has_use_directive.insert(el_id);
             }
@@ -264,12 +293,16 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     }
                 }
                 Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },
-                Attribute::OnDirectiveLegacy(a) => ComponentPropKind::Event {
-                    name: a.name.clone(),
-                    attr_id: a.id,
-                    has_expression: a.expression_span.is_some(),
-                    has_once_modifier: a.modifiers.iter().any(|m| m == "once"),
-                },
+                Attribute::OnDirectiveLegacy(a) => {
+                    let flags = Self::modifier_flags(&a.modifiers);
+                    data.directive_modifiers.record(a.id, flags);
+                    ComponentPropKind::Event {
+                        name: a.name.clone(),
+                        attr_id: a.id,
+                        has_expression: a.expression_span.is_some(),
+                        has_once_modifier: flags.contains(EventModifier::ONCE),
+                    }
+                }
                 _ => continue,
             };
             let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());

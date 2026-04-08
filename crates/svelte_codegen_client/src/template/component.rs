@@ -575,7 +575,11 @@ fn build_bind_this_call<'a>(
         )
     } else {
         // Member/computed expression: re-parse from source to avoid reactive wrapping
-        let each_context: Vec<String> = ctx.bind_each_context(bind_id).cloned().unwrap_or_default();
+        let each_context_syms = ctx.bind_each_context(bind_id).unwrap_or(&[]);
+        let each_context: Vec<String> = each_context_syms
+            .iter()
+            .map(|&sym| ctx.symbol_name(sym).to_string())
+            .collect();
 
         // Setter: ($$value[, ctx_vars]) => <expr> = $$value
         let setter_body = format!("{var_name} = $$value");

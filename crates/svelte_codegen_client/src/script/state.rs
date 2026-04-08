@@ -3,8 +3,7 @@ use rustc_hash::FxHashSet;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_ast::NONE;
-use oxc_span::GetSpan;
-
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::RuneKind;
 
 use crate::builder::Arg;
@@ -82,12 +81,17 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
     }
 
     fn rune_kind_from_expr(&self, expr: &Expression<'_>) -> Option<RuneKind> {
-        if let Some(map) = self.script_rune_call_kinds {
-            if let Some(kind) = map.get(&expr.span().start).copied() {
+        if let Some(kind) = Self::detect_class_field_rune_kind(expr) {
+            return Some(kind);
+        }
+        if let Some(index) = self.script_rune_calls {
+            if let Some(kind) = script_rune_call_node_id(expr, self.script_node_id_offset)
+                .and_then(|node| index.kind(node))
+            {
                 return Some(kind);
             }
         }
-        Self::detect_class_field_rune_kind(expr)
+        None
     }
 
     fn first_binding_identifier<'p>(
@@ -1200,12 +1204,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 .class_getter(self.b.public_key(name), vec![return_stmt]),
         );
 
-        // setter: set name(value) { $.set(this.#backing, value[, true]); }
+        // Public $state fields preserve the reference compiler's proxy-write flag.
         let mut set_args: Vec<Arg<'a, '_>> = vec![
             Arg::Expr(self.b.this_private_member(&field_info.private_name)),
             Arg::Ident("value"),
         ];
-        // Only $state gets the proxy flag (third arg `true`)
         if field_info.rune_kind == RuneKind::State {
             set_args.push(Arg::Bool(true));
         }
@@ -1353,5 +1356,29 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             .and_then(|n| n.as_deref())
             .unwrap_or("[class]");
         format!("{}.{}", class_name, field_name)
+    }
+}
+
+fn script_rune_call_node_id(expr: &Expression<'_>, node_id_offset: u32) -> Option<OxcNodeId> {
+    match expr {
+        Expression::CallExpression(call) => Some(OxcNodeId::from_usize(
+            call.node_id().index() + node_id_offset as usize,
+        )),
+        Expression::TSAsExpression(expr) => {
+            script_rune_call_node_id(&expr.expression, node_id_offset)
+        }
+        Expression::TSSatisfiesExpression(expr) => {
+            script_rune_call_node_id(&expr.expression, node_id_offset)
+        }
+        Expression::TSNonNullExpression(expr) => {
+            script_rune_call_node_id(&expr.expression, node_id_offset)
+        }
+        Expression::TSTypeAssertion(expr) => {
+            script_rune_call_node_id(&expr.expression, node_id_offset)
+        }
+        Expression::TSInstantiationExpression(expr) => {
+            script_rune_call_node_id(&expr.expression, node_id_offset)
+        }
+        _ => None,
     }
 }

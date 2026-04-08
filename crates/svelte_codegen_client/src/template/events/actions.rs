@@ -99,7 +99,12 @@ pub(crate) fn gen_transition_directive<'a>(
         .expr_deps(ExprSite::Attr(attr_id))
         .map(|deps| deps.blockers.into_iter().collect::<Vec<_>>())
         .unwrap_or_default();
-    let mut flags: u32 = if td.modifiers.iter().any(|m| m == "global") {
+    let mut flags: u32 = if ctx
+        .query
+        .view
+        .event_modifiers(attr_id)
+        .contains(svelte_analyze::EventModifier::GLOBAL)
+    {
         4
     } else {
         0

@@ -18,9 +18,11 @@ oxc_ast_visit = { workspace = true }
 oxc_parser = { workspace = true }
 oxc_semantic = { workspace = true }
 oxc_span = { workspace = true }
+oxc_syntax = { workspace = true }
 compact_str = { workspace = true }
 rustc-hash = { workspace = true }
 smallvec = { workspace = true }
+bitflags = { workspace = true }
 svelte_css = { workspace = true }
 
 [dev-dependencies]

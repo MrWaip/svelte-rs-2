@@ -254,7 +254,8 @@ pub(crate) fn gen_bind_directive<'a>(
         "group" => {
             ctx.state.needs_binding_group = true;
 
-            let has_each_var = ctx.parent_each_blocks(bind.id).is_some();
+            let parent_eaches = ctx.parent_each_blocks(bind.id);
+            let has_each_var = !parent_eaches.is_empty();
 
             // Getter and setter: when the expression references each-block vars,
             // use the pre-transformed expression (has $.get() applied).
@@ -301,7 +302,7 @@ pub(crate) fn gen_bind_directive<'a>(
             };
 
             // Build index array from ancestor each blocks whose vars appear in the expression
-            let index_array = if let Some(parent_eaches) = ctx.parent_each_blocks(bind.id) {
+            let index_array = if !parent_eaches.is_empty() {
                 let indexes: Vec<_> = parent_eaches
                     .iter()
                     .map(|&each_id| {

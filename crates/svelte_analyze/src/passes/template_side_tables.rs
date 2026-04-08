@@ -17,17 +17,80 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::Visit;
 use svelte_ast::{
-    Attribute, ComponentNode, ConstTag, EachBlock, Element, Node, SnippetBlock, SvelteBody,
-    SvelteBoundary, SvelteDocument, SvelteElement, SvelteWindow,
+    is_mathml, is_svg, is_void, Attribute, ComponentNode, ConstTag, EachBlock, Element,
+    Namespace, Node, SnippetBlock, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
+    SvelteWindow,
 };
 
 use crate::scope::ComponentScoping;
-use crate::types::data::{FragmentKey, StmtHandle};
+use crate::types::data::{FragmentKey, NamespaceKind, StmtHandle};
 use crate::utils::binding_pattern::collect_binding_names;
 use crate::walker::{TemplateVisitor, VisitContext};
+use crate::ElementFactsEntry;
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
+}
+
+fn root_namespace(component: &svelte_ast::Component) -> NamespaceKind {
+    match component
+        .options
+        .as_ref()
+        .and_then(|options| options.namespace)
+        .unwrap_or(Namespace::Html)
+    {
+        Namespace::Html => NamespaceKind::Html,
+        Namespace::Svg => NamespaceKind::Svg,
+        Namespace::Mathml => NamespaceKind::MathMl,
+    }
+}
+
+fn inherited_namespace(
+    component: &svelte_ast::Component,
+    ctx: &VisitContext<'_>,
+    parent_element: Option<svelte_ast::NodeId>,
+) -> NamespaceKind {
+    parent_element
+        .and_then(|id| ctx.data.namespace(id))
+        .unwrap_or_else(|| root_namespace(component))
+}
+
+fn namespace_for_element(name: &str, inherited: NamespaceKind) -> NamespaceKind {
+    if name == "foreignObject" && inherited == NamespaceKind::Svg {
+        return NamespaceKind::ForeignObject;
+    }
+    if name == "annotation-xml" && inherited == NamespaceKind::MathMl {
+        return NamespaceKind::AnnotationXml;
+    }
+    if is_svg(name) {
+        return NamespaceKind::Svg;
+    }
+    if is_mathml(name) {
+        return NamespaceKind::MathMl;
+    }
+    if inherited == NamespaceKind::Svg && matches!(name, "a" | "title") {
+        return NamespaceKind::Svg;
+    }
+    NamespaceKind::Html
+}
+
+fn creation_namespace_for_element(name: &str, inherited: NamespaceKind) -> Namespace {
+    namespace_for_element(name, inherited).creation_namespace()
+}
+
+fn static_xmlns_namespace(attrs: &[Attribute], source: &str) -> Option<NamespaceKind> {
+    let xmlns = attrs.iter().find_map(|attr| match attr {
+        Attribute::StringAttribute(attr) if attr.name == "xmlns" => {
+            Some(attr.value_span.source_text(source))
+        }
+        _ => None,
+    })?;
+
+    match xmlns {
+        "http://www.w3.org/2000/svg" => Some(NamespaceKind::Svg),
+        "http://www.w3.org/1998/Math/MathML" => Some(NamespaceKind::MathMl),
+        _ => None,
+    }
 }
 
 pub(crate) fn collect_fragment_facts(
@@ -536,11 +599,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         let is_destructured = ctx.data.each_is_destructured(block.id);
 
         if is_destructured {
-            // Destructured context: name is always "$$item"
-            ctx.data
-                .each_context
-                .record_context_name(block.id, "$$item".to_string());
-
             if let Some(parsed) = ctx.parsed() {
                 if let Some(stmt) = block
                     .context_span
@@ -696,56 +754,129 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
-        ctx.data.template_elements.record(
-            el.id,
-            &el.name,
+        let parent_element = ctx.nearest_element();
+        let inherited = inherited_namespace(self.component, ctx, parent_element);
+        let facts = ElementFactsEntry::build(
             &el.attributes,
-            ctx.nearest_element(),
             ctx.source,
+            namespace_for_element(&el.name, inherited),
+            creation_namespace_for_element(&el.name, inherited),
+            is_void(&el.name),
+            el.name.contains('-'),
         );
+        ctx.data.element_facts.record_entry(el.id, facts);
+        let facts = ctx
+            .data
+            .element_facts
+            .entry(el.id)
+            .expect("element facts recorded before template element index");
+        ctx.data
+            .template_elements
+            .record(el.id, &el.name, facts, parent_element);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(cn.id, ctx.parent());
-        ctx.data.record_element_facts(cn.id, &cn.attributes);
+        ctx.data.record_element_facts(
+            cn.id,
+            ElementFactsEntry::build(
+                &cn.attributes,
+                ctx.source,
+                inherited_namespace(self.component, ctx, ctx.nearest_element()),
+                inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
+        let namespace = static_xmlns_namespace(&el.attributes, ctx.source)
+            .unwrap_or_else(|| inherited_namespace(self.component, ctx, ctx.nearest_element()));
+        ctx.data.record_element_facts(
+            el.id,
+            ElementFactsEntry::build(
+                &el.attributes,
+                ctx.source,
+                namespace,
+                namespace.as_namespace(),
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
+        ctx.data.record_element_facts(
+            el.id,
+            ElementFactsEntry::build(
+                &el.attributes,
+                ctx.source,
+                NamespaceKind::Html,
+                Namespace::Html,
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_svelte_document(&mut self, el: &SvelteDocument, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
+        ctx.data.record_element_facts(
+            el.id,
+            ElementFactsEntry::build(
+                &el.attributes,
+                ctx.source,
+                NamespaceKind::Html,
+                Namespace::Html,
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_svelte_body(&mut self, el: &SvelteBody, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
+        ctx.data.record_element_facts(
+            el.id,
+            ElementFactsEntry::build(
+                &el.attributes,
+                ctx.source,
+                NamespaceKind::Html,
+                Namespace::Html,
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_svelte_boundary(&mut self, el: &SvelteBoundary, ctx: &mut VisitContext<'_>) {
         ctx.data
             .template_topology
             .record_node_parent(el.id, ctx.parent());
-        ctx.data.record_element_facts(el.id, &el.attributes);
+        ctx.data.record_element_facts(
+            el.id,
+            ElementFactsEntry::build(
+                &el.attributes,
+                ctx.source,
+                NamespaceKind::Html,
+                Namespace::Html,
+                false,
+                false,
+            ),
+        );
     }
 
     fn visit_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_>) {
