@@ -112,6 +112,36 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
+#[ignore = "bug: scope class svelte-xxx not appended to class literal inside snippet body (codegen)"]
+fn css_scope_class_in_snippet() {
+    assert_compiler("css_scope_class_in_snippet");
+}
+
+#[rstest]
+#[ignore = "bug: scope class svelte-xxx not appended to <svelte:element> class literal (codegen)"]
+fn css_scope_svelte_element_class() {
+    assert_compiler("css_scope_svelte_element_class");
+}
+
+#[rstest]
+#[ignore = "bug: scope class arg to $.set_class is null instead of 'svelte-xxx' when class attribute is an object literal (codegen)"]
+fn css_scope_class_object() {
+    assert_compiler("css_scope_class_object");
+}
+
+#[rstest]
+#[ignore = "bug: $.attribute_effect drops trailing scope-class arg for spread attributes — emits 2 args instead of 6 (codegen)"]
+fn css_scope_spread_attribute() {
+    assert_compiler("css_scope_spread_attribute");
+}
+
+#[rstest]
+#[ignore = "bug: <script module> exports emitted before snippet consts instead of between snippet consts and var root_N template allocations (codegen ordering)"]
+fn script_module_exports_ordering_with_snippets() {
+    assert_compiler("script_module_exports_ordering_with_snippets");
+}
+
+#[rstest]
 #[ignore = "missing: known v3 parity gap"]
 fn warn_attr_avoid_is() {
     assert_compiler("warn_attr_avoid_is");
