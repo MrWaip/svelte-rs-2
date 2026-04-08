@@ -13,8 +13,10 @@ pub use svelte_parser::{ExprHandle, ParserResult, StmtHandle};
 mod analysis;
 mod async_data;
 pub(crate) mod attr_index;
+mod bind_this_each_context;
 mod codegen_view;
 mod css;
+mod directive_modifier_flags;
 mod each_context_index;
 mod element_facts;
 mod elements;
@@ -22,10 +24,14 @@ mod expr;
 mod fragment_facts;
 mod fragments;
 mod ignore;
+mod import_symbols;
+mod pickled_await_offsets;
 mod props;
+mod proxy_state_inits;
 mod render;
 mod rich_content_facts;
 mod runtime;
+mod script_rune_calls;
 mod template_data;
 mod template_element_index;
 pub(crate) mod template_topology;
@@ -33,10 +39,12 @@ pub(crate) mod template_topology;
 pub use analysis::AnalysisData;
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
+pub use bind_this_each_context::BindThisEachContext;
 pub use codegen_view::CodegenView;
 pub use css::CssAnalysis;
+pub use directive_modifier_flags::{DirectiveModifierFlags, EventModifier};
 pub use each_context_index::EachContextIndex;
-pub use element_facts::{ElementFacts, ElementFactsEntry};
+pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
     ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
     EventHandlerMode,
@@ -50,10 +58,14 @@ pub use fragments::{
     LoweredTextPart,
 };
 pub use ignore::IgnoreData;
+pub use import_symbols::ImportSymbolSet;
+pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use props::{PropAnalysis, PropsAnalysis};
+pub use proxy_state_inits::ProxyStateInits;
 pub use render::{RenderTagArgPlan, RenderTagCalleeMode, RenderTagPlan};
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use runtime::RuntimePlan;
+pub use script_rune_calls::ScriptRuneCalls;
 pub use template_data::{
     AwaitBindingData, BindSemanticsData, ConstTagData, DebugTagData, SnippetData,
     TemplateSemanticsData, TitleElementData,

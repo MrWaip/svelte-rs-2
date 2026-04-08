@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey};
-use svelte_ast::{is_void, Attribute, Element};
+use svelte_ast::{Attribute, Element};
 
 use super::expression::item_has_local_blockers;
 use super::slot::is_legacy_slot_element;
@@ -66,7 +66,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
     let css_hash = ctx.css_hash();
 
     let mut html = String::new();
-    let mut import_node = el.name == "video" || el.name.contains('-');
+    let mut import_node = el.name == "video" || ctx.query.view.is_custom_element(el.id);
     write!(html, "<{}", el.name).unwrap();
 
     // Track whether we emitted a class attribute so we know to add one later.
@@ -120,7 +120,7 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
         }
     }
 
-    if is_void(&el.name) {
+    if ctx.query.view.is_void(el.id) {
         html.push_str("/>");
         return (html, import_node);
     }

@@ -1,4 +1,8 @@
 use crate::types::script::RuneKind;
+use oxc_ast::ast::{CallExpression, Program};
+use oxc_ast_visit::walk::walk_call_expression;
+use oxc_ast_visit::Visit;
+use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_ast::{Attribute, Component, EachBlock, Element, Fragment, IfBlock, Node, NodeId};
 
 use super::*;
@@ -517,6 +521,18 @@ fn analyze_source(source: &str) -> (Component, AnalysisData) {
     (component, data)
 }
 
+fn analyze_source_with_parsed(source: &str) -> (Component, AnalysisData, ParserResult<'_>) {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let (data, parsed, diags) = analyze(&component, js_result);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    (component, data, parsed)
+}
+
 fn analyze_source_with_options(source: &str, options: AnalyzeOptions) -> (Component, AnalysisData) {
     let alloc = oxc_allocator::Allocator::default();
     let (component, js_result, parse_diags) = svelte_parser::parse_with_js(&alloc, source);
@@ -831,6 +847,32 @@ fn assert_rune_not_mutated(data: &AnalysisData, name: &str) {
         !data.scoping.is_mutated(sym_id),
         "expected rune '{name}' to NOT be mutated"
     );
+}
+
+fn find_call_node_id(program: &Program<'_>, source: &str, target: &str) -> Option<OxcNodeId> {
+    struct Finder<'s> {
+        source: &'s str,
+        target: &'s str,
+        found: Option<OxcNodeId>,
+    }
+
+    impl<'a> Visit<'a> for Finder<'_> {
+        fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+            if self.found.is_none() && call.span.source_text(self.source) == self.target {
+                self.found = Some(call.node_id());
+                return;
+            }
+            walk_call_expression(self, call);
+        }
+    }
+
+    let mut finder = Finder {
+        source,
+        target,
+        found: None,
+    };
+    finder.visit_program(program);
+    finder.found
 }
 
 fn assert_expr_tag_has_call(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -1161,12 +1203,12 @@ fn template_element_index_tracks_css_candidates() {
     assert!(data.template_element_has_static_class(div.id, "foo"));
     assert!(data.template_element_has_static_class(div.id, "bar"));
 
-    let class_candidates = data.template_elements_for_class("foo");
+    let class_candidates: Vec<_> = data.template_elements_for_class("foo").collect();
     assert!(class_candidates.contains(&div.id));
     assert!(class_candidates.contains(&span.id));
     assert!(class_candidates.contains(&p.id));
 
-    let id_candidates = data.template_elements_for_id("root");
+    let id_candidates: Vec<_> = data.template_elements_for_id("root").collect();
     assert!(id_candidates.contains(&div.id));
     assert!(!id_candidates.contains(&span.id));
     assert!(id_candidates.contains(&p.id));
@@ -1207,8 +1249,9 @@ fn template_element_index_tracks_element_siblings() {
     );
     assert_eq!(data.template_element_next_sibling(span.id), Some(p.id));
     assert_eq!(
-        data.template_element_previous_siblings(p.id).as_slice(),
-        &[span.id, div.id]
+        data.template_element_previous_siblings(p.id)
+            .collect::<Vec<_>>(),
+        vec![span.id, div.id]
     );
     assert_eq!(
         data.template_element_previous_sibling(strong.id),
@@ -1236,12 +1279,63 @@ fn bind_group_tracks_matching_ancestor_each_blocks_via_query_layer() {
     let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
         .expect("no bind:group on input");
 
-    let parent_each_blocks = data
-        .parent_each_blocks(bind_id)
-        .unwrap_or_else(|| panic!("no parent each blocks for bind:group"));
-    assert_eq!(parent_each_blocks, &vec![inner_each.id, outer_each.id]);
+    let parent_each_blocks = data.parent_each_blocks(bind_id);
+    assert_eq!(
+        parent_each_blocks.as_slice(),
+        &[inner_each.id, outer_each.id]
+    );
     assert!(data.contains_group_binding(inner_each.id));
     assert!(data.contains_group_binding(outer_each.id));
+}
+
+#[test]
+fn bind_group_without_each_references_does_not_mark_enclosing_each_blocks() {
+    let (component, data) = analyze_source(
+        r#"<script>
+    let groups = [["a", "b"]];
+    let selected = $state([]);
+</script>
+{#each groups as group}
+    {#each group as item}
+        <input type="checkbox" bind:group={selected} value={item} />
+    {/each}
+{/each}"#,
+    );
+    let outer_each = find_each_block(&component.fragment, &component, "groups")
+        .expect("no outer each block for groups");
+    let inner_each = find_each_block(&outer_each.body, &component, "group")
+        .expect("no inner each block for group");
+    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+        .expect("no bind:group on input");
+
+    assert!(data.parent_each_blocks(bind_id).is_empty());
+    assert!(!data.contains_group_binding(inner_each.id));
+    assert!(!data.contains_group_binding(outer_each.id));
+}
+
+#[test]
+fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
+    let (component, data) = analyze_source(
+        r#"<script>
+    let groups = [["a", "b"]];
+    let selected = $state({});
+</script>
+{#each groups as group}
+    {#each group as item}
+        <input type="checkbox" bind:group={selected[group]} value={item} />
+    {/each}
+{/each}"#,
+    );
+    let outer_each = find_each_block(&component.fragment, &component, "groups")
+        .expect("no outer each block for groups");
+    let inner_each = find_each_block(&outer_each.body, &component, "group")
+        .expect("no inner each block for group");
+    let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
+        .expect("no bind:group on input");
+
+    assert_eq!(data.parent_each_blocks(bind_id).as_slice(), &[outer_each.id]);
+    assert!(data.contains_group_binding(outer_each.id));
+    assert!(!data.contains_group_binding(inner_each.id));
 }
 
 #[test]
@@ -1285,10 +1379,14 @@ fn each_context_index_tracks_index_symbol_and_bind_this_context() {
         .unwrap_or_else(|| panic!("missing each index symbol"));
     assert_eq!(data.each_block_for_index_sym(index_sym), Some(each.id));
     assert_eq!(data.each_context_name(each.id), "item");
-    assert_eq!(
-        data.bind_each_context(bind_id),
-        Some(&vec!["index".to_string()])
-    );
+    let bind_context = data
+        .bind_each_context(bind_id)
+        .unwrap_or_else(|| panic!("missing bind:this each context"));
+    let bind_context_names: Vec<_> = bind_context
+        .iter()
+        .map(|&sym| data.scoping.symbol_name(sym).to_string())
+        .collect();
+    assert_eq!(bind_context_names, vec!["index".to_string()]);
     assert!(data.each_body_uses_index(each.id));
 }
 
@@ -1413,6 +1511,99 @@ fn module_rune_kinds_and_cross_script_refs() {
     assert!(
         expr.ref_symbols.contains(&doubled_sym),
         "template expression should resolve to the module-scoped doubled binding"
+    );
+}
+
+#[test]
+fn script_rune_calls_keep_module_and_instance_programs_distinct() {
+    let source = r#"<script module>
+    const teardown = $effect.root(() => {});
+</script>
+<script>
+    let count = $state(0);
+</script>"#;
+    let (component, data, parsed) = analyze_source_with_parsed(source);
+
+    let module_source = component.source_text(
+        parsed
+            .module_script_content_span
+            .unwrap_or_else(|| panic!("missing module script span")),
+    );
+    let instance_source = component.source_text(
+        parsed
+            .script_content_span
+            .unwrap_or_else(|| panic!("missing instance script span")),
+    );
+    let module_call = find_call_node_id(
+        parsed
+            .module_program
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing module program")),
+        module_source,
+        "$effect.root(() => {})",
+    )
+    .unwrap_or_else(|| panic!("missing module rune call"));
+    let instance_call = find_call_node_id(
+        parsed
+            .program
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing instance program")),
+        instance_source,
+        "$state(0)",
+    )
+    .unwrap_or_else(|| panic!("missing instance rune call"));
+
+    let remapped_instance =
+        OxcNodeId::from_usize(instance_call.index() + data.instance_script_node_id_offset as usize);
+    let remapped_module =
+        OxcNodeId::from_usize(module_call.index() + data.module_script_node_id_offset as usize);
+
+    assert_eq!(
+        data.script_rune_calls().kind(remapped_module),
+        Some(RuneKind::EffectRoot)
+    );
+    assert_eq!(
+        data.script_rune_calls().kind(remapped_instance),
+        Some(RuneKind::State)
+    );
+}
+
+#[test]
+fn script_rune_calls_survive_template_node_id_activity() {
+    let source = r#"<script module>
+    const teardown = $effect.root(() => {});
+</script>
+<script>
+    let count = $state(0);
+    let html = "<b>x</b>";
+</script>
+{@html html}"#;
+    let (component, data, parsed) = analyze_source_with_parsed(source);
+
+    let module_source = component.source_text(parsed.module_script_content_span.unwrap());
+    let instance_source = component.source_text(parsed.script_content_span.unwrap());
+    let module_call = find_call_node_id(
+        parsed.module_program.as_ref().unwrap(),
+        module_source,
+        "$effect.root(() => {})",
+    )
+    .expect("missing module rune call");
+    let instance_call =
+        find_call_node_id(parsed.program.as_ref().unwrap(), instance_source, "$state(0)")
+            .expect("missing instance rune call");
+
+    let remapped_instance =
+        OxcNodeId::from_usize(instance_call.index() + data.instance_script_node_id_offset as usize);
+    let remapped_module =
+        OxcNodeId::from_usize(module_call.index() + data.module_script_node_id_offset as usize);
+
+    assert_eq!(
+        data.script_rune_calls().kind(remapped_module),
+        Some(RuneKind::EffectRoot)
+    );
+    assert_eq!(
+        data.script_rune_calls().kind(remapped_instance),
+        Some(RuneKind::State)
     );
 }
 
@@ -1832,6 +2023,24 @@ fn html_tag_namespace_flags_preserved() {
     assert!(!data.html_tag_in_mathml(svg_tag));
     assert!(data.html_tag_in_mathml(math_tag));
     assert!(!data.html_tag_in_svg(math_tag));
+}
+
+#[test]
+fn annotation_xml_resets_child_namespace_to_html() {
+    let (component, data) = analyze_source(
+        r#"<svelte:options namespace="mathml" />
+<annotation-xml><div></div></annotation-xml>"#,
+    );
+    let annotation = find_element(&component.fragment, &component, "annotation-xml")
+        .unwrap_or_else(|| panic!("missing <annotation-xml>"));
+    let div =
+        find_element(&component.fragment, &component, "div").unwrap_or_else(|| panic!("missing <div>"));
+
+    assert_eq!(data.namespace(annotation.id), Some(NamespaceKind::AnnotationXml));
+    assert_eq!(
+        data.namespace(div.id).map(NamespaceKind::as_namespace),
+        Some(svelte_ast::Namespace::Html)
+    );
 }
 
 #[test]

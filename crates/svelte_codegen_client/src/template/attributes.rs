@@ -292,11 +292,10 @@ fn build_class_attr_value<'a>(
     el_id: NodeId,
     class_attr_id: NodeId,
 ) -> Expression<'a> {
+    let el = ctx.element(el_id);
     let Some(attr) = ctx
-        .element(el_id)
-        .attributes
-        .iter()
-        .find(|attr| attr.id() == class_attr_id)
+        .attr_index(el_id)
+        .and_then(|index| index.find_by_id(&el.attributes, class_attr_id))
     else {
         panic!("class_attr_id {class_attr_id:?} missing from element {el_id:?}");
     };

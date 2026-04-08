@@ -5,8 +5,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_traverse::traverse_mut;
-use rustc_hash::FxHashMap;
-use svelte_analyze::{ComponentScoping, PropsAnalysis, RuneKind};
+use svelte_analyze::{ComponentScoping, PropsAnalysis, ScriptRuneCalls};
 use svelte_ast::ScriptLanguage;
 
 use crate::builder::Builder;
@@ -71,7 +70,8 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
             component_scoping,
             props,
             prop_defaults,
-            Some(ctx.script_rune_call_kinds()),
+            Some(ctx.script_rune_calls()),
+            ctx.instance_script_node_id_offset(),
             true,
             dev,
             component_source,
@@ -101,6 +101,7 @@ pub fn gen_script<'a>(ctx: &mut Ctx<'a>, dev: bool) -> ScriptOutput<'a> {
         script_content_start,
         filename,
         None,
+        0,
         ctx.state.experimental_async,
         ctx.query.view.custom_element(),
         ignore_query,
@@ -126,6 +127,7 @@ pub fn transform_module_script<'a>(
         0,
         "(unknown)",
         None,
+        0,
         false,
         false,
         IgnoreQuery::empty(),
@@ -151,6 +153,7 @@ pub fn transform_component_module_script<'a>(
         0,
         "(unknown)",
         None,
+        0,
         false,
         false,
         IgnoreQuery::empty(),
@@ -162,7 +165,7 @@ pub fn transform_component_module_program<'a>(
     allocator: &'a Allocator,
     program: Program<'a>,
     component_scoping: &ComponentScoping,
-    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    script_rune_calls: Option<&ScriptRuneCalls>,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -170,7 +173,8 @@ pub fn transform_component_module_program<'a>(
         component_scoping,
         None,
         Vec::new(),
-        script_rune_call_kinds,
+        script_rune_calls,
+        0,
         false,
         false,
         "",
@@ -195,7 +199,8 @@ fn transform_script_text<'a>(
     component_source: &str,
     script_content_start: u32,
     filename: &str,
-    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    script_rune_calls: Option<&ScriptRuneCalls>,
+    script_node_id_offset: u32,
     experimental_async: bool,
     custom_element: bool,
     ignore_query: IgnoreQuery<'_>,
@@ -232,7 +237,8 @@ fn transform_script_text<'a>(
         component_scoping,
         props,
         prop_default_exprs,
-        script_rune_call_kinds,
+        script_rune_calls,
+        script_node_id_offset,
         strip_exports,
         dev,
         component_source,
@@ -252,7 +258,8 @@ fn run_transform<'a>(
     component_scoping: &ComponentScoping,
     props: Option<&PropsAnalysis>,
     prop_default_exprs: Vec<Option<Expression<'a>>>,
-    script_rune_call_kinds: Option<&FxHashMap<u32, RuneKind>>,
+    script_rune_calls: Option<&ScriptRuneCalls>,
+    script_node_id_offset: u32,
     strip_exports: bool,
     dev: bool,
     component_source: &str,
@@ -289,7 +296,8 @@ fn run_transform<'a>(
         class_state_stack: Vec::new(),
         class_name_stack: Vec::new(),
         prop_default_exprs,
-        script_rune_call_kinds,
+        script_rune_calls,
+        script_node_id_offset,
         experimental_async,
         custom_element,
         ignore_query,

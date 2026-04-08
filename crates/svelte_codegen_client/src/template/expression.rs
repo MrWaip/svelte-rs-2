@@ -138,11 +138,7 @@ fn try_resolve_known(ctx: &Ctx<'_>, nid: NodeId) -> Option<String> {
 /// that as unknown, so we must keep the `?? ""` fallback. Broadening this to
 /// literals and numeric operations is tracked as a follow-up in
 /// `specs/each-block.md`.
-pub(crate) fn is_definitely_defined(
-    ctx: &Ctx<'_>,
-    nid: NodeId,
-    expr: &Expression<'_>,
-) -> bool {
+pub(crate) fn is_definitely_defined(ctx: &Ctx<'_>, nid: NodeId, expr: &Expression<'_>) -> bool {
     // Only trust the classification when transform left the expression as a
     // bare identifier. Once wrapped in a call (`$.get(...)`), the call result
     // type is unknown to the scope evaluator.

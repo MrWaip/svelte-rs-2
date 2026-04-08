@@ -87,9 +87,10 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
     // initializer (matches reference compiler `needs_special_value_handling`), so the
     // option element needs a DOM ref even if nothing else is dynamic.
     if el.name == "option"
-        && el.attributes.iter().any(|a| {
-            matches!(a, Attribute::StringAttribute(s) if s.name == "value")
-        })
+        && el
+            .attributes
+            .iter()
+            .any(|a| matches!(a, Attribute::StringAttribute(s) if s.name == "value"))
     {
         return true;
     }

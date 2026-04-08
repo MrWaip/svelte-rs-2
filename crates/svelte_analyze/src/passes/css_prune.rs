@@ -9,7 +9,8 @@ use svelte_span::GetSpan;
 
 use svelte_ast::NodeId;
 
-use crate::types::data::{CssAnalysis, TemplateElementIndex};
+use crate::types::data::{ElementFacts, TemplateElementIndex};
+use crate::AnalysisData;
 use crate::types::node_table::NodeBitSet;
 
 // ---------------------------------------------------------------------------
@@ -23,21 +24,24 @@ use crate::types::node_table::NodeBitSet;
 pub(crate) fn prune_and_warn(
     stylesheet: &StyleSheet,
     css_source: &str,
-    elements: &TemplateElementIndex,
-    css: &mut CssAnalysis,
+    data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let elements = &data.template_elements;
+    let element_facts = &data.element_facts;
     let mut used = FxHashSet::default();
+    let scoped = &mut data.css.scoped_elements;
     let mut pruner = PruneVisitor {
         elements,
+        element_facts,
         used: &mut used,
-        scoped: &mut css.scoped_elements,
+        scoped,
         in_global_block: false,
     };
     pruner.visit_stylesheet(stylesheet);
-    css.used_selectors = used;
+    data.css.used_selectors = used;
 
-    warn_unused(stylesheet, css_source, &css.used_selectors, diagnostics);
+    warn_unused(stylesheet, css_source, &data.css.used_selectors, diagnostics);
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +50,7 @@ pub(crate) fn prune_and_warn(
 
 struct PruneVisitor<'a, 'b> {
     elements: &'a TemplateElementIndex,
+    element_facts: &'a ElementFacts,
     used: &'b mut FxHashSet<svelte_css::CssNodeId>,
     scoped: &'b mut NodeBitSet,
     in_global_block: bool,
@@ -80,7 +85,13 @@ impl Visit for PruneVisitor<'_, '_> {
             // can't break early like the unused-selector pass because each
             // matching element needs the scope class.
             for elem_id in candidate_elements(self.elements, selectors.last().copied().unwrap()) {
-                if apply_selector(&selectors, self.elements, elem_id, self.scoped) {
+                if apply_selector(
+                    &selectors,
+                    self.elements,
+                    self.element_facts,
+                    elem_id,
+                    self.scoped,
+                ) {
                     self.used.insert(complex.id);
                 }
             }
@@ -139,6 +150,7 @@ fn is_unscoped_pseudo_class(pc: &svelte_css::PseudoClassSelector) -> bool {
 fn apply_selector(
     selectors: &[&RelativeSelector],
     elements: &TemplateElementIndex,
+    element_facts: &ElementFacts,
     elem_id: NodeId,
     scoped: &mut NodeBitSet,
 ) -> bool {
@@ -150,7 +162,7 @@ fn apply_selector(
     let last_idx = selectors.len() - 1;
     let last_sel = selectors[last_idx];
 
-    if !relative_selector_matches(last_sel, elements, elem_id) {
+    if !relative_selector_matches(last_sel, elements, element_facts, elem_id) {
         return false;
     }
 
@@ -162,7 +174,7 @@ fn apply_selector(
 
     // Need to match remaining selectors via combinators
     let rest = &selectors[..last_idx];
-    if apply_combinator(rest, last_sel, elements, elem_id, scoped) {
+    if apply_combinator(rest, last_sel, elements, element_facts, elem_id, scoped) {
         scoped.insert(elem_id);
         return true;
     }
@@ -175,6 +187,7 @@ fn apply_combinator(
     remaining: &[&RelativeSelector],
     current_sel: &RelativeSelector,
     elements: &TemplateElementIndex,
+    element_facts: &ElementFacts,
     elem_id: NodeId,
     scoped: &mut NodeBitSet,
 ) -> bool {
@@ -192,7 +205,7 @@ fn apply_combinator(
             // Check all ancestors
             let mut current = elements.parent_element(elem_id);
             while let Some(parent_id) = current {
-                if apply_selector(remaining, elements, parent_id, scoped) {
+                if apply_selector(remaining, elements, element_facts, parent_id, scoped) {
                     return true;
                 }
                 current = elements.parent_element(parent_id);
@@ -203,7 +216,7 @@ fn apply_combinator(
         CombinatorKind::Child => {
             // Check direct parent only
             if let Some(parent_id) = elements.parent_element(elem_id) {
-                if apply_selector(remaining, elements, parent_id, scoped) {
+                if apply_selector(remaining, elements, element_facts, parent_id, scoped) {
                     return true;
                 }
             }
@@ -212,7 +225,7 @@ fn apply_combinator(
         }
         CombinatorKind::NextSibling => {
             if let Some(prev_id) = elements.previous_sibling(elem_id) {
-                if apply_selector(remaining, elements, prev_id, scoped) {
+                if apply_selector(remaining, elements, element_facts, prev_id, scoped) {
                     return true;
                 }
             }
@@ -220,7 +233,7 @@ fn apply_combinator(
         }
         CombinatorKind::SubsequentSibling => {
             for prev_id in elements.previous_siblings(elem_id) {
-                if apply_selector(remaining, elements, prev_id, scoped) {
+                if apply_selector(remaining, elements, element_facts, prev_id, scoped) {
                     return true;
                 }
             }
@@ -242,6 +255,7 @@ fn all_global(selectors: &[&RelativeSelector]) -> bool {
 fn relative_selector_matches(
     selector: &RelativeSelector,
     elements: &TemplateElementIndex,
+    element_facts: &ElementFacts,
     elem_id: NodeId,
 ) -> bool {
     for simple in &selector.selectors {
@@ -255,12 +269,12 @@ fn relative_selector_matches(
                 }
             }
             SimpleSelector::Class { name, .. } => {
-                if !element_has_class(elements, elem_id, name.as_str()) {
+                if !element_has_class(element_facts, elem_id, name.as_str()) {
                     return false;
                 }
             }
             SimpleSelector::Id { name, .. } => {
-                if !element_has_id(elements, elem_id, name.as_str()) {
+                if !element_has_id(element_facts, elem_id, name.as_str()) {
                     return false;
                 }
             }
@@ -273,7 +287,7 @@ fn relative_selector_matches(
                     // Check the last selector of the :global() args
                     if !inner.is_empty() {
                         let last = inner.last().unwrap();
-                        if relative_selector_matches(last, elements, elem_id) {
+                        if relative_selector_matches(last, elements, element_facts, elem_id) {
                             return true;
                         }
                     }
@@ -312,12 +326,12 @@ fn relative_selector_matches(
 // ---------------------------------------------------------------------------
 
 /// Check if an element has a class that matches `name`.
-fn element_has_class(elements: &TemplateElementIndex, elem_id: NodeId, name: &str) -> bool {
-    elements.has_static_class(elem_id, name) || elements.may_match_class(elem_id)
+fn element_has_class(element_facts: &ElementFacts, elem_id: NodeId, name: &str) -> bool {
+    element_facts.has_static_class(elem_id, name) || element_facts.may_match_class(elem_id)
 }
 
-fn element_has_id(elements: &TemplateElementIndex, elem_id: NodeId, expected: &str) -> bool {
-    elements.static_id(elem_id) == Some(expected) || elements.may_match_id(elem_id)
+fn element_has_id(element_facts: &ElementFacts, elem_id: NodeId, expected: &str) -> bool {
+    element_facts.static_id(elem_id) == Some(expected) || element_facts.may_match_id(elem_id)
 }
 
 fn candidate_elements(
@@ -326,9 +340,11 @@ fn candidate_elements(
 ) -> SmallVec<[NodeId; 8]> {
     for simple in &selector.selectors {
         match simple {
-            SimpleSelector::Id { name, .. } => return elements.id_candidates(name.as_str()),
+            SimpleSelector::Id { name, .. } => {
+                return elements.id_candidates(name.as_str()).collect()
+            }
             SimpleSelector::Class { name, .. } => {
-                return elements.class_candidates(name.as_str());
+                return elements.class_candidates(name.as_str()).collect();
             }
             SimpleSelector::Type { name, .. } if name.as_str() != "*" => {
                 let direct = elements.elements_with_tag(name.as_str());
@@ -417,6 +433,7 @@ impl Visit for UnusedWarner<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssAnalysis;
     use svelte_diagnostics::DiagnosticKind;
 
     /// Parse a Svelte source with CSS, run the prune pass, and return diagnostic kinds.
@@ -436,27 +453,20 @@ mod tests {
         );
         let css_block = component.css.as_ref().unwrap();
         let css_text = component.source_text(css_block.content_span);
-        let (data, _parsed, analyze_diags) = crate::analyze(&component, _js_result);
+        let (mut data, _parsed, analyze_diags) = crate::analyze(&component, _js_result);
         assert!(
             analyze_diags.is_empty(),
             "unexpected analyze diagnostics: {analyze_diags:?}"
         );
-        let node_count = component.node_count();
-        let mut css = CssAnalysis {
+        data.css = CssAnalysis {
             hash: String::new(),
-            scoped_elements: crate::types::node_table::NodeBitSet::new(node_count),
+            scoped_elements: crate::types::node_table::NodeBitSet::new(component.node_count()),
             inject_styles: false,
             keyframes: Vec::new(),
             used_selectors: FxHashSet::default(),
         };
         let mut diagnostics = Vec::new();
-        prune_and_warn(
-            &stylesheet,
-            css_text,
-            &data.template_elements,
-            &mut css,
-            &mut diagnostics,
-        );
+        prune_and_warn(&stylesheet, css_text, &mut data, &mut diagnostics);
         diagnostics.into_iter().map(|d| d.kind).collect()
     }
 

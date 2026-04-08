@@ -66,7 +66,7 @@ pub fn generate<'a>(
                 alloc,
                 program,
                 &analysis.scoping,
-                Some(analysis.script_rune_call_kinds()),
+                Some(analysis.script_rune_calls()),
             )
         } else {
             let is_ts = module_script.language == svelte_ast::ScriptLanguage::TypeScript;

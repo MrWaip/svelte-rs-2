@@ -1,5 +1,5 @@
 use super::*;
-use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, StringAttribute};
+use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 
 pub struct AnalysisData {
     pub expressions: NodeTable<ExpressionInfo>,
@@ -11,10 +11,13 @@ pub struct AnalysisData {
     pub props: Option<PropsAnalysis>,
     pub props_id: Option<String>,
     pub exports: Vec<ExportInfo>,
+    pub instance_script_node_id_offset: u32,
+    pub module_script_node_id_offset: u32,
     pub needs_context: bool,
     pub has_class_state_fields: bool,
-    element_facts: ElementFacts,
+    pub(crate) element_facts: ElementFacts,
     pub element_flags: ElementFlags,
+    pub directive_modifiers: DirectiveModifierFlags,
     pub fragment_facts: FragmentFacts,
     pub rich_content_facts: RichContentFacts,
     pub fragments: FragmentData,
@@ -23,27 +26,29 @@ pub struct AnalysisData {
     pub debug_tags: DebugTagData,
     pub title_elements: TitleElementData,
     pub each_context: EachContextIndex,
+    pub bind_this_each_context: BindThisEachContext,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
     pub(crate) render_tag_callee_sym: NodeTable<SymbolId>,
     pub(crate) render_tag_is_chain: NodeBitSet,
     pub render_tag_plans: NodeTable<RenderTagPlan>,
+    pub(crate) contains_group_binding_each_blocks: NodeBitSet,
     pub(crate) html_tag_in_svg: NodeBitSet,
     pub(crate) html_tag_in_mathml: NodeBitSet,
     pub await_bindings: AwaitBindingData,
     pub bind_semantics: BindSemanticsData,
-    pub import_syms: FxHashSet<SymbolId>,
+    pub import_syms: ImportSymbolSet,
     pub runes: bool,
     pub custom_element: bool,
     pub experimental_async: bool,
     pub runtime_plan: RuntimePlan,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
-    pub(crate) proxy_state_inits: FxHashMap<compact_str::CompactString, bool>,
+    pub(crate) proxy_state_inits: ProxyStateInits,
     pub(crate) has_store_member_mutations: bool,
     pub(crate) blocker_data: BlockerData,
-    pub(crate) script_rune_call_kinds: FxHashMap<u32, crate::types::script::RuneKind>,
-    pub(crate) pickled_await_offsets: FxHashSet<u32>,
+    pub(crate) script_rune_calls: ScriptRuneCalls,
+    pub(crate) pickled_await_offsets: PickledAwaitOffsets,
     pub ignore_data: IgnoreData,
     /// CSS-scoping metadata: hash, scoped elements, transformed stylesheet.
     pub css: CssAnalysis,
@@ -61,10 +66,13 @@ impl AnalysisData {
             props: None,
             props_id: None,
             exports: Vec::new(),
+            instance_script_node_id_offset: 0,
+            module_script_node_id_offset: 0,
             needs_context: false,
             has_class_state_fields: false,
             element_facts: ElementFacts::new(node_count),
             element_flags: ElementFlags::new(node_count),
+            directive_modifiers: DirectiveModifierFlags::new(node_count),
             fragment_facts: FragmentFacts::new(),
             rich_content_facts: RichContentFacts::new(),
             fragments: FragmentData::with_capacity(node_count as usize / 3),
@@ -73,27 +81,29 @@ impl AnalysisData {
             debug_tags: DebugTagData::new(),
             title_elements: TitleElementData::new(),
             each_context: EachContextIndex::new(node_count),
+            bind_this_each_context: BindThisEachContext::new(node_count),
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
             render_tag_callee_sym: NodeTable::new(node_count),
             render_tag_is_chain: NodeBitSet::new(node_count),
             render_tag_plans: NodeTable::new(node_count),
+            contains_group_binding_each_blocks: NodeBitSet::new(node_count),
             html_tag_in_svg: NodeBitSet::new(node_count),
             html_tag_in_mathml: NodeBitSet::new(node_count),
             await_bindings: AwaitBindingData::new(node_count),
             bind_semantics: BindSemanticsData::new(node_count),
-            import_syms: FxHashSet::default(),
+            import_syms: ImportSymbolSet::new(),
             runes: true,
             custom_element: false,
             experimental_async: false,
             runtime_plan: RuntimePlan::default(),
             ce_config: None,
-            proxy_state_inits: FxHashMap::default(),
+            proxy_state_inits: ProxyStateInits::new(),
             has_store_member_mutations: false,
             blocker_data: BlockerData::default(),
-            script_rune_call_kinds: FxHashMap::default(),
-            pickled_await_offsets: FxHashSet::default(),
+            script_rune_calls: ScriptRuneCalls::new(),
+            pickled_await_offsets: PickledAwaitOffsets::new(),
             ignore_data: IgnoreData::new(),
             css: CssAnalysis::empty(node_count),
         }
@@ -101,8 +111,8 @@ impl AnalysisData {
 }
 
 impl AnalysisData {
-    pub(crate) fn record_element_facts(&mut self, id: NodeId, attrs: &[Attribute]) {
-        self.element_facts.record(id, attrs);
+    pub(crate) fn record_element_facts(&mut self, id: NodeId, entry: ElementFactsEntry) {
+        self.element_facts.record_entry(id, entry);
     }
     pub fn html_tag_in_svg(&self, id: NodeId) -> bool {
         self.html_tag_in_svg.contains(&id)
@@ -113,14 +123,11 @@ impl AnalysisData {
     pub fn blocker_data(&self) -> &BlockerData {
         &self.blocker_data
     }
-    pub fn script_rune_call_kinds(&self) -> &FxHashMap<u32, crate::types::script::RuneKind> {
-        &self.script_rune_call_kinds
-    }
-    pub fn script_rune_call_kind(&self, offset: u32) -> Option<crate::types::script::RuneKind> {
-        self.script_rune_call_kinds.get(&offset).copied()
+    pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
+        &self.script_rune_calls
     }
     pub fn is_pickled_await(&self, offset: u32) -> bool {
-        self.pickled_await_offsets.contains(&offset)
+        self.pickled_await_offsets.contains_offset(offset)
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.dynamic_nodes.contains(&id)
@@ -171,7 +178,7 @@ impl AnalysisData {
     pub fn element_facts(&self, id: NodeId) -> Option<&ElementFactsEntry> {
         self.element_facts.entry(id)
     }
-    fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
+    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
         self.element_facts.attr_index(id)
     }
     pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
@@ -250,6 +257,21 @@ impl AnalysisData {
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
         self.element_facts.has_runtime_attrs(id)
     }
+    pub fn namespace(&self, id: NodeId) -> Option<NamespaceKind> {
+        self.element_facts.namespace(id)
+    }
+    pub fn creation_namespace(&self, id: NodeId) -> Option<Namespace> {
+        self.element_facts.creation_namespace(id)
+    }
+    pub fn is_void(&self, id: NodeId) -> bool {
+        self.element_facts.is_void(id)
+    }
+    pub fn is_custom_element(&self, id: NodeId) -> bool {
+        self.element_facts.is_custom_element(id)
+    }
+    pub fn event_modifiers(&self, id: NodeId) -> EventModifier {
+        self.directive_modifiers.get(id)
+    }
     pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
         self.template_topology.parent(id)
     }
@@ -293,24 +315,30 @@ impl AnalysisData {
         self.template_elements.tag_name(id)
     }
     pub fn template_element_static_id(&self, id: NodeId) -> Option<&str> {
-        self.template_elements.static_id(id)
+        self.element_facts.static_id(id)
     }
     pub fn template_element_has_static_class(&self, id: NodeId, class_name: &str) -> bool {
-        self.template_elements.has_static_class(id, class_name)
+        self.element_facts.has_static_class(id, class_name)
     }
     pub fn template_element_may_match_class(&self, id: NodeId) -> bool {
-        self.template_elements.may_match_class(id)
+        self.element_facts.may_match_class(id)
     }
     pub fn template_element_may_match_id(&self, id: NodeId) -> bool {
-        self.template_elements.may_match_id(id)
+        self.element_facts.may_match_id(id)
     }
-    pub fn template_elements_for_class(&self, class_name: &str) -> SmallVec<[NodeId; 8]> {
+    pub fn template_elements_for_class(
+        &self,
+        class_name: &str,
+    ) -> impl Iterator<Item = NodeId> + '_ {
         self.template_elements.class_candidates(class_name)
     }
-    pub fn template_elements_for_id(&self, id_name: &str) -> SmallVec<[NodeId; 8]> {
+    pub fn template_elements_for_id(&self, id_name: &str) -> impl Iterator<Item = NodeId> + '_ {
         self.template_elements.id_candidates(id_name)
     }
-    pub fn template_element_previous_siblings(&self, id: NodeId) -> SmallVec<[NodeId; 8]> {
+    pub fn template_element_previous_siblings(
+        &self,
+        id: NodeId,
+    ) -> impl Iterator<Item = NodeId> + '_ {
         self.template_elements.previous_siblings(id)
     }
     pub fn each_index_sym(&self, id: NodeId) -> Option<SymbolId> {
@@ -340,14 +368,29 @@ impl AnalysisData {
     pub fn each_context_name(&self, id: NodeId) -> &str {
         self.each_context.context_name(id)
     }
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.each_context.bind_this_context(id)
+    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
+        self.bind_this_each_context.get(id)
     }
-    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
-        self.each_context.parent_each_blocks(id)
+    pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
+        let Some(info) = self.attr_expressions.get(id) else {
+            return SmallVec::new();
+        };
+        self.ancestors(id)
+            .filter(|parent| parent.kind == ParentKind::EachBlock)
+            .filter_map(|parent| {
+                let body_scope = self.each_body_scope(parent.id, self.scoping.root_scope_id());
+                info.ref_symbols
+                    .iter()
+                    .any(|&sym| {
+                        self.scoping.is_each_block_var(sym)
+                            && self.scoping.symbol_scope_id(sym) == body_scope
+                    })
+                    .then_some(parent.id)
+            })
+            .collect()
     }
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
-        self.each_context.contains_group_binding(id)
+        self.contains_group_binding_each_blocks.contains(&id)
     }
     pub fn each_needs_collection_id(&self, id: NodeId) -> bool {
         self.each_context.needs_collection_id(id)
@@ -449,7 +492,7 @@ impl AnalysisData {
                         .find_binding(self.scoping.root_scope_id(), name.as_str()),
                     _ => None,
                 })
-                .is_some_and(|sym| self.import_syms.contains(&sym))
+                .is_some_and(|sym| self.import_syms.contains(sym))
         })
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {

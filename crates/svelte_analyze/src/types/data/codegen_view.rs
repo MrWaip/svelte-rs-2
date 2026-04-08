@@ -43,8 +43,14 @@ impl<'a> CodegenView<'a> {
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
         self.data.ce_config.as_ref()
     }
-    pub fn script_rune_call_kinds(&self) -> &FxHashMap<u32, crate::types::script::RuneKind> {
-        self.data.script_rune_call_kinds()
+    pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
+        self.data.script_rune_calls()
+    }
+    pub fn instance_script_node_id_offset(&self) -> u32 {
+        self.data.instance_script_node_id_offset
+    }
+    pub fn module_script_node_id_offset(&self) -> u32 {
+        self.data.module_script_node_id_offset
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.data.scoping.symbol_name(sym)
@@ -163,8 +169,26 @@ impl<'a> CodegenView<'a> {
     ) -> Option<&'b svelte_ast::StringAttribute> {
         self.data.string_attribute(id, attrs, name)
     }
+    pub fn attr_index(&self, id: NodeId) -> Option<&AttrIndex> {
+        self.data.attr_index(id)
+    }
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.data.has_spread(id)
+    }
+    pub fn namespace(&self, id: NodeId) -> Option<NamespaceKind> {
+        self.data.namespace(id)
+    }
+    pub fn creation_namespace(&self, id: NodeId) -> Option<svelte_ast::Namespace> {
+        self.data.creation_namespace(id)
+    }
+    pub fn is_void(&self, id: NodeId) -> bool {
+        self.data.is_void(id)
+    }
+    pub fn is_custom_element(&self, id: NodeId) -> bool {
+        self.data.is_custom_element(id)
+    }
+    pub fn event_modifiers(&self, id: NodeId) -> EventModifier {
+        self.data.event_modifiers(id)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
         self.data.element_flags.has_class_directives(id)
@@ -262,7 +286,7 @@ impl<'a> CodegenView<'a> {
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
         self.data.bind_semantics.bind_group_value_attr(id)
     }
-    pub fn parent_each_blocks(&self, id: NodeId) -> Option<&Vec<NodeId>> {
+    pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         self.data.parent_each_blocks(id)
     }
     pub fn contains_group_binding(&self, id: NodeId) -> bool {
@@ -277,7 +301,7 @@ impl<'a> CodegenView<'a> {
     pub fn is_prop_source_node(&self, id: NodeId) -> bool {
         self.data.bind_semantics.is_prop_source(id)
     }
-    pub fn bind_each_context(&self, id: NodeId) -> Option<&Vec<String>> {
+    pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {

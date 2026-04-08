@@ -2,7 +2,7 @@
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::FragmentKey;
+use svelte_analyze::{FragmentKey, NamespaceKind};
 use svelte_ast::NodeId;
 
 use crate::builder::Arg;
@@ -42,14 +42,6 @@ pub(crate) fn gen_svelte_element<'a>(
         fragment: svelte_ast::Fragment::empty(),
     };
     let has_attrs = !el_clone.attributes.is_empty();
-
-    // Detect SVG namespace from static xmlns attribute
-    let is_svg_ns = ctx
-        .query
-        .string_attribute(el.id, &el.attributes, "xmlns")
-        .is_some_and(|attr| {
-            ctx.query.component.source_text(attr.value_span) == "http://www.w3.org/2000/svg"
-        });
 
     // Generate $$element ident for the inner callback
     let el_name = ctx.gen_ident("$$element");
@@ -103,7 +95,9 @@ pub(crate) fn gen_svelte_element<'a>(
     // Generate children
     let child_body = gen_fragment(ctx, FragmentKey::SvelteElementBody(id));
 
-    let is_svg = ctx.b.bool_expr(is_svg_ns);
+    let is_svg = ctx.b.bool_expr(
+        ctx.query.view.namespace(id) == Some(NamespaceKind::Svg),
+    );
 
     // Assemble inner body: init + update + after_update + children
     let mut inner = inner_init;

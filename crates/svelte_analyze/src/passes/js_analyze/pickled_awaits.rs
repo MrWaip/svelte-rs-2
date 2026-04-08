@@ -47,7 +47,7 @@ fn collect_pickled_await_offsets(
         };
         let mut collector = PickledAwaitCollector::new();
         collector.visit_expression(expr);
-        data.pickled_await_offsets.extend(collector.offsets);
+        data.pickled_await_offsets.extend_offsets(collector.offsets);
     }
 }
 

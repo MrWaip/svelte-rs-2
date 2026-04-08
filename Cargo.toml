@@ -36,10 +36,10 @@ wasm-bindgen = "0.2.99"
 serde-wasm-bindgen = "0.6.5"
 rustc-hash = "2.1.1"
 smallvec = "1"
+bitflags = "2.6.0"
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
-

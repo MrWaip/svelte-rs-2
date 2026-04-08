@@ -30,8 +30,8 @@ pub(crate) mod traverse;
 
 use oxc_ast::ast::{Expression, Statement};
 
-use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt};
-use svelte_ast::{is_mathml, is_svg, Namespace, Node, NodeId};
+use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt, NamespaceKind};
+use svelte_ast::{Namespace, Node, NodeId};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -88,10 +88,6 @@ fn root_namespace(ctx: &Ctx) -> Namespace {
         .unwrap_or(Namespace::Html)
 }
 
-fn is_svg_ambiguous_html_element(name: &str) -> bool {
-    matches!(name, "a" | "title")
-}
-
 pub(crate) fn element_ident_prefix(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for ch in name.chars() {
@@ -108,55 +104,36 @@ pub(crate) fn element_ident_prefix(name: &str) -> String {
     }
 }
 
-fn namespace_for_element_tag(el_name: &str, inherited: Namespace) -> Namespace {
-    if is_svg(el_name) {
-        return Namespace::Svg;
-    }
-    if is_mathml(el_name) {
-        return Namespace::Mathml;
-    }
-    if inherited == Namespace::Svg && is_svg_ambiguous_html_element(el_name) {
-        return Namespace::Svg;
-    }
-    Namespace::Html
-}
-
-fn child_namespace_for_element(ctx: &Ctx, el_id: NodeId) -> Namespace {
-    let el = ctx.element(el_id);
-
-    if matches!(el.name.as_str(), "foreignObject" | "annotation-xml") {
-        return Namespace::Html;
-    }
-
-    let inherited = ctx
-        .template_element_parent(el_id)
-        .map(|parent_id| child_namespace_for_element(ctx, parent_id))
-        .unwrap_or_else(|| root_namespace(ctx));
-
-    namespace_for_element_tag(&el.name, inherited)
-}
-
 pub(crate) fn inherited_fragment_namespace(ctx: &Ctx, key: FragmentKey) -> Namespace {
     match key {
         FragmentKey::Root => root_namespace(ctx),
-        FragmentKey::Element(el_id) => child_namespace_for_element(ctx, el_id),
+        FragmentKey::Element(el_id) => ctx
+            .query
+            .view
+            .namespace(el_id)
+            .map(NamespaceKind::as_namespace)
+            .unwrap_or_else(|| root_namespace(ctx)),
         FragmentKey::SvelteHeadBody(_) => Namespace::Html,
         FragmentKey::ComponentNode(_) | FragmentKey::NamedSlot(_, _) => Namespace::Html,
         _ => key
             .node_id()
             .and_then(|node_id| ctx.nearest_element(node_id))
-            .map(|parent_el| child_namespace_for_element(ctx, parent_el))
+            .and_then(|parent_el| ctx.query.view.namespace(parent_el))
+            .map(NamespaceKind::as_namespace)
             .unwrap_or_else(|| root_namespace(ctx)),
     }
 }
 
 pub(crate) fn from_template_fn_for_fragment_element(
     ctx: &Ctx,
-    key: FragmentKey,
-    el_name: &str,
+    el_id: NodeId,
 ) -> &'static str {
-    let inherited = inherited_fragment_namespace(ctx, key);
-    from_namespace(namespace_for_element_tag(el_name, inherited))
+    from_namespace(
+        ctx.query
+            .view
+            .creation_namespace(el_id)
+            .unwrap_or_else(|| root_namespace(ctx)),
+    )
 }
 
 /// Infer the `$.from_*` function from the first element in a fragment's items.
@@ -166,8 +143,12 @@ fn from_template_fn_for_items(ctx: &Ctx, key: FragmentKey, items: &[FragmentItem
 
     for item in items {
         if let FragmentItem::Element(el_id) = item {
-            let el = ctx.element(*el_id);
-            let el_ns = namespace_for_element_tag(&el.name, inherited);
+            let el_ns = ctx
+                .query
+                .view
+                .namespace(*el_id)
+                .map(NamespaceKind::as_namespace)
+                .unwrap_or(inherited);
             namespace = Some(match namespace {
                 None => el_ns,
                 Some(prev) if prev == el_ns => prev,
@@ -442,7 +423,7 @@ fn emit_dynamic_text<'a>(
 
 fn emit_single_element<'a>(
     ctx: &mut Ctx<'a>,
-    key: FragmentKey,
+    _key: FragmentKey,
     el_id: NodeId,
     tpl_name: &str,
     is_root: bool,
@@ -456,7 +437,7 @@ fn emit_single_element<'a>(
 
     let el = ctx.element(el_id);
     let (html, import_node) = element_html(ctx, el);
-    let from_fn = from_template_fn_for_fragment_element(ctx, key, &el.name);
+    let from_fn = from_template_fn_for_fragment_element(ctx, el_id);
     let mut from_html = if import_node {
         ctx.b.call_expr(
             from_fn,

@@ -7,7 +7,9 @@
 //! `current_expr_offset` tracks the source-absolute start of the current expression
 //! so that sub-expression spans can be reported correctly.
 
-use oxc_ast::ast::{AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement};
+use oxc_ast::ast::{
+    AssignmentTarget, Expression, IdentifierReference, SimpleAssignmentTarget, Statement,
+};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
 use svelte_ast::{
@@ -24,7 +26,7 @@ use crate::passes::binding_properties::{binding_property, BINDING_NAMES};
 use crate::scope::ComponentScoping;
 use crate::types::data::{ExpressionKind, FragmentKey};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
-use crate::AnalysisData;
+use crate::{AnalysisData, EventModifier};
 
 mod a11y;
 
@@ -930,8 +932,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
 
             // passive + nonpassive conflict
-            let has_passive = dir.modifiers.iter().any(|m| m == "passive");
-            let has_nonpassive = dir.modifiers.iter().any(|m| m == "nonpassive");
+            let flags = ctx.data.event_modifiers(dir.id);
+            let has_passive = flags.contains(EventModifier::PASSIVE);
+            let has_nonpassive = flags.contains(EventModifier::NONPASSIVE);
             if has_passive && has_nonpassive {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EventHandlerInvalidModifierCombination {
@@ -1885,7 +1888,10 @@ fn maybe_const_tag_invalid_reference(
                         DiagnosticKind::ConstTagInvalidReference {
                             name: ident.name.to_string(),
                         },
-                        Span::new(source_offset + ident.span.start, source_offset + ident.span.end),
+                        Span::new(
+                            source_offset + ident.span.start,
+                            source_offset + ident.span.end,
+                        ),
                     ));
                 }
                 break;
@@ -1900,7 +1906,10 @@ fn maybe_const_tag_invalid_reference(
                         DiagnosticKind::ConstTagInvalidReference {
                             name: ident.name.to_string(),
                         },
-                        Span::new(source_offset + ident.span.start, source_offset + ident.span.end),
+                        Span::new(
+                            source_offset + ident.span.start,
+                            source_offset + ident.span.end,
+                        ),
                     ));
                 }
                 break;
@@ -1930,12 +1939,9 @@ impl<'c, 'a> ConstTagInvalidReferenceVisitor<'c, 'a> {
 
 impl<'a> Visit<'a> for ConstTagInvalidReferenceVisitor<'_, '_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-        if let Some(diag) = maybe_const_tag_invalid_reference(
-            self.node_id,
-            self.source_offset,
-            ident,
-            self.ctx,
-        ) {
+        if let Some(diag) =
+            maybe_const_tag_invalid_reference(self.node_id, self.source_offset, ident, self.ctx)
+        {
             self.ctx.warnings_mut().push(diag);
         }
     }
@@ -2369,9 +2375,9 @@ fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
             | Attribute::BindDirective(_)
             | Attribute::AttachTag(_) => {}
             Attribute::OnDirectiveLegacy(dir) => {
-                if dir.modifiers.len() > 1
-                    || dir.modifiers.iter().any(|modifier| modifier != "once")
-                {
+                let has_only_once = dir.modifiers.len() == 1
+                    && ctx.data.event_modifiers(dir.id).contains(EventModifier::ONCE);
+                if !dir.modifiers.is_empty() && !has_only_once {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::EventHandlerInvalidComponentModifier,
                         dir.name_span,

@@ -102,7 +102,7 @@ pub(crate) fn execute_pass<'a>(
                             &mut data.scoping,
                             module_scope,
                             &module_info.declarations,
-                            &rustc_hash::FxHashMap::default(),
+                            &crate::types::data::ProxyStateInits::new(),
                         );
                     }
                 }
@@ -164,6 +164,7 @@ pub(crate) fn execute_pass<'a>(
                 diags,
                 &mut visitors,
             );
+            data.template_elements.finalize();
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =

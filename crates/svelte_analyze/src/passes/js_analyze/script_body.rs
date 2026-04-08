@@ -1,10 +1,9 @@
-use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use oxc_ast_visit::Visit;
 
 use crate::passes::js_analyze::expression_info::analyze_expression;
 use crate::scope::ComponentScoping;
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, ProxyStateInits};
 use crate::types::script::{RuneKind, ScriptInfo};
 use crate::utils::script_info::detect_rune_from_call;
 
@@ -42,7 +41,7 @@ pub(crate) fn analyze_script_body<'s>(
         has_effects: false,
         has_class_state_fields: false,
         has_store_member_mutations: false,
-        proxy_state_inits: rustc_hash::FxHashMap::default(),
+        proxy_state_inits: ProxyStateInits::new(),
         script_info,
     };
     analyzer.visit_program(program);
@@ -53,7 +52,7 @@ pub(crate) struct ScriptBodyAnalyzer<'s> {
     pub(crate) has_effects: bool,
     pub(crate) has_class_state_fields: bool,
     pub(crate) has_store_member_mutations: bool,
-    pub(crate) proxy_state_inits: rustc_hash::FxHashMap<CompactString, bool>,
+    pub(crate) proxy_state_inits: ProxyStateInits,
     script_info: &'s ScriptInfo,
 }
 
@@ -155,8 +154,7 @@ impl ScriptBodyAnalyzer<'_> {
                 d.name == name && matches!(d.is_rune, Some(RuneKind::State | RuneKind::StateRaw))
             }) && is_proxyable_state_init(init)
             {
-                self.proxy_state_inits
-                    .insert(CompactString::from(name), true);
+                self.proxy_state_inits.set_proxied(name, true);
             }
         }
     }

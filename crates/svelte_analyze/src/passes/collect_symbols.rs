@@ -385,6 +385,9 @@ fn merge_concat_expression_info(
             }
         }
     }
+    // Keep the merged parent attr/directive as a separate reverse-reference site:
+    // callers may care about the holder node even when its dynamic parts were
+    // already recorded individually.
     ctx.data.attr_expressions.insert(parent_id, merged);
 }
 
