@@ -121,6 +121,14 @@ fn walk_node<'a>(
         }
         Node::SnippetBlock(block) => {
             let snippet_scope = ctx.analysis.snippet_body_scope(block.id, scope);
+            // Default expressions inside destructure params live on the
+            // pre-parsed arrow stmt; without this, codegen's build_fallback_expr
+            // would clone raw identifiers (e.g. `[counter]`) without $.get wrap.
+            if let Some(handle) = ctx.analysis.snippet_stmt_handle(block.id) {
+                if let Some(stmt) = parsed.stmt_mut(handle) {
+                    transform_snippet_param_defaults(ctx, stmt, snippet_scope);
+                }
+            }
             walk_fragment(ctx, &block.body, component, parsed, snippet_scope);
         }
         Node::RenderTag(tag) => {
@@ -228,6 +236,33 @@ fn transform_expr_at<'a>(
 ) {
     if let Some(expr) = parsed.expr_mut(handle) {
         transform_expr(ctx, expr, scope);
+    }
+}
+
+/// Rewrite identifier reads inside snippet parameter defaults so reactive
+/// `$state` bindings become `$.get(name)` — matches the reference compiler's
+/// `context.visit(path.expression, child_state)` in SnippetBlock.js.
+fn transform_snippet_param_defaults<'a>(
+    ctx: &mut TransformCtx<'a, '_>,
+    stmt: &mut Statement<'a>,
+    scope: ScopeId,
+) {
+    let Statement::VariableDeclaration(decl) = stmt else {
+        return;
+    };
+    let Some(declarator) = decl.declarations.first_mut() else {
+        return;
+    };
+    let Some(Expression::ArrowFunctionExpression(arrow)) = declarator.init.as_mut() else {
+        return;
+    };
+
+    let mut visitor = ExprTransformer { ctx, scope };
+    for param in arrow.params.items.iter_mut() {
+        // Default VisitMut walk descends BindingPattern → AssignmentPattern.right
+        // as Expression and recurses through nested object/array patterns, so
+        // every default expression in nested destructuring is reached.
+        visitor.visit_binding_pattern(&mut param.pattern);
     }
 }
 
