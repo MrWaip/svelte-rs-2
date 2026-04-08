@@ -41,7 +41,7 @@ pub(super) fn validate(
         diags,
         offset,
         runes,
-        custom_element: data.custom_element,
+        custom_element: data.output.custom_element,
         in_var_declarator_init: false,
         in_class_property_init: false,
         in_constructor_body: false,

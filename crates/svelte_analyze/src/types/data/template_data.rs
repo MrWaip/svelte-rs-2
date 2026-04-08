@@ -154,6 +154,7 @@ pub struct BindSemanticsData {
     pub(crate) has_bind_group: NodeBitSet,
     pub(crate) bind_group_value_attr: NodeTable<NodeId>,
     pub(crate) bind_blockers: NodeTable<SmallVec<[u32; 2]>>,
+    pub(crate) bind_this_each_context: NodeTable<SmallVec<[SymbolId; 4]>>,
 }
 
 impl BindSemanticsData {
@@ -164,6 +165,7 @@ impl BindSemanticsData {
             has_bind_group: NodeBitSet::new(node_count),
             bind_group_value_attr: NodeTable::new(node_count),
             bind_blockers: NodeTable::new(node_count),
+            bind_this_each_context: NodeTable::new(node_count),
         }
     }
 
@@ -181,5 +183,10 @@ impl BindSemanticsData {
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
         self.bind_blockers.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn bind_this_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
+        self.bind_this_each_context
+            .get(id)
+            .map(|syms| syms.as_slice())
     }
 }

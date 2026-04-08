@@ -1,7 +1,7 @@
 use crate::types::data::{AnalysisData, ExpressionInfo, ExpressionKind};
 
 pub(crate) fn classify_expression_dynamicity(data: &mut AnalysisData) {
-    let has_class_state = data.has_class_state_fields;
+    let has_class_state = data.script.has_class_state_fields;
 
     for info in data.expressions.values_mut() {
         info.is_dynamic = is_dynamic_template(info, &data.scoping, has_class_state);

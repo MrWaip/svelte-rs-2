@@ -11,6 +11,7 @@ mod a11y;
 
 fn assert_content_strategy_variant(data: &AnalysisData, key: FragmentKey, variant: &str) {
     let actual = data
+        .template
         .fragments
         .content_types
         .get(&key)
@@ -566,6 +567,7 @@ fn analyze_module_with_diags(source: &str) -> Vec<Diagnostic> {
 
 fn assert_root_content_type(data: &AnalysisData, expected: ContentStrategy) {
     let actual = data
+        .template
         .fragments
         .content_types
         .get(&FragmentKey::Root)
@@ -597,7 +599,7 @@ fn assert_dynamic_tag(data: &AnalysisData, component: &Component, expr_text: &st
     let id = find_expr_tag(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        data.dynamic_nodes.contains(&id),
+        data.output.dynamic_nodes.contains(&id),
         "expected ExpressionTag '{expr_text}' to be dynamic"
     );
 }
@@ -606,7 +608,7 @@ fn assert_not_dynamic_tag(data: &AnalysisData, component: &Component, expr_text:
     let id = find_expr_tag(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no ExpressionTag with source '{expr_text}'"));
     assert!(
-        !data.dynamic_nodes.contains(&id),
+        !data.output.dynamic_nodes.contains(&id),
         "expected ExpressionTag '{expr_text}' to NOT be dynamic"
     );
 }
@@ -615,7 +617,7 @@ fn assert_dynamic_if_block(data: &AnalysisData, component: &Component, test_text
     let block = find_if_block(&component.fragment, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
     assert!(
-        data.dynamic_nodes.contains(&block.id),
+        data.output.dynamic_nodes.contains(&block.id),
         "expected IfBlock '{test_text}' to be dynamic"
     );
 }
@@ -624,7 +626,7 @@ fn assert_dynamic_each(data: &AnalysisData, component: &Component, expr_text: &s
     let block = find_each_block(&component.fragment, component, expr_text)
         .unwrap_or_else(|| panic!("no EachBlock with expr '{expr_text}'"));
     assert!(
-        data.dynamic_nodes.contains(&block.id),
+        data.output.dynamic_nodes.contains(&block.id),
         "expected EachBlock '{expr_text}' to be dynamic"
     );
 }
@@ -638,7 +640,7 @@ fn assert_snippet_hoistable(
     let block = find_snippet_block(&component.fragment, component, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     assert_eq!(
-        data.snippets.is_hoistable(block.id),
+        data.template.snippets.is_hoistable(block.id),
         expected,
         "unexpected hoistability for snippet '{name}'",
     );
@@ -719,6 +721,7 @@ fn assert_element_content_type(
     let el = find_element(&component.fragment, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     let actual = data
+        .template
         .fragments
         .content_types
         .get(&FragmentKey::Element(el.id))
@@ -735,7 +738,7 @@ fn assert_element_needs_ref(
     let el = find_element(&component.fragment, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
-        data.element_flags.needs_ref(el.id),
+        data.elements.flags.needs_ref(el.id),
         expected,
         "unexpected needs_ref for <{tag_name}>",
     );
@@ -750,7 +753,7 @@ fn assert_element_needs_var(
     let el = find_element(&component.fragment, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
-        data.element_flags.needs_var(el.id),
+        data.elements.flags.needs_var(el.id),
         expected,
         "unexpected needs_var for <{tag_name}>",
     );
@@ -765,7 +768,7 @@ fn assert_has_dynamic_class_directives(
     let el = find_element(&component.fragment, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
     assert_eq!(
-        data.element_flags.has_dynamic_class_directives(el.id),
+        data.elements.flags.has_dynamic_class_directives(el.id),
         expected,
         "unexpected dynamic class-directive state for <{tag_name}>",
     );
@@ -780,6 +783,7 @@ fn assert_consequent_content_type(
     let block = find_if_block(&component.fragment, component, test_text)
         .unwrap_or_else(|| panic!("no IfBlock with test '{test_text}'"));
     let actual = data
+        .template
         .fragments
         .content_types
         .get(&FragmentKey::IfConsequent(block.id))
@@ -789,6 +793,7 @@ fn assert_consequent_content_type(
 
 fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_count: usize) {
     let lf = data
+        .template
         .fragments
         .lowered
         .get(&key)
@@ -802,6 +807,7 @@ fn assert_lowered_item_count(data: &AnalysisData, key: FragmentKey, expected_cou
 
 fn assert_item_is_text_concat(data: &AnalysisData, key: FragmentKey, index: usize) {
     let lf = data
+        .template
         .fragments
         .lowered
         .get(&key)
@@ -1183,7 +1189,7 @@ fn concatenated_class_attr_is_registered_for_set_class() {
     let class_attr_id = find_attribute_id(&component.fragment, &component, "div", "class")
         .expect("no class attr on <div>");
 
-    assert_eq!(data.element_flags.class_attr_id(el.id), Some(class_attr_id));
+    assert_eq!(data.elements.flags.class_attr_id(el.id), Some(class_attr_id));
 }
 
 #[test]
@@ -1354,7 +1360,7 @@ fn bind_group_records_expression_value_attr_only() {
         .expect("no expression value attr on first input");
 
     assert_eq!(
-        data.bind_semantics.bind_group_value_attr(bind_id),
+        data.template.bind_semantics.bind_group_value_attr(bind_id),
         Some(value_attr_id)
     );
 }
@@ -1396,7 +1402,7 @@ fn static_contenteditable_marks_bound_contenteditable() {
         r#"<script>let html = $state('');</script><div contenteditable bind:innerHTML={html}></div>"#,
     );
     let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    assert!(data.element_flags.is_bound_contenteditable(el.id));
+    assert!(data.elements.flags.is_bound_contenteditable(el.id));
 }
 
 #[test]
@@ -1411,7 +1417,7 @@ fn dynamic_contenteditable_does_not_mark_bound_contenteditable() {
     let (data, _parsed, diags) = analyze(&component, js_result);
     assert_has_error(&diags, "attribute_contenteditable_dynamic");
     let el = find_element(&component.fragment, &component, "div").expect("no element <div>");
-    assert!(!data.element_flags.is_bound_contenteditable(el.id));
+    assert!(!data.elements.flags.is_bound_contenteditable(el.id));
 }
 
 #[test]
@@ -1554,9 +1560,9 @@ fn script_rune_calls_keep_module_and_instance_programs_distinct() {
     .unwrap_or_else(|| panic!("missing instance rune call"));
 
     let remapped_instance =
-        OxcNodeId::from_usize(instance_call.index() + data.instance_script_node_id_offset as usize);
+        OxcNodeId::from_usize(instance_call.index() + data.script.instance_node_id_offset as usize);
     let remapped_module =
-        OxcNodeId::from_usize(module_call.index() + data.module_script_node_id_offset as usize);
+        OxcNodeId::from_usize(module_call.index() + data.script.module_node_id_offset as usize);
 
     assert_eq!(
         data.script_rune_calls().kind(remapped_module),
@@ -1593,9 +1599,9 @@ fn script_rune_calls_survive_template_node_id_activity() {
             .expect("missing instance rune call");
 
     let remapped_instance =
-        OxcNodeId::from_usize(instance_call.index() + data.instance_script_node_id_offset as usize);
+        OxcNodeId::from_usize(instance_call.index() + data.script.instance_node_id_offset as usize);
     let remapped_module =
-        OxcNodeId::from_usize(module_call.index() + data.module_script_node_id_offset as usize);
+        OxcNodeId::from_usize(module_call.index() + data.script.module_node_id_offset as usize);
 
     assert_eq!(
         data.script_rune_calls().kind(remapped_module),
@@ -1860,7 +1866,7 @@ fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
 
 fn assert_stmt_meta_count(data: &AnalysisData, expected: usize) {
     assert_eq!(
-        data.blocker_data.stmt_metas.len(),
+        data.blocker_data().stmt_metas.len(),
         expected,
         "stmt_metas count mismatch"
     );
@@ -1969,7 +1975,7 @@ let b = await fetch('/b');
     let paragraph = find_element(&component.fragment, &component, "p")
         .unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
-        data.fragments
+        data.template.fragments
             .fragment_blockers(&FragmentKey::Element(paragraph.id)),
         &[0, 1]
     );
@@ -1989,7 +1995,7 @@ fn debug_tag_ids_collected_for_fragment() {
         })
         .collect();
     assert_eq!(
-        data.debug_tags.by_fragment(&FragmentKey::Root),
+        data.template.debug_tags.by_fragment(&FragmentKey::Root),
         Some(&expected)
     );
 }
@@ -2004,7 +2010,7 @@ fn title_elements_collected_for_svelte_head_fragment() {
     let title = find_element(&component.fragment, &component, "title")
         .unwrap_or_else(|| panic!("no <title>"));
     assert_eq!(
-        data.title_elements
+        data.template.title_elements
             .by_fragment(&FragmentKey::SvelteHeadBody(head_id)),
         Some(&vec![title.id])
     );
@@ -2055,6 +2061,7 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
         .unwrap_or_else(|| panic!("no slotted <p>"));
 
     let default_fragment = data
+        .template
         .fragments
         .lowered(&FragmentKey::ComponentNode(component_id))
         .unwrap_or_else(|| panic!("no lowered default fragment"));
@@ -2063,7 +2070,7 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
         [FragmentItem::Element(id)] if *id == default_child.id
     ));
 
-    let named_slots = data.snippets.component_named_slots(component_id);
+    let named_slots = data.template.snippets.component_named_slots(component_id);
     assert_eq!(named_slots.len(), 1);
     let (slot_el_id, slot_key) = named_slots[0];
     assert_eq!(slot_el_id, slotted_child.id);
@@ -2073,6 +2080,7 @@ fn component_children_lowering_preserves_default_and_named_slot_fragments() {
     );
 
     let slot_fragment = data
+        .template
         .fragments
         .lowered(&slot_key)
         .unwrap_or_else(|| panic!("no lowered named slot fragment"));
@@ -2178,7 +2186,7 @@ let data = await fetch('/api');
 #[test]
 fn runtime_plan_basic_component_is_minimal() {
     let (_c, data) = analyze_source("<script>let count = 1;</script><p>{count}</p>");
-    let plan = data.runtime_plan;
+    let plan = data.output.runtime_plan;
 
     assert!(!plan.needs_push);
     assert!(!plan.has_component_exports);
@@ -2212,7 +2220,7 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             warning_filter: None,
         },
     );
-    let plan = data.runtime_plan;
+    let plan = data.output.runtime_plan;
 
     assert!(plan.needs_push);
     assert!(plan.has_component_exports);
@@ -2227,7 +2235,7 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
 fn runtime_plan_bindable_props_require_push_without_component_exports() {
     let (_c, data) =
         analyze_source("<script>let { value = $bindable() } = $props();</script><p>{value}</p>");
-    let plan = data.runtime_plan;
+    let plan = data.output.runtime_plan;
 
     assert!(plan.needs_push);
     assert!(!plan.has_component_exports);
@@ -2243,7 +2251,7 @@ fn runtime_plan_bindable_props_require_push_without_component_exports() {
 fn runtime_plan_store_subscriptions_do_not_force_push() {
     let (_c, data) =
         analyze_source("<script>import { count } from './stores';</script><p>{$count}</p>");
-    let plan = data.runtime_plan;
+    let plan = data.output.runtime_plan;
 
     assert!(!plan.needs_push);
     assert!(!plan.has_component_exports);
@@ -2258,7 +2266,7 @@ fn runtime_plan_store_subscriptions_do_not_force_push() {
 #[test]
 fn runtime_plan_needs_context_without_exports_skips_pop_return() {
     let (_c, data) = analyze_source("<script>$effect(() => {});</script><p>ok</p>");
-    let plan = data.runtime_plan;
+    let plan = data.output.runtime_plan;
 
     assert!(plan.needs_push);
     assert!(!plan.has_component_exports);
@@ -3513,7 +3521,8 @@ fn fragment_facts_capture_single_expression_queries() {
         Node::ExpressionTag(_)
     ));
     assert!(data
-        .element_flags
+        .elements
+        .flags
         .needs_textarea_value_lowering(textarea.id));
 
     assert!(data.fragment_has_expression_child(&FragmentKey::Element(option.id)));
@@ -3522,7 +3531,7 @@ fn fragment_facts_capture_single_expression_queries() {
         Node::ExpressionTag(_)
     ));
     assert_eq!(
-        data.element_flags.option_synthetic_value_expr(option.id),
+        data.elements.flags.option_synthetic_value_expr(option.id),
         Some(option_expr)
     );
 }
@@ -3629,10 +3638,10 @@ fn rich_content_facts_drive_customizable_select_detection() {
         RichContentParentKind::Option
     ));
 
-    assert!(data.element_flags.is_customizable_select(rich_select.id));
-    assert!(!data.element_flags.is_customizable_select(plain_select.id));
-    assert!(data.element_flags.is_customizable_select(optgroup.id));
-    assert!(data.element_flags.is_customizable_select(option.id));
+    assert!(data.elements.flags.is_customizable_select(rich_select.id));
+    assert!(!data.elements.flags.is_customizable_select(plain_select.id));
+    assert!(data.elements.flags.is_customizable_select(optgroup.id));
+    assert!(data.elements.flags.is_customizable_select(option.id));
 }
 
 #[test]

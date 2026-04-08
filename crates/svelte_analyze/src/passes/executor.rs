@@ -115,7 +115,7 @@ pub(crate) fn execute_pass<'a>(
             }
             if let Some(program) = &parsed.program {
                 if options.dev {
-                    data.ignore_data.scan_program_comments(program, runes);
+                    data.output.ignore_data.scan_program_comments(program, runes);
                 }
             }
         }
@@ -145,7 +145,7 @@ pub(crate) fn execute_pass<'a>(
                 {
                     let config =
                         crate::utils::ce_config::extract_ce_config_from_expr(expr, span.start);
-                    data.ce_config = Some(config);
+                    data.script.ce_config = Some(config);
                 }
             }
         }
@@ -164,7 +164,7 @@ pub(crate) fn execute_pass<'a>(
                 diags,
                 &mut visitors,
             );
-            data.template_elements.finalize();
+            data.template.template_elements.finalize();
         }
         super::PassKey::CollectSymbols => {
             let mut bundle =
@@ -193,8 +193,8 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::ClassifyNeedsContext => {
             js_analyze::classify_expression_needs_context(data);
-            if !data.needs_context {
-                data.needs_context = data
+            if !data.output.needs_context {
+                data.output.needs_context = data
                     .expressions
                     .values()
                     .chain(data.attr_expressions.values())
@@ -203,8 +203,8 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::PostResolve => {
             post_resolve::run_post_resolve_passes(data);
-            if !data.needs_context {
-                data.needs_context = data
+            if !data.output.needs_context {
+                data.output.needs_context = data
                     .expressions
                     .values()
                     .chain(data.attr_expressions.values())
@@ -234,22 +234,22 @@ pub(crate) fn execute_pass<'a>(
             data.scoping.precompute_dynamic_cache();
         }
         super::PassKey::MarkBlockedSymbolsDynamic => {
-            if data.blocker_data.has_async {
+            if data.script.blocker_data.has_async {
                 data.scoping
-                    .mark_blocked_symbols_dynamic(&data.blocker_data.symbol_blockers);
+                    .mark_blocked_symbols_dynamic(&data.script.blocker_data.symbol_blockers);
             }
         }
         super::PassKey::ClassifyExpressionDynamicity => {
             js_analyze::classify_expression_dynamicity(data);
         }
         super::PassKey::MarkBlockedExpressionsDynamic => {
-            if data.blocker_data.has_async {
+            if data.script.blocker_data.has_async {
                 for info in data.expressions.values_mut() {
                     if !info.is_dynamic
                         && info
                             .ref_symbols
                             .iter()
-                            .any(|sym| data.blocker_data.symbol_blockers.contains_key(sym))
+                            .any(|sym| data.script.blocker_data.symbol_blockers.contains_key(sym))
                     {
                         info.is_dynamic = true;
                     }
@@ -312,6 +312,7 @@ pub(crate) fn execute_pass<'a>(
 fn mark_const_tag_bindings(data: &mut AnalysisData) {
     use crate::types::script::RuneKind;
     let pairs: Vec<_> = data
+        .template
         .const_tags
         .by_fragment
         .iter()
@@ -322,7 +323,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
         .collect();
     for (scope, tag_ids) in pairs {
         for tag_id in tag_ids {
-            let Some(names) = data.const_tags.names(tag_id).cloned() else {
+            let Some(names) = data.template.const_tags.names(tag_id).cloned() else {
                 continue;
             };
             let is_destructured = names.len() > 1;
@@ -344,7 +345,7 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
                 }
             }
             if !syms.is_empty() {
-                data.const_tags.syms.insert(tag_id, syms);
+                data.template.const_tags.syms.insert(tag_id, syms);
             }
         }
     }
@@ -352,9 +353,9 @@ fn mark_const_tag_bindings(data: &mut AnalysisData) {
 
 fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResult<'_>) {
     use oxc_ast::ast::Expression;
-    let tag_ids: Vec<svelte_ast::NodeId> = data.render_tag_plans.keys().collect();
+    let tag_ids: Vec<svelte_ast::NodeId> = data.blocks.render_tag_plans.keys().collect();
     for tag_id in tag_ids {
-        let handle = match data.template_semantics.node_expr_handles.get(tag_id) {
+        let handle = match data.template.template_semantics.node_expr_handles.get(tag_id) {
             Some(&handle) => handle,
             None => continue,
         };
@@ -376,7 +377,7 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
                 .collect(),
             _ => continue,
         };
-        let Some(plan) = data.render_tag_plans.get_mut(tag_id) else {
+        let Some(plan) = data.blocks.render_tag_plans.get_mut(tag_id) else {
             continue;
         };
         for (arg_plan, prop_source) in plan.arg_plans.iter_mut().zip(resolved) {
@@ -388,14 +389,14 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
 fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
     use crate::types::data::RenderTagCalleeMode;
 
-    let all_ids: Vec<svelte_ast::NodeId> = data.render_tag_plans.keys().collect();
+    let all_ids: Vec<svelte_ast::NodeId> = data.blocks.render_tag_plans.keys().collect();
 
     for node_id in all_ids {
-        let is_dynamic = match data.render_tag_callee_sym.get(node_id) {
+        let is_dynamic = match data.blocks.render_tag_callee_sym.get(node_id) {
             Some(&sym_id) => !data.scoping.is_normal_binding(sym_id),
             None => true,
         };
-        let is_chain = data.render_tag_is_chain.contains(&node_id);
+        let is_chain = data.blocks.render_tag_is_chain.contains(&node_id);
 
         let mode = match (is_dynamic, is_chain) {
             (true, true) => RenderTagCalleeMode::DynamicChain,
@@ -403,7 +404,7 @@ fn resolve_render_tag_dynamic(data: &mut AnalysisData) {
             (false, true) => RenderTagCalleeMode::Chain,
             (false, false) => RenderTagCalleeMode::Direct,
         };
-        if let Some(plan) = data.render_tag_plans.get_mut(node_id) {
+        if let Some(plan) = data.blocks.render_tag_plans.get_mut(node_id) {
             plan.callee_mode = mode;
         }
     }

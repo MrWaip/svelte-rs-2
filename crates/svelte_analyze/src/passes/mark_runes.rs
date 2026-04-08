@@ -12,7 +12,7 @@ use oxc_ast_visit::Visit;
 
 /// Mark runes declared at the root scope from ScriptInfo.
 pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
-    let Some(script_info) = &data.script else {
+    let Some(script_info) = &data.script.info else {
         return;
     };
     let root = data.scoping.root_scope_id();
@@ -20,7 +20,7 @@ pub(crate) fn mark_script_runes(data: &mut AnalysisData) {
         &mut data.scoping,
         root,
         &script_info.declarations,
-        &data.proxy_state_inits,
+        &data.script.proxy_state_inits,
     );
 }
 

@@ -106,8 +106,8 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .unwrap_or_else(|| panic!("css block must exist when css_parsed is Some"));
             let css_source = component.source_text(css_block.content_span);
             let raw_css = svelte_transform_css::transform_css(
-                &analysis.css.hash,
-                &analysis.css.keyframes,
+                &analysis.output.css.hash,
+                &analysis.output.css.keyframes,
                 ss,
                 css_source,
             );
@@ -119,7 +119,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         }
         // External CSS is returned in CompileResult.css; injected CSS goes into the JS output.
         // css_text is passed to codegen only for the injected path — external mode doesn't need it there.
-        let (css, injected_css_text) = if analysis.css.inject_styles {
+        let (css, injected_css_text) = if analysis.output.css.inject_styles {
             (None, css_text)
         } else {
             (css_text, None)

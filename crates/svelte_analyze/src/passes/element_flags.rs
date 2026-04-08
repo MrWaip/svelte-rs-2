@@ -67,7 +67,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 ));
             } else {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .needs_textarea_value_lowering
                     .insert(el.id);
             }
@@ -77,7 +78,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if el.name == "option" && !has_value_attr {
             if let Some(child_id) = ctx.data.fragment_single_expression_child(&fragment_key) {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .option_synthetic_value_expr
                     .insert(el.id, child_id);
             }
@@ -93,10 +95,10 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if rich_content_parent
             .is_some_and(|parent| ctx.data.fragment_has_rich_content(&fragment_key, parent))
         {
-            ctx.data.element_flags.customizable_select.insert(el.id);
+            ctx.data.elements.flags.customizable_select.insert(el.id);
         }
         if el.name == "selectedcontent" {
-            ctx.data.element_flags.is_selectedcontent.insert(el.id);
+            ctx.data.elements.flags.is_selectedcontent.insert(el.id);
         }
     }
 
@@ -107,19 +109,22 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         match attr {
             Attribute::StringAttribute(sa) if sa.name == "class" => {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .static_class
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::StringAttribute(sa) if sa.name == "style" => {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .static_style
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::ClassDirective(cd) => {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .class_directive_info
                     .get_or_default(el_id)
                     .push(ClassDirectiveInfo {
@@ -130,17 +135,18 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
             Attribute::StyleDirective(sd) => {
                 ctx.data
-                    .element_flags
+                    .elements
+                    .flags
                     .style_directives
                     .get_or_default(el_id)
                     .push(sd.clone());
             }
             Attribute::ExpressionAttribute(ea) => {
                 if ea.name == "class" {
-                    ctx.data.element_flags.class_attr_id.insert(el_id, ea.id);
+                    ctx.data.elements.flags.class_attr_id.insert(el_id, ea.id);
                 }
                 if ea.name == "value" && ctx.element_name() == Some("input") {
-                    ctx.data.element_flags.needs_input_defaults.insert(el_id);
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
                 if let Some(raw) = ea.event_name.as_deref() {
                     let (name, capture) = if let Some(base) = crate::utils::strip_capture_event(raw)
@@ -156,35 +162,38 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         EventHandlerMode::Direct { capture, passive }
                     };
                     ctx.data
-                        .element_flags
+                        .elements
+                        .flags
                         .event_handler_mode
                         .insert(ea.id, mode);
                 }
             }
             Attribute::ConcatenationAttribute(attr) => {
                 if attr.name == "class" {
-                    ctx.data.element_flags.class_attr_id.insert(el_id, attr.id);
+                    ctx.data.elements.flags.class_attr_id.insert(el_id, attr.id);
                 }
             }
             Attribute::BindDirective(bd) => {
                 if ctx.element_name() == Some("input")
                     && matches!(bd.name.as_str(), "value" | "checked" | "group")
                 {
-                    ctx.data.element_flags.needs_input_defaults.insert(el_id);
+                    ctx.data.elements.flags.needs_input_defaults.insert(el_id);
                 }
             }
             Attribute::OnDirectiveLegacy(dir) => {
                 ctx.data
+                    .elements
                     .directive_modifiers
                     .record(dir.id, Self::modifier_flags(&dir.modifiers));
             }
             Attribute::TransitionDirective(dir) => {
                 ctx.data
+                    .elements
                     .directive_modifiers
                     .record(dir.id, Self::modifier_flags(&dir.modifiers));
             }
             Attribute::UseDirective(_) => {
-                ctx.data.element_flags.has_use_directive.insert(el_id);
+                ctx.data.elements.flags.has_use_directive.insert(el_id);
             }
             _ => {}
         }
@@ -194,7 +203,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         let data = &mut *ctx.data;
         // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
         if cn.name.contains('.') {
-            data.element_flags.is_dynamic_component.insert(cn.id);
+            data.elements.flags.is_dynamic_component.insert(cn.id);
         }
         for attr in &cn.attributes {
             // CSS custom properties (`--name`) on a component are routed to the
@@ -207,7 +216,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = css_prop_name {
-                data.element_flags
+                data.elements.flags
                     .component_css_props
                     .get_or_default(cn.id)
                     .push((name.to_string(), attr.id()));
@@ -295,7 +304,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 Attribute::AttachTag(a) => ComponentPropKind::Attach { attr_id: a.id },
                 Attribute::OnDirectiveLegacy(a) => {
                     let flags = Self::modifier_flags(&a.modifiers);
-                    data.directive_modifiers.record(a.id, flags);
+                    data.elements.directive_modifiers.record(a.id, flags);
                     ComponentPropKind::Event {
                         name: a.name.clone(),
                         attr_id: a.id,
@@ -305,8 +314,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 }
                 _ => continue,
             };
-            let is_dynamic = data.element_flags.is_dynamic_attr(attr.id());
-            data.element_flags
+            let is_dynamic = data.elements.flags.is_dynamic_attr(attr.id());
+            data.elements.flags
                 .component_props
                 .get_or_default(cn.id)
                 .push(ComponentPropInfo { kind, is_dynamic });

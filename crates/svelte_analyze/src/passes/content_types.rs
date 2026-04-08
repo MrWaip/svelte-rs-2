@@ -19,21 +19,21 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
         let key = FragmentKey::Element(el.id);
 
         // Compute content_type + has_dynamic for this element's fragment
-        if let Some(lf) = ctx.data.fragments.lowered.get(&key) {
+        if let Some(lf) = ctx.data.template.fragments.lowered.get(&key) {
             let cs = classify_items(&lf.items, self.source);
             let has_dynamic = lf
                 .items
                 .iter()
-                .any(|item| item_is_dynamic(item, &ctx.data.dynamic_nodes));
-            ctx.data.fragments.content_types.insert(key, cs);
+                .any(|item| item_is_dynamic(item, &ctx.data.output.dynamic_nodes));
+            ctx.data.template.fragments.content_types.insert(key, cs);
             if has_dynamic {
-                ctx.data.fragments.has_dynamic_children.insert(key);
+                ctx.data.template.fragments.has_dynamic_children.insert(key);
             }
         }
 
         // Compute needs_var (same logic as former NeedsVarVisitor)
         if element_needs_var(el, ctx.data) {
-            ctx.data.element_flags.needs_var.insert(el.id);
+            ctx.data.elements.flags.needs_var.insert(el.id);
         }
     }
 }
@@ -42,6 +42,7 @@ impl TemplateVisitor for ContentAndVarVisitor<'_> {
 /// Element fragments are already classified by ContentAndVarVisitor::leave_element.
 pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
     let keys: Vec<_> = data
+        .template
         .fragments
         .lowered
         .keys()
@@ -49,15 +50,15 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
         .copied()
         .collect();
     for key in keys {
-        let lf = &data.fragments.lowered[&key];
+        let lf = &data.template.fragments.lowered[&key];
         let cs = classify_items(&lf.items, source);
         let has_dynamic = lf
             .items
             .iter()
-            .any(|item| item_is_dynamic(item, &data.dynamic_nodes));
-        data.fragments.content_types.insert(key, cs);
+            .any(|item| item_is_dynamic(item, &data.output.dynamic_nodes));
+        data.template.fragments.content_types.insert(key, cs);
         if has_dynamic {
-            data.fragments.has_dynamic_children.insert(key);
+            data.template.fragments.has_dynamic_children.insert(key);
         }
     }
 }
@@ -65,17 +66,17 @@ pub fn classify_remaining_fragments(data: &mut AnalysisData, source: &str) {
 fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
     let id = el.id;
 
-    if data.element_flags.needs_ref.contains(&id) {
+    if data.elements.flags.needs_ref.contains(&id) {
         return true;
     }
 
     // Customizable select elements require a JS var so codegen can call $.customizable_select(el, ...).
-    if data.element_flags.is_customizable_select(id) {
+    if data.elements.flags.is_customizable_select(id) {
         return true;
     }
 
     // <selectedcontent> requires a JS var so codegen can call $.selectedcontent(el, setter).
-    if data.element_flags.is_selectedcontent(id) {
+    if data.elements.flags.is_selectedcontent(id) {
         return true;
     }
 
@@ -97,6 +98,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
 
     let key = FragmentKey::Element(id);
     let ct = data
+        .template
         .fragments
         .content_types
         .get(&key)
@@ -107,7 +109,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData) -> bool {
         ContentStrategy::DynamicText => true,
         ContentStrategy::SingleBlock(_) => true,
         ContentStrategy::SingleElement(_) | ContentStrategy::Mixed { .. } => {
-            let Some(lf) = data.fragments.lowered.get(&key) else {
+            let Some(lf) = data.template.fragments.lowered.get(&key) else {
                 return false;
             };
             lf.items.iter().any(|item| item_needs_var(item, data))
@@ -120,7 +122,7 @@ fn item_needs_var(item: &FragmentItem, data: &AnalysisData) -> bool {
         FragmentItem::TextConcat { has_expr, .. } => *has_expr,
         FragmentItem::Element(id) => {
             // Bottom-up: child elements' needs_var already computed via leave_element
-            data.element_flags.needs_var.contains(id)
+            data.elements.flags.needs_var.contains(id)
         }
         FragmentItem::ComponentNode(_)
         | FragmentItem::IfBlock(_)

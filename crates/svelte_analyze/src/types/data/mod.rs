@@ -13,7 +13,6 @@ pub use svelte_parser::{ExprHandle, ParserResult, StmtHandle};
 mod analysis;
 mod async_data;
 pub(crate) mod attr_index;
-mod bind_this_each_context;
 mod codegen_view;
 mod css;
 mod directive_modifier_flags;
@@ -24,7 +23,6 @@ mod expr;
 mod fragment_facts;
 mod fragments;
 mod ignore;
-mod import_symbols;
 mod pickled_await_offsets;
 mod props;
 mod proxy_state_inits;
@@ -36,10 +34,12 @@ mod template_data;
 mod template_element_index;
 pub(crate) mod template_topology;
 
-pub use analysis::AnalysisData;
+pub use analysis::{
+    AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis,
+    TemplateAnalysis,
+};
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
-pub use bind_this_each_context::BindThisEachContext;
 pub use codegen_view::CodegenView;
 pub use css::CssAnalysis;
 pub use directive_modifier_flags::{DirectiveModifierFlags, EventModifier};
@@ -58,7 +58,6 @@ pub use fragments::{
     LoweredTextPart,
 };
 pub use ignore::IgnoreData;
-pub use import_symbols::ImportSymbolSet;
 pub use pickled_await_offsets::PickledAwaitOffsets;
 pub use props::{PropAnalysis, PropsAnalysis};
 pub use proxy_state_inits::ProxyStateInits;

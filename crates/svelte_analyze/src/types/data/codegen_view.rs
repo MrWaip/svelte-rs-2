@@ -11,13 +11,13 @@ impl<'a> CodegenView<'a> {
     }
 
     pub fn custom_element(&self) -> bool {
-        self.data.custom_element
+        self.data.output.custom_element
     }
     pub fn runes(&self) -> bool {
-        self.data.runes
+        self.data.script.runes
     }
     pub fn runtime_plan(&self) -> RuntimePlan {
-        self.data.runtime_plan
+        self.data.output.runtime_plan
     }
     pub fn is_dynamic(&self, id: NodeId) -> bool {
         self.data.is_dynamic(id)
@@ -26,31 +26,31 @@ impl<'a> CodegenView<'a> {
         self.data.is_elseif_alt(id)
     }
     pub fn exports(&self) -> &[ExportInfo] {
-        &self.data.exports
+        &self.data.script.exports
     }
     pub fn props(&self) -> Option<&PropsAnalysis> {
-        self.data.props.as_ref()
+        self.data.script.props.as_ref()
     }
     pub fn needs_context(&self) -> bool {
-        self.data.needs_context
+        self.data.output.needs_context
     }
     pub fn props_id(&self) -> Option<&str> {
-        self.data.props_id.as_deref()
+        self.data.script.props_id.as_deref()
     }
     pub fn scoping(&self) -> &ComponentScoping {
         &self.data.scoping
     }
     pub fn ce_config(&self) -> Option<&svelte_parser::ParsedCeConfig> {
-        self.data.ce_config.as_ref()
+        self.data.script.ce_config.as_ref()
     }
     pub fn script_rune_calls(&self) -> &ScriptRuneCalls {
         self.data.script_rune_calls()
     }
     pub fn instance_script_node_id_offset(&self) -> u32 {
-        self.data.instance_script_node_id_offset
+        self.data.script.instance_node_id_offset
     }
     pub fn module_script_node_id_offset(&self) -> u32 {
-        self.data.module_script_node_id_offset
+        self.data.script.module_node_id_offset
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.data.scoping.symbol_name(sym)
@@ -71,16 +71,16 @@ impl<'a> CodegenView<'a> {
         self.data.is_pickled_await(offset)
     }
     pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
-        self.data.ignore_data.is_ignored(node_id, code)
+        self.data.output.ignore_data.is_ignored(node_id, code)
     }
     pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
-        self.data.ignore_data.is_ignored_at_span(span_start, code)
+        self.data.output.ignore_data.is_ignored_at_span(span_start, code)
     }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.await_bindings.value(id)
+        self.data.template.await_bindings.value(id)
     }
     pub fn await_error_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
-        self.data.await_bindings.error(id)
+        self.data.template.await_bindings.error(id)
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         self.data.expr_deps(site)
@@ -143,10 +143,10 @@ impl<'a> CodegenView<'a> {
         self.data.bind_target_symbol(id)
     }
     pub fn lowered_fragment(&self, key: &FragmentKey) -> Option<&LoweredFragment> {
-        self.data.fragments.lowered(key)
+        self.data.template.fragments.lowered(key)
     }
     pub fn fragment_blockers(&self, key: &FragmentKey) -> &[u32] {
-        self.data.fragments.fragment_blockers(key)
+        self.data.template.fragments.fragment_blockers(key)
     }
     pub fn fragment_references_any_symbol(
         &self,
@@ -156,10 +156,10 @@ impl<'a> CodegenView<'a> {
         self.data.fragment_references_any_symbol(key, syms)
     }
     pub fn content_type(&self, key: &FragmentKey) -> ContentStrategy {
-        self.data.fragments.content_type(key)
+        self.data.template.fragments.content_type(key)
     }
     pub fn has_dynamic_children(&self, key: &FragmentKey) -> bool {
-        self.data.fragments.has_dynamic_children(key)
+        self.data.template.fragments.has_dynamic_children(key)
     }
     pub fn string_attribute<'b>(
         &self,
@@ -191,100 +191,100 @@ impl<'a> CodegenView<'a> {
         self.data.event_modifiers(id)
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_class_directives(id)
+        self.data.elements.flags.has_class_directives(id)
     }
     pub fn has_class_attribute(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_class_attribute(id)
+        self.data.elements.flags.has_class_attribute(id)
     }
     pub fn needs_clsx(&self, id: NodeId) -> bool {
-        self.data.element_flags.needs_clsx(id)
+        self.data.elements.flags.needs_clsx(id)
     }
     pub fn has_style_directives(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_style_directives(id)
+        self.data.elements.flags.has_style_directives(id)
     }
     pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
-        self.data.element_flags.style_directives(id)
+        self.data.elements.flags.style_directives(id)
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
-        self.data.element_flags.needs_input_defaults(id)
+        self.data.elements.flags.needs_input_defaults(id)
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
-        self.data.element_flags.needs_var(id)
+        self.data.elements.flags.needs_var(id)
     }
     pub fn is_dynamic_attr(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_dynamic_attr(id)
+        self.data.elements.flags.is_dynamic_attr(id)
     }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
-        self.data.element_flags.static_class(id)
+        self.data.elements.flags.static_class(id)
     }
     pub fn static_style(&self, id: NodeId) -> Option<&str> {
-        self.data.element_flags.static_style(id)
+        self.data.elements.flags.static_style(id)
     }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_bound_contenteditable(id)
+        self.data.elements.flags.is_bound_contenteditable(id)
     }
     pub fn has_use_directive(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_use_directive(id)
+        self.data.elements.flags.has_use_directive(id)
     }
     pub fn has_dynamic_class_directives(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_dynamic_class_directives(id)
+        self.data.elements.flags.has_dynamic_class_directives(id)
     }
     pub fn class_needs_state(&self, id: NodeId) -> bool {
-        self.data.element_flags.class_needs_state(id)
+        self.data.elements.flags.class_needs_state(id)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
-        self.data.element_flags.class_attr_id(id)
+        self.data.elements.flags.class_attr_id(id)
     }
     pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
-        self.data.element_flags.class_directive_info(id)
+        self.data.elements.flags.class_directive_info(id)
     }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_expression_shorthand(id)
+        self.data.elements.flags.is_expression_shorthand(id)
     }
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
-        self.data.element_flags.component_props(id)
+        self.data.elements.flags.component_props(id)
     }
     pub fn component_css_props(&self, id: NodeId) -> &[(String, NodeId)] {
-        self.data.element_flags.component_css_props(id)
+        self.data.elements.flags.component_css_props(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
-        self.data.element_flags.has_component_css_props(id)
+        self.data.elements.flags.has_component_css_props(id)
     }
     pub fn component_snippets(&self, id: NodeId) -> &[NodeId] {
-        self.data.snippets.component_snippets(id)
+        self.data.template.snippets.component_snippets(id)
     }
     pub fn component_named_slots(&self, id: NodeId) -> &[(NodeId, FragmentKey)] {
-        self.data.snippets.component_named_slots(id)
+        self.data.template.snippets.component_named_slots(id)
     }
     pub fn is_dynamic_component(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_dynamic_component(id)
+        self.data.elements.flags.is_dynamic_component(id)
     }
     pub fn is_snippet_hoistable(&self, id: NodeId) -> bool {
-        self.data.snippets.is_hoistable(id)
+        self.data.template.snippets.is_hoistable(id)
     }
     pub fn event_handler_mode(&self, id: NodeId) -> Option<EventHandlerMode> {
-        self.data.element_flags.event_handler_mode(id)
+        self.data.elements.flags.event_handler_mode(id)
     }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
-        self.data.element_flags.needs_textarea_value_lowering(id)
+        self.data.elements.flags.needs_textarea_value_lowering(id)
     }
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
-        self.data.element_flags.option_synthetic_value_expr(id)
+        self.data.elements.flags.option_synthetic_value_expr(id)
     }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_customizable_select(id)
+        self.data.elements.flags.is_customizable_select(id)
     }
     pub fn is_selectedcontent(&self, id: NodeId) -> bool {
-        self.data.element_flags.is_selectedcontent(id)
+        self.data.elements.flags.is_selectedcontent(id)
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.data.render_tag_plan(id)
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
-        self.data.bind_semantics.has_bind_group(id)
+        self.data.template.bind_semantics.has_bind_group(id)
     }
     pub fn bind_group_value_attr(&self, id: NodeId) -> Option<NodeId> {
-        self.data.bind_semantics.bind_group_value_attr(id)
+        self.data.template.bind_semantics.bind_group_value_attr(id)
     }
     pub fn parent_each_blocks(&self, id: NodeId) -> SmallVec<[NodeId; 4]> {
         self.data.parent_each_blocks(id)
@@ -293,31 +293,31 @@ impl<'a> CodegenView<'a> {
         self.data.contains_group_binding(id)
     }
     pub fn bind_blockers(&self, id: NodeId) -> &[u32] {
-        self.data.bind_semantics.bind_blockers(id)
+        self.data.template.bind_semantics.bind_blockers(id)
     }
     pub fn is_mutable_rune_target(&self, id: NodeId) -> bool {
-        self.data.bind_semantics.is_mutable_rune_target(id)
+        self.data.template.bind_semantics.is_mutable_rune_target(id)
     }
     pub fn is_prop_source_node(&self, id: NodeId) -> bool {
-        self.data.bind_semantics.is_prop_source(id)
+        self.data.template.bind_semantics.is_prop_source(id)
     }
     pub fn bind_each_context(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.bind_each_context(id)
     }
     pub fn const_tag_names(&self, id: NodeId) -> Option<&Vec<String>> {
-        self.data.const_tags.names(id)
+        self.data.template.const_tags.names(id)
     }
     pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
         self.data.const_tag_syms(id)
     }
     pub fn const_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.const_tags.by_fragment(key)
+        self.data.template.const_tags.by_fragment(key)
     }
     pub fn debug_tags_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.debug_tags.by_fragment(key)
+        self.data.template.debug_tags.by_fragment(key)
     }
     pub fn title_elements_for_fragment(&self, key: &FragmentKey) -> Option<&Vec<NodeId>> {
-        self.data.title_elements.by_fragment(key)
+        self.data.template.title_elements.by_fragment(key)
     }
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
         self.data

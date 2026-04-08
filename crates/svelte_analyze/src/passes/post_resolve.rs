@@ -12,7 +12,7 @@ pub fn run_post_resolve_passes(data: &mut AnalysisData) {
 /// Single pass over script declarations for both known-value collection and props-id detection.
 /// Then processes props_declaration separately (only needed for props analysis).
 fn analyze_declarations(data: &mut AnalysisData) {
-    let script = match &data.script {
+    let script = match &data.script.info {
         Some(s) => s,
         None => return,
     };
@@ -20,8 +20,8 @@ fn analyze_declarations(data: &mut AnalysisData) {
 
     // Single pass: known_values + props_id detection
     for decl in &script.declarations {
-        if decl.is_rune == Some(RuneKind::PropsId) && data.props_id.is_none() {
-            data.props_id = Some(decl.name.to_string());
+        if decl.is_rune == Some(RuneKind::PropsId) && data.script.props_id.is_none() {
+            data.script.props_id = Some(decl.name.to_string());
         }
 
         let Some(ref lit) = decl.init_literal else {
@@ -53,6 +53,7 @@ fn analyze_declarations(data: &mut AnalysisData) {
 fn analyze_props_declaration(data: &mut AnalysisData) {
     let decl = match data
         .script
+        .info
         .as_ref()
         .and_then(|s| s.props_declaration.as_ref())
     {
@@ -68,8 +69,9 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
         .map(|p| {
             let sym_id = data.scoping.find_binding(root, p.local_name.as_str());
             let is_mutated =
-                data.custom_element || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
-            let is_prop_source = data.custom_element || p.default_span.is_some() || is_mutated;
+                data.output.custom_element || sym_id.is_some_and(|id| data.scoping.is_mutated(id));
+            let is_prop_source =
+                data.output.custom_element || p.default_span.is_some() || is_mutated;
 
             if !p.is_rest {
                 if let Some(sym_id) = sym_id {
@@ -110,7 +112,7 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
 
     let has_bindable = decl.props.iter().any(|p| p.is_bindable);
 
-    data.props = Some(PropsAnalysis {
+    data.script.props = Some(PropsAnalysis {
         props,
         has_bindable,
         is_identifier_pattern: decl.is_identifier_pattern,
@@ -119,7 +121,7 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
 
 /// $.store_mutate needs component context ($.push/$.pop) — detect deep store mutations.
 fn aggregate_store_needs_context(data: &mut AnalysisData) {
-    if data.needs_context {
+    if data.output.needs_context {
         return;
     }
 
@@ -131,9 +133,9 @@ fn aggregate_store_needs_context(data: &mut AnalysisData) {
             .attr_expressions
             .values()
             .any(|i| i.has_store_member_mutation)
-        || data.has_store_member_mutations;
+        || data.script.has_store_member_mutations;
 
     if has_deep {
-        data.needs_context = true;
+        data.output.needs_context = true;
     }
 }

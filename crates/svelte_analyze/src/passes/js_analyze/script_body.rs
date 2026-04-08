@@ -14,12 +14,12 @@ pub(crate) fn analyze_script(
 ) {
     let body = analyze_script_body(program, &script_info);
     let has_class_state_fields = body.has_class_state_fields;
-    data.has_store_member_mutations = body.has_store_member_mutations;
-    data.proxy_state_inits = body.proxy_state_inits;
+    data.script.has_store_member_mutations = body.has_store_member_mutations;
+    data.script.proxy_state_inits = body.proxy_state_inits;
 
-    data.exports = std::mem::take(&mut script_info.exports);
-    data.has_class_state_fields = has_class_state_fields;
-    data.script = Some(script_info);
+    data.script.exports = std::mem::take(&mut script_info.exports);
+    data.script.has_class_state_fields = has_class_state_fields;
+    data.script.info = Some(script_info);
 }
 
 pub(crate) fn needs_context_for_program(

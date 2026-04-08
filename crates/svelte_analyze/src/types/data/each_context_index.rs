@@ -15,6 +15,7 @@ bitflags! {
         const KEY_IS_ITEM = 1 << 3;
         const HAS_ANIMATE = 1 << 4;
         const NEEDS_COLLECTION_ID = 1 << 5;
+        const CONTAINS_GROUP_BINDING = 1 << 6;
     }
 }
 
@@ -98,6 +99,13 @@ impl EachContextIndex {
         self.entries.get(id).and_then(|entry| entry.index_sym)
     }
 
+    pub fn mark_contains_group_binding(&mut self, block_id: NodeId) {
+        self.entries
+            .get_or_default(block_id)
+            .flags
+            .insert(EachBlockFlags::CONTAINS_GROUP_BINDING);
+    }
+
     pub fn block_for_index_sym(&self, sym: SymbolId) -> Option<NodeId> {
         self.index_sym_to_block.get(&sym).copied()
     }
@@ -153,5 +161,11 @@ impl EachContextIndex {
         self.entries
             .get(id)
             .is_some_and(|entry| entry.flags.contains(EachBlockFlags::NEEDS_COLLECTION_ID))
+    }
+
+    pub fn contains_group_binding(&self, id: NodeId) -> bool {
+        self.entries
+            .get(id)
+            .is_some_and(|entry| entry.flags.contains(EachBlockFlags::CONTAINS_GROUP_BINDING))
     }
 }

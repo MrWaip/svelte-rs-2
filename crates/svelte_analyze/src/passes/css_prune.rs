@@ -27,10 +27,10 @@ pub(crate) fn prune_and_warn(
     data: &mut AnalysisData,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let elements = &data.template_elements;
-    let element_facts = &data.element_facts;
+    let elements = &data.template.template_elements;
+    let element_facts = &data.elements.facts;
     let mut used = FxHashSet::default();
-    let scoped = &mut data.css.scoped_elements;
+    let scoped = &mut data.output.css.scoped_elements;
     let mut pruner = PruneVisitor {
         elements,
         element_facts,
@@ -39,9 +39,14 @@ pub(crate) fn prune_and_warn(
         in_global_block: false,
     };
     pruner.visit_stylesheet(stylesheet);
-    data.css.used_selectors = used;
+    data.output.css.used_selectors = used;
 
-    warn_unused(stylesheet, css_source, &data.css.used_selectors, diagnostics);
+    warn_unused(
+        stylesheet,
+        css_source,
+        &data.output.css.used_selectors,
+        diagnostics,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -458,7 +463,7 @@ mod tests {
             analyze_diags.is_empty(),
             "unexpected analyze diagnostics: {analyze_diags:?}"
         );
-        data.css = CssAnalysis {
+        data.output.css = CssAnalysis {
             hash: String::new(),
             scoped_elements: crate::types::node_table::NodeBitSet::new(component.node_count()),
             inject_styles: false,
