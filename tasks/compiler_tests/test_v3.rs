@@ -11,12 +11,15 @@ use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOpti
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
 fn normalize_css(s: &str) -> String {
+    // Collapse all whitespace (including newlines) so that single-line
+    // and multi-line representations of the same rule compare equal.
     s.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .filter(|l| !is_css_comment_line(l))
+        .flat_map(|line| line.split_whitespace())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join(" ")
 }
 
 /// Returns true if the entire (trimmed) line is a CSS comment.
@@ -112,7 +115,6 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
-#[ignore = "bug: scope class svelte-xxx not appended to class literal inside snippet body (codegen)"]
 fn css_scope_class_in_snippet() {
     assert_compiler("css_scope_class_in_snippet");
 }

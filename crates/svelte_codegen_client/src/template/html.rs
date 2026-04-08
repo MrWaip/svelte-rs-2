@@ -114,8 +114,10 @@ pub(crate) fn element_html(ctx: &Ctx<'_>, el: &Element) -> (String, bool) {
                 _ => {}
             }
         }
-        // No existing class attribute: inject the scoped class now.
-        if is_scoped && !wrote_class_attr {
+        // Inject scope class only when set_class won't handle it.
+        // When class directives or a dynamic class attr are present, set_class
+        // carries the scope hash — don't also bake it into the template HTML.
+        if is_scoped && !wrote_class_attr && !has_class_directives && !has_class_attribute {
             write!(html, " class=\"{css_hash}\"").unwrap();
         }
     }

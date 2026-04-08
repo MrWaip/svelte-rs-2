@@ -339,9 +339,19 @@ pub(crate) fn process_class_attribute_and_directives<'a>(
             .expect("has_class_attribute set but no class attr id");
         build_class_attr_value(ctx, el_id, class_attr_id)
     } else {
-        // No class expression attribute — use static class or empty string
+        // No class expression attribute — use static class (or empty) with scope hash baked in.
         let static_class = ctx.static_class(el_id).unwrap_or("");
-        ctx.b.str_expr(static_class)
+        let hash = ctx.css_hash();
+        if ctx.is_css_scoped(el_id) && !hash.is_empty() {
+            let combined = if static_class.is_empty() {
+                hash
+            } else {
+                ctx.b.alloc_str(&format!("{static_class} {hash}"))
+            };
+            ctx.b.str_expr(combined)
+        } else {
+            ctx.b.str_expr(static_class)
+        }
     };
 
     // --- Build class directives object ---
