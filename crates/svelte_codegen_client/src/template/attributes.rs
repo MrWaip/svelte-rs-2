@@ -531,6 +531,9 @@ fn build_style_concat<'a>(
 }
 
 /// Generate `$.set_attributes(el, prevAttrs, { ...allAttrs })` for elements with spread.
+///
+/// Returns `Some(ns_thunk)` when a dynamic `xmlns` attribute is found — the thunk
+/// `() => expr` is used as the namespace argument to `$.element(...)` for `<svelte:element>`.
 pub(crate) fn process_attrs_spread<'a>(
     ctx: &mut Ctx<'a>,
     el_id: NodeId,
@@ -541,9 +544,10 @@ pub(crate) fn process_attrs_spread<'a>(
     include_style_base: bool,
     init: &mut Vec<Statement<'a>>,
     after_update: &mut Vec<Statement<'a>>,
-) {
+) -> Option<Expression<'a>> {
     // Build object literal with all attributes
     let mut props: Vec<ObjProp<'a>> = Vec::new();
+    let mut ns_thunk: Option<Expression<'a>> = None;
 
     for attr in attrs {
         let attr_id = attr.id();
@@ -576,6 +580,10 @@ pub(crate) fn process_attrs_spread<'a>(
                         let name_alloc = ctx.b.alloc_str(&a.name);
                         props.push(ObjProp::KeyValue(name_alloc, ctx.b.rid_expr(&handler_name)));
                     } else {
+                        if a.name == "xmlns" {
+                            let clone = ctx.b.clone_expr(&expr);
+                            ns_thunk = Some(ctx.b.thunk(clone));
+                        }
                         let name_alloc = ctx.b.alloc_str(&a.name);
                         props.push(ObjProp::KeyValue(name_alloc, expr));
                     }
@@ -700,6 +708,8 @@ pub(crate) fn process_attrs_spread<'a>(
         };
         init.push(ctx.b.call_stmt("$.attribute_effect", args));
     }
+
+    ns_thunk
 }
 
 // ---------------------------------------------------------------------------

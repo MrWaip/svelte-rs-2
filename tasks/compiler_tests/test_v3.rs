@@ -1565,7 +1565,6 @@ fn svelte_element_xmlns() {
 }
 
 #[rstest]
-#[ignore = "missing: dynamic xmlns is not forwarded as $.element namespace thunk (codegen)"]
 fn svelte_element_dynamic_xmlns() {
     assert_compiler("svelte_element_dynamic_xmlns");
 }
@@ -1989,13 +1988,11 @@ fn svelte_element_style_directive() {
 }
 
 #[rstest]
-#[ignore = "missing: dev-mode validate_dynamic_element_tag call for <svelte:element> (codegen)"]
 fn svelte_element_dev_invalid_tag() {
     assert_compiler("svelte_element_dev_invalid_tag");
 }
 
 #[rstest]
-#[ignore = "missing: dev-mode validate_void_dynamic_element call for <svelte:element> with children (codegen)"]
 fn svelte_element_dev_void_children() {
     assert_compiler("svelte_element_dev_void_children");
 }

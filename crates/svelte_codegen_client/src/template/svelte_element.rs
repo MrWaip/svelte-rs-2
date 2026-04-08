@@ -7,6 +7,7 @@ use svelte_ast::NodeId;
 
 use crate::builder::Arg;
 use crate::context::Ctx;
+use crate::script::compute_line_col;
 
 use super::async_plan::AsyncEmissionPlan;
 use super::attributes::{
@@ -48,6 +49,7 @@ pub(crate) fn gen_svelte_element<'a>(
 
     let mut inner_init: Vec<Statement<'a>> = Vec::new();
     let mut inner_after_update: Vec<Statement<'a>> = Vec::new();
+    let mut ns_thunk: Option<Expression<'a>> = None;
 
     // Optimization: when the only attribute is a static class, use $.set_class
     // instead of $.attribute_effect (matches Svelte reference SvelteElement.js).
@@ -83,7 +85,7 @@ pub(crate) fn gen_svelte_element<'a>(
     } else if has_attrs {
         // Generic spread-like handling for svelte:element
         // because the element tag is unknown at compile time.
-        process_attrs_spread(
+        ns_thunk = process_attrs_spread(
             ctx,
             id,
             "",
@@ -154,14 +156,61 @@ pub(crate) fn gen_svelte_element<'a>(
         } else {
             get_node_expr(ctx, id)
         };
+
+        // Dev mode: validate calls + [line, col] location arg
+        let mut dev_stmts: Vec<Statement<'a>> = Vec::new();
+        let dev_loc: Option<(f64, f64)> = if ctx.state.dev {
+            let (line, col) = compute_line_col(ctx.state.source, el_clone.span.start);
+            let validate_thunk = ctx.b.thunk(ctx.b.clone_expr(&tag_expr));
+            dev_stmts.push(ctx.b.call_stmt(
+                "$.validate_dynamic_element_tag",
+                [Arg::Expr(validate_thunk)],
+            ));
+            if callback.is_some() {
+                let void_thunk = ctx.b.thunk(ctx.b.clone_expr(&tag_expr));
+                dev_stmts.push(ctx.b.call_stmt(
+                    "$.validate_void_dynamic_element",
+                    [Arg::Expr(void_thunk)],
+                ));
+            }
+            Some((line as f64, col as f64))
+        } else {
+            None
+        };
+
         let get_tag = ctx.b.thunk(tag_expr);
+
+        // Determine which trailing args need explicit void 0 padding
+        let needs_loc = dev_loc.is_some();
+        let needs_ns = ns_thunk.is_some() || needs_loc;
+        let needs_cb = callback.is_some() || needs_ns;
 
         let mut args: Vec<Arg<'a, '_>> =
             vec![Arg::Expr(anchor), Arg::Expr(get_tag), Arg::Expr(is_svg)];
-        if let Some(cb) = callback {
-            args.push(Arg::Expr(cb));
+        if needs_cb {
+            match callback {
+                Some(cb) => args.push(Arg::Expr(cb)),
+                None => args.push(Arg::Expr(ctx.b.void_zero_expr())),
+            }
+        }
+        if needs_ns {
+            match ns_thunk {
+                Some(thunk) => args.push(Arg::Expr(thunk)),
+                None => args.push(Arg::Expr(ctx.b.void_zero_expr())),
+            }
+        }
+        if let Some((line, col)) = dev_loc {
+            let loc = ctx.b.array_expr([ctx.b.num_expr(line), ctx.b.num_expr(col)]);
+            args.push(Arg::Expr(loc));
         }
 
-        stmts.push(ctx.b.call_stmt("$.element", args));
+        let element_stmt = ctx.b.call_stmt("$.element", args);
+
+        if !dev_stmts.is_empty() {
+            dev_stmts.push(element_stmt);
+            stmts.push(ctx.b.block_stmt(dev_stmts));
+        } else {
+            stmts.push(element_stmt);
+        }
     }
 }
