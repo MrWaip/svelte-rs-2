@@ -23,6 +23,7 @@ pub fn extract_script_info(
     program: &oxc_ast::ast::Program<'_>,
     offset: u32,
     source: &str,
+    runes: bool,
 ) -> ScriptInfo {
     let mut declarations = Vec::new();
     let mut props_declaration = None;
@@ -44,14 +45,36 @@ pub fn extract_script_info(
                     exports.push(ExportInfo { name: local, alias });
                 }
                 if let Some(decl) = &export.declaration {
-                    collect_export_names_from_declaration(decl, &mut exports);
-                    collect_declarations_from_declaration(
-                        decl,
-                        offset,
-                        source,
-                        &mut declarations,
-                        &mut props_declaration,
-                    );
+                    if !runes
+                        && props_declaration.is_none()
+                        && matches!(
+                            decl,
+                            oxc_ast::ast::Declaration::VariableDeclaration(var_decl)
+                                if var_decl.kind == oxc_ast::ast::VariableDeclarationKind::Let
+                        )
+                    {
+                        let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
+                            unreachable!()
+                        };
+                        props_declaration =
+                            collect_legacy_export_props(var_decl, offset, source);
+                        collect_declarations_from_declaration(
+                            decl,
+                            offset,
+                            source,
+                            &mut declarations,
+                            &mut props_declaration,
+                        );
+                    } else {
+                        collect_export_names_from_declaration(decl, &mut exports);
+                        collect_declarations_from_declaration(
+                            decl,
+                            offset,
+                            source,
+                            &mut declarations,
+                            &mut props_declaration,
+                        );
+                    }
                 }
             }
             Statement::VariableDeclaration(decl) => {
@@ -75,6 +98,53 @@ pub fn extract_script_info(
         props_declaration,
         exports,
         store_candidates: Vec::new(),
+    }
+}
+
+fn collect_legacy_export_props(
+    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    offset: u32,
+    source: &str,
+) -> Option<PropsDeclaration> {
+    let mut props = Vec::new();
+
+    for declarator in &decl.declarations {
+        let Some(local_name) = extract_binding_name(&declarator.id) else {
+            continue;
+        };
+        let prop_name = local_name.clone();
+        let (default_span, default_text, is_bindable, is_simple_default) =
+            if let Some(init) = &declarator.init {
+                let sp = init.span();
+                (
+                    Some(Span::new(sp.start + offset, sp.end + offset)),
+                    Some(source[sp.start as usize..sp.end as usize].to_string()),
+                    false,
+                    is_simple_expression(init),
+                )
+            } else {
+                (None, None, false, true)
+            };
+
+        props.push(PropInfo {
+            local_name,
+            prop_name,
+            default_span,
+            default_text,
+            is_bindable,
+            is_rest: false,
+            is_simple_default,
+        });
+    }
+
+    if props.is_empty() {
+        None
+    } else {
+        Some(PropsDeclaration {
+            props,
+            is_identifier_pattern: false,
+            declaration_spans: vec![Span::new(decl.span.start + offset, decl.span.end + offset)],
+        })
     }
 }
 
@@ -269,6 +339,10 @@ fn collect_var_declarations(
                             is_simple_default: true,
                         }],
                         is_identifier_pattern: true,
+                        declaration_spans: vec![Span::new(
+                            decl.span.start + offset,
+                            decl.span.end + offset,
+                        )],
                     });
                 }
 
@@ -352,6 +426,10 @@ fn collect_var_declarations(
                     *props_declaration = Some(PropsDeclaration {
                         props,
                         is_identifier_pattern: false,
+                        declaration_spans: vec![Span::new(
+                            decl.span.start + offset,
+                            decl.span.end + offset,
+                        )],
                     });
                 } else if matches!(
                     rune,

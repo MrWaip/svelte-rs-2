@@ -1,10 +1,11 @@
 # <svelte:options>
 
 ## Current state
-- **Working**: 14/18 use cases
-- **Missing**: 4 use cases
-- **Next**: Fix option precedence first (`runes={false}`), then wire legacy `accessors`/`immutable`, then thread `preserveWhitespace` through lowering/codegen.
-- Last updated: 2026-04-07
+- **Working**: 15/18 use cases
+- **Done this session**: inline `<svelte:options runes={false} />` now overrides compile-time `CompileOptions.runes` before analysis starts, so the component follows legacy semantics even when the API forced runes mode.
+- **Missing**: 3 use cases
+- **Next**: wire legacy `accessors`/`immutable`, then thread `preserveWhitespace` through lowering/codegen.
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -39,7 +40,7 @@
 ## Use cases
 
 - [x] `runes={true}` forces runes mode for an otherwise plain component.
-- [ ] `runes={false}` overrides compile-time runes mode and enables legacy component semantics.
+- [x] `runes={false}` overrides compile-time runes mode and enables legacy component semantics.
 - [x] `namespace="html"` parses and behaves as the default HTML namespace.
 - [x] `namespace="svg"` switches root template creation to SVG mode.
 - [x] `namespace="mathml"` switches root template creation to MathML mode.
@@ -101,7 +102,6 @@
 
 ## Discovered bugs
 
-- OPEN: `component.options.runes` is parsed but never merged into `AnalyzeOptions`; `compile()` always uses `CompileOptions.runes.unwrap_or(true)`.
 - OPEN: `component.options.preserve_whitespace` is parsed but not consumed by analyze or codegen.
 - OPEN: `component.options.accessors` and `component.options.immutable` only participate in warning validation; legacy behavior still follows top-level compile options only.
 

@@ -1399,7 +1399,6 @@ fn svelte_options_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: inline runes=false override precedence (compiler/analyze)"]
 fn svelte_options_runes_false_override() {
     assert_compiler("svelte_options_runes_false_override");
 }

@@ -47,7 +47,7 @@ pub(crate) fn build(component: &Component, parsed: &ParserResult<'_>, data: &mut
         if let Some(span) = parsed.module_script_content_span {
             let module_source = component.source_text(span);
             let mut module_info =
-                script_info::extract_script_info(module_program, span.start, module_source);
+                script_info::extract_script_info(module_program, span.start, module_source, true);
             script_info::enrich_from_component_scoping(&scoping, &mut module_info);
             data.output.needs_context |= crate::passes::js_analyze::needs_context_for_program(
                 module_program,

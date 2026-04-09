@@ -73,7 +73,10 @@ pub(crate) fn execute_pass<'a>(
                 let span = parsed.script_content_span?;
                 let source = component.source_text(span);
                 Some(crate::utils::script_info::extract_script_info(
-                    program, span.start, source,
+                    program,
+                    span.start,
+                    source,
+                    options.runes,
                 ))
             });
             if let (Some(program), Some(script_info)) = (parsed.program.as_ref(), script_info) {
@@ -93,6 +96,7 @@ pub(crate) fn execute_pass<'a>(
                             module_program,
                             span.start,
                             module_source,
+                            true,
                         );
                         let module_scope = data
                             .scoping

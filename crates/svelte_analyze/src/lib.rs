@@ -131,7 +131,7 @@ pub fn analyze_module(
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
 
-            let mut script_info = utils::script_info::extract_script_info(&program, 0, source);
+            let mut script_info = utils::script_info::extract_script_info(&program, 0, source, true);
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
 
             data.scoping = scoping;

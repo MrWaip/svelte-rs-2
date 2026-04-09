@@ -2,6 +2,7 @@ pub struct PropsAnalysis {
     pub props: Vec<PropAnalysis>,
     pub has_bindable: bool,
     pub is_identifier_pattern: bool,
+    pub declaration_spans: Vec<svelte_span::Span>,
 }
 
 pub struct PropAnalysis {

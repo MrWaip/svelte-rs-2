@@ -2264,6 +2264,35 @@ fn runtime_plan_store_subscriptions_do_not_force_push() {
 }
 
 #[test]
+fn legacy_export_let_becomes_props_when_runes_disabled() {
+    let (_c, data) = analyze_source_with_options(
+        "<script>export let count = 1;</script><p>{count}</p>",
+        AnalyzeOptions {
+            runes: false,
+            ..AnalyzeOptions::default()
+        },
+    );
+
+    let props = data
+        .script
+        .props
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected props analysis in legacy mode"));
+    assert_eq!(props.props.len(), 1);
+    assert_eq!(props.props[0].local_name.as_str(), "count");
+    assert!(props.props[0].is_prop_source);
+    assert!(
+        data.script.exports.is_empty(),
+        "legacy export let should not remain a component export"
+    );
+
+    let plan = data.output.runtime_plan;
+    assert!(!plan.needs_push);
+    assert!(plan.needs_props_param);
+    assert!(!plan.has_exports);
+}
+
+#[test]
 fn runtime_plan_needs_context_without_exports_skips_pop_return() {
     let (_c, data) = analyze_source("<script>$effect(() => {});</script><p>ok</p>");
     let plan = data.output.runtime_plan;

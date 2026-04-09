@@ -116,6 +116,7 @@ fn analyze_props_declaration(data: &mut AnalysisData) {
         props,
         has_bindable,
         is_identifier_pattern: decl.is_identifier_pattern,
+        declaration_spans: decl.declaration_spans.clone(),
     });
 }
 

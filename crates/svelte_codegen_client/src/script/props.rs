@@ -78,8 +78,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 continue;
             }
 
-            let mut flags: u32 = PROPS_IS_IMMUTABLE | PROPS_IS_RUNES;
-            if prop.is_bindable {
+            let mut flags: u32 = 0;
+            if self.runes {
+                flags |= PROPS_IS_IMMUTABLE | PROPS_IS_RUNES;
+            }
+            if prop.is_bindable || !self.runes {
                 flags |= PROPS_IS_BINDABLE;
             }
             if prop.is_mutated {
