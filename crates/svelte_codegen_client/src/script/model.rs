@@ -102,6 +102,8 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) component_scoping: &'b ComponentScoping,
     pub(super) props_gen: Option<PropsGenInfo>,
     pub(super) runes: bool,
+    pub(super) accessors: bool,
+    pub(super) immutable: bool,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
     /// Used by `wrap_derived_thunks` to determine async thunk form and outer wrapping

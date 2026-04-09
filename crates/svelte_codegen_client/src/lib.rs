@@ -146,7 +146,10 @@ pub fn generate<'a>(
     }
     if runtime.needs_push {
         let mut push_args: Vec<Arg<'_, '_>> =
-            vec![Arg::Ident("$$props"), Arg::Expr(ctx.b.bool_expr(true))];
+            vec![
+                Arg::Ident("$$props"),
+                Arg::Expr(ctx.b.bool_expr(ctx.query.runes())),
+            ];
         if ctx.state.dev {
             push_args.push(Arg::Ident(ctx.state.name));
         }
@@ -224,7 +227,7 @@ pub fn generate<'a>(
     }
 
     // var $$exports = { ... }
-    if runtime.has_exports || runtime.has_ce_props {
+    if runtime.has_exports || runtime.has_ce_props || ctx.query.accessors() {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
         // Regular exports (e.g., `export function reset()`)
@@ -238,8 +241,9 @@ pub fn generate<'a>(
             }
         }
 
-        // Custom element prop getter/setters
-        if runtime.has_ce_props {
+        // Legacy component accessors and custom-element wrappers both expose
+        // props through the returned exports object.
+        if ctx.query.accessors() || runtime.has_ce_props {
             if let Some(props_analysis) = ctx.query.props() {
                 for prop in &props_analysis.props {
                     if prop.is_rest || prop.is_reserved {
@@ -253,10 +257,13 @@ pub fn generate<'a>(
                     export_props.push(ObjProp::Getter(key, getter_expr));
 
                     // set name($$value = default?) { name($$value); $.flush(); }
-                    let default_expr = prop
-                        .default_text
-                        .as_deref()
-                        .map(|text| ctx.b.parse_expression(text));
+                    let default_expr = if ctx.query.runes() {
+                        prop.default_text
+                            .as_deref()
+                            .map(|text| ctx.b.parse_expression(text))
+                    } else {
+                        None
+                    };
                     let setter_body = vec![
                         ctx.b
                             .expr_stmt(ctx.b.call_expr(local, [Arg::Ident("$$value")])),
@@ -278,6 +285,10 @@ pub fn generate<'a>(
             "$$exports",
             ctx.b.object_expr([ObjProp::Spread(legacy_call)]),
         ));
+    }
+
+    if !ctx.query.runes() && ctx.query.immutable() {
+        fn_body.push(ctx.b.call_stmt("$.init", [Arg::Bool(true)]));
     }
 
     fn_body.extend(template_body);

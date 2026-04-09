@@ -40,6 +40,9 @@ pub struct AnalyzeOptions {
     pub custom_element: bool,
     pub experimental_async: bool,
     pub runes: bool,
+    pub accessors: bool,
+    pub immutable: bool,
+    pub preserve_whitespace: bool,
     pub dev: bool,
     pub component_name: String,
     pub filename_basename: String,
@@ -52,6 +55,9 @@ impl Default for AnalyzeOptions {
             custom_element: false,
             experimental_async: false,
             runes: true,
+            accessors: false,
+            immutable: false,
+            preserve_whitespace: false,
             dev: false,
             component_name: "Self".to_string(),
             filename_basename: "Self.svelte".to_string(),
@@ -78,6 +84,9 @@ pub fn analyze_with_options<'a>(
 
     let mut data = AnalysisData::new_empty(component.node_count());
     data.script.runes = options.runes;
+    data.script.accessors = options.accessors;
+    data.script.immutable = options.immutable;
+    data.script.preserve_whitespace = options.preserve_whitespace;
     data.output.custom_element = options.custom_element;
     data.script.experimental_async = options.experimental_async;
     let execution_order = passes::resolve_default_execution_order()
@@ -156,9 +165,14 @@ fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
                 .props
                 .as_ref()
                 .is_some_and(|p| !p.props.is_empty());
-    let needs_push =
-        has_bindable || has_exports || has_ce_props || data.output.needs_context || dev;
-    let has_component_exports = has_exports || has_ce_props || dev;
+    let needs_push = has_bindable
+        || has_exports
+        || has_ce_props
+        || data.output.needs_context
+        || data.script.accessors
+        || (!data.script.runes && data.script.immutable)
+        || dev;
+    let has_component_exports = has_exports || has_ce_props || data.script.accessors || dev;
     let needs_props_param = data.script.props.is_some() || needs_push;
 
     RuntimePlan {

@@ -79,13 +79,17 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             }
 
             let mut flags: u32 = 0;
+            if self.immutable || self.runes {
+                flags |= PROPS_IS_IMMUTABLE;
+            }
             if self.runes {
-                flags |= PROPS_IS_IMMUTABLE | PROPS_IS_RUNES;
+                flags |= PROPS_IS_RUNES;
             }
             if prop.is_bindable || !self.runes {
                 flags |= PROPS_IS_BINDABLE;
             }
-            if prop.is_mutated {
+            let is_updated = self.accessors || prop.is_mutated;
+            if is_updated {
                 flags |= PROPS_IS_UPDATED;
             }
 
