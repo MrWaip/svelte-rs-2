@@ -15,7 +15,8 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, SVELTE_BODY,
+    SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
@@ -620,20 +621,18 @@ impl TemplateValidationVisitor {
             return;
         }
 
-        match name {
-            "svelte:component" => ctx.warnings_mut().push(Diagnostic::warning(
+        if name == SVELTE_COMPONENT {
+            ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SvelteComponentDeprecated,
                 span,
-            )),
-            "svelte:self" => {
-                let name = ctx.component_name().to_string();
-                let basename = ctx.filename_basename().to_string();
-                ctx.warnings_mut().push(Diagnostic::warning(
-                    DiagnosticKind::SvelteSelfDeprecated { name, basename },
-                    span,
-                ));
-            }
-            _ => {}
+            ));
+        } else if name == SVELTE_SELF {
+            let name = ctx.component_name().to_string();
+            let basename = ctx.filename_basename().to_string();
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::SvelteSelfDeprecated { name, basename },
+                span,
+            ));
         }
     }
 }
@@ -1206,22 +1205,22 @@ fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_>) -> Option<BindPa
         }),
         Node::SvelteElement(el) => Some(BindParentInfo {
             id: el.id,
-            name: "svelte:element".to_string(),
+            name: SVELTE_ELEMENT.to_string(),
             attrs: el.attributes.clone(),
         }),
         Node::SvelteWindow(el) => Some(BindParentInfo {
             id: el.id,
-            name: "svelte:window".to_string(),
+            name: SVELTE_WINDOW.to_string(),
             attrs: el.attributes.clone(),
         }),
         Node::SvelteDocument(el) => Some(BindParentInfo {
             id: el.id,
-            name: "svelte:document".to_string(),
+            name: SVELTE_DOCUMENT.to_string(),
             attrs: el.attributes.clone(),
         }),
         Node::SvelteBody(el) => Some(BindParentInfo {
             id: el.id,
-            name: "svelte:body".to_string(),
+            name: SVELTE_BODY.to_string(),
             attrs: el.attributes.clone(),
         }),
         _ => None,

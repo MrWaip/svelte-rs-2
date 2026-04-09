@@ -1,14 +1,11 @@
+import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 import Widget from "./Widget.svelte";
-var root_1 = $.from_html(`<svelte:fragment slot="footer"><p>First</p> <p>Second</p></svelte:fragment>`);
+var root_2 = $.from_html(`<p>First</p> <p>Second</p>`, 1);
 export default function App($$anchor) {
-	Widget($$anchor, {
-		children: ($$anchor, $$slotProps) => {
-			var svelte:fragment = root_1();
-			$.next(2);
-			$.reset(svelte:fragment);
-			$.append($$anchor, svelte:fragment);
-		},
-		$$slots: { default: true }
-	});
+	Widget($$anchor, { $$slots: { footer: ($$anchor, $$slotProps) => {
+		var fragment_1 = root_2();
+		$.next(2);
+		$.append($$anchor, fragment_1);
+	} } });
 }

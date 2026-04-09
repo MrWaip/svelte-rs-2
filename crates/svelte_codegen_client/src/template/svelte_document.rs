@@ -8,7 +8,7 @@ use crate::builder::Arg;
 use crate::context::Ctx;
 
 use super::bind::build_binding_setter_silent;
-use super::events::{gen_event_attr_on, gen_legacy_event_on};
+use super::events::{gen_attach_tag, gen_event_attr_on, gen_legacy_event_on};
 
 /// Generate event listeners and bindings for `<svelte:document>`.
 ///
@@ -43,6 +43,10 @@ pub(crate) fn gen_svelte_document<'a>(
             }
             Attribute::BindDirective(bind) => {
                 gen_document_binding(ctx, bind, stmts);
+            }
+            Attribute::AttachTag(_) => {
+                let attr_id = attr.id();
+                gen_attach_tag(ctx, attr_id, "$.document", stmts);
             }
             _ => {}
         }

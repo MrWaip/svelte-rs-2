@@ -185,7 +185,25 @@ export default function App($$anchor) {   // ← no $$props param
 
 **This is a bug in the reference Svelte compiler that we intentionally replicate.** The fix would be: detect `$host()` in script analysis → set `needs_context = true` → triggers `$$props` param + `$.push`/`$.pop`. Not implemented because the reference compiler has the same bug. See `host_basic` test case.
 
-### 10. `Text::raw_value()` and `Text::value()` are intentionally different
+### 10. Counter-alignment hacks in codegen
+
+The reference compiler's identifier counter (`scope.generate('fragment')`, `unique('root')`) increments unconditionally along certain code paths, even when the identifier produced is ultimately unused. Our `gen_ident` calls must mirror that order exactly, or all downstream names shift.
+
+Two known cases:
+
+**`gen_ident("fragment")` for non-dynamic top-level `ComponentNode`**
+(`svelte_codegen_client/src/template/mod.rs`, `emit_single_block`)
+
+In the reference compiler, `Fragment.visit()` always calls `scope.generate('fragment')` before checking `is_standalone`. Even on the standalone path (where no `fragment` variable is emitted), the counter advances. We replicate this by calling `ctx.gen_ident("fragment")` unconditionally for non-dynamic, non-svelte:self components at root level.
+
+**`gen_ident("root")` for `<svelte:fragment slot="name">` wrappers**
+(`svelte_codegen_client/src/template/component.rs`, `gen_component`)
+
+The reference compiler visits the `SvelteFragment` wrapper as its own `Fragment` node, which calls `unique('root')` for its template_name — even though no template is emitted. We replicate this by calling `ctx.gen_ident("root")` for any named slot whose element was a `<svelte:fragment>` wrapper. The flag `ElementFlags::svelte_fragment_slots` (set in `lower.rs`, keyed by slot element NodeId) identifies these slots.
+
+If the reference compiler changes its counter allocation order, these calls will silently misalign. Track via `svelte_fragment_named_slot` and `svelte_self_if` compiler test cases.
+
+### 11. `Text::raw_value()` and `Text::value()` are intentionally different
 
 - `Text::raw_value(source)` is for span-accurate diagnostics and source slicing.
 - `Text::value(source)` is for semantic text content and may return decoded HTML entities.

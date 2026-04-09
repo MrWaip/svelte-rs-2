@@ -104,9 +104,10 @@ pub fn generate<'a>(
     let (hoisted, template_body, instance_snippets, hoistable_snippets) =
         template::gen_root_fragment(&mut ctx);
 
-    // Layout: hoistable snippets → inner hoisted → root hoisted
+    // Layout: module_hoisted (component tpl vars) → root hoisted
+    // hoistable_snippets is kept separate so it can be placed before module_body
+    // in the final program (snippet consts → module exports → template vars).
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
-    all_hoisted.extend(hoistable_snippets);
     all_hoisted.extend(ctx.state.module_hoisted.drain(..));
     all_hoisted.extend(hoisted);
 
@@ -404,6 +405,8 @@ pub fn generate<'a>(
     program_body.extend(module_imports);
     program_body.push(import_svelte);
     program_body.extend(script_imports);
+    // Order: hoistable snippet consts → module exports → template var allocations
+    program_body.extend(hoistable_snippets);
     program_body.extend(module_body);
     program_body.extend(all_hoisted);
     // const $$css = { hash: "svelte-HASH", code: "scoped CSS" } — placed after template

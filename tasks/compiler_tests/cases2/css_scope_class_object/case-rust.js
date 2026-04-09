@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root = $.from_html(`<div class="svelte-az1y0o">content</div>`);
+var root = $.from_html(`<div>content</div>`);
 export default function App($$anchor) {
 	let active = false;
 	let big = false;
@@ -7,6 +7,6 @@ export default function App($$anchor) {
 	$.set_class(div, 1, $.clsx({
 		active,
 		big
-	}), null, {}, { extra: active });
+	}), "svelte-az1y0o", {}, { extra: active });
 	$.append($$anchor, div);
 }

@@ -796,9 +796,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
         ctx.data
             .template.template_topology
             .record_node_parent(el.id, ctx.parent());
+        let parent_element = ctx.nearest_element();
         let namespace = static_xmlns_namespace(&el.attributes, ctx.source)
-            .unwrap_or_else(|| inherited_namespace(self.component, ctx, ctx.nearest_element()));
-        ctx.data.record_element_facts(
+            .unwrap_or_else(|| inherited_namespace(self.component, ctx, parent_element));
+        ctx.data.elements.facts.record_entry(
             el.id,
             ElementFactsEntry::build(
                 &el.attributes,
@@ -809,6 +810,18 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 false,
             ),
         );
+        let facts = ctx
+            .data
+            .elements
+            .facts
+            .entry(el.id)
+            .expect("svelte:element facts recorded before template element index");
+        // Register in TemplateElementIndex with a wildcard tag so the CSS prune pass
+        // can match class/ID selectors against it. Type selectors won't match "*".
+        ctx.data
+            .template
+            .template_elements
+            .record(el.id, "*", facts, parent_element);
     }
 
     fn visit_svelte_window(&mut self, el: &SvelteWindow, ctx: &mut VisitContext<'_>) {

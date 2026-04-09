@@ -11,12 +11,15 @@ use svelte_compiler::{compile, compile_module, CompileOptions, ModuleCompileOpti
 /// Strip per-line leading/trailing whitespace and blank lines so CSS comparisons
 /// are not sensitive to indent style (tabs vs spaces, lightningcss vs Svelte JS).
 fn normalize_css(s: &str) -> String {
+    // Collapse all whitespace (including newlines) so that single-line
+    // and multi-line representations of the same rule compare equal.
     s.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .filter(|l| !is_css_comment_line(l))
+        .flat_map(|line| line.split_whitespace())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join(" ")
 }
 
 /// Returns true if the entire (trimmed) line is a CSS comment.
@@ -112,37 +115,31 @@ fn assert_compiler(case: &str) {
 }
 
 #[rstest]
-#[ignore = "bug: scope class svelte-xxx not appended to class literal inside snippet body (codegen)"]
 fn css_scope_class_in_snippet() {
     assert_compiler("css_scope_class_in_snippet");
 }
 
 #[rstest]
-#[ignore = "bug: scope class svelte-xxx not appended to <svelte:element> class literal (codegen)"]
 fn css_scope_svelte_element_class() {
     assert_compiler("css_scope_svelte_element_class");
 }
 
 #[rstest]
-#[ignore = "bug: scope class arg to $.set_class is null instead of 'svelte-xxx' when class attribute is an object literal (codegen)"]
 fn css_scope_class_object() {
     assert_compiler("css_scope_class_object");
 }
 
 #[rstest]
-#[ignore = "bug: $.attribute_effect drops trailing scope-class arg for spread attributes — emits 2 args instead of 6 (codegen)"]
 fn css_scope_spread_attribute() {
     assert_compiler("css_scope_spread_attribute");
 }
 
 #[rstest]
-#[ignore = "bug: <script module> exports emitted before snippet consts instead of between snippet consts and var root_N template allocations (codegen ordering)"]
 fn script_module_exports_ordering_with_snippets() {
     assert_compiler("script_module_exports_ordering_with_snippets");
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn warn_attr_avoid_is() {
     assert_compiler("warn_attr_avoid_is");
 }
@@ -154,7 +151,6 @@ fn warn_attr_illegal_colon() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn warn_attr_invalid_prop_name() {
     assert_compiler("warn_attr_invalid_prop_name");
 }
@@ -551,7 +547,6 @@ fn component_basic() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_component_basic() {
     assert_compiler("svelte_component_basic");
 }
@@ -826,7 +821,6 @@ fn use_action_dotted() {
 }
 
 #[rstest]
-#[ignore = "missing: dotted use: directive names with hyphenated segments (parser)"]
 fn use_action_dotted_hyphen() {
     assert_compiler("use_action_dotted_hyphen");
 }
@@ -1027,7 +1021,6 @@ fn component_bind_this_variants() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_self_if() {
     assert_compiler("svelte_self_if");
 }
@@ -1526,7 +1519,6 @@ fn svelte_element_self_closing() {
 }
 
 #[rstest]
-#[ignore = "missing: known v3 parity gap"]
 fn svelte_fragment_named_slot() {
     assert_compiler("svelte_fragment_named_slot");
 }
@@ -1567,7 +1559,6 @@ fn svelte_element_xmlns() {
 }
 
 #[rstest]
-#[ignore = "missing: dynamic xmlns is not forwarded as $.element namespace thunk (codegen)"]
 fn svelte_element_dynamic_xmlns() {
     assert_compiler("svelte_element_dynamic_xmlns");
 }
@@ -1991,13 +1982,11 @@ fn svelte_element_style_directive() {
 }
 
 #[rstest]
-#[ignore = "missing: dev-mode validate_dynamic_element_tag call for <svelte:element> (codegen)"]
 fn svelte_element_dev_invalid_tag() {
     assert_compiler("svelte_element_dev_invalid_tag");
 }
 
 #[rstest]
-#[ignore = "missing: dev-mode validate_void_dynamic_element call for <svelte:element> with children (codegen)"]
 fn svelte_element_dev_void_children() {
     assert_compiler("svelte_element_dev_void_children");
 }
@@ -2524,7 +2513,6 @@ fn attach_on_component_dynamic() {
 }
 
 #[rstest]
-#[ignore = "missing: <svelte:document> attach codegen (codegen)"]
 fn attach_on_document() {
     assert_compiler("attach_on_document");
 }
@@ -2720,7 +2708,6 @@ fn state_assign_dev() {
 }
 
 #[rstest]
-#[ignore = "bug: class/id/attribute selectors don't mark template elements as scoped — only type selectors do (analyze: passes/css_analyze.rs::mark_scoped_elements)"]
 fn css_scoped_class_selector() {
     assert_compiler("css_scoped_class_selector");
 }

@@ -1,6 +1,8 @@
 //! ElementFlagsVisitor — precompute element attribute flags in one walker pass.
 
-use svelte_ast::{is_mathml, is_svg, is_void, Attribute, ComponentNode, Element};
+use svelte_ast::{
+    is_mathml, is_svg, is_void, Attribute, ComponentNode, Element, SVELTE_COMPONENT, SVELTE_SELF,
+};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
@@ -201,9 +203,12 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_>) {
         let data = &mut *ctx.data;
-        // Dotted component names are dynamic (e.g., registry.Widget → $.component(...))
-        if cn.name.contains('.') {
+        // Dotted component names and <svelte:component> are dynamic → $.component(...)
+        if cn.name.contains('.') || cn.name == SVELTE_COMPONENT {
             data.elements.flags.is_dynamic_component.insert(cn.id);
+        }
+        if cn.name == SVELTE_SELF {
+            data.elements.flags.is_svelte_self.insert(cn.id);
         }
         for attr in &cn.attributes {
             // CSS custom properties (`--name`) on a component are routed to the

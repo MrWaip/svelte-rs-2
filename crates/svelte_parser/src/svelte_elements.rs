@@ -1,6 +1,8 @@
 use svelte_ast::{
     AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Namespace, Node, NodeId,
     SvelteBody, SvelteBoundary, SvelteDocument, SvelteHead, SvelteOptions, SvelteWindow,
+    SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_OPTIONS,
+    SVELTE_WINDOW,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -18,7 +20,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:options")
+                .is_some_and(|el| el.name == SVELTE_OPTIONS)
         });
 
         let Some(idx) = options_idx else {
@@ -35,7 +37,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|e| e.name == "svelte:options")
+                .is_some_and(|e| e.name == SVELTE_OPTIONS)
         });
         if has_another {
             self.recover(Diagnostic::svelte_options_duplicate(el.span));
@@ -236,7 +238,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:head")
+                .is_some_and(|el| el.name == SVELTE_HEAD)
             {
                 continue;
             }
@@ -262,7 +264,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:window")
+                .is_some_and(|el| el.name == SVELTE_WINDOW)
             {
                 continue;
             }
@@ -289,7 +291,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:document")
+                .is_some_and(|el| el.name == SVELTE_DOCUMENT)
             {
                 continue;
             }
@@ -316,7 +318,7 @@ impl<'a> Parser<'a> {
                 .store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:body")
+                .is_some_and(|el| el.name == SVELTE_BODY)
             {
                 continue;
             }
@@ -347,7 +349,7 @@ impl<'a> Parser<'a> {
             if store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:element")
+                .is_some_and(|el| el.name == SVELTE_ELEMENT)
             {
                 let Node::Element(mut el) = store.take(id) else {
                     unreachable!()
@@ -382,7 +384,7 @@ impl<'a> Parser<'a> {
             if store
                 .get(id)
                 .as_element()
-                .is_some_and(|el| el.name == "svelte:boundary")
+                .is_some_and(|el| el.name == SVELTE_BOUNDARY)
             {
                 let Node::Element(el) = store.take(id) else {
                     unreachable!()

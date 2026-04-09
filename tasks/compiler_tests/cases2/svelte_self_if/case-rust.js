@@ -1,13 +1,15 @@
+import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<svelte:self></svelte:self>`);
 export default function App($$anchor) {
 	let count = 1;
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var svelte:self = root_1();
-			$.append($$anchor, svelte:self);
+			var fragment_1 = $.comment();
+			var node_1 = $.first_child(fragment_1);
+			App(node_1, {});
+			$.append($$anchor, fragment_1);
 		};
 		$.if(node, ($$render) => {
 			if (count > 0) $$render(consequent);

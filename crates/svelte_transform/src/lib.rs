@@ -412,8 +412,9 @@ impl<'a> VisitMut<'a> for ExprTransformer<'a, '_, '_> {
                 }
             }
 
-            let is_root = self.ctx.analysis.scoping.symbol_scope_id(sym_id)
-                == self.ctx.analysis.scoping.root_scope_id();
+            // Module-scope symbols (from <script module>) must be treated the same
+            // as root-scope symbols — not wrapped in $.get().
+            let is_root = self.ctx.analysis.scoping.is_component_top_level_symbol(sym_id);
 
             if !is_root {
                 if self.ctx.analysis.scoping.is_expr_local(sym_id)
