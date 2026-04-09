@@ -277,6 +277,9 @@ impl<'a> CodegenView<'a> {
     pub fn is_selectedcontent(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_selectedcontent(id)
     }
+    pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
+        self.data.elements.flags.is_svelte_fragment_slot(id)
+    }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.data.render_tag_plan(id)
     }

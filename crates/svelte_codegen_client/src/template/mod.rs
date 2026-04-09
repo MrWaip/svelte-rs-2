@@ -31,7 +31,7 @@ pub(crate) mod traverse;
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ContentStrategy, FragmentItem, FragmentKey, FragmentKeyExt, NamespaceKind};
-use svelte_ast::{Namespace, Node, NodeId};
+use svelte_ast::{Namespace, Node, NodeId, SVELTE_SELF};
 
 use crate::builder::Arg;
 use crate::context::Ctx;
@@ -563,7 +563,7 @@ fn emit_single_block<'a>(
             let cn_name = ctx.component_node(*id).name.clone();
             // svelte:self in a non-root context needs a $.comment() anchor (not standalone).
             // All other non-dynamic components (including root-level) use $$anchor directly.
-            if cn_name == "svelte:self" && !is_root {
+            if cn_name == SVELTE_SELF && !is_root {
                 // Fall through to the general $.comment() path below.
             } else {
                 // Consume "fragment" counter on every path (root or not) to match the

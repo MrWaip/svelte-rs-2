@@ -3,7 +3,7 @@
 use oxc_ast::ast::{Expression, Statement};
 
 use svelte_analyze::{ComponentBindMode, ComponentPropKind, ContentStrategy, FragmentKey};
-use svelte_ast::{Attribute, Namespace, NodeId};
+use svelte_ast::{Attribute, Namespace, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
@@ -64,7 +64,7 @@ pub(crate) fn gen_component<'a>(
                 needs_memo,
             } => {
                 // <svelte:component this={expr}>: extract as the dynamic component tag
-                if cn_name == "svelte:component" && name == "this" {
+                if cn_name == SVELTE_COMPONENT && name == "this" {
                     svelte_component_this = Some(get_attr_expr(ctx, attr_id));
                     continue;
                 }
@@ -316,8 +316,8 @@ pub(crate) fn gen_component<'a>(
         // visits the wrapper as a Fragment whose single child is SvelteFragment, which
         // allocates a template_name (consumed, not emitted). Replicate that by consuming
         // one root identifier here so downstream numbering stays in sync.
-        let is_svelte_fragment_wrapper = ctx.element(slot_el_id).name == "svelte:fragment";
-        if is_svelte_fragment_wrapper {
+        // See: GOTCHAS.md — "Counter-alignment hacks".
+        if ctx.is_svelte_fragment_slot(slot_el_id) {
             ctx.gen_ident("root");
         }
 
@@ -351,7 +351,7 @@ pub(crate) fn gen_component<'a>(
         // Determine the intermediate parameter name and component thunk.
         // For <svelte:component this={expr}>: use "$$component" + the this-expression.
         // For dotted names (registry.Widget): use derived name + member-expr thunk.
-        let (intermediate_ref, component_thunk) = if cn_name == "svelte:component" {
+        let (intermediate_ref, component_thunk) = if cn_name == SVELTE_COMPONENT {
             let this_expr = svelte_component_this
                 .unwrap_or_else(|| panic!("<svelte:component> missing `this` attribute"));
             let thunk = ctx.b.thunk(this_expr);
@@ -402,7 +402,7 @@ pub(crate) fn gen_component<'a>(
         }
     } else {
         // For <svelte:self>, call the current component function by its actual name.
-        let callee: &str = if cn_name == "svelte:self" {
+        let callee: &str = if cn_name == SVELTE_SELF {
             ctx.state.name
         } else {
             ctx.b.alloc_str(&cn_name)

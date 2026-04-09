@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 
 use svelte_ast::{
     is_mathml, is_svg, is_whitespace_removable_parent, AstStore, Attribute, Component, Fragment,
-    Namespace, Node, NodeId,
+    Namespace, Node, NodeId, SVELTE_FRAGMENT,
 };
 use svelte_span::Span;
 
@@ -300,7 +300,8 @@ fn lower_nodes(
                     // its children instead of the wrapper element itself.
                     let slot_nodes: SmallVec<[NodeId; 4]> =
                         match store.get(child_id) {
-                            Node::Element(el) if el.name == "svelte:fragment" => {
+                            Node::Element(el) if el.name == SVELTE_FRAGMENT => {
+                                data.elements.flags.svelte_fragment_slots.insert(slot_el_id);
                                 el.fragment.nodes.iter().copied().collect()
                             }
                             _ => {

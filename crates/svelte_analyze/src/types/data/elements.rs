@@ -114,6 +114,10 @@ pub struct ElementFlags {
     pub(crate) customizable_select: NodeBitSet,
     /// `<selectedcontent>` elements — require a JS var for `$.selectedcontent(el, setter)`.
     pub(crate) is_selectedcontent: NodeBitSet,
+    /// Named slot elements that are `<svelte:fragment slot="name">` wrappers.
+    /// Keyed by the slot element NodeId. Used in codegen to consume the extra
+    /// `root` identifier that the reference compiler allocates for the wrapper.
+    pub(crate) svelte_fragment_slots: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -141,6 +145,7 @@ impl ElementFlags {
             is_dynamic_component: NodeBitSet::new(node_count),
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
+            svelte_fragment_slots: NodeBitSet::new(node_count),
         }
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
@@ -229,5 +234,8 @@ impl ElementFlags {
     }
     pub fn is_selectedcontent(&self, id: NodeId) -> bool {
         self.is_selectedcontent.contains(&id)
+    }
+    pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
+        self.svelte_fragment_slots.contains(&id)
     }
 }

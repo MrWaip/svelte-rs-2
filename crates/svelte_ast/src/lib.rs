@@ -151,6 +151,13 @@ pub fn is_whitespace_removable_parent(name: &str) -> bool {
     WHITESPACE_REMOVABLE_ELEMENTS.contains(&name)
 }
 
+/// Special Svelte pseudo-element names that are handled as components.
+pub const SVELTE_COMPONENT: &str = "svelte:component";
+/// Special Svelte pseudo-element for recursive self-reference.
+pub const SVELTE_SELF: &str = "svelte:self";
+/// Transparent wrapper for named slot content (`<svelte:fragment slot="name">`).
+pub const SVELTE_FRAGMENT: &str = "svelte:fragment";
+
 /// Unique node identifier, assigned during parsing.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NodeId(pub u32);

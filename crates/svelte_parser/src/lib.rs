@@ -4,6 +4,7 @@ use svelte_span::Span;
 use svelte_ast::{
     AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element, Fragment,
     HtmlTag, Node, NodeId, RawBlock, RenderTag, Script, ScriptContext, ScriptLanguage, Text,
+    SVELTE_COMPONENT, SVELTE_SELF,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -558,8 +559,8 @@ fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
 fn is_component_name(name: &str) -> bool {
     name.starts_with(|c: char| c.is_uppercase())
         || name.contains('.')
-        || name == "svelte:component"
-        || name == "svelte:self"
+        || name == SVELTE_COMPONENT
+        || name == SVELTE_SELF
 }
 
 struct ScriptData {
