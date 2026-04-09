@@ -1,0 +1,41 @@
+name: Canary N-API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build addon and run smoke tests
+        run: node packages/svelte-rs2/scripts/smoke.mjs
+
+      - name: Build release addon
+        run: cargo build -p napi_compiler --release
+
+      - name: Prepare platform package artifact
+        run: node packages/svelte-rs2/scripts/prepare-platform-package.mjs
+
+      - name: Pack npm packages
+        run: |
+          npm pack ./packages/svelte-rs2 --silent
+          npm pack ./packages/svelte-rs2-linux-x64-gnu --silent
+          npm pack ./packages/svelte-rs2-darwin-arm64 --silent
+          npm pack ./packages/svelte-rs2-darwin-x64 --silent

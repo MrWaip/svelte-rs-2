@@ -1,0 +1,15 @@
+{
+  "name": "@mrwaip/svelte-rs2-darwin-x64",
+  "version": "0.0.0-canary.0",
+  "type": "commonjs",
+  "main": "svelte-rs2.node",
+  "files": [
+    "svelte-rs2.node"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ]
+}

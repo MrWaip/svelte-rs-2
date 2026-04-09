@@ -1,25 +1,64 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
 const UNSUPPORTED_THROW_OPTIONS = new Set(['ast', 'sourcemap', 'outputFilename']);
 const UNSUPPORTED_WARN_OPTIONS = new Set(['modernAst']);
 
-function loadNativeAddon() {
-  const localPath = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
+const PLATFORM_PACKAGE_BY_TARGET = {
+  'darwin-arm64': '@mrwaip/svelte-rs2-darwin-arm64',
+  'darwin-x64': '@mrwaip/svelte-rs2-darwin-x64',
+  'linux-x64': '@mrwaip/svelte-rs2-linux-x64-gnu'
+};
+
+function localNativeAddonPath() {
+  const currentFile = fileURLToPath(import.meta.url);
+  return path.resolve(
+    path.dirname(currentFile),
     './native/svelte-rs2.node'
   );
+}
 
-  if (fs.existsSync(localPath)) {
-    return require(localPath);
+function loadFromLocalDevelopmentPath() {
+  const localPath = localNativeAddonPath();
+  if (!fs.existsSync(localPath)) {
+    return null;
+  }
+  return require(localPath);
+}
+
+function loadFromPlatformPackage() {
+  const target = `${process.platform}-${process.arch}`;
+  const pkg = PLATFORM_PACKAGE_BY_TARGET[target];
+
+  if (!pkg) {
+    throw new Error(
+      `Unsupported platform for @mrwaip/svelte-rs2/compiler: ${target}. ` +
+        'Supported targets: darwin-arm64, darwin-x64, linux-x64.'
+    );
   }
 
-  throw new Error(
-    'Native addon was not found at packages/svelte-rs2/compiler/native/svelte-rs2.node. Build crates/napi_compiler and place the .node artifact there.'
-  );
+  try {
+    return require(pkg);
+  } catch (error) {
+    throw new Error(
+      `Native addon package ${pkg} is not installed. ` +
+        'Reinstall dependencies for this platform or use optionalDependencies-aware install.',
+      { cause: error }
+    );
+  }
+}
+
+function loadNativeAddon() {
+  const local = loadFromLocalDevelopmentPath();
+  if (local) {
+    return local;
+  }
+
+  return loadFromPlatformPackage();
 }
 
 const native = loadNativeAddon();
