@@ -15,6 +15,7 @@ svelte_compiler = { path = "crates/svelte_compiler" }
 svelte_component_semantics = { path = "crates/svelte_component_semantics" }
 svelte_transform_css = { path = "crates/svelte_transform_css" }
 svelte_css = { path = "crates/svelte_css" }
+napi_compiler = { path = "crates/napi_compiler" }
 
 compact_str = "0.9.0"
 glob = "0.3.2"
