@@ -1,10 +1,11 @@
 # Animate directive
 
 ## Current state
-- **Working**: 5/10 use cases
-- **Missing**: 5/10 use cases
-- **Next**: fix `animate_svelte_element` and `animate_with_const_tag`, then port missing diagnostics for duplicate `animate:` and illegal await expressions
-- Last updated: 2026-04-07
+- **Working**: 6/10 use cases
+- **Missing**: 4/10 use cases
+- **Done this session**: `animate_with_const_tag` now matches the reference output. The root cause was shared codegen thunk optimization in `Builder::thunk`: zero-arg method calls such as `item.name.toUpperCase()` were being collapsed into bare member references, which dropped the call when `{@const}` emitted `$.derived(...)`. The optimization is now limited to plain identifier calls, preserving method-call thunks across codegen.
+- **Next**: fix `animate_svelte_element`, then port missing diagnostics for duplicate `animate:` and illegal await expressions
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -26,7 +27,7 @@
 - [x] Reject `animate:` on keyed `{#each}` blocks without a key via `animation_missing_key`.
 - [x] Reject `animate:` when the animated element is not the sole non-trivial child of a keyed `{#each}` block via `animation_invalid_placement`.
 - [ ] Generate client output for `animate:` on `<svelte:element>` as the sole child of a keyed `{#each}` block. Audit case `animate_svelte_element` currently fails because the keyed each block is not flagged as animated and `$.animation` is not emitted in the reference-matching position.
-- [ ] Allow comments, whitespace, and `{@const}` alongside an animated keyed-each child without tripping placement validation. Comment/whitespace is analyzer-covered; audit case `animate_with_const_tag` currently fails because the lowered `{@const}` expression does not match reference output.
+- [x] Allow comments, whitespace, and `{@const}` alongside an animated keyed-each child without tripping placement validation. Comment/whitespace is analyzer-covered, and `animate_with_const_tag` now matches the reference output.
 - [ ] Reject duplicate `animate:` directives on the same element via `animation_duplicate`. Diagnostic exists in `svelte_diagnostics`, but no analyzer implementation currently emits it.
 - [ ] Reject await expressions in `animate:` directive values via `illegal_await_expression`. Diagnostic exists in `svelte_diagnostics`, but no analyzer implementation currently emits it.
 
@@ -76,11 +77,10 @@
 - OPEN: `animation_duplicate` diagnostic is declared in `svelte_diagnostics` but not emitted from `template_validation`.
 - OPEN: `illegal_await_expression` diagnostic is declared in `svelte_diagnostics` but not emitted for animate directive expressions.
 - OPEN: `animate_svelte_element` fails snapshot parity because animated keyed-each detection and/or directive emission misses the `<svelte:element>` path.
-- OPEN: `animate_with_const_tag` fails snapshot parity because const-tag lowering inside the animated keyed-each body emits a different derived expression shape than the reference compiler.
 - OPEN: compiler test harness only supports successful JS/CSS snapshot cases, so animate error cases remain analyzer-test coverage for now.
 
 ## Test cases
 
 - Existing compiler cases: `animate_basic`, `animate_params`, `animate_dotted_name`, `animate_reactive_params`, `animate_with_spread`, `animate_blockers`
 - Existing analyzer tests: `validate_each_animation_missing_key`, `validate_each_animation_invalid_placement`, `fragment_facts_track_each_body_child_shape_and_animate`
-- Added audit cases: `animate_svelte_element` (`#[ignore = "missing: animate on <svelte:element> inside keyed each (codegen/analyze)"]`), `animate_with_const_tag` (`#[ignore = "missing: animate with @const sibling in keyed each (codegen)"]`)
+- Added audit cases: `animate_svelte_element` (`#[ignore = "missing: animate on <svelte:element> inside keyed each (codegen/analyze)"]`), `animate_with_const_tag`

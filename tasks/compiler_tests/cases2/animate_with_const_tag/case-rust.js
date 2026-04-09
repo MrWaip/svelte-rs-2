@@ -12,7 +12,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 25, () => items, (item) => item.id, ($$anchor, item) => {
-		const label = $.derived($.get(item).name.toUpperCase);
+		const label = $.derived(() => $.get(item).name.toUpperCase());
 		var div = root_1();
 		var text = $.child(div, true);
 		$.reset(div);
