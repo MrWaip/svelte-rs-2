@@ -127,7 +127,7 @@ pub(crate) struct ScannerCheckpoint {
 
 pub(crate) struct Scanner<'src> {
     src: &'src str,
-    tokens: Box<[Token]>,
+    tokens: Vec<Token>,
     pos: usize,
     /// Byte offset of the end of the last consumed token.
     pub(crate) prev_end: u32,
@@ -135,7 +135,7 @@ pub(crate) struct Scanner<'src> {
 
 impl<'src> Scanner<'src> {
     pub fn new(src: &'src str) -> Self {
-        let tokens = tokenize(src).into_boxed_slice();
+        let tokens = tokenize(src);
         Self {
             src,
             tokens,
@@ -152,7 +152,7 @@ impl<'src> Scanner<'src> {
     }
 
     #[inline(always)]
-    pub fn peek_at(&self, offset: usize) -> Token {
+    pub fn peek_n(&self, offset: usize) -> Token {
         let idx = self.pos + offset;
         if idx < self.tokens.len() {
             self.tokens[idx]
@@ -162,7 +162,7 @@ impl<'src> Scanner<'src> {
     }
 
     #[inline(always)]
-    pub fn bump(&mut self) -> Token {
+    pub fn advance(&mut self) -> Token {
         let tok = self.tokens[self.pos];
         if tok.kind != TokenKind::Eof {
             self.prev_end = tok.span.end;
@@ -172,26 +172,26 @@ impl<'src> Scanner<'src> {
     }
 
     #[inline(always)]
-    pub fn at_end(&self) -> bool {
+    pub fn is_at_end(&self) -> bool {
         self.tokens[self.pos].kind == TokenKind::Eof
     }
 
     // -- matching -----------------------------------------------------------
 
     #[inline(always)]
-    pub fn at(&self, kind: TokenKind) -> bool {
+    pub fn is_at(&self, kind: TokenKind) -> bool {
         self.tokens[self.pos].kind == kind
     }
 
     #[inline(always)]
-    pub fn at_delim(&self, ch: u8) -> bool {
+    pub fn is_at_delim(&self, ch: u8) -> bool {
         self.tokens[self.pos].kind == TokenKind::Delim(ch)
     }
 
     #[inline(always)]
     pub fn eat(&mut self, kind: TokenKind) -> bool {
-        if self.at(kind) {
-            self.bump();
+        if self.is_at(kind) {
+            self.advance();
             true
         } else {
             false
@@ -200,8 +200,8 @@ impl<'src> Scanner<'src> {
 
     #[inline(always)]
     pub fn eat_delim(&mut self, ch: u8) -> bool {
-        if self.at_delim(ch) {
-            self.bump();
+        if self.is_at_delim(ch) {
+            self.advance();
             true
         } else {
             false
@@ -212,8 +212,8 @@ impl<'src> Scanner<'src> {
 
     /// Skip `Whitespace` tokens only.
     pub fn skip_whitespace(&mut self) {
-        while self.at(TokenKind::Whitespace) {
-            self.bump();
+        while self.is_at(TokenKind::Whitespace) {
+            self.advance();
         }
     }
 
@@ -222,7 +222,7 @@ impl<'src> Scanner<'src> {
         loop {
             match self.peek().kind {
                 TokenKind::Whitespace | TokenKind::Comment | TokenKind::Cdo | TokenKind::Cdc => {
-                    self.bump();
+                    self.advance();
                 }
                 _ => break,
             }
@@ -258,16 +258,9 @@ impl<'src> Scanner<'src> {
 
     /// Source text of the current (not yet consumed) token.
     #[inline]
-    pub fn current_raw(&self) -> &'src str {
+    pub fn current_text(&self) -> &'src str {
         let sp = self.tokens[self.pos].span;
         &self.src[sp.start as usize..sp.end as usize]
-    }
-
-    /// Source text of a span with `skip` leading bytes removed.
-    /// Useful for extracting the name from Hash (`#foo`) or AtKeyword (`@media`).
-    #[inline]
-    pub fn text_after(&self, span: Span, skip: u32) -> &'src str {
-        &self.src[(span.start + skip) as usize..span.end as usize]
     }
 
     // -- save / restore -----------------------------------------------------
@@ -284,102 +277,6 @@ impl<'src> Scanner<'src> {
     pub fn restore(&mut self, cp: ScannerCheckpoint) {
         self.pos = cp.pos;
         self.prev_end = cp.prev_end;
-    }
-
-    // -- lookahead ----------------------------------------------------------
-
-    /// Lookahead: is the current block item a nested rule (`{`) or a
-    /// declaration (`;`/`}`)?  Scans forward through tokens without
-    /// consuming, tracking paren depth.
-    pub fn block_item_is_rule(&self) -> bool {
-        let mut i = self.pos;
-        let mut paren_depth: u32 = 0;
-        while i < self.tokens.len() {
-            match self.tokens[i].kind {
-                TokenKind::LParen => paren_depth += 1,
-                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
-                TokenKind::LBrace if paren_depth == 0 => return true,
-                TokenKind::Semicolon | TokenKind::RBrace if paren_depth == 0 => return false,
-                TokenKind::Eof => return false,
-                _ => {}
-            }
-            i += 1;
-        }
-        false
-    }
-
-    /// Predicate: is the current token the start of a combinator?
-    #[inline(always)]
-    pub fn is_combinator_start(&self) -> bool {
-        match self.peek().kind {
-            TokenKind::Delim(b'+' | b'~' | b'>') => true,
-            TokenKind::Delim(b'|') => self.peek_at(1).kind == TokenKind::Delim(b'|'),
-            _ => false,
-        }
-    }
-
-    // -- recovery -----------------------------------------------------------
-
-    /// Skip to the next unquoted `}` or end of input, consuming the `}`.
-    pub fn skip_to_block_end(&mut self) {
-        let mut depth: u32 = 0;
-        loop {
-            match self.peek().kind {
-                TokenKind::LBrace => {
-                    depth += 1;
-                    self.bump();
-                }
-                TokenKind::RBrace => {
-                    if depth == 0 {
-                        self.bump();
-                        return;
-                    }
-                    depth -= 1;
-                    self.bump();
-                }
-                TokenKind::Eof => return,
-                _ => {
-                    self.bump();
-                }
-            }
-        }
-    }
-
-    /// Skip to next `;` or `}` (without consuming `}`), or end of input.
-    pub fn skip_to_semicolon_or_block_end(&mut self) {
-        loop {
-            match self.peek().kind {
-                TokenKind::Semicolon => {
-                    self.bump();
-                    return;
-                }
-                TokenKind::RBrace | TokenKind::Eof => return,
-                _ => {
-                    self.bump();
-                }
-            }
-        }
-    }
-
-    /// Skip an entire rule: selector part + `{ ... }`.
-    pub fn skip_rule(&mut self) {
-        loop {
-            match self.peek().kind {
-                TokenKind::LBrace => {
-                    self.bump();
-                    self.skip_to_block_end();
-                    return;
-                }
-                TokenKind::Semicolon => {
-                    self.bump();
-                    return;
-                }
-                TokenKind::RBrace | TokenKind::Eof => return,
-                _ => {
-                    self.bump();
-                }
-            }
-        }
     }
 }
 

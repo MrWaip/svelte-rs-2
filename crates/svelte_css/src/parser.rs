@@ -55,8 +55,8 @@ impl<'src> Parser<'src> {
 
     /// Expect an `Ident` token, emitting a diagnostic on failure.
     fn parse_ident(&mut self) -> Option<Span> {
-        if self.scanner.at(TokenKind::Ident) {
-            let tok = self.scanner.bump();
+        if self.scanner.is_at(TokenKind::Ident) {
+            let tok = self.scanner.advance();
             Some(tok.span)
         } else {
             self.recover(
@@ -84,10 +84,10 @@ impl<'src> Parser<'src> {
         loop {
             match self.scanner.peek().kind {
                 TokenKind::Whitespace | TokenKind::Cdo | TokenKind::Cdc => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
                 TokenKind::Comment => {
-                    let tok = self.scanner.bump();
+                    let tok = self.scanner.advance();
                     out.push(wrap(Comment { span: tok.span }));
                 }
                 _ => break,
@@ -118,7 +118,7 @@ impl<'src> Parser<'src> {
                 TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
                 _ => {}
             }
-            self.scanner.bump();
+            self.scanner.advance();
             if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
                 last_non_ws_end = self.scanner.prev_end;
             }
@@ -127,8 +127,8 @@ impl<'src> Parser<'src> {
 
     /// Read an attribute value (quoted or unquoted).
     fn read_attribute_value(&mut self) -> Option<Span> {
-        if self.scanner.at(TokenKind::String) {
-            let tok = self.scanner.bump();
+        if self.scanner.is_at(TokenKind::String) {
+            let tok = self.scanner.advance();
             // Return inner span (without quotes).
             return Some(Span::new(tok.span.start + 1, tok.span.end - 1));
         }
@@ -139,7 +139,7 @@ impl<'src> Parser<'src> {
             match self.scanner.peek().kind {
                 TokenKind::RBracket | TokenKind::Whitespace | TokenKind::Eof => break,
                 _ => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
             }
         }
@@ -163,10 +163,10 @@ impl<'src> Parser<'src> {
         let start = self.scanner.current_start();
 
         // "even" or "odd"
-        if self.scanner.at(TokenKind::Ident) {
-            let text = self.scanner.current_raw();
+        if self.scanner.is_at(TokenKind::Ident) {
+            let text = self.scanner.current_text();
             if text == "even" || text == "odd" {
-                self.scanner.bump();
+                self.scanner.advance();
                 if self.is_nth_terminator() {
                     return Some(self.scanner.span_from(start));
                 }
@@ -178,32 +178,32 @@ impl<'src> Parser<'src> {
         let mut has_n = false;
 
         // Optional leading sign (as a Delim token)
-        if self.scanner.at_delim(b'+') || self.scanner.at_delim(b'-') {
-            self.scanner.bump();
+        if self.scanner.is_at_delim(b'+') || self.scanner.is_at_delim(b'-') {
+            self.scanner.advance();
         }
 
-        if self.scanner.at(TokenKind::Number) {
-            self.scanner.bump();
+        if self.scanner.is_at(TokenKind::Number) {
+            self.scanner.advance();
             // Check if `n` follows immediately (the tokenizer may have
             // kept them separate when there is whitespace).
-            if self.scanner.at(TokenKind::Ident) {
-                let t = self.scanner.current_raw();
+            if self.scanner.is_at(TokenKind::Ident) {
+                let t = self.scanner.current_text();
                 if t == "n" || t == "N" || t == "-n" || t == "-N" {
                     has_n = true;
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
             }
-        } else if self.scanner.at(TokenKind::Dimension) {
-            let text = self.scanner.current_raw();
+        } else if self.scanner.is_at(TokenKind::Dimension) {
+            let text = self.scanner.current_text();
             if text.contains('n') || text.contains('N') {
                 has_n = true;
             }
-            self.scanner.bump();
-        } else if self.scanner.at(TokenKind::Ident) {
-            let text = self.scanner.current_raw();
+            self.scanner.advance();
+        } else if self.scanner.is_at(TokenKind::Ident) {
+            let text = self.scanner.current_text();
             if text.contains('n') || text.contains('N') {
                 has_n = true;
-                self.scanner.bump();
+                self.scanner.advance();
             }
         }
 
@@ -218,20 +218,20 @@ impl<'src> Parser<'src> {
             self.scanner.skip_whitespace();
 
             // Signed number as single token: "+1", "-1"
-            if self.scanner.at(TokenKind::Number) {
-                let text = self.scanner.current_raw();
+            if self.scanner.is_at(TokenKind::Number) {
+                let text = self.scanner.current_text();
                 if text.starts_with('+') || text.starts_with('-') {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 } else {
                     self.scanner.restore(before_b);
                 }
             }
             // Or sign + number as separate tokens
-            else if self.scanner.at_delim(b'+') || self.scanner.at_delim(b'-') {
-                self.scanner.bump();
+            else if self.scanner.is_at_delim(b'+') || self.scanner.is_at_delim(b'-') {
+                self.scanner.advance();
                 self.scanner.skip_whitespace();
-                if self.scanner.at(TokenKind::Number) {
-                    self.scanner.bump();
+                if self.scanner.is_at(TokenKind::Number) {
+                    self.scanner.advance();
                 }
             } else {
                 self.scanner.restore(before_b);
@@ -241,12 +241,12 @@ impl<'src> Parser<'src> {
         // Check for "of" keyword
         let saved = self.scanner.save();
         self.scanner.skip_whitespace();
-        if self.scanner.at(TokenKind::Ident) && self.scanner.current_raw() == "of" {
-            self.scanner.bump();
+        if self.scanner.is_at(TokenKind::Ident) && self.scanner.current_text() == "of" {
+            self.scanner.advance();
             // Consume one whitespace token after "of" so the Nth span
             // covers "2n+1 of " — the selector after it is separate.
-            if self.scanner.at(TokenKind::Whitespace) {
-                self.scanner.bump();
+            if self.scanner.is_at(TokenKind::Whitespace) {
+                self.scanner.advance();
                 return Some(self.scanner.span_from(start));
             }
         }
@@ -271,8 +271,8 @@ impl<'src> Parser<'src> {
     // -- percentage ---------------------------------------------------------
 
     fn try_parse_percentage(&mut self) -> Option<Span> {
-        if self.scanner.at(TokenKind::Percentage) {
-            return Some(self.scanner.bump().span);
+        if self.scanner.is_at(TokenKind::Percentage) {
+            return Some(self.scanner.advance().span);
         }
         None
     }
@@ -284,10 +284,12 @@ impl<'src> Parser<'src> {
         let had_ws = self.scanner.eat(TokenKind::Whitespace);
 
         // ||
-        if self.scanner.at_delim(b'|') && self.scanner.peek_at(1).kind == TokenKind::Delim(b'|') {
+        if self.scanner.is_at_delim(b'|')
+            && self.scanner.peek_n(1).kind == TokenKind::Delim(b'|')
+        {
             let comb_start = self.scanner.current_start();
-            self.scanner.bump();
-            self.scanner.bump();
+            self.scanner.advance();
+            self.scanner.advance();
             return Some(Combinator {
                 span: self.scanner.span_from(comb_start),
                 kind: CombinatorKind::Column,
@@ -303,7 +305,7 @@ impl<'src> Parser<'src> {
         };
         if let Some(kind) = kind {
             let comb_start = self.scanner.current_start();
-            self.scanner.bump();
+            self.scanner.advance();
             return Some(Combinator {
                 span: self.scanner.span_from(comb_start),
                 kind,
@@ -344,7 +346,7 @@ impl<'src> Parser<'src> {
         match self.scanner.peek().kind {
             TokenKind::Delim(b'~' | b'^' | b'$' | b'*' | b'|') => {
                 let save = self.scanner.save();
-                self.scanner.bump();
+                self.scanner.advance();
                 if self.scanner.eat_delim(b'=') {
                     return Some(self.scanner.span_from(start));
                 }
@@ -352,7 +354,7 @@ impl<'src> Parser<'src> {
                 None
             }
             TokenKind::Delim(b'=') => {
-                self.scanner.bump();
+                self.scanner.advance();
                 Some(self.scanner.span_from(start))
             }
             _ => None,
@@ -360,8 +362,8 @@ impl<'src> Parser<'src> {
     }
 
     fn try_parse_attr_flags(&mut self) -> Option<Span> {
-        if self.scanner.at(TokenKind::Ident) {
-            let tok = self.scanner.bump();
+        if self.scanner.is_at(TokenKind::Ident) {
+            let tok = self.scanner.advance();
             Some(tok.span)
         } else {
             None
@@ -387,18 +389,18 @@ impl<'src> Parser<'src> {
         loop {
             self.skip_whitespace_and_collect_comments(&mut children, StyleSheetChild::Comment);
 
-            if self.scanner.at_end() {
+            if self.scanner.is_at_end() {
                 break;
             }
 
             let start = self.scanner.current_start();
-            if self.scanner.at(TokenKind::AtKeyword) {
+            if self.scanner.is_at(TokenKind::AtKeyword) {
                 if let Some(at) = self.parse_at_rule() {
                     children.push(StyleSheetChild::Rule(Rule::AtRule(at)));
                 } else {
                     // Ensure forward progress after failed parse
                     if self.scanner.current_start() == start {
-                        self.scanner.bump();
+                        self.scanner.advance();
                     }
                     children.push(StyleSheetChild::Error(self.scanner.span_from(start)));
                 }
@@ -406,7 +408,7 @@ impl<'src> Parser<'src> {
                 children.push(StyleSheetChild::Rule(Rule::Style(Box::new(rule))));
             } else {
                 if self.scanner.current_start() == start {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
                 children.push(StyleSheetChild::Error(self.scanner.span_from(start)));
             }
@@ -419,22 +421,25 @@ impl<'src> Parser<'src> {
         let start = self.scanner.current_start();
 
         // Consume the AtKeyword token and extract name (skip leading '@').
-        let tok = self.scanner.bump();
-        let name = CompactString::new(self.scanner.text_after(tok.span, 1));
+        let tok = self.scanner.advance();
+        let name = CompactString::new(self.scanner.source_text(Span::new(
+            tok.span.start + 1,
+            tok.span.end,
+        )));
 
         // Skip whitespace before prelude
         self.scanner.skip_whitespace();
 
         let prelude = self.read_value();
 
-        let block = if self.scanner.at(TokenKind::LBrace) {
+        let block = if self.scanner.is_at(TokenKind::LBrace) {
             Some(self.parse_block())
         } else if !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken { token: ";".into() },
                 self.scanner.span_from(start),
             );
-            self.scanner.skip_to_semicolon_or_block_end();
+            self.skip_to_semicolon_or_block_end();
             None
         } else {
             None
@@ -456,17 +461,17 @@ impl<'src> Parser<'src> {
         let prelude = match self.parse_selector_list(false) {
             Some(sel) => sel,
             None => {
-                self.scanner.skip_rule();
+                self.skip_rule();
                 return None;
             }
         };
 
-        if !self.scanner.at(TokenKind::LBrace) {
+        if !self.scanner.is_at(TokenKind::LBrace) {
             self.recover(
                 DiagnosticKind::CssExpectedToken { token: "{".into() },
                 self.scanner.span_from(start),
             );
-            self.scanner.skip_rule();
+            self.skip_rule();
             return None;
         }
 
@@ -489,7 +494,7 @@ impl<'src> Parser<'src> {
         let start = self.scanner.current_start();
 
         loop {
-            if self.scanner.at_end() {
+            if self.scanner.is_at_end() {
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
                     self.scanner.span_from(start),
@@ -510,7 +515,7 @@ impl<'src> Parser<'src> {
             } else {
                 TokenKind::LBrace
             };
-            if self.scanner.at(terminator) {
+            if self.scanner.is_at(terminator) {
                 return Some(SelectorList {
                     span: Span::new(start, end),
                     children,
@@ -536,7 +541,7 @@ impl<'src> Parser<'src> {
         let mut rel = self.new_relative_selector(None);
 
         loop {
-            if self.scanner.at_end() {
+            if self.scanner.is_at_end() {
                 self.recover(
                     DiagnosticKind::CssSelectorInvalid,
                     self.scanner.span_from(list_start),
@@ -549,12 +554,12 @@ impl<'src> Parser<'src> {
             match self.scanner.peek().kind {
                 // &
                 TokenKind::Delim(b'&') => {
-                    let tok = self.scanner.bump();
+                    let tok = self.scanner.advance();
                     rel.selectors.push(SimpleSelector::Nesting(tok.span));
                 }
                 // * (universal / namespace)
                 TokenKind::Delim(b'*') => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                     let mut name_end = self.scanner.prev_end;
                     if self.scanner.eat_delim(b'|') {
                         name_end = self.parse_ident()?.end;
@@ -567,15 +572,18 @@ impl<'src> Parser<'src> {
                 }
                 // # → id selector (via Hash token)
                 TokenKind::Hash => {
-                    let tok = self.scanner.bump();
+                    let tok = self.scanner.advance();
                     rel.selectors.push(SimpleSelector::Id {
                         span: tok.span,
-                        name: CompactString::new(self.scanner.text_after(tok.span, 1)),
+                        name: CompactString::new(self.scanner.source_text(Span::new(
+                            tok.span.start + 1,
+                            tok.span.end,
+                        ))),
                     });
                 }
                 // . → class selector
                 TokenKind::Delim(b'.') => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                     let ident = self.parse_ident()?;
                     rel.selectors.push(SimpleSelector::Class {
                         span: self.scanner.span_from(start),
@@ -584,7 +592,7 @@ impl<'src> Parser<'src> {
                 }
                 // : or :: → pseudo-class or pseudo-element
                 TokenKind::Colon => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                     // Check for ::
                     let is_element = self.scanner.eat(TokenKind::Colon);
 
@@ -626,7 +634,7 @@ impl<'src> Parser<'src> {
                 }
                 // [ → attribute selector
                 TokenKind::LBracket => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                     match self.parse_attribute_selector_inner(start) {
                         Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),
                         None => return None,
@@ -639,12 +647,12 @@ impl<'src> Parser<'src> {
                             rel.selectors.push(SimpleSelector::Nth(nth));
                         } else if let Some(pct) = self.try_parse_percentage() {
                             rel.selectors.push(SimpleSelector::Percentage(pct));
-                        } else if !self.scanner.is_combinator_start() {
+                        } else if !self.is_combinator_start() {
                             rel.selectors.push(self.parse_type_selector(start)?);
                         }
                     } else if let Some(pct) = self.try_parse_percentage() {
                         rel.selectors.push(SimpleSelector::Percentage(pct));
-                    } else if !self.scanner.is_combinator_start() {
+                    } else if !self.is_combinator_start() {
                         rel.selectors.push(self.parse_type_selector(start)?);
                     }
                 }
@@ -661,7 +669,7 @@ impl<'src> Parser<'src> {
             } else {
                 TokenKind::LBrace
             };
-            if self.scanner.at(TokenKind::Comma) || self.scanner.at(terminator) {
+            if self.scanner.is_at(TokenKind::Comma) || self.scanner.is_at(terminator) {
                 self.scanner.restore(index_save);
                 rel.span.end = index_start;
                 children.push(rel);
@@ -685,7 +693,7 @@ impl<'src> Parser<'src> {
 
                 self.scanner.skip_whitespace();
 
-                if self.scanner.at(TokenKind::Comma) || self.scanner.at(terminator) {
+                if self.scanner.is_at(TokenKind::Comma) || self.scanner.is_at(terminator) {
                     self.recover(
                         DiagnosticKind::CssSelectorInvalid,
                         self.scanner.span_from(list_start),
@@ -700,6 +708,15 @@ impl<'src> Parser<'src> {
                 );
                 return None;
             }
+        }
+    }
+
+    #[inline(always)]
+    fn is_combinator_start(&self) -> bool {
+        match self.scanner.peek().kind {
+            TokenKind::Delim(b'+' | b'~' | b'>') => true,
+            TokenKind::Delim(b'|') => self.scanner.peek_n(1).kind == TokenKind::Delim(b'|'),
+            _ => false,
         }
     }
 
@@ -775,7 +792,7 @@ impl<'src> Parser<'src> {
             if self.scanner.eat(TokenKind::RBrace) {
                 break;
             }
-            if self.scanner.at_end() {
+            if self.scanner.is_at_end() {
                 self.recover(
                     DiagnosticKind::CssUnclosedBlock,
                     self.scanner.span_from(start),
@@ -795,24 +812,24 @@ impl<'src> Parser<'src> {
     fn parse_block_item(&mut self, children: &mut Vec<BlockChild>) {
         let start = self.scanner.current_start();
 
-        if self.scanner.at(TokenKind::AtKeyword) {
+        if self.scanner.is_at(TokenKind::AtKeyword) {
             if let Some(at) = self.parse_at_rule() {
                 children.push(BlockChild::Rule(Rule::AtRule(at)));
             } else {
                 if self.scanner.current_start() == start {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
                 children.push(BlockChild::Error(self.scanner.span_from(start)));
             }
             return;
         }
 
-        if self.scanner.block_item_is_rule() {
+        if self.block_item_is_rule() {
             if let Some(rule) = self.parse_style_rule() {
                 children.push(BlockChild::Rule(Rule::Style(Box::new(rule))));
             } else {
                 if self.scanner.current_start() == start {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
                 children.push(BlockChild::Error(self.scanner.span_from(start)));
             }
@@ -821,9 +838,85 @@ impl<'src> Parser<'src> {
                 Some(decl) => children.push(BlockChild::Declaration(decl)),
                 None => {
                     if self.scanner.current_start() == start {
-                        self.scanner.bump();
+                        self.scanner.advance();
                     }
                     children.push(BlockChild::Error(self.scanner.span_from(start)));
+                }
+            }
+        }
+    }
+
+    fn block_item_is_rule(&self) -> bool {
+        let mut offset = 0;
+        let mut paren_depth: u32 = 0;
+
+        loop {
+            match self.scanner.peek_n(offset).kind {
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
+                TokenKind::LBrace if paren_depth == 0 => return true,
+                TokenKind::Semicolon | TokenKind::RBrace if paren_depth == 0 => return false,
+                TokenKind::Eof => return false,
+                _ => {}
+            }
+            offset += 1;
+        }
+    }
+
+    fn skip_to_block_end(&mut self) {
+        let mut depth: u32 = 0;
+        loop {
+            match self.scanner.peek().kind {
+                TokenKind::LBrace => {
+                    depth += 1;
+                    self.scanner.advance();
+                }
+                TokenKind::RBrace => {
+                    if depth == 0 {
+                        self.scanner.advance();
+                        return;
+                    }
+                    depth -= 1;
+                    self.scanner.advance();
+                }
+                TokenKind::Eof => return,
+                _ => {
+                    self.scanner.advance();
+                }
+            }
+        }
+    }
+
+    fn skip_to_semicolon_or_block_end(&mut self) {
+        loop {
+            match self.scanner.peek().kind {
+                TokenKind::Semicolon => {
+                    self.scanner.advance();
+                    return;
+                }
+                TokenKind::RBrace | TokenKind::Eof => return,
+                _ => {
+                    self.scanner.advance();
+                }
+            }
+        }
+    }
+
+    fn skip_rule(&mut self) {
+        loop {
+            match self.scanner.peek().kind {
+                TokenKind::LBrace => {
+                    self.scanner.advance();
+                    self.skip_to_block_end();
+                    return;
+                }
+                TokenKind::Semicolon => {
+                    self.scanner.advance();
+                    return;
+                }
+                TokenKind::RBrace | TokenKind::Eof => return,
+                _ => {
+                    self.scanner.advance();
                 }
             }
         }
@@ -844,7 +937,7 @@ impl<'src> Parser<'src> {
                 | TokenKind::RBrace
                 | TokenKind::Eof => break,
                 _ => {
-                    self.scanner.bump();
+                    self.scanner.advance();
                 }
             }
         }
@@ -852,7 +945,7 @@ impl<'src> Parser<'src> {
 
         if property.start == property.end {
             self.recover(DiagnosticKind::CssEmptyDeclaration, self.scanner.span_at());
-            self.scanner.skip_to_semicolon_or_block_end();
+            self.skip_to_semicolon_or_block_end();
             return None;
         }
 
@@ -863,7 +956,7 @@ impl<'src> Parser<'src> {
                 DiagnosticKind::CssExpectedToken { token: ":".into() },
                 self.scanner.span_from(start),
             );
-            self.scanner.skip_to_semicolon_or_block_end();
+            self.skip_to_semicolon_or_block_end();
             return None;
         }
 
@@ -878,7 +971,7 @@ impl<'src> Parser<'src> {
                     DiagnosticKind::CssEmptyDeclaration,
                     self.scanner.span_from(start),
                 );
-                self.scanner.skip_to_semicolon_or_block_end();
+                self.skip_to_semicolon_or_block_end();
                 return None;
             }
         }
@@ -886,12 +979,12 @@ impl<'src> Parser<'src> {
         let end = self.scanner.current_start();
 
         // Consume trailing semicolon if not at block end
-        if !self.scanner.at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
+        if !self.scanner.is_at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
             self.recover(
                 DiagnosticKind::CssExpectedToken { token: ";".into() },
                 self.scanner.span_from(start),
             );
-            self.scanner.skip_to_semicolon_or_block_end();
+            self.skip_to_semicolon_or_block_end();
             return None;
         }
 
