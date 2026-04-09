@@ -13,12 +13,14 @@ pub(super) enum PropKind {
 pub(super) struct PropsGenInfo {
     pub(super) props: Vec<PropGenItem>,
     pub(super) is_identifier_pattern: bool,
+    pub(super) declaration_spans: Vec<svelte_span::Span>,
 }
 
 impl PropsGenInfo {
     pub(super) fn from_analysis(pa: &PropsAnalysis) -> Self {
         PropsGenInfo {
             is_identifier_pattern: pa.is_identifier_pattern,
+            declaration_spans: pa.declaration_spans.clone(),
             props: pa
                 .props
                 .iter()
@@ -99,6 +101,7 @@ pub(super) struct ScriptTransformer<'b, 'a> {
     pub(super) b: &'b Builder<'a>,
     pub(super) component_scoping: &'b ComponentScoping,
     pub(super) props_gen: Option<PropsGenInfo>,
+    pub(super) runes: bool,
     pub(super) derived_pending: FxHashSet<oxc_semantic::SymbolId>,
     /// Subset of `derived_pending`: symbols whose `$derived` init was `$derived(await expr)`.
     /// Used by `wrap_derived_thunks` to determine async thunk form and outer wrapping

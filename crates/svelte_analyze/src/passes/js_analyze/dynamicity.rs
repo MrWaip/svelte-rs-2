@@ -42,6 +42,9 @@ fn is_dynamic_template(
         if scoping.is_dynamic_by_id(sym_id) {
             return true;
         }
+        if scoping.is_prop_source(sym_id) {
+            return true;
+        }
         if has_class_state_fields
             && scoping.is_component_top_level_symbol(sym_id)
             && !scoping.is_rune(sym_id)

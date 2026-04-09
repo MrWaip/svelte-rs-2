@@ -13,6 +13,25 @@ fn check(source: &str, expected: &str) {
 }
 
 #[test]
+fn inline_runes_option_overrides_compile_option() {
+    let js_alloc = oxc_allocator::Allocator::default();
+    let (mut component, _, diags) =
+        svelte_parser::parse_with_js(&js_alloc, "<svelte:options runes={false} /><p />");
+    assert!(
+        diags.is_empty(),
+        "unexpected parser diagnostics for inline runes test: {diags:?}"
+    );
+
+    let options = CompileOptions {
+        runes: Some(true),
+        ..Default::default()
+    };
+    apply_compile_options_to_component(&mut component, &options);
+
+    assert!(!resolved_runes_option(&component, &options));
+}
+
+#[test]
 fn empty_component() {
     check(
         "",

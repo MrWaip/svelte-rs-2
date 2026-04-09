@@ -20,6 +20,8 @@ pub struct PropsDeclaration {
     pub props: Vec<PropInfo>,
     /// `const props = $props()` — identifier pattern, not destructured
     pub is_identifier_pattern: bool,
+    /// Full statement spans that introduced this props declaration.
+    pub declaration_spans: Vec<Span>,
 }
 
 #[derive(Debug, Clone)]

@@ -47,6 +47,15 @@ fn apply_compile_options_to_component(
     }
 }
 
+fn resolved_runes_option(component: &svelte_ast::Component, options: &CompileOptions) -> bool {
+    component
+        .options
+        .as_ref()
+        .and_then(|opts| opts.runes)
+        .or(options.runes)
+        .unwrap_or(true)
+}
+
 /// Compile a Svelte source file to client-side JavaScript.
 /// Always returns a result — never panics. If codegen fails, `js` is `None`.
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
@@ -67,7 +76,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let analyze_opts = svelte_analyze::AnalyzeOptions {
         custom_element: options.custom_element,
         experimental_async: options.experimental.async_,
-        runes: options.runes.unwrap_or(true),
+        runes: resolved_runes_option(&component, options),
         dev: options.dev,
         component_name: name.clone(),
         filename_basename: options

@@ -93,25 +93,47 @@ impl<'a> ScriptTransformer<'_, 'a> {
         }
 
         let mut idx = None;
+        let mut remove = Vec::new();
+        let mut original_span = None;
+
         for (j, stmt) in stmts.iter().enumerate() {
-            if let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt {
-                if Self::is_props_declaration(decl) {
-                    idx = Some(j);
-                    break;
-                }
+            let oxc_ast::ast::Statement::VariableDeclaration(decl) = stmt else {
+                continue;
+            };
+            if !Self::is_props_declaration(decl) && !self.is_explicit_props_declaration(stmt) {
+                continue;
             }
+            if idx.is_none() {
+                idx = Some(j);
+                original_span = Some(stmt.span());
+            }
+            remove.push(j);
         }
 
         let Some(j) = idx else { return };
 
-        let original_span = stmts[j].span();
         let mut replacement = self.gen_props_statements();
         if let Some(first) = replacement.first_mut() {
-            *first.span_mut() = original_span;
+            *first.span_mut() = original_span.unwrap_or_else(|| stmts[j].span());
         }
-        stmts.remove(j);
+        for remove_idx in remove.into_iter().rev() {
+            stmts.remove(remove_idx);
+        }
         for (k, stmt) in replacement.into_iter().enumerate() {
             stmts.insert(j + k, stmt);
         }
+    }
+
+    fn is_explicit_props_declaration(&self, stmt: &oxc_ast::ast::Statement<'a>) -> bool {
+        let Some(props_gen) = &self.props_gen else {
+            return false;
+        };
+        let span = stmt.span();
+        let span_start = span.start + self.script_content_start;
+        let span_end = span.end + self.script_content_start;
+        props_gen
+            .declaration_spans
+            .iter()
+            .any(|decl_span| decl_span.start == span_start && decl_span.end == span_end)
     }
 }
