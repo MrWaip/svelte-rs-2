@@ -122,6 +122,7 @@ impl<'a> Visit<'a> for ExpressionAnalyzer {
                 }
             }
         }
+
         walk_call_expression(self, call);
     }
 

@@ -2565,7 +2565,6 @@ fn validate_transition_conflict_out() {
 }
 
 #[test]
-#[ignore = "missing: await expressions in use directive values (analyze)"]
 fn validate_use_directive_illegal_await_expression() {
     let diags = analyze_with_diags(
         r#"<script>

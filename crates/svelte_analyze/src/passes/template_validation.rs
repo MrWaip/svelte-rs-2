@@ -15,8 +15,8 @@ use oxc_span::GetSpan;
 use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
-    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, SVELTE_BODY,
-    SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
+    KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text, UseDirective,
+    SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
 use svelte_diagnostics::codes::fuzzymatch;
@@ -908,6 +908,23 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         validate_bind_group_binding(dir, ctx);
+    }
+
+    fn visit_use_directive(&mut self, dir: &UseDirective, ctx: &mut VisitContext<'_>) {
+        let Some(expression_span) = dir.expression_span else {
+            return;
+        };
+
+        if ctx
+            .data
+            .attr_expression(dir.id)
+            .is_some_and(|info| info.has_await)
+        {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::IllegalAwaitExpression,
+                expression_span,
+            ));
+        }
     }
 
     // Use cases: event_handler_invalid_modifier, event_handler_invalid_modifier_combination,

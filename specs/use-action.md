@@ -1,11 +1,16 @@
 # `use:action`
 
 ## Current state
-- **Working**: 10/11 use cases
-- **Missing**: 1/11 use cases
+- **Working**: 11/11 use cases
+- **Missing**: 0/11 use cases
 - **Done**: parser now handles hyphenated dotted segments via `parse_directive_name_span` in `walk_js.rs`; scanner extended to consume `-` in name segments
-- **Next**: add analyzer validation for `illegal_await_expression` in action arguments
-- Last updated: 2026-04-08
+- **Done this session**: `UseDirective` validation now emits `illegal_await_expression` when the analyze-owned `ExpressionInfo` for the directive argument contains `await`, and the focused analyzer regression test is enabled.
+- **Current slice**: complete
+- **Why this slice came next**: it was the last unchecked use case and stayed entirely inside `svelte_analyze`, reusing existing `ExpressionInfo.has_await` data rather than introducing new parser or codegen paths.
+- **Non-goals for this run**: no parser changes, no codegen changes, no transition-directive await validation, and no compiler-test harness work for diagnostics.
+- Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- **Next**: no open implementation work in this spec
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -27,7 +32,7 @@
 - [x] Parse dotted directive names whose member segments are valid identifiers, such as `use:actions.tooltip`.
 - [x] Parse dotted directive names whose later segments are not valid identifiers, such as `use:actions.tooltip-extra`. Scanner now reads `-` in segments; `walk_js.rs` converts to bracket notation before OXC parsing (test: `use_action_dotted_hyphen`).
 - [x] Walk action argument expressions through semantics/analyze so symbol references, dynamicity, and async blockers are recorded like other attribute expressions.
-- [ ] Reject `await` expressions inside action arguments via `illegal_await_expression`. The diagnostic kind exists, but no `use:`-specific analyzer validation emits it today.
+- [x] Reject `await` expressions inside action arguments via `illegal_await_expression`. Analyzer validation now reads `ExpressionInfo.has_await` for `UseDirective` argument expressions and emits the diagnostic in `template_validation.rs`.
 - [x] Emit `$.action(node, handler)` for plain actions on regular elements.
 - [x] Pass argument thunks through to `$.action(node, handler, thunk)` for valued actions.
 - [x] Preserve source order for multiple actions on the same element.
@@ -86,21 +91,16 @@
 
 ## Tasks
 
-- Parser: extend `crates/svelte_parser/src/scanner/mod.rs` so `use:` dotted names consume the same legacy segment shapes the reference `parse_directive_name` expects, not just `[A-Za-z0-9_]`.
-- Analyze: add `illegal_await_expression` validation for `UseDirective` argument expressions in `crates/svelte_analyze/src/passes/template_validation.rs`, matching the reference `UseDirective` visitor.
-- Codegen: keep lowering through `gen_use_directive`, but ensure parsed directive-name expressions for non-identifier segments become computed member access in the emitted optional call path.
-- Tests: keep passing compiler coverage for plain/valued/dotted/body/blocker cases, keep the new hyphenated dotted-name compiler case ignored until parser/codegen parity lands, and keep the analyzer `await` validation test ignored until diagnostics support is added.
+- Completed: parser dotted-name support, analyzer `illegal_await_expression` validation, and focused coverage for the `use:` action slice.
 
 ## Implementation order
 
-1. Port dotted directive-name parsing for `use:a.b-c` and re-run the action compiler cases.
-2. Port `illegal_await_expression` validation for action arguments and re-run the targeted analyzer test.
-3. Unignore the two regression tests and rerun the full `use:` action slice.
+1. Completed.
 
 ## Discovered bugs
 
-- OPEN: `crates/svelte_parser/src/scanner/mod.rs` only consumes `[A-Za-z0-9_]` after `.` in `use:` directive names, so reference-valid names like `use:actions.tooltip-extra` do not round-trip.
-- OPEN: `crates/svelte_analyze/src/passes/template_validation.rs` does not emit `illegal_await_expression` for `use:` directive argument expressions.
+- FIXED: `crates/svelte_parser/src/scanner/mod.rs` and `walk_js.rs` now accept and lower dotted `use:` directive segments like `use:actions.tooltip-extra`.
+- FIXED: `crates/svelte_analyze/src/passes/template_validation.rs` emits `illegal_await_expression` for `use:` directive argument expressions using analyze-owned `ExpressionInfo.has_await`.
 - OPEN: `tasks/compiler_tests/test_v3.rs` only supports successful snapshot cases, so action validation gaps need analyzer-test coverage until compiler error-fixture support exists.
 
 ## Test cases
@@ -109,7 +109,7 @@
 - [x] `use_action_expression`
 - [x] `use_action_reactive`
 - [x] `use_action_dotted`
-- [ ] `use_action_dotted_hyphen`
+- [x] `use_action_dotted_hyphen`
 - [x] `use_action_multiple`
 - [x] `use_action_in_if`
 - [x] `use_action_in_each`
@@ -117,4 +117,4 @@
 - [x] `svelte_body_combined`
 - [x] `bind_use_deferral`
 - [x] `action_blockers`
-- [ ] analyzer validation: `await` inside `use:` directive value
+- [x] analyzer validation: `await` inside `use:` directive value
