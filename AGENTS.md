@@ -34,6 +34,7 @@
 - Do not hand-edit generated snapshots:
   - `tasks/compiler_tests/cases2/*/case-svelte.js`
   - `tasks/compiler_tests/cases2/*/case-rust.js`
+- These generated files are intentionally committed so the author can compare reference and Rust output directly in the repo; regenerate them through project commands instead of editing them by hand.
 
 ## Additional alignment notes from `CLAUDE.md`
 - Use `spec-template` when creating or reshaping files under `specs/`.
