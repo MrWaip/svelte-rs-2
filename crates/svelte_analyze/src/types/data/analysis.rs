@@ -1,4 +1,5 @@
 use super::*;
+use svelte_component_semantics::SymbolFlags;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
 
 pub struct ScriptAnalysis {
@@ -562,6 +563,20 @@ impl AnalysisData {
                     _ => None,
                 })
                 .is_some_and(|sym| self.scoping.is_import(sym))
+        })
+    }
+    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
+        self.attr_expressions.get(attr_id).is_some_and(|info| {
+            info.ref_symbols
+                .first()
+                .copied()
+                .or_else(|| match &info.kind {
+                    ExpressionKind::Identifier(name) => self
+                        .scoping
+                        .find_binding(self.scoping.root_scope_id(), name.as_str()),
+                    _ => None,
+                })
+                .is_some_and(|sym| self.scoping.symbol_flags(sym).contains(SymbolFlags::Function))
         })
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {

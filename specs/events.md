@@ -1,10 +1,11 @@
 # Events
 
 ## Current state
-- **Working**: 9/11 event use cases
-- **Done this session**: fixed `nonpassive` codegen (`void 0` capture slot), added `name_span` to `OnDirectiveLegacy` AST, implemented analyzer event diagnostics (`EventHandlerInvalidModifier`, `EventHandlerInvalidModifierCombination`, `EventDirectiveDeprecated`, `MixedEventHandlerSyntaxes`)
-- **Remaining**: component `$$events` forwarding tracked in `specs/component-node.md`
-- Last updated: 2026-04-03
+- **Working**: feature complete for client-side event handling in this spec's scope
+- **Done this session**: normalized the cross-spec count drift, implemented dev-mode `$.apply(...)` wrapping for non-inline event handlers, and matched reference dev handler naming for Svelte 5 event attributes plus legacy `on:` directives
+- **Scope note**: component `$$events` forwarding is tracked in `specs/component-node.md` and is already complete there; it is not remaining work for this spec
+- **Remaining**: no open event-owned client-side use cases in this spec; compiler negative snapshots are not part of this feature
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -34,8 +35,8 @@
 - [x] `<svelte:window>`, `<svelte:document>`, and `<svelte:body>` accept both Svelte 5 event attributes and legacy `on:` syntax in the same special-element code paths (tests: `svelte_window_event_attr`, `svelte_document_events`, `svelte_body_event_attr`)
 - [x] Legacy `nonpassive` modifier preserves an undefined capture slot and passes explicit passive `false` (`on_directive_nonpassive`)
 - [x] Analyze emits DOM-event diagnostics and warnings: invalid modifiers, invalid passive/nonpassive combinations, mixed legacy/new syntax, and runes-mode `on:` deprecation warnings
-- [ ] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` remains open in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
-- [ ] Dev-mode `$.apply()` + event handler naming
+- [x] Event work that targets components is split across specs: DOM events are covered here, while `<Component on:done={...} />` -> `$$events` is implemented in [component-node.md](/Users/klobkov/personal-code/svelte-rs-2/specs/component-node.md)
+- [x] Dev-mode `$.apply()` + event handler naming (tests: `event_attr_dev_apply`, `on_directive_dev_apply`)
 
 ## Reference
 
@@ -69,6 +70,7 @@
 - [x] `event_attr_capture_non_deleg`
 - [x] `event_attr_gotpointercapture`
 - [x] `event_attr_has_call`
+- [x] `event_attr_dev_apply`
 - [x] `event_attr_import_handler`
 - [x] `event_attr_member_handler`
 - [x] `event_attr_non_delegatable`
@@ -76,6 +78,7 @@
 - [x] `event_attr_passive_window`
 - [x] `event_mixed_delegation`
 - [x] `on_directive`
+- [x] `on_directive_dev_apply`
 - [x] `on_directive_modifiers`
 - [x] `svelte_body_event_attr`
 - [x] `svelte_body_event_legacy`
@@ -84,4 +87,4 @@
 - [x] `svelte_window_event_attr`
 - [x] `svelte_window_event_legacy`
 - [x] `on_directive_nonpassive`
-- [ ] `component_events`
+- [x] `component_events` (covered in `specs/component-node.md`)

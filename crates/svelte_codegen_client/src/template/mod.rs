@@ -50,6 +50,16 @@ pub(crate) fn add_svelte_meta<'a>(
     span_start: u32,
     block_type: &str,
 ) -> Statement<'a> {
+    add_svelte_meta_with_extra(ctx, expression, span_start, block_type, None)
+}
+
+pub(crate) fn add_svelte_meta_with_extra<'a>(
+    ctx: &Ctx<'a>,
+    expression: Expression<'a>,
+    span_start: u32,
+    block_type: &str,
+    extra: Option<Expression<'a>>,
+) -> Statement<'a> {
     if !ctx.state.dev {
         return ctx.b.expr_stmt(expression);
     }
@@ -59,16 +69,18 @@ pub(crate) fn add_svelte_meta<'a>(
     let thunk = ctx
         .b
         .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(expression)]);
-    ctx.b.call_stmt(
-        "$.add_svelte_meta",
-        [
-            Arg::Expr(thunk),
-            Arg::StrRef(block_type),
-            Arg::Ident(ctx.state.name),
-            Arg::Num(line as f64),
-            Arg::Num(col as f64),
-        ],
-    )
+    let mut args = vec![
+        Arg::Expr(thunk),
+        Arg::StrRef(block_type),
+        Arg::Ident(ctx.state.name),
+        Arg::Num(line as f64),
+        Arg::Num(col as f64),
+    ];
+    if let Some(extra) = extra {
+        args.push(Arg::Expr(extra));
+    }
+
+    ctx.b.call_stmt("$.add_svelte_meta", args)
 }
 
 pub(crate) fn from_namespace(namespace: Namespace) -> &'static str {
@@ -569,7 +581,7 @@ fn emit_single_block<'a>(
                 // reference compiler's identifier numbering, which always allocates the
                 // fragment id even when it ends up unused (is_standalone path).
                 ctx.gen_ident("fragment");
-                gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body);
+                gen_component(ctx, *id, ctx.b.rid_expr("$$anchor"), body, true);
                 return;
             }
         }
@@ -618,7 +630,7 @@ fn emit_single_block<'a>(
             gen_render_tag(ctx, *id, ctx.b.rid_expr(&node), false, body);
         }
         FragmentItem::ComponentNode(id) => {
-            gen_component(ctx, *id, ctx.b.rid_expr(&node), body);
+            gen_component(ctx, *id, ctx.b.rid_expr(&node), body, true);
         }
         _ => unreachable!("SingleBlock dispatch: all variants covered above"),
     }

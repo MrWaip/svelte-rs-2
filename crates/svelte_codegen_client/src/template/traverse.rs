@@ -129,7 +129,9 @@ pub(crate) fn traverse_items<'a>(
                     sibling_offset = 1;
                     let anchor = ctx.b.rid_expr(&node_name);
                     match item {
-                        FragmentItem::ComponentNode(id) => gen_component(ctx, *id, anchor, init),
+                        FragmentItem::ComponentNode(id) => {
+                            gen_component(ctx, *id, anchor, init, true)
+                        }
                         FragmentItem::IfBlock(id) => {
                             let stmts = gen_if_block(ctx, *id, anchor);
                             init.push(ctx.b.block_stmt(stmts));

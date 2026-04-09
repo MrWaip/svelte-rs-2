@@ -2,11 +2,11 @@
 
 ## Current state
 - **Working**: 12/12 component-tag use cases
-- **Completed slice:** component-child slot conflict validation in `svelte_analyze`
-- **Done in this slice:** direct component children now emit `slot_attribute_duplicate` for repeated named slots and `slot_default_duplicate` when explicit `slot="default"` conflicts with implicit default content; shared default-child detection now correctly ignores comments, whitespace-only text, and other named-slot children
+- **Completed slice:** component event dev-mode handler parity in `svelte_codegen_client`
+- **Done in this slice:** component `on:` handlers now reuse the shared event-handler builder for dev `$.apply(...)` wrapping and call memoization, component `$$events` preserves duplicate same-name handlers via arrays like the reference, and regular component calls now emit dev `$.add_svelte_meta(...)` with `componentTag`
 - **Next:** feature complete for current `component-node` spec; if more reference gaps are found later, add them as new unchecked use cases before resuming
-- **Verification:** `just test-analyzer` passed; focused compiler cases `component_basic`, `component_named_slot`, and `component_dynamic_dotted` passed on 2026-04-07
-- Last updated: 2026-04-07
+- **Verification:** `just test-case component_events`, `just test-case component_events_dev_apply`, and `just test-compiler` passed on 2026-04-09
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -33,7 +33,7 @@
 - [x] Default children lower to `children` prop plus `$$slots.default` (tests: `component_children`, `component_element_children`)
 - [x] Snippet children and snippet props lower correctly (tests: `component_snippet_prop`, `component_snippet_with_children`, `component_multiple_snippets`, `component_snippet_only`)
 - [x] Complex expression props memoize when needed (tests: `component_prop_has_call`, `component_prop_has_call_multi`, `component_prop_has_call_mixed`, `component_prop_memo_state`)
-- [x] `on:` directives on components serialize into `$$events` (tests: `component_events`)
+- [x] `on:` directives on components serialize into `$$events`, including dev-mode shared-handler wrapping parity (tests: `component_events`, `component_events_dev_apply`)
 - [x] Child nodes with `slot="name"` serialize into named `$$slots.<name>` instead of default children (tests: `component_named_slot`)
 - [x] Runes-mode dotted or stateful component references lower through `$.component(...)` (tests: `component_dynamic_dotted`)
 - [x] Analyze emits component-specific validation/warnings for invalid directives and attribute edge cases (component-tag directives/modifiers, direct attribute-name/value checks, duplicate named slots, and explicit default-slot conflicts)
@@ -70,6 +70,7 @@
 - [x] `component_multiple_snippets`
 - [x] `component_spread_props`
 - [x] `component_events`
+- [x] `component_events_dev_apply`
 - [x] `component_named_slot`
 - [x] `component_dynamic_dotted`
 - [x] analyzer unit tests: component invalid directive, component `on:` modifier validation, component illegal colon warning, component unquoted attribute sequence

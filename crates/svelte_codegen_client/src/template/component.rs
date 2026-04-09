@@ -9,9 +9,10 @@ use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
 use super::expression::{build_attr_concat, get_attr_expr};
+use super::events::{build_event_handler_s5, dev_event_handler};
 use super::gen_fragment;
 use super::snippet;
-use super::{from_namespace, inherited_fragment_namespace};
+use super::{add_svelte_meta_with_extra, from_namespace, inherited_fragment_namespace};
 
 /// Generate `ComponentName($$anchor, { props })` call.
 pub(crate) fn gen_component<'a>(
@@ -19,9 +20,20 @@ pub(crate) fn gen_component<'a>(
     id: NodeId,
     anchor: Expression<'a>,
     init: &mut Vec<Statement<'a>>,
+    wrap_meta: bool,
 ) {
     let cn = ctx.component_node(id);
     let cn_name: String = cn.name.clone();
+    let event_expr_offsets: Vec<(NodeId, u32)> = cn
+        .attributes
+        .iter()
+        .filter_map(|attr| {
+            let Attribute::OnDirectiveLegacy(dir) = attr else {
+                return None;
+            };
+            dir.expression_span.map(|span| (dir.id, span.start))
+        })
+        .collect();
 
     // Snapshot pre-classified props to release immutable borrow before mutable ctx usage
     let prop_infos: Vec<_> = ctx
@@ -225,27 +237,63 @@ pub(crate) fn gen_component<'a>(
 
     // LEGACY(svelte4): emit $$events prop from collected on: directives
     if !events.is_empty() {
-        let event_props: Vec<ObjProp<'a>> = events
+        let mut event_groups: Vec<(String, Vec<Expression<'a>>)> = Vec::new();
+        for (name, attr_id, has_expression, has_once_modifier) in events
             .into_iter()
-            .filter_map(|(name, attr_id, has_expression, has_once_modifier)| {
+        {
+            if !has_expression {
+                // Bubble event (no handler expression) — skip, not supported on components
+                continue;
+            }
+
+            let expr_offset = event_expr_offsets
+                .iter()
+                .find_map(|(id, offset)| (*id == attr_id).then_some(*offset))
+                .unwrap_or_else(|| panic!("missing component event expression span for {:?}", attr_id));
+            let has_call = ctx.attr_expression(attr_id).is_some_and(|info| info.has_call);
+            let handler_expr = get_attr_expr(ctx, attr_id);
+            let handler = build_event_handler_s5(
+                ctx,
+                attr_id,
+                handler_expr,
+                has_call,
+                init,
+                expr_offset,
+            );
+            let handler = dev_event_handler(ctx, handler, &name, expr_offset);
+            let handler = if has_once_modifier {
+                ctx.b.call_expr("$.once", [Arg::Expr(handler)])
+            } else {
+                handler
+            };
+
+            if let Some((_, handlers)) = event_groups
+                .iter_mut()
+                .find(|(existing_name, _)| existing_name == &name)
+            {
+                handlers.push(handler);
+            } else {
+                event_groups.push((name, vec![handler]));
+            }
+        }
+
+        let event_props: Vec<ObjProp<'a>> = event_groups
+            .into_iter()
+            .map(|(name, handlers)| {
                 let key = ctx.b.alloc_str(&name);
-                if !has_expression {
-                    // Bubble event (no handler expression) — skip, not supported on components
-                    return None;
-                }
-                let is_shorthand = ctx.is_expression_shorthand(attr_id);
-                if is_shorthand && !has_once_modifier {
-                    // Consume the parsed expression to keep side table clean
-                    let _ = get_attr_expr(ctx, attr_id);
-                    Some(ObjProp::Shorthand(key))
+                if handlers.len() == 1 {
+                    let handler = handlers.into_iter().next().expect("single event handler missing");
+                    if matches!(&handler, Expression::FunctionExpression(_)) {
+                        return ObjProp::Method(key, handler);
+                    }
+                    if let Expression::Identifier(id) = &handler {
+                        if id.name.as_str() == name {
+                            return ObjProp::Shorthand(key);
+                        }
+                    }
+                    ObjProp::KeyValue(key, handler)
                 } else {
-                    let handler = get_attr_expr(ctx, attr_id);
-                    let handler = if has_once_modifier {
-                        ctx.b.call_expr("$.once", [Arg::Expr(handler)])
-                    } else {
-                        handler
-                    };
-                    Some(ObjProp::KeyValue(key, handler))
+                    ObjProp::KeyValue(key, ctx.b.array_expr(handlers))
                 }
             })
             .collect();
@@ -395,10 +443,42 @@ pub(crate) fn gen_component<'a>(
 
         let has_snippets = !snippet_decls.is_empty();
         if has_snippets {
-            snippet_decls.push(ctx.b.expr_stmt(component_call));
+            let component_stmt = if wrap_meta && cn_name != SVELTE_SELF {
+                add_svelte_meta_with_extra(
+                    ctx,
+                    component_call,
+                    cn.span.start,
+                    "component",
+                    Some(
+                        ctx.b.object_expr([ObjProp::KeyValue(
+                            "componentTag",
+                            ctx.b.str_expr(&cn_name),
+                        )]),
+                    ),
+                )
+            } else {
+                ctx.b.expr_stmt(component_call)
+            };
+            snippet_decls.push(component_stmt);
             init.push(ctx.b.block_stmt(snippet_decls));
         } else {
-            init.push(ctx.b.expr_stmt(component_call));
+            let component_stmt = if wrap_meta && cn_name != SVELTE_SELF {
+                add_svelte_meta_with_extra(
+                    ctx,
+                    component_call,
+                    cn.span.start,
+                    "component",
+                    Some(
+                        ctx.b.object_expr([ObjProp::KeyValue(
+                            "componentTag",
+                            ctx.b.str_expr(&cn_name),
+                        )]),
+                    ),
+                )
+            } else {
+                ctx.b.expr_stmt(component_call)
+            };
+            init.push(component_stmt);
         }
     } else {
         // For <svelte:self>, call the current component function by its actual name.
@@ -420,12 +500,60 @@ pub(crate) fn gen_component<'a>(
         let has_snippets = !snippet_decls.is_empty();
         if has_snippets {
             snippet_decls.extend(memo_stmts);
-            snippet_decls.push(ctx.b.expr_stmt(final_expr));
+            let component_stmt = if wrap_meta && cn_name != SVELTE_SELF {
+                add_svelte_meta_with_extra(
+                    ctx,
+                    final_expr,
+                    cn.span.start,
+                    "component",
+                    Some(
+                        ctx.b.object_expr([ObjProp::KeyValue(
+                            "componentTag",
+                            ctx.b.str_expr(&cn_name),
+                        )]),
+                    ),
+                )
+            } else {
+                ctx.b.expr_stmt(final_expr)
+            };
+            snippet_decls.push(component_stmt);
             init.push(ctx.b.block_stmt(snippet_decls));
         } else if memo_stmts.is_empty() {
-            init.push(ctx.b.expr_stmt(final_expr));
+            let component_stmt = if wrap_meta && cn_name != SVELTE_SELF {
+                add_svelte_meta_with_extra(
+                    ctx,
+                    final_expr,
+                    cn.span.start,
+                    "component",
+                    Some(
+                        ctx.b.object_expr([ObjProp::KeyValue(
+                            "componentTag",
+                            ctx.b.str_expr(&cn_name),
+                        )]),
+                    ),
+                )
+            } else {
+                ctx.b.expr_stmt(final_expr)
+            };
+            init.push(component_stmt);
         } else {
-            memo_stmts.push(ctx.b.expr_stmt(final_expr));
+            let component_stmt = if wrap_meta && cn_name != SVELTE_SELF {
+                add_svelte_meta_with_extra(
+                    ctx,
+                    final_expr,
+                    cn.span.start,
+                    "component",
+                    Some(
+                        ctx.b.object_expr([ObjProp::KeyValue(
+                            "componentTag",
+                            ctx.b.str_expr(&cn_name),
+                        )]),
+                    ),
+                )
+            } else {
+                ctx.b.expr_stmt(final_expr)
+            };
+            memo_stmts.push(component_stmt);
             init.push(ctx.b.block_stmt(memo_stmts));
         }
     }
@@ -497,7 +625,7 @@ pub(crate) fn emit_component_with_css_wrapper<'a>(
     let last_child = ctx
         .b
         .static_member_expr(ctx.b.rid_expr(node_ident), "lastChild");
-    gen_component(ctx, component_id, last_child, &mut block);
+    gen_component(ctx, component_id, last_child, &mut block, false);
 
     block.push(ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)]));
 

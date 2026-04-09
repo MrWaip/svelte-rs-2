@@ -112,6 +112,9 @@ impl<'a> CodegenView<'a> {
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.data.attr_is_import(attr_id)
     }
+    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
+        self.data.attr_is_function(attr_id)
+    }
     pub fn node_expr_handle(&self, id: NodeId) -> ExprHandle {
         self.data.node_expr_handle(id)
     }

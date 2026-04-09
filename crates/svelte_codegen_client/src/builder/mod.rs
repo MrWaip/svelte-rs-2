@@ -62,6 +62,8 @@ pub struct Builder<'a> {
 pub enum ObjProp<'a> {
     /// `key: value`
     KeyValue(&'a str, Expression<'a>),
+    /// `name(...) { ... }`
+    Method(&'a str, Expression<'a>),
     /// `name` (property shorthand, equivalent to `name: name`)
     Shorthand(&'a str),
     /// `...expr`

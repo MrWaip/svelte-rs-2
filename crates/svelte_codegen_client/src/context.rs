@@ -361,6 +361,9 @@ impl<'a> Ctx<'a> {
     pub fn attr_is_import(&self, attr_id: NodeId) -> bool {
         self.query.view.attr_is_import(attr_id)
     }
+    pub fn attr_is_function(&self, attr_id: NodeId) -> bool {
+        self.query.view.attr_is_function(attr_id)
+    }
     pub fn expression(&self, id: NodeId) -> Option<&ExpressionInfo> {
         self.query.expression(id)
     }
