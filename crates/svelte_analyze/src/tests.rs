@@ -5045,6 +5045,27 @@ fn component_attribute_unquoted_sequence_errors() {
 }
 
 #[test]
+fn regular_element_attribute_unquoted_sequence_errors() {
+    let diags = analyze_with_diags(r#"<script>let value = 'x';</script><div foo=a{value}></div>"#);
+    assert_has_error(&diags, "attribute_unquoted_sequence");
+}
+
+#[test]
+fn custom_element_attribute_unquoted_sequence_errors() {
+    let diags =
+        analyze_with_diags(r#"<script>let value = 'x';</script><my-el foo=a{value}></my-el>"#);
+    assert_has_error(&diags, "attribute_unquoted_sequence");
+}
+
+#[test]
+fn svelte_element_attribute_unquoted_sequence_errors() {
+    let diags = analyze_with_diags(
+        r#"<script>let value = 'x'; let tag = 'div';</script><svelte:element this={tag} foo=a{value} />"#,
+    );
+    assert_has_error(&diags, "attribute_unquoted_sequence");
+}
+
+#[test]
 fn attribute_quoted_custom_element() {
     let diags =
         analyze_with_diags(r#"<script>let x = $state('val');</script><my-el foo="{x}"></my-el>"#);

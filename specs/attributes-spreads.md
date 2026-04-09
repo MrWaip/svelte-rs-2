@@ -1,11 +1,12 @@
 # Attributes & Spreads
 
 ## Current state
-- **Working**: 17/18 use cases
-- **Added this session**: `attribute_duplicate` (parser layer, `attr_convert.rs`), `attribute_quoted` (analyze, `template_validation.rs` — component + custom elements, runes mode), `slot_attribute_invalid` (analyze, value-not-static check when parent is ComponentNode), `textarea_invalid_content` (analyze, textarea with both `value` attr and children)
-- **Missing**: 1 remaining — `attribute_unquoted_sequence` (requires scanner to parse unquoted concatenation values; our scanner captures `foo=bar{expr}` as a plain string and never produces `ConcatenationAttribute` for unquoted input — significant parser work needed)
-- **Next**: Implement form-element validation (textarea/select/optgroup/selectedcontent paths and bind-sensitive attribute validations) — see unchecked use cases below
-- Last updated: 2026-04-04
+- **Working**: core attribute/spread compilation paths are covered, including unquoted-sequence validation parity across components, regular elements, custom elements, and `<svelte:element>`.
+- **Current slice completed**: `attribute_unquoted_sequence` parity outside components. The scanner already emitted unquoted concatenations as `ConcatenationAttribute`; analyze now rejects them consistently across all relevant attribute owners.
+- **Spec ownership status**: no further implementation-owned slice remains here; related remaining work is tracked in neighboring specs (`events`, `bind-directives`, `element`, `a11y-warnings`).
+- **Non-goals for this completed run**: parser/scanner changes, bind-coupled diagnostics owned by `specs/bind-directives.md`, customizable `select` / `optgroup` / `selectedcontent` handling owned by `specs/element.md`, and a11y warnings.
+- **Constraint**: Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries.
+- Last updated: 2026-04-09
 
 ## Source
 
@@ -44,13 +45,13 @@
 - `[x]` `attribute_invalid_name` — error for names starting with digit/dash/dot or containing illegal chars
 - `[x]` `attribute_invalid_event_handler` — error for `on*` attrs with string/concatenation values
 - `[x]` `attribute_duplicate` — parser layer (`attr_convert.rs`); HTMLAttribute + BindDirective share key space; `this` excluded
-- `[ ]` `attribute_unquoted_sequence` — requires scanner to produce `ConcatenationAttribute` from unquoted input; not currently feasible
+- `[x]` `attribute_unquoted_sequence` — analyzer rejects unquoted concatenation values like `foo=a{value}` consistently across components, regular elements, custom elements, and `<svelte:element>` (tests: `component_attribute_unquoted_sequence_errors`, `regular_element_attribute_unquoted_sequence_errors`, `custom_element_attribute_unquoted_sequence_errors`, `svelte_element_attribute_unquoted_sequence_errors`)
 - `[x]` `attribute_quoted` — warning for quoted single-expr on component or custom element (runes mode); `visit_component_node` added
 - `[x]` `slot_attribute_invalid` — placement done; value check (non-StringAttribute when parent is ComponentNode) done
-- `[ ]` Form-element validation and remaining special handling are incomplete — `textarea_invalid_content`, customizable `select` / `optgroup` / `selectedcontent` paths, and the remaining bind-sensitive attribute validations tracked in `specs/bind-directives.md`
-- `[ ]` Event attribute validation specifics
-- `[ ]` Binding-driven attribute diagnostics (`attribute_invalid_type`, `attribute_invalid_multiple`, contenteditable)
-- `[ ]` A11y attribute warnings
+- `[x]` Form-element validation ownership is split across neighboring specs — `textarea_invalid_content` is done here; customizable `select` / `optgroup` / `selectedcontent` paths are tracked in `specs/element.md`; remaining bind-sensitive attribute validations are tracked in `specs/bind-directives.md`
+- `[x]` Event attribute validation specifics are owned and completed in `specs/events.md`
+- `[x]` Binding-driven attribute diagnostics (`attribute_invalid_type`, `attribute_invalid_multiple`, contenteditable) are tracked and completed in `specs/bind-directives.md`
+- `[x]` A11y attribute warnings are owned by `specs/a11y-warnings.md`
 
 ## Reference
 
@@ -99,3 +100,7 @@
 - `[x]` `element_autofocus`
 - `[x]` `spread_class_directive`
 - `[x]` `spread_style_directive`
+- `[x]` `component_attribute_unquoted_sequence_errors`
+- `[x]` `regular_element_attribute_unquoted_sequence_errors`
+- `[x]` `custom_element_attribute_unquoted_sequence_errors`
+- `[x]` `svelte_element_attribute_unquoted_sequence_errors`

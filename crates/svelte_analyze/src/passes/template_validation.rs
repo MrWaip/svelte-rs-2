@@ -832,6 +832,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         check_component_name_lowercase(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
+        check_attribute_unquoted_sequence(&el.attributes, ctx);
 
         // attribute_quoted: custom elements (names containing '-') get the same warning
         // as component attributes for quoted single-expression attrs in runes mode.
@@ -853,12 +854,14 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.maybe_warn_legacy_special_element(&cn.name, cn.span, ctx);
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
+        check_attribute_unquoted_sequence(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
     fn visit_svelte_element(&mut self, el: &SvelteElement, ctx: &mut VisitContext<'_>) {
         self.element_event_state.push(ElementEventState::default());
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
+        check_attribute_unquoted_sequence(&el.attributes, ctx);
     }
 
     fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_>) {
@@ -2555,7 +2558,9 @@ fn check_component_attribute_warnings(attrs: &[Attribute], ctx: &mut VisitContex
             span,
         ));
     }
+}
 
+fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
     for attr in attrs {
         let Attribute::ConcatenationAttribute(concat) = attr else {
             continue;

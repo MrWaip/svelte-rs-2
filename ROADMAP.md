@@ -7,15 +7,15 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 ## Runes & Script
 
-- [x] `$state` / `$state.raw` — [spec](specs/state-rune.md)
+- [ @] `$state` / `$state.raw` — [spec](specs/state-rune.md)
 - [x] `$derived` / `$derived.by` — [spec](specs/derived-state.md)
-- [x] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
+- [ ] `$props` / `$bindable` / `$props.id` — [spec](specs/props-bindable.md)
 - [x] `$effect` / `$effect.pre` — [spec](specs/effect-runes.md)
 - [x] `$inspect` / `$inspect.trace`  — [spec](specs/inspect-runes.md)
-- [x] `$host` — [spec](specs/host-rune.md)
-- [x] `$store` subscriptions — [spec](specs/store-subscriptions.md)
+- [ ] `$host` — [spec](specs/host-rune.md)
+- [ ] `$store` subscriptions — [spec](specs/store-subscriptions.md)
 - [x] Destructuring & class fields — [spec](specs/destructuring-class-fields.md)
-- [x] `<script module>` — [spec](specs/script-module.md)
+- [ ] `<script module>` — [spec](specs/script-module.md)
 
 ## Template
 
@@ -36,18 +36,18 @@ Details per feature live in `specs/` — run `/audit <feature>` to generate or u
 
 - Shared spec for this bucket: [specs/attributes-spreads.md](specs/attributes-spreads.md)
 
-- [ ] Static & dynamic attributes
-- [ ] `style:prop` / `class:name` / `class` object/array
-- [ ] Spread attributes
-- [ ] Element attribute edge cases
-- [ ] Form element special handling
+- [x] Static & dynamic attributes
+- [x] `style:prop` / `class:name` / `class` object/array
+- [x] Spread attributes
+- [x] Element attribute edge cases
+- [x] Form element special handling
 
 ## Events
 
-- [ ] Svelte 5 event attributes — [spec](specs/events.md)
-- [ ] Event delegation — [spec](specs/events.md)
-- [ ] Event modifiers (capture, passive) — [spec](specs/events.md)
-- [ ] `on:event` legacy — [spec](specs/events.md)
+- [x] Svelte 5 event attributes — [spec](specs/events.md)
+- [x] Event delegation — [spec](specs/events.md)
+- [x] Event modifiers (capture, passive) — [spec](specs/events.md)
+- [x] `on:event` legacy — [spec](specs/events.md)
 
 ## Bindings
 
