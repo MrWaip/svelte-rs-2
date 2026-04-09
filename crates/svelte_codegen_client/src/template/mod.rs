@@ -136,10 +136,7 @@ pub(crate) fn inherited_fragment_namespace(ctx: &Ctx, key: FragmentKey) -> Names
     }
 }
 
-pub(crate) fn from_template_fn_for_fragment_element(
-    ctx: &Ctx,
-    el_id: NodeId,
-) -> &'static str {
+pub(crate) fn from_template_fn_for_fragment_element(ctx: &Ctx, el_id: NodeId) -> &'static str {
     from_namespace(
         ctx.query
             .view

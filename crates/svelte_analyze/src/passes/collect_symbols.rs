@@ -44,7 +44,10 @@ pub(crate) fn resolve_script_stores(data: &mut AnalysisData) {
 impl TemplateVisitor for CollectSymbolsVisitor {
     fn visit_each_block(&mut self, block: &EachBlock, ctx: &mut VisitContext<'_>) {
         if let Some(key_id) = block.key_id {
-            ctx.data.blocks.each_context.record_key_node_id(block.id, key_id);
+            ctx.data
+                .blocks
+                .each_context
+                .record_key_node_id(block.id, key_id);
         }
     }
 

@@ -523,7 +523,10 @@ impl<'a> Scanner<'a> {
         // notation in JS output but are valid Svelte directive name segments.
         while self.peek() == Some('.') {
             self.advance(); // consume '.'
-            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            while self
+                .peek()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
                 self.advance();
             }
             name_span = Span::new(name_span.start, self.current as u32);
@@ -1029,8 +1032,7 @@ impl<'a> Scanner<'a> {
 
     fn scan_js_number(&mut self) {
         while self.peek().is_some_and(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '_' | '.' | 'x' | 'X' | 'o' | 'O' | 'b' | 'B')
+            c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | 'x' | 'X' | 'o' | 'O' | 'b' | 'B')
         }) {
             self.advance();
         }
@@ -1058,7 +1060,10 @@ impl<'a> Scanner<'a> {
         )
     }
 
-    fn scan_js_pattern(&mut self, terminator: JsScanTerminator) -> Result<JsScanResult, Diagnostic> {
+    fn scan_js_pattern(
+        &mut self,
+        terminator: JsScanTerminator,
+    ) -> Result<JsScanResult, Diagnostic> {
         let mut paren_depth = if matches!(terminator, JsScanTerminator::MatchingParen) {
             1
         } else {
@@ -1119,8 +1124,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                     if paren_depth > 0 {
                         paren_depth -= 1;
-                        if paren_depth == 0
-                            && matches!(terminator, JsScanTerminator::MatchingParen)
+                        if paren_depth == 0 && matches!(terminator, JsScanTerminator::MatchingParen)
                         {
                             result.end = Some(self.prev);
                             return Ok(result);
@@ -1157,8 +1161,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                     if matches!(
                         terminator,
-                        JsScanTerminator::SvelteBrace
-                            | JsScanTerminator::TemplateExpression
+                        JsScanTerminator::SvelteBrace | JsScanTerminator::TemplateExpression
                     ) {
                         result.end = Some(end);
                         return Ok(result);
@@ -1293,7 +1296,11 @@ impl<'a> Scanner<'a> {
                     brace_depth = brace_depth.saturating_sub(1);
                     state = JsExprState::ExpectOperator;
                 }
-                c if c.is_whitespace() && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                c if c.is_whitespace()
+                    && paren_depth == 0
+                    && bracket_depth == 0
+                    && brace_depth == 0 =>
+                {
                     let ws_start = self.current;
                     self.skip_whitespace();
                     if self.is_at_end() {

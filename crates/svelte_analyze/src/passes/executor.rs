@@ -119,7 +119,9 @@ pub(crate) fn execute_pass<'a>(
             }
             if let Some(program) = &parsed.program {
                 if options.dev {
-                    data.output.ignore_data.scan_program_comments(program, runes);
+                    data.output
+                        .ignore_data
+                        .scan_program_comments(program, runes);
                 }
             }
         }
@@ -359,7 +361,12 @@ fn resolve_render_tag_prop_sources(data: &mut AnalysisData, parsed: &ParserResul
     use oxc_ast::ast::Expression;
     let tag_ids: Vec<svelte_ast::NodeId> = data.blocks.render_tag_plans.keys().collect();
     for tag_id in tag_ids {
-        let handle = match data.template.template_semantics.node_expr_handles.get(tag_id) {
+        let handle = match data
+            .template
+            .template_semantics
+            .node_expr_handles
+            .get(tag_id)
+        {
             Some(&handle) => handle,
             None => continue,
         };

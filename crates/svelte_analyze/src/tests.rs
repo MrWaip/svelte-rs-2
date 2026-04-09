@@ -1189,7 +1189,10 @@ fn concatenated_class_attr_is_registered_for_set_class() {
     let class_attr_id = find_attribute_id(&component.fragment, &component, "div", "class")
         .expect("no class attr on <div>");
 
-    assert_eq!(data.elements.flags.class_attr_id(el.id), Some(class_attr_id));
+    assert_eq!(
+        data.elements.flags.class_attr_id(el.id),
+        Some(class_attr_id)
+    );
 }
 
 #[test]
@@ -1339,7 +1342,10 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
     let bind_id = find_bind_directive_id(&component.fragment, &component, "input", "group")
         .expect("no bind:group on input");
 
-    assert_eq!(data.parent_each_blocks(bind_id).as_slice(), &[outer_each.id]);
+    assert_eq!(
+        data.parent_each_blocks(bind_id).as_slice(),
+        &[outer_each.id]
+    );
     assert!(data.contains_group_binding(outer_each.id));
     assert!(!data.contains_group_binding(inner_each.id));
 }
@@ -1594,9 +1600,12 @@ fn script_rune_calls_survive_template_node_id_activity() {
         "$effect.root(() => {})",
     )
     .expect("missing module rune call");
-    let instance_call =
-        find_call_node_id(parsed.program.as_ref().unwrap(), instance_source, "$state(0)")
-            .expect("missing instance rune call");
+    let instance_call = find_call_node_id(
+        parsed.program.as_ref().unwrap(),
+        instance_source,
+        "$state(0)",
+    )
+    .expect("missing instance rune call");
 
     let remapped_instance =
         OxcNodeId::from_usize(instance_call.index() + data.script.instance_node_id_offset as usize);
@@ -1975,7 +1984,8 @@ let b = await fetch('/b');
     let paragraph = find_element(&component.fragment, &component, "p")
         .unwrap_or_else(|| panic!("no <p> element"));
     assert_eq!(
-        data.template.fragments
+        data.template
+            .fragments
             .fragment_blockers(&FragmentKey::Element(paragraph.id)),
         &[0, 1]
     );
@@ -2010,7 +2020,8 @@ fn title_elements_collected_for_svelte_head_fragment() {
     let title = find_element(&component.fragment, &component, "title")
         .unwrap_or_else(|| panic!("no <title>"));
     assert_eq!(
-        data.template.title_elements
+        data.template
+            .title_elements
             .by_fragment(&FragmentKey::SvelteHeadBody(head_id)),
         Some(&vec![title.id])
     );
@@ -2039,10 +2050,13 @@ fn annotation_xml_resets_child_namespace_to_html() {
     );
     let annotation = find_element(&component.fragment, &component, "annotation-xml")
         .unwrap_or_else(|| panic!("missing <annotation-xml>"));
-    let div =
-        find_element(&component.fragment, &component, "div").unwrap_or_else(|| panic!("missing <div>"));
+    let div = find_element(&component.fragment, &component, "div")
+        .unwrap_or_else(|| panic!("missing <div>"));
 
-    assert_eq!(data.namespace(annotation.id), Some(NamespaceKind::AnnotationXml));
+    assert_eq!(
+        data.namespace(annotation.id),
+        Some(NamespaceKind::AnnotationXml)
+    );
     assert_eq!(
         data.namespace(div.id).map(NamespaceKind::as_namespace),
         Some(svelte_ast::Namespace::Html)

@@ -284,9 +284,7 @@ impl<'src> Parser<'src> {
         let had_ws = self.scanner.eat(TokenKind::Whitespace);
 
         // ||
-        if self.scanner.is_at_delim(b'|')
-            && self.scanner.peek_n(1).kind == TokenKind::Delim(b'|')
-        {
+        if self.scanner.is_at_delim(b'|') && self.scanner.peek_n(1).kind == TokenKind::Delim(b'|') {
             let comb_start = self.scanner.current_start();
             self.scanner.advance();
             self.scanner.advance();
@@ -422,10 +420,10 @@ impl<'src> Parser<'src> {
 
         // Consume the AtKeyword token and extract name (skip leading '@').
         let tok = self.scanner.advance();
-        let name = CompactString::new(self.scanner.source_text(Span::new(
-            tok.span.start + 1,
-            tok.span.end,
-        )));
+        let name = CompactString::new(
+            self.scanner
+                .source_text(Span::new(tok.span.start + 1, tok.span.end)),
+        );
 
         // Skip whitespace before prelude
         self.scanner.skip_whitespace();
@@ -575,10 +573,10 @@ impl<'src> Parser<'src> {
                     let tok = self.scanner.advance();
                     rel.selectors.push(SimpleSelector::Id {
                         span: tok.span,
-                        name: CompactString::new(self.scanner.source_text(Span::new(
-                            tok.span.start + 1,
-                            tok.span.end,
-                        ))),
+                        name: CompactString::new(
+                            self.scanner
+                                .source_text(Span::new(tok.span.start + 1, tok.span.end)),
+                        ),
                     });
                 }
                 // . → class selector

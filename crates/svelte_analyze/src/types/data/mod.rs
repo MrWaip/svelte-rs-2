@@ -35,8 +35,7 @@ mod template_element_index;
 pub(crate) mod template_topology;
 
 pub use analysis::{
-    AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis,
-    TemplateAnalysis,
+    AnalysisData, BlockAnalysis, ElementAnalysis, OutputPlanData, ScriptAnalysis, TemplateAnalysis,
 };
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;

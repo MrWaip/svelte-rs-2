@@ -123,7 +123,10 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
                 let names = collect_binding_names(&declarator.id);
                 for name in &names {
                     if let Some(sym) = data.scoping.find_binding(root, name) {
-                        data.script.blocker_data.symbol_blockers.insert(sym, async_index);
+                        data.script
+                            .blocker_data
+                            .symbol_blockers
+                            .insert(sym, async_index);
                     }
                 }
                 hoist_names.extend(names);
@@ -134,7 +137,10 @@ pub(crate) fn calculate_instance_blockers(parsed: &ParserResult<'_>, data: &mut 
                 if let Some(ref id) = class.id {
                     let name = id.name.to_string();
                     if let Some(sym) = data.scoping.find_binding(root, &name) {
-                        data.script.blocker_data.symbol_blockers.insert(sym, async_index);
+                        data.script
+                            .blocker_data
+                            .symbol_blockers
+                            .insert(sym, async_index);
                     }
                     hoist_names.push(name);
                 }

@@ -16,7 +16,7 @@ use svelte_ast::{
     is_svg, AnimateDirective, Attribute, AwaitBlock, BindDirective, ComponentNode, ConcatPart,
     ConstTag, DebugTag, EachBlock, Element, ExpressionAttribute, ExpressionTag, Fragment, IfBlock,
     KeyBlock, Node, NodeId, OnDirectiveLegacy, SnippetBlock, SvelteElement, Text,
-    TransitionDirective, TransitionDirection, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
+    TransitionDirection, TransitionDirective, UseDirective, SVELTE_BODY, SVELTE_COMPONENT,
     SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW,
 };
 use svelte_component_semantics::SymbolFlags;
@@ -977,7 +977,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
         if let Some(state) = self.element_event_state.last_mut() {
             let existing = if kind.occupies_intro() {
                 state.intro_transition.or_else(|| {
-                    kind.occupies_outro().then_some(state.outro_transition).flatten()
+                    kind.occupies_outro()
+                        .then_some(state.outro_transition)
+                        .flatten()
                 })
             } else if kind.occupies_outro() {
                 state.outro_transition
@@ -996,7 +998,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         existing: existing.label().to_string(),
                     }
                 };
-                ctx.warnings_mut().push(Diagnostic::error(diagnostic, dir.name));
+                ctx.warnings_mut()
+                    .push(Diagnostic::error(diagnostic, dir.name));
             }
 
             if kind.occupies_intro() {
@@ -1094,7 +1097,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
             }
             if ctx
                 .data
-                .output.ignore_data
+                .output
+                .ignore_data
                 .is_ignored(text.id, "bidirectional_control_characters")
             {
                 break;
@@ -2510,7 +2514,10 @@ fn check_component_directives(attrs: &[Attribute], ctx: &mut VisitContext<'_>) {
             | Attribute::AttachTag(_) => {}
             Attribute::OnDirectiveLegacy(dir) => {
                 let has_only_once = dir.modifiers.len() == 1
-                    && ctx.data.event_modifiers(dir.id).contains(EventModifier::ONCE);
+                    && ctx
+                        .data
+                        .event_modifiers(dir.id)
+                        .contains(EventModifier::ONCE);
                 if !dir.modifiers.is_empty() && !has_only_once {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::EventHandlerInvalidComponentModifier,

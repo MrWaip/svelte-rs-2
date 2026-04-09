@@ -123,14 +123,15 @@ fn maybe_wrap_legacy_coarse_expr<'a>(
         let is_template = ctx.query.scoping().is_template_declaration(sym);
         let is_import = ctx.query.scoping().is_import(sym);
         let is_rest_prop = ctx.query.scoping().is_rest_prop(sym);
-        if !(is_prop_source || is_template || is_import || is_rest_prop)
-        {
+        if !(is_prop_source || is_template || is_import || is_rest_prop) {
             continue;
         }
 
         let getter = if is_prop_source {
-            ctx.b
-                .call_expr(ctx.query.symbol_name(sym), std::iter::empty::<Arg<'a, '_>>())
+            ctx.b.call_expr(
+                ctx.query.symbol_name(sym),
+                std::iter::empty::<Arg<'a, '_>>(),
+            )
         } else {
             ctx.b.rid_expr(ctx.query.symbol_name(sym))
         };

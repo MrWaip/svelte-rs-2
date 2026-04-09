@@ -83,7 +83,10 @@ impl<'a> CodegenView<'a> {
         self.data.output.ignore_data.is_ignored(node_id, code)
     }
     pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
-        self.data.output.ignore_data.is_ignored_at_span(span_start, code)
+        self.data
+            .output
+            .ignore_data
+            .is_ignored_at_span(span_start, code)
     }
     pub fn await_value_binding(&self, id: NodeId) -> Option<&AwaitBindingInfo> {
         self.data.template.await_bindings.value(id)

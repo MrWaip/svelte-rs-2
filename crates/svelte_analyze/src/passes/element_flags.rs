@@ -26,22 +26,24 @@ impl<'src> ElementFlagsVisitor<'src> {
     }
 
     fn modifier_flags(modifiers: &[String]) -> EventModifier {
-        modifiers.iter().fold(EventModifier::empty(), |mut flags, modifier| {
-            flags |= match modifier.as_str() {
-                "once" => EventModifier::ONCE,
-                "capture" => EventModifier::CAPTURE,
-                "preventDefault" => EventModifier::PREVENT_DEFAULT,
-                "stopPropagation" => EventModifier::STOP_PROPAGATION,
-                "stopImmediatePropagation" => EventModifier::STOP_IMMEDIATE_PROPAGATION,
-                "passive" => EventModifier::PASSIVE,
-                "nonpassive" => EventModifier::NONPASSIVE,
-                "trusted" => EventModifier::TRUSTED,
-                "self" => EventModifier::SELF,
-                "global" => EventModifier::GLOBAL,
-                _ => EventModifier::empty(),
-            };
-            flags
-        })
+        modifiers
+            .iter()
+            .fold(EventModifier::empty(), |mut flags, modifier| {
+                flags |= match modifier.as_str() {
+                    "once" => EventModifier::ONCE,
+                    "capture" => EventModifier::CAPTURE,
+                    "preventDefault" => EventModifier::PREVENT_DEFAULT,
+                    "stopPropagation" => EventModifier::STOP_PROPAGATION,
+                    "stopImmediatePropagation" => EventModifier::STOP_IMMEDIATE_PROPAGATION,
+                    "passive" => EventModifier::PASSIVE,
+                    "nonpassive" => EventModifier::NONPASSIVE,
+                    "trusted" => EventModifier::TRUSTED,
+                    "self" => EventModifier::SELF,
+                    "global" => EventModifier::GLOBAL,
+                    _ => EventModifier::empty(),
+                };
+                flags
+            })
     }
 }
 
@@ -221,7 +223,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = css_prop_name {
-                data.elements.flags
+                data.elements
+                    .flags
                     .component_css_props
                     .get_or_default(cn.id)
                     .push((name.to_string(), attr.id()));
@@ -320,7 +323,8 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 _ => continue,
             };
             let is_dynamic = data.elements.flags.is_dynamic_attr(attr.id());
-            data.elements.flags
+            data.elements
+                .flags
                 .component_props
                 .get_or_default(cn.id)
                 .push(ComponentPropInfo { kind, is_dynamic });

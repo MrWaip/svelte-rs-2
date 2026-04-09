@@ -56,8 +56,7 @@ pub fn extract_script_info(
                         let oxc_ast::ast::Declaration::VariableDeclaration(var_decl) = decl else {
                             unreachable!()
                         };
-                        props_declaration =
-                            collect_legacy_export_props(var_decl, offset, source);
+                        props_declaration = collect_legacy_export_props(var_decl, offset, source);
                         collect_declarations_from_declaration(
                             decl,
                             offset,

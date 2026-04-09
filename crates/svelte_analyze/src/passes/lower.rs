@@ -215,7 +215,10 @@ fn lower_nodes(
         if !blockers.is_empty() {
             blockers.sort_unstable();
             blockers.dedup();
-            data.template.fragments.fragment_blockers.insert(key, blockers);
+            data.template
+                .fragments
+                .fragment_blockers
+                .insert(key, blockers);
         }
     }
 
@@ -280,7 +283,10 @@ fn lower_nodes(
                     })
                     .collect();
                 if !snippets.is_empty() {
-                    data.template.snippets.component_snippets.insert(cn.id, snippets);
+                    data.template
+                        .snippets
+                        .component_snippets
+                        .insert(cn.id, snippets);
                 }
 
                 // Partition children by slot="name" attribute
@@ -312,18 +318,17 @@ fn lower_nodes(
                     let frag_key = FragmentKey::NamedSlot(cn.id, slot_el_id);
                     // <svelte:fragment slot="name"> wraps the real slot content — lower
                     // its children instead of the wrapper element itself.
-                    let slot_nodes: SmallVec<[NodeId; 4]> =
-                        match store.get(child_id) {
-                            Node::Element(el) if el.name == SVELTE_FRAGMENT => {
-                                data.elements.flags.svelte_fragment_slots.insert(slot_el_id);
-                                el.fragment.nodes.iter().copied().collect()
-                            }
-                            _ => {
-                                let mut v = SmallVec::new();
-                                v.push(child_id);
-                                v
-                            }
-                        };
+                    let slot_nodes: SmallVec<[NodeId; 4]> = match store.get(child_id) {
+                        Node::Element(el) if el.name == SVELTE_FRAGMENT => {
+                            data.elements.flags.svelte_fragment_slots.insert(slot_el_id);
+                            el.fragment.nodes.iter().copied().collect()
+                        }
+                        _ => {
+                            let mut v = SmallVec::new();
+                            v.push(child_id);
+                            v
+                        }
+                    };
                     lower_nodes(
                         &slot_nodes,
                         frag_key,
@@ -338,7 +343,8 @@ fn lower_nodes(
                     slot_mappings.push((slot_el_id, frag_key));
                 }
                 if !slot_mappings.is_empty() {
-                    data.template.snippets
+                    data.template
+                        .snippets
                         .component_named_slots
                         .insert(cn.id, slot_mappings);
                 }

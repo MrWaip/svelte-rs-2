@@ -45,7 +45,9 @@ fn build_event_apply_wrapper<'a>(
     }
 
     let (line, col) = crate::script::compute_line_col(ctx.state.source, expr_offset);
-    let location = ctx.b.array_expr([ctx.b.num_expr(line as f64), ctx.b.num_expr(col as f64)]);
+    let location = ctx
+        .b
+        .array_expr([ctx.b.num_expr(line as f64), ctx.b.num_expr(col as f64)]);
     let mut args: Vec<Arg<'a, '_>> = vec![
         Arg::Expr(ctx.b.thunk(handler)),
         Arg::Expr(ctx.b.this_expr()),
