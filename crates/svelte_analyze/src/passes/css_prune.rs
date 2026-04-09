@@ -10,8 +10,8 @@ use svelte_span::GetSpan;
 use svelte_ast::NodeId;
 
 use crate::types::data::{ElementFacts, TemplateElementIndex};
-use crate::AnalysisData;
 use crate::types::node_table::NodeBitSet;
+use crate::AnalysisData;
 
 // ---------------------------------------------------------------------------
 // Public entry point

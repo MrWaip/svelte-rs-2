@@ -162,12 +162,16 @@ impl AnalyzeTemplateWalker<'_, '_> {
                         .stmt_handle(block.expression_span.start)
                         .and_then(|handle| self.parsed.stmt(handle))
                     {
-                        self.data.template.template_semantics.snippet_stmt_handles.insert(
-                            block.id,
-                            self.parsed
-                                .stmt_handle(block.expression_span.start)
-                                .unwrap(),
-                        );
+                        self.data
+                            .template
+                            .template_semantics
+                            .snippet_stmt_handles
+                            .insert(
+                                block.id,
+                                self.parsed
+                                    .stmt_handle(block.expression_span.start)
+                                    .unwrap(),
+                            );
                         ctx.visit_js_statement(stmt);
                         // The arrow visitor created its own scope — read it back
                         if let Some(arrow) = extract_arrow_from_const(stmt) {

@@ -53,11 +53,15 @@ impl<'s> BindSemanticsVisitor<'s> {
     fn classify_bind(dir: &BindDirective, data: &mut AnalysisData) {
         if let Some(sym_id) = data.bind_target_symbol(dir.id) {
             if Self::is_mutable_rune(sym_id, data) {
-                data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
+                data.template
+                    .bind_semantics
+                    .mutable_rune_targets
+                    .insert(dir.id);
             }
             if data.script.blocker_data.has_async {
                 if let Some(idx) = data.script.blocker_data.symbol_blocker(sym_id) {
-                    data.template.bind_semantics
+                    data.template
+                        .bind_semantics
                         .bind_blockers
                         .insert(dir.id, smallvec::smallvec![idx]);
                 }
@@ -68,7 +72,10 @@ impl<'s> BindSemanticsVisitor<'s> {
     fn classify_class(dir: &ClassDirective, data: &mut AnalysisData) {
         if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
         {
-            data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
+            data.template
+                .bind_semantics
+                .mutable_rune_targets
+                .insert(dir.id);
         }
     }
 
@@ -78,7 +85,10 @@ impl<'s> BindSemanticsVisitor<'s> {
         }
         if Self::shorthand_symbol(dir.id, data).is_some_and(|sym| Self::is_mutable_rune(sym, data))
         {
-            data.template.bind_semantics.mutable_rune_targets.insert(dir.id);
+            data.template
+                .bind_semantics
+                .mutable_rune_targets
+                .insert(dir.id);
         }
     }
 }
@@ -137,7 +147,11 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
 
         // Detect bind:group → mark element and find value attribute
         if let Some(bind_group_id) = bind_group_id {
-            ctx.data.template.bind_semantics.has_bind_group.insert(el.id);
+            ctx.data
+                .template
+                .bind_semantics
+                .has_bind_group
+                .insert(el.id);
             if let Some(value_attr_id) = bind_group_value_attr_id {
                 ctx.data
                     .template
@@ -148,7 +162,10 @@ impl<'s> TemplateVisitor for BindSemanticsVisitor<'s> {
 
             let parent_eaches = ctx.data.parent_each_blocks(bind_group_id);
             for each_id in parent_eaches {
-                ctx.data.blocks.each_context.mark_contains_group_binding(each_id);
+                ctx.data
+                    .blocks
+                    .each_context
+                    .mark_contains_group_binding(each_id);
             }
         }
 

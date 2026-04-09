@@ -8,8 +8,8 @@ use svelte_ast::{Attribute, Namespace, NodeId, SVELTE_COMPONENT, SVELTE_SELF};
 use crate::builder::{Arg, AssignLeft, ObjProp};
 use crate::context::Ctx;
 
-use super::expression::{build_attr_concat, get_attr_expr};
 use super::events::{build_event_handler_s5, dev_event_handler};
+use super::expression::{build_attr_concat, get_attr_expr};
 use super::gen_fragment;
 use super::snippet;
 use super::{add_svelte_meta_with_extra, from_namespace, inherited_fragment_namespace};
@@ -49,7 +49,7 @@ pub(crate) fn gen_component<'a>(
     let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
     // LEGACY(svelte4): on:directive events → $$events prop
     let mut events: Vec<(String, NodeId, bool, bool)> = Vec::new(); // (name, attr_id, has_expr, once)
-    // <svelte:component this={expr}>: the 'this' attribute becomes the component thunk
+                                                                    // <svelte:component this={expr}>: the 'this' attribute becomes the component thunk
     let mut svelte_component_this: Option<Expression<'a>> = None;
 
     for (kind, is_dynamic) in prop_infos {
@@ -238,9 +238,7 @@ pub(crate) fn gen_component<'a>(
     // LEGACY(svelte4): emit $$events prop from collected on: directives
     if !events.is_empty() {
         let mut event_groups: Vec<(String, Vec<Expression<'a>>)> = Vec::new();
-        for (name, attr_id, has_expression, has_once_modifier) in events
-            .into_iter()
-        {
+        for (name, attr_id, has_expression, has_once_modifier) in events.into_iter() {
             if !has_expression {
                 // Bubble event (no handler expression) — skip, not supported on components
                 continue;
@@ -249,17 +247,15 @@ pub(crate) fn gen_component<'a>(
             let expr_offset = event_expr_offsets
                 .iter()
                 .find_map(|(id, offset)| (*id == attr_id).then_some(*offset))
-                .unwrap_or_else(|| panic!("missing component event expression span for {:?}", attr_id));
-            let has_call = ctx.attr_expression(attr_id).is_some_and(|info| info.has_call);
+                .unwrap_or_else(|| {
+                    panic!("missing component event expression span for {:?}", attr_id)
+                });
+            let has_call = ctx
+                .attr_expression(attr_id)
+                .is_some_and(|info| info.has_call);
             let handler_expr = get_attr_expr(ctx, attr_id);
-            let handler = build_event_handler_s5(
-                ctx,
-                attr_id,
-                handler_expr,
-                has_call,
-                init,
-                expr_offset,
-            );
+            let handler =
+                build_event_handler_s5(ctx, attr_id, handler_expr, has_call, init, expr_offset);
             let handler = dev_event_handler(ctx, handler, &name, expr_offset);
             let handler = if has_once_modifier {
                 ctx.b.call_expr("$.once", [Arg::Expr(handler)])
@@ -282,7 +278,10 @@ pub(crate) fn gen_component<'a>(
             .map(|(name, handlers)| {
                 let key = ctx.b.alloc_str(&name);
                 if handlers.len() == 1 {
-                    let handler = handlers.into_iter().next().expect("single event handler missing");
+                    let handler = handlers
+                        .into_iter()
+                        .next()
+                        .expect("single event handler missing");
                     if matches!(&handler, Expression::FunctionExpression(_)) {
                         return ObjProp::Method(key, handler);
                     }
@@ -449,12 +448,10 @@ pub(crate) fn gen_component<'a>(
                     component_call,
                     cn.span.start,
                     "component",
-                    Some(
-                        ctx.b.object_expr([ObjProp::KeyValue(
-                            "componentTag",
-                            ctx.b.str_expr(&cn_name),
-                        )]),
-                    ),
+                    Some(ctx.b.object_expr([ObjProp::KeyValue(
+                        "componentTag",
+                        ctx.b.str_expr(&cn_name),
+                    )])),
                 )
             } else {
                 ctx.b.expr_stmt(component_call)
@@ -468,12 +465,10 @@ pub(crate) fn gen_component<'a>(
                     component_call,
                     cn.span.start,
                     "component",
-                    Some(
-                        ctx.b.object_expr([ObjProp::KeyValue(
-                            "componentTag",
-                            ctx.b.str_expr(&cn_name),
-                        )]),
-                    ),
+                    Some(ctx.b.object_expr([ObjProp::KeyValue(
+                        "componentTag",
+                        ctx.b.str_expr(&cn_name),
+                    )])),
                 )
             } else {
                 ctx.b.expr_stmt(component_call)
@@ -506,12 +501,10 @@ pub(crate) fn gen_component<'a>(
                     final_expr,
                     cn.span.start,
                     "component",
-                    Some(
-                        ctx.b.object_expr([ObjProp::KeyValue(
-                            "componentTag",
-                            ctx.b.str_expr(&cn_name),
-                        )]),
-                    ),
+                    Some(ctx.b.object_expr([ObjProp::KeyValue(
+                        "componentTag",
+                        ctx.b.str_expr(&cn_name),
+                    )])),
                 )
             } else {
                 ctx.b.expr_stmt(final_expr)
@@ -525,12 +518,10 @@ pub(crate) fn gen_component<'a>(
                     final_expr,
                     cn.span.start,
                     "component",
-                    Some(
-                        ctx.b.object_expr([ObjProp::KeyValue(
-                            "componentTag",
-                            ctx.b.str_expr(&cn_name),
-                        )]),
-                    ),
+                    Some(ctx.b.object_expr([ObjProp::KeyValue(
+                        "componentTag",
+                        ctx.b.str_expr(&cn_name),
+                    )])),
                 )
             } else {
                 ctx.b.expr_stmt(final_expr)
@@ -543,12 +534,10 @@ pub(crate) fn gen_component<'a>(
                     final_expr,
                     cn.span.start,
                     "component",
-                    Some(
-                        ctx.b.object_expr([ObjProp::KeyValue(
-                            "componentTag",
-                            ctx.b.str_expr(&cn_name),
-                        )]),
-                    ),
+                    Some(ctx.b.object_expr([ObjProp::KeyValue(
+                        "componentTag",
+                        ctx.b.str_expr(&cn_name),
+                    )])),
                 )
             } else {
                 ctx.b.expr_stmt(final_expr)

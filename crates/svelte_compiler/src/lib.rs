@@ -56,10 +56,7 @@ fn resolved_runes_option(component: &svelte_ast::Component, options: &CompileOpt
         .unwrap_or(true)
 }
 
-fn resolved_accessors_option(
-    component: &svelte_ast::Component,
-    options: &CompileOptions,
-) -> bool {
+fn resolved_accessors_option(component: &svelte_ast::Component, options: &CompileOptions) -> bool {
     component
         .options
         .as_ref()
@@ -67,10 +64,7 @@ fn resolved_accessors_option(
         .unwrap_or(options.accessors)
 }
 
-fn resolved_immutable_option(
-    component: &svelte_ast::Component,
-    options: &CompileOptions,
-) -> bool {
+fn resolved_immutable_option(component: &svelte_ast::Component, options: &CompileOptions) -> bool {
     component
         .options
         .as_ref()

@@ -114,9 +114,9 @@ pub(crate) fn gen_svelte_element<'a>(
     // Generate children
     let child_body = gen_fragment(ctx, FragmentKey::SvelteElementBody(id));
 
-    let is_svg = ctx.b.bool_expr(
-        ctx.query.view.namespace(id) == Some(NamespaceKind::Svg),
-    );
+    let is_svg = ctx
+        .b
+        .bool_expr(ctx.query.view.namespace(id) == Some(NamespaceKind::Svg));
 
     // Assemble inner body: init + update + after_update + children
     let mut inner = inner_init;
@@ -175,10 +175,10 @@ pub(crate) fn gen_svelte_element<'a>(
             ));
             if callback.is_some() {
                 let void_thunk = ctx.b.thunk(ctx.b.clone_expr(&tag_expr));
-                dev_stmts.push(ctx.b.call_stmt(
-                    "$.validate_void_dynamic_element",
-                    [Arg::Expr(void_thunk)],
-                ));
+                dev_stmts.push(
+                    ctx.b
+                        .call_stmt("$.validate_void_dynamic_element", [Arg::Expr(void_thunk)]),
+                );
             }
             Some((line as f64, col as f64))
         } else {
@@ -207,7 +207,9 @@ pub(crate) fn gen_svelte_element<'a>(
             }
         }
         if let Some((line, col)) = dev_loc {
-            let loc = ctx.b.array_expr([ctx.b.num_expr(line), ctx.b.num_expr(col)]);
+            let loc = ctx
+                .b
+                .array_expr([ctx.b.num_expr(line), ctx.b.num_expr(col)]);
             args.push(Arg::Expr(loc));
         }
 

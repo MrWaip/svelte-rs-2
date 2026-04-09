@@ -14,6 +14,21 @@ use super::{
 };
 
 impl<'b, 'a> ScriptTransformer<'b, 'a> {
+    fn state_destructure_dev_label(
+        pattern: &oxc_ast::ast::BindingPattern<'a>,
+        rune_kind: RuneKind,
+    ) -> Option<&'static str> {
+        if !matches!(rune_kind, RuneKind::State | RuneKind::StateRaw) {
+            return None;
+        }
+
+        match pattern {
+            oxc_ast::ast::BindingPattern::ArrayPattern(_) => Some("[$state iterable]"),
+            oxc_ast::ast::BindingPattern::ObjectPattern(_) => Some("[$state object]"),
+            _ => None,
+        }
+    }
+
     fn rewrite_destructured_rune_decls(
         &mut self,
         stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>,
@@ -47,7 +62,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
             let stmt = stmts.remove(i);
             let Statement::VariableDeclaration(mut decl) = stmt else {
-                unreachable!()
+                unreachable!();
             };
             let decl_kind = decl.kind;
             let decl_span_start = decl.span.start;
@@ -243,6 +258,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
             access_root,
             RuneKind::Derived,
             decl_kind,
+            None,
             &mut declarators,
         );
 
@@ -344,7 +360,14 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
 
         // Walk pattern and generate remaining declarators
         let tmp_expr = self.b.rid_expr(tmp_name_str);
-        self.gen_destructure_declarators(pattern, tmp_expr, rune_kind, decl_kind, &mut declarators);
+        self.gen_destructure_declarators(
+            pattern,
+            tmp_expr,
+            rune_kind,
+            decl_kind,
+            Self::state_destructure_dev_label(pattern, rune_kind),
+            &mut declarators,
+        );
 
         let decl = self.b.ast.variable_declaration(
             oxc_span::SPAN,
@@ -362,6 +385,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
         accessor: Expression<'a>,
         rune_kind: RuneKind,
         decl_kind: oxc_ast::ast::VariableDeclarationKind,
+        dev_label: Option<&'static str>,
         declarators: &mut Vec<oxc_ast::ast::VariableDeclarator<'a>>,
     ) {
         match pattern {
@@ -427,6 +451,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         member,
                         rune_kind,
                         decl_kind,
+                        dev_label,
                         declarators,
                     );
                 }
@@ -445,6 +470,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         exclude_expr,
                         rune_kind,
                         decl_kind,
+                        dev_label,
                         declarators,
                     );
                 }
@@ -465,13 +491,11 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     .b
                     .arrow_expr(self.b.no_params(), [self.b.expr_stmt(to_array_call)]);
                 let derived_call = self.b.call_expr("$.derived", [Arg::Expr(thunk)]);
-                let derived_call = if self.dev {
+                let derived_call = if self.dev && dev_label.is_some() {
+                    let label = dev_label.unwrap();
                     self.b.call_expr(
                         "$.tag",
-                        [
-                            Arg::Expr(derived_call),
-                            Arg::Str("[$state iterable]".to_string()),
-                        ],
+                        [Arg::Expr(derived_call), Arg::Str(label.to_string())],
                     )
                 } else {
                     derived_call
@@ -503,6 +527,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         elem_access,
                         rune_kind,
                         decl_kind,
+                        dev_label,
                         declarators,
                     );
                 }
@@ -525,6 +550,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                         slice_call,
                         rune_kind,
                         decl_kind,
+                        dev_label,
                         declarators,
                     );
                 }
@@ -540,6 +566,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                     fallback,
                     rune_kind,
                     decl_kind,
+                    dev_label,
                     declarators,
                 );
             }
@@ -671,6 +698,7 @@ impl<'b, 'a> ScriptTransformer<'b, 'a> {
                 access_root,
                 RuneKind::Derived,
                 decl_kind,
+                None,
                 &mut declarators,
             );
             let decl = self.b.ast.variable_declaration(

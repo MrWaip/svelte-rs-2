@@ -73,7 +73,11 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
                     .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, val_span.start) {
-                ctx.data.template.await_bindings.values.insert(block.id, info);
+                ctx.data
+                    .template
+                    .await_bindings
+                    .values
+                    .insert(block.id, info);
             }
         }
         if let Some(err_span) = block.error_span {
@@ -85,7 +89,11 @@ impl crate::walker::TemplateVisitor for BindingPreparer {
                     .insert(block.id, handle);
             }
             if let Some(info) = extract_await_binding_info(parsed, err_span.start) {
-                ctx.data.template.await_bindings.errors.insert(block.id, info);
+                ctx.data
+                    .template
+                    .await_bindings
+                    .errors
+                    .insert(block.id, info);
             }
         }
     }

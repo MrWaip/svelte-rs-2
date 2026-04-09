@@ -10,18 +10,17 @@ pub(crate) mod walker;
 
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockerData,
-    BlockAnalysis, ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo,
+    AnalysisData, AsyncStmtMeta, AttrIndex, AwaitBindingData, AwaitBindingInfo, BlockAnalysis,
+    BlockerData, ClassDirectiveInfo, CodegenView, ComponentBindMode, ComponentPropInfo,
     ComponentPropKind, ConstTagData, ContentStrategy, CssAnalysis, DebugTagData, DestructureKind,
-    DirectiveModifierFlags, EachContextIndex, ElementFacts, ElementFactsEntry, ElementFlags,
-    ElementAnalysis, EventHandlerMode, EventModifier, ExprDeps, ExprHandle,
-    ExprSite, ExpressionInfo, ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry,
-    FragmentItem, FragmentKey, FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart,
-    NamespaceKind, OutputPlanData, ParentKind, ParentRef, ParserResult, PickledAwaitOffsets,
-    PropAnalysis, PropsAnalysis, ProxyStateInits, RenderTagCalleeMode, RenderTagPlan,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimePlan, ScriptAnalysis,
-    ScriptRuneCalls, SnippetData, StmtHandle, TemplateAnalysis, TemplateElementEntry,
-    TemplateElementIndex, TemplateTopology,
+    DirectiveModifierFlags, EachContextIndex, ElementAnalysis, ElementFacts, ElementFactsEntry,
+    ElementFlags, EventHandlerMode, EventModifier, ExprDeps, ExprHandle, ExprSite, ExpressionInfo,
+    ExpressionKind, FragmentData, FragmentFacts, FragmentFactsEntry, FragmentItem, FragmentKey,
+    FragmentKeyExt, IgnoreData, LoweredFragment, LoweredTextPart, NamespaceKind, OutputPlanData,
+    ParentKind, ParentRef, ParserResult, PickledAwaitOffsets, PropAnalysis, PropsAnalysis,
+    ProxyStateInits, RenderTagCalleeMode, RenderTagPlan, RichContentFacts, RichContentFactsEntry,
+    RichContentParentKind, RuntimePlan, ScriptAnalysis, ScriptRuneCalls, SnippetData, StmtHandle,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology,
 };
 pub use types::script::{
     DeclarationInfo, DeclarationKind, ExportInfo, PropInfo, PropsDeclaration, RuneKind, ScriptInfo,
@@ -140,7 +139,8 @@ pub fn analyze_module(
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
 
-            let mut script_info = utils::script_info::extract_script_info(&program, 0, source, true);
+            let mut script_info =
+                utils::script_info::extract_script_info(&program, 0, source, true);
             utils::script_info::enrich_from_component_scoping(&scoping, &mut script_info);
 
             data.scoping = scoping;
@@ -158,13 +158,12 @@ fn build_runtime_plan(data: &AnalysisData, dev: bool) -> RuntimePlan {
     let has_exports = !data.script.exports.is_empty();
     let has_bindable = data.script.props.as_ref().is_some_and(|p| p.has_bindable);
     let has_stores = data.scoping.has_stores();
-    let has_ce_props =
-        data.output.custom_element
-            && data
-                .script
-                .props
-                .as_ref()
-                .is_some_and(|p| !p.props.is_empty());
+    let has_ce_props = data.output.custom_element
+        && data
+            .script
+            .props
+            .as_ref()
+            .is_some_and(|p| !p.props.is_empty());
     let needs_push = has_bindable
         || has_exports
         || has_ce_props

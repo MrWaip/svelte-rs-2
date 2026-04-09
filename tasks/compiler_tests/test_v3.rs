@@ -235,7 +235,6 @@ fn simple() {
     assert_compiler("hello_state");
 }
 
-
 #[rstest]
 fn single_text_node() {
     assert_compiler("single_text_node");
@@ -2714,6 +2713,11 @@ fn snippet_computed_key_destructure() {
 #[rstest]
 fn tag_state_destructured_array() {
     assert_compiler("tag_state_destructured_array");
+}
+
+#[rstest]
+fn tag_state_destructured_object() {
+    assert_compiler("tag_state_destructured_object");
 }
 
 #[rstest]

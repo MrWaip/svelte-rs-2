@@ -145,11 +145,10 @@ pub fn generate<'a>(
         );
     }
     if runtime.needs_push {
-        let mut push_args: Vec<Arg<'_, '_>> =
-            vec![
-                Arg::Ident("$$props"),
-                Arg::Expr(ctx.b.bool_expr(ctx.query.runes())),
-            ];
+        let mut push_args: Vec<Arg<'_, '_>> = vec![
+            Arg::Ident("$$props"),
+            Arg::Expr(ctx.b.bool_expr(ctx.query.runes())),
+        ];
         if ctx.state.dev {
             push_args.push(Arg::Ident(ctx.state.name));
         }

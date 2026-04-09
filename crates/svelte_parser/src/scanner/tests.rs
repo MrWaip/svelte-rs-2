@@ -97,7 +97,10 @@ fn interpolation_with_nested_template_literal() {
 
     assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
     if let TokenType::Interpolation(ref et) = tokens[0].token_type {
-        assert_eq!(et.expression_span.source_text(source), "`x ${foo({ bar: `}` })} y`");
+        assert_eq!(
+            et.expression_span.source_text(source),
+            "`x ${foo({ bar: `}` })} y`"
+        );
     }
     assert!(tokens[1].token_type == TokenType::EOF);
 }
@@ -221,7 +224,9 @@ fn assert_attributes(
                     })
                     .collect(),
             },
-            Attribute::ExpressionTag(value) => value.expression_span.source_text(source).to_string(),
+            Attribute::ExpressionTag(value) => {
+                value.expression_span.source_text(source).to_string()
+            }
             Attribute::ClassDirective(cd) => cd.expression_span.source_text(source).to_string(),
             Attribute::StyleDirective(sd) => match sd.value {
                 AttributeValue::String(span) => span.source_text(source).to_string(),
@@ -245,7 +250,9 @@ fn assert_attributes(
             Attribute::BindDirective(bd) => bd.expression_span.source_text(source).to_string(),
             Attribute::UseDirective(ud) => ud.expression_span.source_text(source).to_string(),
             Attribute::OnDirectiveLegacy(od) => od.expression_span.source_text(source).to_string(),
-            Attribute::TransitionDirective(td) => td.expression_span.source_text(source).to_string(),
+            Attribute::TransitionDirective(td) => {
+                td.expression_span.source_text(source).to_string()
+            }
             Attribute::AnimateDirective(ad) => ad.expression_span.source_text(source).to_string(),
             Attribute::AttachTag(at) => at.expression_span.source_text(source).to_string(),
         };
@@ -484,9 +491,15 @@ fn each_block_with_index_and_key() {
         _ => panic!("Expected StartEachTag"),
     };
     assert_eq!(tag.collection_span.source_text(source), "items");
-    assert_eq!(tag.context_span.as_ref().unwrap().source_text(source), "item");
+    assert_eq!(
+        tag.context_span.as_ref().unwrap().source_text(source),
+        "item"
+    );
     assert_eq!(tag.index_span.as_ref().unwrap().source_text(source), "i");
-    assert_eq!(tag.key_span.as_ref().unwrap().source_text(source), "item.id");
+    assert_eq!(
+        tag.key_span.as_ref().unwrap().source_text(source),
+        "item.id"
+    );
 }
 
 #[test]
@@ -628,7 +641,10 @@ fn snippet_tag_tokens() {
     let source = "{#snippet foo(a, b)}content{/snippet}";
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
-    assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
+    assert!(matches!(
+        tokens[0].token_type,
+        TokenType::StartSnippetTag(_)
+    ));
     if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
         assert_eq!(st.expression_span.source_text(source), "foo(a, b)");
     }
@@ -641,7 +657,10 @@ fn snippet_tag_params_with_string_paren() {
     let source = r#"{#snippet foo(a = ")")}content{/snippet}"#;
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
-    assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
+    assert!(matches!(
+        tokens[0].token_type,
+        TokenType::StartSnippetTag(_)
+    ));
     if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
         assert_eq!(st.expression_span.source_text(source), r#"foo(a = ")")"#);
     }
@@ -654,7 +673,10 @@ fn snippet_tag_params_with_template_literal() {
     let source = "{#snippet foo(a = `)`)}content{/snippet}";
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().0;
-    assert!(matches!(tokens[0].token_type, TokenType::StartSnippetTag(_)));
+    assert!(matches!(
+        tokens[0].token_type,
+        TokenType::StartSnippetTag(_)
+    ));
     if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
         assert_eq!(st.expression_span.source_text(source), "foo(a = `)`)");
     }
@@ -691,7 +713,10 @@ fn html_tag_with_nested_template_literal() {
     let tokens = scanner.scan_tokens().0;
     assert!(matches!(tokens[0].token_type, TokenType::HtmlTag(_)));
     if let TokenType::HtmlTag(ref ht) = tokens[0].token_type {
-        assert_eq!(ht.expression_span.source_text(source), "`a ${foo({ bar: `}` })}`");
+        assert_eq!(
+            ht.expression_span.source_text(source),
+            "`a ${foo({ bar: `}` })}`"
+        );
     }
     assert!(tokens[1].token_type == TokenType::EOF);
 }
@@ -705,7 +730,9 @@ fn await_tag_with_regex_literal() {
     if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
         assert_eq!(tag.expression_span.source_text(source), "/}/.test(x)");
         assert_eq!(
-            tag.value_span.expect("expected value binding").source_text(source),
+            tag.value_span
+                .expect("expected value binding")
+                .source_text(source),
             "value"
         );
     }
@@ -721,7 +748,9 @@ fn await_tag_with_block_comment() {
     if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
         assert_eq!(tag.expression_span.source_text(source), "a /* } */ + b");
         assert_eq!(
-            tag.value_span.expect("expected value binding").source_text(source),
+            tag.value_span
+                .expect("expected value binding")
+                .source_text(source),
             "value"
         );
     }
@@ -740,7 +769,9 @@ fn await_tag_with_nested_template_literal() {
             "`x ${foo({ bar: `}` })}`"
         );
         assert_eq!(
-            tag.value_span.expect("expected value binding").source_text(source),
+            tag.value_span
+                .expect("expected value binding")
+                .source_text(source),
             "value"
         );
     }
@@ -754,9 +785,14 @@ fn await_tag_then_inside_string_does_not_terminate_expression() {
     let tokens = scanner.scan_tokens().0;
     assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
     if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
-        assert_eq!(tag.expression_span.source_text(source), r#"foo(" then ") + bar"#);
         assert_eq!(
-            tag.value_span.expect("expected value binding").source_text(source),
+            tag.expression_span.source_text(source),
+            r#"foo(" then ") + bar"#
+        );
+        assert_eq!(
+            tag.value_span
+                .expect("expected value binding")
+                .source_text(source),
             "value"
         );
     }
@@ -772,7 +808,9 @@ fn await_tag_then_binding_with_string_containing_closing_brace() {
     if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
         assert_eq!(tag.expression_span.source_text(source), "promise");
         assert_eq!(
-            tag.value_span.expect("expected value binding").source_text(source),
+            tag.value_span
+                .expect("expected value binding")
+                .source_text(source),
             r#"{ value = "}" }"#
         );
     }
@@ -788,7 +826,9 @@ fn await_tag_catch_binding_with_template_literal() {
     if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
         assert_eq!(tag.expression_span.source_text(source), "promise");
         assert_eq!(
-            tag.error_span.expect("expected error binding").source_text(source),
+            tag.error_span
+                .expect("expected error binding")
+                .source_text(source),
             "{ value = `}` }"
         );
     }

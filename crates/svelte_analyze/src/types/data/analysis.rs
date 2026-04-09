@@ -1,6 +1,6 @@
 use super::*;
-use svelte_component_semantics::SymbolFlags;
 use svelte_ast::{Attribute, BindDirective, ExpressionAttribute, Namespace, StringAttribute};
+use svelte_component_semantics::SymbolFlags;
 
 pub struct ScriptAnalysis {
     pub info: Option<ScriptInfo>,
@@ -234,7 +234,9 @@ impl AnalysisData {
         key: &FragmentKey,
         parent: RichContentParentKind,
     ) -> bool {
-        self.template.rich_content_facts.has_rich_content(key, parent)
+        self.template
+            .rich_content_facts
+            .has_rich_content(key, parent)
     }
     pub fn element_facts(&self, id: NodeId) -> Option<&ElementFactsEntry> {
         self.elements.facts.entry(id)
@@ -576,14 +578,21 @@ impl AnalysisData {
                         .find_binding(self.scoping.root_scope_id(), name.as_str()),
                     _ => None,
                 })
-                .is_some_and(|sym| self.scoping.symbol_flags(sym).contains(SymbolFlags::Function))
+                .is_some_and(|sym| {
+                    self.scoping
+                        .symbol_flags(sym)
+                        .contains(SymbolFlags::Function)
+                })
         })
     }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.blocks.render_tag_plans.get(id)
     }
     pub fn const_tag_syms(&self, id: NodeId) -> Option<&[SymbolId]> {
-        self.template.const_tags.syms(id).map(|syms| syms.as_slice())
+        self.template
+            .const_tags
+            .syms(id)
+            .map(|syms| syms.as_slice())
     }
     pub fn expr_deps(&self, site: ExprSite) -> Option<ExprDeps<'_>> {
         match site {

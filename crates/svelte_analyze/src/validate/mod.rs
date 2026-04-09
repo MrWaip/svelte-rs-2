@@ -339,7 +339,12 @@ fn validate_custom_element_props(data: &AnalysisData, diags: &mut Vec<Diagnostic
     }
 
     // Explicit `customElement.props` config suppresses the warning.
-    if data.script.ce_config.as_ref().is_some_and(|c| !c.props.is_empty()) {
+    if data
+        .script
+        .ce_config
+        .as_ref()
+        .is_some_and(|c| !c.props.is_empty())
+    {
         return;
     }
 

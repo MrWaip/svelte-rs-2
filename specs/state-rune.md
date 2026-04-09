@@ -1,15 +1,18 @@
 # $state rune
 
 ## Current state
-- **Working**: 40/43 use cases
+- **Working**: 41/43 use cases
 - **Bugs found**: 3 codegen bugs discovered → all 3 FIXED
+- **Completed (2026-04-09)**:
+  - #32 Dev-mode object-pattern destructuring now threads the top-level `$state` label into nested array carriers, matching `[$state object]`
+- **Missing**: #41 `$.deep_read_state()` (legacy, Tier 7)
+- **Non-goals**: legacy `$:` deep-read support, analyzer/parser changes, unrelated destructuring cleanup
 - **Completed (2026-04-02)**:
   - #37 `state_referenced_locally` warning for `$state`/`$state.raw` reads
   - #38 `state_invalid_export` error for exported reassigned state
   - #39 Dev-mode `$.assign_*` transforms for non-statement member assignments
   - #40 `$.safe_get` for `var`-declared state
-- **Missing**: #41 `$.deep_read_state()` (legacy, Tier 7); #32 ObjectPattern dev labels
-- Last updated: 2026-04-02
+- Last updated: 2026-04-09
 
 ## Source
 Audit of existing implementation
@@ -47,7 +50,7 @@ Audit of existing implementation
 - [x] State in render tag context (covered, test: render_tag_dynamic_state)
 - [x] `$.tag(source, label)` in dev mode for `$.state()` (covered, in traverse.rs:655-663)
 - [x] `$.tag_proxy(proxy, label)` in dev mode for proxied props (implemented in runes.rs, state.rs, props.rs)
-- [ ] `$.tag` label for destructured state — ArrayPattern `[$state iterable]` is implemented, but ObjectPattern `[$state object]` still requires intermediate `$.derived` restructuring
+- [x] `$.tag` label for destructured state — ArrayPattern uses `[$state iterable]`, and nested array carriers under top-level ObjectPattern use `[$state object]` (covered, test: tag_state_destructured_object)
 - [x] `$state.frozen` → error: renamed to `$state.raw` (validate/runes.rs)
 - [x] `$state.is` → error: rune removed (validate/runes.rs)
 - [x] Placement validation: only in variable decl, class prop, constructor (validate/runes.rs)
@@ -83,6 +86,12 @@ Audit of existing implementation
   - `crates/svelte_codegen_client/src/script/traverse.rs` — variable declaration transforms
   - `crates/svelte_transform/src/rune_refs.rs` — should_proxy(), runtime helper builders
 
+## Tasks
+
+- [x] Codegen: thread the top-level `$state` destructure label into nested dev-mode array carriers for object patterns
+- [x] Tests: add focused e2e coverage for object destructured `$state` dev labels
+- [ ] Legacy follow-up: keep `$.deep_read_state()` isolated as out-of-scope Tier 7 work
+
 ## Test cases
 
 - [x] `hello_state`
@@ -106,6 +115,7 @@ Audit of existing implementation
 - [x] `render_tag_dynamic_state`
 - [x] `state_assign_dev`
 - [x] `state_var_safe_get`
+- [x] `tag_state_destructured_object`
 - [x] `state_constructor_read_v`
 - [x] `state_constructor_read_derived`
 - [x] `validate_state_referenced_locally_basic`
