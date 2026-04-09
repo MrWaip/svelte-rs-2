@@ -2500,7 +2500,6 @@ fn validate_title_invalid_content() {
 }
 
 #[test]
-#[ignore = "missing: duplicate transition directive validation (analyze)"]
 fn validate_transition_duplicate_transition() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2513,7 +2512,6 @@ fn validate_transition_duplicate_transition() {
 }
 
 #[test]
-#[ignore = "missing: duplicate intro transition validation (analyze)"]
 fn validate_transition_duplicate_in() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2526,7 +2524,6 @@ fn validate_transition_duplicate_in() {
 }
 
 #[test]
-#[ignore = "missing: duplicate outro transition validation (analyze)"]
 fn validate_transition_duplicate_out() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2539,7 +2536,6 @@ fn validate_transition_duplicate_out() {
 }
 
 #[test]
-#[ignore = "missing: transition plus in conflict validation (analyze)"]
 fn validate_transition_conflict_in() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2552,7 +2548,6 @@ fn validate_transition_conflict_in() {
 }
 
 #[test]
-#[ignore = "missing: transition plus out conflict validation (analyze)"]
 fn validate_transition_conflict_out() {
     let diags = analyze_with_diags(
         r#"<script>
@@ -2581,7 +2576,6 @@ fn validate_use_directive_illegal_await_expression() {
 }
 
 #[test]
-#[ignore = "missing: await expressions in transition directive values (analyze)"]
 fn validate_transition_illegal_await_expression() {
     let diags = analyze_with_diags(
         r#"<script>
