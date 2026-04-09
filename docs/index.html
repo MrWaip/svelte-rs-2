@@ -430,10 +430,18 @@
                 monaco.editor.setModelMarkers(model, owner, markers);
             }
 
+            function formatCssForDisplay(css) {
+                if (!css) return css;
+
+                return (compiler ? compiler.format_css(css) : css)
+                    .replace(/\/\*[\s\S]*?\*\//g, "")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim();
+            }
+
             function joinJsCss(js, css) {
                 if (!css) return js;
-                const normalizedCss = compiler ? compiler.format_css(css) : css;
-                return js + "\n\n/* ---- CSS ---- */\n" + normalizedCss;
+                return js + "\n\n/* ---- CSS ---- */\n" + formatCssForDisplay(css);
             }
 
             function compileRust() {
