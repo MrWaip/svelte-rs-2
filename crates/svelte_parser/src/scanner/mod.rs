@@ -24,6 +24,26 @@ pub struct Scanner<'a> {
     current: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsExprState {
+    ExpectOperand,
+    ExpectOperator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsScanTerminator {
+    SvelteBrace,
+    MatchingParen,
+    TemplateExpression,
+    EachContext,
+    AwaitBinding,
+}
+
+struct JsScanResult {
+    end: Option<usize>,
+    await_clause: Option<&'static str>,
+}
+
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Scanner<'a> {
         Scanner {
@@ -152,6 +172,15 @@ impl<'a> Scanner<'a> {
         Span::new(start as u32, end as u32)
     }
 
+    fn trimmed_span(&self, start: usize, end: usize) -> Span {
+        let raw = self.slice_source(start, end);
+        let trim_start = raw.len() - raw.trim_start().len();
+        let trim_end = raw.len() - raw.trim_end().len();
+        let span_start = start + trim_start;
+        let span_end = end.saturating_sub(trim_end);
+        Span::new(span_start as u32, span_end as u32)
+    }
+
     fn attribute_identifier(&mut self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {
         let start = self.current;
 
@@ -229,6 +258,20 @@ impl<'a> Scanner<'a> {
             Some(b as char)
         } else {
             self.source[self.current..].chars().next()
+        }
+    }
+
+    fn peek_next(&self) -> Option<char> {
+        let current = self.peek()?;
+        let next = self.current + current.len_utf8();
+        if next >= self.bytes.len() {
+            return None;
+        }
+        let b = self.bytes[next];
+        if b < 0x80 {
+            Some(b as char)
+        } else {
+            self.source[next..].chars().next()
         }
     }
 
@@ -830,59 +873,18 @@ impl<'a> Scanner<'a> {
     }
 
     fn collect_js_expression(&mut self) -> Result<Span, Diagnostic> {
-        let mut stack: Vec<bool> = Vec::with_capacity(4);
         let start = self.current;
 
-        while !self.is_at_end() {
-            let char = self.advance();
-
-            if char == '\n' {
-                continue;
-            }
-
-            if char == '\'' || char == '"' || char == '`' {
-                self.skip_js_string(char)?;
-                continue;
-            }
-
-            if char == '{' {
-                stack.push(true);
-                continue;
-            }
-
-            if char == '}' && stack.pop().is_none() {
-                let raw = if self.current - start > 2 {
-                    self.slice_source(start, self.prev)
-                } else {
-                    ""
-                };
-
-                let trim_start = raw.len() - raw.trim_start().len();
-                let trim_end = raw.len() - raw.trim_end().len();
-                let span_start = start + trim_start;
-                let span_end = self.prev - trim_end;
-
-                return Ok(Span::new(span_start as u32, span_end as u32));
+        match self.scan_js_pattern(JsScanTerminator::SvelteBrace)?.end {
+            Some(end) => Ok(self.trimmed_span(start, end)),
+            None => {
+                self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+                    start as u32,
+                    self.current as u32,
+                )));
+                Ok(self.trimmed_span(start, self.current))
             }
         }
-
-        // EOF — return partial expression with recovery
-        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
-            start as u32,
-            self.current as u32,
-        )));
-
-        let raw = self.slice_source(start, self.current);
-        let trim_start = raw.len() - raw.trim_start().len();
-        let trim_end = raw.len() - raw.trim_end().len();
-        let span_start = start + trim_start;
-        let span_end = if trim_end <= self.current - start {
-            self.current - trim_end
-        } else {
-            start
-        };
-
-        Ok(Span::new(span_start as u32, span_end as u32))
     }
 
     fn skip_js_string(&mut self, quote: char) -> Result<(), Diagnostic> {
@@ -909,6 +911,457 @@ impl<'a> Scanner<'a> {
         self.advance();
 
         Ok(())
+    }
+
+    fn skip_js_regex(&mut self) -> Result<(), Diagnostic> {
+        let start = self.prev;
+        let mut in_class = false;
+
+        while !self.is_at_end() {
+            let ch = self.advance();
+            match ch {
+                '\\' => {
+                    if !self.is_at_end() {
+                        self.advance();
+                    }
+                }
+                '[' if !in_class => in_class = true,
+                ']' if in_class => in_class = false,
+                '/' if !in_class => {
+                    while self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
+                        self.advance();
+                    }
+                    return Ok(());
+                }
+                '\n' | '\r' => break,
+                _ => {}
+            }
+        }
+
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )));
+        Ok(())
+    }
+
+    fn skip_js_line_comment(&mut self) {
+        while let Some(ch) = self.peek() {
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+            self.advance();
+        }
+    }
+
+    fn skip_js_block_comment(&mut self) {
+        let start = self.current.saturating_sub(2);
+
+        while !self.is_at_end() {
+            if self.peek() == Some('*') && self.peek_next() == Some('/') {
+                self.advance();
+                self.advance();
+                return;
+            }
+            self.advance();
+        }
+
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )));
+    }
+
+    fn skip_js_template(&mut self) -> Result<(), Diagnostic> {
+        let start = self.current.saturating_sub(1);
+
+        while !self.is_at_end() {
+            match self.peek() {
+                Some('`') => {
+                    self.advance();
+                    return Ok(());
+                }
+                Some('\\') => {
+                    self.advance();
+                    if !self.is_at_end() {
+                        self.advance();
+                    }
+                }
+                Some('$') if self.peek_next() == Some('{') => {
+                    self.advance();
+                    self.advance();
+                    if self
+                        .scan_js_pattern(JsScanTerminator::TemplateExpression)?
+                        .end
+                        .is_none()
+                    {
+                        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+                            start as u32,
+                            self.current as u32,
+                        )));
+                        return Ok(());
+                    }
+                }
+                Some(_) => {
+                    self.advance();
+                }
+                None => break,
+            }
+        }
+
+        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+            start as u32,
+            self.current as u32,
+        )));
+        Ok(())
+    }
+
+    fn scan_js_identifier(&mut self) -> &'a str {
+        let start = self.current;
+        while self
+            .peek()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        {
+            self.advance();
+        }
+        self.slice_source(start, self.current)
+    }
+
+    fn scan_js_number(&mut self) {
+        while self.peek().is_some_and(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '.' | 'x' | 'X' | 'o' | 'O' | 'b' | 'B')
+        }) {
+            self.advance();
+        }
+    }
+
+    fn regex_allowed(state: JsExprState) -> bool {
+        matches!(state, JsExprState::ExpectOperand)
+    }
+
+    fn keyword_expects_operand(keyword: &str) -> bool {
+        matches!(
+            keyword,
+            "return"
+                | "throw"
+                | "case"
+                | "delete"
+                | "void"
+                | "typeof"
+                | "instanceof"
+                | "in"
+                | "of"
+                | "new"
+                | "yield"
+                | "await"
+        )
+    }
+
+    fn scan_js_pattern(&mut self, terminator: JsScanTerminator) -> Result<JsScanResult, Diagnostic> {
+        let mut paren_depth = if matches!(terminator, JsScanTerminator::MatchingParen) {
+            1
+        } else {
+            0
+        };
+        let mut bracket_depth = 0u32;
+        let mut brace_depth = 0u32;
+        let mut state = JsExprState::ExpectOperand;
+        let mut result = JsScanResult {
+            end: None,
+            await_clause: None,
+        };
+
+        while !self.is_at_end() {
+            let ch = self.peek().unwrap();
+            match ch {
+                '\'' | '"' => {
+                    self.advance();
+                    self.skip_js_string(ch)?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '`' => {
+                    self.advance();
+                    self.skip_js_template()?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '/' if self.peek_next() == Some('/') => {
+                    self.advance();
+                    self.advance();
+                    self.skip_js_line_comment();
+                }
+                '/' if self.peek_next() == Some('*') => {
+                    self.advance();
+                    self.advance();
+                    self.skip_js_block_comment();
+                }
+                '/' if Self::regex_allowed(state) => {
+                    self.advance();
+                    self.skip_js_regex()?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '(' => {
+                    if matches!(terminator, JsScanTerminator::EachContext)
+                        && paren_depth == 0
+                        && bracket_depth == 0
+                        && brace_depth == 0
+                    {
+                        self.advance();
+                        result.end = Some(self.prev);
+                        return Ok(result);
+                    }
+
+                    self.advance();
+                    paren_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                ')' => {
+                    self.advance();
+                    if paren_depth > 0 {
+                        paren_depth -= 1;
+                        if paren_depth == 0
+                            && matches!(terminator, JsScanTerminator::MatchingParen)
+                        {
+                            result.end = Some(self.prev);
+                            return Ok(result);
+                        }
+                    }
+                    state = JsExprState::ExpectOperator;
+                }
+                '[' => {
+                    self.advance();
+                    bracket_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                ']' => {
+                    self.advance();
+                    bracket_depth = bracket_depth.saturating_sub(1);
+                    state = JsExprState::ExpectOperator;
+                }
+                '{' => {
+                    self.advance();
+                    brace_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                ',' if matches!(terminator, JsScanTerminator::EachContext)
+                    && paren_depth == 0
+                    && bracket_depth == 0
+                    && brace_depth == 0 =>
+                {
+                    self.advance();
+                    result.end = Some(self.prev);
+                    return Ok(result);
+                }
+                '}' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                    let end = self.current;
+                    self.advance();
+                    if matches!(
+                        terminator,
+                        JsScanTerminator::SvelteBrace
+                            | JsScanTerminator::TemplateExpression
+                    ) {
+                        result.end = Some(end);
+                        return Ok(result);
+                    }
+                    if matches!(
+                        terminator,
+                        JsScanTerminator::EachContext | JsScanTerminator::AwaitBinding
+                    ) {
+                        result.end = Some(end);
+                        return Ok(result);
+                    }
+                    state = JsExprState::ExpectOperator;
+                }
+                '}' => {
+                    self.advance();
+                    brace_depth = brace_depth.saturating_sub(1);
+                    state = JsExprState::ExpectOperator;
+                }
+                c if c.is_whitespace() => {
+                    self.advance();
+                }
+                c if c.is_ascii_digit() => {
+                    self.scan_js_number();
+                    state = JsExprState::ExpectOperator;
+                }
+                c if c.is_alphabetic() || c == '_' || c == '$' => {
+                    let ident = self.scan_js_identifier();
+                    state = if Self::keyword_expects_operand(ident) {
+                        JsExprState::ExpectOperand
+                    } else {
+                        JsExprState::ExpectOperator
+                    };
+                }
+                '+' | '-' => {
+                    self.advance();
+                    if self.peek() == Some(ch) {
+                        self.advance();
+                        state = JsExprState::ExpectOperator;
+                    } else {
+                        state = JsExprState::ExpectOperand;
+                    }
+                }
+                '.' => {
+                    self.advance();
+                    state = JsExprState::ExpectOperand;
+                }
+                ',' | ':' | ';' | '?' | '=' | '!' | '~' | '*' | '%' | '^' | '&' | '|' | '<'
+                | '>' => {
+                    self.advance();
+                    state = JsExprState::ExpectOperand;
+                }
+                _ => {
+                    self.advance();
+                    state = JsExprState::ExpectOperator;
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn scan_await_expression(&mut self) -> Result<JsScanResult, Diagnostic> {
+        let mut paren_depth = 0u32;
+        let mut bracket_depth = 0u32;
+        let mut brace_depth = 0u32;
+        let mut state = JsExprState::ExpectOperand;
+        let mut result = JsScanResult {
+            end: None,
+            await_clause: None,
+        };
+
+        while !self.is_at_end() {
+            let ch = self.peek().unwrap();
+            match ch {
+                '\'' | '"' => {
+                    self.advance();
+                    self.skip_js_string(ch)?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '`' => {
+                    self.advance();
+                    self.skip_js_template()?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '/' if self.peek_next() == Some('/') => {
+                    self.advance();
+                    self.advance();
+                    self.skip_js_line_comment();
+                }
+                '/' if self.peek_next() == Some('*') => {
+                    self.advance();
+                    self.advance();
+                    self.skip_js_block_comment();
+                }
+                '/' if Self::regex_allowed(state) => {
+                    self.advance();
+                    self.skip_js_regex()?;
+                    state = JsExprState::ExpectOperator;
+                }
+                '(' => {
+                    self.advance();
+                    paren_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                ')' => {
+                    self.advance();
+                    paren_depth = paren_depth.saturating_sub(1);
+                    state = JsExprState::ExpectOperator;
+                }
+                '[' => {
+                    self.advance();
+                    bracket_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                ']' => {
+                    self.advance();
+                    bracket_depth = bracket_depth.saturating_sub(1);
+                    state = JsExprState::ExpectOperator;
+                }
+                '{' => {
+                    self.advance();
+                    brace_depth += 1;
+                    state = JsExprState::ExpectOperand;
+                }
+                '}' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                    result.end = Some(self.current);
+                    self.advance();
+                    return Ok(result);
+                }
+                '}' => {
+                    self.advance();
+                    brace_depth = brace_depth.saturating_sub(1);
+                    state = JsExprState::ExpectOperator;
+                }
+                c if c.is_whitespace() && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                    let ws_start = self.current;
+                    self.skip_whitespace();
+                    if self.is_at_end() {
+                        break;
+                    }
+
+                    let ident = self.scan_js_identifier();
+                    if !ident.is_empty()
+                        && (ident == "then" || ident == "catch")
+                        && self
+                            .peek()
+                            .is_some_and(|c| c.is_ascii_whitespace() || c == '}')
+                    {
+                        result.end = Some(ws_start);
+                        result.await_clause = Some(if ident == "then" { "then" } else { "catch" });
+                        return Ok(result);
+                    }
+
+                    if !ident.is_empty() {
+                        state = if Self::keyword_expects_operand(ident) {
+                            JsExprState::ExpectOperand
+                        } else {
+                            JsExprState::ExpectOperator
+                        };
+                        continue;
+                    }
+                }
+                c if c.is_whitespace() => {
+                    self.advance();
+                }
+                c if c.is_ascii_digit() => {
+                    self.scan_js_number();
+                    state = JsExprState::ExpectOperator;
+                }
+                c if c.is_alphabetic() || c == '_' || c == '$' => {
+                    let ident = self.scan_js_identifier();
+                    state = if Self::keyword_expects_operand(ident) {
+                        JsExprState::ExpectOperand
+                    } else {
+                        JsExprState::ExpectOperator
+                    };
+                }
+                '+' | '-' => {
+                    self.advance();
+                    if self.peek() == Some(ch) {
+                        self.advance();
+                        state = JsExprState::ExpectOperator;
+                    } else {
+                        state = JsExprState::ExpectOperand;
+                    }
+                }
+                '.' => {
+                    self.advance();
+                    state = JsExprState::ExpectOperand;
+                }
+                ',' | ':' | ';' | '?' | '=' | '!' | '~' | '*' | '%' | '^' | '&' | '|' | '<'
+                | '>' => {
+                    self.advance();
+                    state = JsExprState::ExpectOperand;
+                }
+                _ => {
+                    self.advance();
+                    state = JsExprState::ExpectOperator;
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     fn start_template(&mut self) -> Result<(), Diagnostic> {
@@ -1414,18 +1867,11 @@ impl<'a> Scanner<'a> {
         // Consume optional params: `(a, b)`
         if self.peek() == Some('(') {
             self.advance(); // consume '('
-            let mut depth: u32 = 1;
-
-            while !self.is_at_end() && depth > 0 {
-                let ch = self.advance();
-                match ch {
-                    '(' => depth += 1,
-                    ')' => depth -= 1,
-                    _ => {}
-                }
-            }
-
-            if depth != 0 {
+            if self
+                .scan_js_pattern(JsScanTerminator::MatchingParen)?
+                .end
+                .is_none()
+            {
                 return Err(Diagnostic::unexpected_end_of_file(Span::new(
                     expr_start as u32,
                     self.current as u32,
@@ -1619,73 +2065,29 @@ impl<'a> Scanner<'a> {
         }
 
         let start = self.current;
-        let mut depth: u32 = 1;
-
-        while !self.is_at_end() && depth > 0 {
-            let ch = self.advance();
-            match ch {
-                '\'' | '"' | '`' => self.skip_js_string(ch)?,
-                '(' => depth += 1,
-                ')' => depth -= 1,
-                _ => {}
-            }
-        }
-
-        if depth != 0 {
+        let Some(end) = self.scan_js_pattern(JsScanTerminator::MatchingParen)?.end else {
             return Err(Diagnostic::unexpected_end_of_file(Span::new(
                 start as u32,
                 self.current as u32,
             )));
-        }
+        };
 
-        let end = self.prev; // position of ')'
-        let raw = self.slice_source(start, end);
-        let trim_start = raw.len() - raw.trim_start().len();
-        let trim_end = raw.len() - raw.trim_end().len();
-        let span_start = start + trim_start;
-        let span_end = end - trim_end;
-
-        Ok(Span::new(span_start as u32, span_end as u32))
+        Ok(self.trimmed_span(start, end))
     }
 
     /// Collect item expression in each-block context.
     /// Stops on `,` or `}` at depth 0. Tracks `{}` and `[]` nesting for destructuring.
     fn collect_each_context(&mut self) -> Result<Span, Diagnostic> {
-        let mut curly_depth: u32 = 0;
-        let mut bracket_depth: u32 = 0;
         let start = self.current;
 
-        while !self.is_at_end() {
-            let char = self.advance();
+        let Some(end) = self.scan_js_pattern(JsScanTerminator::EachContext)?.end else {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
+        };
 
-            if char == '\'' || char == '"' || char == '`' {
-                self.skip_js_string(char)?;
-                continue;
-            }
-
-            match char {
-                '{' => curly_depth += 1,
-                '}' if curly_depth > 0 => curly_depth -= 1,
-                '[' => bracket_depth += 1,
-                ']' if bracket_depth > 0 => bracket_depth -= 1,
-                // At depth 0: `,` means index follows, `(` means key follows, `}` means end of block
-                ',' | '}' | '(' if curly_depth == 0 && bracket_depth == 0 => {
-                    let raw = self.slice_source(start, self.prev);
-                    let trim_start = raw.len() - raw.trim_start().len();
-                    let trim_end = raw.len() - raw.trim_end().len();
-                    let span_start = start + trim_start;
-                    let span_end = self.prev - trim_end;
-
-                    return Ok(Span::new(span_start as u32, span_end as u32));
-                }
-                _ => {}
-            }
-        }
-
-        Err(Diagnostic::unexpected_end_of_file(Span::new(
-            start as u32,
-            self.current as u32,
-        )))
+        Ok(self.trimmed_span(start, end))
     }
 
     /// Parse `{#await expr}`, `{#await expr then val}`, or `{#await expr catch err}`.
@@ -1695,83 +2097,11 @@ impl<'a> Scanner<'a> {
     fn start_await_tag(&mut self) -> Result<(), Diagnostic> {
         self.skip_whitespace();
 
-        // Scan for the expression, watching for ` then ` or ` catch ` keywords at top level
         let expr_start = self.current;
-        let mut depth: u32 = 0; // tracks {}, (), []
-        let mut expr_end = expr_start;
-        let mut found_keyword: Option<&str> = None;
+        let scan = self.scan_await_expression()?;
+        let expression_span = self.trimmed_span(expr_start, scan.end.unwrap_or(self.current));
 
-        while !self.is_at_end() {
-            let ch = self.peek().unwrap();
-
-            if ch == '\'' || ch == '"' || ch == '`' {
-                self.advance();
-                self.skip_js_string(ch)?;
-                continue;
-            }
-
-            match ch {
-                '{' | '(' | '[' => {
-                    self.advance();
-                    depth += 1;
-                }
-                '}' if depth > 0 => {
-                    self.advance();
-                    depth -= 1;
-                }
-                ')' | ']' if depth > 0 => {
-                    self.advance();
-                    depth -= 1;
-                }
-                '}' if depth == 0 => {
-                    // End of tag — no then/catch keyword found
-                    expr_end = self.current;
-                    self.advance(); // consume '}'
-                    break;
-                }
-                _ if depth == 0 && ch.is_ascii_whitespace() => {
-                    // Save position before whitespace
-                    let ws_start = self.current;
-                    self.skip_whitespace();
-
-                    if self.is_at_end() {
-                        break;
-                    }
-
-                    let kw = self.identifier();
-
-                    if (kw == "then" || kw == "catch")
-                        && self
-                            .peek()
-                            .is_some_and(|c| c.is_ascii_whitespace() || c == '}')
-                    {
-                        // Found the keyword — expression ends at whitespace before it
-                        expr_end = ws_start;
-                        found_keyword = if kw == "then" {
-                            Some("then")
-                        } else {
-                            Some("catch")
-                        };
-                        break;
-                    }
-                    // Not a keyword — continue scanning (identifier was consumed, that's fine)
-                }
-                _ => {
-                    self.advance();
-                }
-            }
-        }
-
-        // Trim the expression span
-        let raw = self.slice_source(expr_start, expr_end);
-        let trim_start = raw.len() - raw.trim_start().len();
-        let trim_end = raw.len() - raw.trim_end().len();
-        let expression_span = Span::new(
-            (expr_start + trim_start) as u32,
-            (expr_end - trim_end) as u32,
-        );
-
-        match found_keyword {
+        match scan.await_clause {
             Some("then") => {
                 // Short form: {#await expr then val}
                 self.skip_whitespace();
@@ -1822,41 +2152,16 @@ impl<'a> Scanner<'a> {
     /// Handles simple identifiers and destructured patterns like `{name, age}` or `[a, b]`.
     /// Stops at `}` at depth 0 (closing the tag).
     fn collect_await_binding(&mut self) -> Result<Span, Diagnostic> {
-        let mut curly_depth: u32 = 0;
-        let mut bracket_depth: u32 = 0;
         let start = self.current;
 
-        while !self.is_at_end() {
-            let char = self.advance();
+        let Some(end) = self.scan_js_pattern(JsScanTerminator::AwaitBinding)?.end else {
+            return Err(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
+        };
 
-            if char == '\'' || char == '"' || char == '`' {
-                self.skip_js_string(char)?;
-                continue;
-            }
-
-            match char {
-                '{' => curly_depth += 1,
-                '}' if curly_depth > 0 => curly_depth -= 1,
-                '[' => bracket_depth += 1,
-                ']' if bracket_depth > 0 => bracket_depth -= 1,
-                '}' if curly_depth == 0 && bracket_depth == 0 => {
-                    // End of tag
-                    let raw = self.slice_source(start, self.prev);
-                    let trim_start = raw.len() - raw.trim_start().len();
-                    let trim_end = raw.len() - raw.trim_end().len();
-                    let span_start = start + trim_start;
-                    let span_end = self.prev - trim_end;
-
-                    return Ok(Span::new(span_start as u32, span_end as u32));
-                }
-                _ => {}
-            }
-        }
-
-        Err(Diagnostic::unexpected_end_of_file(Span::new(
-            start as u32,
-            self.current as u32,
-        )))
+        Ok(self.trimmed_span(start, end))
     }
 }
 
@@ -1911,6 +2216,71 @@ mod tests {
         let tokens = scanner.scan_tokens().0;
 
         assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_regex_literal() {
+        let source = r"{ /}/.test(value) }";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression_span.source_text(source), "/}/.test(value)");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_regex_character_class() {
+        let source = r"{ /[}]/.test(value) }";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression_span.source_text(source), "/[}]/.test(value)");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_block_comment() {
+        let source = "{ a /* } */ + b }";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression_span.source_text(source), "a /* } */ + b");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_line_comment() {
+        let source = "{ a // }\n + b }";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression_span.source_text(source), "a // }\n + b");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn interpolation_with_nested_template_literal() {
+        let source = "{ `x ${foo({ bar: `}` })} y` }";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert!(matches!(tokens[0].token_type, TokenType::Interpolation(_)));
+        if let TokenType::Interpolation(ref et) = tokens[0].token_type {
+            assert_eq!(et.expression_span.source_text(source), "`x ${foo({ bar: `}` })} y`");
+        }
         assert!(tokens[1].token_type == TokenType::EOF);
     }
 
@@ -2285,6 +2655,21 @@ mod tests {
     }
 
     #[test]
+    fn each_block_with_regex_key() {
+        let source = r"{#each items as item (/}/.test(item.id) ? item.id : item)}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert_start_each_tag_with_key(
+            source,
+            &tokens[0],
+            "items",
+            "item",
+            "/}/.test(item.id) ? item.id : item",
+        );
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
     fn each_block_with_index_and_key() {
         let source = "{#each items as item, i (item.id)}";
         let mut scanner = Scanner::new(source);
@@ -2312,6 +2697,26 @@ mod tests {
         let mut scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().0;
         assert_start_each_tag_with_key(source, &tokens[0], "items", "{name}", "name");
+    }
+
+    #[test]
+    fn each_block_context_with_string_containing_closing_brace() {
+        let source = r#"{#each items as { label = "}" }, idx}"#;
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert_start_each_tag_with_index(source, &tokens[0], "items", r#"{ label = "}" }"#, "idx");
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn each_block_context_with_template_literal() {
+        let source = "{#each items as { label = `}` }, idx}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+
+        assert_start_each_tag_with_index(source, &tokens[0], "items", "{ label = `}` }", "idx");
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     // --- Directive tests ---
@@ -2445,6 +2850,38 @@ mod tests {
     }
 
     #[test]
+    fn snippet_tag_params_with_string_paren() {
+        let source = r#"{#snippet foo(a = ")")}content{/snippet}"#;
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(
+            tokens[0].token_type,
+            TokenType::StartSnippetTag(_)
+        ));
+        if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.expression_span.source_text(source), r#"foo(a = ")")"#);
+        }
+        assert!(tokens[1].token_type == TokenType::Text);
+        assert!(tokens[2].token_type == TokenType::EndSnippetTag);
+    }
+
+    #[test]
+    fn snippet_tag_params_with_template_literal() {
+        let source = "{#snippet foo(a = `)`)}content{/snippet}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(
+            tokens[0].token_type,
+            TokenType::StartSnippetTag(_)
+        ));
+        if let TokenType::StartSnippetTag(ref st) = tokens[0].token_type {
+            assert_eq!(st.expression_span.source_text(source), "foo(a = `)`)");
+        }
+        assert!(tokens[1].token_type == TokenType::Text);
+        assert!(tokens[2].token_type == TokenType::EndSnippetTag);
+    }
+
+    #[test]
     fn render_tag_tokens() {
         let source = "{@render foo(x, y)}";
         let mut scanner = Scanner::new(source);
@@ -2464,6 +2901,117 @@ mod tests {
         if let TokenType::HtmlTag(ref ht) = tokens[0].token_type {
             assert_eq!(ht.expression_span.source_text(source), "content");
         }
+    }
+
+    #[test]
+    fn html_tag_with_nested_template_literal() {
+        let source = "{@html `a ${foo({ bar: `}` })}`}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::HtmlTag(_)));
+        if let TokenType::HtmlTag(ref ht) = tokens[0].token_type {
+            assert_eq!(ht.expression_span.source_text(source), "`a ${foo({ bar: `}` })}`");
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_with_regex_literal() {
+        let source = r"{#await /}/.test(x) then value}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(tag.expression_span.source_text(source), "/}/.test(x)");
+            assert_eq!(
+                tag.value_span.expect("expected value binding").source_text(source),
+                "value"
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_with_block_comment() {
+        let source = "{#await a /* } */ + b then value}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(tag.expression_span.source_text(source), "a /* } */ + b");
+            assert_eq!(
+                tag.value_span.expect("expected value binding").source_text(source),
+                "value"
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_with_nested_template_literal() {
+        let source = "{#await `x ${foo({ bar: `}` })}` then value}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(
+                tag.expression_span.source_text(source),
+                "`x ${foo({ bar: `}` })}`"
+            );
+            assert_eq!(
+                tag.value_span.expect("expected value binding").source_text(source),
+                "value"
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_then_inside_string_does_not_terminate_expression() {
+        let source = r#"{#await foo(" then ") + bar then value}"#;
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(tag.expression_span.source_text(source), r#"foo(" then ") + bar"#);
+            assert_eq!(
+                tag.value_span.expect("expected value binding").source_text(source),
+                "value"
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_then_binding_with_string_containing_closing_brace() {
+        let source = r#"{#await promise then { value = "}" }}"#;
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(tag.expression_span.source_text(source), "promise");
+            assert_eq!(
+                tag.value_span.expect("expected value binding").source_text(source),
+                r#"{ value = "}" }"#
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
+    }
+
+    #[test]
+    fn await_tag_catch_binding_with_template_literal() {
+        let source = "{#await promise catch { value = `}` }}";
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().0;
+        assert!(matches!(tokens[0].token_type, TokenType::StartAwaitTag(_)));
+        if let TokenType::StartAwaitTag(ref tag) = tokens[0].token_type {
+            assert_eq!(tag.expression_span.source_text(source), "promise");
+            assert_eq!(
+                tag.error_span.expect("expected error binding").source_text(source),
+                "{ value = `}` }"
+            );
+        }
+        assert!(tokens[1].token_type == TokenType::EOF);
     }
 
     #[test]
