@@ -463,6 +463,9 @@ impl<'a> Ctx<'a> {
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.query.view.is_svelte_fragment_slot(id)
     }
+    pub fn is_svelte_self(&self, id: NodeId) -> bool {
+        self.query.view.is_svelte_self(id)
+    }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }

@@ -118,6 +118,8 @@ pub struct ElementFlags {
     /// Keyed by the slot element NodeId. Used in codegen to consume the extra
     /// `root` identifier that the reference compiler allocates for the wrapper.
     pub(crate) svelte_fragment_slots: NodeBitSet,
+    /// `<svelte:self>` component nodes — needs `$.comment()` anchor in non-root context.
+    pub(crate) is_svelte_self: NodeBitSet,
 }
 
 impl ElementFlags {
@@ -146,6 +148,7 @@ impl ElementFlags {
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
             svelte_fragment_slots: NodeBitSet::new(node_count),
+            is_svelte_self: NodeBitSet::new(node_count),
         }
     }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
@@ -237,5 +240,8 @@ impl ElementFlags {
     }
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.svelte_fragment_slots.contains(&id)
+    }
+    pub fn is_svelte_self(&self, id: NodeId) -> bool {
+        self.is_svelte_self.contains(&id)
     }
 }

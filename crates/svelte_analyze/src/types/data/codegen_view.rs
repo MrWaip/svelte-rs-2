@@ -280,6 +280,9 @@ impl<'a> CodegenView<'a> {
     pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_svelte_fragment_slot(id)
     }
+    pub fn is_svelte_self(&self, id: NodeId) -> bool {
+        self.data.elements.flags.is_svelte_self(id)
+    }
     pub fn render_tag_plan(&self, id: NodeId) -> Option<&RenderTagPlan> {
         self.data.render_tag_plan(id)
     }
