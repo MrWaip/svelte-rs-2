@@ -1,11 +1,13 @@
 # $effect / $effect.pre
 
 ## Current state
-- **Working**: 9/10 use cases
-- **Missing**: script-side coverage for `$effect.pending()`
-- Last updated: 2026-04-03
+- **Working**: 10/10 use cases
+- **Missing**: none
+- **Done this session**: added script-side compiler coverage for top-level and nested-expression `$effect.pending()` usage (`effect_pending_script_init`, `effect_pending_script_derived`).
+- **Next**: no open implementation work in this spec
+- Last updated: 2026-04-09
 
-**Next:** extend `$effect.pending()` coverage beyond template and branch positions so script-side usage is tracked explicitly
+**Next:** no remaining implementation slices
 
 ## Source
 
@@ -34,8 +36,8 @@
   Tests: `effect_root_basic`, `effect_root_cleanup`
 - [x] `$effect.tracking()` lowers to `$.effect_tracking()` and can flow into template output
   Tests: `effect_tracking`
-- [ ] `$effect.pending()` lowers in template expressions, but coverage is still limited to template/branch positions rather than script-side usage
-  Tests: `effect_pending`
+- [x] `$effect.pending()` lowers in template expressions and in script-side expressions covered by compiler snapshots
+  Tests: `effect_pending`, `effect_pending_script_init`, `effect_pending_script_derived`
 - [x] `$effect()` placement validation: only allowed as an expression statement
   Tests: `validate_effect_invalid_placement_fn_arg`
 - [x] `$effect.pre()` placement validation: only allowed as an expression statement
@@ -78,6 +80,8 @@
 - [x] `effect_root_cleanup`
 - [x] `effect_tracking`
 - [x] `effect_pending`
+- [x] `effect_pending_script_init`
+- [x] `effect_pending_script_derived`
 - [x] `validate_effect_invalid_placement_fn_arg`
 - [x] `validate_effect_pre_invalid_placement_assignment`
 - [x] `validate_effect_wrong_arg_count`

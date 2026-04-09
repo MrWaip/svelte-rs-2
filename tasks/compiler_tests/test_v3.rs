@@ -642,6 +642,16 @@ fn effect_pending() {
 }
 
 #[rstest]
+fn effect_pending_script_init() {
+    assert_compiler("effect_pending_script_init");
+}
+
+#[rstest]
+fn effect_pending_script_derived() {
+    assert_compiler("effect_pending_script_derived");
+}
+
+#[rstest]
 fn host_basic() {
     assert_compiler("host_basic");
 }
