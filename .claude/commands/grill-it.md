@@ -16,3 +16,5 @@ Interpret `$ARGUMENTS`:
 Answer these questions:
 
 **Are these changes systematic, without workarounds or temporary solutions, respecting crate and module boundaries? Will these changes not create problems in the long-term perspective of the project? Did we not reinvent the wheel yet again?**
+
+**Will another person understand this without additional explanation? Is the implementation simple and straightforward, or more complex than necessary?**

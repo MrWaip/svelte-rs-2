@@ -33,6 +33,10 @@ impl FragmentFactsEntry {
                 .attributes
                 .iter()
                 .any(|attr| matches!(attr, Attribute::AnimateDirective(_))),
+            Node::SvelteElement(el) => el
+                .attributes
+                .iter()
+                .any(|attr| matches!(attr, Attribute::AnimateDirective(_))),
             _ => false,
         });
         let mut non_trivial_children = fragment

@@ -1114,7 +1114,6 @@ fn animate_reactive_params() {
 }
 
 #[rstest]
-#[ignore = "missing: animate on <svelte:element> inside keyed each (codegen/analyze)"]
 fn animate_svelte_element() {
     assert_compiler("animate_svelte_element");
 }

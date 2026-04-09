@@ -14,6 +14,7 @@ use super::attributes::{
     process_attrs_spread, process_svelte_element_class_directives,
     process_svelte_element_style_directives,
 };
+use super::events::gen_animate_directive;
 use super::expression::get_node_expr;
 use super::gen_fragment;
 
@@ -103,6 +104,12 @@ pub(crate) fn gen_svelte_element<'a>(
 
     // Style directives on svelte:element are handled via process_attrs_spread computed [$.STYLE] property
     process_svelte_element_style_directives(ctx, &el_clone, &el_name, &mut inner_init);
+
+    for attr in &el_clone.attributes {
+        if let svelte_ast::Attribute::AnimateDirective(ad) = attr {
+            gen_animate_directive(ctx, ad, attr.id(), &el_name, &mut inner_after_update);
+        }
+    }
 
     // Generate children
     let child_body = gen_fragment(ctx, FragmentKey::SvelteElementBody(id));
