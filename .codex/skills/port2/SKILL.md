@@ -1,6 +1,6 @@
 ---
 name: port2
-description: Port one approved slice of a Svelte compiler feature from spec to the Rust implementation. Use when a feature already has a spec and Codex should implement only the next bounded slice, not the whole feature, while keeping strict parser/analyze/codegen boundaries.
+description: Port one session-sized slice of a Svelte compiler feature from spec to the Rust implementation. Use when a feature already has a spec and Codex should implement the next bounded slice, not the whole feature, while keeping strict parser/analyze/codegen boundaries.
 ---
 
 # Port One Slice
@@ -16,6 +16,8 @@ The command argument is either:
 
 If no matching spec exists, stop and recommend `/audit <feature>` first.
 
+If multiple specs plausibly match the feature description, stop and list the candidate spec files. Do not choose arbitrarily.
+
 ## Resume From Spec
 
 If the argument is a spec path, or a matching spec was found:
@@ -24,6 +26,8 @@ If the argument is a spec path, or a matching spec was found:
 2. Read `Current state` first
 3. Find the next incomplete slice
 4. Do not widen scope beyond that slice in the current run
+
+If `Current state` is missing or clearly conflicts with `Use cases` or `Tasks`, normalize the spec first and report the drift before selecting a slice.
 
 Derive the slice from the existing spec structure in this order:
 
@@ -55,14 +59,14 @@ Use the reference compiler to understand expected output, not to copy structure.
 
 Do not port:
 
-- visitor or walker dispatch patterns
+- visitor or walker dispatch patterns mechanically
 - mutable AST metadata
 - JS-specific workarounds
 - broad "make the whole feature pass" batches
 
 Do:
 
-- match JS output exactly for the selected slice
+- match reference observable behavior exactly for the selected slice
 - keep implementation aligned with crate boundaries
 
 ## When New Use Cases Are Discovered
@@ -79,7 +83,7 @@ Spec updates are allowed during the run. Scope expansion is not.
 
 ## PLAN PHASE
 
-These steps are read-only. Complete them before writing code.
+These steps are planning-only. Do not write files during this phase.
 
 ### Step 1: Load Slice Context
 
@@ -110,23 +114,25 @@ Choose the slice size for usefulness, not minimalism. Prefer a meaningful milest
 
 If implementing the slice would require architecture changes that do not fit existing boundaries, stop and ask for approval. Do not improvise structural changes.
 
-### Step 3: Update Spec
+### Step 3: Draft Spec Update
 
-Write the selected slice back into `specs/<feature>.md` so the next session can resume cleanly.
+Prepare a proposed update for the same spec file that was selected earlier so the next session can resume cleanly.
 
-Update `Current state` with:
+Draft `Current state` updates with:
 
 - current slice name
 - why this slice comes next
 - non-goals for this run
 
-This pre-implementation update is only for planning and resume context. Do not mark use cases as completed in this step.
+This pre-implementation spec update is only for planning and resume context. Do not mark use cases as completed in this step.
+
+Do not apply the spec update yet. Present the slice plan and the proposed spec update, then wait for approval.
 
 Do not reshape the spec template just to use this skill. Prefer updating `Current state`, `Use cases`, and `Tasks`.
 
 The plan text must include: **"Changes must be systematic, without workarounds or temporary solutions, respecting crate and module boundaries."**
 
-**Present the slice plan and wait for approval before proceeding.**
+**Present the slice plan and wait for approval before proceeding. After approval, apply the planned update to the same spec file before writing code.**
 
 ## EXECUTE PHASE
 
@@ -145,6 +151,8 @@ Default mapping:
 - parser syntax and AST shape -> parser unit tests in `test.rs` modules
 - analysis metadata, symbol logic, ownership, diagnostics -> analyzer unit tests in `test.rs` modules
 - codegen or end-user compiler output that must match the reference compiler -> `tasks/compiler_tests/` e2e coverage
+
+For parser-only or analyze-only slices, prefer layer-local tests and exact AST or analysis expectations unless end-to-end output parity is required.
 
 Do not put diagnostics-only behavior into `tasks/compiler_tests/test_v3.rs` unless the point of the slice is an end-to-end compiler snapshot that must be compared with the reference compiler.
 
@@ -169,6 +177,8 @@ For e2e tests:
 3. run `just generate` to produce `case-svelte.js`
 4. verify generated reference output before implementing
 
+Before implementation, only treat `case-svelte.js` as the reference artifact to review. Do not treat pre-implementation `case-rust.js` output as meaningful.
+
 `case-svelte.js` and `case-rust.js` are generated artifacts. Never edit them manually. They may change only through generation or compiler output.
 
 Rules:
@@ -190,6 +200,8 @@ Unit tests are mandatory for every new parser or analyze behavior.
 
 ### Step 7: Verify The Slice
 
+If relevant tests already fail before this slice, record that baseline first. Verify that the slice fixes or implements its included use cases without introducing additional regressions. Do not widen scope to fix unrelated baseline failures.
+
 Verify every included test case individually:
 
 ```bash
@@ -207,11 +219,14 @@ just test-compiler
 Cross-check that:
 
 - every included use case passes
+- no new regressions were introduced beyond the recorded baseline
 - excluded use cases remain excluded
 
 If a test still fails after 3 attempts, stop and report what was tried. Do not silently expand scope.
 
 ### Step 8: Finalize The Slice
+
+Before updating the spec, inspect the diff and confirm that unrelated files were not changed and that generated files changed only through the documented generation or test flow.
 
 Update the spec:
 
