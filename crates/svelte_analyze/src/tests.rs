@@ -3482,6 +3482,37 @@ fn validate_each_animation_invalid_placement() {
 }
 
 #[test]
+fn validate_each_animation_duplicate() {
+    let diags = analyze_with_diags(
+        r#"<script>import { flip, crossfade } from 'svelte/animate'; let items = [];</script>
+{#each items as item (item.id)}
+    <div animate:flip animate:crossfade>{item}</div>
+{/each}"#,
+    );
+    assert_has_error(&diags, "animation_duplicate");
+}
+
+#[test]
+fn validate_animate_directive_illegal_await_expression() {
+    let diags = analyze_with_diags(
+        r#"<script>
+	import { flip } from 'svelte/animate';
+
+	let items = [{ id: 1, value: 'x' }];
+
+	async function load() {
+		return { duration: 100 };
+	}
+</script>
+
+{#each items as item (item.id)}
+	<div animate:flip={await load()}>{item.value}</div>
+{/each}"#,
+    );
+    assert_has_error(&diags, "illegal_await_expression");
+}
+
+#[test]
 fn validate_each_item_invalid_assignment() {
     let diags = analyze_with_diags(
         r#"<script>let items = $state([1, 2, 3]);</script>

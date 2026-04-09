@@ -568,6 +568,7 @@ enum BindExpressionShape {
 #[derive(Default)]
 struct ElementEventState {
     has_s5_events: bool,
+    has_animate_directive: bool,
     /// Span and event name of the first `on:` directive seen on this element.
     first_on_directive: Option<(Span, String)>,
 }
@@ -1111,6 +1112,30 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     // Use cases 3 & 4: animation_missing_key, animation_invalid_placement
     fn visit_animate_directive(&mut self, dir: &AnimateDirective, ctx: &mut VisitContext<'_>) {
+        if let Some(state) = self.element_event_state.last_mut() {
+            if state.has_animate_directive {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::AnimationDuplicate,
+                    dir.name,
+                ));
+            } else {
+                state.has_animate_directive = true;
+            }
+        }
+
+        if let Some(expression_span) = dir.expression_span {
+            if ctx
+                .data
+                .attr_expression(dir.id)
+                .is_some_and(|info| info.has_await)
+            {
+                ctx.warnings_mut().push(Diagnostic::error(
+                    DiagnosticKind::IllegalAwaitExpression,
+                    expression_span,
+                ));
+            }
+        }
+
         // Collect grandparent info in a block so the ancestors iterator is dropped
         // before we borrow ctx.store or ctx.warnings_mut().
         let (parent, grandparent) = {
