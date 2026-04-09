@@ -1,11 +1,13 @@
 # Animate directive
 
 ## Current state
-- **Working**: 8/10 use cases
-- **Missing**: 2/10 use cases
+- **Working**: 10/10 use cases
+- **Missing**: 0/10 use cases
+- **Current slice**: remaining analyzer diagnostics completed
+- **Done this session**: `template_validation` now rejects duplicate `animate:` directives on the same element via `animation_duplicate` and rejects await expressions in animate directive values via `illegal_await_expression`. The checks live alongside existing animate placement validation, so regular elements and `<svelte:element>` reuse the same per-element validation path.
 - **Done this session**: `animate_with_const_tag` now matches the reference output. The root cause was shared codegen thunk optimization in `Builder::thunk`: zero-arg method calls such as `item.name.toUpperCase()` were being collapsed into bare member references, which dropped the call when `{@const}` emitted `$.derived(...)`. The optimization is now limited to plain identifier calls, preserving method-call thunks across codegen.
 - **Done this session**: `animate_svelte_element` now matches the reference output. Analyze `fragment_facts` now treats `<svelte:element animate:...>` as a direct animate child, so keyed `{#each}` bodies get `EACH_IS_ANIMATED`; codegen reuses the shared `gen_animate_directive` helper inside `gen_svelte_element`, so `$.animation($$element, ...)` is emitted in the element callback just like the regular-element path.
-- **Next**: port missing diagnostics for duplicate `animate:` and illegal await expressions
+- **Next**: no additional animate slice is required within this spec's client-side scope; compiler negative-case snapshots remain limited by the current test harness.
 - Last updated: 2026-04-09
 
 ## Source
@@ -29,8 +31,8 @@
 - [x] Reject `animate:` when the animated element is not the sole non-trivial child of a keyed `{#each}` block via `animation_invalid_placement`.
 - [x] Generate client output for `animate:` on `<svelte:element>` as the sole child of a keyed `{#each}` block.
 - [x] Allow comments, whitespace, and `{@const}` alongside an animated keyed-each child without tripping placement validation. Comment/whitespace is analyzer-covered, and `animate_with_const_tag` now matches the reference output.
-- [ ] Reject duplicate `animate:` directives on the same element via `animation_duplicate`. Diagnostic exists in `svelte_diagnostics`, but no analyzer implementation currently emits it.
-- [ ] Reject await expressions in `animate:` directive values via `illegal_await_expression`. Diagnostic exists in `svelte_diagnostics`, but no analyzer implementation currently emits it.
+- [x] Reject duplicate `animate:` directives on the same element via `animation_duplicate`.
+- [x] Reject await expressions in `animate:` directive values via `illegal_await_expression`.
 
 ## Out of scope
 
@@ -75,12 +77,12 @@
 
 ## Discovered bugs
 
-- OPEN: `animation_duplicate` diagnostic is declared in `svelte_diagnostics` but not emitted from `template_validation`.
-- OPEN: `illegal_await_expression` diagnostic is declared in `svelte_diagnostics` but not emitted for animate directive expressions.
+- FIXED: `animation_duplicate` is now emitted from `template_validation` for the second and later `animate:` directives on the same element.
+- FIXED: `illegal_await_expression` is now emitted for animate directive expressions using existing expression-analysis `has_await` metadata.
 - OPEN: compiler test harness only supports successful JS/CSS snapshot cases, so animate error cases remain analyzer-test coverage for now.
 
 ## Test cases
 
 - Existing compiler cases: `animate_basic`, `animate_params`, `animate_dotted_name`, `animate_reactive_params`, `animate_with_spread`, `animate_blockers`
-- Existing analyzer tests: `validate_each_animation_missing_key`, `validate_each_animation_invalid_placement`, `fragment_facts_track_each_body_child_shape_and_animate`, `fragment_facts_track_svelte_element_animate_in_each_body`
+- Existing analyzer tests: `validate_each_animation_missing_key`, `validate_each_animation_invalid_placement`, `validate_each_animation_duplicate`, `validate_animate_directive_illegal_await_expression`, `fragment_facts_track_each_body_child_shape_and_animate`, `fragment_facts_track_svelte_element_animate_in_each_body`
 - Added audit cases: `animate_svelte_element`, `animate_with_const_tag`
