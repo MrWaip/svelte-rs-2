@@ -14,6 +14,8 @@ pub(crate) fn gen_on_directive_legacy<'a>(
     el_name: &str,
     after_update: &mut Vec<Statement<'a>>,
 ) {
+    let expr_offset = od.expression_span.map(|span| span.start);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
     let handler = if od.expression_span.is_none() {
         let bubble_call = ctx
             .b
@@ -30,7 +32,19 @@ pub(crate) fn gen_on_directive_legacy<'a>(
             .function_expr(ctx.b.params(["$$arg"]), vec![ctx.b.expr_stmt(call)])
     } else {
         let expr = super::super::expression::get_attr_expr(ctx, attr_id);
-        build_legacy_event_handler(ctx, expr)
+        build_legacy_event_handler(
+            ctx,
+            attr_id,
+            expr,
+            has_call,
+            after_update,
+            expr_offset.expect("legacy event expression span missing"),
+        )
+    };
+    let handler = if let Some(offset) = expr_offset {
+        dev_event_handler(ctx, handler, &od.name, offset)
+    } else {
+        handler
     };
 
     let mods = od.parsed_modifiers();
@@ -68,6 +82,8 @@ pub(crate) fn gen_legacy_event_on<'a>(
     target: &str,
     stmts: &mut Vec<Statement<'a>>,
 ) {
+    let expr_offset = od.expression_span.map(|span| span.start);
+    let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
     let handler = if od.expression_span.is_none() {
         let bubble_call = ctx
             .b
@@ -84,7 +100,19 @@ pub(crate) fn gen_legacy_event_on<'a>(
             .function_expr(ctx.b.params(["$$arg"]), vec![ctx.b.expr_stmt(call)])
     } else {
         let expr = super::super::expression::get_attr_expr(ctx, attr_id);
-        build_legacy_event_handler(ctx, expr)
+        build_legacy_event_handler(
+            ctx,
+            attr_id,
+            expr,
+            has_call,
+            stmts,
+            expr_offset.expect("legacy event expression span missing"),
+        )
+    };
+    let handler = if let Some(offset) = expr_offset {
+        dev_event_handler(ctx, handler, &od.name, offset)
+    } else {
+        handler
     };
 
     let mods = od.parsed_modifiers();
@@ -132,7 +160,7 @@ pub(crate) fn gen_event_attr_on<'a>(
 
     let has_call = ctx.attr_expression(attr_id).is_some_and(|e| e.has_call);
     let handler_expr = super::super::expression::get_attr_expr(ctx, attr_id);
-    let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts);
+    let handler = build_event_handler_s5(ctx, attr_id, handler_expr, has_call, stmts, expr_offset);
     let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
     let passive = svelte_analyze::is_passive_event(&event_name);

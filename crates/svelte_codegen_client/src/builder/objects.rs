@@ -33,6 +33,26 @@ impl<'a> Builder<'a> {
                 );
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
+            ObjProp::Method(key, value) => {
+                let key_node = if key.contains('-') {
+                    ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
+                } else {
+                    let key_atom = self.ast.atom(key);
+                    ast::PropertyKey::StaticIdentifier(
+                        self.alloc(self.ast.identifier_name(SPAN, key_atom)),
+                    )
+                };
+                let obj_prop = self.ast.object_property(
+                    SPAN,
+                    ast::PropertyKind::Init,
+                    key_node,
+                    value,
+                    true,
+                    false,
+                    false,
+                );
+                ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
+            }
             ObjProp::Shorthand(name) => {
                 let name_atom = self.ast.atom(name);
                 let key_node = ast::PropertyKey::StaticIdentifier(

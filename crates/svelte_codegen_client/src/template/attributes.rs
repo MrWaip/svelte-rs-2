@@ -113,7 +113,8 @@ pub(crate) fn process_attr<'a>(
 
                 let expr_offset = a.expression_span.start;
                 let val = get_attr_expr(ctx, attr_id);
-                let handler = build_event_handler_s5(ctx, attr_id, val, attr_has_call, init);
+                let handler =
+                    build_event_handler_s5(ctx, attr_id, val, attr_has_call, init, expr_offset);
                 let handler = dev_event_handler(ctx, handler, &event_name, expr_offset);
 
                 match mode {

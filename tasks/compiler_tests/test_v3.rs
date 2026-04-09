@@ -582,6 +582,11 @@ fn component_events() {
 }
 
 #[rstest]
+fn component_events_dev_apply() {
+    assert_compiler("component_events_dev_apply");
+}
+
+#[rstest]
 fn component_element_children() {
     assert_compiler("component_element_children");
 }
@@ -808,6 +813,11 @@ fn on_directive_modifiers() {
 #[rstest]
 fn on_directive_nonpassive() {
     assert_compiler("on_directive_nonpassive");
+}
+
+#[rstest]
+fn on_directive_dev_apply() {
+    assert_compiler("on_directive_dev_apply");
 }
 
 #[rstest]
@@ -1774,6 +1784,11 @@ fn event_attr_member_handler() {
 #[rstest]
 fn event_attr_has_call() {
     assert_compiler("event_attr_has_call");
+}
+
+#[rstest]
+fn event_attr_dev_apply() {
+    assert_compiler("event_attr_dev_apply");
 }
 
 // ---------------------------------------------------------------------------
