@@ -9,6 +9,12 @@
     }
   },
   "scripts": {
-    "smoke": "node ./scripts/smoke.mjs"
+    "smoke": "node ./scripts/smoke.mjs",
+    "prepare-platform-package": "node ./scripts/prepare-platform-package.mjs"
+  },
+  "optionalDependencies": {
+    "@mrwaip/svelte-rs2-darwin-arm64": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-darwin-x64": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-linux-x64-gnu": "0.0.0-canary.0"
   }
 }
