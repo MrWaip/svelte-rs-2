@@ -14,6 +14,7 @@
 - **Done**: Component custom-property wrapper lowering — `--*` attrs on a component are pre-classified into a `component_css_props` side-table during analyze, and codegen routes the component through a wrapper element (`<svelte-css-wrapper style="display: contents">` for HTML, `<g>` for SVG) plus `$.css_props(node, () => ({...}))`, with the inner component anchored on `node.lastChild`. Tests: `css_custom_prop_component`, `css_custom_prop_component_svg`. Side change: `CompileOptions.namespace` is now merged into `component.options.namespace` as a fallback inside `compile()` (matches reference behavior); the parser-side `regex_illegal_attribute_character` check skips component tags so `--name` is accepted.
 - **Next**: remaining CSS pipeline gaps — `:global .foo` compound form, unused selector CSS wrapping, nested `<style>` element parity. None scoped to current slice.
 - **Known debt**: `has_global_component` is duplicated between `svelte_analyze` and `svelte_transform_css` — to be resolved when `:global()` work makes the function non-trivial. The earlier blocker noted above (executor.rs / render_tags.rs / template_validation.rs compile errors) is no longer present — removed from tracking.
+- **Open bugs (2026-04-08 diagnose)**: scope-class injection misses 4 variants — element inside `{#snippet}` body, `<svelte:element>` with static class, class-object attribute (third arg to `$.set_class` is `null`), and spread-only element (`$.attribute_effect` emitted with 2 args instead of 6). Isolated by `css_scope_class_in_snippet`, `css_scope_svelte_element_class`, `css_scope_class_object`, `css_scope_spread_attribute` (all `#[ignore]`). Likely unified in the codegen attribute-lowering path (`crates/svelte_codegen_client/src/template/attributes.rs`) + analyze `scoped_elements` propagation.
 - Last updated: 2026-04-08
 
 ## Source
@@ -43,6 +44,10 @@ ROADMAP.md — CSS
 - [x] Parse `<svelte:options css="injected">`
 - [x] Scoped CSS pipeline for top-level `<style>` — hash, selector scoping, element marking, class injection, CSS output (test: `css_scoped_basic`)
 - [ ] Element marking via class / id / attribute selectors — `mark_scoped_elements` (`crates/svelte_analyze/src/passes/css_analyze.rs`) only walks `SimpleSelector::Type` via `TypeSelectorCollector`, so an element matched only by `.foo`, `#bar`, or `[attr]` never gets the scope-hash class injected. The full matching logic in `css_prune.rs::PruneVisitor` already knows which elements match each selector but never propagates that to `CssAnalysis::scoped_elements` (test: `css_scoped_class_selector`, `#[ignore]`, M)
+- [ ] Scope class injection on an element inside a `{#snippet}` body — the scope class should be appended to the static `class="..."` literal and to the template HTML root, but neither happens. Same root cause family as class-selector element marking above, but also reproducible when the element already carries a type-selector match via its tag name if it sits inside snippet scope (test: `css_scope_class_in_snippet`, `#[ignore]`, S)
+- [ ] Scope class injection on `<svelte:element this={...}>` with a static `class="..."` — scope class is not appended either at the template HTML root or in the dynamic class argument passed to `$.element` (test: `css_scope_svelte_element_class`, `#[ignore]`, S)
+- [ ] Scope class argument for class-object attributes — when `class={{ active, big }}` is compiled via `$.set_class`, the third argument must be the scope-hash string (`'svelte-xxxxxx'`) instead of `null` so the runtime can merge it with the object classes (test: `css_scope_class_object`, `#[ignore]`, S)
+- [ ] Scope class pass-through for spread attributes — `$.attribute_effect` is emitted with only 2 arguments for `{...rest}` elements, but the reference emits the full 6-argument form including the trailing scope-hash string, so scope styling is lost on spread-only elements (test: `css_scope_spread_attribute`, `#[ignore]`, S)
 - [x] Compile result CSS plumbing — `CompileResult.css` field, `analyze_css_pass()` integrated into `compile()`
 - [ ] `css: "external"` output — mode flag not explicitly enforced; external is current default behavior with no special handling
 - [x] `css: "injected"` output — `const $$css = { hash, code }` hoisted module-level const + `$.append_styles($$anchor, $$css)` as first statement in component body (tests: `css_injected`, `css_injected_via_compile_options`)
@@ -106,3 +111,7 @@ ROADMAP.md — CSS
 - [x] `style_directive` extended with `style:--columns`
 - [x] `css_custom_prop_component`
 - [x] `css_custom_prop_component_svg`
+- [ ] `css_scope_class_in_snippet` (`#[ignore]`)
+- [ ] `css_scope_svelte_element_class` (`#[ignore]`)
+- [ ] `css_scope_class_object` (`#[ignore]`)
+- [ ] `css_scope_spread_attribute` (`#[ignore]`)

@@ -1,10 +1,14 @@
 # `<script module>` in Components
 
 ## Current state
-- **Status**: COMPLETE — 10/10 use cases done, ROADMAP item moved to Done
+- **Status**: 10/11 use cases done — one open ordering/identifier bug surfaced on 2026-04-08 diagnose.
 - **`ast_type = 'module'` tracking**: split to owning specs — `$props`/`$props.id` in module → `props-bindable.md`; `$host` in module → `host-rune.md`; TLA and `$:` in module → out of scope here
-- **Next**: no action needed; `ast_type = 'module'` placement checks for `$host` tracked in `host-rune.md`
-- Last updated: 2026-04-04
+- **Open bug (2026-04-08 diagnose)**: when `<script module>` declares exported `const` + `function` and the instance template uses a `{#snippet}` that references the module-exported function from its render call site, two problems show up:
+  1. Module exports are hoisted to the very top of the output instead of being emitted between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations (codegen ordering).
+  2. The module-exported function `label` is wrapped in `$.get(label)(...)` at the snippet render call site, even though it is a plain function declaration in module scope — `is_getter` (or rune classification) is misclassifying module-level function exports as reactive getters.
+  Isolated by `script_module_exports_ordering_with_snippets` (`#[ignore]`). Likely layer: codegen ordering + analyze (rune classification of module exports).
+- **Next**: no action needed for `ast_type = 'module'` — see `host-rune.md`. For the ordering/getter bug, start at codegen `generate()` module-script stitching and analyze rune classification for module symbols.
+- Last updated: 2026-04-08
 
 ## Source
 - ROADMAP: `## <script module> in Components`
@@ -31,6 +35,7 @@
 - `[x]` Empty module script produces no extra output (test: `script_module_empty`)
 - `[x]` `export default` in module script emits `module_illegal_default_export` diagnostic (unit tests in `svelte_analyze`)
 - `[x]` Module-level variable declarations (non-export, non-rune) emit at top level (covered by `script_module_instance_ref`)
+- `[ ]` Module exports ordering when instance template uses snippets — module exports must sit between snippet `const` allocations and `var root_N = $.from_html(...)` template allocations; also a module-exported plain function must NOT be wrapped in `$.get(...)` at call sites in template scope (test: `script_module_exports_ordering_with_snippets`, `#[ignore]`, M)
 
 ## Out of scope
 
@@ -71,3 +76,4 @@
 - `[x]` `script_module_export_specifiers`
 - `[x]` `script_module_imports`
 - `[x]` `script_module_empty`
+- `[ ]` `script_module_exports_ordering_with_snippets` (`#[ignore]`)
